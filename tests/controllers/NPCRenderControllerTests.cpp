@@ -236,7 +236,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(EdgeCaseTests, NPCRenderControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestZeroFrameCountHandled) {
-    // Create NPC - the EDM clamps to minimum 1 frame from npc_types.json
+    // Create NPC - the EDM clamps to minimum 1 frame from races.json
     EntityHandle npc = EntityDataManager::Instance().createNPCWithRaceClass(
         Vector2D(100.0f, 100.0f), "Human", "Guard");
     BOOST_REQUIRE(npc.isValid());
@@ -260,7 +260,7 @@ BOOST_AUTO_TEST_CASE(TestZeroSpeedHandled) {
 
     EntityDataManager::Instance().updateSimulationTiers(Vector2D(100.0f, 100.0f), 1500.0f, 10000.0f);
 
-    // Verify speed was clamped to at least 1ms (loaded from npc_types.json)
+    // Verify speed was clamped to at least 1ms (loaded from races.json)
     auto& rd = getRenderData(npc);
     BOOST_CHECK_GE(rd.idleSpeedMs, 1);
     BOOST_CHECK_GE(rd.moveSpeedMs, 1);

@@ -1233,7 +1233,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(NPCRenderDataTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestNPCRenderDataInitialization) {
-    // Create NPC using data-driven approach (config loaded from npc_types.json)
+    // Create NPC using data-driven approach (config loaded from races.json)
     EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     BOOST_REQUIRE(handle.isValid());
 
@@ -1241,7 +1241,7 @@ BOOST_AUTO_TEST_CASE(TestNPCRenderDataInitialization) {
     const auto& renderData = edm->getNPCRenderData(handle);
 
     // Verify animation config was loaded from JSON (Guard uses idle row 0, move row 1)
-    // Values come from npc_types.json, so we verify they were loaded
+    // Values come from races.json, so we verify they were loaded
     BOOST_CHECK_GE(renderData.numIdleFrames, 1);
     BOOST_CHECK_GE(renderData.numMoveFrames, 1);
     BOOST_CHECK_GE(renderData.idleSpeedMs, 1);

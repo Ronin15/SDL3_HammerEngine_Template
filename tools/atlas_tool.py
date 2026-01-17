@@ -21,8 +21,10 @@ Requires: pip install pillow
 import argparse
 import hashlib
 import json
+import os
 import sys
 import webbrowser
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
 try:
@@ -43,7 +45,9 @@ def get_paths():
         'atlas_json': project_root / "res" / "data" / "atlas.json",
         'items_json': project_root / "res" / "data" / "items.json",
         'materials_json': project_root / "res" / "data" / "materials_and_currency.json",
-        'npc_types_json': project_root / "res" / "data" / "npc_types.json",
+        'races_json': project_root / "res" / "data" / "races.json",
+        'monster_types_json': project_root / "res" / "data" / "monster_types.json",
+        'species_json': project_root / "res" / "data" / "species.json",
         'world_objects_json': project_root / "res" / "data" / "world_objects.json",
         'mapper_session': script_dir / "atlas_mapper_session.html",
     }
@@ -52,6 +56,39 @@ def get_paths():
 def get_image_hash(img: Image.Image) -> str:
     """Get hash of image pixel data for duplicate detection."""
     return hashlib.md5(img.tobytes()).hexdigest()
+
+
+# =============================================================================
+# HTTP Server for Mapper UI
+# =============================================================================
+
+class MapperRequestHandler(SimpleHTTPRequestHandler):
+    """HTTP handler for the sprite mapper with save endpoint."""
+
+    sprites_dir = None  # Set by cmd_map
+
+    def do_POST(self):
+        if self.path == '/save-mappings':
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+
+            # Save mappings.json to sprites directory
+            mappings_file = MapperRequestHandler.sprites_dir / 'mappings.json'
+            with open(mappings_file, 'w') as f:
+                f.write(post_data.decode('utf-8'))
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'{"status": "saved"}')
+            print(f"\nMappings saved to {mappings_file}")
+            print("Press Ctrl+C to stop server, then run: python3 tools/atlas_tool.py pack")
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        pass  # Suppress request logging
 
 
 # =============================================================================
@@ -519,27 +556,64 @@ def cmd_map(paths: dict):
     # Load expected texture IDs from JSON files
     expected_ids = collect_expected_texture_ids(paths)
 
+    # Find which texture IDs have matching sprites vs missing
+    sprite_names = {s['filename'] for s in sprite_data}
+    missing_by_category = {}
+    mapped_count = 0
+
+    for category, ids in expected_ids.items():
+        missing = []
+        for item in ids:
+            if item['id'] in sprite_names:
+                mapped_count += 1
+            else:
+                missing.append(item)
+        if missing:
+            missing_by_category[category] = missing
+
     total_ids = sum(len(v) for v in expected_ids.values())
-    print(f"Loaded {len(sprite_data)} sprites")
+    total_missing = sum(len(v) for v in missing_by_category.values())
+
+    print(f"\nLoaded {len(sprite_data)} sprites")
     print(f"Found {total_ids} expected texture IDs from JSON files")
-    categories_str = ", ".join(f"{k}: {len(v)}" for k, v in expected_ids.items())
-    print(f"  {categories_str}")
+    print(f"  Mapped: {mapped_count} | Missing sprites: {total_missing}")
+
+    if missing_by_category:
+        print(f"\n⚠️  TEXTURES NEEDED ({total_missing} total):")
+        for category, missing in missing_by_category.items():
+            print(f"\n  {category}:")
+            for item in missing:
+                print(f"    - {item['id']} ({item['name']})")
 
     # Generate the mapper HTML
-    html = generate_mapper_html(sprite_data, expected_ids, paths)
+    html = generate_mapper_html(sprite_data, expected_ids, paths, missing_by_category)
 
-    with open(output_html, 'w') as f:
+    with open(output_html, 'w', encoding='utf-8') as f:
         f.write(html)
 
-    print(f"\nOpening mapper: {output_html}")
+    print(f"\nStarting mapper server on http://localhost:8000")
     print("\nWorkflow:")
     print("  1. Click a sprite on the left")
     print("  2. Click a texture ID on the right (or type custom)")
     print("  3. Repeat for all unmapped sprites")
-    print("  4. Click 'Export & Rename' to save")
-    print("\nAfter mapping, run: python3 tools/atlas_tool.py pack")
+    print("  4. Click 'Save Mappings'")
+    print("\nPress Ctrl+C to stop server when done")
 
-    webbrowser.open(f"file://{output_html.resolve()}")
+    # Set up HTTP server
+    MapperRequestHandler.sprites_dir = sprites_dir
+    original_dir = os.getcwd()
+    os.chdir(output_html.parent)
+
+    server = HTTPServer(('localhost', 8000), MapperRequestHandler)
+    webbrowser.open(f"http://localhost:8000/{output_html.name}")
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nServer stopped")
+    finally:
+        os.chdir(original_dir)
+
     return True
 
 
@@ -572,15 +646,39 @@ def collect_expected_texture_ids(paths: dict) -> dict:
         except Exception:
             pass
 
-    # Process npc_types.json
-    npc_path = data_dir / "npc_types.json"
-    if npc_path.exists():
+    # Process races.json (NPCs)
+    races_path = data_dir / "races.json"
+    if races_path.exists():
         try:
-            with open(npc_path, 'r') as f:
+            with open(races_path, 'r') as f:
                 data = json.load(f)
-            found = scan_for_texture_ids(data, 'npc_types.json')
+            found = scan_for_texture_ids(data, 'races.json')
             if found:
-                categories['NPCs'] = found
+                categories['Races'] = found
+        except Exception:
+            pass
+
+    # Process monster_types.json
+    monster_path = data_dir / "monster_types.json"
+    if monster_path.exists():
+        try:
+            with open(monster_path, 'r') as f:
+                data = json.load(f)
+            found = scan_for_texture_ids(data, 'monster_types.json')
+            if found:
+                categories['Monsters'] = found
+        except Exception:
+            pass
+
+    # Process species.json (Animals)
+    species_path = data_dir / "species.json"
+    if species_path.exists():
+        try:
+            with open(species_path, 'r') as f:
+                data = json.load(f)
+            found = scan_for_texture_ids(data, 'species.json')
+            if found:
+                categories['Animals'] = found
         except Exception:
             pass
 
@@ -651,15 +749,17 @@ def scan_for_texture_ids(data, source: str, parent_name: str = None) -> list:
     return found
 
 
-def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
+def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing_ids: dict = None) -> str:
     """Generate the visual mapper HTML."""
     sprites_json = json.dumps(sprites)
     ids_json = json.dumps(expected_ids)
+    missing_json = json.dumps(missing_ids or {})
     sprites_dir = str(paths['sprites_dir'])
 
     return f'''<!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>Atlas Mapper - HammerEngine</title>
     <style>
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
@@ -703,6 +803,8 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
         .id-item {{ padding: 8px 15px; cursor: pointer; font-size: 0.85em; border-left: 3px solid transparent; }}
         .id-item:hover {{ background: #252540; border-left-color: #0f9; }}
         .id-item.used {{ opacity: 0.4; text-decoration: line-through; }}
+        .id-item.missing {{ background: #2a1a1a; border-left-color: #e94560; }}
+        .id-item.missing:hover {{ background: #3a2525; }}
         .id-item .id-name {{ color: #0f9; }}
         .id-item .id-desc {{ color: #666; font-size: 0.8em; }}
 
@@ -710,6 +812,19 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
         .selected-info img {{ max-width: 100%; max-height: 100px; image-rendering: pixelated; }}
         .selected-info .label {{ color: #888; font-size: 0.8em; margin-top: 8px; }}
         .selected-info .value {{ color: #0f9; font-weight: bold; }}
+
+        .missing-section {{ background: #3a1a1a; border-bottom: 2px solid #e94560; }}
+        .missing-header {{ padding: 10px; background: #4a1a1a; color: #e94560; font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }}
+        .missing-header:hover {{ background: #5a2a2a; }}
+        .missing-content {{ max-height: 200px; overflow-y: auto; }}
+        .missing-content.collapsed {{ display: none; }}
+        .missing-category {{ padding: 5px 10px; background: #2a1515; color: #f90; font-size: 0.8em; }}
+        .missing-item {{ padding: 6px 15px; font-size: 0.85em; border-left: 3px solid #e94560; cursor: pointer; }}
+        .missing-item:hover {{ background: #4a2020; }}
+        .missing-item .id-name {{ color: #e94560; }}
+        .missing-item .id-desc {{ color: #888; font-size: 0.8em; }}
+        .copy-btn {{ cursor: pointer; opacity: 0.6; margin-left: 5px; }}
+        .copy-btn:hover {{ opacity: 1; }}
     </style>
 </head>
 <body>
@@ -718,7 +833,7 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
         <div class="stats">
             Mapped: <span id="mappedCount">0</span> / <span id="totalCount">0</span>
         </div>
-        <button class="btn btn-primary" onclick="exportAndRename()">Export & Rename</button>
+        <button class="btn btn-primary" onclick="saveMappings()">Save Mappings</button>
         <button class="btn btn-danger" onclick="clearMappings()">Clear All</button>
     </div>
 
@@ -739,7 +854,9 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
                     <option value="Custom">Custom (no category)</option>
                     <option value="Items">Items</option>
                     <option value="Materials">Materials & Currency</option>
-                    <option value="NPCs">NPCs</option>
+                    <option value="Races">Races</option>
+                    <option value="Monsters">Monsters</option>
+                    <option value="Animals">Animals</option>
                     <option value="Biomes">Biomes</option>
                     <option value="Obstacles">Obstacles</option>
                     <option value="Decorations">Decorations</option>
@@ -751,6 +868,7 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
                 </div>
             </div>
 
+            <div class="missing-section" id="missingSection"></div>
             <div class="id-list" id="idList"></div>
         </div>
     </div>
@@ -758,6 +876,7 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
     <script>
         const sprites = {sprites_json};
         const expectedIds = {ids_json};
+        const missingIds = {missing_json};
         const spritesDir = "{sprites_dir}";
 
         let selectedSprite = null;
@@ -770,9 +889,72 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
         }});
 
         function render() {{
+            // Save scroll positions before re-rendering
+            const spritesPanel = document.querySelector('.sprites-panel');
+            const idsPanel = document.querySelector('.ids-panel');
+            const missingContent = document.getElementById('missingContent');
+            const spritesScroll = spritesPanel ? spritesPanel.scrollTop : 0;
+            const idsScroll = idsPanel ? idsPanel.scrollTop : 0;
+            const missingScroll = missingContent ? missingContent.scrollTop : 0;
+
+            renderMissing();
             renderSprites();
             renderIdList();
             updateStats();
+
+            // Restore scroll positions after re-rendering
+            if (spritesPanel) spritesPanel.scrollTop = spritesScroll;
+            if (idsPanel) idsPanel.scrollTop = idsScroll;
+            const newMissingContent = document.getElementById('missingContent');
+            if (newMissingContent) newMissingContent.scrollTop = missingScroll;
+        }}
+
+        function renderMissing() {{
+            const section = document.getElementById('missingSection');
+            const totalMissing = Object.values(missingIds).flat().length;
+
+            if (totalMissing === 0) {{
+                section.style.display = 'none';
+                return;
+            }}
+
+            section.style.display = 'block';
+            let html = `
+                <div class="missing-header" onclick="toggleMissing()">
+                    <span>⚠️ NEEDS SPRITES (${{totalMissing}})</span>
+                    <span id="missingToggle">▼</span>
+                </div>
+                <div class="missing-content" id="missingContent">
+            `;
+
+            Object.entries(missingIds).forEach(([category, items]) => {{
+                if (items.length === 0) return;
+                html += `<div class="missing-category">${{category}} (${{items.length}})</div>`;
+                items.forEach(item => {{
+                    html += `
+                        <div class="missing-item" onclick="assignId('${{item.id}}')" title="Click to assign '${{item.id}}' to selected sprite">
+                            <div class="id-name">${{item.id}} <span class="copy-btn" onclick="event.stopPropagation(); copyTextureId('${{item.id}}')" title="Copy ID">📋</span></div>
+                            <div class="id-desc">${{item.name}} (from ${{item.source}})</div>
+                        </div>
+                    `;
+                }});
+            }});
+
+            html += '</div>';
+            section.innerHTML = html;
+        }}
+
+        function toggleMissing() {{
+            const content = document.getElementById('missingContent');
+            const toggle = document.getElementById('missingToggle');
+            content.classList.toggle('collapsed');
+            toggle.textContent = content.classList.contains('collapsed') ? '▶' : '▼';
+        }}
+
+        function copyTextureId(id) {{
+            navigator.clipboard.writeText(id).then(() => {{
+                alert(`Copied "${{id}}" to clipboard.\\n\\nCreate a sprite file named: ${{id}}.png`);
+            }});
         }}
 
         function renderSprites() {{
@@ -803,6 +985,9 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
             list.innerHTML = '';
 
             const usedIds = new Set(Object.values(mappings));
+
+            // Build set of missing IDs for quick lookup
+            const missingIdSet = new Set(Object.values(missingIds).flat().map(x => x.id));
 
             // Get suggested category for selected sprite
             const selectedSpriteData = sprites.find(s => s.filename === selectedSprite);
@@ -837,11 +1022,14 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
 
                     suggestedIds.forEach(item => {{
                         const div = document.createElement('div');
-                        div.className = 'id-item';
+                        const isMissing = missingIdSet.has(item.id);
+                        div.className = 'id-item' + (isMissing ? ' missing' : '');
                         div.style.borderLeftColor = '#f90';
                         const customBadge = item.isCustom ? ' <span style="color:#2a4a2a;background:#0f9;padding:1px 4px;border-radius:3px;font-size:9px;">NEW</span>' : '';
+                        const missingBadge = isMissing ? ' <span style="color:#fff;background:#e94560;padding:1px 4px;border-radius:3px;font-size:9px;">NO SPRITE</span>' : '';
+                        const hasSpriteBadge = !isMissing && !item.isCustom ? ' <span style="color:#fff;background:#2a6a2a;padding:1px 4px;border-radius:3px;font-size:9px;">✓</span>' : '';
                         div.innerHTML = `
-                            <div class="id-name">${{item.id}}${{customBadge}}</div>
+                            <div class="id-name">${{item.id}}${{customBadge}}${{missingBadge}}${{hasSpriteBadge}}</div>
                             <div class="id-desc">${{item.name}}</div>
                         `;
                         div.onclick = () => assignId(item.id);
@@ -852,8 +1040,8 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
                 }}
             }}
 
-            // Define category order
-            const categoryOrder = ['Items', 'Materials & Currency', 'NPCs', 'Biomes', 'Obstacles', 'Decorations', 'Buildings', 'Custom'];
+            // Define category order (includes all creature types)
+            const categoryOrder = ['Items', 'Materials & Currency', 'Races', 'Monsters', 'Animals', 'Biomes', 'Obstacles', 'Decorations', 'Buildings', 'Custom'];
 
             // Render categories in order
             categoryOrder.forEach(categoryName => {{
@@ -862,15 +1050,21 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
 
                 const cat = document.createElement('div');
                 cat.className = 'id-category';
+                const missingCount = ids.filter(x => missingIdSet.has(x.id)).length;
+                const hasSpritesCount = ids.length - missingCount;
                 const headerStyle = categoryName === 'Custom' ? ' style="background:#2a4a2a;"' : '';
-                cat.innerHTML = `<div class="id-category-header"${{headerStyle}}>${{categoryName}} (${{ids.length}})</div>`;
+                const missingIndicator = missingCount > 0 ? ` <span style="color:#e94560;">⚠️ ${{missingCount}} need sprites</span>` : '';
+                cat.innerHTML = `<div class="id-category-header"${{headerStyle}}>${{categoryName}} (${{ids.length}})${{missingIndicator}}</div>`;
 
                 ids.forEach(item => {{
                     const div = document.createElement('div');
-                    div.className = 'id-item' + (usedIds.has(item.id) ? ' used' : '');
+                    const isMissing = missingIdSet.has(item.id);
+                    div.className = 'id-item' + (usedIds.has(item.id) ? ' used' : '') + (isMissing ? ' missing' : '');
                     const customBadge = item.isCustom ? ' <span style="color:#2a4a2a;background:#0f9;padding:1px 4px;border-radius:3px;font-size:9px;">NEW</span>' : '';
+                    const missingBadge = isMissing ? ' <span style="color:#fff;background:#e94560;padding:1px 4px;border-radius:3px;font-size:9px;">NO SPRITE</span>' : '';
+                    const hasSpriteBadge = !isMissing && !item.isCustom ? ' <span style="color:#fff;background:#2a6a2a;padding:1px 4px;border-radius:3px;font-size:9px;">✓</span>' : '';
                     div.innerHTML = `
-                        <div class="id-name">${{item.id}}${{customBadge}}</div>
+                        <div class="id-name">${{item.id}}${{customBadge}}${{missingBadge}}${{hasSpriteBadge}}</div>
                         <div class="id-desc">${{item.name}}</div>
                     `;
                     div.onclick = () => assignId(item.id);
@@ -984,32 +1178,30 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
             }}
         }}
 
-        function exportAndRename() {{
-            // Generate rename script
-            let script = '#!/bin/bash\\n# Auto-generated rename script\\ncd "' + spritesDir + '"\\n\\n';
+        function saveMappings() {{
+            const renames = Object.entries(mappings).filter(([old, newN]) => old !== newN);
 
-            Object.entries(mappings).forEach(([oldName, newName]) => {{
-                if (oldName !== newName) {{
-                    script += `mv "${{oldName}}.png" "${{newName}}.png" 2>/dev/null\\n`;
+            if (renames.length === 0) {{
+                alert('No renames needed - all mappings match');
+                return;
+            }}
+
+            // Save mappings directly to res/sprites/mappings.json via server
+            fetch('/save-mappings', {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify(mappings, null, 2)
+            }})
+            .then(response => {{
+                if (response.ok) {{
+                    alert('Mappings saved to res/sprites/mappings.json\\n\\n' +
+                          'Press Ctrl+C in terminal to stop server\\n' +
+                          'Then run: python3 tools/atlas_tool.py pack');
+                }} else {{
+                    alert('Error saving mappings');
                 }}
-            }});
-
-            script += '\\necho "Renamed sprites. Run: python3 tools/atlas_tool.py pack"\\n';
-
-            // Also generate mappings JSON
-            const mappingsJson = JSON.stringify(mappings, null, 2);
-
-            // Show export dialog
-            const output = `RENAME SCRIPT (save as rename_sprites.sh and run):\\n${{'-'.repeat(50)}}\\n${{script}}\\n\\nMAPPINGS JSON (for reference):\\n${{'-'.repeat(50)}}\\n${{mappingsJson}}`;
-
-            const blob = new Blob([script], {{type: 'text/plain'}});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'rename_sprites.sh';
-            a.click();
-
-            alert('Downloaded rename_sprites.sh\\n\\nRun it with: bash rename_sprites.sh\\nThen run: python3 tools/atlas_tool.py pack');
+            }})
+            .catch(err => alert('Error: ' + err));
         }}
 
         // Keyboard navigation
@@ -1031,6 +1223,48 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
 
 
 # =============================================================================
+# Sprite Rename Helper
+# =============================================================================
+
+def apply_sprite_renames(sprites_dir: Path, mappings_file: Path):
+    """Apply sprite renames using two-phase approach to handle circular dependencies."""
+    with open(mappings_file) as f:
+        mappings = json.load(f)
+
+    # Filter to only renames (old != new)
+    renames = {old: new for old, new in mappings.items() if old != new}
+
+    if not renames:
+        print("  No renames needed")
+        mappings_file.unlink()
+        return
+
+    print(f"  Renaming {len(renames)} sprites...")
+
+    # Phase 1: Move all source files to temporary names
+    temp_files = {}
+    for old_name in renames.keys():
+        src = sprites_dir / f"{old_name}.png"
+        if src.exists():
+            tmp = sprites_dir / f"_tmp_{old_name}.png"
+            src.rename(tmp)
+            temp_files[old_name] = tmp
+            print(f"    {old_name}.png -> _tmp_{old_name}.png")
+
+    # Phase 2: Move temporary files to final names
+    for old_name, new_name in renames.items():
+        if old_name in temp_files:
+            tmp = temp_files[old_name]
+            dst = sprites_dir / f"{new_name}.png"
+            tmp.rename(dst)
+            print(f"    _tmp_{old_name}.png -> {new_name}.png")
+
+    # Clean up mappings file
+    mappings_file.unlink()
+    print("  Renames complete, removed mappings.json")
+
+
+# =============================================================================
 # PACK - Pack sprites into atlas and export all JSON files
 # =============================================================================
 
@@ -1044,7 +1278,13 @@ def cmd_pack(paths: dict):
         print(f"Error: Sprites directory not found: {sprites_dir}")
         return False
 
-    # Collect all PNG files (excluding manifest)
+    # Apply pending renames from mappings.json (if exists)
+    mappings_file = sprites_dir / 'mappings.json'
+    if mappings_file.exists():
+        print("Found mappings.json - applying sprite renames...")
+        apply_sprite_renames(sprites_dir, mappings_file)
+
+    # Collect all PNG files (excluding manifest and temp files)
     sprite_files = [f for f in sorted(sprites_dir.glob("*.png")) if not f.name.startswith('_')]
 
     if not sprite_files:
@@ -1180,6 +1420,14 @@ def cmd_pack(paths: dict):
     print("\nUpdating JSON files...")
     export_to_json_files(paths, regions)
 
+    # Clean up sprite files after successful pack
+    current_sprites = [f for f in sprites_dir.glob("*.png") if not f.name.startswith('_')]
+    if current_sprites:
+        print(f"\nCleaning up {len(current_sprites)} sprite files from {sprites_dir}...")
+        for sprite_file in current_sprites:
+            sprite_file.unlink()
+        print("  Sprites removed (now in atlas)")
+
     return True
 
 
@@ -1198,11 +1446,23 @@ def export_to_json_files(paths: dict, regions: dict):
         if count > 0:
             print(f"  Updated {count} materials in materials_and_currency.json")
 
-    # Update npc_types.json
-    if paths['npc_types_json'].exists():
-        count = update_npc_json(paths['npc_types_json'], regions)
+    # Update races.json (NPCs)
+    if paths['races_json'].exists():
+        count = update_creature_json(paths['races_json'], regions, 'races')
         if count > 0:
-            print(f"  Updated {count} NPCs in npc_types.json")
+            print(f"  Updated {count} races in races.json")
+
+    # Update monster_types.json
+    if paths['monster_types_json'].exists():
+        count = update_creature_json(paths['monster_types_json'], regions, 'monsterTypes')
+        if count > 0:
+            print(f"  Updated {count} monster types in monster_types.json")
+
+    # Update species.json (Animals)
+    if paths['species_json'].exists():
+        count = update_creature_json(paths['species_json'], regions, 'species')
+        if count > 0:
+            print(f"  Updated {count} species in species.json")
 
     # Update world_objects.json
     if paths['world_objects_json'].exists():
@@ -1233,24 +1493,24 @@ def update_resources_json(json_path: Path, regions: dict, texture_key: str) -> i
     return updated
 
 
-def update_npc_json(json_path: Path, regions: dict) -> int:
-    """Update npc_types.json with atlas coordinates."""
+def update_creature_json(json_path: Path, regions: dict, array_key: str) -> int:
+    """Update creature JSON files (races, monster_types, species) with atlas coordinates."""
     with open(json_path, 'r') as f:
         data = json.load(f)
 
     updated = 0
-    for npc in data.get('npcTypes', []):
-        texture_id = npc.get('textureId')
+    for creature in data.get(array_key, []):
+        texture_id = creature.get('textureId')
         if texture_id and texture_id in regions:
             coords = regions[texture_id]
-            npc['atlasX'] = coords['x']
-            npc['atlasY'] = coords['y']
-            npc['atlasW'] = coords['w']
-            npc['atlasH'] = coords['h']
+            creature['atlasX'] = coords['x']
+            creature['atlasY'] = coords['y']
+            creature['atlasW'] = coords['w']
+            creature['atlasH'] = coords['h']
             updated += 1
 
     with open(json_path, 'w') as f:
-        json.dump(data, f, indent=2)
+        json.dump(data, f, indent=4)
 
     return updated
 
