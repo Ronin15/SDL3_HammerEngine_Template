@@ -301,9 +301,9 @@ EntityHandle NPCSpawnEvent::forceSpawnNPC(const std::string &npcType, float x,
     position = PathfinderManager::Instance().adjustSpawnToNavigable(
         position, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f);
 
-    // Create data-driven NPC using EDM type registry
-    EntityHandle handle = EntityDataManager::Instance().createDataDrivenNPC(
-        position, npcType);
+    // Create NPC using race/class composition system (npcType becomes class)
+    EntityHandle handle = EntityDataManager::Instance().createNPCWithRaceClass(
+        position, "Human", npcType);
 
     EVENT_INFO(std::format("Force-spawned {} at ({}, {})", npcType, x, y));
     return handle;
@@ -346,9 +346,9 @@ NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters &params, float x, float y) {
             spawnPos, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f);
       }
 
-      // Create data-driven NPC using EDM type registry
-      EntityHandle handle = EntityDataManager::Instance().createDataDrivenNPC(
-          spawnPos, params.npcType);
+      // Create NPC using race/class composition system (npcType becomes class)
+      EntityHandle handle = EntityDataManager::Instance().createNPCWithRaceClass(
+          spawnPos, "Human", params.npcType);
 
       spawnedHandles.push_back(handle);
       EVENT_INFO(std::format("  - NPC {} spawned successfully", i + 1));

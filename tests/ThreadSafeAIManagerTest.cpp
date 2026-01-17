@@ -29,7 +29,7 @@ class TestNPC {
 public:
   explicit TestNPC(const Vector2D &pos = Vector2D(0, 0)) {
     auto& edm = EntityDataManager::Instance();
-    m_handle = edm.createDataDrivenNPC(pos, "Guard");
+    m_handle = edm.createNPCWithRaceClass(pos, "Human", "Guard");
     m_initialPosition = pos;
   }
 

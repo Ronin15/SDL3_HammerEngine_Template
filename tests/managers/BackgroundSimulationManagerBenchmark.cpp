@@ -82,7 +82,7 @@ public:
         for (size_t i = 0; i < count; ++i) {
             // Create NPCs far from reference point (0,0) to ensure background tier
             Vector2D pos(posDist(m_rng), posDist(m_rng));
-            edm.createDataDrivenNPC(pos, "Guard");
+            edm.createNPCWithRaceClass(pos, "Human", "Guard");
         }
 
         // Force tier update to classify entities as background

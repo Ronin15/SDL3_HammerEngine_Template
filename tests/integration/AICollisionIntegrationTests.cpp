@@ -53,7 +53,7 @@ struct TestEntityHelper {
     // Create a data-driven NPC for testing
     static EntityHandle createTestEntity(const Vector2D& pos) {
         auto& edm = EntityDataManager::Instance();
-        return edm.createDataDrivenNPC(pos, "Guard");
+        return edm.createNPCWithRaceClass(pos, "Human", "Guard");
     }
 
     // Get entity position from EDM

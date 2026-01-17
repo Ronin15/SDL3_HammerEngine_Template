@@ -66,7 +66,7 @@ void Entity::setAcceleration(const Vector2D& acceleration) {
 }
 
 // ============================================================================
-// REGISTRATION (Player class only - NPCs use createDataDrivenNPC())
+// REGISTRATION (Player class only - NPCs use createNPCWithRaceClass())
 // ============================================================================
 
 void Entity::registerWithDataManager(const Vector2D& position, float halfWidth,

@@ -58,7 +58,7 @@ struct CollisionEDMFixture {
     // Helper: Create test NPC with collision enabled via EDM
     EntityHandle createTestNPC(const Vector2D& pos, bool enableCollision = true) {
         auto& edm = EntityDataManager::Instance();
-        EntityHandle handle = edm.createDataDrivenNPC(pos, "Guard");
+        EntityHandle handle = edm.createNPCWithRaceClass(pos, "Human", "Guard");
         size_t index = edm.getIndex(handle);
         if (index != SIZE_MAX) {
             auto& hot = edm.getHotDataByIndex(index);
@@ -290,7 +290,7 @@ BOOST_AUTO_TEST_CASE(TestAABBComputedFromEDMHalfSize) {
     // Create data-driven NPC - collision size derived from frame dimensions
     // Default frame size is 32x32, giving halfWidth/halfHeight of 16
     auto& edm = EntityDataManager::Instance();
-    EntityHandle handle = edm.createDataDrivenNPC(Vector2D(500.0f, 500.0f), "Guard");
+    EntityHandle handle = edm.createNPCWithRaceClass(Vector2D(500.0f, 500.0f), "Human", "Guard");
 
     // Enable collision
     size_t index = edm.getIndex(handle);

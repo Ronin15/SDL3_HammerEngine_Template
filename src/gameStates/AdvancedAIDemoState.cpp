@@ -667,8 +667,8 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
         position = Vector2D(playerPos.getX() + distance * std::cos(angle),
                             playerPos.getY() + distance * std::sin(angle));
 
-        // Create data-driven NPC via EntityDataManager type registry
-        EntityHandle handle = edm.createDataDrivenNPC(position, "Guard");
+        // Create NPC using race/class composition system
+        EntityHandle handle = edm.createNPCWithRaceClass(position, "Human", "Guard");
 
         if (!handle.isValid()) {
           GAMESTATE_ERROR(std::format("Failed to create data-driven NPC {}", i));

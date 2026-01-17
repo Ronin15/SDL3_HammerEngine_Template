@@ -1649,10 +1649,10 @@ EntityHandle
 EventDemoState::createNPC(const std::string &npcType, float x, float y,
                           const std::string &behaviorOverride) {
   try {
-    // Create data-driven NPC via EntityDataManager type registry
+    // Create NPC using race/class composition system (npcType becomes class)
     Vector2D position(x, y);
-    EntityHandle handle = EntityDataManager::Instance().createDataDrivenNPC(
-        position, npcType);
+    EntityHandle handle = EntityDataManager::Instance().createNPCWithRaceClass(
+        position, "Human", npcType);
 
     if (!handle.isValid()) {
       GAMESTATE_ERROR(std::format("Failed to create data-driven NPC of type: {}", npcType));
