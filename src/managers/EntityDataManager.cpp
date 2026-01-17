@@ -488,6 +488,7 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
 EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
                                                         const std::string& race,
                                                         const std::string& charClass,
+                                                        Sex sex,
                                                         uint8_t factionOverride) {
     // Look up race and class in registries
     auto raceIt = m_raceRegistry.find(race);
@@ -528,6 +529,7 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     // Set up CharacterData with computed stats (race base × class multiplier)
     auto& charData = m_characterData[typeIndex];
     charData.category = CreatureCategory::NPC;
+    charData.sex = sex;
     charData.typeId = m_raceNameToId.count(race) ? m_raceNameToId[race] : 0;
     charData.subtypeId = m_classNameToId.count(charClass) ? m_classNameToId[charClass] : 0;
     charData.maxHealth = raceInfo.baseHealth * classInfo.healthMult;
@@ -574,6 +576,7 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
 EntityHandle EntityDataManager::createMonster(const Vector2D& position,
                                                const std::string& monsterType,
                                                const std::string& variant,
+                                               Sex sex,
                                                uint8_t factionOverride) {
     // Look up type and variant in registries
     auto typeIt = m_monsterTypeRegistry.find(monsterType);
@@ -612,6 +615,7 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
     // Set up CharacterData
     auto& charData = m_characterData[typeIndex];
     charData.category = CreatureCategory::Monster;
+    charData.sex = sex;
     charData.typeId = m_monsterTypeNameToId.count(monsterType) ? m_monsterTypeNameToId[monsterType] : 0;
     charData.subtypeId = m_monsterVariantNameToId.count(variant) ? m_monsterVariantNameToId[variant] : 0;
     charData.maxHealth = typeInfo.baseHealth * variantInfo.healthMult;
@@ -653,6 +657,7 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
 EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
                                               const std::string& species,
                                               const std::string& role,
+                                              Sex sex,
                                               uint8_t factionOverride) {
     // Look up species and role in registries
     auto speciesIt = m_speciesRegistry.find(species);
@@ -691,6 +696,7 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
     // Set up CharacterData
     auto& charData = m_characterData[typeIndex];
     charData.category = CreatureCategory::Animal;
+    charData.sex = sex;
     charData.typeId = m_speciesNameToId.count(species) ? m_speciesNameToId[species] : 0;
     charData.subtypeId = m_animalRoleNameToId.count(role) ? m_animalRoleNameToId[role] : 0;
     charData.maxHealth = speciesInfo.baseHealth * roleInfo.healthMult;

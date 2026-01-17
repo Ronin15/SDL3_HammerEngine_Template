@@ -180,6 +180,15 @@ enum class CreatureCategory : uint8_t {
 };
 
 /**
+ * @brief Biological sex for creatures
+ */
+enum class Sex : uint8_t {
+    Male = 0,
+    Female = 1,
+    Unknown = 2   // For creatures where sex is undefined/irrelevant
+};
+
+/**
  * @brief Character data for Player, NPC, Monster, and Animal entities
  *
  * Unified character data for all creature types. The category field
@@ -196,8 +205,9 @@ struct CharacterData {
     float attackRange{50.0f};
     float moveSpeed{100.0f};   // Base movement speed (NEW)
 
-    // Identity (NEW - creature composition)
+    // Identity (creature composition)
     CreatureCategory category{CreatureCategory::NPC};  // NPC, Monster, or Animal
+    Sex sex{Sex::Unknown};     // Male, Female, or Unknown
     uint8_t typeId{0};         // raceId / monsterTypeId / speciesId
     uint8_t subtypeId{0};      // classId / variantId / roleId
 
@@ -1113,6 +1123,7 @@ public:
     EntityHandle createNPCWithRaceClass(const Vector2D& position,
                                         const std::string& race,
                                         const std::string& charClass,
+                                        Sex sex = Sex::Unknown,
                                         uint8_t factionOverride = 0xFF);
 
     /**
@@ -1120,12 +1131,14 @@ public:
      * @param position World position
      * @param monsterType Monster type name (e.g., "Goblin", "Skeleton", "Dragon")
      * @param variant Variant name (e.g., "Scout", "Brute", "Boss")
+     * @param sex Optional sex (default Unknown)
      * @param factionOverride Optional faction override (0xFF = use type default, usually Enemy)
      * @return Handle to the created entity, or invalid handle if type/variant not found
      */
     EntityHandle createMonster(const Vector2D& position,
                                const std::string& monsterType,
                                const std::string& variant,
+                               Sex sex = Sex::Unknown,
                                uint8_t factionOverride = 0xFF);
 
     /**
@@ -1133,12 +1146,14 @@ public:
      * @param position World position
      * @param species Species name (e.g., "Wolf", "Bear", "Deer")
      * @param role Role name (e.g., "Pup", "Adult", "Alpha")
+     * @param sex Optional sex (default Unknown)
      * @param factionOverride Optional faction override (0xFF = use role default, usually Neutral)
      * @return Handle to the created entity, or invalid handle if species/role not found
      */
     EntityHandle createAnimal(const Vector2D& position,
                               const std::string& species,
                               const std::string& role,
+                              Sex sex = Sex::Unknown,
                               uint8_t factionOverride = 0xFF);
 
     /**
