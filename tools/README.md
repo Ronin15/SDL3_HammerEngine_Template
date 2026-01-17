@@ -16,16 +16,17 @@ atlas.png → EXTRACT → res/sprites/ → MAP → rename → PACK → atlas.png
 # 1. Extract sprites from atlas
 python3 tools/atlas_tool.py extract
 
-# 2. Map sprites to texture IDs (opens browser)
+# 2. Map sprites to texture IDs (opens browser with local server)
 python3 tools/atlas_tool.py map
 # → Click sprite, click texture ID, repeat
-# → Export & Rename → downloads rename_sprites.sh
+# → Click "Save Mappings" → saves directly to res/sprites/mappings.json
+# → Press Ctrl+C to stop server
 
-# 3. Run the rename script
-bash rename_sprites.sh
-
-# 4. Pack and export all JSON files
+# 3. Pack and export all JSON files
 python3 tools/atlas_tool.py pack
+# → Applies renames from mappings.json (handles circular renames safely)
+# → Packs atlas and updates all JSON files
+# → Cleans up sprite files from res/sprites/
 ```
 
 ### Commands
@@ -52,40 +53,40 @@ python3 tools/atlas_tool.py extract
 ```bash
 python3 tools/atlas_tool.py map
 ```
+- Starts local HTTP server on localhost:8000
 - Opens visual mapper in browser
 - Left panel: all sprites (click to select)
 - Right panel: expected texture IDs from JSON files
 - Click sprite → click ID to assign
 - Arrow keys to navigate sprites
-- Export & Rename downloads a bash script
+- "Save Mappings" saves directly to `res/sprites/mappings.json`
+- Press Ctrl+C in terminal to stop server when done
 
-**3. RENAME** - Apply mappings
-```bash
-bash rename_sprites.sh
-```
-- Renames sprite files to their texture IDs
-- e.g., `sprite_042.png` → `magic_sword_world.png`
-
-**4. PACK** - Build atlas and export JSON
+**3. PACK** - Build atlas and export JSON
 ```bash
 python3 tools/atlas_tool.py pack
 ```
+- If `mappings.json` exists, applies renames first (two-phase rename handles circular dependencies)
 - Packs all sprites into new atlas.png
 - Creates atlas.json with all regions
-- Updates items.json, materials.json, npc_types.json, world_objects.json
+- Updates items.json, materials.json, races.json, world_objects.json
 - Adds atlasX, atlasY, atlasW, atlasH to matching entries
+- Cleans up sprite files from res/sprites/ after successful pack
 
 ### File Locations
 
 **Input/Output:**
 - `res/img/atlas.png` - Sprite atlas image
-- `res/sprites/` - Individual sprite files (working directory)
+- `res/sprites/` - Individual sprite files (temporary working directory)
+- `res/sprites/mappings.json` - Rename mappings (created by map, consumed by pack)
 - `res/data/atlas.json` - Atlas region definitions
 
 **JSON files updated by pack:**
 - `res/data/items.json` - Items (matches worldTextureId)
 - `res/data/materials_and_currency.json` - Materials (matches worldTextureId)
-- `res/data/npc_types.json` - NPCs (matches textureId)
+- `res/data/races.json` - Races (matches textureId)
+- `res/data/monster_types.json` - Monsters (matches textureId)
+- `res/data/species.json` - Animals (matches textureId)
 - `res/data/world_objects.json` - World objects (matches textureId)
 
 ### Adding New Sprites
