@@ -7,5 +7,6 @@ compile_commands.json
 .vscode/browse.vc*
 .vscode/
 res/sprites/
+tools/__pycache__
 *.plist
 bin/
