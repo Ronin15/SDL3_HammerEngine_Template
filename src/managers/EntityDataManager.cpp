@@ -552,16 +552,31 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
         ENTITY_ERROR("createNPCWithRaceClass: Atlas texture not loaded");
     }
 
-    renderData.atlasX = raceInfo.atlasX;
-    renderData.atlasY = raceInfo.atlasY;
-    renderData.frameWidth = frameWidth;
-    renderData.frameHeight = frameHeight;
-    renderData.idleSpeedMs = static_cast<uint16_t>(std::max(1, raceInfo.idleAnim.speed));
-    renderData.moveSpeedMs = static_cast<uint16_t>(std::max(1, raceInfo.moveAnim.speed));
-    renderData.numIdleFrames = static_cast<uint8_t>(std::max(1, raceInfo.idleAnim.frameCount));
-    renderData.numMoveFrames = static_cast<uint8_t>(std::max(1, raceInfo.moveAnim.frameCount));
-    renderData.idleRow = static_cast<uint8_t>(raceInfo.idleAnim.row);
-    renderData.moveRow = static_cast<uint8_t>(raceInfo.moveAnim.row);
+    // Check for unmapped texture (atlasX and atlasY both 0) - use guard as fallback
+    if (raceInfo.atlasX == 0 && raceInfo.atlasY == 0) {
+        ENTITY_WARN(std::format("Race '{}' has no atlas mapping, using guard fallback texture", race));
+        renderData.atlasX = 165;   // Guard texture position
+        renderData.atlasY = 1126;
+        renderData.frameWidth = 32;
+        renderData.frameHeight = 32;
+        renderData.idleSpeedMs = 150;
+        renderData.moveSpeedMs = 100;
+        renderData.numIdleFrames = 1;
+        renderData.numMoveFrames = 2;
+        renderData.idleRow = 0;
+        renderData.moveRow = 0;
+    } else {
+        renderData.atlasX = raceInfo.atlasX;
+        renderData.atlasY = raceInfo.atlasY;
+        renderData.frameWidth = frameWidth;
+        renderData.frameHeight = frameHeight;
+        renderData.idleSpeedMs = static_cast<uint16_t>(std::max(1, raceInfo.idleAnim.speed));
+        renderData.moveSpeedMs = static_cast<uint16_t>(std::max(1, raceInfo.moveAnim.speed));
+        renderData.numIdleFrames = static_cast<uint8_t>(std::max(1, raceInfo.idleAnim.frameCount));
+        renderData.numMoveFrames = static_cast<uint8_t>(std::max(1, raceInfo.moveAnim.frameCount));
+        renderData.idleRow = static_cast<uint8_t>(raceInfo.idleAnim.row);
+        renderData.moveRow = static_cast<uint8_t>(raceInfo.moveAnim.row);
+    }
     renderData.currentFrame = 0;
     renderData.animationAccumulator = 0.0f;
     renderData.flipMode = 0;
@@ -633,16 +648,31 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
     // Set up render data
     auto& renderData = m_npcRenderData[typeIndex];
     renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
-    renderData.atlasX = typeInfo.atlasX;
-    renderData.atlasY = typeInfo.atlasY;
-    renderData.frameWidth = frameWidth;
-    renderData.frameHeight = frameHeight;
-    renderData.idleSpeedMs = static_cast<uint16_t>(std::max(1, typeInfo.idleAnim.speed));
-    renderData.moveSpeedMs = static_cast<uint16_t>(std::max(1, typeInfo.moveAnim.speed));
-    renderData.numIdleFrames = static_cast<uint8_t>(std::max(1, typeInfo.idleAnim.frameCount));
-    renderData.numMoveFrames = static_cast<uint8_t>(std::max(1, typeInfo.moveAnim.frameCount));
-    renderData.idleRow = static_cast<uint8_t>(typeInfo.idleAnim.row);
-    renderData.moveRow = static_cast<uint8_t>(typeInfo.moveAnim.row);
+    // Check for unmapped texture - use guard as fallback
+    if (typeInfo.atlasX == 0 && typeInfo.atlasY == 0) {
+        ENTITY_WARN(std::format("Monster type '{}' has no atlas mapping, using guard fallback texture", monsterType));
+        renderData.atlasX = 165;
+        renderData.atlasY = 1126;
+        renderData.frameWidth = 32;
+        renderData.frameHeight = 32;
+        renderData.idleSpeedMs = 150;
+        renderData.moveSpeedMs = 100;
+        renderData.numIdleFrames = 1;
+        renderData.numMoveFrames = 2;
+        renderData.idleRow = 0;
+        renderData.moveRow = 0;
+    } else {
+        renderData.atlasX = typeInfo.atlasX;
+        renderData.atlasY = typeInfo.atlasY;
+        renderData.frameWidth = frameWidth;
+        renderData.frameHeight = frameHeight;
+        renderData.idleSpeedMs = static_cast<uint16_t>(std::max(1, typeInfo.idleAnim.speed));
+        renderData.moveSpeedMs = static_cast<uint16_t>(std::max(1, typeInfo.moveAnim.speed));
+        renderData.numIdleFrames = static_cast<uint8_t>(std::max(1, typeInfo.idleAnim.frameCount));
+        renderData.numMoveFrames = static_cast<uint8_t>(std::max(1, typeInfo.moveAnim.frameCount));
+        renderData.idleRow = static_cast<uint8_t>(typeInfo.idleAnim.row);
+        renderData.moveRow = static_cast<uint8_t>(typeInfo.moveAnim.row);
+    }
     renderData.currentFrame = 0;
     renderData.animationAccumulator = 0.0f;
     renderData.flipMode = 0;
@@ -714,16 +744,31 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
     // Set up render data
     auto& renderData = m_npcRenderData[typeIndex];
     renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
-    renderData.atlasX = speciesInfo.atlasX;
-    renderData.atlasY = speciesInfo.atlasY;
-    renderData.frameWidth = frameWidth;
-    renderData.frameHeight = frameHeight;
-    renderData.idleSpeedMs = static_cast<uint16_t>(std::max(1, speciesInfo.idleAnim.speed));
-    renderData.moveSpeedMs = static_cast<uint16_t>(std::max(1, speciesInfo.moveAnim.speed));
-    renderData.numIdleFrames = static_cast<uint8_t>(std::max(1, speciesInfo.idleAnim.frameCount));
-    renderData.numMoveFrames = static_cast<uint8_t>(std::max(1, speciesInfo.moveAnim.frameCount));
-    renderData.idleRow = static_cast<uint8_t>(speciesInfo.idleAnim.row);
-    renderData.moveRow = static_cast<uint8_t>(speciesInfo.moveAnim.row);
+    // Check for unmapped texture - use guard as fallback
+    if (speciesInfo.atlasX == 0 && speciesInfo.atlasY == 0) {
+        ENTITY_WARN(std::format("Species '{}' has no atlas mapping, using guard fallback texture", species));
+        renderData.atlasX = 165;
+        renderData.atlasY = 1126;
+        renderData.frameWidth = 32;
+        renderData.frameHeight = 32;
+        renderData.idleSpeedMs = 150;
+        renderData.moveSpeedMs = 100;
+        renderData.numIdleFrames = 1;
+        renderData.numMoveFrames = 2;
+        renderData.idleRow = 0;
+        renderData.moveRow = 0;
+    } else {
+        renderData.atlasX = speciesInfo.atlasX;
+        renderData.atlasY = speciesInfo.atlasY;
+        renderData.frameWidth = frameWidth;
+        renderData.frameHeight = frameHeight;
+        renderData.idleSpeedMs = static_cast<uint16_t>(std::max(1, speciesInfo.idleAnim.speed));
+        renderData.moveSpeedMs = static_cast<uint16_t>(std::max(1, speciesInfo.moveAnim.speed));
+        renderData.numIdleFrames = static_cast<uint8_t>(std::max(1, speciesInfo.idleAnim.frameCount));
+        renderData.numMoveFrames = static_cast<uint8_t>(std::max(1, speciesInfo.moveAnim.frameCount));
+        renderData.idleRow = static_cast<uint8_t>(speciesInfo.idleAnim.row);
+        renderData.moveRow = static_cast<uint8_t>(speciesInfo.moveAnim.row);
+    }
     renderData.currentFrame = 0;
     renderData.animationAccumulator = 0.0f;
     renderData.flipMode = 0;
