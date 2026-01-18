@@ -21,10 +21,10 @@
         "durability": 150,
         "maxDurability": 150
       },
-      "atlasX": 61,
-      "atlasY": 2379,
-      "atlasW": 16,
-      "atlasH": 30
+      "atlasX": 152,
+      "atlasY": 2683,
+      "atlasW": 31,
+      "atlasH": 18
     },
     {
       "id": "dragon_scale_armor",
@@ -70,8 +70,8 @@
         "effectPower": 100,
         "effectDuration": 0
       },
-      "atlasX": 495,
-      "atlasY": 2742,
+      "atlasX": 426,
+      "atlasY": 2739,
       "atlasW": 11,
       "atlasH": 11
     },
@@ -93,8 +93,8 @@
         "effectPower": 80,
         "effectDuration": 0
       },
-      "atlasX": 0,
-      "atlasY": 2757,
+      "atlasX": 438,
+      "atlasY": 2739,
       "atlasW": 11,
       "atlasH": 11
     },
@@ -114,8 +114,8 @@
       "properties": {
         "questId": "ancient_temple_quest"
       },
-      "atlasX": 215,
-      "atlasY": 2742,
+      "atlasX": 146,
+      "atlasY": 2739,
       "atlasW": 12,
       "atlasH": 13
     },
@@ -135,8 +135,8 @@
       "properties": {
         "questId": ""
       },
-      "atlasX": 370,
-      "atlasY": 2641,
+      "atlasX": 315,
+      "atlasY": 2639,
       "atlasW": 26,
       "atlasH": 20
     },
@@ -158,8 +158,8 @@
         "effectPower": 50,
         "effectDuration": 0
       },
-      "atlasX": 495,
-      "atlasY": 2742,
+      "atlasX": 426,
+      "atlasY": 2739,
       "atlasW": 11,
       "atlasH": 11
     }

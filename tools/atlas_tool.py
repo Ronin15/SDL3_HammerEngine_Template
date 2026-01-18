@@ -725,7 +725,7 @@ def collect_expected_texture_ids(paths: dict) -> dict:
 def scan_for_texture_ids(data, source: str, parent_name: str = None) -> list:
     """Recursively scan data structure for texture ID fields."""
     found = []
-    texture_keys = ('textureId', 'worldTextureId', 'iconTextureId')
+    texture_keys = ('textureId', 'worldTextureId')  # Icons share world coords
 
     if isinstance(data, dict):
         # Check if this dict has a texture ID
@@ -1510,7 +1510,7 @@ def update_creature_json(json_path: Path, regions: dict, array_key: str) -> int:
             updated += 1
 
     with open(json_path, 'w') as f:
-        json.dump(data, f, indent=4)
+        json.dump(data, f, indent=2)
 
     return updated
 

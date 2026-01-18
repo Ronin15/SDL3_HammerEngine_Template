@@ -1,108 +1,108 @@
 {
-    "monsterTypes": [
-        {
-            "id": "Goblin",
-            "textureId": "goblin",
-            "name": "Goblin",
-            "baseHealth": 50,
-            "baseStamina": 80,
-            "baseMoveSpeed": 110,
-            "baseAttackDamage": 8,
-            "baseAttackRange": 40,
-            "atlasX": 0,
-            "atlasY": 0,
-            "atlasW": 64,
-            "atlasH": 32,
-            "idleAnim": {
-                "row": 0,
-                "frameCount": 1,
-                "speed": 150
-            },
-            "moveAnim": {
-                "row": 0,
-                "frameCount": 2,
-                "speed": 100
-            },
-            "sizeMultiplier": 0.7,
-            "defaultFaction": 1
-        },
-        {
-            "id": "Skeleton",
-            "textureId": "skeleton",
-            "name": "Skeleton",
-            "baseHealth": 40,
-            "baseStamina": 100,
-            "baseMoveSpeed": 70,
-            "baseAttackDamage": 12,
-            "baseAttackRange": 50,
-            "atlasX": 0,
-            "atlasY": 0,
-            "atlasW": 64,
-            "atlasH": 32,
-            "idleAnim": {
-                "row": 0,
-                "frameCount": 1,
-                "speed": 200
-            },
-            "moveAnim": {
-                "row": 0,
-                "frameCount": 2,
-                "speed": 150
-            },
-            "sizeMultiplier": 0.9,
-            "defaultFaction": 1
-        },
-        {
-            "id": "Slime",
-            "textureId": "slime",
-            "name": "Slime",
-            "baseHealth": 30,
-            "baseStamina": 60,
-            "baseMoveSpeed": 50,
-            "baseAttackDamage": 5,
-            "baseAttackRange": 30,
-            "atlasX": 0,
-            "atlasY": 0,
-            "atlasW": 32,
-            "atlasH": 32,
-            "idleAnim": {
-                "row": 0,
-                "frameCount": 2,
-                "speed": 300
-            },
-            "moveAnim": {
-                "row": 0,
-                "frameCount": 2,
-                "speed": 200
-            },
-            "sizeMultiplier": 0.5,
-            "defaultFaction": 1
-        },
-        {
-            "id": "Dragon",
-            "textureId": "dragon",
-            "name": "Dragon",
-            "baseHealth": 500,
-            "baseStamina": 200,
-            "baseMoveSpeed": 120,
-            "baseAttackDamage": 50,
-            "baseAttackRange": 100,
-            "atlasX": 0,
-            "atlasY": 0,
-            "atlasW": 128,
-            "atlasH": 64,
-            "idleAnim": {
-                "row": 0,
-                "frameCount": 2,
-                "speed": 200
-            },
-            "moveAnim": {
-                "row": 1,
-                "frameCount": 4,
-                "speed": 100
-            },
-            "sizeMultiplier": 2.0,
-            "defaultFaction": 1
-        }
-    ]
+  "monsterTypes": [
+    {
+      "id": "Goblin",
+      "textureId": "goblin",
+      "name": "Goblin",
+      "baseHealth": 50,
+      "baseStamina": 80,
+      "baseMoveSpeed": 110,
+      "baseAttackDamage": 8,
+      "baseAttackRange": 40,
+      "atlasX": 0,
+      "atlasY": 0,
+      "atlasW": 64,
+      "atlasH": 32,
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 1,
+        "speed": 150
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 2,
+        "speed": 100
+      },
+      "sizeMultiplier": 0.7,
+      "defaultFaction": 1
+    },
+    {
+      "id": "Skeleton",
+      "textureId": "skeleton",
+      "name": "Skeleton",
+      "baseHealth": 40,
+      "baseStamina": 100,
+      "baseMoveSpeed": 70,
+      "baseAttackDamage": 12,
+      "baseAttackRange": 50,
+      "atlasX": 0,
+      "atlasY": 0,
+      "atlasW": 64,
+      "atlasH": 32,
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 1,
+        "speed": 200
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 2,
+        "speed": 150
+      },
+      "sizeMultiplier": 0.9,
+      "defaultFaction": 1
+    },
+    {
+      "id": "Slime",
+      "textureId": "slime",
+      "name": "Slime",
+      "baseHealth": 30,
+      "baseStamina": 60,
+      "baseMoveSpeed": 50,
+      "baseAttackDamage": 5,
+      "baseAttackRange": 30,
+      "atlasX": 0,
+      "atlasY": 0,
+      "atlasW": 32,
+      "atlasH": 32,
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 2,
+        "speed": 300
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 2,
+        "speed": 200
+      },
+      "sizeMultiplier": 0.5,
+      "defaultFaction": 1
+    },
+    {
+      "id": "Dragon",
+      "textureId": "dragon",
+      "name": "Dragon",
+      "baseHealth": 500,
+      "baseStamina": 200,
+      "baseMoveSpeed": 120,
+      "baseAttackDamage": 50,
+      "baseAttackRange": 100,
+      "atlasX": 0,
+      "atlasY": 0,
+      "atlasW": 128,
+      "atlasH": 64,
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 2,
+        "speed": 200
+      },
+      "moveAnim": {
+        "row": 1,
+        "frameCount": 4,
+        "speed": 100
+      },
+      "sizeMultiplier": 2.0,
+      "defaultFaction": 1
+    }
+  ]
 }
