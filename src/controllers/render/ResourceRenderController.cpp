@@ -12,23 +12,24 @@
 #include <cmath>
 #include <vector>
 
-void ResourceRenderController::update(float deltaTime) {
-    updateDroppedItemAnimations(deltaTime);
-    updateContainerStates(deltaTime);
-    updateHarvestableStates(deltaTime);
+void ResourceRenderController::update(float deltaTime, const HammerEngine::Camera& camera) {
+    updateDroppedItemAnimations(deltaTime, camera);
+    updateContainerStates(deltaTime, camera);
+    updateHarvestableStates(deltaTime, camera);
 }
 
-void ResourceRenderController::updateDroppedItemAnimations(float deltaTime) {
+void ResourceRenderController::updateDroppedItemAnimations(float deltaTime, const HammerEngine::Camera& camera) {
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Query all dropped items in active world
-    // Use large radius to capture all items for animation updates
-    constexpr float LARGE_RADIUS = 100000.0f;
-    Vector2D center(0.0f, 0.0f);
+    // Query items in camera view + buffer (not all items in world)
+    Vector2D cameraCenter = camera.getPosition();
+    const auto& viewport = camera.getViewport();
+    float animationRadius = std::sqrt(viewport.width * viewport.width +
+                                      viewport.height * viewport.height) * 0.5f + ANIMATION_BUFFER;
 
     m_visibleItemIndices.clear();
-    wrm.queryDroppedItemsInRadius(center, LARGE_RADIUS, m_visibleItemIndices);
+    wrm.queryDroppedItemsInRadius(cameraCenter, animationRadius, m_visibleItemIndices);
 
     for (size_t idx : m_visibleItemIndices) {
         const auto& hot = edm.getStaticHotDataByIndex(idx);  // Static pool accessor
@@ -54,12 +55,14 @@ void ResourceRenderController::updateDroppedItemAnimations(float deltaTime) {
     }
 }
 
-void ResourceRenderController::updateContainerStates([[maybe_unused]] float deltaTime) {
+void ResourceRenderController::updateContainerStates([[maybe_unused]] float deltaTime,
+                                                      [[maybe_unused]] const HammerEngine::Camera& camera) {
     // Container open/close animations will be implemented when containers are added
     // For now, containers are static (just open or closed state)
 }
 
-void ResourceRenderController::updateHarvestableStates([[maybe_unused]] float deltaTime) {
+void ResourceRenderController::updateHarvestableStates([[maybe_unused]] float deltaTime,
+                                                        [[maybe_unused]] const HammerEngine::Camera& camera) {
     // Harvestable animations (e.g., swaying trees) will be implemented later
     // For now, harvestables are static
 }

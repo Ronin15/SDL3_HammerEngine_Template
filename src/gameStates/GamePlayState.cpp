@@ -230,6 +230,11 @@ void GamePlayState::update(float deltaTime) {
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
 
+  // Update resource animations (dropped items bobbing, etc.) - camera-based culling
+  if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>(); resourceCtrl && m_camera) {
+    resourceCtrl->update(deltaTime, *m_camera);
+  }
+
   // Update day/night overlay interpolation
   updateDayNightOverlay(deltaTime);
 

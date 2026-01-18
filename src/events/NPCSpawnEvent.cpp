@@ -292,6 +292,7 @@ EntityHandle NPCSpawnEvent::spawnNPC(const std::string &npcType, float x,
 std::vector<EntityHandle>
 NPCSpawnEvent::spawnNPCs(const SpawnParameters &params, float x, float y) {
   std::vector<EntityHandle> spawnedHandles;
+  spawnedHandles.reserve(static_cast<size_t>(params.count));
   auto &edm = EntityDataManager::Instance();
 
   // Random selection if type is "Random" or empty
