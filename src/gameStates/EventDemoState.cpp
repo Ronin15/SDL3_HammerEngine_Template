@@ -583,6 +583,8 @@ void EventDemoState::update(float deltaTime) {
   // AIManager methods on null pointers
 
   if (m_autoMode) {
+    // Cache EDM reference for NPC count checks
+    EntityDataManager &edm = EntityDataManager::Instance();
     // Auto mode processing
     switch (m_currentPhase) {
     case DemoPhase::Initialization:
@@ -623,7 +625,7 @@ void EventDemoState::update(float deltaTime) {
 
     case DemoPhase::NPCSpawnDemo:
       if ((m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval &&
-          EntityDataManager::Instance().getEntityCount(EntityKind::NPC) < 5000) {
+          edm.getEntityCount(EntityKind::NPC) < 5000) {
         triggerNPCSpawnDemo();
         m_lastEventTriggerTime = m_totalDemoTime;
       }
@@ -676,7 +678,7 @@ void EventDemoState::update(float deltaTime) {
     case DemoPhase::CustomEventDemo:
       if (m_phaseTimer >= 3.0f &&
           (m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval &&
-          EntityDataManager::Instance().getEntityCount(EntityKind::NPC) < 5000) {
+          edm.getEntityCount(EntityKind::NPC) < 5000) {
         triggerCustomEventDemo();
         m_lastEventTriggerTime = m_totalDemoTime;
       }
@@ -910,6 +912,7 @@ void EventDemoState::handleInput() {
   const InputManager &inputMgr = InputManager::Instance();
   ParticleManager &particleMgr = ParticleManager::Instance();
   const UIManager &ui = UIManager::Instance();
+  EntityDataManager &edm = EntityDataManager::Instance();
 
   // Use InputManager's new event-driven key press detection
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) {
@@ -959,7 +962,7 @@ void EventDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2) &&
       (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
-      EntityDataManager::Instance().getEntityCount(EntityKind::NPC) < 5000) {
+      edm.getEntityCount(EntityKind::NPC) < 5000) {
     if (m_autoMode && m_currentPhase == DemoPhase::NPCSpawnDemo) {
       m_phaseTimer = 0.0f;
     }
@@ -978,7 +981,7 @@ void EventDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
       (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
-      EntityDataManager::Instance().getEntityCount(EntityKind::NPC) < 5000) {
+      edm.getEntityCount(EntityKind::NPC) < 5000) {
     if (m_autoMode && m_currentPhase == DemoPhase::CustomEventDemo) {
       m_phaseTimer = 0.0f;
     }
@@ -988,7 +991,7 @@ void EventDemoState::handleInput() {
   // Provide feedback when NPC cap reached
   else if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
            (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
-           EntityDataManager::Instance().getEntityCount(EntityKind::NPC) >= 5000) {
+           edm.getEntityCount(EntityKind::NPC) >= 5000) {
     addLogEntry("NPC limit (R to reset)");
   }
 

@@ -57,6 +57,7 @@ void AdvancedAIDemoState::handleInput() {
   // Cache manager references for better performance
   InputManager &inputMgr = InputManager::Instance();
   AIManager &aiMgr = AIManager::Instance();
+  EntityDataManager &edm = EntityDataManager::Instance();
 
   // Use InputManager's new event-driven key press detection
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) {
@@ -83,7 +84,6 @@ void AdvancedAIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
     // Assign Idle behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to IDLE behavior");
-    EntityDataManager &edm = EntityDataManager::Instance();
     for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
       EntityHandle handle = edm.getHandle(edmIdx);
       if (handle.isValid()) {
@@ -95,7 +95,6 @@ void AdvancedAIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
     // Assign Flee behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to FLEE behavior");
-    EntityDataManager &edm = EntityDataManager::Instance();
     for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
       EntityHandle handle = edm.getHandle(edmIdx);
       if (handle.isValid()) {
@@ -107,7 +106,6 @@ void AdvancedAIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
     // Assign Follow behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to FOLLOW behavior");
-    EntityDataManager &edm = EntityDataManager::Instance();
     for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
       EntityHandle handle = edm.getHandle(edmIdx);
       if (handle.isValid()) {
@@ -119,7 +117,6 @@ void AdvancedAIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
     // Assign Guard behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to GUARD behavior");
-    EntityDataManager &edm = EntityDataManager::Instance();
     for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
       EntityHandle handle = edm.getHandle(edmIdx);
       if (handle.isValid()) {
@@ -131,7 +128,6 @@ void AdvancedAIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
     // Assign Attack behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to ATTACK behavior");
-    EntityDataManager &edm = EntityDataManager::Instance();
     for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
       EntityHandle handle = edm.getHandle(edmIdx);
       if (handle.isValid()) {

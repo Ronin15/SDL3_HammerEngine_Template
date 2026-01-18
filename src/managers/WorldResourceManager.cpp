@@ -847,13 +847,9 @@ void WorldResourceManager::onWorldLoaded(const std::string& worldId) {
     m_activeWorld = worldId;
     recalculateActiveWorldCounts();
 
-    // Ensure spatial indices exist for this world
-    if (m_itemSpatialIndices.find(worldId) == m_itemSpatialIndices.end()) {
-        m_itemSpatialIndices[worldId] = SpatialIndex();
-    }
-    if (m_harvestableSpatialIndices.find(worldId) == m_harvestableSpatialIndices.end()) {
-        m_harvestableSpatialIndices[worldId] = SpatialIndex();
-    }
+    // Ensure spatial indices exist for this world (try_emplace avoids double lookup)
+    m_itemSpatialIndices.try_emplace(worldId);
+    m_harvestableSpatialIndices.try_emplace(worldId);
 
     WORLD_RESOURCE_INFO(std::format("World loaded: {}", worldId));
 }
