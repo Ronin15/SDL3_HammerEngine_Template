@@ -138,11 +138,11 @@ BOOST_FIXTURE_TEST_CASE(ResetAndClean, WeatherEventFixture) {
     event->clean();
     BOOST_CHECK(!event->checkConditions());
 
-    // Test reset (shouldn't affect conditions)
+    // Test reset - clears all data including conditions for event pool recycling
     auto anotherEvent = std::make_shared<WeatherEvent>("AnotherTest", WeatherType::Rainy);
     anotherEvent->addTimeCondition([]() { return true; });
     anotherEvent->reset();
-    BOOST_CHECK(anotherEvent->checkConditions());
+    BOOST_CHECK(!anotherEvent->checkConditions());
 }
 
 // Test event execution
