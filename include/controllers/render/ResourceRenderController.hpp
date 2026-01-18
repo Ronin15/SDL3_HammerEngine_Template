@@ -22,7 +22,6 @@
  */
 
 #include "controllers/ControllerBase.hpp"
-#include "controllers/IUpdatable.hpp"
 #include <vector>
 
 struct SDL_Renderer;
@@ -31,7 +30,7 @@ namespace HammerEngine {
 class Camera;
 }
 
-class ResourceRenderController : public ControllerBase, public IUpdatable {
+class ResourceRenderController : public ControllerBase {
 public:
     ResourceRenderController() = default;
     ~ResourceRenderController() override = default;
@@ -46,8 +45,12 @@ public:
     void subscribe() override {}  // No events needed
     [[nodiscard]] std::string_view getName() const override { return "ResourceRenderController"; }
 
-    // IUpdatable - updates all resource animations
-    void update(float deltaTime) override;
+    /**
+     * @brief Update animations for visible resources only
+     * @param deltaTime Frame delta time
+     * @param camera Camera for viewport-based culling (only animate visible + buffer)
+     */
+    void update(float deltaTime, const HammerEngine::Camera& camera);
 
     /**
      * @brief Render all visible dropped items using spatial query
@@ -80,10 +83,10 @@ public:
     void clearAll();
 
 private:
-    // Update helpers (combined for efficiency - single iteration per entity kind)
-    void updateDroppedItemAnimations(float deltaTime);
-    void updateContainerStates(float deltaTime);
-    void updateHarvestableStates(float deltaTime);
+    // Update helpers - use camera-based queries for efficiency
+    void updateDroppedItemAnimations(float deltaTime, const HammerEngine::Camera& camera);
+    void updateContainerStates(float deltaTime, const HammerEngine::Camera& camera);
+    void updateHarvestableStates(float deltaTime, const HammerEngine::Camera& camera);
 
     // Reusable buffers for spatial queries (avoid per-frame allocations)
     std::vector<size_t> m_visibleItemIndices;
@@ -93,6 +96,7 @@ private:
     // Animation constants
     static constexpr float BOB_SPEED = 3.0f;           // Radians per second for bobbing
     static constexpr float TWO_PI = 6.28318530718f;    // 2 * PI for wrapping
+    static constexpr float ANIMATION_BUFFER = 128.0f;  // Extra radius beyond viewport for animation
 };
 
 #endif // RESOURCE_RENDER_CONTROLLER_HPP

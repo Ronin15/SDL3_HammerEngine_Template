@@ -859,12 +859,12 @@ void ParticleManager::update(float deltaTime) {
     }
 #endif
 
-    // Measure total update time for adaptive batch tuning
-    auto updateEndTime = std::chrono::high_resolution_clock::now();
-    double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
-
-    // Report results for unified adaptive tuning (budgetMgr cached at function scope)
+    // Report results for adaptive tuning - report for BOTH modes
+    // Even though threaded timing isn't perfectly accurate (fire-and-forget pattern),
+    // having some data lets WorkerBudget make comparisons and transition between modes.
     if (activeCount > 0) {
+      auto updateEndTime = std::chrono::high_resolution_clock::now();
+      double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
       budgetMgr.reportExecution(HammerEngine::SystemType::Particle,
                                 activeCount, threadingInfo.wasThreaded,
                                 threadingInfo.batchCount, totalUpdateTime);
@@ -2219,7 +2219,7 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
         try {
           updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime, windPhase);
         } catch (const std::exception &e) {
-          PARTICLE_ERROR(std::string("Exception in particle batch: ") + e.what());
+          PARTICLE_ERROR(std::format("Exception in particle batch: {}", e.what()));
         } catch (...) {
           PARTICLE_ERROR("Unknown exception in particle batch");
         }
