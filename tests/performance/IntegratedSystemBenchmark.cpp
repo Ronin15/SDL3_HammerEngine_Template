@@ -26,6 +26,9 @@
 #include "utils/Vector2D.hpp"
 #include "events/Event.hpp"
 #include "events/WorldEvent.hpp"
+#include "ai/behaviors/WanderBehavior.hpp"
+#include "ai/behaviors/GuardBehavior.hpp"
+#include "ai/behaviors/IdleBehavior.hpp"
 
 // Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
 class BenchmarkNPC {
@@ -44,29 +47,6 @@ public:
 
 private:
     EntityHandle m_handle;
-    int m_id;
-};
-
-// Simple benchmark behavior
-class BenchmarkBehavior : public AIBehavior {
-public:
-    BenchmarkBehavior(int id) : m_id(id) {}
-
-    // Lock-free hot path (required by pure virtual)
-    void executeLogic(BehaviorContext& ctx) override {
-        // Simulate some work directly on transform
-        ctx.transform.position.setX(ctx.transform.position.getX() + 1.0f);
-    }
-
-    void init(EntityHandle handle) override { (void)handle; }
-    void clean(EntityHandle handle) override { (void)handle; }
-    void onMessage(EntityHandle /* handle */, const std::string& /* message */) override {}
-    std::string getName() const override { return "BenchmarkBehavior"; }
-    std::shared_ptr<AIBehavior> clone() const override {
-        return std::make_shared<BenchmarkBehavior>(m_id);
-    }
-
-private:
     int m_id;
 };
 
@@ -267,7 +247,6 @@ namespace {
     private:
         std::mt19937 m_rng;
         std::vector<std::shared_ptr<BenchmarkNPC>> m_testEntities;
-        std::vector<std::shared_ptr<BenchmarkBehavior>> m_behaviors;
 
         void initializeAllManagers() {
             // Enable benchmark mode to suppress verbose logging during benchmarks
@@ -321,7 +300,6 @@ namespace {
                 }
             }
             m_testEntities.clear();
-            m_behaviors.clear();
 
             // Particles will be cleaned automatically during manager cleanup
         }
@@ -331,15 +309,21 @@ namespace {
             auto& particleMgr = ParticleManager::Instance();
 
             m_testEntities.reserve(aiEntityCount);
-            m_behaviors.reserve(5);
 
-            // Create behaviors
-            const std::vector<std::string> behaviorNames = {"Wander", "Guard", "Patrol", "Follow", "Chase"};
-            for (size_t i = 0; i < behaviorNames.size(); ++i) {
-                auto behavior = std::make_shared<BenchmarkBehavior>(static_cast<int>(i));
-                m_behaviors.push_back(behavior);
-                aiMgr.registerBehavior(behaviorNames[i], behavior);
-            }
+            // Register production behaviors (realistic workload)
+            // WanderBehavior(WanderMode mode, float speed)
+            aiMgr.registerBehavior("Wander", std::make_shared<WanderBehavior>(
+                WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f));
+
+            // GuardBehavior(const Vector2D& guardPosition, float guardRadius, float alertRadius)
+            aiMgr.registerBehavior("Guard", std::make_shared<GuardBehavior>(
+                Vector2D(2500.0f, 2500.0f), 200.0f, 300.0f));
+
+            // IdleBehavior(IdleMode mode, float idleRadius)
+            aiMgr.registerBehavior("Idle", std::make_shared<IdleBehavior>(
+                IdleBehavior::IdleMode::LIGHT_FIDGET, 20.0f));
+
+            const std::vector<std::string> behaviorNames = {"Wander", "Guard", "Idle"};
 
             // Create AI entities distributed across tier zones for realistic testing
             // Active tier: within 1650px of center (first 60%)
@@ -370,7 +354,7 @@ namespace {
                 auto entity = BenchmarkNPC::create(static_cast<int>(i), pos);
                 m_testEntities.push_back(entity);
 
-                // Assign behavior
+                // Assign behavior - distribute across types
                 std::string behaviorName = behaviorNames[i % behaviorNames.size()];
                 aiMgr.registerEntity(entity->getHandle(), behaviorName);
             }
@@ -393,10 +377,9 @@ namespace {
             auto& aiMgr = AIManager::Instance();
             m_testEntities.reserve(entityCount);
 
-            // Create single behavior
-            auto behavior = std::make_shared<BenchmarkBehavior>(0);
-            m_behaviors.push_back(behavior);
-            aiMgr.registerBehavior("Wander", behavior);
+            // Register production behavior
+            aiMgr.registerBehavior("Wander", std::make_shared<WanderBehavior>(
+                WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f));
 
             // Distribute entities across tier zones (same as setupRealisticScenario)
             std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
