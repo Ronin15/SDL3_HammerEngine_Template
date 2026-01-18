@@ -668,6 +668,7 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
                             playerPos.getY() + distance * std::sin(angle));
 
         // Create NPC using race/class composition system
+        // EDM auto-registers with AIManager using class's suggestedBehavior
         EntityHandle handle = edm.createNPCWithRaceClass(position, "Human", "Guard");
 
         if (!handle.isValid()) {
@@ -675,8 +676,8 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
           continue;
         }
 
-        // Register with AIManager (default to Follow behavior for all NPCs)
-        aiMgr.registerEntity(handle, "Follow");
+        // Override to Follow behavior for this demo (Guard's default is Patrol)
+        aiMgr.assignBehavior(handle, "Follow");
 
       } catch (const std::exception &e) {
         GAMESTATE_ERROR(

@@ -1127,6 +1127,18 @@ public:
                                         uint8_t factionOverride = 0xFF);
 
     /**
+     * @brief Get all registered race IDs
+     * @return Vector of race ID strings
+     */
+    [[nodiscard]] std::vector<std::string> getRaceIds() const;
+
+    /**
+     * @brief Get all registered class IDs
+     * @return Vector of class ID strings
+     */
+    [[nodiscard]] std::vector<std::string> getClassIds() const;
+
+    /**
      * @brief Create a monster with type and variant composition
      * @param position World position
      * @param monsterType Monster type name (e.g., "Goblin", "Skeleton", "Dragon")

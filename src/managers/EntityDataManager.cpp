@@ -6,6 +6,7 @@
 #include "managers/EntityDataManager.hpp"
 #include "core/Logger.hpp"
 #include "entities/Entity.hpp"  // For AnimationConfig
+#include "managers/AIManager.hpp"  // For auto-registering NPCs with AI
 #include "managers/ResourceTemplateManager.hpp"  // For getMaxStackSize in inventory
 #include "managers/TextureManager.hpp"  // For texture lookup in creature creation
 #include "managers/WorldResourceManager.hpp"  // For unregister on harvestable destruction
@@ -585,6 +586,10 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
                             race, charClass, position.getX(), position.getY(),
                             charData.maxHealth, charData.attackDamage, charData.moveSpeed));
 
+    // Auto-register with AIManager using class's suggested behavior
+    AIManager::Instance().registerEntity(handle,
+        classInfo.suggestedBehavior.empty() ? "Wander" : classInfo.suggestedBehavior);
+
     return handle;
 }
 
@@ -805,6 +810,24 @@ const RaceInfo* EntityDataManager::getRaceInfo(const std::string& race) const {
 const ClassInfo* EntityDataManager::getClassInfo(const std::string& charClass) const {
     auto it = m_classRegistry.find(charClass);
     return (it != m_classRegistry.end()) ? &it->second : nullptr;
+}
+
+std::vector<std::string> EntityDataManager::getRaceIds() const {
+    std::vector<std::string> ids;
+    ids.reserve(m_raceRegistry.size());
+    for (const auto& [id, _] : m_raceRegistry) {
+        ids.push_back(id);
+    }
+    return ids;
+}
+
+std::vector<std::string> EntityDataManager::getClassIds() const {
+    std::vector<std::string> ids;
+    ids.reserve(m_classRegistry.size());
+    for (const auto& [id, _] : m_classRegistry) {
+        ids.push_back(id);
+    }
+    return ids;
 }
 
 const MonsterTypeInfo* EntityDataManager::getMonsterTypeInfo(const std::string& monsterType) const {

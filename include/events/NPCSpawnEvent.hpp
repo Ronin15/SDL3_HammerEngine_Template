@@ -68,6 +68,9 @@ struct SpawnParameters {
     float areaMinX{0.0f}, areaMinY{0.0f}, areaMaxX{0.0f}, areaMaxY{0.0f};
     bool useAreaCircle{false};
     float areaCenterX{0.0f}, areaCenterY{0.0f}, areaRadius{0.0f};
+
+    // World-wide spawning (queries WorldManager for bounds)
+    bool worldWide{false};
 };
 
 class NPCSpawnEvent : public Event {
@@ -129,9 +132,9 @@ public:
     void clearSpawnedEntities();
     bool areAllEntitiesDead() const;
 
-    // Direct spawn control (for scripting) - returns EntityHandle for data-driven NPCs
-    static EntityHandle forceSpawnNPC(const std::string& npcType, float x, float y);
-    static std::vector<EntityHandle> forceSpawnNPCs(const SpawnParameters& params, float x, float y);
+    // Spawn NPCs - handles "Random" type for random race/class selection
+    static EntityHandle spawnNPC(const std::string& npcType, float x, float y);
+    static std::vector<EntityHandle> spawnNPCs(const SpawnParameters& params, float x, float y);
     
     // Area constraint configuration for the spawn event
     void setAreaConstraints(float minX, float minY, float maxX, float maxY) {

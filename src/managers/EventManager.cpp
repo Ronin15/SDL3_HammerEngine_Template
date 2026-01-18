@@ -172,6 +172,16 @@ bool EventManager::init() {
   m_lastUpdateTime.store(getCurrentTimeNanos());
   m_initialized.store(true);
 
+  // Register internal handler for NPCSpawn events (pure event-driven architecture)
+  // This handler executes the spawn action when the event is dispatched
+  registerHandler(EventTypeId::NPCSpawn, [](const EventData &data) {
+    if (!data.isActive() || !data.event) return;
+    auto npcEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(data.event);
+    if (npcEvent) {
+      npcEvent->execute();
+    }
+  });
+
   EVENT_INFO("EventManager initialized successfully with type-indexed storage");
   return true;
 }
@@ -1216,9 +1226,11 @@ bool EventManager::changeScene(const std::string &sceneId,
 }
 
 bool EventManager::spawnNPC(const std::string &npcType, float x, float y,
+                            int count, float spawnRadius, bool worldWide,
                             DispatchMode mode) const {
-  // Build payload
-  SpawnParameters params(npcType, 1, 0.0f);
+  // Build payload with count, radius, and worldWide flag
+  SpawnParameters params(npcType, count, spawnRadius);
+  params.worldWide = worldWide;
   auto npcEvent = m_npcSpawnPool.acquire();
   if (!npcEvent)
     npcEvent = std::make_shared<NPCSpawnEvent>("trigger_npc_spawn", params);
@@ -1231,6 +1243,7 @@ bool EventManager::spawnNPC(const std::string &npcType, float x, float y,
   data.setActive(true);
   data.event = npcEvent;
 
+  // Dispatch to handlers - internal handler will call execute() to spawn NPCs
   return dispatchEvent(EventTypeId::NPCSpawn, data, mode, "spawnNPC");
 }
 
@@ -1798,7 +1811,8 @@ void EventManager::drainDispatchQueueWithBudget() {
       }
     }
 
-    // Name handlers removed - all handlers registered by typeId
+    // Release pooled event back to pool for reuse
+    releaseEventToPool(pd.typeId, eventData.event);
   }
 }
 
@@ -1834,6 +1848,9 @@ bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
       }
     }
 
+    // Release pooled event back to pool for reuse
+    releaseEventToPool(typeId, eventData.event);
+
     // Name handlers removed - all dispatch uses typeId only
     return true;
   }
@@ -1841,6 +1858,62 @@ bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
   // Deferred dispatch
   enqueueDispatch(typeId, eventData);
   return true;
+}
+
+void EventManager::releaseEventToPool(EventTypeId typeId, EventPtr event) const {
+  if (!event) return;
+
+  switch (typeId) {
+    case EventTypeId::Weather:
+      if (auto we = std::dynamic_pointer_cast<WeatherEvent>(event)) {
+        m_weatherPool.release(we);
+      }
+      break;
+    case EventTypeId::SceneChange:
+      if (auto sce = std::dynamic_pointer_cast<SceneChangeEvent>(event)) {
+        m_sceneChangePool.release(sce);
+      }
+      break;
+    case EventTypeId::NPCSpawn:
+      if (auto nse = std::dynamic_pointer_cast<NPCSpawnEvent>(event)) {
+        m_npcSpawnPool.release(nse);
+      }
+      break;
+    case EventTypeId::ResourceChange:
+      if (auto rce = std::dynamic_pointer_cast<ResourceChangeEvent>(event)) {
+        m_resourceChangePool.release(rce);
+      }
+      break;
+    case EventTypeId::World:
+      if (auto we = std::dynamic_pointer_cast<WorldEvent>(event)) {
+        m_worldPool.release(we);
+      }
+      break;
+    case EventTypeId::Camera:
+      if (auto ce = std::dynamic_pointer_cast<CameraEvent>(event)) {
+        m_cameraPool.release(ce);
+      }
+      break;
+    case EventTypeId::Collision:
+      if (auto ce = std::dynamic_pointer_cast<CollisionEvent>(event)) {
+        m_collisionPool.release(ce);
+      }
+      break;
+    case EventTypeId::ParticleEffect:
+      if (auto pe = std::dynamic_pointer_cast<ParticleEffectEvent>(event)) {
+        m_particleEffectPool.release(pe);
+      }
+      break;
+    case EventTypeId::CollisionObstacleChanged:
+      if (auto coce = std::dynamic_pointer_cast<CollisionObstacleChangedEvent>(event)) {
+        m_collisionObstacleChangedPool.release(coce);
+      }
+      break;
+    default:
+      // Non-pooled event types (Custom, Harvest, WorldTrigger, etc.)
+      // These are not recycled via pools
+      break;
+  }
 }
 
 // Camera event convenience methods

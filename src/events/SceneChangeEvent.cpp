@@ -137,15 +137,38 @@ void SceneChangeEvent::execute() {
 }
 
 void SceneChangeEvent::reset() {
+    // Base event state
     m_onCooldown = false;
     m_cooldownTimer = 0.0f;
-    m_inTransition = false;
-    m_transitionProgress = 0.0f;
     m_hasTriggered = false;
 
-    // Reset timer
+    // Scene change specific state
+    m_targetSceneID.clear();
+    m_transitionType = TransitionType::Fade;
+    m_transitionParams = TransitionParams{};
+
+    // Conditions
+    m_conditions.clear();
+
+    // Trigger zone
+    m_zoneType = ZoneType::None;
+    m_zoneCenter = Vector2D(0, 0);
+    m_zoneRadius = 0.0f;
+    m_zoneX1 = m_zoneY1 = m_zoneX2 = m_zoneY2 = 0.0f;
+
+    // Input triggers
+    m_requirePlayerInput = false;
+    m_inputKeyName.clear();
+
+    // Timer
+    m_useTimer = false;
     m_timerActive = false;
+    m_timerDuration = 0.0f;
     m_timerElapsed = 0.0f;
+
+    // Transition state
+    m_inTransition = false;
+    m_transitionProgress = 0.0f;
 }
 
 void SceneChangeEvent::clean() {

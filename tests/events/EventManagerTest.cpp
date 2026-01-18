@@ -17,6 +17,7 @@
 #include "entities/EntityHandle.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
+#include "collisions/CollisionInfo.hpp"
 #include "events/Event.hpp"
 #include "events/ParticleEffectEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
@@ -315,7 +316,7 @@ BOOST_FIXTURE_TEST_CASE(ConvenienceMethods, EventManagerFixture) {
   // Test trigger aliases with immediate dispatch - should return true when handlers are registered
   BOOST_CHECK(EventManager::Instance().changeWeather("Stormy", 2.0f, EventManager::DispatchMode::Immediate));
   BOOST_CHECK(EventManager::Instance().changeScene("NewScene", "dissolve", 1.0f, EventManager::DispatchMode::Immediate));
-  BOOST_CHECK(EventManager::Instance().spawnNPC("Villager", 100.0f, 200.0f, EventManager::DispatchMode::Immediate));
+  BOOST_CHECK(EventManager::Instance().spawnNPC("Villager", 100.0f, 200.0f, 1, 0.0f, false, EventManager::DispatchMode::Immediate));
 
   // Verify handlers were called immediately
   BOOST_CHECK(weatherHandlerCalled);
@@ -404,7 +405,7 @@ BOOST_FIXTURE_TEST_CASE(NPCSpawnEvents, EventManagerFixture) {
       });
 
   // Test NPC spawn trigger
-  EventManager::Instance().spawnNPC("Guard", 100.0f, 200.0f, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().spawnNPC("Guard", 100.0f, 200.0f, 1, 0.0f, false, EventManager::DispatchMode::Immediate);
 
   BOOST_CHECK(handlerCalled);
 }
@@ -1429,3 +1430,81 @@ BOOST_FIXTURE_TEST_CASE(DynamicThreadingControl, EventManagerFixture) {
   #endif
 }
 #endif // NDEBUG
+
+// Test that pooled events properly reset and recycle
+BOOST_FIXTURE_TEST_CASE(EventPoolRecycling, EventManagerFixture) {
+  // Weather: dispatch twice, verify same pointer reused (proves recycling works)
+  EventPtr firstWeather = nullptr;
+  EventPtr secondWeather = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::Weather, [&](const EventData &data) {
+        if (!firstWeather) firstWeather = data.event;
+        else secondWeather = data.event;
+      });
+  EventManager::Instance().changeWeather("Storm", 1.0f, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().changeWeather("Clear", 1.0f, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(firstWeather != nullptr);
+  BOOST_CHECK(secondWeather != nullptr);
+  BOOST_CHECK_EQUAL(firstWeather.get(), secondWeather.get());
+
+  // SceneChange recycling
+  EventPtr firstScene = nullptr;
+  EventPtr secondScene = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::SceneChange, [&](const EventData &data) {
+        if (!firstScene) firstScene = data.event;
+        else secondScene = data.event;
+      });
+  EventManager::Instance().changeScene("A", "fade", 1.0f, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().changeScene("B", "fade", 1.0f, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK_EQUAL(firstScene.get(), secondScene.get());
+
+  // NPCSpawn recycling
+  EventPtr firstNPC = nullptr;
+  EventPtr secondNPC = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::NPCSpawn, [&](const EventData &data) {
+        if (!firstNPC) firstNPC = data.event;
+        else secondNPC = data.event;
+      });
+  EventManager::Instance().spawnNPC("A", 0, 0, 1, 0, false, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().spawnNPC("B", 0, 0, 1, 0, false, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK_EQUAL(firstNPC.get(), secondNPC.get());
+
+  // Collision recycling
+  EventPtr firstColl = nullptr;
+  EventPtr secondColl = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::Collision, [&](const EventData &data) {
+        if (!firstColl) firstColl = data.event;
+        else secondColl = data.event;
+      });
+  HammerEngine::CollisionInfo info{};
+  EventManager::Instance().triggerCollision(info, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerCollision(info, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK_EQUAL(firstColl.get(), secondColl.get());
+
+  // ParticleEffect recycling
+  EventPtr firstParticle = nullptr;
+  EventPtr secondParticle = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::ParticleEffect, [&](const EventData &data) {
+        if (!firstParticle) firstParticle = data.event;
+        else secondParticle = data.event;
+      });
+  EventManager::Instance().triggerParticleEffect("Fire", 0, 0, 1.0f, 1.0f, "", EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerParticleEffect("Fire", 0, 0, 1.0f, 1.0f, "", EventManager::DispatchMode::Immediate);
+  BOOST_CHECK_EQUAL(firstParticle.get(), secondParticle.get());
+
+  // CollisionObstacleChanged recycling
+  EventPtr firstObstacle = nullptr;
+  EventPtr secondObstacle = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::CollisionObstacleChanged, [&](const EventData &data) {
+        if (!firstObstacle) firstObstacle = data.event;
+        else secondObstacle = data.event;
+      });
+  EventManager::Instance().triggerCollisionObstacleChanged(Vector2D(0,0), 64.0f, "", EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerCollisionObstacleChanged(Vector2D(0,0), 64.0f, "", EventManager::DispatchMode::Immediate);
+  BOOST_CHECK_EQUAL(firstObstacle.get(), secondObstacle.get());
+}

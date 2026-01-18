@@ -21,7 +21,11 @@ public:
   void execute() override {}
   void clean() override {}
   bool checkConditions() override { return true; }
-  void reset() override { Event::resetCooldown(); m_consumed = false; }
+  void reset() override {
+    Event::resetCooldown();
+    m_consumed = false;
+    m_info = HammerEngine::CollisionInfo{};  // Clear stale collision data
+  }
 
   std::string getName() const override { return "CollisionEvent"; }
   std::string getType() const override { return "CollisionEvent"; }

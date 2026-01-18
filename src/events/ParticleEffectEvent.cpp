@@ -134,7 +134,13 @@ void ParticleEffectEvent::reset() {
   // Reset cooldown
   resetCooldown();
 
-  EVENT_INFO(std::format("ParticleEffectEvent '{}' reset", m_name));
+  // Clear all effect parameters for pool reuse
+  m_effectType = ParticleEffectType::Fire;  // Default type
+  m_position = Vector2D(0.0f, 0.0f);
+  m_intensity = 1.0f;
+  m_duration = -1.0f;
+  m_groupTag.clear();
+  m_soundEffect.clear();
 }
 
 void ParticleEffectEvent::clean() {
