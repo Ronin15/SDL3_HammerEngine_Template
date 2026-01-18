@@ -804,12 +804,13 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventBasics, EventTypesFixture) {
     BOOST_CHECK(event.isIncrease());
     BOOST_CHECK(!event.isDecrease());
 
-    // Test reset
+    // Test reset - clears all data for event pool recycling
     event.reset();
-    // Reset is a no-op for this event, but let's check it doesn't crash
-    // and values remain
-    BOOST_CHECK(event.getOwnerHandle() == playerHandle);
-    BOOST_CHECK_EQUAL(event.getNewQuantity(), 150);
+    BOOST_CHECK(event.getOwnerHandle() == EntityHandle{});
+    BOOST_CHECK_EQUAL(event.getNewQuantity(), 0);
+    BOOST_CHECK_EQUAL(event.getOldQuantity(), 0);
+    BOOST_CHECK_EQUAL(event.getQuantityChange(), 0);
+    BOOST_CHECK(event.getChangeReason().empty());
 }
 
 // Test WorldEvent types
@@ -900,12 +901,10 @@ BOOST_FIXTURE_TEST_CASE(CollisionEventBasics, EventTypesFixture) {
     BOOST_CHECK_EQUAL(event.getInfo().a, 1);
     BOOST_CHECK_EQUAL(event.getInfo().b, 2);
 
-    // Test reset
+    // Test reset - clears all data for event pool recycling
     event.reset();
-    // In the new implementation, reset() on CollisionEvent does not clear the info.
-    // It only resets the cooldown and consumed status. So we check if the info remains.
-    BOOST_CHECK_EQUAL(event.getInfo().a, 1);
-    BOOST_CHECK_EQUAL(event.getInfo().b, 2);
+    BOOST_CHECK_EQUAL(event.getInfo().a, 0);
+    BOOST_CHECK_EQUAL(event.getInfo().b, 0);
 }
 
 // Test WorldTriggerEvent
