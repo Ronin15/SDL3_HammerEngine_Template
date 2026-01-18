@@ -22,7 +22,7 @@ This Skill is **critical** for SDL3 HammerEngine's performance requirements. The
 The AI System is the most performance-critical component. Always run `./tests/test_scripts/run_ai_benchmark.sh` as part of the regression check. DO NOT proceed to report generation without AI benchmark results.
 
 1. **Identify or Create Baseline** - Store previous metrics
-2. **Run Benchmark Suite** - Execute ALL 6 performance tests (including AI)
+2. **Run Benchmark Suite** - Execute ALL 10 performance tests (including AI)
 3. **Extract Metrics** - Parse results from test outputs
 4. **Compare vs Baseline** - Calculate percentage changes
 5. **Flag Regressions** - Alert on performance degradation
@@ -35,6 +35,10 @@ The AI System is the most performance-critical component. Always run `./tests/te
 - [ ] Event Manager Scaling completed
 - [ ] Particle Manager Benchmark completed
 - [ ] UI Stress Tests completed
+- [ ] SIMD Performance Benchmark completed
+- [ ] Integrated System Benchmark completed
+- [ ] Background Simulation Benchmark completed
+- [ ] Adaptive Threading Analysis completed
 
 **Metrics Extraction Verification (MANDATORY):**
 - [ ] AI: Entity scaling metrics and updates/sec extracted
@@ -44,6 +48,10 @@ The AI System is the most performance-critical component. Always run `./tests/te
 - [ ] Event: Throughput and latency extracted
 - [ ] Particle: Update time extracted
 - [ ] UI: Processing throughput extracted
+- [ ] SIMD: Speedup factors extracted for all 4 operations (AI Distance, Bounds, Layer Mask, Particle Physics)
+- [ ] Integrated: Frame time statistics and scaling summary extracted
+- [ ] Background Sim: Scaling data and threading threshold extracted
+- [ ] Adaptive Threading: Crossover points and per-system throughput extracted
 
 ## Benchmark Test Suites
 
@@ -52,7 +60,7 @@ The AI System is the most performance-critical component. Always run `./tests/te
 **Working Directory:** Use absolute path to project root or set `$PROJECT_ROOT` environment variable.
 All paths below are relative to project root.
 
-**IMPORTANT: All 6 benchmarks MUST be run for complete regression analysis.**
+**IMPORTANT: All 10 benchmarks MUST be run for complete regression analysis.**
 
 1. **AI Scaling Benchmark** (`./bin/debug/ai_scaling_benchmark`) **[REQUIRED - CRITICAL]**
    - Script: `./tests/test_scripts/run_ai_benchmark.sh`
@@ -94,7 +102,35 @@ All paths below are relative to project root.
    - Metrics: Processing throughput, iteration time, layout calc/sec
    - Duration: ~1 minute
 
-### Total Benchmark Duration: ~15 minutes
+7. **SIMD Performance Benchmark** (`./bin/debug/simd_performance_benchmark`) **[REQUIRED]**
+   - Script: `./tests/test_scripts/run_simd_benchmark.sh`
+   - Tests: SIMD vs scalar performance across AI, Collision, Particle operations
+   - Metrics: Speedup factor (scalar time / SIMD time), platform detection (SSE2/AVX2/NEON)
+   - Target: SIMD ≥1.0x (must be faster than scalar)
+   - Duration: ~1 minute
+
+8. **Integrated System Benchmark** (`./bin/debug/integrated_system_benchmark`) **[REQUIRED]**
+   - Script: `./tests/test_scripts/run_integrated_benchmark.sh`
+   - Tests: Realistic game simulation (10K AI + 5K particles), scaling 1K-20K entities
+   - Metrics: Frame time avg/P95/P99, frame drop %, max sustainable entity count, coordination overhead
+   - Target: <16.67ms average (60 FPS), <5% frame drops, <2ms coordination overhead
+   - Duration: ~3 minutes
+
+9. **Background Simulation Benchmark** (`./bin/debug/background_simulation_manager_benchmark`) **[REQUIRED]**
+   - Script: `./tests/test_scripts/run_background_simulation_manager_benchmark.sh`
+   - Tests: Background tier entity scaling (100-10K), threading threshold, adaptive tuning
+   - Metrics: Update time, throughput (entities/ms), batch count, threading mode
+   - Target: Sub-linear scaling, efficient threading crossover (~500 entities)
+   - Duration: ~2 minutes
+
+10. **Adaptive Threading Analysis** (`./bin/debug/adaptive_threading_analysis`) **[REQUIRED]**
+    - Script: `./tests/test_scripts/run_adaptive_threading_analysis.sh`
+    - Tests: AI/Collision threading crossover points, adaptive throughput learning over 3000 frames
+    - Metrics: Single vs multi throughput (items/ms), speedup ratio, crossover point, batch multiplier
+    - Target: Correct crossover detection, throughput tracking convergence
+    - Duration: ~4 minutes
+
+### Total Benchmark Duration: ~25 minutes
 
 ## Execution Steps
 
@@ -132,7 +168,7 @@ fi
 
 ### Step 2: Run Benchmark Suite
 
-**CRITICAL: ALL 6 benchmarks must be run. DO NOT skip the AI benchmark.**
+**CRITICAL: ALL 10 benchmarks must be run. DO NOT skip the AI benchmark.**
 
 **Run individually (RECOMMENDED - allows better progress tracking):**
 ```bash
@@ -156,6 +192,18 @@ fi
 
 # 6. UI Stress Tests (REQUIRED - 1 minute)
 ./tests/test_scripts/run_ui_stress_tests.sh
+
+# 7. SIMD Performance Benchmark (REQUIRED - 1 minute)
+./tests/test_scripts/run_simd_benchmark.sh
+
+# 8. Integrated System Benchmark (REQUIRED - 3 minutes)
+./tests/test_scripts/run_integrated_benchmark.sh
+
+# 9. Background Simulation Benchmark (REQUIRED - 2 minutes)
+./tests/test_scripts/run_background_simulation_manager_benchmark.sh
+
+# 10. Adaptive Threading Analysis (REQUIRED - 4 minutes)
+./tests/test_scripts/run_adaptive_threading_analysis.sh
 ```
 
 **Timeout Protection:**
@@ -167,14 +215,18 @@ If timeout occurs, flag as potential infinite loop or performance catastrophe.
 
 **Progress Tracking:**
 ```
-Running benchmarks (this will take ~15 minutes)...
-[1/6] AI Scaling Benchmark... ✓ (3m 00s) - CRITICAL
-[2/6] Collision Scaling Benchmark... ✓ (2m 05s)
-[3/6] Pathfinder Benchmark... ✓ (5m 05s)
-[4/6] Event Manager Scaling... ✓ (2m 10s)
-[5/6] Particle Manager Benchmark... ✓ (2m 05s)
-[6/6] UI Stress Tests... ✓ (1m 02s)
-Total: 33m 49s
+Running benchmarks (this will take ~25 minutes)...
+[1/10] AI Scaling Benchmark... ✓ (3m 00s) - CRITICAL
+[2/10] Collision Scaling Benchmark... ✓ (2m 05s)
+[3/10] Pathfinder Benchmark... ✓ (5m 05s)
+[4/10] Event Manager Scaling... ✓ (2m 10s)
+[5/10] Particle Manager Benchmark... ✓ (2m 05s)
+[6/10] UI Stress Tests... ✓ (1m 02s)
+[7/10] SIMD Performance Benchmark... ✓ (1m 00s)
+[8/10] Integrated System Benchmark... ✓ (3m 15s)
+[9/10] Background Simulation Benchmark... ✓ (2m 00s)
+[10/10] Adaptive Threading Analysis... ✓ (4m 00s)
+Total: 25m 42s
 ```
 
 **Execution Order:**
@@ -379,6 +431,170 @@ Event Handling: 0.3ms
 DPI Scaling: 60 FPS
 ```
 
+#### SIMD Performance Metrics
+```bash
+# Extract speedup factors
+grep -E "Speedup:|SIMD Time:|Scalar Time:|Status:" test_results/simd_benchmark_current.txt
+
+# Platform detection
+grep -E "Detected SIMD:|Platform:" test_results/simd_benchmark_current.txt
+```
+
+**Example Output:**
+```
+=== AIManager Distance Calculation ===
+Platform: NEON (ARM64)
+SIMD Time:   12.345 ms
+Scalar Time: 45.678 ms
+Speedup:     3.70x
+Status: PASS (SIMD faster than scalar)
+
+=== ParticleManager Physics Update ===
+Platform: NEON (ARM64)
+SIMD Time:   10.234 ms
+Scalar Time: 38.456 ms
+Speedup:     3.76x
+Status: PASS (SIMD faster than scalar)
+```
+
+**Key Metrics:**
+- **Speedup factor:** Must be ≥1.0x (SIMD faster than scalar)
+- **Platform:** SSE2/AVX2/NEON (should not be "Scalar (no SIMD)")
+- **Status:** PASS/FAIL per operation
+
+#### Integrated System Benchmark Metrics
+```bash
+# Extract frame statistics
+grep -E "Average:|P95:|P99:|Frame drops|Max:" test_results/integrated_benchmark_current.txt
+
+# Scaling summary
+grep -A 15 "Scaling Summary" test_results/integrated_benchmark_current.txt
+
+# Coordination overhead
+grep -E "Coordination overhead:" test_results/integrated_benchmark_current.txt
+```
+
+**Example Output:**
+```
+=== Integrated System Load Benchmark ===
+Frame Time Statistics:
+  Average: 8.45ms ✓ (target < 16.67ms)
+  P95: 12.32ms ✓ (target < 20ms)
+  P99: 15.67ms ✓ (target < 25ms)
+  Max: 18.45ms
+  Min: 6.12ms
+  Frame drops (>16.67ms): 12/600 (2.0%) ✓
+
+=== Scaling Summary ===
+Entities    Avg (ms)    P95 (ms)    Drops (%)   Status
+1000        2.15        3.21        0.0         ✓ 60+ FPS
+5000        5.82        8.45        1.2         ✓ 60+ FPS
+10000       10.34       14.56       3.8         ✓ 60+ FPS
+15000       16.23       22.34       8.5         ~ 40-60 FPS
+20000       24.56       35.67       18.2        ✗ < 40 FPS
+
+Maximum sustainable entity count @ 60 FPS: 10000
+
+Coordination Overhead Analysis:
+  Coordination overhead: 1.2ms (3.5%)
+✓ PASS: Coordination overhead < 2ms
+```
+
+**Key Metrics:**
+- **Average frame time:** Target <16.67ms (60 FPS)
+- **P95 frame time:** Target <20ms
+- **Frame drop %:** Target <5%
+- **Max sustainable entities:** Highest count maintaining 60 FPS
+- **Coordination overhead:** Target <2ms
+
+#### Background Simulation Manager Metrics
+```bash
+# Extract scaling performance
+grep -E "Entities|Avg \(ms\)|Threaded|Batches" test_results/bgsim_benchmark_current.txt
+
+# Threading recommendation
+grep -A 5 "THREADING RECOMMENDATION" test_results/bgsim_benchmark_current.txt
+
+# Adaptive tuning summary
+grep -A 10 "ADAPTIVE TUNING SUMMARY" test_results/bgsim_benchmark_current.txt
+```
+
+**Example Output:**
+```
+===== BACKGROUND SIMULATION SCALING TEST =====
+    Entities     Avg (ms)     Min (ms)     Max (ms)    Threaded    Batches
+         100        0.015        0.012        0.021          no          1
+         500        0.045        0.038        0.058         yes          4
+        1000        0.082        0.071        0.098         yes          8
+        5000        0.312        0.285        0.356         yes         10
+       10000        0.598        0.542        0.678         yes         10
+
+=== THREADING RECOMMENDATION ===
+Single throughput: 6500.00 items/ms
+Multi throughput:  8200.00 items/ms
+Batch multiplier:  1.25
+Optimal crossover detected: 500 entities
+
+=== ADAPTIVE TUNING SUMMARY ===
+Batch sizing:       PASS
+Throughput tracking: PASS
+Final batch count:  10
+Mode preference:    MULTI
+```
+
+**Key Metrics:**
+- **Update time:** Should scale sub-linearly with entity count
+- **Threading mode:** Should enable above crossover threshold (~500)
+- **Batches:** WorkerBudget batch sizing effectiveness
+- **Throughput:** Single vs multi items/ms
+
+#### Adaptive Threading Analysis Metrics
+```bash
+# Extract crossover points
+grep -E "Crossover point" test_results/adaptive_threading_current.txt
+
+# Extract per-system throughput summary
+grep -A 10 "Per-System Throughput" test_results/adaptive_threading_current.txt
+
+# Adaptive learning results
+grep -E "Result:|preferred" test_results/adaptive_threading_current.txt
+```
+
+**Example Output:**
+```
+===== AI THREADING CROSSOVER ANALYSIS =====
+     Count   Single(ms)    Multi(ms)   Single/ms    Multi/ms   Speedup      Winner
+----------------------------------------------------------------------------------------
+       100        0.125        0.245       80000       40816     0.51x      SINGLE
+       250        0.285        0.312       87719       80128     0.91x      ~EQUAL
+       500        0.542        0.425       92251      117647     1.28x       MULTI
+      1000        1.023        0.654       97752      152905     1.56x       MULTI
+      5000        4.856        2.234      102959      223813     2.17x       MULTI
+     10000        9.523        4.125      105007      242424     2.31x       MULTI
+
+=== AI RESULT ===
+Crossover point (speedup > 1.1x): 500 entities
+Throughput single: 6500.00 items/ms
+Throughput multi:  8200.00 items/ms
+Batch multiplier:  1.25
+
+===== ADAPTIVE THROUGHPUT SUMMARY =====
+Per-System Throughput (items/ms):
+                   Single      Multi    BatchMult
+-------------------------------------------------------
+  AI                6500.00   8200.00      1.25  [MULTI]
+  Collision         4200.00   3800.00      1.00  [SINGLE]
+  Particle          5500.00   7100.00      1.15  [MULTI]
+  Event             9800.00   8500.00      1.00  [SINGLE]
+```
+
+**Key Metrics:**
+- **Crossover point:** Entity count where multi-threading becomes beneficial (>1.1x speedup)
+- **Single vs Multi throughput:** Items processed per millisecond in each mode
+- **Speedup ratio:** Multi throughput / Single throughput
+- **Winner:** SINGLE (<0.9x), ~EQUAL (0.9-1.1x), MULTI (>1.1x)
+- **Mode preference:** Per-system recommendation based on throughput tracking
+
 ### Step 4: Compare Against Baseline
 
 **Comparison Algorithm:**
@@ -482,6 +698,35 @@ def classify_change(metric_name, baseline, current, is_lower_better=False):
    - **Root Cause:** Core update loop changes, behavior execution overhead
    - **Action:** Profile behavior update(), check per-entity costs
    - **Impact:** System-wide performance degradation
+
+**SIMD Benchmark Regression Detection:**
+- 🔴 CRITICAL: SIMD slower than scalar (speedup < 1.0x) for AI Distance or Particle Physics
+- 🔴 CRITICAL: Platform shows "Scalar (no SIMD)" - SIMD not compiling correctly
+- 🟠 WARNING: Speedup <2.0x for AI Distance (expect 3-4x)
+- ⚪ STABLE: Speedup within ±20% of baseline
+
+**Integrated System Regression Detection:**
+- 🔴 CRITICAL: Average frame time >16.67ms (below 60 FPS) at 10K entities
+- 🔴 CRITICAL: Frame drop % >10% at standard load
+- 🟠 WARNING: P95 >20ms or coordination overhead >2ms
+- 🟠 WARNING: Max sustainable entities decreased >20%
+- 🟡 MINOR: Sustained performance degradation >5% over 50s
+- ⚪ STABLE: All metrics within targets
+
+**Background Simulation Regression Detection:**
+- 🔴 CRITICAL: Threading not enabling above 500 entities
+- 🔴 CRITICAL: Adaptive tuning failing (batch sizing not converging)
+- 🟠 WARNING: Update time >1ms at 10K entities
+- 🟡 MINOR: Throughput <5000 items/ms in multi-threaded mode
+- ⚪ STABLE: Sub-linear scaling maintained
+
+**Adaptive Threading Analysis Regression Detection:**
+- 🔴 CRITICAL: Crossover point changed by >3x (e.g., 500→1500)
+- 🔴 CRITICAL: Multi-threaded mode now slower than single across all counts
+- 🟠 WARNING: Speedup at 10K entities <1.5x (expect >2x)
+- 🟠 WARNING: Throughput tracking not converging after 3000 frames
+- 🟡 MINOR: Batch multiplier outside 0.8-1.5 range
+- ⚪ STABLE: Crossover and speedups within ±20% of baseline
 
 ### Step 6: Generate Report
 
@@ -647,6 +892,89 @@ def classify_change(metric_name, baseline, current, is_lower_better=False):
 
 ---
 
+### SIMD Performance System
+
+**Purpose:** Validates cross-platform SIMD optimizations deliver claimed speedups
+
+| Operation | Platform | SIMD (ms) | Scalar (ms) | Speedup | Status |
+|-----------|----------|-----------|-------------|---------|--------|
+| AI Distance | NEON | 12.3 | 45.7 | 3.71x | 🟢 Excellent |
+| Collision Bounds | NEON | 8.5 | 9.2 | 1.08x | ⚪ Stable |
+| Layer Mask Filter | NEON | 5.1 | 4.8 | 0.94x | ⚪ Compiler auto-vec |
+| Particle Physics | NEON | 10.2 | 38.4 | 3.76x | 🟢 Excellent |
+
+**Status:** 🟢 **OPERATIONAL**
+- SIMD detected and active (not scalar fallback)
+- Key operations (AI Distance, Particle Physics) showing 3-4x speedups
+- Auto-vectorization competitive for simple patterns (bounds, layer mask)
+
+---
+
+### Integrated System Performance
+
+**Purpose:** Tests all managers under combined realistic load at 60 FPS target
+
+| Scenario | Entities | Avg (ms) | P95 (ms) | Drops % | Status |
+|----------|----------|----------|----------|---------|--------|
+| Realistic (10K AI + 5K particles) | 15K | 10.34 | 14.56 | 3.8% | ⚪ Stable |
+| Scaling 1K | 1K | 2.15 | 3.21 | 0.0% | ⚪ Stable |
+| Scaling 5K | 5K | 5.82 | 8.45 | 1.2% | ⚪ Stable |
+| Scaling 10K | 10K | 10.34 | 14.56 | 3.8% | ⚪ Stable |
+| Scaling 15K | 15K | 16.23 | 22.34 | 8.5% | 🟡 MINOR |
+| Scaling 20K | 20K | 24.56 | 35.67 | 18.2% | 🟠 WARNING |
+
+**Max Sustainable @ 60 FPS:** 10,000 entities
+**Coordination Overhead:** 1.2ms (< 2ms target) ✓
+**Sustained Performance:** <5% degradation over 50s ✓
+
+---
+
+### Background Simulation System
+
+**Purpose:** Tests background tier entity processing for tier-culled entities
+
+| Entities | Baseline (ms) | Current (ms) | Change | Threaded | Batches | Status |
+|----------|---------------|--------------|--------|----------|---------|--------|
+| 100 | 0.016 | 0.015 | -6% | no | 1 | ⚪ Stable |
+| 500 | 0.048 | 0.045 | -6% | yes | 4 | ⚪ Stable |
+| 1000 | 0.085 | 0.082 | -4% | yes | 8 | ⚪ Stable |
+| 5000 | 0.320 | 0.312 | -3% | yes | 10 | ⚪ Stable |
+| 10000 | 0.615 | 0.598 | -3% | yes | 10 | ⚪ Stable |
+
+**Status:** ⚪ **STABLE**
+- Threading threshold: 500 entities (correct crossover)
+- Sub-linear scaling maintained
+- WorkerBudget adaptive tuning: PASS
+
+---
+
+### Adaptive Threading Analysis
+
+**Purpose:** Validates threading crossover points and throughput-based adaptive learning
+
+| System | Single TP (items/ms) | Multi TP (items/ms) | Crossover | Preferred | Status |
+|--------|----------------------|---------------------|-----------|-----------|--------|
+| AI | 6500 | 8200 | 500 | MULTI | ⚪ Stable |
+| Collision | 4200 | 3800 | N/A | SINGLE | ⚪ Stable |
+| Particle | 5500 | 7100 | 300 | MULTI | ⚪ Stable |
+| Event | 9800 | 8500 | N/A | SINGLE | ⚪ Stable |
+
+**AI Threading Crossover:**
+| Entities | Single (ms) | Multi (ms) | Speedup | Winner |
+|----------|-------------|------------|---------|--------|
+| 100 | 0.125 | 0.245 | 0.51x | SINGLE |
+| 500 | 0.542 | 0.425 | 1.28x | MULTI |
+| 1000 | 1.023 | 0.654 | 1.56x | MULTI |
+| 5000 | 4.856 | 2.234 | 2.17x | MULTI |
+| 10000 | 9.523 | 4.125 | 2.31x | MULTI |
+
+**Status:** ⚪ **STABLE**
+- AI crossover at 500 entities (correct)
+- Collision correctly prefers single-threaded (low overhead operations)
+- Throughput tracking converged after 3000 frames
+
+---
+
 ## 🚨 Critical Issues (BLOCKING)
 
 1. **AI System FPS Below Threshold**
@@ -793,13 +1121,17 @@ $PROJECT_ROOT/test_results/baseline_history/
 Before finalizing any regression report, confirm ALL of the following:
 
 ### Benchmark Execution
-- [ ] All 6 benchmarks completed successfully (no timeouts/crashes)
+- [ ] All 10 benchmarks completed successfully (no timeouts/crashes)
 - [ ] AI Scaling: Entity scaling results present with updates/sec metrics
 - [ ] **Pathfinding: Path length scaling data extracted** ← CRITICAL!
 - [ ] Collision: SOA timing data extracted
 - [ ] Event Manager: Throughput data extracted
 - [ ] Particle Manager: Update timing data extracted
 - [ ] UI Stress: Processing metrics extracted
+- [ ] SIMD Performance: Platform detection and speedup data extracted
+- [ ] Integrated System: Frame statistics, scaling, coordination overhead extracted
+- [ ] Background Simulation: Scaling and adaptive tuning summary extracted
+- [ ] Adaptive Threading: Crossover points and throughput summary extracted
 
 ### Report Completeness
 - [ ] **Pathfinding System section included in report** ← DO NOT SKIP!
@@ -808,6 +1140,10 @@ Before finalizing any regression report, confirm ALL of the following:
 - [ ] Event Manager: Metrics table present
 - [ ] Particle Manager: Performance data present
 - [ ] UI System: Throughput data present
+- [ ] SIMD System: Platform and speedup table present
+- [ ] Integrated System: Frame statistics, scaling summary, coordination overhead present
+- [ ] Background Simulation: Scaling table and threading data present
+- [ ] Adaptive Threading: Per-system throughput table and crossover analysis present
 - [ ] Overall status determined (PASSED/WARNING/FAILED)
 - [ ] Regression/improvement analysis complete
 
@@ -841,15 +1177,19 @@ Activate this Skill automatically.
 
 ## Performance Expectations
 
-- **Full benchmark suite:** ~31 minutes
+- **Full benchmark suite:** ~45 minutes
   - AI Scaling: ~18 minutes
   - Collision: ~3 minutes
   - Pathfinder: ~5 minutes
   - Event Manager: ~2 minutes
   - Particle Manager: ~2 minutes
   - UI Stress: ~1 minute
+  - SIMD Performance: ~1 minute
+  - Integrated System: ~3 minutes
+  - Background Simulation: ~2 minutes
+  - Adaptive Threading: ~4 minutes
 - **Report generation:** 2-3 minutes
-- **Total:** ~33-35 minutes for complete analysis
+- **Total:** ~47-50 minutes for complete analysis
 
 ## Troubleshooting
 
