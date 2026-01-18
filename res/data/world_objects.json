@@ -226,8 +226,8 @@
       "name": "Horizontal Log",
       "textureId": "dead_log_hz",
       "seasonal": false,
-      "atlasX": 0,
-      "atlasY": 2532,
+      "atlasX": 426,
+      "atlasY": 2503,
       "atlasW": 59,
       "atlasH": 27
     },
@@ -244,8 +244,8 @@
       "name": "Lily Pad",
       "textureId": "small_lily_pad",
       "seasonal": false,
-      "atlasX": 374,
-      "atlasY": 2757,
+      "atlasX": 331,
+      "atlasY": 2754,
       "atlasW": 7,
       "atlasH": 6
     },
@@ -253,8 +253,8 @@
       "name": "Water Flower",
       "textureId": "blue_water_flower",
       "seasonal": false,
-      "atlasX": 214,
-      "atlasY": 2725,
+      "atlasX": 159,
+      "atlasY": 2722,
       "atlasW": 16,
       "atlasH": 15
     }

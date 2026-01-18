@@ -49,8 +49,8 @@
       "worldTextureId": "crystal_essence_world",
       "numFrames": 2,
       "animSpeed": 100,
-      "atlasX": 233,
-      "atlasY": 2769,
+      "atlasX": 187,
+      "atlasY": 2766,
       "atlasW": 4,
       "atlasH": 3
     },
@@ -63,7 +63,12 @@
       "value": 300,
       "maxStackSize": 25,
       "consumable": false,
-      "iconTextureId": "void_silk_icon"
+      "iconTextureId": "void_silk_icon",
+      "worldTextureId": "void_silk_icon",
+      "atlasX": 0,
+      "atlasY": 2560,
+      "atlasW": 18,
+      "atlasH": 26
     },
     {
       "id": "platinum_coins",
@@ -74,7 +79,12 @@
       "value": 10,
       "maxStackSize": 10000,
       "consumable": false,
-      "iconTextureId": "platinum_coins_icon"
+      "iconTextureId": "platinum_coins_icon",
+      "worldTextureId": "platinum_coins_icon",
+      "atlasX": 0,
+      "atlasY": 2639,
+      "atlasW": 25,
+      "atlasH": 22
     },
     {
       "id": "dragon_gems",
@@ -103,7 +113,12 @@
       "value": 5,
       "maxStackSize": 5000,
       "consumable": false,
-      "iconTextureId": "guild_tokens_icon"
+      "iconTextureId": "guild_tokens_icon",
+      "worldTextureId": "guild_tokens_icon",
+      "atlasX": 483,
+      "atlasY": 2613,
+      "atlasW": 22,
+      "atlasH": 22
     },
     {
       "id": "arcane_energy",
@@ -165,7 +180,12 @@
       "value": 1,
       "maxStackSize": 10000,
       "consumable": false,
-      "iconTextureId": "gold_icon"
+      "iconTextureId": "gold_icon",
+      "worldTextureId": "gold_icon",
+      "atlasX": 279,
+      "atlasY": 2662,
+      "atlasW": 23,
+      "atlasH": 19
     },
     {
       "id": "iron_ore",
@@ -198,7 +218,12 @@
       "value": 5,
       "maxStackSize": 200,
       "consumable": false,
-      "iconTextureId": "wood_icon"
+      "iconTextureId": "wood_icon",
+      "worldTextureId": "wood_icon",
+      "atlasX": 455,
+      "atlasY": 1159,
+      "atlasW": 18,
+      "atlasH": 32
     }
   ]
 }

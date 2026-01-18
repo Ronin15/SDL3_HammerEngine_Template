@@ -1,108 +1,108 @@
 {
-    "species": [
-        {
-            "id": "Wolf",
-            "textureId": "wolf",
-            "name": "Wolf",
-            "baseHealth": 60,
-            "baseStamina": 100,
-            "baseMoveSpeed": 140,
-            "baseAttackDamage": 15,
-            "baseAttackRange": 40,
-            "atlasX": 0,
-            "atlasY": 1224,
-            "atlasW": 64,
-            "atlasH": 32,
-            "idleAnim": {
-                "row": 0,
-                "frameCount": 1,
-                "speed": 150
-            },
-            "moveAnim": {
-                "row": 0,
-                "frameCount": 4,
-                "speed": 80
-            },
-            "sizeMultiplier": 0.8,
-            "predator": true
-        },
-        {
-            "id": "Bear",
-            "textureId": "bear",
-            "name": "Bear",
-            "baseHealth": 150,
-            "baseStamina": 80,
-            "baseMoveSpeed": 80,
-            "baseAttackDamage": 30,
-            "baseAttackRange": 50,
-            "atlasX": 64,
-            "atlasY": 1224,
-            "atlasW": 96,
-            "atlasH": 48,
-            "idleAnim": {
-                "row": 0,
-                "frameCount": 1,
-                "speed": 200
-            },
-            "moveAnim": {
-                "row": 0,
-                "frameCount": 4,
-                "speed": 120
-            },
-            "sizeMultiplier": 1.4,
-            "predator": true
-        },
-        {
-            "id": "Deer",
-            "textureId": "deer",
-            "name": "Deer",
-            "baseHealth": 40,
-            "baseStamina": 120,
-            "baseMoveSpeed": 160,
-            "baseAttackDamage": 5,
-            "baseAttackRange": 30,
-            "atlasX": 160,
-            "atlasY": 1224,
-            "atlasW": 64,
-            "atlasH": 32,
-            "idleAnim": {
-                "row": 0,
-                "frameCount": 1,
-                "speed": 150
-            },
-            "moveAnim": {
-                "row": 0,
-                "frameCount": 4,
-                "speed": 60
-            },
-            "sizeMultiplier": 0.9,
-            "predator": false
-        },
-        {
-            "id": "Rabbit",
-            "textureId": "rabbit",
-            "name": "Rabbit",
-            "baseHealth": 15,
-            "baseStamina": 80,
-            "baseMoveSpeed": 180,
-            "baseAttackDamage": 2,
-            "baseAttackRange": 20,
-            "atlasX": 224,
-            "atlasY": 1224,
-            "atlasW": 32,
-            "atlasH": 32,
-            "idleAnim": {
-                "row": 0,
-                "frameCount": 1,
-                "speed": 150
-            },
-            "moveAnim": {
-                "row": 0,
-                "frameCount": 2,
-                "speed": 80
-            },
-            "sizeMultiplier": 0.4,
-            "predator": false
-        }
-    ]
+  "species": [
+    {
+      "id": "Wolf",
+      "textureId": "wolf",
+      "name": "Wolf",
+      "baseHealth": 60,
+      "baseStamina": 100,
+      "baseMoveSpeed": 140,
+      "baseAttackDamage": 15,
+      "baseAttackRange": 40,
+      "atlasX": 0,
+      "atlasY": 1224,
+      "atlasW": 64,
+      "atlasH": 32,
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 1,
+        "speed": 150
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 4,
+        "speed": 80
+      },
+      "sizeMultiplier": 0.8,
+      "predator": true
+    },
+    {
+      "id": "Bear",
+      "textureId": "bear",
+      "name": "Bear",
+      "baseHealth": 150,
+      "baseStamina": 80,
+      "baseMoveSpeed": 80,
+      "baseAttackDamage": 30,
+      "baseAttackRange": 50,
+      "atlasX": 64,
+      "atlasY": 1224,
+      "atlasW": 96,
+      "atlasH": 48,
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 1,
+        "speed": 200
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 4,
+        "speed": 120
+      },
+      "sizeMultiplier": 1.4,
+      "predator": true
+    },
+    {
+      "id": "Deer",
+      "textureId": "deer",
+      "name": "Deer",
+      "baseHealth": 40,
+      "baseStamina": 120,
+      "baseMoveSpeed": 160,
+      "baseAttackDamage": 5,
+      "baseAttackRange": 30,
+      "atlasX": 160,
+      "atlasY": 1224,
+      "atlasW": 64,
+      "atlasH": 32,
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 1,
+        "speed": 150
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 4,
+        "speed": 60
+      },
+      "sizeMultiplier": 0.9,
+      "predator": false
+    },
+    {
+      "id": "Rabbit",
+      "textureId": "rabbit",
+      "name": "Rabbit",
+      "baseHealth": 15,
+      "baseStamina": 80,
+      "baseMoveSpeed": 180,
+      "baseAttackDamage": 2,
+      "baseAttackRange": 20,
+      "atlasX": 224,
+      "atlasY": 1224,
+      "atlasW": 32,
+      "atlasH": 32,
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 1,
+        "speed": 150
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 2,
+        "speed": 80
+      },
+      "sizeMultiplier": 0.4,
+      "predator": false
+    }
+  ]
 }
