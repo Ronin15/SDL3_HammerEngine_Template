@@ -3,7 +3,7 @@ build/
 !cppcheck_suppressions.txt
 compile_commands.json
 .env
-*.html
+tools/*.html
 .vscode/browse.vc*
 .vscode/
 res/sprites/
