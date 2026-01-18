@@ -2939,8 +2939,8 @@ void CollisionManager::applyKinematicUpdate(const KinematicUpdate& update) {
 
 void CollisionManager::updateKinematicBatch(
     const std::vector<KinematicUpdate>& updates) {
-  for (const auto& update : updates) {
-    applyKinematicUpdate(update);
+  for (const auto& kinUpdate : updates) {
+    applyKinematicUpdate(kinUpdate);
   }
 }
 
@@ -2949,8 +2949,8 @@ void CollisionManager::applyBatchedKinematicUpdates(
   // PER-BATCH COLLISION UPDATES: Zero contention approach
   // Each AI batch has its own buffer, we merge them here with no mutex needed.
   for (const auto& batch : batchUpdates) {
-    for (const auto& update : batch) {
-      applyKinematicUpdate(update);
+    for (const auto& kinUpdate : batch) {
+      applyKinematicUpdate(kinUpdate);
     }
   }
 }
@@ -2958,8 +2958,8 @@ void CollisionManager::applyBatchedKinematicUpdates(
 void CollisionManager::applyKinematicUpdates(
     std::vector<KinematicUpdate>& updates) {
   // Apply updates directly - no wrapper allocation needed
-  for (const auto& update : updates) {
-    applyKinematicUpdate(update);
+  for (const auto& kinUpdate : updates) {
+    applyKinematicUpdate(kinUpdate);
   }
 }
 

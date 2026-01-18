@@ -347,7 +347,7 @@ void AIManager::update(float deltaTime) {
                      cachedPlayerValid);
       } else {
         // Use centralized WorkerBudgetManager for smart worker allocation
-        auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+        // (budgetMgr already cached at function scope)
 
         // Get optimal workers (WorkerBudget determines everything dynamically)
         size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(

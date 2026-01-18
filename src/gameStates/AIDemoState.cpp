@@ -55,6 +55,7 @@ void AIDemoState::handleInput() {
   // Cache manager references for better performance
   InputManager const &inputMgr = InputManager::Instance();
   AIManager &aiMgr = AIManager::Instance();
+  EntityDataManager &edm = EntityDataManager::Instance();
 
   // Use InputManager's new event-driven key press detection
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) {
@@ -80,7 +81,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
     // Assign Wander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to WANDER behavior");
-    auto& edm = EntityDataManager::Instance();
     for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
       EntityHandle handle = edm.getHandle(edmIdx);
       if (handle.isValid()) {
@@ -91,7 +91,6 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
     // Assign Patrol behavior to all NPCs
-    auto& edm = EntityDataManager::Instance();
     GAMESTATE_INFO(std::format(
         "Switching {} NPCs to PATROL behavior (batched processing)...",
         edm.getEntityCount(EntityKind::NPC)));
@@ -111,7 +110,6 @@ void AIDemoState::handleInput() {
 
     // Chase behavior target is automatically maintained by AIManager
     // No manual target updates needed
-    auto& edm = EntityDataManager::Instance();
     for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
       EntityHandle handle = edm.getHandle(edmIdx);
       if (handle.isValid()) {
@@ -123,7 +121,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
     // Assign SmallWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to SMALL WANDER behavior");
-    auto& edm = EntityDataManager::Instance();
     for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
       EntityHandle handle = edm.getHandle(edmIdx);
       if (handle.isValid()) {
@@ -135,7 +132,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
     // Assign LargeWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to LARGE WANDER behavior");
-    auto& edm = EntityDataManager::Instance();
     for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
       EntityHandle handle = edm.getHandle(edmIdx);
       if (handle.isValid()) {
@@ -147,7 +143,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_6)) {
     // Assign EventWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to EVENT WANDER behavior");
-    auto& edm = EntityDataManager::Instance();
     for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
       EntityHandle handle = edm.getHandle(edmIdx);
       if (handle.isValid()) {
@@ -159,7 +154,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_7)) {
     // Assign RandomPatrol behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to RANDOM PATROL behavior");
-    auto& edm = EntityDataManager::Instance();
     for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
       EntityHandle handle = edm.getHandle(edmIdx);
       if (handle.isValid()) {
@@ -171,7 +165,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_8)) {
     // Assign CirclePatrol behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to CIRCLE PATROL behavior");
-    auto& edm = EntityDataManager::Instance();
     for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
       EntityHandle handle = edm.getHandle(edmIdx);
       if (handle.isValid()) {
@@ -183,7 +176,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_9)) {
     // Assign EventTarget behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to EVENT TARGET behavior");
-    auto& edm = EntityDataManager::Instance();
     for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
       EntityHandle handle = edm.getHandle(edmIdx);
       if (handle.isValid()) {

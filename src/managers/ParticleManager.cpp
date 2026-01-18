@@ -863,9 +863,8 @@ void ParticleManager::update(float deltaTime) {
     auto updateEndTime = std::chrono::high_resolution_clock::now();
     double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
 
-    // Report results for unified adaptive tuning
+    // Report results for unified adaptive tuning (budgetMgr cached at function scope)
     if (activeCount > 0) {
-      auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
       budgetMgr.reportExecution(HammerEngine::SystemType::Particle,
                                 activeCount, threadingInfo.wasThreaded,
                                 threadingInfo.batchCount, totalUpdateTime);
