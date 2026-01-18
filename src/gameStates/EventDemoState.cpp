@@ -32,6 +32,7 @@
 #include <cstddef>
 #include <ctime>
 #include <format>
+#include <random>
 
 namespace {
 // Static lookup table for WeatherType -> string conversion
@@ -1379,35 +1380,11 @@ void EventDemoState::triggerCustomEventDemo() {
     return;
   }
 
-  std::string npcType1 = m_npcTypes[m_currentNPCTypeIndex];
-  m_currentNPCTypeIndex = (m_currentNPCTypeIndex + 1) % m_npcTypes.size();
-
-  std::string npcType2 = m_npcTypes[m_currentNPCTypeIndex];
-  m_currentNPCTypeIndex = (m_currentNPCTypeIndex + 1) % m_npcTypes.size();
-
   Vector2D playerPos = m_player->getPosition();
 
-  size_t npcCount = EntityDataManager::Instance().getEntityCount(EntityKind::NPC);
-  float offsetX1 = 150.0f + ((npcCount % 10) * 80.0f);
-  float offsetY1 = 80.0f + ((npcCount % 6) * 50.0f);
-  float offsetX2 = 250.0f + (((npcCount + 1) % 10) * 80.0f);
-  float offsetY2 = 150.0f + (((npcCount + 1) % 6) * 50.0f);
-
-  float spawnX1 = std::max(
-      100.0f, std::min(playerPos.getX() + offsetX1, m_worldWidth - 100.0f));
-  float spawnY1 = std::max(
-      100.0f, std::min(playerPos.getY() + offsetY1, m_worldHeight - 100.0f));
-  float spawnX2 = std::max(
-      100.0f, std::min(playerPos.getX() + offsetX2, m_worldWidth - 100.0f));
-  float spawnY2 = std::max(
-      100.0f, std::min(playerPos.getY() + offsetY2, m_worldHeight - 100.0f));
-
-  // createNPC() handles behavior assignment internally
-  createNPC(npcType1, spawnX1, spawnY1);
-  createNPC(npcType2, spawnX2, spawnY2);
-
-  addLogEntry(std::format("Spawned: {}, {} ({} total)", npcType1, npcType2,
-                          EntityDataManager::Instance().getEntityCount(EntityKind::NPC)));
+  // Spawn 2 random NPCs near player using event system
+  EventManager::Instance().spawnNPC("Random", playerPos.getX() + 150.0f,
+                                     playerPos.getY() + 80.0f, 2, 100.0f);
 }
 
 void EventDemoState::triggerConvenienceMethodsDemo() {
@@ -1478,61 +1455,17 @@ void EventDemoState::onWeatherChanged(const std::string &message) {
 }
 
 void EventDemoState::onNPCSpawned(const EventData &data) {
-  try {
-    if (!data.event) {
-      GAMESTATE_ERROR("NPCSpawnEvent data is null");
-      return;
-    }
+  // NPCSpawnEvent::execute() handles the actual spawning
+  // This handler just logs the event for the demo UI
+  if (!data.event) return;
 
-    auto npcEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(data.event);
-    if (!npcEvent) {
-      GAMESTATE_ERROR("Event is not an NPCSpawnEvent");
-      return;
-    }
+  auto npcEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(data.event);
+  if (!npcEvent) return;
 
-    const auto &params = npcEvent->getSpawnParameters();
-    std::string npcType =
-        params.npcType.empty() ? std::string("NPC") : params.npcType;
-    int count = std::max(1, params.count);
-
-    // Determine spawn anchors: event-provided points or player position
-    std::vector<Vector2D> anchors = npcEvent->getSpawnPoints();
-    if (anchors.empty()) {
-      Vector2D fallback =
-          m_player ? m_player->getPosition()
-                   : Vector2D(m_worldWidth * 0.5f, m_worldHeight * 0.5f);
-      anchors.push_back(fallback);
-    }
-
-    // Deterministic offset pattern based on radius/count for visible spread
-    float base = (params.spawnRadius > 0.0f) ? params.spawnRadius : 30.0f;
-    float const stepX = 0.6f * base + 20.0f;
-    float const stepY = 0.4f * base + 15.0f;
-
-    int spawned = 0;
-
-    for (const auto &anchor : anchors) {
-      for (int i = 0; i < count; ++i) {
-        float offX = ((spawned % 8) - 4) * stepX;
-        float offY = (((spawned / 8) % 6) - 3) * stepY;
-
-        float x =
-            std::clamp(anchor.getX() + offX, 100.0f, m_worldWidth - 100.0f);
-        float y =
-            std::clamp(anchor.getY() + offY, 100.0f, m_worldHeight - 100.0f);
-
-        // createNPC() handles behavior assignment internally
-        EntityHandle handle = createNPC(npcType, x, y, params.aiBehavior);
-        if (handle.isValid()) {
-          spawned++;
-        }
-      }
-    }
-
-    addLogEntry(std::format("Spawned: {} x{}", npcType, spawned));
-  } catch (const std::exception &e) {
-    GAMESTATE_ERROR(std::format("NPC spawn handler: {}", e.what()));
-  }
+  const auto &params = npcEvent->getSpawnParameters();
+  std::string typeLabel = (params.npcType.empty() || params.npcType == "Random")
+                              ? "Random" : params.npcType;
+  addLogEntry(std::format("NPC Spawn Event: {} x{}", typeLabel, params.count));
 }
 
 void EventDemoState::onSceneChanged(const std::string &message) {
@@ -1643,67 +1576,6 @@ void EventDemoState::setupAIBehaviors() {
   }
 
   GAMESTATE_DEBUG("AI Behaviors configured for NPC integration");
-}
-
-EntityHandle
-EventDemoState::createNPC(const std::string &npcType, float x, float y,
-                          const std::string &behaviorOverride) {
-  try {
-    // Create NPC using race/class composition system (npcType becomes class)
-    Vector2D position(x, y);
-    EntityHandle handle = EntityDataManager::Instance().createNPCWithRaceClass(
-        position, "Human", npcType);
-
-    if (!handle.isValid()) {
-      GAMESTATE_ERROR(std::format("Failed to create data-driven NPC of type: {}", npcType));
-      return INVALID_ENTITY_HANDLE;
-    }
-
-    // Determine and assign behavior (demo-specific behavior rotation)
-    std::string behavior = behaviorOverride.empty()
-                               ? determineBehaviorForNPCType(npcType)
-                               : behaviorOverride;
-
-    AIManager::Instance().registerEntity(handle, behavior);
-
-    return handle;
-  } catch (const std::exception &e) {
-    GAMESTATE_ERROR(std::format("EXCEPTION in createNPC: {}", e.what()));
-    return INVALID_ENTITY_HANDLE;
-  } catch (...) {
-    GAMESTATE_ERROR("UNKNOWN EXCEPTION in createNPC");
-    return INVALID_ENTITY_HANDLE;
-  }
-}
-
-std::string
-EventDemoState::determineBehaviorForNPCType(const std::string &npcType) {
-  static std::unordered_map<std::string, size_t> npcTypeCounters;
-  size_t npcCount = npcTypeCounters[npcType]++;
-
-  std::string behaviorName;
-
-  if (npcType == "Guard") {
-    std::vector<std::string> guardBehaviors = {
-        "Patrol", "RandomPatrol", "CirclePatrol", "SmallWander", "EventTarget"};
-    behaviorName = guardBehaviors[npcCount % guardBehaviors.size()];
-  } else if (npcType == "Villager") {
-    std::vector<std::string> villagerBehaviors = {
-        "SmallWander", "Wander", "RandomPatrol", "CirclePatrol"};
-    behaviorName = villagerBehaviors[npcCount % villagerBehaviors.size()];
-  } else if (npcType == "Merchant") {
-    std::vector<std::string> merchantBehaviors = {
-        "Wander", "LargeWander", "RandomPatrol", "CirclePatrol"};
-    behaviorName = merchantBehaviors[npcCount % merchantBehaviors.size()];
-  } else if (npcType == "Warrior") {
-    std::vector<std::string> warriorBehaviors = {"EventWander", "EventTarget",
-                                                 "LargeWander", "Chase"};
-    behaviorName = warriorBehaviors[npcCount % warriorBehaviors.size()];
-  } else {
-    behaviorName = "Wander";
-  }
-
-  return behaviorName;
 }
 
 void EventDemoState::addLogEntry(const std::string &entry) {

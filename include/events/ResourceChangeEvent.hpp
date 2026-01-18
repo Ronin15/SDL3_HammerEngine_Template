@@ -40,7 +40,14 @@ public:
   // Event interface implementation
   void update() override {}
   void execute() override {}
-  void reset() override {}
+  void reset() override {
+    Event::resetCooldown();
+    m_ownerHandle = EntityHandle{};
+    m_resourceHandle = HammerEngine::ResourceHandle{};
+    m_oldQuantity = 0;
+    m_newQuantity = 0;
+    m_changeReason.clear();
+  }
   void clean() override {}
   std::string getName() const override { return "ResourceChange"; }
   bool checkConditions() override { return true; }

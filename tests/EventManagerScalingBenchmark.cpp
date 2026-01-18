@@ -366,8 +366,8 @@ struct EventManagerScalingFixture {
                                 EventManager::DispatchMode::Deferred);
                             break;
                         case 1:
-                            EventManager::Instance().spawnNPC("NPC", 0.0f, 0.0f,
-                                EventManager::DispatchMode::Deferred);
+                            EventManager::Instance().spawnNPC("NPC", 0.0f, 0.0f, 1, 0.0f,
+                                false, EventManager::DispatchMode::Deferred);
                             break;
                         case 2:
                             EventManager::Instance().changeScene("Scene", "fade", 1.0f,

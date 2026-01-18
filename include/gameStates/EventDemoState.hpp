@@ -193,11 +193,6 @@ private:
   void logResourceAnalytics(HammerEngine::ResourceHandle handle, int oldQty,
                             int newQty, const std::string &source);
 
-  // Data-driven NPC creation via EntityDataManager
-  EntityHandle createNPC(const std::string &npcType, float x, float y,
-                         const std::string &behaviorOverride = "");
-  std::string determineBehaviorForNPCType(const std::string &npcType);
-
   // AI behavior integration methods
   void setupAIBehaviors();
   

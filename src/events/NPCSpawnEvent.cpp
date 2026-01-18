@@ -86,27 +86,19 @@ void NPCSpawnEvent::execute() {
     m_cooldownTimer = 0.0f;
   }
 
-  EVENT_INFO(std::format("NPCSpawnEvent triggered: {} ({})", m_name,
-                         m_spawnParams.npcType));
-
-  // Display area constraint information if configured
-  if (m_constrainToArea) {
-    EVENT_INFO(std::format("  - Area constraints: ({},{}) to ({},{})",
-                           m_constraintMinX, m_constraintMinY, m_constraintMaxX,
-                           m_constraintMaxY));
-    EVENT_INFO("  - NPCs will be constrained to this area using intelligent "
-               "redirection");
-  } else {
-    EVENT_INFO(
-        "  - No area constraints - NPCs can wander freely across the world");
+  // Determine spawn position from spawn points or default
+  float spawnX = 0.0f, spawnY = 0.0f;
+  if (!m_spawnPoints.empty()) {
+    spawnX = m_spawnPoints[0].getX();
+    spawnY = m_spawnPoints[0].getY();
   }
 
-  EVENT_INFO("  - Event serves as coordination/messaging demonstration");
-  EVENT_INFO("  - GameStates handle actual entity creation and ownership");
+  // Actually spawn the NPCs
+  auto handles = spawnNPCs(m_spawnParams, spawnX, spawnY);
 
-  // Update counters for event system demonstration
-  m_currentSpawnCount++;
-  m_totalSpawned++;
+  // Update counters
+  m_currentSpawnCount += static_cast<int>(handles.size());
+  m_totalSpawned += static_cast<int>(handles.size());
 
   // Reset respawn timer
   m_respawnTimer = 0.0f;
@@ -290,48 +282,68 @@ bool NPCSpawnEvent::areAllEntitiesDead() const {
       [](const auto &weakEntity) { return weakEntity.lock() != nullptr; });
 }
 
-EntityHandle NPCSpawnEvent::forceSpawnNPC(const std::string &npcType, float x,
-                                          float y) {
-  EVENT_INFO(std::format("Forcing spawn of NPC type: {} at position ({}, {})",
-                         npcType, x, y));
-
-  try {
-    // Adjust spawn position to navigable tile
-    Vector2D position(x, y);
-    position = PathfinderManager::Instance().adjustSpawnToNavigable(
-        position, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f);
-
-    // Create NPC using race/class composition system (npcType becomes class)
-    EntityHandle handle = EntityDataManager::Instance().createNPCWithRaceClass(
-        position, "Human", npcType);
-
-    EVENT_INFO(std::format("Force-spawned {} at ({}, {})", npcType, x, y));
-    return handle;
-
-  } catch (const std::exception &e) {
-    EVENT_ERROR(
-        std::format("Exception while force-spawning NPC: {}", e.what()));
-    return EntityHandle{};
-  }
+EntityHandle NPCSpawnEvent::spawnNPC(const std::string &npcType, float x,
+                                      float y) {
+  SpawnParameters params(npcType, 1, 0.0f);
+  auto handles = spawnNPCs(params, x, y);
+  return handles.empty() ? EntityHandle{} : handles[0];
 }
 
 std::vector<EntityHandle>
-NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters &params, float x, float y) {
-  EVENT_INFO(
-      std::format("Forcing spawn of {} NPCs of type: {} at position ({}, {})",
-                  params.count, params.npcType, x, y));
-
+NPCSpawnEvent::spawnNPCs(const SpawnParameters &params, float x, float y) {
   std::vector<EntityHandle> spawnedHandles;
+  auto &edm = EntityDataManager::Instance();
+
+  // Random selection if type is "Random" or empty
+  bool isRandom = params.npcType.empty() || params.npcType == "Random";
+  std::vector<std::string> races;
+  std::vector<std::string> classes;
+
+  if (isRandom) {
+    races = edm.getRaceIds();
+    classes = edm.getClassIds();
+    if (races.empty() || classes.empty()) {
+      EVENT_ERROR("No races or classes registered for random NPC spawn");
+      return spawnedHandles;
+    }
+  }
+
+  // Get world bounds if worldWide spawning is enabled
+  float worldMinX = 0.0f, worldMinY = 0.0f, worldMaxX = 0.0f, worldMaxY = 0.0f;
+  bool useWorldBounds = params.worldWide;
+  if (useWorldBounds) {
+    if (!WorldManager::Instance().getWorldBounds(worldMinX, worldMinY, worldMaxX,
+                                                  worldMaxY)) {
+      EVENT_ERROR("Failed to get world bounds for world-wide spawning");
+      useWorldBounds = false;
+    }
+  }
+
+  EVENT_INFO(std::format("Spawning {} NPCs of type: {} {}",
+                         params.count, isRandom ? "Random" : params.npcType,
+                         useWorldBounds ? "across world" : std::format("at ({}, {})", x, y)));
 
   try {
-    for (int i = 0; i < params.count; ++i) {
-      // Calculate spawn position with some random offset
-      std::uniform_real_distribution<float> offsetDist(-params.spawnRadius,
-                                                       params.spawnRadius);
-      float offsetX = params.spawnRadius > 0 ? offsetDist(gen) : 0.0f;
-      float offsetY = params.spawnRadius > 0 ? offsetDist(gen) : 0.0f;
+    // Pre-create distributions for world-wide spawning (outside loop for efficiency)
+    std::uniform_real_distribution<float> worldXDist(worldMinX, worldMaxX);
+    std::uniform_real_distribution<float> worldYDist(worldMinY, worldMaxY);
 
-      Vector2D spawnPos(x + offsetX, y + offsetY);
+    for (int i = 0; i < params.count; ++i) {
+      Vector2D spawnPos;
+
+      if (useWorldBounds) {
+        // World-wide spawning: random position within world bounds
+        spawnPos = Vector2D(worldXDist(gen), worldYDist(gen));
+      } else {
+        // Original behavior: offset from provided position
+        std::uniform_real_distribution<float> offsetDist(-params.spawnRadius,
+                                                         params.spawnRadius);
+        float offsetX = params.spawnRadius > 0 ? offsetDist(gen) : 0.0f;
+        float offsetY = params.spawnRadius > 0 ? offsetDist(gen) : 0.0f;
+        spawnPos = Vector2D(x + offsetX, y + offsetY);
+      }
+
+      // Adjust to navigable position
       if (params.useAreaRect) {
         spawnPos = PathfinderManager::Instance().adjustSpawnToNavigableInRect(
             spawnPos, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f,
@@ -346,19 +358,28 @@ NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters &params, float x, float y) {
             spawnPos, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f);
       }
 
-      // Create NPC using race/class composition system (npcType becomes class)
-      EntityHandle handle = EntityDataManager::Instance().createNPCWithRaceClass(
-          spawnPos, "Human", params.npcType);
+      EntityHandle handle;
+      if (isRandom) {
+        // Random race and class
+        std::uniform_int_distribution<size_t> raceDist(0, races.size() - 1);
+        std::uniform_int_distribution<size_t> classDist(0, classes.size() - 1);
+        handle = edm.createNPCWithRaceClass(spawnPos, races[raceDist(gen)],
+                                             classes[classDist(gen)]);
+      } else {
+        // Specific class with Human race
+        handle = edm.createNPCWithRaceClass(spawnPos, "Human", params.npcType);
+      }
 
-      spawnedHandles.push_back(handle);
-      EVENT_INFO(std::format("  - NPC {} spawned successfully", i + 1));
+      if (handle.isValid()) {
+        spawnedHandles.push_back(handle);
+      }
     }
 
   } catch (const std::exception &e) {
-    EVENT_ERROR(
-        std::format("Exception while force-spawning NPCs: {}", e.what()));
+    EVENT_ERROR(std::format("Exception spawning NPCs: {}", e.what()));
   }
 
+  EVENT_INFO(std::format("  Spawned {} NPCs successfully", spawnedHandles.size()));
   return spawnedHandles;
 }
 

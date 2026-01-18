@@ -2394,8 +2394,11 @@ void CollisionManager::resolve(const CollisionInfo &collision) {
     // Write positions back to EDM
     transformA.position.setX(resultA[0]);
     transformA.position.setY(resultA[1]);
+    transformA.previousPosition = transformA.position;
+
     transformB.position.setX(resultB[0]);
     transformB.position.setY(resultB[1]);
+    transformB.previousPosition = transformB.position;
   } else {
     // MOVABLE-STATIC: indexA is EDM index (movable), indexB is storage index
     // (static)
@@ -2422,6 +2425,7 @@ void CollisionManager::resolve(const CollisionInfo &collision) {
     // Write position back to EDM
     transform.position.setX(result[0]);
     transform.position.setY(result[1]);
+    transform.previousPosition = transform.position;
   }
 }
 

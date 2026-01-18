@@ -448,6 +448,8 @@ public:
                    float transitionTime = 1.0f,
                    DispatchMode mode = DispatchMode::Deferred) const;
   bool spawnNPC(const std::string &npcType, float x, float y,
+                int count = 1, float spawnRadius = 0.0f,
+                bool worldWide = false,
                 DispatchMode mode = DispatchMode::Deferred) const;
 
   // Particle effect trigger (stateless, no registration required)
@@ -685,6 +687,9 @@ private:
   // Handles both immediate and deferred dispatch with single mutex lock and direct handler iteration
   bool dispatchEvent(EventTypeId typeId, EventData& eventData, DispatchMode mode,
                      const char* errorContext = "dispatchEvent") const;
+
+  // Release pooled events back to their respective pools after dispatch
+  void releaseEventToPool(EventTypeId typeId, EventPtr event) const;
 
   // Internal registration helper
   bool registerEventInternal(const std::string &name, EventPtr event,

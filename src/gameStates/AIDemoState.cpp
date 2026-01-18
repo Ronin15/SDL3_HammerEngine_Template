@@ -19,6 +19,7 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "managers/EventManager.hpp"
 #include "utils/Camera.hpp"
 #include "world/WorldData.hpp"
 #include <cmath>
@@ -26,7 +27,6 @@
 #include <ctime>
 #include <format>
 #include <memory>
-#include <random>
 
 AIDemoState::~AIDemoState() {
   // Don't call virtual functions from destructors
@@ -200,32 +200,17 @@ void AIDemoState::handleInput() {
     m_camera->zoomOut(); // ] key = zoom out (objects smaller)
   }
 
-  // NPC spawning controls
+  // NPC spawning controls - use EventManager for unified spawning
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_N)) {
-    // Spawn all NPCs up to m_npcCount with standard behavior (Wander)
-    if (m_npcsSpawned < m_npcCount) {
-      int const npcsToSpawn = m_npcCount - m_npcsSpawned;
-      GAMESTATE_INFO(
-          std::format("Spawning {} NPCs with Wander behavior...", npcsToSpawn));
-      createNPCBatch(npcsToSpawn);
-      m_npcsSpawned += npcsToSpawn;
-      GAMESTATE_INFO(std::format("Spawned {} / {} NPCs (Standard behavior)",
-                                 m_npcsSpawned, m_npcCount));
-    } else {
-      GAMESTATE_INFO(
-          std::format("Already spawned {} NPCs (max reached)", m_npcCount));
-    }
+    // Spawn 2000 Villagers across entire world via events
+    GAMESTATE_INFO("Spawning 2000 Villagers across world...");
+    EventManager::Instance().spawnNPC("Villager", 0, 0, 2000, 0, true);
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_M)) {
-    // Spawn 2000 NPCs with random behaviors (like EventDemoState)
-    int previousCount = EntityDataManager::Instance().getEntityCount(EntityKind::NPC);
-    GAMESTATE_INFO("Spawning 2000 NPCs with random behaviors...");
-    createNPCBatchWithRandomBehaviors(2000);
-    int actualSpawned = EntityDataManager::Instance().getEntityCount(EntityKind::NPC) - previousCount;
-    GAMESTATE_INFO(
-        std::format("Spawned {} NPCs with random behaviors (Total: {})",
-                    actualSpawned, EntityDataManager::Instance().getEntityCount(EntityKind::NPC)));
+    // Spawn 2000 random NPCs across entire world via events (random race/class)
+    GAMESTATE_INFO("Spawning 2000 random NPCs across world...");
+    EventManager::Instance().spawnNPC("Random", 0, 0, 2000, 0, true);
   }
 }
 
@@ -361,10 +346,6 @@ bool AIDemoState::enter() {
 
     // Pre-allocate status buffer to avoid per-frame allocations
     m_statusBuffer.reserve(64);
-
-    // NPCs can be spawned using keyboard triggers (N for standard, M for random
-    // behaviors)
-    m_npcsSpawned = 0;
 
     // Mark as fully initialized to prevent re-entering loading logic
     m_initialized = true;
@@ -713,190 +694,6 @@ void AIDemoState::setupAIBehaviors() {
   // This ensures the player reference is available for behaviors to use
 
   GAMESTATE_INFO("AIDemoState: AI behaviors setup complete.");
-}
-
-void AIDemoState::createNPCBatch(int count) {
-  // Cache AIManager reference for better performance
-  AIManager &aiMgr = AIManager::Instance();
-  WorldManager const &worldMgr = WorldManager::Instance();
-  const auto *worldData = worldMgr.getWorldData();
-
-  if (!worldData) {
-    GAMESTATE_ERROR("Cannot create NPCs - world data not available");
-    return;
-  }
-
-  try {
-    // Random number generation for positioning across the entire world
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    constexpr float tileSize = HammerEngine::TILE_SIZE;
-
-    // Calculate tile range
-    int const maxTileX =
-        static_cast<int>(m_worldWidth / tileSize) - 2; // -2 for margin
-    int const maxTileY = static_cast<int>(m_worldHeight / tileSize) - 2;
-
-    std::uniform_int_distribution<int> tileDistX(
-        1, maxTileX); // Start at 1 for margin
-    std::uniform_int_distribution<int> tileDistY(1, maxTileY);
-
-    // Create batch of NPCs
-    int attempts = 0;
-    int created = 0;
-    const int maxAttempts =
-        count * 10; // Allow multiple attempts to find valid positions
-
-    while (created < count && attempts < maxAttempts) {
-      attempts++;
-
-      // Pick a random tile
-      int tileX = tileDistX(gen);
-      int tileY = tileDistY(gen);
-
-      // Check if tile is valid (not water, not a building)
-      if (tileY >= 0 && tileY < static_cast<int>(worldData->grid.size()) &&
-          tileX >= 0 &&
-          tileX < static_cast<int>(worldData->grid[tileY].size())) {
-
-        const auto &tile = worldData->grid[tileY][tileX];
-
-        // Only spawn on walkable ground (not water, not buildings)
-        if (!tile.isWater &&
-            tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
-          // Random position within the tile
-          std::uniform_real_distribution<float> offsetDist(0.0f, tileSize);
-          float x = tileX * tileSize + offsetDist(gen);
-          float y = tileY * tileSize + offsetDist(gen);
-          Vector2D position(x, y);
-
-          try {
-            // Create NPC using race/class composition system
-            EntityHandle handle = EntityDataManager::Instance().createNPCWithRaceClass(
-                position, "Human", "Guard");
-
-            if (handle.isValid()) {
-              aiMgr.registerEntity(handle, "Wander");
-              created++;
-            }
-          } catch (const std::exception &e) {
-            GAMESTATE_ERROR(
-                std::format("Exception creating NPC: {}", e.what()));
-          }
-        }
-      }
-    }
-
-    GAMESTATE_WARN_IF(
-        created < count,
-        std::format("Only created {} of {} requested NPCs after {} attempts",
-                    created, count, attempts));
-
-  } catch (const std::exception &e) {
-    GAMESTATE_ERROR(std::format("Exception in createNPCBatch(): {}", e.what()));
-  } catch (...) {
-    GAMESTATE_ERROR("Unknown exception in createNPCBatch()");
-  }
-}
-
-void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
-  // Cache AIManager reference for better performance
-  AIManager &aiMgr = AIManager::Instance();
-  WorldManager const &worldMgr = WorldManager::Instance();
-  const auto *worldData = worldMgr.getWorldData();
-
-  if (!worldData) {
-    GAMESTATE_ERROR(
-        "Cannot create NPCs with random behaviors - world data not available");
-    return;
-  }
-
-  try {
-    // Random number generation for positioning across the entire world
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    constexpr float tileSize = HammerEngine::TILE_SIZE;
-
-    // Calculate tile range
-    int const maxTileX =
-        static_cast<int>(m_worldWidth / tileSize) - 2; // -2 for margin
-    int const maxTileY = static_cast<int>(m_worldHeight / tileSize) - 2;
-
-    std::uniform_int_distribution<int> tileDistX(
-        1, maxTileX); // Start at 1 for margin
-    std::uniform_int_distribution<int> tileDistY(1, maxTileY);
-
-    // Available behaviors for random assignment (matching EventDemoState
-    // variety)
-    std::vector<std::string> behaviors = {
-        "Wander",       "SmallWander",  "LargeWander", "EventWander", "Patrol",
-        "RandomPatrol", "CirclePatrol", "EventTarget", "Chase"};
-    std::uniform_int_distribution<size_t> behaviorDist(0, behaviors.size() - 1);
-
-    // Create batch of NPCs
-    int attempts = 0;
-    int created = 0;
-    const int maxAttempts =
-        count * 10; // Allow multiple attempts to find valid positions
-
-    while (created < count && attempts < maxAttempts) {
-      attempts++;
-
-      // Pick a random tile
-      int tileX = tileDistX(gen);
-      int tileY = tileDistY(gen);
-
-      // Check if tile is valid (not water, not a building)
-      if (tileY >= 0 && tileY < static_cast<int>(worldData->grid.size()) &&
-          tileX >= 0 &&
-          tileX < static_cast<int>(worldData->grid[tileY].size())) {
-
-        const auto &tile = worldData->grid[tileY][tileX];
-
-        // Only spawn on walkable ground (not water, not buildings)
-        if (!tile.isWater &&
-            tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
-          // Random position within the tile
-          std::uniform_real_distribution<float> offsetDist(0.0f, tileSize);
-          float x = tileX * tileSize + offsetDist(gen);
-          float y = tileY * tileSize + offsetDist(gen);
-          Vector2D position(x, y);
-
-          try {
-            // Create NPC using race/class composition system
-            // Use random class from registered classes for variety
-            static const std::vector<std::string> npcClasses = {"Guard", "Villager", "Merchant", "Warrior"};
-            static std::uniform_int_distribution<size_t> classDist(0, npcClasses.size() - 1);
-            const std::string& npcClass = npcClasses[classDist(gen)];
-
-            EntityHandle handle = EntityDataManager::Instance().createNPCWithRaceClass(
-                position, "Human", npcClass);
-
-            if (handle.isValid()) {
-              // Assign random behavior from the list
-              std::string randomBehavior = behaviors[behaviorDist(gen)];
-              aiMgr.registerEntity(handle, randomBehavior);
-              created++;
-            }
-          } catch (const std::exception &e) {
-            GAMESTATE_ERROR(std::format(
-                "Exception creating NPC with random behavior: {}", e.what()));
-          }
-        }
-      }
-    }
-
-    GAMESTATE_WARN_IF(created < count,
-                      std::format("Only created {} of {} requested NPCs with "
-                                  "random behaviors after {} attempts",
-                                  created, count, attempts));
-
-  } catch (const std::exception &e) {
-    GAMESTATE_ERROR(std::format(
-        "Exception in createNPCBatchWithRandomBehaviors(): {}", e.what()));
-  } catch (...) {
-    GAMESTATE_ERROR("Unknown exception in createNPCBatchWithRandomBehaviors()");
-  }
 }
 
 void AIDemoState::initializeCamera() {

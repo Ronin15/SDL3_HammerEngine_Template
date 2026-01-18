@@ -39,8 +39,6 @@ public:
 private:
     // Methods
     void setupAIBehaviors();
-    void createNPCBatch(int count);  // Create a batch of NPCs with standard behavior
-    void createNPCBatchWithRandomBehaviors(int count);  // Create NPCs with random behaviors
     void initializeCamera();
     void updateCamera(float deltaTime);
 
@@ -53,7 +51,6 @@ private:
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
 
     // Demo settings
-    int m_npcCount{2000};  // Number of NPCs to create for the demo (balanced for performance)
     float m_worldWidth{800.0f};
     float m_worldHeight{600.0f};
 
@@ -75,12 +72,6 @@ private:
     // AI pause state
     bool m_aiPaused{false};
     bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit
-
-    // Batch NPC spawning to reduce per-frame overhead
-    int m_npcsSpawned{0};
-    int m_npcsPerBatch{30};        // Spawn 30 NPCs per batch
-    int m_spawnInterval{10};       // Spawn every 10 frames
-    int m_framesSinceLastSpawn{0}; // Frame counter for spawn timing
 
     // Status display optimization - zero per-frame allocations (C++20 type-safe)
     std::string m_statusBuffer{};

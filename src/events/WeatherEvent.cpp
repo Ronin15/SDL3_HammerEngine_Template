@@ -207,11 +207,32 @@ void WeatherEvent::execute() {
 }
 
 void WeatherEvent::reset() {
+  // Base event state
   m_onCooldown = false;
   m_cooldownTimer = 0.0f;
+  m_hasTriggered = false;
+
+  // Weather specific state
+  m_weatherType = WeatherType::Clear;
+  m_customType.clear();
+  m_params = WeatherParams{};
+
+  // Conditions
+  m_conditions.clear();
+
+  // Time-based parameters
+  m_startHour = -1.0f;
+  m_endHour = -1.0f;
+  m_season = -1;
+
+  // Geographic parameters
+  m_regionName.clear();
+  m_useGeographicBounds = false;
+  m_boundX1 = m_boundY1 = m_boundX2 = m_boundY2 = 0.0f;
+
+  // Transition state
   m_inTransition = false;
   m_transitionProgress = 0.0f;
-  m_hasTriggered = false;
 }
 
 void WeatherEvent::clean() {
