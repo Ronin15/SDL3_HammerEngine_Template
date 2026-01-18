@@ -126,7 +126,7 @@ public:
     void applyBatchedKinematicUpdates(const std::vector<std::vector<KinematicUpdate>>& batchUpdates);
 
     // Single-vector overload for non-batched updates (convenience wrapper)
-    void applyKinematicUpdates(std::vector<KinematicUpdate>& updates);
+    void applyKinematicUpdates(const std::vector<KinematicUpdate>& updates);
 
     // Convenience methods for triggers
     // Routes through EDM::createTrigger() for single source of truth

@@ -41,7 +41,7 @@ void WeatherController::onTimeEvent(const EventData& data)
     }
 
     // Safe static_cast - we verified the subtype via enum
-    auto* weatherCheck = static_cast<WeatherCheckEvent*>(timeEvent);
+    const auto* weatherCheck = static_cast<const WeatherCheckEvent*>(timeEvent);
 
     // Get recommended weather from the event (based on season probabilities)
     WeatherType recommended = weatherCheck->getRecommendedWeather();

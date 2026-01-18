@@ -166,7 +166,7 @@ void PatrolBehavior::executeLogic(BehaviorContext &ctx) {
     } else {
       // Check if we're targeting a different waypoint than when path was
       // computed
-      auto &edm = EntityDataManager::Instance();
+      const auto &edm = EntityDataManager::Instance();
       Vector2D pathGoal = edm.getPathGoal(ctx.edmIndex);
       float const waypointChangeSquared =
           (targetWaypoint - pathGoal).lengthSquared();

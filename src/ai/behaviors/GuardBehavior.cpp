@@ -724,7 +724,7 @@ void GuardBehavior::updateRoamingGuard(BehaviorContext &ctx,
 }
 
 void GuardBehavior::updateAlertGuard(BehaviorContext &ctx, BehaviorData &data) {
-  auto &guard = data.state.guard;
+  const auto &guard = data.state.guard;
 
   // Alert guard moves faster and has heightened awareness
   if (guard.currentAlertLevel >= 2) { // INVESTIGATING or higher
