@@ -644,7 +644,7 @@ void AttackBehavior::notifyAnimationStateChange(EntityPtr entity,
 }
 
 void AttackBehavior::updateStateTimer(BehaviorData &data) {
-  auto &attack = data.state.attack;
+  const auto &attack = data.state.attack;
   float const timeInState = attack.stateChangeTimer;
 
   // Handle state transitions based on timing
@@ -849,7 +849,7 @@ void AttackBehavior::updateMeleeAttack(EntityPtr entity, BehaviorData &data,
 void AttackBehavior::updateRangedAttack(EntityPtr entity, BehaviorData &data,
                                         float deltaTime,
                                         const Vector2D &targetPos) {
-  auto &attack = data.state.attack;
+  const auto &attack = data.state.attack;
   Vector2D entityPos = entity->getPosition();
   float const distance = attack.targetDistance;
 
@@ -954,7 +954,7 @@ void AttackBehavior::updateChargeAttack(EntityPtr entity, BehaviorData &data,
 void AttackBehavior::updateAmbushAttack(EntityPtr entity, BehaviorData &data,
                                         float deltaTime,
                                         const Vector2D &targetPos) {
-  auto &attack = data.state.attack;
+  const auto &attack = data.state.attack;
   // Wait for optimal moment to strike
   if (attack.currentState == static_cast<uint8_t>(AttackState::POSITIONING) &&
       attack.targetDistance <= m_optimalRange) {
@@ -979,7 +979,7 @@ void AttackBehavior::updateCoordinatedAttack(EntityPtr entity,
 void AttackBehavior::updateHitAndRun(EntityPtr entity, BehaviorData &data,
                                      float deltaTime,
                                      const Vector2D &targetPos) {
-  auto &attack = data.state.attack;
+  const auto &attack = data.state.attack;
   // After attacking, immediately retreat
   if (attack.currentState == static_cast<uint8_t>(AttackState::RECOVERING)) {
     changeState(data, AttackState::RETREATING);
@@ -991,7 +991,7 @@ void AttackBehavior::updateHitAndRun(EntityPtr entity, BehaviorData &data,
 void AttackBehavior::updateBerserkerAttack(EntityPtr entity, BehaviorData &data,
                                            float deltaTime,
                                            const Vector2D &targetPos) {
-  auto &attack = data.state.attack;
+  const auto &attack = data.state.attack;
   // Aggressive continuous attacks with reduced cooldown
   if (attack.currentState == static_cast<uint8_t>(AttackState::COOLDOWN)) {
     float const timeInState = attack.stateChangeTimer;
@@ -1004,7 +1004,7 @@ void AttackBehavior::updateBerserkerAttack(EntityPtr entity, BehaviorData &data,
 }
 
 void AttackBehavior::updateSeeking(BehaviorData &data) {
-  auto &attack = data.state.attack;
+  const auto &attack = data.state.attack;
   if (attack.hasTarget && attack.targetDistance <= m_attackRange * 1.5f) {
     changeState(data, AttackState::APPROACHING);
   }

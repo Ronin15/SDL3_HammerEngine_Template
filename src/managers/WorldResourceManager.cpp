@@ -318,7 +318,7 @@ WorldResourceManager::Quantity WorldResourceManager::queryInventoryTotal(
         return 0;
     }
 
-    auto& edm = EntityDataManager::Instance();
+    const auto& edm = EntityDataManager::Instance();
     Quantity total = 0;
 
     for (uint32_t invIdx : worldIt->second) {
@@ -647,7 +647,7 @@ size_t WorldResourceManager::queryDroppedItemsInRadius(const Vector2D& center, f
     it->second.queryRadius(center, radius, outIndices);
 
     // Precise distance filtering using EDM positions
-    auto& edm = EntityDataManager::Instance();
+    const auto& edm = EntityDataManager::Instance();
     float radiusSq = radius * radius;
 
     auto newEnd = std::remove_if(outIndices.begin(), outIndices.end(),
@@ -693,7 +693,7 @@ size_t WorldResourceManager::queryHarvestablesInRadius(const Vector2D& center, f
     it->second.queryRadius(center, radius, outIndices);
 
     // Precise distance filtering using EDM positions
-    auto& edm = EntityDataManager::Instance();
+    const auto& edm = EntityDataManager::Instance();
     float radiusSq = radius * radius;
 
     auto newEnd = std::remove_if(outIndices.begin(), outIndices.end(),
@@ -720,7 +720,7 @@ bool WorldResourceManager::findClosestDroppedItem(const Vector2D& center, float 
         return false;
     }
 
-    auto& edm = EntityDataManager::Instance();
+    const auto& edm = EntityDataManager::Instance();
     float closestDistSq = std::numeric_limits<float>::max();
     size_t closestIdx = 0;
     bool found = false;

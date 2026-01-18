@@ -218,7 +218,7 @@ void ChaseBehavior::executeLogic(BehaviorContext &ctx) {
           needsNewPath = true;
         } else {
           // Check if target moved significantly from when path was computed
-          auto &edm = EntityDataManager::Instance();
+          const auto &edm = EntityDataManager::Instance();
           Vector2D pathGoal = edm.getPathGoal(ctx.edmIndex);
           float const targetMovementSquared =
               (targetPos - pathGoal).lengthSquared();

@@ -2956,7 +2956,7 @@ void CollisionManager::applyBatchedKinematicUpdates(
 }
 
 void CollisionManager::applyKinematicUpdates(
-    std::vector<KinematicUpdate>& updates) {
+    const std::vector<KinematicUpdate>& updates) {
   // Apply updates directly - no wrapper allocation needed
   for (const auto& kinUpdate : updates) {
     applyKinematicUpdate(kinUpdate);

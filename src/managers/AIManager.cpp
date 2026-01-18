@@ -303,7 +303,7 @@ void AIManager::update(float deltaTime) {
       if (cachedPlayerValid) {
         size_t playerIdx = edm.getIndex(m_playerHandle);
         if (playerIdx != SIZE_MAX) {
-          auto &playerTransform = edm.getTransformByIndex(playerIdx);
+          const auto &playerTransform = edm.getTransformByIndex(playerIdx);
           cachedPlayerPosition = playerTransform.position;
           cachedPlayerVelocity = playerTransform.velocity;
         }
