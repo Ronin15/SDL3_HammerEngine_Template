@@ -9,10 +9,6 @@
       "baseMoveSpeed": 100,
       "baseAttackDamage": 10,
       "baseAttackRange": 50,
-      "atlasX": 295,
-      "atlasY": 1126,
-      "atlasW": 64,
-      "atlasH": 32,
       "idleAnim": {
         "row": 0,
         "frameCount": 1,
@@ -34,10 +30,6 @@
       "baseMoveSpeed": 120,
       "baseAttackDamage": 8,
       "baseAttackRange": 60,
-      "atlasX": 65,
-      "atlasY": 1126,
-      "atlasW": 64,
-      "atlasH": 32,
       "idleAnim": {
         "row": 0,
         "frameCount": 1,
@@ -59,10 +51,6 @@
       "baseMoveSpeed": 80,
       "baseAttackDamage": 15,
       "baseAttackRange": 45,
-      "atlasX": 0,
-      "atlasY": 1159,
-      "atlasW": 64,
-      "atlasH": 32,
       "idleAnim": {
         "row": 0,
         "frameCount": 1,
@@ -84,10 +72,6 @@
       "baseMoveSpeed": 70,
       "baseAttackDamage": 12,
       "baseAttackRange": 40,
-      "atlasX": 0,
-      "atlasY": 1126,
-      "atlasW": 64,
-      "atlasH": 32,
       "idleAnim": {
         "row": 0,
         "frameCount": 1,

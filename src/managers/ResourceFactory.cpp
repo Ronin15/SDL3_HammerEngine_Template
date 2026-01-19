@@ -608,12 +608,19 @@ void ResourceFactory::setCommonProperties(ResourcePtr resource,
     resource->setConsumable(json["consumable"].tryAsBool().value_or(false));
   }
 
+  // Support unified textureId field (sets both icon and world texture)
+  if (json.hasKey("textureId")) {
+    std::string textureId = json["textureId"].tryAsString().value_or("");
+    resource->setIconTextureId(textureId);
+    resource->setWorldTextureId(textureId);
+  }
+
+  // Legacy support: separate iconTextureId/worldTextureId override unified field
   if (json.hasKey("iconTextureId")) {
     resource->setIconTextureId(
         json["iconTextureId"].tryAsString().value_or(""));
   }
 
-  // Set visual properties for world rendering
   if (json.hasKey("worldTextureId")) {
     resource->setWorldTextureId(
         json["worldTextureId"].tryAsString().value_or(""));
@@ -627,19 +634,9 @@ void ResourceFactory::setCommonProperties(ResourcePtr resource,
     resource->setAnimSpeed(json["animSpeed"].tryAsInt().value_or(0));
   }
 
-  // Atlas coordinates for sprite atlas rendering
-  if (json.hasKey("atlasX")) {
-    resource->setAtlasX(json["atlasX"].tryAsInt().value_or(0));
-  }
-  if (json.hasKey("atlasY")) {
-    resource->setAtlasY(json["atlasY"].tryAsInt().value_or(0));
-  }
-  if (json.hasKey("atlasW")) {
-    resource->setAtlasW(json["atlasW"].tryAsInt().value_or(16));
-  }
-  if (json.hasKey("atlasH")) {
-    resource->setAtlasH(json["atlasH"].tryAsInt().value_or(16));
-  }
+  // Note: Atlas coordinates (atlasX/Y/W/H) are now looked up from atlas.json
+  // in ResourceTemplateManager::createDefaultResources(), not read from
+  // resource JSON files. This allows a single source of truth for sprite coords.
 }
 
 } // namespace HammerEngine

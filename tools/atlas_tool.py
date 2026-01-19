@@ -1535,103 +1535,26 @@ def cmd_pack(paths: dict):
 
 
 def export_to_json_files(paths: dict, regions: dict):
-    """Export atlas coordinates to all JSON files."""
+    """Export atlas coordinates - only updates atlas.json now.
 
-    # Update resources.json (unified items, materials, currency)
-    if paths['resources_json'].exists():
-        count = update_resources_json(paths['resources_json'], regions, 'textureId')
-        if count > 0:
-            print(f"  Updated {count} resources in resources.json")
-
-    # Update races.json (NPCs)
-    if paths['races_json'].exists():
-        count = update_creature_json(paths['races_json'], regions, 'races')
-        if count > 0:
-            print(f"  Updated {count} races in races.json")
-
-    # Update monster_types.json
-    if paths['monster_types_json'].exists():
-        count = update_creature_json(paths['monster_types_json'], regions, 'monsterTypes')
-        if count > 0:
-            print(f"  Updated {count} monster types in monster_types.json")
-
-    # Update species.json (Animals)
-    if paths['species_json'].exists():
-        count = update_creature_json(paths['species_json'], regions, 'species')
-        if count > 0:
-            print(f"  Updated {count} species in species.json")
-
-    # Update world_objects.json
-    if paths['world_objects_json'].exists():
-        count = update_world_objects_json(paths['world_objects_json'], regions)
-        if count > 0:
-            print(f"  Updated {count} world objects in world_objects.json")
+    Atlas coordinates are no longer written to data files (resources.json,
+    races.json, etc.). The C++ code now reads textureId from data files and
+    looks up coordinates from atlas.json at runtime. This provides a single
+    source of truth for sprite coordinates.
+    """
+    # Atlas.json is already saved in cmd_pack() before this function is called
+    print("  Atlas coordinates stored in atlas.json only (data files unchanged)")
+    print("  C++ code looks up coords via textureId -> atlas.json at runtime")
 
 
-def update_resources_json(json_path: Path, regions: dict, texture_key: str) -> int:
-    """Update a resources JSON file with atlas coordinates."""
-    with open(json_path, 'r') as f:
-        data = json.load(f)
-
-    updated = 0
-    for resource in data.get('resources', []):
-        texture_id = resource.get(texture_key)
-        if texture_id and texture_id in regions:
-            coords = regions[texture_id]
-            resource['atlasX'] = coords['x']
-            resource['atlasY'] = coords['y']
-            resource['atlasW'] = coords['w']
-            resource['atlasH'] = coords['h']
-            updated += 1
-
-    with open(json_path, 'w') as f:
-        json.dump(data, f, indent=2)
-
-    return updated
-
-
-def update_creature_json(json_path: Path, regions: dict, array_key: str) -> int:
-    """Update creature JSON files (races, monster_types, species) with atlas coordinates."""
-    with open(json_path, 'r') as f:
-        data = json.load(f)
-
-    updated = 0
-    for creature in data.get(array_key, []):
-        texture_id = creature.get('textureId')
-        if texture_id and texture_id in regions:
-            coords = regions[texture_id]
-            creature['atlasX'] = coords['x']
-            creature['atlasY'] = coords['y']
-            creature['atlasW'] = coords['w']
-            creature['atlasH'] = coords['h']
-            updated += 1
-
-    with open(json_path, 'w') as f:
-        json.dump(data, f, indent=2)
-
-    return updated
-
-
-def update_world_objects_json(json_path: Path, regions: dict) -> int:
-    """Update world_objects.json with atlas coordinates."""
-    with open(json_path, 'r') as f:
-        data = json.load(f)
-
-    updated = 0
-    for category in ['biomes', 'obstacles', 'buildings', 'decorations']:
-        for key, obj in data.get(category, {}).items():
-            texture_id = obj.get('textureId')
-            if texture_id and texture_id in regions:
-                obj['atlasX'] = regions[texture_id]['x']
-                obj['atlasY'] = regions[texture_id]['y']
-                obj['atlasW'] = regions[texture_id]['w']
-                obj['atlasH'] = regions[texture_id]['h']
-                updated += 1
-
-    with open(json_path, 'w') as f:
-        json.dump(data, f, indent=2)
-
-    return updated
+# NOTE: The following functions are deprecated and no longer used.
+# Atlas coordinates are now only stored in atlas.json. The C++ code reads
+# textureId from data files and looks up coordinates from atlas.json at runtime.
+# These functions are kept for reference but can be removed in a future cleanup.
+#
+# def update_resources_json(json_path: Path, regions: dict, texture_key: str) -> int:
+# def update_creature_json(json_path: Path, regions: dict, array_key: str) -> int:
+# def update_world_objects_json(json_path: Path, regions: dict) -> int:
 
 
 # =============================================================================

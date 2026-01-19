@@ -19,11 +19,7 @@
         "speedBonus": 0,
         "durability": 150,
         "maxDurability": 150
-      },
-      "atlasX": 152,
-      "atlasY": 2683,
-      "atlasW": 31,
-      "atlasH": 18
+      }
     },
     {
       "id": "dragon_scale_armor",
@@ -44,11 +40,7 @@
         "speedBonus": -5,
         "durability": 200,
         "maxDurability": 200
-      },
-      "atlasX": 350,
-      "atlasY": 1033,
-      "atlasW": 28,
-      "atlasH": 42
+      }
     },
     {
       "id": "super_health_potion",
@@ -66,11 +58,7 @@
         "effect": "HealHP",
         "effectPower": 100,
         "effectDuration": 0
-      },
-      "atlasX": 476,
-      "atlasY": 2754,
-      "atlasW": 11,
-      "atlasH": 11
+      }
     },
     {
       "id": "mana_elixir",
@@ -88,11 +76,7 @@
         "effect": "RestoreMP",
         "effectPower": 80,
         "effectDuration": 0
-      },
-      "atlasX": 488,
-      "atlasY": 2754,
-      "atlasW": 11,
-      "atlasH": 11
+      }
     },
     {
       "id": "ancient_key",
@@ -108,11 +92,7 @@
       "animSpeed": 100,
       "properties": {
         "questId": "ancient_temple_quest"
-      },
-      "atlasX": 288,
-      "atlasY": 2739,
-      "atlasW": 12,
-      "atlasH": 13
+      }
     },
     {
       "id": "mysterious_artifact",
@@ -128,11 +108,7 @@
       "animSpeed": 100,
       "properties": {
         "questId": ""
-      },
-      "atlasX": 315,
-      "atlasY": 2639,
-      "atlasW": 26,
-      "atlasH": 20
+      }
     },
     {
       "id": "health_potion",
@@ -150,11 +126,7 @@
         "effect": "HealHP",
         "effectPower": 50,
         "effectDuration": 0
-      },
-      "atlasX": 476,
-      "atlasY": 2754,
-      "atlasW": 11,
-      "atlasH": 11
+      }
     },
     {
       "id": "iron_ore",
@@ -165,11 +137,7 @@
       "value": 10,
       "maxStackSize": 100,
       "consumable": false,
-      "textureId": "iron_ore",
-      "atlasX": 108,
-      "atlasY": 2780,
-      "atlasW": 10,
-      "atlasH": 6
+      "textureId": "iron_ore"
     },
     {
       "id": "gold_ore",
@@ -180,11 +148,7 @@
       "value": 50,
       "maxStackSize": 100,
       "consumable": false,
-      "textureId": "gold_ore",
-      "atlasX": 486,
-      "atlasY": 2768,
-      "atlasW": 6,
-      "atlasH": 8
+      "textureId": "gold_ore"
     },
     {
       "id": "copper_ore",
@@ -195,11 +159,7 @@
       "value": 5,
       "maxStackSize": 100,
       "consumable": false,
-      "textureId": "copper_ore",
-      "atlasX": 479,
-      "atlasY": 2768,
-      "atlasW": 6,
-      "atlasH": 8
+      "textureId": "copper_ore"
     },
     {
       "id": "mithril_ore",
@@ -221,11 +181,7 @@
       "value": 8,
       "maxStackSize": 100,
       "consumable": false,
-      "textureId": "limestone",
-      "atlasX": 493,
-      "atlasY": 2768,
-      "atlasW": 6,
-      "atlasH": 8
+      "textureId": "limestone"
     },
     {
       "id": "coal",
@@ -236,11 +192,7 @@
       "value": 5,
       "maxStackSize": 100,
       "consumable": false,
-      "textureId": "coal",
-      "atlasX": 97,
-      "atlasY": 2780,
-      "atlasW": 10,
-      "atlasH": 6
+      "textureId": "coal"
     },
     {
       "id": "rough_emerald",
@@ -295,11 +247,7 @@
       "value": 25,
       "maxStackSize": 100,
       "consumable": false,
-      "textureId": "iron_bar",
-      "atlasX": 411,
-      "atlasY": 2768,
-      "atlasW": 11,
-      "atlasH": 9
+      "textureId": "iron_bar"
     },
     {
       "id": "gold_bar",
@@ -310,11 +258,7 @@
       "value": 150,
       "maxStackSize": 100,
       "consumable": false,
-      "textureId": "gold_bar",
-      "atlasX": 399,
-      "atlasY": 2768,
-      "atlasW": 11,
-      "atlasH": 9
+      "textureId": "gold_bar"
     },
     {
       "id": "copper_bar",
@@ -325,11 +269,7 @@
       "value": 15,
       "maxStackSize": 100,
       "consumable": false,
-      "textureId": "copper_bar",
-      "atlasX": 375,
-      "atlasY": 2768,
-      "atlasW": 11,
-      "atlasH": 9
+      "textureId": "copper_bar"
     },
     {
       "id": "mithril_bar",
@@ -351,11 +291,7 @@
       "value": 20,
       "maxStackSize": 100,
       "consumable": false,
-      "textureId": "cut_stone",
-      "atlasX": 387,
-      "atlasY": 2768,
-      "atlasW": 11,
-      "atlasH": 9
+      "textureId": "cut_stone"
     },
     {
       "id": "emerald",
@@ -366,11 +302,7 @@
       "value": 300,
       "maxStackSize": 50,
       "consumable": false,
-      "textureId": "emerald",
-      "atlasX": 121,
-      "atlasY": 2768,
-      "atlasW": 6,
-      "atlasH": 10
+      "textureId": "emerald"
     },
     {
       "id": "ruby",
@@ -381,11 +313,7 @@
       "value": 350,
       "maxStackSize": 50,
       "consumable": false,
-      "textureId": "ruby",
-      "atlasX": 279,
-      "atlasY": 2768,
-      "atlasW": 6,
-      "atlasH": 10
+      "textureId": "ruby"
     },
     {
       "id": "sapphire",
@@ -396,11 +324,7 @@
       "value": 320,
       "maxStackSize": 50,
       "consumable": false,
-      "textureId": "sapphire",
-      "atlasX": 286,
-      "atlasY": 2768,
-      "atlasW": 6,
-      "atlasH": 10
+      "textureId": "sapphire"
     },
     {
       "id": "diamond",
@@ -411,11 +335,7 @@
       "value": 500,
       "maxStackSize": 50,
       "consumable": false,
-      "textureId": "diamond",
-      "atlasX": 406,
-      "atlasY": 1089,
-      "atlasW": 32,
-      "atlasH": 32
+      "textureId": "diamond"
     },
     {
       "id": "enchanted_wood",
@@ -428,11 +348,7 @@
       "consumable": false,
       "textureId": "enchanted_wood",
       "numFrames": 2,
-      "animSpeed": 100,
-      "atlasX": 5,
-      "atlasY": 3936,
-      "atlasW": 23,
-      "atlasH": 18
+      "animSpeed": 100
     },
     {
       "id": "crystal_essence",
@@ -445,11 +361,7 @@
       "consumable": false,
       "textureId": "crystal_essence_world",
       "numFrames": 2,
-      "animSpeed": 100,
-      "atlasX": 486,
-      "atlasY": 2780,
-      "atlasW": 4,
-      "atlasH": 3
+      "animSpeed": 100
     },
     {
       "id": "void_silk",
@@ -460,11 +372,7 @@
       "value": 300,
       "maxStackSize": 25,
       "consumable": false,
-      "textureId": "void_silk_icon",
-      "atlasX": 0,
-      "atlasY": 2560,
-      "atlasW": 18,
-      "atlasH": 26
+      "textureId": "void_silk_icon"
     },
     {
       "id": "wood",
@@ -475,11 +383,7 @@
       "value": 5,
       "maxStackSize": 200,
       "consumable": false,
-      "textureId": "wood_icon",
-      "atlasX": 455,
-      "atlasY": 1159,
-      "atlasW": 18,
-      "atlasH": 32
+      "textureId": "wood_icon"
     },
     {
       "id": "gold_coins",
@@ -490,11 +394,7 @@
       "value": 1,
       "maxStackSize": 10000,
       "consumable": false,
-      "textureId": "gold_icon",
-      "atlasX": 279,
-      "atlasY": 2662,
-      "atlasW": 23,
-      "atlasH": 19
+      "textureId": "gold_icon"
     },
     {
       "id": "platinum_coins",
@@ -505,11 +405,7 @@
       "value": 10,
       "maxStackSize": 10000,
       "consumable": false,
-      "textureId": "platinum_coins_icon",
-      "atlasX": 0,
-      "atlasY": 2639,
-      "atlasW": 25,
-      "atlasH": 22
+      "textureId": "platinum_coins_icon"
     },
     {
       "id": "dragon_gems",
@@ -522,11 +418,7 @@
       "consumable": false,
       "textureId": "dragon_gems",
       "numFrames": 2,
-      "animSpeed": 100,
-      "atlasX": 50,
-      "atlasY": 3942,
-      "atlasW": 11,
-      "atlasH": 11
+      "animSpeed": 100
     },
     {
       "id": "guild_tokens",
@@ -537,11 +429,7 @@
       "value": 5,
       "maxStackSize": 5000,
       "consumable": false,
-      "textureId": "guild_tokens_icon",
-      "atlasX": 483,
-      "atlasY": 2613,
-      "atlasW": 22,
-      "atlasH": 22
+      "textureId": "guild_tokens_icon"
     },
     {
       "id": "arcane_energy",
@@ -554,11 +442,7 @@
       "consumable": false,
       "textureId": "arcane_energy",
       "numFrames": 2,
-      "animSpeed": 100,
-      "atlasX": 129,
-      "atlasY": 3940,
-      "atlasW": 29,
-      "atlasH": 28
+      "animSpeed": 100
     },
     {
       "id": "soul_essence",

@@ -397,7 +397,7 @@ BOOST_AUTO_TEST_CASE(TestWorldResourceInitialization) {
         // Gold ore is rarer than iron, may be 0 in small worlds with few mountains
         BOOST_CHECK_GE(goldQuantity, 0); // Non-negative
     } else {
-        BOOST_WARN_MESSAGE(false, "Gold ore resource handle not found - check materials_and_currency.json");
+        BOOST_WARN_MESSAGE(false, "Gold ore resource handle not found - check resources.json");
     }
     
     // Get all resources for this world to see what was actually initialized
