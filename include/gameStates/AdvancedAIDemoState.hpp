@@ -89,6 +89,9 @@ private:
     size_t m_lastDisplayedNPCCount{0};
     bool m_lastDisplayedPauseState{false};
 
+    // Cached NPC count (updated in update(), used in render())
+    size_t m_cachedNPCCount{0};
+
     // Render scale caching - avoid GPU state changes when zoom unchanged
     float m_lastRenderedZoom{1.0f};
 };

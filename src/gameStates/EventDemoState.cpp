@@ -570,6 +570,9 @@ void EventDemoState::update(float deltaTime) {
   // Update NPC animations (velocity-based, data-driven)
   m_npcRenderCtrl.update(deltaTime);
 
+  // Cache NPC count for render() (avoids EDM query in render path)
+  m_cachedNPCCount = EntityDataManager::Instance().getEntityCount(EntityKind::NPC);
+
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
 
@@ -804,7 +807,8 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
     }
 
     float const currentFPS = mp_stateManager->getCurrentFPS();
-    size_t npcCount = EntityDataManager::Instance().getEntityCount(EntityKind::NPC);
+    // Use cached NPC count from update() to avoid EDM query in render path
+    size_t npcCount = m_cachedNPCCount;
 
     // Update if FPS changed by more than 0.05 (avoids flicker) or other values
     // changed

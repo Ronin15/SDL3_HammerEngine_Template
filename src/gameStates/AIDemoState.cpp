@@ -521,6 +521,9 @@ void AIDemoState::update(float deltaTime) {
     // non-Active Data-driven NPCs are updated via NPCRenderController
     m_npcRenderCtrl.update(deltaTime);
 
+    // Cache entity count for render() (avoids EDM query in render path)
+    m_cachedEntityCount = EntityDataManager::Instance().getEntityCount(EntityKind::NPC);
+
     // Update camera (follows player automatically)
     updateCamera(deltaTime);
 
@@ -598,7 +601,8 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
     // every frame
     int currentFPS =
         static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
-    size_t entityCount = EntityDataManager::Instance().getEntityCount(EntityKind::NPC);
+    // Use cached entity count from update() to avoid EDM query in render path
+    size_t entityCount = m_cachedEntityCount;
 
     if (currentFPS != m_lastDisplayedFPS ||
         entityCount != m_lastDisplayedEntityCount ||
