@@ -455,6 +455,52 @@ def cmd_extract(paths: dict, max_size: int = 64):
     return True
 
 
+def cmd_extract_from(paths: dict, source: str, output_dir: str = None,
+                     prefix: str = None, max_size: int = 64):
+    """Extract sprites from any source image into sprites directory."""
+    source_path = Path(source)
+    if not source_path.exists():
+        print(f"Error: Source image not found: {source_path}")
+        return False
+
+    # Output directory: custom or default res/sprites/
+    sprites_dir = Path(output_dir) if output_dir else paths['sprites_dir']
+    sprites_dir.mkdir(parents=True, exist_ok=True)
+
+    # Auto-prefix from source filename (e.g., "items_sheet.png" -> "items_sheet_")
+    auto_prefix = prefix if prefix else f"{source_path.stem}_"
+
+    # Load and detect sprites
+    img = Image.open(source_path).convert('RGBA')
+    print(f"Loaded: {source_path} ({img.width}x{img.height})")
+
+    regions = detect_sprite_regions(img)
+    print(f"Found {len(regions)} regions")
+
+    # Split oversized regions
+    oversized = sum(1 for r in regions if r['w'] > max_size or r['h'] > max_size)
+    if oversized > 0:
+        print(f"Splitting {oversized} oversized regions...")
+        regions = split_oversized_regions(regions, img, max_size)
+        print(f"After splitting: {len(regions)} regions")
+
+    regions.sort(key=lambda r: (r['y'], r['x']))
+
+    # Extract sprites (append to existing - no clear)
+    extracted = 0
+    for i, r in enumerate(regions):
+        name = f"{auto_prefix}{i+1:03d}"
+        sprite = img.crop((r['x'], r['y'], r['x'] + r['w'], r['y'] + r['h']))
+        output_path = sprites_dir / f"{name}.png"
+        sprite.save(output_path)
+        extracted += 1
+
+    print(f"\nExtracted {extracted} sprites to {sprites_dir}")
+    print(f"Naming: {auto_prefix}001.png, {auto_prefix}002.png, ...")
+    print(f"\nNext: Run 'python3 tools/atlas_tool.py pack' to rebuild atlas")
+    return True
+
+
 # =============================================================================
 # MAP - Visual tool to assign texture IDs to sprites
 # =============================================================================
@@ -1602,6 +1648,15 @@ Example:
     extract_parser = subparsers.add_parser('extract', help='Extract sprites from atlas.png')
     extract_parser.add_argument('--max-size', type=int, default=64,
                                 help='Split regions larger than this (default: 64)')
+    extract_from_parser = subparsers.add_parser('extract-from',
+        help='Extract sprites from any source image into res/sprites/')
+    extract_from_parser.add_argument('source', help='Source image to extract from')
+    extract_from_parser.add_argument('--output', '-o',
+        help='Output directory (default: res/sprites/)')
+    extract_from_parser.add_argument('--prefix', '-p',
+        help='Override auto-prefix (default: source filename)')
+    extract_from_parser.add_argument('--max-size', type=int, default=64,
+        help='Split regions larger than this (default: 64)')
     subparsers.add_parser('map', help='Visual tool to assign texture IDs')
     subparsers.add_parser('pack', help='Pack sprites and export JSON files')
     subparsers.add_parser('list', help='List current sprites')
@@ -1611,6 +1666,8 @@ Example:
 
     if args.command == 'extract':
         cmd_extract(paths, max_size=args.max_size)
+    elif args.command == 'extract-from':
+        cmd_extract_from(paths, args.source, args.output, args.prefix, args.max_size)
     elif args.command == 'map':
         cmd_map(paths)
     elif args.command == 'pack':
