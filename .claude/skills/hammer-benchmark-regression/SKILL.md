@@ -51,7 +51,7 @@ The AI System is the most performance-critical component. Always run `./tests/te
 - [ ] SIMD: Speedup factors extracted for all 4 operations (AI Distance, Bounds, Layer Mask, Particle Physics)
 - [ ] Integrated: Frame time statistics and scaling summary extracted
 - [ ] Background Sim: Scaling data and threading threshold extracted
-- [ ] Adaptive Threading: Crossover points and per-system throughput extracted
+- [ ] Adaptive Threading: Throughput learning, mode switching validation, gradual crossover data extracted
 
 ## Benchmark Test Suites
 
@@ -125,10 +125,18 @@ All paths below are relative to project root.
 
 10. **Adaptive Threading Analysis** (`./bin/debug/adaptive_threading_analysis`) **[REQUIRED]**
     - Script: `./tests/test_scripts/run_adaptive_threading_analysis.sh`
-    - Tests: AI/Collision threading crossover points, adaptive throughput learning over 3000 frames
-    - Metrics: Single vs multi throughput (items/ms), speedup ratio, crossover point, batch multiplier
-    - Target: Correct crossover detection, throughput tracking convergence
-    - Duration: ~4 minutes
+    - Tests: WorkerBudget adaptive logic validation using Collision system
+    - **Test Cases:**
+      - `Collision_ThroughputLearning`: Validates WBM learns throughput for single/multi modes
+      - `Collision_ModeSelection`: Validates WBM selects correct mode based on learned data
+      - `BatchMultiplierTuning`: Validates hill-climbing batch multiplier converges
+      - `Collision_ModeSwitching`: Tests bidirectional mode switching (scale up→MULTI, scale down→SINGLE)
+    - Metrics: Single vs multi throughput (items/ms), speedup ratio, natural crossover point, batch multiplier
+    - **Key Thresholds:**
+      - `MIN_WORKLOAD=100`: Always single-threaded below 100 entities
+      - `MODE_SWITCH_THRESHOLD=1.15`: 15% improvement required to switch modes
+    - Target: Correct crossover detection, throughput tracking convergence, bidirectional mode switching
+    - Duration: ~2 minutes
 
 ### Total Benchmark Duration: ~25 minutes
 
@@ -549,51 +557,83 @@ Mode preference:    MULTI
 - **Throughput:** Single vs multi items/ms
 
 #### Adaptive Threading Analysis Metrics
+
+**Note:** This benchmark validates WorkerBudgetManager adaptive logic using Collision system only.
+
 ```bash
-# Extract crossover points
-grep -E "Crossover point" test_results/adaptive_threading_current.txt
+# Extract throughput learning results
+grep -A 5 "After 1000 frames:" test_results/adaptive_threading_current.txt
 
-# Extract per-system throughput summary
-grep -A 10 "Per-System Throughput" test_results/adaptive_threading_current.txt
+# Extract mode switching results (gradual scale down)
+grep -A 15 "GRADUAL SCALE DOWN" test_results/adaptive_threading_current.txt
 
-# Adaptive learning results
-grep -E "Result:|preferred" test_results/adaptive_threading_current.txt
+# Extract natural crossover point
+grep -E "Natural crossover point" test_results/adaptive_threading_current.txt
+
+# Extract validation summary
+grep -A 5 "VALIDATION" test_results/adaptive_threading_current.txt
 ```
 
 **Example Output:**
 ```
-===== AI THREADING CROSSOVER ANALYSIS =====
-     Count   Single(ms)    Multi(ms)   Single/ms    Multi/ms   Speedup      Winner
-----------------------------------------------------------------------------------------
-       100        0.125        0.245       80000       40816     0.51x      SINGLE
-       250        0.285        0.312       87719       80128     0.91x      ~EQUAL
-       500        0.542        0.425       92251      117647     1.28x       MULTI
-      1000        1.023        0.654       97752      152905     1.56x       MULTI
-      5000        4.856        2.234      102959      223813     2.17x       MULTI
-     10000        9.523        4.125      105007      242424     2.31x       MULTI
+===== COLLISION THROUGHPUT LEARNING =====
+Initial state:
+  Single TP: 0.00 items/ms
+  Multi TP:  0.00 items/ms
 
-=== AI RESULT ===
-Crossover point (speedup > 1.1x): 500 entities
-Throughput single: 6500.00 items/ms
-Throughput multi:  8200.00 items/ms
-Batch multiplier:  1.25
+Running 1000 frames...
 
-===== ADAPTIVE THROUGHPUT SUMMARY =====
-Per-System Throughput (items/ms):
-                   Single      Multi    BatchMult
--------------------------------------------------------
-  AI                6500.00   8200.00      1.25  [MULTI]
-  Collision         4200.00   3800.00      1.00  [SINGLE]
-  Particle          5500.00   7100.00      1.15  [MULTI]
-  Event             9800.00   8500.00      1.00  [SINGLE]
+After 1000 frames:
+  Single TP: 587.94 items/ms
+  Multi TP:  5017.61 items/ms
+  Batch multiplier: 1.00
+
+Validation: WBM learned throughput: PASS
+
+===== COLLISION MODE SWITCHING (UP/DOWN) =====
+=== PHASE 1: VERY LOW COUNT (expect forced SINGLE) ===
+Entity count: 50 (below MIN_WORKLOAD=100)
+  Mode at 50 entities: SINGLE
+  Expected: SINGLE (forced below MIN_WORKLOAD=100)
+
+=== PHASE 2: SCALE UP (expect MULTI) ===
+Entity count: 2000
+  Final mode at 2000 entities: MULTI
+
+=== PHASE 3: GRADUAL SCALE DOWN (find natural crossover) ===
+  Count    Mode      Single TP    Multi TP     Ratio
+  -----    ----      ---------    --------     -----
+   1500    MULTI          2538        4541     1.79x
+   1000    MULTI          2538        4816     1.90x
+    500    MULTI          2278        4739     2.08x
+    200    MULTI          2067        3384     1.64x
+    125    MULTI          1883        2173     1.15x
+    100    SINGLE         3591        1596     0.44x
+
+  Natural crossover point: Not found above MIN_WORKLOAD=100 (MULTI preferred at all tested counts)
+
+=== VALIDATION ===
+  Scale UP (50->2000): PASS - switched to MULTI
+  Below MIN_WORKLOAD (99): PASS - forced SINGLE
+  At MIN_WORKLOAD (100): SINGLE (throughput comparison)
+  Bidirectional adaptive: PASS
+
+===== WORKERBUDGET VALIDATION SUMMARY =====
+Collision System:
+  Single TP:      660 items/ms
+  Multi TP:       2301 items/ms
+  Batch Mult:     1.00
+  Preferred Mode: MULTI
+  Multi Speedup:  3.49x
 ```
 
 **Key Metrics:**
-- **Crossover point:** Entity count where multi-threading becomes beneficial (>1.1x speedup)
-- **Single vs Multi throughput:** Items processed per millisecond in each mode
-- **Speedup ratio:** Multi throughput / Single throughput
-- **Winner:** SINGLE (<0.9x), ~EQUAL (0.9-1.1x), MULTI (>1.1x)
-- **Mode preference:** Per-system recommendation based on throughput tracking
+- **Throughput learning:** WBM learns non-zero throughput for single and multi modes
+- **Mode selection:** WBM chooses correct mode based on learned throughput (>15% improvement to switch)
+- **Batch multiplier:** Should stabilize within range [0.4, 2.0]
+- **Natural crossover:** Entity count where MULTI→SINGLE based on throughput (if found above MIN_WORKLOAD)
+- **MIN_WORKLOAD boundary:** Entities below 100 forced to SINGLE regardless of throughput
+- **Bidirectional switching:** Mode correctly switches when scaling up AND down
 
 ### Step 4: Compare Against Baseline
 
@@ -721,12 +761,14 @@ def classify_change(metric_name, baseline, current, is_lower_better=False):
 - ⚪ STABLE: Sub-linear scaling maintained
 
 **Adaptive Threading Analysis Regression Detection:**
-- 🔴 CRITICAL: Crossover point changed by >3x (e.g., 500→1500)
-- 🔴 CRITICAL: Multi-threaded mode now slower than single across all counts
-- 🟠 WARNING: Speedup at 10K entities <1.5x (expect >2x)
-- 🟠 WARNING: Throughput tracking not converging after 3000 frames
-- 🟡 MINOR: Batch multiplier outside 0.8-1.5 range
-- ⚪ STABLE: Crossover and speedups within ±20% of baseline
+- 🔴 CRITICAL: WBM not learning throughput (stays at 0.0 items/ms after 1000 frames)
+- 🔴 CRITICAL: Mode switching broken (stays MULTI at 50 entities, or SINGLE at 2000 entities)
+- 🔴 CRITICAL: MIN_WORKLOAD boundary not enforced (MULTI returned for <100 entities)
+- 🟠 WARNING: Throughput ratio inverted (Single faster than Multi at high counts like 1500+)
+- 🟠 WARNING: Batch multiplier outside valid range [0.4, 2.0]
+- 🟡 MINOR: Batch multiplier not stabilizing (>10% change in last 500 frames)
+- 🟡 MINOR: Natural crossover point shifted significantly from baseline
+- ⚪ STABLE: All validations pass, throughput learning working, bidirectional switching correct
 
 ### Step 6: Generate Report
 
@@ -948,30 +990,42 @@ def classify_change(metric_name, baseline, current, is_lower_better=False):
 
 ---
 
-### Adaptive Threading Analysis
+### Adaptive Threading Analysis (WorkerBudget Validation)
 
-**Purpose:** Validates threading crossover points and throughput-based adaptive learning
+**Purpose:** Validates WorkerBudgetManager adaptive logic using Collision system
 
-| System | Single TP (items/ms) | Multi TP (items/ms) | Crossover | Preferred | Status |
-|--------|----------------------|---------------------|-----------|-----------|--------|
-| AI | 6500 | 8200 | 500 | MULTI | ⚪ Stable |
-| Collision | 4200 | 3800 | N/A | SINGLE | ⚪ Stable |
-| Particle | 5500 | 7100 | 300 | MULTI | ⚪ Stable |
-| Event | 9800 | 8500 | N/A | SINGLE | ⚪ Stable |
+**Throughput Learning:**
+| Metric | Baseline | Current | Change | Status |
+|--------|----------|---------|--------|--------|
+| Single TP (items/ms) | 588 | 617 | +5% | ⚪ Stable |
+| Multi TP (items/ms) | 5018 | 4970 | -1% | ⚪ Stable |
+| Batch Multiplier | 1.00 | 1.00 | 0% | ⚪ Stable |
+| Multi Speedup | 8.5x | 8.0x | -6% | ⚪ Stable |
 
-**AI Threading Crossover:**
-| Entities | Single (ms) | Multi (ms) | Speedup | Winner |
-|----------|-------------|------------|---------|--------|
-| 100 | 0.125 | 0.245 | 0.51x | SINGLE |
-| 500 | 0.542 | 0.425 | 1.28x | MULTI |
-| 1000 | 1.023 | 0.654 | 1.56x | MULTI |
-| 5000 | 4.856 | 2.234 | 2.17x | MULTI |
-| 10000 | 9.523 | 4.125 | 2.31x | MULTI |
+**Mode Switching Validation:**
+| Test | Expected | Actual | Status |
+|------|----------|--------|--------|
+| 50 entities (below MIN_WORKLOAD=100) | SINGLE | SINGLE | ✓ PASS |
+| 99 entities (below MIN_WORKLOAD=100) | SINGLE | SINGLE | ✓ PASS |
+| 2000 entities (high count) | MULTI | MULTI | ✓ PASS |
+| Bidirectional switching | Scale up→MULTI, down→SINGLE | Correct | ✓ PASS |
+
+**Gradual Scale Down (Natural Crossover Detection):**
+| Entities | Mode | Single TP | Multi TP | Ratio |
+|----------|------|-----------|----------|-------|
+| 1500 | MULTI | 2538 | 4541 | 1.79x |
+| 500 | MULTI | 2278 | 4739 | 2.08x |
+| 200 | MULTI | 2067 | 3384 | 1.64x |
+| 125 | MULTI | 1883 | 2173 | 1.15x |
+| 100 | SINGLE | 3591 | 1596 | 0.44x |
+
+**Natural Crossover Point:** At MIN_WORKLOAD boundary (100 entities) - MULTI preferred above
 
 **Status:** ⚪ **STABLE**
-- AI crossover at 500 entities (correct)
-- Collision correctly prefers single-threaded (low overhead operations)
-- Throughput tracking converged after 3000 frames
+- Throughput learning: PASS (non-zero values after 1000 frames)
+- Mode selection: PASS (correct mode based on throughput comparison)
+- Batch multiplier: PASS (within [0.4, 2.0] range, stabilized)
+- Bidirectional switching: PASS (SINGLE→MULTI on scale up, MULTI→SINGLE on scale down)
 
 ---
 
@@ -1131,7 +1185,7 @@ Before finalizing any regression report, confirm ALL of the following:
 - [ ] SIMD Performance: Platform detection and speedup data extracted
 - [ ] Integrated System: Frame statistics, scaling, coordination overhead extracted
 - [ ] Background Simulation: Scaling and adaptive tuning summary extracted
-- [ ] Adaptive Threading: Crossover points and throughput summary extracted
+- [ ] Adaptive Threading: Throughput learning, mode switching, gradual crossover extracted
 
 ### Report Completeness
 - [ ] **Pathfinding System section included in report** ← DO NOT SKIP!
@@ -1143,7 +1197,7 @@ Before finalizing any regression report, confirm ALL of the following:
 - [ ] SIMD System: Platform and speedup table present
 - [ ] Integrated System: Frame statistics, scaling summary, coordination overhead present
 - [ ] Background Simulation: Scaling table and threading data present
-- [ ] Adaptive Threading: Per-system throughput table and crossover analysis present
+- [ ] Adaptive Threading: Throughput learning, mode switching validation, gradual crossover table present
 - [ ] Overall status determined (PASSED/WARNING/FAILED)
 - [ ] Regression/improvement analysis complete
 

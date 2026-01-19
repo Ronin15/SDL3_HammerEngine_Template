@@ -633,11 +633,7 @@ bool GameEngine::init(std::string_view title) {
           return false;
         }
 
-        // Register built-in weather effect presets
-        particleMgr.registerBuiltInEffects();
-
-        GAMEENGINE_INFO(
-            "Particle Manager initialized successfully with built-in effects");
+        GAMEENGINE_INFO("Particle Manager initialized successfully");
         return true;
       }));
 
