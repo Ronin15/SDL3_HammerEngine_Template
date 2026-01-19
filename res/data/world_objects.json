@@ -119,6 +119,122 @@
       "textureId": null,
       "blocking": true,
       "harvestable": false
+    },
+    "iron_deposit": {
+      "name": "Iron Deposit",
+      "textureId": "ore_iron_deposit",
+      "blocking": true,
+      "harvestable": true,
+      "seasonal": false,
+      "yields": "iron_ore",
+      "atlasX": 16,
+      "atlasY": 2739,
+      "atlasW": 15,
+      "atlasH": 14
+    },
+    "gold_deposit": {
+      "name": "Gold Deposit",
+      "textureId": "ore_gold_deposit",
+      "blocking": true,
+      "harvestable": true,
+      "seasonal": false,
+      "yields": "gold_ore",
+      "atlasX": 0,
+      "atlasY": 2739,
+      "atlasW": 15,
+      "atlasH": 14
+    },
+    "copper_deposit": {
+      "name": "Copper Deposit",
+      "textureId": "ore_copper_deposit",
+      "blocking": true,
+      "harvestable": true,
+      "seasonal": false,
+      "yields": "copper_ore",
+      "atlasX": 487,
+      "atlasY": 2722,
+      "atlasW": 15,
+      "atlasH": 14
+    },
+    "mithril_deposit": {
+      "name": "Mithril Deposit",
+      "textureId": "ore_mithril_deposit",
+      "blocking": true,
+      "harvestable": true,
+      "seasonal": false,
+      "yields": "mithril_ore"
+    },
+    "limestone_deposit": {
+      "name": "Limestone Deposit",
+      "textureId": "ore_limestone_deposit",
+      "blocking": true,
+      "harvestable": true,
+      "seasonal": false,
+      "yields": "limestone",
+      "atlasX": 316,
+      "atlasY": 2754,
+      "atlasW": 14,
+      "atlasH": 12
+    },
+    "coal_deposit": {
+      "name": "Coal Deposit",
+      "textureId": "ore_coal_deposit",
+      "blocking": true,
+      "harvestable": true,
+      "seasonal": false,
+      "yields": "coal",
+      "atlasX": 471,
+      "atlasY": 2722,
+      "atlasW": 15,
+      "atlasH": 14
+    },
+    "emerald_deposit": {
+      "name": "Emerald Deposit",
+      "textureId": "gem_emerald_deposit",
+      "blocking": true,
+      "harvestable": true,
+      "seasonal": false,
+      "yields": "rough_emerald",
+      "atlasX": 407,
+      "atlasY": 2722,
+      "atlasW": 15,
+      "atlasH": 14
+    },
+    "ruby_deposit": {
+      "name": "Ruby Deposit",
+      "textureId": "gem_ruby_deposit",
+      "blocking": true,
+      "harvestable": true,
+      "seasonal": false,
+      "yields": "rough_ruby",
+      "atlasX": 423,
+      "atlasY": 2722,
+      "atlasW": 15,
+      "atlasH": 14
+    },
+    "sapphire_deposit": {
+      "name": "Sapphire Deposit",
+      "textureId": "gem_sapphire_deposit",
+      "blocking": true,
+      "harvestable": true,
+      "seasonal": false,
+      "yields": "rough_sapphire",
+      "atlasX": 301,
+      "atlasY": 2739,
+      "atlasW": 15,
+      "atlasH": 13
+    },
+    "diamond_deposit": {
+      "name": "Diamond Deposit",
+      "textureId": "gem_diamond_deposit",
+      "blocking": true,
+      "harvestable": true,
+      "seasonal": false,
+      "yields": "rough_diamond",
+      "atlasX": 391,
+      "atlasY": 2722,
+      "atlasW": 15,
+      "atlasH": 14
     }
   },
   "decorations": {
