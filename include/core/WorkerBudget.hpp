@@ -225,7 +225,7 @@ private:
         static constexpr size_t MIN_ITEMS_PER_BATCH = 8;    // Prevent trivial batches
 
         // Mode selection constants
-        static constexpr size_t MIN_WORKLOAD = 50;              // Always single-threaded below this
+        static constexpr size_t MIN_WORKLOAD = 100;             // Always single-threaded below this
         static constexpr size_t DEFAULT_THREADING_THRESHOLD = 200;  // Start with threading above this (until data collected)
         static constexpr double MODE_SWITCH_THRESHOLD = 1.15;   // 15% improvement to switch modes
         static constexpr size_t INITIAL_EXPLORATION_FRAMES = 30;    // Try other mode quickly when missing data

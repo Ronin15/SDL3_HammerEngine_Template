@@ -549,7 +549,8 @@ bool ParticleManager::init() {
     // PERFORMANCE OPTIMIZATION: Initialize trigonometric lookup tables
     initTrigLookupTables();
 
-    // Built-in effects will be registered by GameEngine after init
+    // Register built-in particle effects
+    registerBuiltInEffects();
 
     m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false;

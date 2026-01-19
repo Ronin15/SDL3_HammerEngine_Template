@@ -4,12 +4,15 @@
  */
 
 /**
- * Adaptive Threading Analysis
+ * WorkerBudget Adaptive Logic Validation
  *
- * Concrete test to measure single vs multi-threaded throughput at various
- * entity counts to determine optimal threading thresholds per system.
+ * Tests that WorkerBudgetManager correctly:
+ * 1. Learns throughput for single vs multi-threaded modes
+ * 2. Switches modes at appropriate crossover points
+ * 3. Tunes batch multiplier via hill-climbing
  *
- * Output: Raw data showing crossover points where threading becomes beneficial.
+ * Focus: Collision system (demonstrates clear mode switching)
+ * See individual manager benchmarks for raw performance testing.
  */
 
 #define BOOST_TEST_MODULE AdaptiveThreadingAnalysis
@@ -20,21 +23,14 @@
 #include <vector>
 #include <chrono>
 #include <random>
+#include <cmath>
 
-#include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "managers/BackgroundSimulationManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 #include "core/Logger.hpp"
-
-// Production AI behaviors (same as AIDemoState)
-#include "ai/behaviors/WanderBehavior.hpp"
-#include "ai/behaviors/GuardBehavior.hpp"
-#include "ai/behaviors/PatrolBehavior.hpp"
-#include "ai/behaviors/ChaseBehavior.hpp"
 
 namespace {
 
@@ -48,13 +44,6 @@ public:
             PathfinderManager::Instance().init();
             PathfinderManager::Instance().rebuildGrid();
             CollisionManager::Instance().init();
-            AIManager::Instance().init();
-            BackgroundSimulationManager::Instance().init();
-            BackgroundSimulationManager::Instance().setActiveRadius(50000.0f);
-            BackgroundSimulationManager::Instance().setBackgroundRadius(100000.0f);
-
-            // Register production behaviors
-            registerBehaviors();
 
             s_initialized = true;
         }
@@ -62,180 +51,25 @@ public:
     }
 
     void reset() {
-        AIManager::Instance().prepareForStateTransition();
         EntityDataManager::Instance().prepareForStateTransition();
         CollisionManager::Instance().prepareForStateTransition();
     }
 
-    void registerBehaviors() {
-        // Register same behaviors as AIDemoState for realistic workloads
-        auto& aim = AIManager::Instance();
-
-        // Wander variants (different areas, speeds)
-        aim.registerBehavior("Wander", std::make_shared<WanderBehavior>(
-            WanderBehavior::WanderMode::MEDIUM_AREA, 60.0f));
-        aim.registerBehavior("SmallWander", std::make_shared<WanderBehavior>(
-            WanderBehavior::WanderMode::SMALL_AREA, 45.0f));
-        aim.registerBehavior("LargeWander", std::make_shared<WanderBehavior>(
-            WanderBehavior::WanderMode::LARGE_AREA, 75.0f));
-
-        // Patrol variants (different modes)
-        aim.registerBehavior("Patrol", std::make_shared<PatrolBehavior>(
-            PatrolBehavior::PatrolMode::RANDOM_AREA, 75.0f, false));
-        aim.registerBehavior("RandomPatrol", std::make_shared<PatrolBehavior>(
-            PatrolBehavior::PatrolMode::RANDOM_AREA, 85.0f, false));
-        aim.registerBehavior("CirclePatrol", std::make_shared<PatrolBehavior>(
-            PatrolBehavior::PatrolMode::CIRCULAR_AREA, 90.0f, false));
-
-        // Guard behavior
-        aim.registerBehavior("Guard", std::make_shared<GuardBehavior>(
-            Vector2D(5000.0f, 5000.0f), 500.0f));
-
-        // Chase behavior (will chase first entity as target)
-        aim.registerBehavior("Chase", std::make_shared<ChaseBehavior>(100.0f, 500.0f, 30.0f));
+    float calculateWorldSize(size_t entityCount) {
+        float baseSize = std::sqrt(static_cast<float>(entityCount) * 400.0f);
+        return std::clamp(baseSize, 200.0f, 4000.0f);
     }
 
-    void createEntities(size_t count, float worldSize = 10000.0f) {
+    void createEntities(size_t count) {
         auto& edm = EntityDataManager::Instance();
-        auto& aim = AIManager::Instance();
-        std::uniform_real_distribution<float> posDist(100.0f, worldSize - 100.0f);
 
-        // Realistic mix of behaviors like AIDemoState
-        static const std::vector<std::string> behaviors = {
-            "Wander", "SmallWander", "LargeWander",
-            "Patrol", "RandomPatrol", "CirclePatrol",
-            "Guard", "Chase"
-        };
+        float worldSize = calculateWorldSize(count);
+        std::uniform_real_distribution<float> posDist(50.0f, worldSize - 50.0f);
 
-        EntityHandle firstHandle;
         for (size_t i = 0; i < count; ++i) {
             Vector2D pos(posDist(m_rng), posDist(m_rng));
-            EntityHandle handle = edm.createNPCWithRaceClass(pos, "Human", "Guard");
-            if (handle.isValid()) {
-                if (i == 0) firstHandle = handle;
-                // Assign random behavior from the mix
-                const std::string& behaviorName = behaviors[i % behaviors.size()];
-                aim.assignBehavior(handle, behaviorName);
-            }
+            edm.createNPCWithRaceClass(pos, "Human", "Guard");
         }
-
-        // Set first entity as player for Chase behaviors
-        if (firstHandle.isValid()) {
-            aim.setPlayerHandle(firstHandle);
-        }
-    }
-
-    struct Measurement {
-        size_t entityCount;
-        double singleThreadedMs;
-        double multiThreadedMs;
-        double singleThroughput;  // items/ms
-        double multiThroughput;   // items/ms
-        double speedup;           // multi/single throughput ratio
-    };
-
-    Measurement measureAI(size_t entityCount, int iterations = 30) {
-        reset();
-        createEntities(entityCount);
-
-        auto& aim = AIManager::Instance();
-        Measurement m{};
-        m.entityCount = entityCount;
-
-        // Extended warmup with threading enabled to warm up thread pool
-        #ifndef NDEBUG
-        aim.enableThreading(true);
-        #endif
-        for (int i = 0; i < 50; ++i) aim.update(0.016f);
-
-        // Measure MULTI-THREADED FIRST (thread pool is warm)
-        double multiTotal = 0;
-        for (int i = 0; i < iterations; ++i) {
-            auto t0 = std::chrono::high_resolution_clock::now();
-            aim.update(0.016f);
-            auto t1 = std::chrono::high_resolution_clock::now();
-            multiTotal += std::chrono::duration<double, std::milli>(t1 - t0).count();
-        }
-        m.multiThreadedMs = multiTotal / iterations;
-
-        // Switch to single-threaded and warmup
-        #ifndef NDEBUG
-        aim.enableThreading(false);
-        #endif
-        for (int i = 0; i < 20; ++i) aim.update(0.016f);
-
-        // Measure single-threaded
-        double singleTotal = 0;
-        for (int i = 0; i < iterations; ++i) {
-            auto t0 = std::chrono::high_resolution_clock::now();
-            aim.update(0.016f);
-            auto t1 = std::chrono::high_resolution_clock::now();
-            singleTotal += std::chrono::duration<double, std::milli>(t1 - t0).count();
-        }
-        m.singleThreadedMs = singleTotal / iterations;
-
-        // Restore threading
-        #ifndef NDEBUG
-        aim.enableThreading(true);
-        #endif
-
-        m.singleThroughput = (m.singleThreadedMs > 0) ? entityCount / m.singleThreadedMs : 0;
-        m.multiThroughput = (m.multiThreadedMs > 0) ? entityCount / m.multiThreadedMs : 0;
-        m.speedup = (m.singleThroughput > 0) ? m.multiThroughput / m.singleThroughput : 0;
-
-        return m;
-    }
-
-    Measurement measureCollision(size_t entityCount, int iterations = 30) {
-        reset();
-        createEntities(entityCount);
-
-        auto& colMgr = CollisionManager::Instance();
-        Measurement m{};
-        m.entityCount = entityCount;
-
-        // Extended warmup with threading enabled
-        #ifndef NDEBUG
-        colMgr.enableThreading(true);
-        #endif
-        for (int i = 0; i < 50; ++i) colMgr.update(0.016f);
-
-        // Measure MULTI-THREADED FIRST (thread pool is warm)
-        double multiTotal = 0;
-        for (int i = 0; i < iterations; ++i) {
-            auto t0 = std::chrono::high_resolution_clock::now();
-            colMgr.update(0.016f);
-            auto t1 = std::chrono::high_resolution_clock::now();
-            multiTotal += std::chrono::duration<double, std::milli>(t1 - t0).count();
-        }
-        m.multiThreadedMs = multiTotal / iterations;
-
-        // Switch to single-threaded and warmup
-        #ifndef NDEBUG
-        colMgr.enableThreading(false);
-        #endif
-        for (int i = 0; i < 20; ++i) colMgr.update(0.016f);
-
-        // Measure single-threaded
-        double singleTotal = 0;
-        for (int i = 0; i < iterations; ++i) {
-            auto t0 = std::chrono::high_resolution_clock::now();
-            colMgr.update(0.016f);
-            auto t1 = std::chrono::high_resolution_clock::now();
-            singleTotal += std::chrono::duration<double, std::milli>(t1 - t0).count();
-        }
-        m.singleThreadedMs = singleTotal / iterations;
-
-        // Restore threading
-        #ifndef NDEBUG
-        colMgr.enableThreading(true);
-        #endif
-
-        m.singleThroughput = (m.singleThreadedMs > 0) ? entityCount / m.singleThreadedMs : 0;
-        m.multiThroughput = (m.multiThreadedMs > 0) ? entityCount / m.multiThreadedMs : 0;
-        m.speedup = (m.singleThroughput > 0) ? m.multiThroughput / m.singleThroughput : 0;
-
-        return m;
     }
 
 protected:
@@ -245,264 +79,312 @@ protected:
 
 bool AnalysisFixture::s_initialized = false;
 
-void printHeader() {
-    std::cout << std::setw(10) << "Count"
-              << std::setw(14) << "Single(ms)"
-              << std::setw(14) << "Multi(ms)"
-              << std::setw(14) << "Single/ms"
-              << std::setw(14) << "Multi/ms"
-              << std::setw(10) << "Speedup"
-              << std::setw(12) << "Winner" << std::endl;
-    std::cout << std::string(88, '-') << std::endl;
-}
-
-void printMeasurement(const AnalysisFixture::Measurement& m) {
-    std::string winner = (m.speedup > 1.1) ? "MULTI" :
-                         (m.speedup < 0.9) ? "SINGLE" : "~EQUAL";
-    std::cout << std::setw(10) << m.entityCount
-              << std::setw(14) << std::fixed << std::setprecision(3) << m.singleThreadedMs
-              << std::setw(14) << std::fixed << std::setprecision(3) << m.multiThreadedMs
-              << std::setw(14) << std::fixed << std::setprecision(0) << m.singleThroughput
-              << std::setw(14) << std::fixed << std::setprecision(0) << m.multiThroughput
-              << std::setw(9) << std::fixed << std::setprecision(2) << m.speedup << "x"
-              << std::setw(12) << winner << std::endl;
-}
-
 } // anonymous namespace
 
-BOOST_FIXTURE_TEST_SUITE(ThreadingAnalysis, AnalysisFixture)
+BOOST_FIXTURE_TEST_SUITE(WorkerBudgetValidation, AnalysisFixture)
 
-// Find exact crossover point for AI
-BOOST_AUTO_TEST_CASE(AI_ThreadingCrossover) {
-    std::cout << "\n===== AI THREADING CROSSOVER ANALYSIS =====\n" << std::endl;
-    std::cout << "Finding where multi-threading becomes beneficial for AI\n" << std::endl;
-
-    std::vector<size_t> counts = {100, 250, 500, 1000, 2000, 3000, 5000, 7500, 10000};
-
-    printHeader();
-
-    size_t crossoverPoint = 0;
-    for (size_t count : counts) {
-        auto m = measureAI(count);
-        printMeasurement(m);
-
-        if (crossoverPoint == 0 && m.speedup > 1.1) {
-            crossoverPoint = count;
-        }
-    }
-
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    std::cout << "\n=== AI RESULT ===" << std::endl;
-    std::cout << "Crossover point (speedup > 1.1x): " << crossoverPoint << " entities" << std::endl;
-    std::cout << "Throughput single: " << std::fixed << std::setprecision(2)
-              << budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false) << " items/ms" << std::endl;
-    std::cout << "Throughput multi:  " << std::fixed << std::setprecision(2)
-              << budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true) << " items/ms" << std::endl;
-    std::cout << "Batch multiplier:  " << budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI) << std::endl;
-    std::cout << "================\n" << std::endl;
-}
-
-// Find exact crossover point for Collision
-BOOST_AUTO_TEST_CASE(Collision_ThreadingCrossover) {
-    std::cout << "\n===== COLLISION THREADING CROSSOVER ANALYSIS =====\n" << std::endl;
-    std::cout << "Finding where multi-threading becomes beneficial for Collision\n" << std::endl;
-
-    std::vector<size_t> counts = {100, 250, 500, 1000, 2000, 3000, 5000};
-
-    printHeader();
-
-    size_t crossoverPoint = 0;
-    for (size_t count : counts) {
-        auto m = measureCollision(count);
-        printMeasurement(m);
-
-        if (crossoverPoint == 0 && m.speedup > 1.1) {
-            crossoverPoint = count;
-        }
-    }
-
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    std::cout << "\n=== COLLISION RESULT ===" << std::endl;
-    std::cout << "Crossover point (speedup > 1.1x): " << crossoverPoint << " entities" << std::endl;
-    std::cout << "Throughput single: " << std::fixed << std::setprecision(2)
-              << budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, false) << " items/ms" << std::endl;
-    std::cout << "Throughput multi:  " << std::fixed << std::setprecision(2)
-              << budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, true) << " items/ms" << std::endl;
-    std::cout << "Batch multiplier:  " << budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Collision) << std::endl;
-    std::cout << "========================\n" << std::endl;
-}
-
-// Test if adaptive system learns correctly over time (throughput-based)
-BOOST_AUTO_TEST_CASE(AI_AdaptiveLearning) {
-    std::cout << "\n===== AI ADAPTIVE LEARNING TEST =====\n" << std::endl;
-    std::cout << "Running 3000 frames with 5000 entities to see if throughput tracking works\n" << std::endl;
+/**
+ * Test: Collision Throughput Learning
+ * Validates that WBM learns and tracks throughput for Collision system.
+ */
+BOOST_AUTO_TEST_CASE(Collision_ThroughputLearning) {
+    std::cout << "\n===== COLLISION THROUGHPUT LEARNING =====\n" << std::endl;
 
     reset();
-    createEntities(5000);
-
-    auto& aim = AIManager::Instance();
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-
-    double initialSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
-    double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
-    std::cout << "Initial single throughput: " << std::fixed << std::setprecision(2) << initialSingleTP << " items/ms" << std::endl;
-    std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms" << std::endl;
-
-    std::cout << "\n   Frame  BatchMult  SingleTP    MultiTP   Avg Time(ms)" << std::endl;
-    std::cout << std::string(60, '-') << std::endl;
-
-    double totalTime = 0;
-    int sampleCount = 0;
-
-    for (int frame = 0; frame < 3000; ++frame) {
-        auto t0 = std::chrono::high_resolution_clock::now();
-        aim.update(0.016f);
-        auto t1 = std::chrono::high_resolution_clock::now();
-        double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-
-        totalTime += ms;
-        sampleCount++;
-
-        // Report every 500 frames
-        if ((frame + 1) % 500 == 0) {
-            double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
-            double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
-            float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
-            double avgMs = totalTime / sampleCount;
-
-            std::cout << std::setw(8) << (frame + 1)
-                      << std::setw(10) << std::fixed << std::setprecision(2) << batchMult
-                      << std::setw(10) << std::fixed << std::setprecision(2) << singleTP
-                      << std::setw(10) << std::fixed << std::setprecision(2) << multiTP
-                      << std::setw(14) << std::fixed << std::setprecision(3) << avgMs
-                      << std::endl;
-
-            totalTime = 0;
-            sampleCount = 0;
-        }
-    }
-
-    double finalSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
-    double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
-    float finalBatchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
-
-    std::cout << "\nFinal single throughput: " << std::fixed << std::setprecision(2) << finalSingleTP << " items/ms" << std::endl;
-    std::cout << "Final multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms" << std::endl;
-    std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMult << std::endl;
-
-    if (finalMultiTP > finalSingleTP * 1.15) {
-        std::cout << "Result: Multi-threaded mode preferred (15%+ faster)" << std::endl;
-    } else if (finalSingleTP > finalMultiTP * 1.15) {
-        std::cout << "Result: Single-threaded mode preferred (15%+ faster)" << std::endl;
-    } else {
-        std::cout << "Result: Modes are comparable (within 15%)" << std::endl;
-    }
-    std::cout << "=====================================\n" << std::endl;
-}
-
-// Test if collision adaptive system learns correctly (throughput-based)
-BOOST_AUTO_TEST_CASE(Collision_AdaptiveLearning) {
-    std::cout << "\n===== COLLISION ADAPTIVE LEARNING TEST =====\n" << std::endl;
-    std::cout << "Running 3000 frames with 300 entities to see if throughput tracking works\n" << std::endl;
-
-    reset();
-    createEntities(300);
+    createEntities(1000);
 
     auto& colMgr = CollisionManager::Instance();
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
     double initialSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, false);
     double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, true);
-    std::cout << "Initial single throughput: " << std::fixed << std::setprecision(2) << initialSingleTP << " items/ms" << std::endl;
-    std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms" << std::endl;
 
-    std::cout << "\n   Frame  BatchMult  SingleTP    MultiTP   Avg Time(ms)  Mode" << std::endl;
-    std::cout << std::string(70, '-') << std::endl;
+    std::cout << "Initial state:" << std::endl;
+    std::cout << "  Single TP: " << std::fixed << std::setprecision(2) << initialSingleTP << " items/ms" << std::endl;
+    std::cout << "  Multi TP:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms" << std::endl;
 
-    double totalTime = 0;
-    int sampleCount = 0;
-
-    for (int frame = 0; frame < 3000; ++frame) {
-        auto t0 = std::chrono::high_resolution_clock::now();
+    // Run 1000 frames to let WBM learn
+    std::cout << "\nRunning 1000 frames..." << std::endl;
+    for (int i = 0; i < 1000; ++i) {
         colMgr.update(0.016f);
-        auto t1 = std::chrono::high_resolution_clock::now();
-        double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-
-        totalTime += ms;
-        sampleCount++;
-
-        if ((frame + 1) % 500 == 0) {
-            double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, false);
-            double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, true);
-            float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Collision);
-            double avgMs = totalTime / sampleCount;
-
-            std::string mode = (multiTP > singleTP * 1.15) ? "MULTI" :
-                              (singleTP > multiTP * 1.15) ? "SINGLE" : "---";
-
-            std::cout << std::setw(8) << (frame + 1)
-                      << std::setw(10) << std::fixed << std::setprecision(2) << batchMult
-                      << std::setw(10) << std::fixed << std::setprecision(2) << singleTP
-                      << std::setw(10) << std::fixed << std::setprecision(2) << multiTP
-                      << std::setw(14) << std::fixed << std::setprecision(3) << avgMs
-                      << "  " << mode << std::endl;
-
-            totalTime = 0;
-            sampleCount = 0;
-        }
     }
 
     double finalSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, false);
     double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, true);
-    float finalBatchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Collision);
+    float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Collision);
 
-    std::cout << "\nFinal single throughput: " << std::fixed << std::setprecision(2) << finalSingleTP << " items/ms" << std::endl;
-    std::cout << "Final multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms" << std::endl;
-    std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMult << std::endl;
+    std::cout << "\nAfter 1000 frames:" << std::endl;
+    std::cout << "  Single TP: " << std::fixed << std::setprecision(2) << finalSingleTP << " items/ms" << std::endl;
+    std::cout << "  Multi TP:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms" << std::endl;
+    std::cout << "  Batch multiplier: " << std::fixed << std::setprecision(2) << batchMult << std::endl;
 
-    if (finalMultiTP > finalSingleTP * 1.15) {
-        std::cout << "Result: Multi-threaded mode preferred (15%+ faster)" << std::endl;
-    } else if (finalSingleTP > finalMultiTP * 1.15) {
-        std::cout << "Result: Single-threaded mode preferred (15%+ faster)" << std::endl;
-    } else {
-        std::cout << "Result: Modes are comparable (within 15%)" << std::endl;
-    }
-    std::cout << "============================================\n" << std::endl;
+    // Validate: WBM should have learned non-zero throughput for at least one mode
+    bool learned = (finalSingleTP > 0) || (finalMultiTP > 0);
+    std::cout << "\nValidation: WBM learned throughput: " << (learned ? "PASS" : "FAIL") << std::endl;
+    BOOST_CHECK(learned);
+
+    std::cout << "==========================================\n" << std::endl;
 }
 
-// Summary comparison
+/**
+ * Test: Collision Mode Selection
+ * Validates that WBM selects appropriate mode based on learned throughput.
+ */
+BOOST_AUTO_TEST_CASE(Collision_ModeSelection) {
+    std::cout << "\n===== COLLISION MODE SELECTION =====\n" << std::endl;
+
+    reset();
+    createEntities(500);
+
+    auto& colMgr = CollisionManager::Instance();
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+
+    // Run enough frames for WBM to stabilize
+    std::cout << "Running 500 frames to stabilize..." << std::endl;
+    for (int i = 0; i < 500; ++i) {
+        colMgr.update(0.016f);
+    }
+
+    double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, false);
+    double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, true);
+
+    std::cout << "\nLearned throughput:" << std::endl;
+    std::cout << "  Single: " << std::fixed << std::setprecision(2) << singleTP << " items/ms" << std::endl;
+    std::cout << "  Multi:  " << std::fixed << std::setprecision(2) << multiTP << " items/ms" << std::endl;
+
+    auto decision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::Collision, 500);
+
+    std::cout << "\nWBM decision for 500 entities:" << std::endl;
+    std::cout << "  shouldThread: " << (decision.shouldThread ? "true (MULTI)" : "false (SINGLE)") << std::endl;
+
+    bool expectedMulti = (multiTP > singleTP * 1.15);
+    bool decisionCorrect = (decision.shouldThread == expectedMulti);
+
+    std::cout << "\nValidation:" << std::endl;
+    std::cout << "  Expected mode: " << (expectedMulti ? "MULTI" : "SINGLE") << std::endl;
+    std::cout << "  Actual mode:   " << (decision.shouldThread ? "MULTI" : "SINGLE") << std::endl;
+    std::cout << "  Decision correct: " << (decisionCorrect ? "PASS" : "FAIL") << std::endl;
+
+    BOOST_CHECK(decisionCorrect);
+
+    std::cout << "=====================================\n" << std::endl;
+}
+
+/**
+ * Test: Batch Multiplier Tuning
+ * Validates that WBM's hill-climbing batch multiplier converges.
+ */
+BOOST_AUTO_TEST_CASE(BatchMultiplierTuning) {
+    std::cout << "\n===== BATCH MULTIPLIER TUNING =====\n" << std::endl;
+
+    reset();
+    createEntities(1000);
+
+    auto& colMgr = CollisionManager::Instance();
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+
+    float initialMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Collision);
+    std::cout << "Initial batch multiplier: " << std::fixed << std::setprecision(3) << initialMult << std::endl;
+
+    std::cout << "\nRunning 2000 frames, sampling every 500..." << std::endl;
+    std::cout << "  Frame   BatchMult" << std::endl;
+    std::cout << "  -----   ---------" << std::endl;
+
+    std::vector<float> multipliers;
+    multipliers.push_back(initialMult);
+
+    for (int frame = 0; frame < 2000; ++frame) {
+        colMgr.update(0.016f);
+
+        if ((frame + 1) % 500 == 0) {
+            float mult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Collision);
+            multipliers.push_back(mult);
+            std::cout << "  " << std::setw(5) << (frame + 1)
+                      << "   " << std::fixed << std::setprecision(3) << mult << std::endl;
+        }
+    }
+
+    // Check if multiplier is within valid range [0.4, 2.0]
+    float finalMult = multipliers.back();
+    bool inRange = (finalMult >= 0.4f && finalMult <= 2.0f);
+
+    // Check if multiplier stabilized (last 2 samples within 10%)
+    bool stabilized = true;
+    if (multipliers.size() >= 2) {
+        float diff = std::abs(multipliers.back() - multipliers[multipliers.size() - 2]);
+        stabilized = (diff / multipliers.back()) < 0.10f;
+    }
+
+    std::cout << "\nValidation:" << std::endl;
+    std::cout << "  Final multiplier: " << std::fixed << std::setprecision(3) << finalMult << std::endl;
+    std::cout << "  In valid range [0.4, 2.0]: " << (inRange ? "PASS" : "FAIL") << std::endl;
+    std::cout << "  Stabilized: " << (stabilized ? "PASS" : "STILL TUNING") << std::endl;
+
+    BOOST_CHECK(inRange);
+
+    std::cout << "====================================\n" << std::endl;
+}
+
+/**
+ * Test: Mode Switching - Scale Up and Down
+ * Validates that WBM switches modes correctly in both directions:
+ * 1. Scale UP: low count (single) -> high count (multi)
+ * 2. Scale DOWN: high count (multi) -> low count (single)
+ */
+BOOST_AUTO_TEST_CASE(Collision_ModeSwitching) {
+    std::cout << "\n===== COLLISION MODE SWITCHING (UP/DOWN) =====\n" << std::endl;
+
+    auto& colMgr = CollisionManager::Instance();
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+
+    // Phase 1: Start with VERY LOW count - should be forced single-threaded
+    // MIN_WORKLOAD=100 means anything below 100 is always SINGLE
+    std::cout << "=== PHASE 1: VERY LOW COUNT (expect forced SINGLE) ===" << std::endl;
+    reset();
+    createEntities(50);  // Below MIN_WORKLOAD=100 threshold
+
+    std::cout << "Entity count: 50 (below MIN_WORKLOAD=100)" << std::endl;
+    std::cout << "Running 200 frames to stabilize..." << std::endl;
+
+    bool lowCountThreaded = false;
+    for (int i = 0; i < 200; ++i) {
+        colMgr.update(0.016f);
+        if (i == 199) {
+            auto decision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::Collision, 50);
+            lowCountThreaded = decision.shouldThread;
+        }
+    }
+
+    std::cout << "  Mode at 50 entities: " << (lowCountThreaded ? "MULTI" : "SINGLE") << std::endl;
+    std::cout << "  Expected: SINGLE (forced below MIN_WORKLOAD=100)" << std::endl;
+
+    // Phase 2: Scale UP to HIGH count - should switch to multi-threaded
+    std::cout << "\n=== PHASE 2: SCALE UP (expect MULTI) ===" << std::endl;
+    reset();
+    createEntities(2000);  // High count - well above threading threshold
+
+    std::cout << "Entity count: 2000" << std::endl;
+    std::cout << "Running 500 frames to stabilize and switch..." << std::endl;
+
+    std::vector<bool> highCountModes;
+    for (int i = 0; i < 500; ++i) {
+        colMgr.update(0.016f);
+        if ((i + 1) % 100 == 0) {
+            auto decision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::Collision, 2000);
+            highCountModes.push_back(decision.shouldThread);
+            std::cout << "  Frame " << std::setw(3) << (i + 1) << ": "
+                      << (decision.shouldThread ? "MULTI" : "SINGLE") << std::endl;
+        }
+    }
+
+    bool highCountThreaded = highCountModes.back();
+    std::cout << "  Final mode at 2000 entities: " << (highCountThreaded ? "MULTI" : "SINGLE") << std::endl;
+
+    // Phase 3: Gradual scale DOWN to find natural crossover point
+    // Test progressively smaller counts to find where WBM switches from MULTI to SINGLE
+    // based on throughput comparison, not just hitting MIN_WORKLOAD
+    std::cout << "\n=== PHASE 3: GRADUAL SCALE DOWN (find natural crossover) ===" << std::endl;
+
+    std::vector<size_t> testCounts = {1500, 1000, 750, 500, 400, 300, 200, 150, 125, 100};
+    size_t crossoverPoint = 0;
+    bool foundCrossover = false;
+
+    std::cout << "  Count    Mode      Single TP    Multi TP     Ratio" << std::endl;
+    std::cout << "  -----    ----      ---------    --------     -----" << std::endl;
+
+    for (size_t count : testCounts) {
+        reset();
+        createEntities(count);
+
+        // Run frames to let WBM observe this workload
+        for (int i = 0; i < 200; ++i) {
+            colMgr.update(0.016f);
+        }
+
+        auto decision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::Collision, count);
+        double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, false);
+        double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, true);
+        double ratio = (singleTP > 0) ? multiTP / singleTP : 0;
+
+        std::cout << "  " << std::setw(5) << count << "    "
+                  << (decision.shouldThread ? "MULTI " : "SINGLE")
+                  << "    " << std::setw(9) << std::fixed << std::setprecision(0) << singleTP
+                  << "    " << std::setw(8) << std::fixed << std::setprecision(0) << multiTP
+                  << "     " << std::fixed << std::setprecision(2) << ratio << "x" << std::endl;
+
+        // Track first switch from MULTI to SINGLE (natural crossover)
+        if (!foundCrossover && !decision.shouldThread && count > 100) {
+            crossoverPoint = count;
+            foundCrossover = true;
+        }
+    }
+
+    // Final check below MIN_WORKLOAD boundary (should force SINGLE)
+    auto belowBoundaryDecision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::Collision, 99);
+    bool belowBoundaryThreaded = belowBoundaryDecision.shouldThread;
+
+    // At MIN_WORKLOAD (100), throughput comparison is used, not forced SINGLE
+    auto atBoundaryDecision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::Collision, 100);
+    bool atBoundaryThreaded = atBoundaryDecision.shouldThread;
+
+    std::cout << "\n  Natural crossover point: ";
+    if (foundCrossover) {
+        std::cout << crossoverPoint << " entities (MULTI->SINGLE based on throughput)" << std::endl;
+    } else {
+        std::cout << "Not found above MIN_WORKLOAD=100 (MULTI preferred at all tested counts)" << std::endl;
+    }
+
+    // Validation
+    std::cout << "\n=== VALIDATION ===" << std::endl;
+
+    bool scaleUpWorked = highCountThreaded;  // Should be MULTI at high count
+    // Below MIN_WORKLOAD (99): forced SINGLE regardless of throughput
+    bool belowBoundaryCorrect = !belowBoundaryThreaded;
+
+    std::cout << "  Scale UP (50->2000): " << (scaleUpWorked ? "PASS - switched to MULTI" : "FAIL - stayed SINGLE") << std::endl;
+    std::cout << "  Below MIN_WORKLOAD (99): " << (belowBoundaryCorrect ? "PASS - forced SINGLE" : "FAIL - not forced") << std::endl;
+    std::cout << "  At MIN_WORKLOAD (100): " << (atBoundaryThreaded ? "MULTI (throughput comparison)" : "SINGLE (throughput comparison)") << std::endl;
+    std::cout << "  Crossover detection: " << (foundCrossover ? "PASS - found natural switch" : "N/A - MULTI preferred") << std::endl;
+
+    // Key validation: low count should be SINGLE, high count should be MULTI
+    bool modesDiffer = (!lowCountThreaded && highCountThreaded);
+    std::cout << "  Bidirectional adaptive: " << (modesDiffer ? "PASS" : "FAIL") << std::endl;
+
+    BOOST_CHECK_MESSAGE(!lowCountThreaded, "WBM should force SINGLE below MIN_WORKLOAD (50 entities)");
+    BOOST_CHECK_MESSAGE(scaleUpWorked, "WBM should use MULTI at 2000 entities");
+    BOOST_CHECK_MESSAGE(belowBoundaryCorrect, "WBM should force SINGLE at 99 entities (below MIN_WORKLOAD=100)");
+
+    std::cout << "===============================================\n" << std::endl;
+}
+
+/**
+ * Test: Summary
+ * Shows final WBM state for Collision system.
+ */
 BOOST_AUTO_TEST_CASE(Summary) {
-    std::cout << "\n===== ADAPTIVE THROUGHPUT SUMMARY =====\n" << std::endl;
+    std::cout << "\n===== WORKERBUDGET VALIDATION SUMMARY =====\n" << std::endl;
 
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-    std::cout << "Per-System Throughput (items/ms):" << std::endl;
-    std::cout << "                   Single      Multi    BatchMult" << std::endl;
-    std::cout << std::string(55, '-') << std::endl;
+    double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, false);
+    double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, true);
+    float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Collision);
 
-    auto printSystem = [&](const char* name, HammerEngine::SystemType type) {
-        double singleTP = budgetMgr.getExpectedThroughput(type, false);
-        double multiTP = budgetMgr.getExpectedThroughput(type, true);
-        float batchMult = budgetMgr.getBatchMultiplier(type);
-        std::string preferred = (multiTP > singleTP * 1.15) ? "[MULTI]" :
-                               (singleTP > multiTP * 1.15) ? "[SINGLE]" : "[~]";
-        std::cout << "  " << std::setw(12) << std::left << name
-                  << std::setw(10) << std::right << std::fixed << std::setprecision(2) << singleTP
-                  << std::setw(10) << multiTP
-                  << std::setw(10) << batchMult
-                  << "  " << preferred << std::endl;
-    };
+    std::string preferred;
+    if (multiTP > singleTP * 1.15) preferred = "MULTI";
+    else if (singleTP > multiTP * 1.15) preferred = "SINGLE";
+    else preferred = "EQUAL";
 
-    printSystem("AI", HammerEngine::SystemType::AI);
-    printSystem("Collision", HammerEngine::SystemType::Collision);
-    printSystem("Particle", HammerEngine::SystemType::Particle);
-    printSystem("Event", HammerEngine::SystemType::Event);
+    std::cout << "Collision System:" << std::endl;
+    std::cout << "  Single TP:      " << std::fixed << std::setprecision(0) << singleTP << " items/ms" << std::endl;
+    std::cout << "  Multi TP:       " << std::fixed << std::setprecision(0) << multiTP << " items/ms" << std::endl;
+    std::cout << "  Batch Mult:     " << std::fixed << std::setprecision(2) << batchMult << std::endl;
+    std::cout << "  Preferred Mode: " << preferred << std::endl;
 
-    std::cout << "\nLegend:" << std::endl;
-    std::cout << "  [MULTI]  = Multi-threaded mode 15%+ faster" << std::endl;
-    std::cout << "  [SINGLE] = Single-threaded mode 15%+ faster" << std::endl;
-    std::cout << "  [~]      = Modes are comparable (within 15%)" << std::endl;
-    std::cout << "======================================\n" << std::endl;
+    double speedup = (singleTP > 0) ? multiTP / singleTP : 0;
+    std::cout << "  Multi Speedup:  " << std::fixed << std::setprecision(2) << speedup << "x" << std::endl;
+
+    std::cout << "\n============================================\n" << std::endl;
 }
 
 BOOST_AUTO_TEST_SUITE_END()
