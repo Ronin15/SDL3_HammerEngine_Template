@@ -4,74 +4,42 @@
     "default": {
       "name": "Default",
       "textureId": "biome_default",
-      "seasonal": true,
-      "atlasX": 149,
-      "atlasY": 265,
-      "atlasW": 74,
-      "atlasH": 75
+      "seasonal": true
     },
     "desert": {
       "name": "Desert",
       "textureId": "biome_desert",
-      "seasonal": true,
-      "atlasX": 257,
-      "atlasY": 97,
-      "atlasW": 80,
-      "atlasH": 77
+      "seasonal": true
     },
     "forest": {
       "name": "Forest",
       "textureId": "biome_forest",
-      "seasonal": true,
-      "atlasX": 224,
-      "atlasY": 265,
-      "atlasW": 74,
-      "atlasH": 75
+      "seasonal": true
     },
     "mountain": {
       "name": "Mountain",
       "textureId": "biome_mountain",
-      "seasonal": true,
-      "atlasX": 274,
-      "atlasY": 1089,
-      "atlasW": 32,
-      "atlasH": 32
+      "seasonal": true
     },
     "swamp": {
       "name": "Swamp",
       "textureId": "biome_swamp",
-      "seasonal": true,
-      "atlasX": 162,
-      "atlasY": 187,
-      "atlasW": 72,
-      "atlasH": 76
+      "seasonal": true
     },
     "haunted": {
       "name": "Haunted",
       "textureId": "biome_haunted",
-      "seasonal": true,
-      "atlasX": 188,
-      "atlasY": 570,
-      "atlasW": 72,
-      "atlasH": 70
+      "seasonal": true
     },
     "celestial": {
       "name": "Celestial",
       "textureId": "biome_celestial",
-      "seasonal": true,
-      "atlasX": 73,
-      "atlasY": 265,
-      "atlasW": 75,
-      "atlasH": 75
+      "seasonal": true
     },
     "ocean": {
       "name": "Ocean",
       "textureId": "biome_ocean",
-      "seasonal": true,
-      "atlasX": 299,
-      "atlasY": 265,
-      "atlasW": 73,
-      "atlasH": 75
+      "seasonal": true
     }
   },
   "obstacles": {
@@ -86,33 +54,21 @@
       "textureId": "obstacle_rock",
       "blocking": true,
       "harvestable": true,
-      "seasonal": false,
-      "atlasX": 426,
-      "atlasY": 1126,
-      "atlasW": 32,
-      "atlasH": 32
+      "seasonal": false
     },
     "tree": {
       "name": "Tree",
       "textureId": "obstacle_tree",
       "blocking": true,
       "harvestable": true,
-      "seasonal": true,
-      "atlasX": 98,
-      "atlasY": 1170,
-      "atlasW": 31,
-      "atlasH": 32
+      "seasonal": true
     },
     "water": {
       "name": "Water",
       "textureId": "obstacle_water",
       "blocking": true,
       "harvestable": false,
-      "seasonal": false,
-      "atlasX": 296,
-      "atlasY": 494,
-      "atlasW": 71,
-      "atlasH": 73
+      "seasonal": false
     },
     "building": {
       "name": "Building",
@@ -126,11 +82,7 @@
       "blocking": true,
       "harvestable": true,
       "seasonal": false,
-      "yields": "iron_ore",
-      "atlasX": 16,
-      "atlasY": 2739,
-      "atlasW": 15,
-      "atlasH": 14
+      "yields": "iron_ore"
     },
     "gold_deposit": {
       "name": "Gold Deposit",
@@ -138,11 +90,7 @@
       "blocking": true,
       "harvestable": true,
       "seasonal": false,
-      "yields": "gold_ore",
-      "atlasX": 0,
-      "atlasY": 2739,
-      "atlasW": 15,
-      "atlasH": 14
+      "yields": "gold_ore"
     },
     "copper_deposit": {
       "name": "Copper Deposit",
@@ -150,11 +98,7 @@
       "blocking": true,
       "harvestable": true,
       "seasonal": false,
-      "yields": "copper_ore",
-      "atlasX": 487,
-      "atlasY": 2722,
-      "atlasW": 15,
-      "atlasH": 14
+      "yields": "copper_ore"
     },
     "mithril_deposit": {
       "name": "Mithril Deposit",
@@ -170,11 +114,7 @@
       "blocking": true,
       "harvestable": true,
       "seasonal": false,
-      "yields": "limestone",
-      "atlasX": 316,
-      "atlasY": 2754,
-      "atlasW": 14,
-      "atlasH": 12
+      "yields": "limestone"
     },
     "coal_deposit": {
       "name": "Coal Deposit",
@@ -182,11 +122,7 @@
       "blocking": true,
       "harvestable": true,
       "seasonal": false,
-      "yields": "coal",
-      "atlasX": 471,
-      "atlasY": 2722,
-      "atlasW": 15,
-      "atlasH": 14
+      "yields": "coal"
     },
     "emerald_deposit": {
       "name": "Emerald Deposit",
@@ -194,11 +130,7 @@
       "blocking": true,
       "harvestable": true,
       "seasonal": false,
-      "yields": "rough_emerald",
-      "atlasX": 407,
-      "atlasY": 2722,
-      "atlasW": 15,
-      "atlasH": 14
+      "yields": "rough_emerald"
     },
     "ruby_deposit": {
       "name": "Ruby Deposit",
@@ -206,11 +138,7 @@
       "blocking": true,
       "harvestable": true,
       "seasonal": false,
-      "yields": "rough_ruby",
-      "atlasX": 423,
-      "atlasY": 2722,
-      "atlasW": 15,
-      "atlasH": 14
+      "yields": "rough_ruby"
     },
     "sapphire_deposit": {
       "name": "Sapphire Deposit",
@@ -218,11 +146,7 @@
       "blocking": true,
       "harvestable": true,
       "seasonal": false,
-      "yields": "rough_sapphire",
-      "atlasX": 301,
-      "atlasY": 2739,
-      "atlasW": 15,
-      "atlasH": 13
+      "yields": "rough_sapphire"
     },
     "diamond_deposit": {
       "name": "Diamond Deposit",
@@ -230,11 +154,7 @@
       "blocking": true,
       "harvestable": true,
       "seasonal": false,
-      "yields": "rough_diamond",
-      "atlasX": 391,
-      "atlasY": 2722,
-      "atlasW": 15,
-      "atlasH": 14
+      "yields": "rough_diamond"
     }
   },
   "decorations": {
@@ -245,56 +165,32 @@
     "flower_blue": {
       "name": "Blue Flower",
       "textureId": "flower_blue",
-      "seasonal": false,
-      "atlasX": 163,
-      "atlasY": 1126,
-      "atlasW": 32,
-      "atlasH": 32
+      "seasonal": false
     },
     "flower_pink": {
       "name": "Pink Flower",
       "textureId": "flower_pink",
-      "seasonal": false,
-      "atlasX": 196,
-      "atlasY": 1126,
-      "atlasW": 32,
-      "atlasH": 32
+      "seasonal": false
     },
     "flower_white": {
       "name": "White Flower",
       "textureId": "flower_white",
-      "seasonal": false,
-      "atlasX": 229,
-      "atlasY": 1126,
-      "atlasW": 32,
-      "atlasH": 32
+      "seasonal": false
     },
     "flower_yellow": {
       "name": "Yellow Flower",
       "textureId": "flower_yellow",
-      "seasonal": false,
-      "atlasX": 262,
-      "atlasY": 1126,
-      "atlasW": 32,
-      "atlasH": 32
+      "seasonal": false
     },
     "mushroom_purple": {
       "name": "Purple Mushroom",
       "textureId": "mushroom_purple",
-      "seasonal": false,
-      "atlasX": 360,
-      "atlasY": 1126,
-      "atlasW": 32,
-      "atlasH": 32
+      "seasonal": false
     },
     "mushroom_tan": {
       "name": "Tan Mushroom",
       "textureId": "mushroom_tan",
-      "seasonal": false,
-      "atlasX": 393,
-      "atlasY": 1126,
-      "atlasW": 32,
-      "atlasH": 32
+      "seasonal": false
     },
     "grass_small": {
       "name": "Small Grass",
@@ -314,65 +210,37 @@
     "stump_small": {
       "name": "Small Stump",
       "textureId": "stump_obstacle_small",
-      "seasonal": false,
-      "atlasX": 195,
-      "atlasY": 1159,
-      "atlasW": 32,
-      "atlasH": 32
+      "seasonal": false
     },
     "stump_medium": {
       "name": "Medium Stump",
       "textureId": "stump_obstacle_medium",
-      "seasonal": false,
-      "atlasX": 162,
-      "atlasY": 1159,
-      "atlasW": 32,
-      "atlasH": 32
+      "seasonal": false
     },
     "rock_small": {
       "name": "Small Rock",
       "textureId": "obstacle_rock",
-      "seasonal": false,
-      "atlasX": 426,
-      "atlasY": 1126,
-      "atlasW": 32,
-      "atlasH": 32
+      "seasonal": false
     },
     "dead_log_hz": {
       "name": "Horizontal Log",
       "textureId": "dead_log_hz",
-      "seasonal": false,
-      "atlasX": 426,
-      "atlasY": 2503,
-      "atlasW": 59,
-      "atlasH": 27
+      "seasonal": false
     },
     "dead_log_vertical": {
       "name": "Vertical Log",
       "textureId": "dead_log_vertical",
-      "seasonal": false,
-      "atlasX": 50,
-      "atlasY": 1033,
-      "atlasW": 22,
-      "atlasH": 54
+      "seasonal": false
     },
     "lily_pad": {
       "name": "Lily Pad",
       "textureId": "small_lily_pad",
-      "seasonal": false,
-      "atlasX": 119,
-      "atlasY": 2780,
-      "atlasW": 7,
-      "atlasH": 6
+      "seasonal": false
     },
     "water_flower": {
       "name": "Water Flower",
       "textureId": "blue_water_flower",
-      "seasonal": false,
-      "atlasX": 159,
-      "atlasY": 2722,
-      "atlasW": 16,
-      "atlasH": 15
+      "seasonal": false
     }
   },
   "buildings": {
@@ -384,11 +252,7 @@
         2
       ],
       "buildingSize": 1,
-      "seasonal": true,
-      "atlasX": 266,
-      "atlasY": 644,
-      "atlasW": 64,
-      "atlasH": 64
+      "seasonal": true
     },
     "house": {
       "name": "House",
@@ -398,11 +262,7 @@
         2
       ],
       "buildingSize": 2,
-      "seasonal": true,
-      "atlasX": 201,
-      "atlasY": 644,
-      "atlasW": 64,
-      "atlasH": 64
+      "seasonal": true
     },
     "large": {
       "name": "Large Building",
@@ -412,11 +272,7 @@
         2
       ],
       "buildingSize": 3,
-      "seasonal": true,
-      "atlasX": 331,
-      "atlasY": 644,
-      "atlasW": 64,
-      "atlasH": 64
+      "seasonal": true
     },
     "cityhall": {
       "name": "City Hall",
@@ -426,11 +282,7 @@
         2
       ],
       "buildingSize": 4,
-      "seasonal": true,
-      "atlasX": 136,
-      "atlasY": 644,
-      "atlasW": 64,
-      "atlasH": 64
+      "seasonal": true
     }
   }
 }
