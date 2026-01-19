@@ -90,10 +90,30 @@ void Camera::update(float deltaTime) {
         }
         Vector2D const targetPos = getTargetPosition();  // Target's UNCLAMPED position
 
-        // Set m_position to unclamped target for smooth interpolation
+        // Deadzone check: skip movement if within deadzone radius
+        if (m_config.deadZoneRadius > 0.0f) {
+            float const distSq = (targetPos - m_position).lengthSquared();
+            if (distSq < m_config.deadZoneRadius * m_config.deadZoneRadius) {
+                return; // Don't move if within deadzone
+            }
+        }
+
+        // Frame-rate independent exponential smoothing for smooth camera follow.
+        // Formula: t = 1 - smoothingFactor^(deltaTime * 60 * followSpeed)
+        //
+        // With default values (smoothingFactor=0.85, followSpeed=5.0):
+        // - At 60fps (dt=1/60): t = 1 - 0.85^5 ≈ 0.56 (camera moves 56% of gap)
+        // - At 120fps (dt=1/120): t = 1 - 0.85^2.5 ≈ 0.33, two frames: 0.56 ✓
+        // - Reaches 99% of target in ~0.15 seconds
+        //
         // The offset clamping happens in computeOffsetFromCenter(), NOT here
         // This ensures entity renders at correct position when camera hits world bounds
-        m_position = targetPos;
+        float const t = std::clamp(
+            1.0f - std::pow(m_config.smoothingFactor,
+                           deltaTime * 60.0f * m_config.followSpeed),
+            0.0f, 1.0f);  // Safety clamp for extreme dt values
+
+        m_position = m_position + (targetPos - m_position) * t;
     } else {
         // Non-Follow modes: clamp camera position
         if (m_config.clampToWorldBounds) {
