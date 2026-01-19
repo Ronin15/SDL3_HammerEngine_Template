@@ -34,6 +34,7 @@ python3 tools/atlas_tool.py pack
 | Command | Description |
 |---------|-------------|
 | `extract` | Extract sprites from atlas.png → res/sprites/ |
+| `extract-from` | Extract sprites from any source image → res/sprites/ |
 | `map` | Visual tool to assign texture IDs to sprites |
 | `pack` | Pack sprites into atlas.png + export all JSON |
 | `list` | Show current sprites status |
@@ -48,6 +49,27 @@ python3 tools/atlas_tool.py extract
 - Extracts to res/sprites/ as individual PNGs
 - Uses existing atlas.json names if available
 - Unnamed sprites get `sprite_001.png`, `sprite_002.png`, etc.
+
+**1b. EXTRACT-FROM** - Import sprites from any source image
+```bash
+# Extract from external image (auto-names: mysheet_001.png, mysheet_002.png, ...)
+python3 tools/atlas_tool.py extract-from mysheet.png
+
+# Custom prefix
+python3 tools/atlas_tool.py extract-from items.png --prefix sword_
+
+# Custom output directory
+python3 tools/atlas_tool.py extract-from source.png -o ./temp/
+
+# Allow larger sprites without splitting
+python3 tools/atlas_tool.py extract-from source.png --max-size 128
+```
+- Extract sprites from any PNG image into res/sprites/
+- Auto-prefix from source filename (e.g., `items.png` → `items_001.png`, `items_002.png`)
+- Appends to existing sprites (does not clear directory)
+- Useful for importing sprites from external sprite sheets
+- Optional `--prefix` to override auto-naming
+- Optional `--output` for custom output directory
 
 **2. MAP** - Assign texture IDs
 ```bash
@@ -91,10 +113,19 @@ python3 tools/atlas_tool.py pack
 
 ### Adding New Sprites
 
+**Option A: Single sprite**
 1. Add PNG to `res/sprites/` with the texture ID as filename
    - e.g., `res/sprites/new_item_world.png`
 2. Run `python3 tools/atlas_tool.py pack`
 3. Atlas rebuilt, JSON files updated automatically
+
+**Option B: From external sprite sheet**
+1. Extract sprites from source image:
+   ```bash
+   python3 tools/atlas_tool.py extract-from ~/Downloads/new_sprites.png
+   ```
+2. Rename extracted sprites to their texture IDs, or use `map` command
+3. Run `python3 tools/atlas_tool.py pack`
 
 ### Modifying Existing Sprites
 
