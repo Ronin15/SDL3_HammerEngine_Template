@@ -929,6 +929,18 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
     m_cachedTextureIDs.building_house = getTextureId(m_worldObjects.buildings, "house", "building_house");
     m_cachedTextureIDs.building_large = getTextureId(m_worldObjects.buildings, "large", "building_large");
     m_cachedTextureIDs.building_cityhall = getTextureId(m_worldObjects.buildings, "cityhall", "building_cityhall");
+    // Ore deposits (non-seasonal)
+    m_cachedTextureIDs.obstacle_iron_deposit = getTextureId(m_worldObjects.obstacles, "iron_deposit", "ore_iron_deposit");
+    m_cachedTextureIDs.obstacle_gold_deposit = getTextureId(m_worldObjects.obstacles, "gold_deposit", "ore_gold_deposit");
+    m_cachedTextureIDs.obstacle_copper_deposit = getTextureId(m_worldObjects.obstacles, "copper_deposit", "ore_copper_deposit");
+    m_cachedTextureIDs.obstacle_mithril_deposit = getTextureId(m_worldObjects.obstacles, "mithril_deposit", "ore_mithril_deposit");
+    m_cachedTextureIDs.obstacle_limestone_deposit = getTextureId(m_worldObjects.obstacles, "limestone_deposit", "ore_limestone_deposit");
+    m_cachedTextureIDs.obstacle_coal_deposit = getTextureId(m_worldObjects.obstacles, "coal_deposit", "ore_coal_deposit");
+    // Gem deposits (non-seasonal)
+    m_cachedTextureIDs.obstacle_emerald_deposit = getTextureId(m_worldObjects.obstacles, "emerald_deposit", "gem_emerald_deposit");
+    m_cachedTextureIDs.obstacle_ruby_deposit = getTextureId(m_worldObjects.obstacles, "ruby_deposit", "gem_ruby_deposit");
+    m_cachedTextureIDs.obstacle_sapphire_deposit = getTextureId(m_worldObjects.obstacles, "sapphire_deposit", "gem_sapphire_deposit");
+    m_cachedTextureIDs.obstacle_diamond_deposit = getTextureId(m_worldObjects.obstacles, "diamond_deposit", "gem_diamond_deposit");
   } else {
     // Hardcoded defaults when JSON not loaded
     m_cachedTextureIDs.biome_default = std::string(prefix) + "biome_default";
@@ -946,6 +958,18 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
     m_cachedTextureIDs.building_house = std::string(prefix) + "building_house";
     m_cachedTextureIDs.building_large = std::string(prefix) + "building_large";
     m_cachedTextureIDs.building_cityhall = std::string(prefix) + "building_cityhall";
+    // Ore deposits (non-seasonal, no prefix)
+    m_cachedTextureIDs.obstacle_iron_deposit = "ore_iron_deposit";
+    m_cachedTextureIDs.obstacle_gold_deposit = "ore_gold_deposit";
+    m_cachedTextureIDs.obstacle_copper_deposit = "ore_copper_deposit";
+    m_cachedTextureIDs.obstacle_mithril_deposit = "ore_mithril_deposit";
+    m_cachedTextureIDs.obstacle_limestone_deposit = "ore_limestone_deposit";
+    m_cachedTextureIDs.obstacle_coal_deposit = "ore_coal_deposit";
+    // Gem deposits (non-seasonal, no prefix)
+    m_cachedTextureIDs.obstacle_emerald_deposit = "gem_emerald_deposit";
+    m_cachedTextureIDs.obstacle_ruby_deposit = "gem_ruby_deposit";
+    m_cachedTextureIDs.obstacle_sapphire_deposit = "gem_sapphire_deposit";
+    m_cachedTextureIDs.obstacle_diamond_deposit = "gem_diamond_deposit";
   }
 
   // Cache raw texture pointers for direct rendering (eliminates ~8,000 hash
@@ -988,6 +1012,29 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
                m_cachedTextureIDs.building_large);
   cacheTexture(m_cachedTextures.building_cityhall,
                m_cachedTextureIDs.building_cityhall);
+
+  // Ore deposit textures
+  cacheTexture(m_cachedTextures.obstacle_iron_deposit,
+               m_cachedTextureIDs.obstacle_iron_deposit);
+  cacheTexture(m_cachedTextures.obstacle_gold_deposit,
+               m_cachedTextureIDs.obstacle_gold_deposit);
+  cacheTexture(m_cachedTextures.obstacle_copper_deposit,
+               m_cachedTextureIDs.obstacle_copper_deposit);
+  cacheTexture(m_cachedTextures.obstacle_mithril_deposit,
+               m_cachedTextureIDs.obstacle_mithril_deposit);
+  cacheTexture(m_cachedTextures.obstacle_limestone_deposit,
+               m_cachedTextureIDs.obstacle_limestone_deposit);
+  cacheTexture(m_cachedTextures.obstacle_coal_deposit,
+               m_cachedTextureIDs.obstacle_coal_deposit);
+  // Gem deposit textures
+  cacheTexture(m_cachedTextures.obstacle_emerald_deposit,
+               m_cachedTextureIDs.obstacle_emerald_deposit);
+  cacheTexture(m_cachedTextures.obstacle_ruby_deposit,
+               m_cachedTextureIDs.obstacle_ruby_deposit);
+  cacheTexture(m_cachedTextures.obstacle_sapphire_deposit,
+               m_cachedTextureIDs.obstacle_sapphire_deposit);
+  cacheTexture(m_cachedTextures.obstacle_diamond_deposit,
+               m_cachedTextureIDs.obstacle_diamond_deposit);
 
   // Decoration textures - handle seasonal variants
   // Flowers only appear in Spring/Summer (empty string = won't render)
@@ -1233,6 +1280,19 @@ void HammerEngine::TileRenderer::initAtlasCoords() {
     loadBuilding(coords.building_large, "large");
     loadBuilding(coords.building_cityhall, "cityhall");
 
+    // Ore deposits (non-seasonal)
+    loadObstacle(coords.obstacle_iron_deposit, "iron_deposit");
+    loadObstacle(coords.obstacle_gold_deposit, "gold_deposit");
+    loadObstacle(coords.obstacle_copper_deposit, "copper_deposit");
+    loadObstacle(coords.obstacle_mithril_deposit, "mithril_deposit");
+    loadObstacle(coords.obstacle_limestone_deposit, "limestone_deposit");
+    loadObstacle(coords.obstacle_coal_deposit, "coal_deposit");
+    // Gem deposits (non-seasonal)
+    loadObstacle(coords.obstacle_emerald_deposit, "emerald_deposit");
+    loadObstacle(coords.obstacle_ruby_deposit, "ruby_deposit");
+    loadObstacle(coords.obstacle_sapphire_deposit, "sapphire_deposit");
+    loadObstacle(coords.obstacle_diamond_deposit, "diamond_deposit");
+
     // Decorations - special handling for seasonal availability
     auto loadDecoration = [&](AtlasCoords& target, const std::string& key) {
       if (!worldRoot.hasKey("decorations")) {
@@ -1350,6 +1410,18 @@ void HammerEngine::TileRenderer::applyCoordsToTextures(Season season) {
   apply(m_cachedTextures.building_house, coords.building_house);
   apply(m_cachedTextures.building_large, coords.building_large);
   apply(m_cachedTextures.building_cityhall, coords.building_cityhall);
+  // Ore deposits
+  apply(m_cachedTextures.obstacle_iron_deposit, coords.obstacle_iron_deposit);
+  apply(m_cachedTextures.obstacle_gold_deposit, coords.obstacle_gold_deposit);
+  apply(m_cachedTextures.obstacle_copper_deposit, coords.obstacle_copper_deposit);
+  apply(m_cachedTextures.obstacle_mithril_deposit, coords.obstacle_mithril_deposit);
+  apply(m_cachedTextures.obstacle_limestone_deposit, coords.obstacle_limestone_deposit);
+  apply(m_cachedTextures.obstacle_coal_deposit, coords.obstacle_coal_deposit);
+  // Gem deposits
+  apply(m_cachedTextures.obstacle_emerald_deposit, coords.obstacle_emerald_deposit);
+  apply(m_cachedTextures.obstacle_ruby_deposit, coords.obstacle_ruby_deposit);
+  apply(m_cachedTextures.obstacle_sapphire_deposit, coords.obstacle_sapphire_deposit);
+  apply(m_cachedTextures.obstacle_diamond_deposit, coords.obstacle_diamond_deposit);
   apply(m_cachedTextures.decoration_flower_blue, coords.decoration_flower_blue);
   apply(m_cachedTextures.decoration_flower_pink, coords.decoration_flower_pink);
   apply(m_cachedTextures.decoration_flower_white, coords.decoration_flower_white);
@@ -1641,6 +1713,38 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
           break;
         case HammerEngine::ObstacleType::WATER:
           continue; // Water is biome layer
+        // Ore deposits
+        case HammerEngine::ObstacleType::IRON_DEPOSIT:
+          tex = &m_cachedTextures.obstacle_iron_deposit;
+          break;
+        case HammerEngine::ObstacleType::GOLD_DEPOSIT:
+          tex = &m_cachedTextures.obstacle_gold_deposit;
+          break;
+        case HammerEngine::ObstacleType::COPPER_DEPOSIT:
+          tex = &m_cachedTextures.obstacle_copper_deposit;
+          break;
+        case HammerEngine::ObstacleType::MITHRIL_DEPOSIT:
+          tex = &m_cachedTextures.obstacle_mithril_deposit;
+          break;
+        case HammerEngine::ObstacleType::LIMESTONE_DEPOSIT:
+          tex = &m_cachedTextures.obstacle_limestone_deposit;
+          break;
+        case HammerEngine::ObstacleType::COAL_DEPOSIT:
+          tex = &m_cachedTextures.obstacle_coal_deposit;
+          break;
+        // Gem deposits
+        case HammerEngine::ObstacleType::EMERALD_DEPOSIT:
+          tex = &m_cachedTextures.obstacle_emerald_deposit;
+          break;
+        case HammerEngine::ObstacleType::RUBY_DEPOSIT:
+          tex = &m_cachedTextures.obstacle_ruby_deposit;
+          break;
+        case HammerEngine::ObstacleType::SAPPHIRE_DEPOSIT:
+          tex = &m_cachedTextures.obstacle_sapphire_deposit;
+          break;
+        case HammerEngine::ObstacleType::DIAMOND_DEPOSIT:
+          tex = &m_cachedTextures.obstacle_diamond_deposit;
+          break;
         default:
           break;
         }
@@ -1973,6 +2077,28 @@ std::string HammerEngine::TileRenderer::getObstacleTexture(
     return "obstacle_water";
   case HammerEngine::ObstacleType::BUILDING:
     return "building_hut"; // Default to hut texture
+  // Ore deposits
+  case HammerEngine::ObstacleType::IRON_DEPOSIT:
+    return "ore_iron_deposit";
+  case HammerEngine::ObstacleType::GOLD_DEPOSIT:
+    return "ore_gold_deposit";
+  case HammerEngine::ObstacleType::COPPER_DEPOSIT:
+    return "ore_copper_deposit";
+  case HammerEngine::ObstacleType::MITHRIL_DEPOSIT:
+    return "ore_mithril_deposit";
+  case HammerEngine::ObstacleType::LIMESTONE_DEPOSIT:
+    return "ore_limestone_deposit";
+  case HammerEngine::ObstacleType::COAL_DEPOSIT:
+    return "ore_coal_deposit";
+  // Gem deposits
+  case HammerEngine::ObstacleType::EMERALD_DEPOSIT:
+    return "gem_emerald_deposit";
+  case HammerEngine::ObstacleType::RUBY_DEPOSIT:
+    return "gem_ruby_deposit";
+  case HammerEngine::ObstacleType::SAPPHIRE_DEPOSIT:
+    return "gem_sapphire_deposit";
+  case HammerEngine::ObstacleType::DIAMOND_DEPOSIT:
+    return "gem_diamond_deposit";
   default:
     return "biome_default";
   }

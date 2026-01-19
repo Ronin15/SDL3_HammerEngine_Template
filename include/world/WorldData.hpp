@@ -41,7 +41,19 @@ enum class ObstacleType {
     ROCK,
     TREE,
     WATER,
-    BUILDING
+    BUILDING,
+    // Ore deposits
+    IRON_DEPOSIT,
+    GOLD_DEPOSIT,
+    COPPER_DEPOSIT,
+    MITHRIL_DEPOSIT,
+    LIMESTONE_DEPOSIT,
+    COAL_DEPOSIT,
+    // Gem deposits
+    EMERALD_DEPOSIT,
+    RUBY_DEPOSIT,
+    SAPPHIRE_DEPOSIT,
+    DIAMOND_DEPOSIT
 };
 
 enum class DecorationType : uint8_t {
@@ -85,6 +97,18 @@ inline std::ostream& operator<<(std::ostream& os, const ObstacleType& obstacle) 
         case ObstacleType::TREE: return os << "TREE";
         case ObstacleType::WATER: return os << "WATER";
         case ObstacleType::BUILDING: return os << "BUILDING";
+        // Ore deposits
+        case ObstacleType::IRON_DEPOSIT: return os << "IRON_DEPOSIT";
+        case ObstacleType::GOLD_DEPOSIT: return os << "GOLD_DEPOSIT";
+        case ObstacleType::COPPER_DEPOSIT: return os << "COPPER_DEPOSIT";
+        case ObstacleType::MITHRIL_DEPOSIT: return os << "MITHRIL_DEPOSIT";
+        case ObstacleType::LIMESTONE_DEPOSIT: return os << "LIMESTONE_DEPOSIT";
+        case ObstacleType::COAL_DEPOSIT: return os << "COAL_DEPOSIT";
+        // Gem deposits
+        case ObstacleType::EMERALD_DEPOSIT: return os << "EMERALD_DEPOSIT";
+        case ObstacleType::RUBY_DEPOSIT: return os << "RUBY_DEPOSIT";
+        case ObstacleType::SAPPHIRE_DEPOSIT: return os << "SAPPHIRE_DEPOSIT";
+        case ObstacleType::DIAMOND_DEPOSIT: return os << "DIAMOND_DEPOSIT";
         default: return os << "UNKNOWN";
     }
 }
