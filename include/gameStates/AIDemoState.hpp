@@ -79,6 +79,9 @@ private:
     size_t m_lastDisplayedEntityCount{0};
     bool m_lastDisplayedPauseState{false};
 
+    // Cached entity count (updated in update(), used in render())
+    size_t m_cachedEntityCount{0};
+
     // Render scale caching - avoid GPU state changes when zoom unchanged
     float m_lastRenderedZoom{1.0f};
 };

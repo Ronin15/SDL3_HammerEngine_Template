@@ -231,6 +231,9 @@ private:
   std::string m_lastDisplayedWeather{};
   std::string m_lastDisplayedPhase{};
 
+  // Cached NPC count (updated in update(), used in render())
+  size_t m_cachedNPCCount{0};
+
   // Lazy-cached strings (computed only when underlying enum changes)
   DemoPhase m_lastCachedPhase{DemoPhase::Complete};  // Initialize to invalid to force first compute
   WeatherType m_lastCachedWeather{WeatherType::Custom};  // Initialize to invalid to force first compute
