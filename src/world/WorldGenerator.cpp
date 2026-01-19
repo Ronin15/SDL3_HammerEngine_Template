@@ -70,6 +70,31 @@ namespace Obstacles {
 }
 
 // ----------------------------------------------------------------------------
+// DEPOSIT SPAWN RATES (Ore and Gem deposits in MOUNTAIN biome)
+// ----------------------------------------------------------------------------
+namespace Deposits {
+    // Base chance for any deposit to spawn when placing a MOUNTAIN obstacle
+    constexpr float BASE_CHANCE = 0.08f;  // 8% of MOUNTAIN rocks become deposits
+
+    // Per-resource rarity weights (must sum to 1.0)
+    // Common ores (80% of deposits)
+    constexpr float IRON_WEIGHT = 0.25f;       // 25% of deposits
+    constexpr float COPPER_WEIGHT = 0.20f;     // 20%
+    constexpr float COAL_WEIGHT = 0.20f;       // 20%
+    constexpr float LIMESTONE_WEIGHT = 0.15f;  // 15%
+
+    // Rare ores (10% of deposits)
+    constexpr float GOLD_WEIGHT = 0.08f;       // 8%
+    constexpr float MITHRIL_WEIGHT = 0.02f;    // 2% (very rare)
+
+    // Gems (10% of deposits - all very rare)
+    constexpr float EMERALD_WEIGHT = 0.03f;    // 3%
+    constexpr float RUBY_WEIGHT = 0.025f;      // 2.5%
+    constexpr float SAPPHIRE_WEIGHT = 0.025f;  // 2.5%
+    constexpr float DIAMOND_WEIGHT = 0.01f;    // 1% (rarest)
+}
+
+// ----------------------------------------------------------------------------
 // BUILDING SPAWN RATES
 // ----------------------------------------------------------------------------
 namespace Buildings {
@@ -418,12 +443,52 @@ void WorldGenerator::createWaterBodies(
 void WorldGenerator::distributeObstacles(WorldData &world,
                                          const WorldGenerationConfig &config) {
   namespace ObsCfg = WorldSpawnConfig::Obstacles;
+  namespace DepCfg = WorldSpawnConfig::Deposits;
 
   int height = static_cast<int>(world.grid.size());
   int width = static_cast<int>(world.grid[0].size());
 
   std::default_random_engine rng(config.seed + 10000);
   std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+  // Helper function to select deposit type based on weighted probabilities
+  auto selectDepositType = [](float roll) -> ObstacleType {
+    // Cumulative probability selection using weights from config
+    float cumulative = 0.0f;
+
+    // Common ores
+    cumulative += DepCfg::IRON_WEIGHT;
+    if (roll < cumulative) return ObstacleType::IRON_DEPOSIT;
+
+    cumulative += DepCfg::COPPER_WEIGHT;
+    if (roll < cumulative) return ObstacleType::COPPER_DEPOSIT;
+
+    cumulative += DepCfg::COAL_WEIGHT;
+    if (roll < cumulative) return ObstacleType::COAL_DEPOSIT;
+
+    cumulative += DepCfg::LIMESTONE_WEIGHT;
+    if (roll < cumulative) return ObstacleType::LIMESTONE_DEPOSIT;
+
+    // Rare ores
+    cumulative += DepCfg::GOLD_WEIGHT;
+    if (roll < cumulative) return ObstacleType::GOLD_DEPOSIT;
+
+    cumulative += DepCfg::MITHRIL_WEIGHT;
+    if (roll < cumulative) return ObstacleType::MITHRIL_DEPOSIT;
+
+    // Gems
+    cumulative += DepCfg::EMERALD_WEIGHT;
+    if (roll < cumulative) return ObstacleType::EMERALD_DEPOSIT;
+
+    cumulative += DepCfg::RUBY_WEIGHT;
+    if (roll < cumulative) return ObstacleType::RUBY_DEPOSIT;
+
+    cumulative += DepCfg::SAPPHIRE_WEIGHT;
+    if (roll < cumulative) return ObstacleType::SAPPHIRE_DEPOSIT;
+
+    // Diamond (rarest - catches remaining probability)
+    return ObstacleType::DIAMOND_DEPOSIT;
+  };
 
   // Count nearby obstacles (for density-aware spacing)
   auto countNearbyObstacles = [&](int cx, int cy) -> int {
@@ -460,7 +525,12 @@ void WorldGenerator::distributeObstacles(WorldData &world,
         break;
       case Biome::MOUNTAIN:
         obstacleChance = ObsCfg::MOUNTAIN_CHANCE;
-        obstacleType = ObstacleType::ROCK;
+        // Check if this should be a deposit instead of a rock
+        if (dist(rng) < DepCfg::BASE_CHANCE) {
+          obstacleType = selectDepositType(dist(rng));
+        } else {
+          obstacleType = ObstacleType::ROCK;
+        }
         break;
       case Biome::SWAMP:
         obstacleChance = ObsCfg::SWAMP_CHANCE;

@@ -101,6 +101,18 @@ private:
         std::string building_house;
         std::string building_large;
         std::string building_cityhall;
+        // Ore deposit textures (non-seasonal)
+        std::string obstacle_iron_deposit;
+        std::string obstacle_gold_deposit;
+        std::string obstacle_copper_deposit;
+        std::string obstacle_mithril_deposit;
+        std::string obstacle_limestone_deposit;
+        std::string obstacle_coal_deposit;
+        // Gem deposit textures (non-seasonal)
+        std::string obstacle_emerald_deposit;
+        std::string obstacle_ruby_deposit;
+        std::string obstacle_sapphire_deposit;
+        std::string obstacle_diamond_deposit;
         // Decoration textures (seasonal where applicable)
         std::string decoration_flower_blue;
         std::string decoration_flower_pink;
@@ -156,6 +168,18 @@ private:
         CachedTexture building_house;
         CachedTexture building_large;
         CachedTexture building_cityhall;
+        // Ore deposit textures
+        CachedTexture obstacle_iron_deposit;
+        CachedTexture obstacle_gold_deposit;
+        CachedTexture obstacle_copper_deposit;
+        CachedTexture obstacle_mithril_deposit;
+        CachedTexture obstacle_limestone_deposit;
+        CachedTexture obstacle_coal_deposit;
+        // Gem deposit textures
+        CachedTexture obstacle_emerald_deposit;
+        CachedTexture obstacle_ruby_deposit;
+        CachedTexture obstacle_sapphire_deposit;
+        CachedTexture obstacle_diamond_deposit;
         // Decoration textures
         CachedTexture decoration_flower_blue;
         CachedTexture decoration_flower_pink;
@@ -251,6 +275,18 @@ private:
         AtlasCoords building_house;
         AtlasCoords building_large;
         AtlasCoords building_cityhall;
+        // Ore deposit coords
+        AtlasCoords obstacle_iron_deposit;
+        AtlasCoords obstacle_gold_deposit;
+        AtlasCoords obstacle_copper_deposit;
+        AtlasCoords obstacle_mithril_deposit;
+        AtlasCoords obstacle_limestone_deposit;
+        AtlasCoords obstacle_coal_deposit;
+        // Gem deposit coords
+        AtlasCoords obstacle_emerald_deposit;
+        AtlasCoords obstacle_ruby_deposit;
+        AtlasCoords obstacle_sapphire_deposit;
+        AtlasCoords obstacle_diamond_deposit;
         AtlasCoords decoration_flower_blue;
         AtlasCoords decoration_flower_pink;
         AtlasCoords decoration_flower_white;
