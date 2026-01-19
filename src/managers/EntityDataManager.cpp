@@ -2828,6 +2828,29 @@ void EntityDataManager::initializeRaceRegistry() {
     const std::string jsonPath = "res/data/races.json";
     JsonReader reader;
 
+    // Load atlas.json for coordinate lookup (following WorldManager pattern)
+    JsonReader atlasReader;
+    std::unordered_map<std::string, JsonValue> atlasRegions;
+    if (atlasReader.loadFromFile("res/data/atlas.json")) {
+        const auto& atlasRoot = atlasReader.getRoot();
+        if (atlasRoot.hasKey("regions")) {
+            atlasRegions = atlasRoot["regions"].asObject();
+        }
+    }
+
+    auto getAtlasCoords = [&atlasRegions](const std::string& texId)
+        -> std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> {
+        auto it = atlasRegions.find(texId);
+        if (it == atlasRegions.end()) return {0, 0, 64, 32};
+        const auto& r = it->second;
+        return {
+            static_cast<uint16_t>(r["x"].asInt()),
+            static_cast<uint16_t>(r["y"].asInt()),
+            static_cast<uint16_t>(r["w"].asInt()),
+            static_cast<uint16_t>(r["h"].asInt())
+        };
+    };
+
     if (reader.loadFromFile(jsonPath)) {
         const JsonValue& root = reader.getRoot();
 
@@ -2853,11 +2876,13 @@ void EntityDataManager::initializeRaceRegistry() {
                 info.baseAttackDamage = r.hasKey("baseAttackDamage") ? static_cast<float>(r["baseAttackDamage"].asNumber()) : 10.0f;
                 info.baseAttackRange = r.hasKey("baseAttackRange") ? static_cast<float>(r["baseAttackRange"].asNumber()) : 50.0f;
 
-                // Visual
-                info.atlasX = r.hasKey("atlasX") ? static_cast<uint16_t>(r["atlasX"].asInt()) : 0;
-                info.atlasY = r.hasKey("atlasY") ? static_cast<uint16_t>(r["atlasY"].asInt()) : 0;
-                info.atlasW = r.hasKey("atlasW") ? static_cast<uint16_t>(r["atlasW"].asInt()) : 64;
-                info.atlasH = r.hasKey("atlasH") ? static_cast<uint16_t>(r["atlasH"].asInt()) : 32;
+                // Visual - look up atlas coords via textureId
+                std::string texId = r.hasKey("textureId") ? r["textureId"].asString() : "";
+                auto [ax, ay, aw, ah] = getAtlasCoords(texId);
+                info.atlasX = ax;
+                info.atlasY = ay;
+                info.atlasW = aw;
+                info.atlasH = ah;
 
                 // Animations
                 info.idleAnim = {0, 1, 150};
@@ -2983,6 +3008,29 @@ void EntityDataManager::initializeMonsterTypeRegistry() {
     const std::string jsonPath = "res/data/monster_types.json";
     JsonReader reader;
 
+    // Load atlas.json for coordinate lookup (following WorldManager pattern)
+    JsonReader atlasReader;
+    std::unordered_map<std::string, JsonValue> atlasRegions;
+    if (atlasReader.loadFromFile("res/data/atlas.json")) {
+        const auto& atlasRoot = atlasReader.getRoot();
+        if (atlasRoot.hasKey("regions")) {
+            atlasRegions = atlasRoot["regions"].asObject();
+        }
+    }
+
+    auto getAtlasCoords = [&atlasRegions](const std::string& texId)
+        -> std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> {
+        auto it = atlasRegions.find(texId);
+        if (it == atlasRegions.end()) return {0, 0, 64, 32};
+        const auto& r = it->second;
+        return {
+            static_cast<uint16_t>(r["x"].asInt()),
+            static_cast<uint16_t>(r["y"].asInt()),
+            static_cast<uint16_t>(r["w"].asInt()),
+            static_cast<uint16_t>(r["h"].asInt())
+        };
+    };
+
     if (reader.loadFromFile(jsonPath)) {
         const JsonValue& root = reader.getRoot();
 
@@ -3002,10 +3050,14 @@ void EntityDataManager::initializeMonsterTypeRegistry() {
                 info.baseMoveSpeed = t.hasKey("baseMoveSpeed") ? static_cast<float>(t["baseMoveSpeed"].asNumber()) : 100.0f;
                 info.baseAttackDamage = t.hasKey("baseAttackDamage") ? static_cast<float>(t["baseAttackDamage"].asNumber()) : 10.0f;
                 info.baseAttackRange = t.hasKey("baseAttackRange") ? static_cast<float>(t["baseAttackRange"].asNumber()) : 50.0f;
-                info.atlasX = t.hasKey("atlasX") ? static_cast<uint16_t>(t["atlasX"].asInt()) : 0;
-                info.atlasY = t.hasKey("atlasY") ? static_cast<uint16_t>(t["atlasY"].asInt()) : 0;
-                info.atlasW = t.hasKey("atlasW") ? static_cast<uint16_t>(t["atlasW"].asInt()) : 64;
-                info.atlasH = t.hasKey("atlasH") ? static_cast<uint16_t>(t["atlasH"].asInt()) : 32;
+
+                // Visual - look up atlas coords via textureId
+                std::string texId = t.hasKey("textureId") ? t["textureId"].asString() : "";
+                auto [ax, ay, aw, ah] = getAtlasCoords(texId);
+                info.atlasX = ax;
+                info.atlasY = ay;
+                info.atlasW = aw;
+                info.atlasH = ah;
                 info.idleAnim = {0, 1, 150};
                 info.moveAnim = {0, 2, 100};
                 info.sizeMultiplier = t.hasKey("sizeMultiplier") ? static_cast<float>(t["sizeMultiplier"].asNumber()) : 1.0f;
@@ -3101,6 +3153,29 @@ void EntityDataManager::initializeSpeciesRegistry() {
     const std::string jsonPath = "res/data/species.json";
     JsonReader reader;
 
+    // Load atlas.json for coordinate lookup (following WorldManager pattern)
+    JsonReader atlasReader;
+    std::unordered_map<std::string, JsonValue> atlasRegions;
+    if (atlasReader.loadFromFile("res/data/atlas.json")) {
+        const auto& atlasRoot = atlasReader.getRoot();
+        if (atlasRoot.hasKey("regions")) {
+            atlasRegions = atlasRoot["regions"].asObject();
+        }
+    }
+
+    auto getAtlasCoords = [&atlasRegions](const std::string& texId)
+        -> std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> {
+        auto it = atlasRegions.find(texId);
+        if (it == atlasRegions.end()) return {0, 0, 64, 32};
+        const auto& r = it->second;
+        return {
+            static_cast<uint16_t>(r["x"].asInt()),
+            static_cast<uint16_t>(r["y"].asInt()),
+            static_cast<uint16_t>(r["w"].asInt()),
+            static_cast<uint16_t>(r["h"].asInt())
+        };
+    };
+
     if (reader.loadFromFile(jsonPath)) {
         const JsonValue& root = reader.getRoot();
 
@@ -3120,10 +3195,14 @@ void EntityDataManager::initializeSpeciesRegistry() {
                 info.baseMoveSpeed = s.hasKey("baseMoveSpeed") ? static_cast<float>(s["baseMoveSpeed"].asNumber()) : 80.0f;
                 info.baseAttackDamage = s.hasKey("baseAttackDamage") ? static_cast<float>(s["baseAttackDamage"].asNumber()) : 5.0f;
                 info.baseAttackRange = s.hasKey("baseAttackRange") ? static_cast<float>(s["baseAttackRange"].asNumber()) : 30.0f;
-                info.atlasX = s.hasKey("atlasX") ? static_cast<uint16_t>(s["atlasX"].asInt()) : 0;
-                info.atlasY = s.hasKey("atlasY") ? static_cast<uint16_t>(s["atlasY"].asInt()) : 0;
-                info.atlasW = s.hasKey("atlasW") ? static_cast<uint16_t>(s["atlasW"].asInt()) : 64;
-                info.atlasH = s.hasKey("atlasH") ? static_cast<uint16_t>(s["atlasH"].asInt()) : 32;
+
+                // Visual - look up atlas coords via textureId
+                std::string texId = s.hasKey("textureId") ? s["textureId"].asString() : "";
+                auto [ax, ay, aw, ah] = getAtlasCoords(texId);
+                info.atlasX = ax;
+                info.atlasY = ay;
+                info.atlasW = aw;
+                info.atlasH = ah;
                 info.idleAnim = {0, 1, 150};
                 info.moveAnim = {0, 2, 100};
                 info.sizeMultiplier = s.hasKey("sizeMultiplier") ? static_cast<float>(s["sizeMultiplier"].asNumber()) : 1.0f;

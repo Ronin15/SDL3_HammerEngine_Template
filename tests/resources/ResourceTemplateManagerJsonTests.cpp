@@ -189,11 +189,11 @@ BOOST_AUTO_TEST_CASE(TestLoadValidJsonFile) {
   // the same file again (duplicate name detection should handle this
   // gracefully).
 
-  // Test loading from the project's existing items.json file
+  // Test loading from the project's existing resources.json file
   std::vector<std::filesystem::path> candidatePaths;
 
   // Try multiple potential working directories and path combinations
-  std::filesystem::path itemsFile = "items.json";
+  std::filesystem::path itemsFile = "resources.json";
   std::vector<std::filesystem::path> basePaths = {
       std::filesystem::current_path() / ".." / ".." / "res" /
           "data",                                       // From bin/debug/
