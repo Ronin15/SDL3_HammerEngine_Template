@@ -43,8 +43,7 @@ def get_paths():
         'sprites_dir': project_root / "res" / "sprites",
         'atlas_png': project_root / "res" / "img" / "atlas.png",
         'atlas_json': project_root / "res" / "data" / "atlas.json",
-        'items_json': project_root / "res" / "data" / "items.json",
-        'materials_json': project_root / "res" / "data" / "materials_and_currency.json",
+        'resources_json': project_root / "res" / "data" / "resources.json",
         'races_json': project_root / "res" / "data" / "races.json",
         'monster_types_json': project_root / "res" / "data" / "monster_types.json",
         'species_json': project_root / "res" / "data" / "species.json",
@@ -71,18 +70,42 @@ class MapperRequestHandler(SimpleHTTPRequestHandler):
         if self.path == '/save-mappings':
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
+            mappings = json.loads(post_data.decode('utf-8'))
 
-            # Save mappings.json to sprites directory
-            mappings_file = MapperRequestHandler.sprites_dir / 'mappings.json'
-            with open(mappings_file, 'w') as f:
-                f.write(post_data.decode('utf-8'))
+            # Apply renames immediately (two-phase to handle circular deps)
+            sprites_dir = MapperRequestHandler.sprites_dir
+            renames = {old: new for old, new in mappings.items() if old != new}
+            renamed = []
+
+            if renames:
+                # Phase 1: Move to temp names
+                temp_files = {}
+                for old_name in renames.keys():
+                    src = sprites_dir / f"{old_name}.png"
+                    if src.exists():
+                        tmp = sprites_dir / f"_tmp_{old_name}.png"
+                        src.rename(tmp)
+                        temp_files[old_name] = tmp
+
+                # Phase 2: Move to final names
+                for old_name, new_name in renames.items():
+                    if old_name in temp_files:
+                        tmp = temp_files[old_name]
+                        dst = sprites_dir / f"{new_name}.png"
+                        tmp.rename(dst)
+                        renamed.append({'old': old_name, 'new': new_name})
+                        print(f"  Renamed: {old_name}.png -> {new_name}.png")
 
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(b'{"status": "saved"}')
-            print(f"\nMappings saved to {mappings_file}")
-            print("Press Ctrl+C to stop server, then run: python3 tools/atlas_tool.py pack")
+            response = json.dumps({'status': 'saved', 'renamed': renamed})
+            self.wfile.write(response.encode('utf-8'))
+
+            if renamed:
+                print(f"\nRenamed {len(renamed)} sprites. Refresh browser to see changes.")
+            else:
+                print("\nNo renames needed - all mappings already match filenames.")
         else:
             self.send_response(404)
             self.end_headers()
@@ -668,27 +691,39 @@ def collect_expected_texture_ids(paths: dict) -> dict:
     categories = {}
     data_dir = paths['project_root'] / "res" / "data"
 
-    # Process items.json
-    items_path = data_dir / "items.json"
-    if items_path.exists():
+    # Process resources.json (unified items, materials, currency)
+    resources_path = data_dir / "resources.json"
+    if resources_path.exists():
         try:
-            with open(items_path, 'r') as f:
+            with open(resources_path, 'r') as f:
                 data = json.load(f)
-            found = scan_for_texture_ids(data, 'items.json')
-            if found:
-                categories['Items'] = found
-        except Exception:
-            pass
-
-    # Process materials_and_currency.json
-    materials_path = data_dir / "materials_and_currency.json"
-    if materials_path.exists():
-        try:
-            with open(materials_path, 'r') as f:
-                data = json.load(f)
-            found = scan_for_texture_ids(data, 'materials_and_currency.json')
-            if found:
-                categories['Materials & Currency'] = found
+            # Separate into categories based on the 'category' field
+            items_found = []
+            materials_found = []
+            currency_found = []
+            for resource in data.get('resources', []):
+                tex_id = resource.get('textureId')
+                if tex_id:
+                    entry = {
+                        'id': tex_id,
+                        'name': resource.get('name', tex_id),
+                        'source': 'resources.json'
+                    }
+                    cat = resource.get('category', '')
+                    if cat == 'Item':
+                        items_found.append(entry)
+                    elif cat == 'Material':
+                        materials_found.append(entry)
+                    elif cat in ('Currency', 'GameResource'):
+                        currency_found.append(entry)
+                    else:
+                        items_found.append(entry)
+            if items_found:
+                categories['Items'] = items_found
+            if materials_found:
+                categories['Materials'] = materials_found
+            if currency_found:
+                categories['Currency & Resources'] = currency_found
         except Exception:
             pass
 
@@ -899,7 +934,8 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
                 <select id="customCategory" style="margin-top:5px; width:100%; padding:8px; background:#1a1a2e; border:1px solid #333; color:#eee; border-radius:4px;">
                     <option value="Custom">Custom (no category)</option>
                     <option value="Items">Items</option>
-                    <option value="Materials">Materials & Currency</option>
+                    <option value="Materials">Materials</option>
+                    <option value="Currency & Resources">Currency & Resources</option>
                     <option value="Races">Races</option>
                     <option value="Monsters">Monsters</option>
                     <option value="Animals">Animals</option>
@@ -955,9 +991,28 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
             if (newMissingContent) newMissingContent.scrollTop = missingScroll;
         }}
 
+        function getMissingIds() {{
+            // Dynamically calculate missing IDs based on current mappings
+            const mappedTextureIds = new Set(Object.values(mappings));
+            const spriteFilenames = new Set(sprites.map(s => s.filename));
+
+            const missing = {{}};
+            Object.entries(expectedIds).forEach(([category, items]) => {{
+                const categoryMissing = items.filter(item => {{
+                    // Not missing if: sprite exists with this name OR it's been mapped to
+                    return !spriteFilenames.has(item.id) && !mappedTextureIds.has(item.id);
+                }});
+                if (categoryMissing.length > 0) {{
+                    missing[category] = categoryMissing;
+                }}
+            }});
+            return missing;
+        }}
+
         function renderMissing() {{
             const section = document.getElementById('missingSection');
-            const totalMissing = Object.values(missingIds).flat().length;
+            const currentMissing = getMissingIds();
+            const totalMissing = Object.values(currentMissing).flat().length;
 
             if (totalMissing === 0) {{
                 section.style.display = 'none';
@@ -973,7 +1028,7 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
                 <div class="missing-content" id="missingContent">
             `;
 
-            Object.entries(missingIds).forEach(([category, items]) => {{
+            Object.entries(currentMissing).forEach(([category, items]) => {{
                 if (items.length === 0) return;
                 html += `<div class="missing-category">${{category}} (${{items.length}})</div>`;
                 items.forEach(item => {{
@@ -1032,8 +1087,9 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
 
             const usedIds = new Set(Object.values(mappings));
 
-            // Build set of missing IDs for quick lookup
-            const missingIdSet = new Set(Object.values(missingIds).flat().map(x => x.id));
+            // Build set of missing IDs dynamically
+            const currentMissing = getMissingIds();
+            const missingIdSet = new Set(Object.values(currentMissing).flat().map(x => x.id));
 
             // Get suggested category for selected sprite
             const selectedSpriteData = sprites.find(s => s.filename === selectedSprite);
@@ -1087,7 +1143,7 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
             }}
 
             // Define category order (includes all creature types)
-            const categoryOrder = ['Items', 'Materials & Currency', 'Races', 'Monsters', 'Animals', 'Biomes', 'Obstacles', 'Decorations', 'Buildings', 'Custom'];
+            const categoryOrder = ['Items', 'Materials', 'Currency & Resources', 'Races', 'Monsters', 'Animals', 'Biomes', 'Obstacles', 'Decorations', 'Buildings', 'Custom'];
 
             // Render categories in order
             categoryOrder.forEach(categoryName => {{
@@ -1228,23 +1284,24 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
             const renames = Object.entries(mappings).filter(([old, newN]) => old !== newN);
 
             if (renames.length === 0) {{
-                alert('No renames needed - all mappings match');
+                alert('No renames needed - all sprites already have correct names.');
                 return;
             }}
 
-            // Save mappings directly to res/sprites/mappings.json via server
+            // Apply renames immediately via server
             fetch('/save-mappings', {{
                 method: 'POST',
                 headers: {{'Content-Type': 'application/json'}},
                 body: JSON.stringify(mappings, null, 2)
             }})
-            .then(response => {{
-                if (response.ok) {{
-                    alert('Mappings saved to res/sprites/mappings.json\\n\\n' +
-                          'Press Ctrl+C in terminal to stop server\\n' +
-                          'Then run: python3 tools/atlas_tool.py pack');
+            .then(response => response.json())
+            .then(data => {{
+                if (data.renamed && data.renamed.length > 0) {{
+                    const names = data.renamed.map(r => `${{r.old}} -> ${{r.new}}`).join('\\n');
+                    alert(`Renamed ${{data.renamed.length}} sprites:\\n\\n${{names}}\\n\\nPage will reload to show changes.`);
+                    location.reload();
                 }} else {{
-                    alert('Error saving mappings');
+                    alert('No renames were applied.');
                 }}
             }})
             .catch(err => alert('Error: ' + err));
@@ -1480,17 +1537,11 @@ def cmd_pack(paths: dict):
 def export_to_json_files(paths: dict, regions: dict):
     """Export atlas coordinates to all JSON files."""
 
-    # Update items.json
-    if paths['items_json'].exists():
-        count = update_resources_json(paths['items_json'], regions, 'worldTextureId')
+    # Update resources.json (unified items, materials, currency)
+    if paths['resources_json'].exists():
+        count = update_resources_json(paths['resources_json'], regions, 'textureId')
         if count > 0:
-            print(f"  Updated {count} items in items.json")
-
-    # Update materials.json
-    if paths['materials_json'].exists():
-        count = update_resources_json(paths['materials_json'], regions, 'worldTextureId')
-        if count > 0:
-            print(f"  Updated {count} materials in materials_and_currency.json")
+            print(f"  Updated {count} resources in resources.json")
 
     # Update races.json (NPCs)
     if paths['races_json'].exists():
