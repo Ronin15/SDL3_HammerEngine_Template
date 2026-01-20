@@ -637,9 +637,7 @@ private:
   std::atomic<bool> m_threadingEnabled{true};
   std::atomic<bool> m_initialized{false};
   std::atomic<bool> m_globallyPaused{false};
-  // Global threading threshold now managed by WorkerBudget adaptive system.
-  // WorkerBudget::shouldUseThreading() decides based on learned optimal threshold.
-  static constexpr size_t PER_TYPE_THREAD_THRESHOLD = 20; // Per-type minimum: Only thread types with 20+ events
+  // All threading/batching decisions managed by WorkerBudget adaptive system.
 
   // Performance monitoring
   mutable std::array<PerformanceStats, static_cast<size_t>(EventTypeId::COUNT)>
