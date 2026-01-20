@@ -108,13 +108,14 @@ private:
   do { if (cond) HAMMER_DEBUG(system, msg); } while(0)
 
 #else
-// Release builds - ultra-minimal overhead, lockless
+// Release builds - file-based logging, no console dependency
+// Implementations in src/core/Logger.cpp
 class Logger {
 private:
   static std::atomic<bool> s_benchmarkMode;
 
 public:
-  static std::mutex s_logMutex; // Public for macro access
+  static std::mutex s_logMutex; // Public for legacy compatibility
 
   static void SetBenchmarkMode(bool enabled) {
     s_benchmarkMode.store(enabled, std::memory_order_relaxed);
@@ -124,25 +125,10 @@ public:
     return s_benchmarkMode.load(std::memory_order_relaxed);
   }
 
+  // Declarations only - implementations in Logger.cpp write to file
   static void Log(const char *level, const char *system,
-                  const std::string &message) {
-    if (s_benchmarkMode.load(std::memory_order_relaxed)) {
-      return;
-    }
-    std::lock_guard<std::mutex> lock(s_logMutex);
-    printf("Hammer Game Engine - [%s] %s: %s\n", system, level,
-           message.c_str());
-    fflush(stdout);
-  }
-
-  static void Log(const char *level, const char *system, const char *message) {
-    if (s_benchmarkMode.load(std::memory_order_relaxed)) {
-      return;
-    }
-    std::lock_guard<std::mutex> lock(s_logMutex);
-    printf("Hammer Game Engine - [%s] %s: %s\n", system, level, message);
-    fflush(stdout);
-  }
+                  const std::string &message);
+  static void Log(const char *level, const char *system, const char *message);
 };
 
 #define HAMMER_CRITICAL(system, msg)                                           \
