@@ -1835,35 +1835,82 @@ void HammerEngine::TileRenderer::renderVisibleTiles(
   // Increment frame counter for LRU tracking
   ++m_frameCounter;
 
-  // Calculate visible chunk range
+  // ========================================================================
+  // SMOOTH SCROLLING: Two-stage rendering
+  // Stage 1: Render chunks to intermediate texture at integer positions
+  // Stage 2: Render intermediate to screen with sub-pixel offset
+  // This keeps tiles pixel-perfect relative to each other while allowing
+  // smooth camera movement without hitching.
+  // ========================================================================
+
+  // Calculate floored camera position for integer chunk positioning
+  const float flooredCamX = std::floor(cameraX);
+  const float flooredCamY = std::floor(cameraY);
+
+  // Sub-pixel offset for final composite (negative = camera moves in that direction)
+  const float subPixelOffsetX = -(cameraX - flooredCamX);
+  const float subPixelOffsetY = -(cameraY - flooredCamY);
+
+  // Calculate visible chunk range using floored camera
   const int worldWidth = static_cast<int>(world.grid[0].size());
   const int worldHeight = static_cast<int>(world.grid.size());
   const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
   const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
   const int startChunkX =
-      std::max(0, static_cast<int>(cameraX / (CHUNK_SIZE * TILE_SIZE)));
+      std::max(0, static_cast<int>(flooredCamX / (CHUNK_SIZE * TILE_SIZE)));
   const int startChunkY =
-      std::max(0, static_cast<int>(cameraY / (CHUNK_SIZE * TILE_SIZE)));
+      std::max(0, static_cast<int>(flooredCamY / (CHUNK_SIZE * TILE_SIZE)));
   const int endChunkX =
-      std::min(maxChunkX, static_cast<int>((cameraX + viewportWidth) /
+      std::min(maxChunkX, static_cast<int>((flooredCamX + viewportWidth) /
                                            (CHUNK_SIZE * TILE_SIZE)) +
                               1);
   const int endChunkY =
-      std::min(maxChunkY, static_cast<int>((cameraY + viewportHeight) /
+      std::min(maxChunkY, static_cast<int>((flooredCamY + viewportHeight) /
                                            (CHUNK_SIZE * TILE_SIZE)) +
                               1);
 
-  // Chunk texture size includes padding for sprites extending beyond tile
-  // bounds
+  // Chunk texture size includes padding for sprites extending beyond tile bounds
   constexpr int chunkPixelSize =
       CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
 
-  // Track currently visible chunk keys for LRU eviction (uses member buffer to
-  // avoid per-frame allocs)
+  // ========================================================================
+  // Ensure intermediate texture exists and is sized correctly
+  // Size: viewport + extra chunk on each side for smooth scrolling at edges
+  // ========================================================================
+  const int requiredWidth = viewportWidth + chunkPixelSize;
+  const int requiredHeight = viewportHeight + chunkPixelSize;
+
+  if (!m_intermediateTexture || m_intermediateWidth < requiredWidth ||
+      m_intermediateHeight < requiredHeight) {
+    // Create or resize intermediate texture
+    SDL_Texture *tex = SDL_CreateTexture(
+        renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET,
+        requiredWidth, requiredHeight);
+    if (!tex) {
+      WORLD_MANAGER_ERROR("Failed to create intermediate texture for smooth scrolling");
+      return;
+    }
+    SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+    SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);  // Prevent bilinear filtering
+    m_intermediateTexture = std::shared_ptr<SDL_Texture>(tex, SDL_DestroyTexture);
+    m_intermediateWidth = requiredWidth;
+    m_intermediateHeight = requiredHeight;
+    WORLD_MANAGER_DEBUG(std::format(
+        "TileRenderer: Created intermediate texture {}x{}", requiredWidth, requiredHeight));
+  }
+
+  // ========================================================================
+  // STAGE 1: Render chunks to intermediate texture at integer positions
+  // ========================================================================
+  SDL_SetRenderTarget(renderer, m_intermediateTexture.get());
+  SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+  SDL_RenderClear(renderer);
+
+  // Track currently visible chunk keys for LRU eviction
   m_visibleKeysBuffer.clear();
 
-  // Render visible chunks (typically 4-16 chunks vs 8000 individual tiles)
+  // Render visible chunks to intermediate texture
   for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
     for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
       const uint64_t key = makeChunkKey(chunkX, chunkY);
@@ -1890,7 +1937,7 @@ void HammerEngine::TileRenderer::renderVisibleTiles(
       }
 
       ChunkCache &chunk = it->second;
-      chunk.lastUsedFrame = m_frameCounter; // Update LRU timestamp
+      chunk.lastUsedFrame = m_frameCounter;  // Update LRU timestamp
 
       // Re-render chunk if dirty
       if (chunk.dirty && chunk.texture) {
@@ -1899,35 +1946,32 @@ void HammerEngine::TileRenderer::renderVisibleTiles(
         chunk.dirty = false;
       }
 
-      // Render chunk texture to screen with source rect to prevent
-      // overlap/double-blend
+      // Render chunk to intermediate texture at integer positions
       if (chunk.texture) {
         constexpr int chunkWorldSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
+
+        // Calculate position in intermediate texture using floored camera
+        // (all positions are integer here - no sub-pixel)
+        float screenX = static_cast<float>(chunkX * chunkWorldSize) - flooredCamX -
+                        SPRITE_OVERHANG;
+        float screenY = static_cast<float>(chunkY * chunkWorldSize) - flooredCamY -
+                        SPRITE_OVERHANG;
 
         // Default: full chunk texture
         float srcX = 0;
         float srcY = 0;
         float srcW = static_cast<float>(chunkPixelSize);
         float srcH = static_cast<float>(chunkPixelSize);
-
-        float screenX = static_cast<float>(chunkX * chunkWorldSize) - cameraX -
-                        SPRITE_OVERHANG;
-        float screenY = static_cast<float>(chunkY * chunkWorldSize) - cameraY -
-                        SPRITE_OVERHANG;
         float destW = srcW;
         float destH = srcH;
 
-        // If not leftmost visible chunk, exclude left padding (already drawn by
-        // chunk to left)
+        // Exclude padding from non-edge chunks to prevent overlap/double-blend
         if (chunkX > startChunkX) {
           srcX = SPRITE_OVERHANG;
           srcW -= SPRITE_OVERHANG;
           screenX += SPRITE_OVERHANG;
           destW = srcW;
         }
-
-        // If not topmost visible chunk, exclude top padding (already drawn by
-        // chunk above)
         if (chunkY > startChunkY) {
           srcY = SPRITE_OVERHANG;
           srcH -= SPRITE_OVERHANG;
@@ -1935,42 +1979,48 @@ void HammerEngine::TileRenderer::renderVisibleTiles(
           destH = srcH;
         }
 
-        // Snap destination to pixel grid to prevent sub-pixel rendering
-        // artifacts (waviness at screen edges from texture filtering on
-        // fractional positions)
+        // Render to intermediate at integer positions (floor for pixel-perfect tiles)
         SDL_FRect srcRect = {srcX, srcY, srcW, srcH};
-        SDL_FRect destRect = {std::floor(screenX), std::floor(screenY), destW,
-                              destH};
+        SDL_FRect destRect = {std::floor(screenX), std::floor(screenY), destW, destH};
         SDL_RenderTexture(renderer, chunk.texture.get(), &srcRect, &destRect);
       }
     }
   }
 
+  // ========================================================================
+  // STAGE 2: Render intermediate texture to screen with sub-pixel offset
+  // This provides smooth scrolling while keeping tiles pixel-perfect
+  // ========================================================================
+  SDL_SetRenderTarget(renderer, nullptr);
+
+  // Render the intermediate texture with sub-pixel offset for smooth scrolling
+  SDL_FRect srcRect = {0, 0, static_cast<float>(viewportWidth),
+                       static_cast<float>(viewportHeight)};
+  SDL_FRect destRect = {subPixelOffsetX, subPixelOffsetY,
+                        static_cast<float>(viewportWidth),
+                        static_cast<float>(viewportHeight)};
+  SDL_RenderTexture(renderer, m_intermediateTexture.get(), &srcRect, &destRect);
+
+  // ========================================================================
   // LRU eviction: Remove oldest chunks when cache exceeds limit
+  // ========================================================================
   if (m_chunkCache.size() > MAX_CACHED_CHUNKS) {
-    // Find chunks not currently visible and sort by last used frame (uses
-    // member buffer)
     m_evictionBuffer.clear();
     for (const auto &[key, cache] : m_chunkCache) {
-      // Don't evict currently visible chunks
       if (std::find(m_visibleKeysBuffer.begin(), m_visibleKeysBuffer.end(),
                     key) == m_visibleKeysBuffer.end()) {
         m_evictionBuffer.emplace_back(key, cache.lastUsedFrame);
       }
     }
 
-    // Sort by oldest first (lowest frame number)
     std::sort(m_evictionBuffer.begin(), m_evictionBuffer.end(),
               [](const auto &a, const auto &b) { return a.second < b.second; });
 
-    // Evict oldest chunks until we're under the limit
     const size_t toEvict = m_chunkCache.size() - MAX_CACHED_CHUNKS;
     for (size_t i = 0; i < std::min(toEvict, m_evictionBuffer.size()); ++i) {
       m_chunkCache.erase(m_evictionBuffer[i].first);
     }
 
-    // Note: toEvict is always > 0 here since we're inside the size() > MAX
-    // block
     WORLD_MANAGER_DEBUG(std::format(
         "TileRenderer: Evicted {} chunks from cache (cache size: {})",
         std::min(toEvict, m_evictionBuffer.size()), m_chunkCache.size()));
