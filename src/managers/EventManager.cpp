@@ -1056,39 +1056,14 @@ void EventManager::updateEventTypeBatchThreaded(
   }
 
   // Use centralized WorkerBudgetManager for smart worker allocation
-  size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+  // WorkerBudget handles queue pressure internally - returns 1 worker under
+  // critical pressure, which triggers single-batch path naturally.
   auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
   const auto &budget = budgetMgr.getBudget();
 
   // Set thread allocation info for debug output
-  outThreadingInfo.availableWorkers = availableWorkers;
+  outThreadingInfo.availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
   outThreadingInfo.budget = budget.totalWorkers;
-
-  // Check queue pressure before submitting tasks
-  size_t queueSize = threadSystem.getQueueSize();
-  size_t queueCapacity = threadSystem.getQueueCapacity();
-  size_t pressureThreshold = static_cast<size_t>(
-      queueCapacity *
-      HammerEngine::QUEUE_PRESSURE_CRITICAL); // Use unified threshold
-
-  if (queueSize > pressureThreshold) {
-    // Graceful degradation: fallback to single-threaded processing
-    EVENT_DEBUG(std::format(
-        "Queue pressure detected ({}/{}), using single-threaded processing",
-        queueSize, queueCapacity));
-    outThreadingInfo.wasThreaded = false;
-    for (auto &evt : *localEvents) {
-      evt->update();
-    }
-
-    // Record performance and return early
-    auto endTime = getCurrentTimeNanos();
-    double timeMs = (endTime - startTime) / 1000000.0;
-    if (timeMs > 1.0 || localEvents->size() > 50) {
-      recordPerformance(typeId, timeMs);
-    }
-    return;
-  }
 
   // Get optimal workers (WorkerBudget determines everything dynamically)
   size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
@@ -1099,10 +1074,10 @@ void EventManager::updateEventTypeBatchThreaded(
   auto [batchCount, calculatedBatchSize] = budgetMgr.getBatchStrategy(
       HammerEngine::SystemType::Event, localEvents->size(), optimalWorkerCount);
 
-  // Set threading info
+  // Set threading info based on actual batch strategy
   outThreadingInfo.workerCount = optimalWorkerCount;
   outThreadingInfo.batchCount = batchCount;
-  outThreadingInfo.wasThreaded = true;
+  outThreadingInfo.wasThreaded = (batchCount > 1);
 
   // Simple batch processing without complex spin-wait
   if (batchCount > 1) {

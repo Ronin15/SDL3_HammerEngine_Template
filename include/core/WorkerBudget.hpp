@@ -186,6 +186,14 @@ public:
      */
     void invalidateCache();
 
+    /**
+     * @brief Mark start of a new frame for cache invalidation
+     *
+     * Call once per frame (typically at start of GameEngine::update())
+     * to enable per-frame caching of expensive operations like queue pressure.
+     */
+    void markFrameStart();
+
 private:
     WorkerBudgetManager() = default;
     ~WorkerBudgetManager() = default;
@@ -204,48 +212,56 @@ private:
      *
      * Batch tuning via hill-climbing to find optimal parallelism.
      * Thread-safe via atomics.
+     *
+     * Cache line padding: Atomics are grouped by update pattern and padded
+     * to 64-byte boundaries to prevent false sharing when different systems
+     * update their state from different cores.
      */
-    struct SystemTuningState {
-        // Throughput tracking (kept for batch multiplier tuning)
-        std::atomic<double> singleSmoothedThroughput{0.0};  // Items per ms when single-threaded
-        std::atomic<double> multiSmoothedThroughput{0.0};   // Items per ms when multi-threaded
+    struct alignas(64) SystemTuningState {
+        // ===== Cache line 1: Multi-threaded path (frequently written together) =====
+        std::atomic<double> multiSmoothedThroughput{0.0};   // Items per ms when multi-threaded (8 bytes)
+        std::atomic<double> prevMultiThroughput{0.0};       // Previous for hill-climb (8 bytes)
+        std::atomic<float> multiplier{1.0f};                // Batch multiplier (4 bytes)
+        std::atomic<int8_t> direction{1};                   // Hill-climb direction (1 byte)
+        char _pad1[64 - 21];  // Pad to 64-byte boundary (43 bytes)
 
-        // Batch tuning (hill-climbing)
-        std::atomic<float> multiplier{1.0f};                // Applied to worker count
-        std::atomic<double> prevMultiThroughput{0.0};       // Previous multi-threaded throughput for hill-climb
-        std::atomic<int8_t> direction{1};                   // Hill-climb direction (+1 or -1)
+        // ===== Cache line 2: Single-threaded path (written separately) =====
+        std::atomic<double> singleSmoothedThroughput{0.0};  // Items per ms when single-threaded (8 bytes)
+        std::atomic<double> smoothedSingleTime{0.0};        // EMA of single-threaded ms (8 bytes)
+        char _pad2[64 - 16];  // Pad to 64-byte boundary (48 bytes)
 
-        // Mode tracking (for batch multiplier tuning)
-        std::atomic<bool> lastWasThreaded{false};           // What mode was used last frame
+        // ===== Cache line 3: Mode state (written occasionally) =====
+        std::atomic<bool> lastWasThreaded{false};           // What mode was used last frame (1 byte)
+        std::atomic<size_t> learnedThreshold{0};            // Entity count threshold (8 bytes)
+        std::atomic<bool> thresholdActive{false};           // Above threshold flag (1 byte)
+        char _pad3[64 - 10];  // Pad to 64-byte boundary (54 bytes)
 
-        // Batch tuning constants
-        static constexpr float MIN_MULTIPLIER = 0.4f;       // Allow 2.5x consolidation (was 0.25)
-        static constexpr float MAX_MULTIPLIER = 2.0f;       // Allow 2x expansion (was 2.5)
-        static constexpr float ADJUST_RATE = 0.01f;         // 1% adjustment per frame (was 2%)
+        // ===== Constants (read-only, no padding needed) =====
+        static constexpr float MIN_MULTIPLIER = 0.4f;
+        static constexpr float MAX_MULTIPLIER = 2.0f;
+        static constexpr float ADJUST_RATE = 0.01f;
 
-        static constexpr double THROUGHPUT_TOLERANCE = 0.10;    // 10% dead band (was 6%)
-        static constexpr double THROUGHPUT_SMOOTHING = 0.15;    // 15% weight for new data
+        static constexpr double THROUGHPUT_TOLERANCE = 0.10;
+        static constexpr double THROUGHPUT_SMOOTHING = 0.15;
 
-        static constexpr size_t MIN_ITEMS_PER_BATCH = 8;    // Prevent trivial batches
+        static constexpr size_t MIN_ITEMS_PER_BATCH = 8;
 
-        // Mode selection constants
-        static constexpr size_t MIN_WORKLOAD = 100;             // Always single-threaded below this
+        static constexpr size_t MIN_WORKLOAD = 100;
 
-        // Adaptive threshold learning constants
-        static constexpr double LEARNING_TIME_THRESHOLD_MS = 0.9;  // Single-thread struggling threshold
-        static constexpr double HYSTERESIS_FACTOR = 0.95;          // 5% hysteresis band (deactivate at 95%)
-        static constexpr double TIME_SMOOTHING = 0.25;             // 25% weight for new time samples (~6 frames to converge)
-
-        // Adaptive threshold learning state
-        std::atomic<size_t> learnedThreshold{0};      // Entity count where 1.0ms was hit (0 = learning)
-        std::atomic<bool> thresholdActive{false};     // true = above threshold, using multi-threading
-        std::atomic<double> smoothedSingleTime{0.0};  // Exponential moving average of single-threaded ms
+        static constexpr double LEARNING_TIME_THRESHOLD_MS = 0.9;
+        static constexpr double HYSTERESIS_FACTOR = 0.95;
+        static constexpr double TIME_SMOOTHING = 0.25;
     };
 
     // Cached budget (protected by double-checked locking)
     WorkerBudget m_cachedBudget{};
     std::atomic<bool> m_budgetValid{false};
     mutable std::mutex m_cacheMutex;
+
+    // Per-frame queue pressure cache (avoids redundant atomic reads)
+    mutable std::atomic<double> m_cachedQueuePressure{0.0};
+    std::atomic<uint64_t> m_currentFrame{0};
+    mutable std::atomic<uint64_t> m_queuePressureFrame{0};
 
     // Per-system unified tuning state
     std::array<SystemTuningState, static_cast<size_t>(SystemType::COUNT)> m_systemState{};

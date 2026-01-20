@@ -302,7 +302,19 @@ void WorkerBudgetManager::invalidateCache() {
     m_budgetValid.store(false, std::memory_order_release);
 }
 
+void WorkerBudgetManager::markFrameStart() {
+    // Increment frame counter - this invalidates per-frame caches
+    m_currentFrame.fetch_add(1, std::memory_order_relaxed);
+}
+
 double WorkerBudgetManager::getQueuePressure() const {
+    // Fast path: return cached value if same frame
+    uint64_t currentFrame = m_currentFrame.load(std::memory_order_relaxed);
+    if (m_queuePressureFrame.load(std::memory_order_relaxed) == currentFrame) {
+        return m_cachedQueuePressure.load(std::memory_order_relaxed);
+    }
+
+    // Slow path: calculate and cache
     if (!ThreadSystem::Exists()) {
         return 0.0;
     }
@@ -311,11 +323,16 @@ double WorkerBudgetManager::getQueuePressure() const {
     size_t queueSize = threadSystem.getQueueSize();
     size_t queueCapacity = threadSystem.getQueueCapacity();
 
-    if (queueCapacity == 0) {
-        return 0.0;
+    double pressure = 0.0;
+    if (queueCapacity > 0) {
+        pressure = static_cast<double>(queueSize) / static_cast<double>(queueCapacity);
     }
 
-    return static_cast<double>(queueSize) / static_cast<double>(queueCapacity);
+    // Cache for this frame
+    m_cachedQueuePressure.store(pressure, std::memory_order_relaxed);
+    m_queuePressureFrame.store(currentFrame, std::memory_order_relaxed);
+
+    return pressure;
 }
 
 WorkerBudget WorkerBudgetManager::calculateBudget() const {
