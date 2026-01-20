@@ -211,8 +211,7 @@ void InputManager::onKeyDown(const SDL_Event& event) {
 }
 
 void InputManager::onKeyUp(const SDL_Event& /*event*/) {
-  // TODO may not be needed and need to clean upStore the keyboard state
-  m_keystates = SDL_GetKeyboardState(0);
+  // Keyboard state is already updated by SDL event system
 
   // Key-specific processing can be handled by game states
   // using the isKeyDown() method
