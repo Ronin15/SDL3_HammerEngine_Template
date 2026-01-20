@@ -19,15 +19,15 @@ class EntityStateManager {
   void setState(const std::string& stateName);
   std::string getCurrentStateName() const;
   bool hasState(const std::string& stateName) const;
-  void removeState(const std::string& stateName);
+
   void update(float deltaTime);
   ~EntityStateManager();
 
   private:
-   std::unordered_map<std::string, std::shared_ptr<EntityState>> states;
+   std::unordered_map<std::string, std::shared_ptr<EntityState>> m_states;
    // Non-owning observer to the current active state
    // This state is owned by the 'states' container above
-   std::weak_ptr<EntityState> currentState;
+   std::weak_ptr<EntityState> m_currentState;
 };
 
 #endif  // ENTITY_STATE_MANAGER_HPP

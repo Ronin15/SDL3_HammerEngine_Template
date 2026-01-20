@@ -306,9 +306,35 @@ void EventManager::update() {
     return;
   }
 
-  // NOTE: Early exit optimization removed - some tests dispatch events during
-  // update that need to be processed in the same frame. Keep for now.
-  // TODO: Re-evaluate this optimization with deferred event dispatch
+  // EARLY EXIT: Skip processing if no registered events AND no pending dispatches
+  {
+    // Check dispatch queue first (most common case for trigger methods)
+    bool hasDispatchPending = false;
+    {
+      std::lock_guard<std::mutex> dispatchLock(m_dispatchMutex);
+      hasDispatchPending = !m_pendingDispatch.empty();
+    }
+
+    // Check registered events if no pending dispatches
+    bool hasRegisteredEvents = false;
+    if (!hasDispatchPending) {
+      std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
+      for (const auto &container : m_eventsByType) {
+        auto it = std::find_if(container.begin(), container.end(),
+          [](const EventData &data) {
+            return !(data.flags & EventData::FLAG_PENDING_REMOVAL);
+          });
+        if (it != container.end()) {
+          hasRegisteredEvents = true;
+          break;
+        }
+      }
+    }
+
+    if (!hasDispatchPending && !hasRegisteredEvents) {
+      return;
+    }
+  }
 
   // NOTE: We do NOT wait for previous frame's batches here - they can overlap
   // with current frame EventManager batches don't update collision data, so
