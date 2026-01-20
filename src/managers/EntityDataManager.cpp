@@ -11,6 +11,7 @@
 #include "managers/TextureManager.hpp"  // For texture lookup in creature creation
 #include "managers/WorldResourceManager.hpp"  // For unregister on harvestable destruction
 #include "utils/JsonReader.hpp"  // For loading NPC types from JSON
+#include "utils/ResourcePath.hpp"  // For path resolution in JSON loading
 #include "utils/UniqueID.hpp"
 #include <SDL3/SDL.h>  // For SDL_GetTextureSize
 
@@ -553,17 +554,18 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
         ENTITY_ERROR("createNPCWithRaceClass: Atlas texture not loaded");
     }
 
-    // Check for unmapped texture (atlasX and atlasY both 0) - use guard as fallback
+    // Check for unmapped texture (atlasX and atlasY both 0) - use debug texture as fallback
     if (raceInfo.atlasX == 0 && raceInfo.atlasY == 0) {
-        ENTITY_WARN(std::format("Race '{}' has no atlas mapping, using guard fallback texture", race));
-        renderData.atlasX = 165;   // Guard texture position
-        renderData.atlasY = 1126;
+        ENTITY_WARN(std::format("Race '{}' has no atlas mapping, using debug fallback texture", race));
+        renderData.cachedTexture = TextureManager::Instance().getTexturePtr("debug");
+        renderData.atlasX = 0;
+        renderData.atlasY = 0;
         renderData.frameWidth = 32;
         renderData.frameHeight = 32;
         renderData.idleSpeedMs = 150;
         renderData.moveSpeedMs = 100;
         renderData.numIdleFrames = 1;
-        renderData.numMoveFrames = 2;
+        renderData.numMoveFrames = 1;
         renderData.idleRow = 0;
         renderData.moveRow = 0;
     } else {
@@ -653,17 +655,18 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
     // Set up render data
     auto& renderData = m_npcRenderData[typeIndex];
     renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
-    // Check for unmapped texture - use guard as fallback
+    // Check for unmapped texture - use debug texture as fallback
     if (typeInfo.atlasX == 0 && typeInfo.atlasY == 0) {
-        ENTITY_WARN(std::format("Monster type '{}' has no atlas mapping, using guard fallback texture", monsterType));
-        renderData.atlasX = 165;
-        renderData.atlasY = 1126;
+        ENTITY_WARN(std::format("Monster type '{}' has no atlas mapping, using debug fallback texture", monsterType));
+        renderData.cachedTexture = TextureManager::Instance().getTexturePtr("debug");
+        renderData.atlasX = 0;
+        renderData.atlasY = 0;
         renderData.frameWidth = 32;
         renderData.frameHeight = 32;
         renderData.idleSpeedMs = 150;
         renderData.moveSpeedMs = 100;
         renderData.numIdleFrames = 1;
-        renderData.numMoveFrames = 2;
+        renderData.numMoveFrames = 1;
         renderData.idleRow = 0;
         renderData.moveRow = 0;
     } else {
@@ -749,17 +752,18 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
     // Set up render data
     auto& renderData = m_npcRenderData[typeIndex];
     renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
-    // Check for unmapped texture - use guard as fallback
+    // Check for unmapped texture - use debug texture as fallback
     if (speciesInfo.atlasX == 0 && speciesInfo.atlasY == 0) {
-        ENTITY_WARN(std::format("Species '{}' has no atlas mapping, using guard fallback texture", species));
-        renderData.atlasX = 165;
-        renderData.atlasY = 1126;
+        ENTITY_WARN(std::format("Species '{}' has no atlas mapping, using debug fallback texture", species));
+        renderData.cachedTexture = TextureManager::Instance().getTexturePtr("debug");
+        renderData.atlasX = 0;
+        renderData.atlasY = 0;
         renderData.frameWidth = 32;
         renderData.frameHeight = 32;
         renderData.idleSpeedMs = 150;
         renderData.moveSpeedMs = 100;
         renderData.numIdleFrames = 1;
-        renderData.numMoveFrames = 2;
+        renderData.numMoveFrames = 1;
         renderData.idleRow = 0;
         renderData.moveRow = 0;
     } else {
@@ -2825,13 +2829,13 @@ EntityHandle EntityDataManager::getHandle(size_t index) const {
 // ============================================================================
 
 void EntityDataManager::initializeRaceRegistry() {
-    const std::string jsonPath = "res/data/races.json";
+    const std::string jsonPath = HammerEngine::ResourcePath::resolve("res/data/races.json");
     JsonReader reader;
 
     // Load atlas.json for coordinate lookup (following WorldManager pattern)
     JsonReader atlasReader;
     std::unordered_map<std::string, JsonValue> atlasRegions;
-    if (atlasReader.loadFromFile("res/data/atlas.json")) {
+    if (atlasReader.loadFromFile(HammerEngine::ResourcePath::resolve("res/data/atlas.json"))) {
         const auto& atlasRoot = atlasReader.getRoot();
         if (atlasRoot.hasKey("regions")) {
             atlasRegions = atlasRoot["regions"].asObject();
@@ -2921,20 +2925,24 @@ void EntityDataManager::initializeRaceRegistry() {
     AnimationConfig idle{0, 1, 150};
     AnimationConfig move{0, 2, 100};
 
-    m_raceRegistry["Human"] = {"Human", 100, 100, 100, 10, 50, 165, 1126, 64, 32, idle, move, 1.0f};
+    // Atlas coordinates: human=295,1126 elf=65,1126 orc=0,1159 dwarf=0,1126
+    m_raceRegistry["Human"] = {"Human", 100, 100, 100, 10, 50, 295, 1126, 64, 32, idle, move, 1.0f};
     m_raceNameToId["Human"] = 0; m_raceIdToName.push_back("Human");
 
-    m_raceRegistry["Elf"] = {"Elf", 80, 120, 120, 8, 60, 163, 1159, 64, 32, idle, move, 0.9f};
+    m_raceRegistry["Elf"] = {"Elf", 80, 120, 120, 8, 60, 65, 1126, 64, 32, idle, move, 0.9f};
     m_raceNameToId["Elf"] = 1; m_raceIdToName.push_back("Elf");
 
-    m_raceRegistry["Orc"] = {"Orc", 150, 80, 80, 15, 45, 228, 1159, 64, 32, idle, move, 1.2f};
+    m_raceRegistry["Orc"] = {"Orc", 150, 80, 80, 15, 45, 0, 1159, 64, 32, idle, move, 1.2f};
     m_raceNameToId["Orc"] = 2; m_raceIdToName.push_back("Orc");
+
+    m_raceRegistry["Dwarf"] = {"Dwarf", 120, 90, 70, 12, 40, 0, 1126, 64, 32, idle, move, 0.85f};
+    m_raceNameToId["Dwarf"] = 3; m_raceIdToName.push_back("Dwarf");
 
     ENTITY_INFO(std::format("Initialized race registry with {} races (fallback)", m_raceRegistry.size()));
 }
 
 void EntityDataManager::initializeClassRegistry() {
-    const std::string jsonPath = "res/data/classes.json";
+    const std::string jsonPath = HammerEngine::ResourcePath::resolve("res/data/classes.json");
     JsonReader reader;
 
     if (reader.loadFromFile(jsonPath)) {
@@ -3005,13 +3013,13 @@ void EntityDataManager::initializeClassRegistry() {
 }
 
 void EntityDataManager::initializeMonsterTypeRegistry() {
-    const std::string jsonPath = "res/data/monster_types.json";
+    const std::string jsonPath = HammerEngine::ResourcePath::resolve("res/data/monster_types.json");
     JsonReader reader;
 
     // Load atlas.json for coordinate lookup (following WorldManager pattern)
     JsonReader atlasReader;
     std::unordered_map<std::string, JsonValue> atlasRegions;
-    if (atlasReader.loadFromFile("res/data/atlas.json")) {
+    if (atlasReader.loadFromFile(HammerEngine::ResourcePath::resolve("res/data/atlas.json"))) {
         const auto& atlasRoot = atlasReader.getRoot();
         if (atlasRoot.hasKey("regions")) {
             atlasRegions = atlasRoot["regions"].asObject();
@@ -3095,7 +3103,7 @@ void EntityDataManager::initializeMonsterTypeRegistry() {
 }
 
 void EntityDataManager::initializeMonsterVariantRegistry() {
-    const std::string jsonPath = "res/data/monster_variants.json";
+    const std::string jsonPath = HammerEngine::ResourcePath::resolve("res/data/monster_variants.json");
     JsonReader reader;
 
     if (reader.loadFromFile(jsonPath)) {
@@ -3150,13 +3158,13 @@ void EntityDataManager::initializeMonsterVariantRegistry() {
 }
 
 void EntityDataManager::initializeSpeciesRegistry() {
-    const std::string jsonPath = "res/data/species.json";
+    const std::string jsonPath = HammerEngine::ResourcePath::resolve("res/data/species.json");
     JsonReader reader;
 
     // Load atlas.json for coordinate lookup (following WorldManager pattern)
     JsonReader atlasReader;
     std::unordered_map<std::string, JsonValue> atlasRegions;
-    if (atlasReader.loadFromFile("res/data/atlas.json")) {
+    if (atlasReader.loadFromFile(HammerEngine::ResourcePath::resolve("res/data/atlas.json"))) {
         const auto& atlasRoot = atlasReader.getRoot();
         if (atlasRoot.hasKey("regions")) {
             atlasRegions = atlasRoot["regions"].asObject();
@@ -3240,7 +3248,7 @@ void EntityDataManager::initializeSpeciesRegistry() {
 }
 
 void EntityDataManager::initializeAnimalRoleRegistry() {
-    const std::string jsonPath = "res/data/animal_roles.json";
+    const std::string jsonPath = HammerEngine::ResourcePath::resolve("res/data/animal_roles.json");
     JsonReader reader;
 
     if (reader.loadFromFile(jsonPath)) {
