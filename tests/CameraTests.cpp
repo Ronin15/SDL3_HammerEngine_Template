@@ -201,7 +201,7 @@ BOOST_AUTO_TEST_CASE(TestZoomOutBounds) {
     // Zoom out to level 1
     camera.zoomOut();
     BOOST_CHECK_EQUAL(camera.getZoomLevel(), 1);
-    BOOST_CHECK(approxEqual(camera.getZoom(), 1.5f));
+    BOOST_CHECK(approxEqual(camera.getZoom(), 2.0f));
 
     // Zoom out to level 0 (min)
     camera.zoomOut();
@@ -220,7 +220,7 @@ BOOST_AUTO_TEST_CASE(TestSetZoomLevelValid) {
     // Set to level 2
     BOOST_CHECK(camera.setZoomLevel(2));
     BOOST_CHECK_EQUAL(camera.getZoomLevel(), 2);
-    BOOST_CHECK(approxEqual(camera.getZoom(), 2.0f));
+    BOOST_CHECK(approxEqual(camera.getZoom(), 3.0f));
 
     // Set to level 0
     BOOST_CHECK(camera.setZoomLevel(0));
@@ -230,7 +230,7 @@ BOOST_AUTO_TEST_CASE(TestSetZoomLevelValid) {
     // Set to level 1
     BOOST_CHECK(camera.setZoomLevel(1));
     BOOST_CHECK_EQUAL(camera.getZoomLevel(), 1);
-    BOOST_CHECK(approxEqual(camera.getZoom(), 1.5f));
+    BOOST_CHECK(approxEqual(camera.getZoom(), 2.0f));
 }
 
 BOOST_AUTO_TEST_CASE(TestSetZoomLevelInvalid) {
@@ -255,7 +255,7 @@ BOOST_AUTO_TEST_CASE(TestZoomEffectOnViewRect) {
     BOOST_CHECK(approxEqual(viewRect1x.height, 600.0f));
 
     // At 2.0x zoom, view rect should be half size (see less world)
-    camera.setZoomLevel(2); // 2.0x zoom
+    camera.setZoomLevel(1); // 2.0x zoom
     auto viewRect2x = camera.getViewRect();
     BOOST_CHECK(approxEqual(viewRect2x.width, 400.0f));
     BOOST_CHECK(approxEqual(viewRect2x.height, 300.0f));
@@ -356,7 +356,7 @@ BOOST_AUTO_TEST_CASE(TestClampingWithZoom) {
     camera.setWorldBounds(0.0f, 0.0f, 2000.0f, 2000.0f);
 
     // At 2.0x zoom, viewport is effectively smaller (400x300)
-    camera.setZoomLevel(2);
+    camera.setZoomLevel(1); // 2.0x zoom
 
     // Try to move beyond bounds
     camera.setPosition(3000.0f, 3000.0f);
