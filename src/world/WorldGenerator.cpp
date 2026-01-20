@@ -486,8 +486,11 @@ void WorldGenerator::distributeObstacles(WorldData &world,
     cumulative += DepCfg::SAPPHIRE_WEIGHT;
     if (roll < cumulative) return ObstacleType::SAPPHIRE_DEPOSIT;
 
-    // Diamond (rarest - catches remaining probability)
-    return ObstacleType::DIAMOND_DEPOSIT;
+    cumulative += DepCfg::DIAMOND_WEIGHT;
+    if (roll < cumulative) return ObstacleType::DIAMOND_DEPOSIT;
+
+    // Fallback (should never reach due to weight distribution)
+    return ObstacleType::IRON_DEPOSIT;
   };
 
   // Count nearby obstacles (for density-aware spacing)
