@@ -211,6 +211,12 @@ private:
     uint64_t m_frameCounter{0};  // For LRU tracking
     static constexpr size_t MAX_CACHED_CHUNKS = 64;  // ~256MB max VRAM (4MB per 1024x1024 chunk)
 
+    // Intermediate texture for smooth scrolling (render chunks at integer positions,
+    // then composite with sub-pixel offset to screen)
+    std::shared_ptr<SDL_Texture> m_intermediateTexture;
+    int m_intermediateWidth{0};
+    int m_intermediateHeight{0};
+
     // Reusable buffers for render loop (avoids per-frame allocations per CLAUDE.md)
     mutable std::vector<uint64_t> m_visibleKeysBuffer;
     mutable std::vector<std::pair<uint64_t, uint64_t>> m_evictionBuffer;
