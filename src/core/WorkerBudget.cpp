@@ -107,106 +107,49 @@ ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, siz
         return {false, 0};
     }
 
-    // System-specific threading thresholds
-    size_t systemThreshold = SystemTuningState::DEFAULT_THREADING_THRESHOLD;
-    if (system == SystemType::AI) {
-        // AI can benefit from threading at lower workloads due to behavioral complexity
-        systemThreshold = 150;
-    } else if (system == SystemType::Collision) {
-        // Collision systems need more bodies to benefit from threading overhead
-        systemThreshold = 250;
-    }
-
     auto& state = m_systemState[static_cast<size_t>(system)];
 
-    // Check for significant workload changes (triggers exploration)
-    size_t lastWorkload = state.lastWorkloadSize.load(std::memory_order_relaxed);
-    if (lastWorkload > 0) {
-        double workloadChange = static_cast<double>(workloadSize) / static_cast<double>(lastWorkload);
-        if (workloadChange < (1.0 - SystemTuningState::WORKLOAD_CHANGE_THRESHOLD) ||
-            workloadChange > (1.0 + SystemTuningState::WORKLOAD_CHANGE_THRESHOLD)) {
-            // Significant workload change - trigger exploration
-            state.explorationPending.store(true, std::memory_order_relaxed);
-            state.explorationWorkloadSize.store(workloadSize, std::memory_order_relaxed);
-            state.lastWorkloadSize.store(workloadSize, std::memory_order_relaxed);
-            bool wasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
-            return {!wasThreaded, 2};  // probePhase=2 indicates workload change exploration
-        }
-    }
-    state.lastWorkloadSize.store(workloadSize, std::memory_order_relaxed);
+    // ====== Adaptive Threshold Learning State Machine ======
+    size_t threshold = state.learnedThreshold.load(std::memory_order_relaxed);
+    bool active = state.thresholdActive.load(std::memory_order_relaxed);
 
-    // Check if exploration of alternate mode should be triggered
-    if (shouldExploreOtherMode(system)) {
-        bool wasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
-        state.explorationPending.store(true, std::memory_order_relaxed);
-        state.explorationWorkloadSize.store(workloadSize, std::memory_order_relaxed);
-        // Try the opposite mode
-        return {!wasThreaded, 1};  // probePhase=1 indicates exploration
+    if (threshold == 0) {
+        // LEARNING: No threshold learned yet - stay single-threaded
+        // reportExecution() will detect when to set threshold (time >= 1.0ms)
+        return {false, 0};
     }
 
-    // Get throughput data for both modes
-    double singleTP = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
-    double multiTP = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
+    if (active) {
+        // ACTIVE: Check for hysteresis deactivation
+        size_t hysteresisLow = static_cast<size_t>(
+            static_cast<double>(threshold) * SystemTuningState::HYSTERESIS_FACTOR);
+
+        if (workloadSize < hysteresisLow) {
+            // Dropped below hysteresis band - reset and re-learn
+            state.learnedThreshold.store(0, std::memory_order_relaxed);
+            state.thresholdActive.store(false, std::memory_order_relaxed);
+            state.smoothedSingleTime.store(0.0, std::memory_order_relaxed);  // Reset for fresh learning
 
 #ifndef NDEBUG
-    // Debug: Threading decision (every 300 frames)
-    if (system == SystemType::Collision || system == SystemType::AI) {
-        static thread_local uint64_t debugCounterColl = 0;
-        static thread_local uint64_t debugCounterAI = 0;
-        uint64_t& counter = (system == SystemType::Collision) ? debugCounterColl : debugCounterAI;
-        if (++counter % 2400 == 0) {  // ~40 seconds at 60fps
-            size_t framesSince = state.framesSinceOtherMode.load(std::memory_order_relaxed);
-            bool wasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
-            float multiplier = state.multiplier.load(std::memory_order_relaxed);
-            const char* name = (system == SystemType::Collision) ? "Collision" : "AI";
             HAMMER_DEBUG("WorkerBudget", std::format(
-                "{}: wl={}, sTP={:.0f}, mTP={:.0f}, was={}, frames={}, mult={:.2f}",
-                name, workloadSize, singleTP, multiTP, wasThreaded, framesSince, multiplier));
-        }
-    }
+                "{}: Re-learning (workload {} < hysteresis {})",
+                getSystemName(system), workloadSize, hysteresisLow));
 #endif
-
-    // No data yet - use default behavior based on workload size
-    if (singleTP <= 0.0 && multiTP <= 0.0) {
-        // Start with threading for larger workloads until we have data
-        bool shouldThread = workloadSize >= systemThreshold;
-        return {shouldThread, 0};
-    }
-
-    // Only one mode has data - we MUST try the other mode to collect data
-    // This is critical: don't get stuck in one mode just because we started there
-    if (singleTP <= 0.0) {
-        // Only have multi-threaded data
-        // Try single-threaded periodically to get comparison data
-        size_t framesSince = state.framesSinceOtherMode.load(std::memory_order_relaxed);
-        if (framesSince >= SystemTuningState::INITIAL_EXPLORATION_FRAMES) {
-            state.explorationPending.store(true, std::memory_order_relaxed);
-            return {false, 1};  // Try single-threaded
+            return {false, 0};  // Back to learning mode
         }
-        return {true, 0};  // Stay multi-threaded
-    }
-    if (multiTP <= 0.0) {
-        // Only have single-threaded data - we NEED multi-threaded data
-        // For large workloads, try threading immediately to get comparison data
-        if (workloadSize >= systemThreshold) {
-            state.explorationPending.store(true, std::memory_order_relaxed);
-            return {true, 1};  // Try multi-threaded to collect data
-        }
-        return {false, 0};  // Small workload, stay single
+
+        // Still above hysteresis - continue multi-threaded
+        return {true, 0};
     }
 
-    // Both modes have data - decide based on throughput comparison
-    bool wasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
-    double currentTP = wasThreaded ? multiTP : singleTP;
-    double otherTP = wasThreaded ? singleTP : multiTP;
-
-    // Switch mode if other mode is significantly better (15% improvement)
-    if (otherTP > currentTP * SystemTuningState::MODE_SWITCH_THRESHOLD) {
-        return {!wasThreaded, 0};
+    // Threshold learned but not active (edge case: workload dropped then rose again)
+    // Activate if workload exceeds threshold
+    if (workloadSize >= threshold) {
+        state.thresholdActive.store(true, std::memory_order_relaxed);
+        return {true, 0};
     }
 
-    // Stay in current mode
-    return {wasThreaded, 0};
+    return {false, 0};
 }
 
 void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize,
@@ -217,9 +160,40 @@ void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize
     }
 
     auto& state = m_systemState[static_cast<size_t>(system)];
+
+    // ====== Smoothed Single-Threaded Time Tracking ======
+    // Update smoothed time when running single-threaded with meaningful workload
+    size_t threshold = state.learnedThreshold.load(std::memory_order_relaxed);
+    if (!wasThreaded && workloadSize >= SystemTuningState::MIN_WORKLOAD) {
+        double prevSmoothed = state.smoothedSingleTime.load(std::memory_order_relaxed);
+        double newSmoothed;
+        if (prevSmoothed <= 0.0) {
+            newSmoothed = totalTimeMs;  // First sample
+        } else {
+            newSmoothed = prevSmoothed * (1.0 - SystemTuningState::TIME_SMOOTHING)
+                        + totalTimeMs * SystemTuningState::TIME_SMOOTHING;
+        }
+        state.smoothedSingleTime.store(newSmoothed, std::memory_order_relaxed);
+
+        // ====== Threshold Learning Detection ======
+        // Learn threshold when SMOOTHED time exceeds limit (not instantaneous)
+        // This prevents spike-triggered oscillation from per-frame variance
+        if (threshold == 0 && newSmoothed >= SystemTuningState::LEARNING_TIME_THRESHOLD_MS) {
+            state.learnedThreshold.store(workloadSize, std::memory_order_relaxed);
+            state.thresholdActive.store(true, std::memory_order_relaxed);
+
+#ifndef NDEBUG
+            HAMMER_DEBUG("WorkerBudget", std::format(
+                "{}: Learned threshold={} (smoothed={:.2f}ms >= {:.1f}ms, instant={:.2f}ms)",
+                getSystemName(system), workloadSize, newSmoothed,
+                SystemTuningState::LEARNING_TIME_THRESHOLD_MS, totalTimeMs));
+#endif
+        }
+    }
+
     double throughput = static_cast<double>(workloadSize) / totalTimeMs;
 
-    // Update appropriate throughput tracker
+    // Update appropriate throughput tracker (kept for batch multiplier tuning)
     if (wasThreaded) {
         // Update multi-threaded throughput
         double prev = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
@@ -251,92 +225,10 @@ void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize
                      + throughput * SystemTuningState::THROUGHPUT_SMOOTHING;
         }
         state.singleSmoothedThroughput.store(smoothed, std::memory_order_relaxed);
-        // Counter management handled at lines 212-216 (reset on mode change, increment otherwise)
     }
 
-    // Update mode tracking
-    bool prevWasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
+    // Update mode tracking (for batch multiplier tuning)
     state.lastWasThreaded.store(wasThreaded, std::memory_order_relaxed);
-
-    // Increment frames since other mode if we stayed in same mode
-    if (wasThreaded == prevWasThreaded) {
-        state.framesSinceOtherMode.fetch_add(1, std::memory_order_relaxed);
-    } else {
-        state.framesSinceOtherMode.store(0, std::memory_order_relaxed);
-    }
-
-    // Clear exploration flag
-    if (state.explorationPending.load(std::memory_order_relaxed)) {
-        state.explorationPending.store(false, std::memory_order_relaxed);
-    }
-}
-
-bool WorkerBudgetManager::shouldExploreOtherMode(SystemType system) const {
-    const auto& state = m_systemState[static_cast<size_t>(system)];
-
-    // Already exploring, don't start another exploration
-    if (state.explorationPending.load(std::memory_order_relaxed)) {
-        return false;
-    }
-
-    bool wasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
-
-    // Signal 1: Multiplier hitting floor suggests less parallelism wanted
-    // If we're threading and multiplier is very low, single-threaded might be better
-    // BUT: don't explore if threading is already confirmed better
-    if (wasThreaded) {
-        float mult = state.multiplier.load(std::memory_order_relaxed);
-        if (mult <= SystemTuningState::MIN_MULTIPLIER * 1.5f) {
-            // Check if threading is clearly better before exploring
-            double singleTP = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
-            double multiTP = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
-            if (singleTP > 0.0 && multiTP > singleTP * SystemTuningState::MODE_SWITCH_THRESHOLD) {
-                // Threading confirmed better, don't waste time exploring single
-                return false;
-            }
-            return true;  // Try single-threaded
-        }
-    }
-
-    // Signal 2: Performance degradation detection
-    // If current mode's throughput is significantly worse than recent peak, explore
-    double currentTP, otherTP;
-    if (wasThreaded) {
-        currentTP = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
-        otherTP = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
-    } else {
-        currentTP = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
-        otherTP = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
-    }
-
-    if (currentTP > 0.0 && otherTP > 0.0) {
-        double ratio = currentTP / otherTP;
-        // If current mode is more than 20% worse than the other mode, explore
-        if (ratio < 0.8) {
-            return true;
-        }
-    }
-
-    // Signal 3: Periodic exploration to prevent getting stuck
-    // Even with good performance, occasionally try the other mode to see if it's better now
-    size_t framesSinceOther = state.framesSinceOtherMode.load(std::memory_order_relaxed);
-    if (framesSinceOther > SystemTuningState::SAMPLE_INTERVAL) {
-        return true;  // Time for a periodic check
-    }
-
-    // REMOVED: Forced frame-based exploration (MAX_STALE_FRAMES, SAMPLE_INTERVAL)
-    // These caused periodic hitches every ~10 seconds. The multiplier-based exploration
-    // above handles performance degradation detection. Mode switching only happens when
-    // there's actual evidence the current mode is suboptimal.
-    //
-    // Why this is safe:
-    // - Hardware doesn't change during gameplay
-    // - Workload changes are detected by multiplier dropping
-    // - Game state changes affect workload size, triggering re-evaluation naturally
-    // - Initial data collection (lines 149-169) still gathers baseline for both modes
-    // - Mode switching (line 177) still switches when other mode is 15%+ better
-
-    return false;
 }
 
 void WorkerBudgetManager::updateBatchMultiplier(SystemTuningState& state, double throughput) {
@@ -387,8 +279,23 @@ float WorkerBudgetManager::getBatchMultiplier(SystemType system) const {
     return m_systemState[static_cast<size_t>(system)].multiplier.load(std::memory_order_relaxed);
 }
 
-bool WorkerBudgetManager::isExploring(SystemType system) const {
-    return m_systemState[static_cast<size_t>(system)].explorationPending.load(std::memory_order_relaxed);
+size_t WorkerBudgetManager::getLearnedThreshold(SystemType system) const {
+    return m_systemState[static_cast<size_t>(system)].learnedThreshold.load(std::memory_order_relaxed);
+}
+
+bool WorkerBudgetManager::isThresholdActive(SystemType system) const {
+    return m_systemState[static_cast<size_t>(system)].thresholdActive.load(std::memory_order_relaxed);
+}
+
+const char* WorkerBudgetManager::getSystemName(SystemType system) {
+    switch (system) {
+        case SystemType::AI: return "AI";
+        case SystemType::Particle: return "Particle";
+        case SystemType::Pathfinding: return "Pathfinding";
+        case SystemType::Event: return "Event";
+        case SystemType::Collision: return "Collision";
+        default: return "Unknown";
+    }
 }
 
 void WorkerBudgetManager::invalidateCache() {

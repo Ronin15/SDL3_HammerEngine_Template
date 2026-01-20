@@ -168,11 +168,18 @@ public:
     float getBatchMultiplier(SystemType system) const;
 
     /**
-     * @brief Check if system is currently in exploration mode
+     * @brief Get learned threading threshold for a system
      * @param system The system type
-     * @return true if exploring alternate mode
+     * @return Learned threshold (0 if not learned yet)
      */
-    bool isExploring(SystemType system) const;
+    size_t getLearnedThreshold(SystemType system) const;
+
+    /**
+     * @brief Check if system's learned threshold is currently active
+     * @param system The system type
+     * @return true if threshold learned and workload is above hysteresis band
+     */
+    bool isThresholdActive(SystemType system) const;
 
     /**
      * @brief Invalidate cached budget (call when ThreadSystem changes)
@@ -190,14 +197,16 @@ private:
     /**
      * @brief Unified per-system tuning state
      *
-     * Combines threading decision and batch tuning into one cohesive system.
-     * Both modes report throughput, enabling informed mode selection.
-     * Batch multiplier trend signals when to explore alternate mode.
+     * Threading decision via adaptive threshold learning:
+     * - Single-threaded until completion time >= 1.0ms (learning phase)
+     * - Once threshold learned, use multi-threading with hysteresis
+     * - Re-learn when workload drops below threshold - 5%
      *
+     * Batch tuning via hill-climbing to find optimal parallelism.
      * Thread-safe via atomics.
      */
     struct SystemTuningState {
-        // Throughput tracking for BOTH modes
+        // Throughput tracking (kept for batch multiplier tuning)
         std::atomic<double> singleSmoothedThroughput{0.0};  // Items per ms when single-threaded
         std::atomic<double> multiSmoothedThroughput{0.0};   // Items per ms when multi-threaded
 
@@ -206,14 +215,8 @@ private:
         std::atomic<double> prevMultiThroughput{0.0};       // Previous multi-threaded throughput for hill-climb
         std::atomic<int8_t> direction{1};                   // Hill-climb direction (+1 or -1)
 
-        // Mode tracking
+        // Mode tracking (for batch multiplier tuning)
         std::atomic<bool> lastWasThreaded{false};           // What mode was used last frame
-        std::atomic<size_t> framesSinceOtherMode{0};        // Frames since we tried the other mode
-        std::atomic<size_t> lastWorkloadSize{0};            // Last workload size for change detection
-
-        // Exploration state (replaces forced probing)
-        std::atomic<bool> explorationPending{false};        // Currently exploring?
-        std::atomic<size_t> explorationWorkloadSize{0};     // Workload size during exploration
 
         // Batch tuning constants
         static constexpr float MIN_MULTIPLIER = 0.4f;       // Allow 2.5x consolidation (was 0.25)
@@ -227,14 +230,16 @@ private:
 
         // Mode selection constants
         static constexpr size_t MIN_WORKLOAD = 100;             // Always single-threaded below this
-        static constexpr size_t DEFAULT_THREADING_THRESHOLD = 200;  // Start with threading above this (until data collected)
-        static constexpr double MODE_SWITCH_THRESHOLD = 1.08;   // 8% improvement to switch modes
-        static constexpr size_t INITIAL_EXPLORATION_FRAMES = 30;    // Try other mode quickly when missing data
-        static constexpr size_t SAMPLE_INTERVAL = 300;          // Max frames before reconsidering mode
-        static constexpr size_t MAX_STALE_FRAMES = 600;         // Force exploration regardless of crossover band (~10 sec)
-        static constexpr double CROSSOVER_BAND_LOW = 0.7;       // Near crossover = ratio > 0.7
-        static constexpr double CROSSOVER_BAND_HIGH = 1.4;      // Near crossover = ratio < 1.4
-        static constexpr double WORKLOAD_CHANGE_THRESHOLD = 0.25;  // 25% workload change triggers exploration
+
+        // Adaptive threshold learning constants
+        static constexpr double LEARNING_TIME_THRESHOLD_MS = 0.9;  // Single-thread struggling threshold
+        static constexpr double HYSTERESIS_FACTOR = 0.95;          // 5% hysteresis band (deactivate at 95%)
+        static constexpr double TIME_SMOOTHING = 0.25;             // 25% weight for new time samples (~6 frames to converge)
+
+        // Adaptive threshold learning state
+        std::atomic<size_t> learnedThreshold{0};      // Entity count where 1.0ms was hit (0 = learning)
+        std::atomic<bool> thresholdActive{false};     // true = above threshold, using multi-threading
+        std::atomic<double> smoothedSingleTime{0.0};  // Exponential moving average of single-threaded ms
     };
 
     // Cached budget (protected by double-checked locking)
@@ -246,11 +251,11 @@ private:
     std::array<SystemTuningState, static_cast<size_t>(SystemType::COUNT)> m_systemState{};
 
     /**
-     * @brief Check if exploration of alternate mode should be triggered
+     * @brief Get system name for debug logging
      * @param system The system type
-     * @return true if should try the other mode
+     * @return Human-readable system name
      */
-    bool shouldExploreOtherMode(SystemType system) const;
+    static const char* getSystemName(SystemType system);
 
     /**
      * @brief Update batch multiplier via hill-climbing
