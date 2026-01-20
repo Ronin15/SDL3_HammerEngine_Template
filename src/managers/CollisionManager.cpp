@@ -77,10 +77,12 @@ bool CollisionManager::init() {
     return true;
   m_storage.clear();
   subscribeWorldEvents();
-  COLLISION_INFO(
-      "STORAGE LIFECYCLE: init() cleared SOA storage and spatial hash");
+   COLLISION_INFO(
+       "STORAGE LIFECYCLE: init() cleared SOA storage and spatial hash");
 
-  // PERFORMANCE: Pre-allocate vector pool to prevent FPS dips from
+   m_statisticsDirty = true; // Statistics need recalculation after init
+
+   // PERFORMANCE: Pre-allocate vector pool to prevent FPS dips from
   // reallocations Initialize vector pool (moved from lazy initialization in
   // getPooledVector)
   m_vectorPool.clear();
@@ -110,11 +112,15 @@ void CollisionManager::clean() {
     return;
   m_isShutdown = true;
 
-  COLLISION_INFO(std::format(
-      "STORAGE LIFECYCLE: clean() clearing {} SOA bodies", m_storage.size()));
+   size_t soaBodyCount = m_storage.size();
+   COLLISION_INFO(std::format(
+       "STORAGE LIFECYCLE: prepareForStateTransition() "
+       "clearing {} SOA bodies (dynamic + static)",
+       soaBodyCount));
 
-  // Clean SOA storage
-  m_storage.clear();
+   // Clear all collision bodies and spatial hashes
+   m_storage.clear();
+   m_statisticsDirty = true;
   m_callbacks.clear();
   m_initialized = false;
   COLLISION_INFO("Cleaned and shut down SOA storage");
@@ -682,83 +688,87 @@ void CollisionManager::addCollisionCallback(CollisionCB cb) {
 
 void CollisionManager::logCollisionStatistics() const {
 #ifndef NDEBUG
-  // Debug-only: expensive iteration for statistics logging
-  size_t staticBodies = getStaticBodyCount();
-  size_t kinematicBodies = getKinematicBodyCount();
-  size_t dynamicBodies = getDynamicBodyCount();
+   // Only recalculate expensive statistics when dirty
+   if (m_statisticsDirty) {
+     m_cachedStaticBodies = getStaticBodyCount();
+     m_cachedKinematicBodies = getKinematicBodyCount();
+     m_cachedDynamicBodies = getDynamicBodyCount();
 
-  // Count trigger types for Phase 3 optimization visibility
-  size_t eventOnlyTriggers = 0;
-  size_t physicalTriggers = 0;
-  size_t solidObstacles = 0;
-  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-    const auto &hot = m_storage.hotData[i];
-    if (hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
-      if (hot.isTrigger != 0) {
-        if (hot.triggerType ==
-            static_cast<uint8_t>(HammerEngine::TriggerType::EventOnly)) {
-          ++eventOnlyTriggers;
-        } else {
-          ++physicalTriggers;
-        }
-      } else {
-        ++solidObstacles;
-      }
-    }
-  }
+     // Count trigger types for Phase 3 optimization visibility
+     m_cachedEventOnlyTriggers = 0;
+     m_cachedPhysicalTriggers = 0;
+     m_cachedSolidObstacles = 0;
+     for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+       const auto &hot = m_storage.hotData[i];
+       if (hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+         if (hot.isTrigger != 0) {
+           if (hot.triggerType ==
+               static_cast<uint8_t>(HammerEngine::TriggerType::EventOnly)) {
+             ++m_cachedEventOnlyTriggers;
+           } else {
+             ++m_cachedPhysicalTriggers;
+           }
+         } else {
+           ++m_cachedSolidObstacles;
+         }
+       }
+     }
 
-  COLLISION_INFO("Collision Statistics:");
-  COLLISION_INFO(std::format("  Total Bodies: {}", getBodyCount()));
-  COLLISION_INFO(
-      std::format("  Static Bodies: {} (obstacles + triggers)", staticBodies));
-  COLLISION_INFO(
-      std::format("    - Solid obstacles: {} (broadphase)", solidObstacles));
-  COLLISION_INFO(std::format(
-      "    - Physical triggers: {} (broadphase + events)", physicalTriggers));
-  COLLISION_INFO(
-      std::format("    - EventOnly triggers: {} (events only, skip broadphase)",
-                  eventOnlyTriggers));
-  COLLISION_INFO(std::format("  Kinematic Bodies: {} (NPCs)", kinematicBodies));
-  COLLISION_INFO(
-      std::format("  Dynamic Bodies: {} (player, projectiles)", dynamicBodies));
+     // Count bodies by layer using SOA storage
+     m_cachedLayerCounts.clear();
+     for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+       const auto &hot = m_storage.hotData[i];
+       if (hot.active) {
+         m_cachedLayerCounts[hot.layers]++;
+       }
+     }
 
-  // Count bodies by layer using SOA storage
-  std::map<uint32_t, size_t> layerCounts;
-  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-    const auto &hot = m_storage.hotData[i];
-    if (hot.active) {
-      layerCounts[hot.layers]++;
-    }
-  }
+     m_statisticsDirty = false;
+   }
 
-  COLLISION_INFO("  Layer Distribution:");
-  for (const auto &layerCount : layerCounts) {
-    std::string layerName;
-    switch (layerCount.first) {
-    case CollisionLayer::Layer_Default:
-      layerName = "Default";
-      break;
-    case CollisionLayer::Layer_Player:
-      layerName = "Player";
-      break;
-    case CollisionLayer::Layer_Enemy:
-      layerName = "Enemy";
-      break;
-    case CollisionLayer::Layer_Environment:
-      layerName = "Environment";
-      break;
-    case CollisionLayer::Layer_Projectile:
-      layerName = "Projectile";
-      break;
-    case CollisionLayer::Layer_Trigger:
-      layerName = "Trigger";
-      break;
-    default:
-      layerName = "Unknown";
-      break;
-    }
-    COLLISION_INFO(std::format("    {}: {}", layerName, layerCount.second));
-  }
+   COLLISION_INFO("Collision Statistics:");
+   COLLISION_INFO(std::format("  Total Bodies: {}", getBodyCount()));
+   COLLISION_INFO(std::format("  Static Bodies: {} (obstacles + triggers)",
+                              m_cachedStaticBodies));
+   COLLISION_INFO(std::format("    - Solid obstacles: {} (broadphase)",
+                              m_cachedSolidObstacles));
+   COLLISION_INFO(std::format("    - Physical triggers: {} (broadphase + events)",
+                              m_cachedPhysicalTriggers));
+   COLLISION_INFO(std::format("    - EventOnly triggers: {} (events only, skip broadphase)",
+                              m_cachedEventOnlyTriggers));
+   COLLISION_INFO(std::format("  Kinematic Bodies: {} (NPCs)",
+                              m_cachedKinematicBodies));
+   COLLISION_INFO(std::format("  Dynamic Bodies: {} (player, projectiles)",
+                              m_cachedDynamicBodies));
+
+   COLLISION_INFO("  Layer Distribution:");
+   for (const auto &layerCount : m_cachedLayerCounts) {
+     std::string layerName;
+     switch (layerCount.first) {
+     case CollisionLayer::Layer_Default:
+       layerName = "Default";
+       break;
+     case CollisionLayer::Layer_Player:
+       layerName = "Player";
+       break;
+     case CollisionLayer::Layer_Enemy:
+       layerName = "Enemy";
+       break;
+     case CollisionLayer::Layer_Environment:
+       layerName = "Environment";
+       break;
+     case CollisionLayer::Layer_Projectile:
+       layerName = "Projectile";
+       break;
+     case CollisionLayer::Layer_Trigger:
+       layerName = "Trigger";
+       break;
+     default:
+       layerName = "Unknown";
+       break;
+     }
+     COLLISION_INFO(std::format("    {}: {}", layerName, layerCount.second));
+   }
 #endif
 }
 
@@ -1170,14 +1180,15 @@ size_t CollisionManager::addStaticBody(EntityID id, const Vector2D &position,
   m_storage.entityIds.push_back(id);
   m_storage.entityToIndex[id] = newIndex;
 
-  // Fire event and mark hash dirty for static bodies
-  float radius = std::max(hw, hh) + 16.0f;
-  std::string description =
-      std::format("Static obstacle added at ({}, {})", px, py);
-  EventManager::Instance().triggerCollisionObstacleChanged(
-      position, radius, description, EventManager::DispatchMode::Deferred);
-  m_staticHashDirty = true;
-  m_staticQueryCacheDirty = true;
+   // Fire event and mark hash dirty for static bodies
+   float radius = std::max(hw, hh) + 16.0f;
+   std::string description =
+       std::format("Static obstacle added at ({}, {})", px, py);
+   EventManager::Instance().triggerCollisionObstacleChanged(
+       position, radius, description, EventManager::DispatchMode::Deferred);
+   m_staticHashDirty = true;
+   m_staticQueryCacheDirty = true;
+   m_statisticsDirty = true;
 
   return newIndex;
 }
@@ -1230,10 +1241,11 @@ void CollisionManager::removeCollisionBody(EntityID id) {
     m_storage.entityToIndex[movedEntity] = indexToRemove;
   }
 
-  m_storage.hotData.pop_back();
-  m_storage.coldData.pop_back();
-  m_storage.entityIds.pop_back();
-  m_storage.entityToIndex.erase(id);
+   m_storage.hotData.pop_back();
+   m_storage.coldData.pop_back();
+   m_storage.entityIds.pop_back();
+   m_storage.entityToIndex.erase(id);
+   m_statisticsDirty = true;
 
   // Clean up trigger-related state
   for (auto triggerIt = m_activeTriggerPairs.begin();
