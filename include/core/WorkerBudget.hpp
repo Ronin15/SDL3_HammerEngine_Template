@@ -209,6 +209,7 @@ private:
         // Mode tracking
         std::atomic<bool> lastWasThreaded{false};           // What mode was used last frame
         std::atomic<size_t> framesSinceOtherMode{0};        // Frames since we tried the other mode
+        std::atomic<size_t> lastWorkloadSize{0};            // Last workload size for change detection
 
         // Exploration state (replaces forced probing)
         std::atomic<bool> explorationPending{false};        // Currently exploring?
@@ -227,12 +228,13 @@ private:
         // Mode selection constants
         static constexpr size_t MIN_WORKLOAD = 100;             // Always single-threaded below this
         static constexpr size_t DEFAULT_THREADING_THRESHOLD = 200;  // Start with threading above this (until data collected)
-        static constexpr double MODE_SWITCH_THRESHOLD = 1.15;   // 15% improvement to switch modes
+        static constexpr double MODE_SWITCH_THRESHOLD = 1.08;   // 8% improvement to switch modes
         static constexpr size_t INITIAL_EXPLORATION_FRAMES = 30;    // Try other mode quickly when missing data
         static constexpr size_t SAMPLE_INTERVAL = 300;          // Max frames before reconsidering mode
         static constexpr size_t MAX_STALE_FRAMES = 600;         // Force exploration regardless of crossover band (~10 sec)
         static constexpr double CROSSOVER_BAND_LOW = 0.7;       // Near crossover = ratio > 0.7
         static constexpr double CROSSOVER_BAND_HIGH = 1.4;      // Near crossover = ratio < 1.4
+        static constexpr double WORKLOAD_CHANGE_THRESHOLD = 0.25;  // 25% workload change triggers exploration
     };
 
     // Cached budget (protected by double-checked locking)
