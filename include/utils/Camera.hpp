@@ -51,7 +51,7 @@ public:
         bool clampToWorldBounds{true};  // Whether to clamp camera to world bounds
 
         // Zoom configuration
-        std::vector<float> zoomLevels{1.0f, 1.5f, 2.0f};  // Discrete zoom levels
+        std::vector<float> zoomLevels{1.0f, 2.0f, 3.0f};  // Integer zoom levels (pixel-perfect)
         int defaultZoomLevel{0};                           // Starting zoom level index
 
         // Validation

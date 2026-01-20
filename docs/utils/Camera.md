@@ -35,7 +35,7 @@ struct Config {
     bool clampToWorldBounds{true};   // Whether to clamp to world bounds
 
     // Zoom configuration
-    std::vector<float> zoomLevels{1.0f, 1.5f, 2.0f}; // Discrete zoom levels
+    std::vector<float> zoomLevels{1.0f, 2.0f, 3.0f}; // Integer zoom levels (pixel-perfect)
     int defaultZoomLevel{0};                          // Starting zoom level index
 
     bool isValid() const; // Validates all parameters
@@ -69,7 +69,7 @@ struct Config {
 - Recommended: 0.7-0.9 for smooth following
 - Range: 0.0-1.0
 
-**zoomLevels** (default: {1.0f, 1.5f, 2.0f})
+**zoomLevels** (default: {1.0f, 2.0f, 3.0f})
 - Array of discrete zoom levels
 - 1.0 = native resolution
 - >1.0 = zoomed in (objects appear larger)
@@ -259,7 +259,7 @@ Zooms in to the next zoom level (makes objects appear larger).
 ```cpp
 // User presses zoom in key
 if (inputManager.wasKeyPressed(SDL_SCANCODE_EQUALS)) {
-    camera.zoomIn(); // 1.0 → 1.5 → 2.0 (stops at max)
+    camera.zoomIn(); // 1.0 → 2.0 → 3.0 (stops at max)
 }
 ```
 
@@ -271,7 +271,7 @@ Zooms out to the previous zoom level (makes objects appear smaller).
 ```cpp
 // User presses zoom out key
 if (inputManager.wasKeyPressed(SDL_SCANCODE_MINUS)) {
-    camera.zoomOut(); // 2.0 → 1.5 → 1.0 (stops at min)
+    camera.zoomOut(); // 3.0 → 2.0 → 1.0 (stops at min)
 }
 ```
 
@@ -288,7 +288,7 @@ camera.setZoomLevel(2); // Jump to third zoom level
 #### `float getZoom() const`
 Gets current zoom scale factor.
 ```cpp
-float zoom = camera.getZoom(); // 1.0, 1.5, 2.0, etc.
+float zoom = camera.getZoom(); // 1.0, 2.0, 3.0, etc.
 ```
 
 #### `int getZoomLevel() const`
@@ -300,7 +300,7 @@ int level = camera.getZoomLevel(); // 0, 1, 2, etc.
 #### `int getNumZoomLevels() const`
 Gets number of configured zoom levels.
 ```cpp
-int count = camera.getNumZoomLevels(); // 3 for {1.0, 1.5, 2.0}
+int count = camera.getNumZoomLevels(); // 3 for {1.0, 2.0, 3.0}
 ```
 
 ### Coordinate Transformation
@@ -428,7 +428,7 @@ public:
         config.followSpeed = 4.0f;
         config.smoothingFactor = 0.85f;
         config.deadZoneRadius = 16.0f;
-        config.zoomLevels = {1.0f, 1.5f, 2.0f, 2.5f};
+        config.zoomLevels = {1.0f, 2.0f, 3.0f, 4.0f};
         config.defaultZoomLevel = 0; // Start at 1.0x
         m_camera.setConfig(config);
 
@@ -569,7 +569,7 @@ public:
             int level = m_camera.getZoomLevel();
             int maxLevel = m_camera.getNumZoomLevels() - 1;
 
-            // Render zoom UI (e.g., "Zoom: 1.5x (2/3)")
+            // Render zoom UI (e.g., "Zoom: 2.0x (2/3)")
             renderZoomUI(zoom, level, maxLevel);
         }
     }
@@ -816,7 +816,7 @@ Camera::ViewRect view = camera.getViewRect();
 
 // New code (with zoom)
 Camera camera;
-camera.zoomIn(); // Zoom to 1.5x
+camera.zoomIn(); // Zoom to 2.0x
 Camera::ViewRect view = camera.getViewRect();
 // View rect is now viewport size / zoom (smaller visible area)
 ```
@@ -833,7 +833,7 @@ if (inputManager.wasKeyPressed(SDL_SCANCODE_MINUS)) {
 
 // 2. Configure zoom levels in Config
 Camera::Config config;
-config.zoomLevels = {0.75f, 1.0f, 1.5f, 2.0f}; // 4 levels
+config.zoomLevels = {1.0f, 2.0f, 3.0f, 4.0f}; // 4 integer levels (pixel-perfect)
 config.defaultZoomLevel = 1; // Start at 1.0x
 camera.setConfig(config);
 

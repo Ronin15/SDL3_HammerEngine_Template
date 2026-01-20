@@ -168,7 +168,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_AUTO_TEST_SUITE(ZoomTests)
 
 BOOST_AUTO_TEST_CASE(TestZoomInBounds) {
-    // Default config has zoom levels: {1.0f, 1.5f, 2.0f}
+    // Default config has zoom levels: {1.0f, 2.0f, 3.0f}
     Camera camera;
 
     BOOST_CHECK_EQUAL(camera.getZoomLevel(), 0);
@@ -177,17 +177,17 @@ BOOST_AUTO_TEST_CASE(TestZoomInBounds) {
     // Zoom in to level 1
     camera.zoomIn();
     BOOST_CHECK_EQUAL(camera.getZoomLevel(), 1);
-    BOOST_CHECK(approxEqual(camera.getZoom(), 1.5f));
+    BOOST_CHECK(approxEqual(camera.getZoom(), 2.0f));
 
     // Zoom in to level 2 (max)
     camera.zoomIn();
     BOOST_CHECK_EQUAL(camera.getZoomLevel(), 2);
-    BOOST_CHECK(approxEqual(camera.getZoom(), 2.0f));
+    BOOST_CHECK(approxEqual(camera.getZoom(), 3.0f));
 
     // Attempt to zoom beyond max - should stay at max
     camera.zoomIn();
     BOOST_CHECK_EQUAL(camera.getZoomLevel(), 2);
-    BOOST_CHECK(approxEqual(camera.getZoom(), 2.0f));
+    BOOST_CHECK(approxEqual(camera.getZoom(), 3.0f));
 }
 
 BOOST_AUTO_TEST_CASE(TestZoomOutBounds) {
@@ -513,7 +513,7 @@ BOOST_AUTO_TEST_CASE(TestValidConfigAccepted) {
     config.deadZoneRadius = 32.0f;
     config.smoothingFactor = 0.85f;
     config.clampToWorldBounds = true;
-    config.zoomLevels = {1.0f, 1.5f, 2.0f};
+    config.zoomLevels = {1.0f, 2.0f, 3.0f};
     config.defaultZoomLevel = 0;
 
     BOOST_CHECK(config.isValid());
@@ -553,7 +553,7 @@ BOOST_AUTO_TEST_CASE(TestInvalidConfigRejected) {
 
     // Invalid default zoom level index
     Camera::Config config5;
-    config5.zoomLevels = {1.0f, 1.5f};
+    config5.zoomLevels = {1.0f, 2.0f};
     config5.defaultZoomLevel = 5; // Out of range
     BOOST_CHECK(!config5.isValid());
     BOOST_CHECK(!camera.setConfig(config5));
@@ -625,8 +625,8 @@ BOOST_AUTO_TEST_CASE(TestVisibilityWithZoom) {
     // At 1.0x zoom, point at (450, 0) is outside viewport (extends to 400)
     BOOST_CHECK(!camera.isPointVisible(450.0f, 0.0f));
 
-    // At 0.5x zoom would show more, but we only have 1.0, 1.5, 2.0
-    // At 2.0x zoom, viewport is smaller, so same point is still outside
+    // At 0.5x zoom would show more, but we only have 1.0, 2.0, 3.0
+    // At 3.0x zoom, viewport is smaller, so same point is still outside
     camera.setZoomLevel(2);
     BOOST_CHECK(!camera.isPointVisible(450.0f, 0.0f));
 }
