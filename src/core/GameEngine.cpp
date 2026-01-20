@@ -9,6 +9,7 @@
 #include "SDL3/SDL_video.h"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
+#include "core/WorkerBudget.hpp"
 #include "gameStates/AIDemoState.hpp"
 #include "gameStates/AdvancedAIDemoState.hpp"
 #include "gameStates/EventDemoState.hpp"
@@ -1008,6 +1009,9 @@ void GameEngine::update(float deltaTime) {
   // STATE-MANAGED SYSTEMS (Updated by individual states):
   // - UIManager: Optional, state-specific, only updated when UI is actually used
   //   See UIExampleState::update() for proper state-managed pattern
+
+  // Mark frame start for WorkerBudget per-frame caching
+  HammerEngine::WorkerBudgetManager::Instance().markFrameStart();
 
   // 1. Event system - FIRST: process global events, state changes, weather triggers
   mp_eventManager->update();

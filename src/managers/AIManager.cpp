@@ -331,94 +331,15 @@ void AIManager::update(float deltaTime) {
     if (useThreading) {
       auto &threadSystem = HammerEngine::ThreadSystem::Instance();
 
-      // Get optimal worker count (needed for queue pressure logic)
+      // Get optimal worker count - WorkerBudget handles queue pressure internally
+      // (returns 1 worker under critical pressure, triggering single-batch path)
       size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
           HammerEngine::SystemType::AI, entityCount);
 
-      // Check queue pressure before submitting tasks
-      size_t queueSize = threadSystem.getQueueSize();
-      size_t queueCapacity = threadSystem.getQueueCapacity();
-      if (queueCapacity == 0) {
-        // Defensive: treat as high pressure if capacity unknown
-        queueCapacity = 1;
-      }
-      size_t pressureThreshold = static_cast<size_t>(
-          queueCapacity * HammerEngine::QUEUE_PRESSURE_CRITICAL);
-
-      if (queueSize > pressureThreshold) {
-        // Graceful degradation: reduce parallelism under queue pressure
-        // Try with fewer workers instead of full single-thread fallback
-        size_t reducedWorkers = std::max(size_t{1}, optimalWorkerCount / 2);
-        auto [reducedBatchCount, reducedBatchSize] = budgetMgr.getBatchStrategy(
-            HammerEngine::SystemType::AI, entityCount, reducedWorkers);
-
-        if (reducedBatchCount > 1) {
-          // Still using some threading, just less
-          AI_DEBUG(std::format(
-              "Queue pressure detected ({}/{}), reducing workers from {} to {}",
-              queueSize, queueCapacity, optimalWorkerCount, reducedWorkers));
-
-          actualWasThreaded = true;
-          actualBatchCount = reducedBatchCount;
-        } else {
-          // Fallback to single-threaded as last resort
-          AI_DEBUG(std::format(
-              "High queue pressure detected ({}/{}), using single-threaded processing",
-              queueSize, queueCapacity));
-
-          actualWasThreaded = false;
-          actualBatchCount = 1;
-        }
-
-        // Use the reduced batch strategy
-        if (reducedBatchCount <= 1) {
-          processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
-                       worldWidth, worldHeight, cachedPlayerHandle,
-                       cachedPlayerPosition, cachedPlayerVelocity,
-                       cachedPlayerValid);
-        } else {
-          // Submit reduced batches
-          m_batchFutures.clear();
-          m_batchFutures.reserve(reducedBatchCount);
-
-          for (size_t i = 0; i < reducedBatchCount; ++i) {
-            size_t start = i * reducedBatchSize;
-            size_t end = (i == reducedBatchCount - 1) ?
-                         entityCount : start + reducedBatchSize;
-
-            m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
-                [this, start, end, deltaTime, worldWidth, worldHeight,
-                 cachedPlayerHandle, cachedPlayerPosition, cachedPlayerVelocity,
-                 cachedPlayerValid]() -> void {
-                  try {
-                    processBatch(m_activeIndicesBuffer, start, end, deltaTime,
-                                 worldWidth, worldHeight, cachedPlayerHandle,
-                                 cachedPlayerPosition, cachedPlayerVelocity,
-                                 cachedPlayerValid);
-                  } catch (const std::exception &e) {
-                    AI_ERROR(std::format("Exception in AI batch: {}", e.what()));
-                  } catch (...) {
-                    AI_ERROR("Unknown exception in AI batch");
-                  }
-                },
-                HammerEngine::TaskPriority::High, "AI_Batch"));
-          }
-        }
-
-        // Wait for batches to complete (required for accurate timing)
-        for (auto &future : m_batchFutures) {
-          if (future.valid()) {
-            future.get();
-          }
-        }
-      } else {
-        // Use centralized WorkerBudgetManager for smart worker allocation
-        // (budgetMgr already cached at function scope)
-
-        // Get adaptive batch strategy (maximizes parallelism, fine-tunes based
-        // on timing)
-        auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-            HammerEngine::SystemType::AI, entityCount, optimalWorkerCount);
+      // Get adaptive batch strategy (maximizes parallelism, fine-tunes based
+      // on timing). WorkerBudget determines everything dynamically.
+      auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+          HammerEngine::SystemType::AI, entityCount, optimalWorkerCount);
 
 #ifndef NDEBUG
         // Track for interval logging at end of function
@@ -479,8 +400,6 @@ void AIManager::update(float deltaTime) {
 
           // Batches execute in parallel via ThreadSystem
         }
-      }
-
     } else {
       // Single-threaded processing (threading disabled in config)
       actualWasThreaded = false;
