@@ -8,9 +8,9 @@
 
 #include <mutex>
 #include <unordered_map>
-#include <atomic>
 #include <unordered_set>
 #include <vector>
+#include <map>
 #include <functional>
 #include <cstddef>
 #include <chrono>
@@ -687,6 +687,18 @@ private:
 
     // Optimization: Track when static spatial hash needs rebuilding
     bool m_staticHashDirty{false};
+
+    // Optimization: Track when collision statistics need recalculation
+    mutable bool m_statisticsDirty{true};
+
+    // Cached collision statistics to avoid expensive recalculation
+    mutable size_t m_cachedStaticBodies{0};
+    mutable size_t m_cachedKinematicBodies{0};
+    mutable size_t m_cachedDynamicBodies{0};
+    mutable size_t m_cachedEventOnlyTriggers{0};
+    mutable size_t m_cachedPhysicalTriggers{0};
+    mutable size_t m_cachedSolidObstacles{0};
+    mutable std::map<uint32_t, size_t> m_cachedLayerCounts;
 
     // Multi-threading support for broadphase (WorkerBudget integrated)
     // Matches AIManager pattern: reusable member vectors, no mutex (futures are thread-safe)

@@ -317,10 +317,12 @@ void AIManager::update(float deltaTime) {
         HammerEngine::SystemType::AI, entityCount);
     bool useThreading = decision.shouldThread;
 
+#ifndef NDEBUG
     // Track threading decision for interval logging (local vars, no storage
-    // overhead)
+    // overhead) - only needed for debug logging
     size_t logBatchCount = 1;
     bool logWasThreaded = false;
+#endif
 
     if (useThreading) {
       auto &threadSystem = HammerEngine::ThreadSystem::Instance();
@@ -358,9 +360,11 @@ void AIManager::update(float deltaTime) {
         auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
             HammerEngine::SystemType::AI, entityCount, optimalWorkerCount);
 
+#ifndef NDEBUG
         // Track for interval logging at end of function
         logBatchCount = batchCount;
         logWasThreaded = (batchCount > 1);
+#endif
 
         // Single batch optimization: avoid thread overhead
         if (batchCount <= 1) {
@@ -441,8 +445,13 @@ void AIManager::update(float deltaTime) {
     // Report results for unified adaptive tuning
     if (entityCount > 0) {
       budgetMgr.reportExecution(HammerEngine::SystemType::AI,
-                                entityCount, logWasThreaded,
-                                logBatchCount, totalUpdateTime);
+                                entityCount,
+#ifndef NDEBUG
+                                logWasThreaded, logBatchCount,
+#else
+                                false, 1,
+#endif
+                                totalUpdateTime);
     }
 
     // Periodic frame tracking (balanced frequency)
@@ -455,6 +464,7 @@ void AIManager::update(float deltaTime) {
     // out)
     static thread_local uint64_t logFrameCounter = 0;
     if (++logFrameCounter % 1800 == 0 && entityCount > 0) {  // ~30 seconds at 60fps
+      // Only calculate expensive stats when actually logging
       double entitiesPerSecond =
           totalUpdateTime > 0 ? (entityCount * 1000.0 / totalUpdateTime) : 0.0;
       const auto crowdStats = AIInternal::GetCrowdStats();
