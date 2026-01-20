@@ -379,6 +379,8 @@ void EventManager::update() {
   bool useThreadingGlobal = decision.shouldThread;
 
   // Helper lambda to decide threading per type (uses cached counts - no mutex!)
+  // WorkerBudget is the AUTHORITATIVE source - getBatchStrategy() returns
+  // batchCount=1 for small workloads, naturally triggering single-threaded path.
   auto updateEventType = [this, useThreadingGlobal, &eventCountsByType,
                           &threadingInfo](EventTypeId typeId) {
     // Early exit for empty event types - avoids lock acquisition and iteration
@@ -394,14 +396,9 @@ void EventManager::update() {
       return;
     }
 
-    // Global threshold met - check per-type threshold
-    if (typeEventCount >= PER_TYPE_THREAD_THRESHOLD) {
-      // This type has enough events to benefit from threading
-      updateEventTypeBatchThreaded(typeId, threadingInfo);
-    } else {
-      // Too few events in this type - threading overhead would hurt performance
-      updateEventTypeBatch(typeId);
-    }
+    // Global threshold met - let WorkerBudget decide batching per type
+    // getBatchStrategy() returns batchCount=1 for small workloads
+    updateEventTypeBatchThreaded(typeId, threadingInfo);
   };
 
   // Process each event type with adaptive threading decision
