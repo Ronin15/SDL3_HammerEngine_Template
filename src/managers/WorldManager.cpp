@@ -248,7 +248,7 @@ void WorldManager::update() {
 }
 
 void WorldManager::render(SDL_Renderer *renderer, float cameraX, float cameraY,
-                          int viewportWidth, int viewportHeight) {
+                          int viewportWidth, int viewportHeight, float zoom) {
   if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled ||
       !renderer) {
     return;
@@ -266,7 +266,7 @@ void WorldManager::render(SDL_Renderer *renderer, float cameraX, float cameraY,
   // renderVisibleTiles() This avoids double-snapping which causes 1-pixel jumps
   // at 0.5 boundaries
   m_tileRenderer->renderVisibleTiles(*m_currentWorld, renderer, cameraX,
-                                     cameraY, viewportWidth, viewportHeight);
+                                     cameraY, viewportWidth, viewportHeight, zoom);
 }
 
 bool WorldManager::handleHarvestResource(int entityId, int targetX,
@@ -1812,7 +1812,7 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
 
 void HammerEngine::TileRenderer::renderVisibleTiles(
     const HammerEngine::WorldData &world, SDL_Renderer *renderer, float cameraX,
-    float cameraY, int viewportWidth, int viewportHeight) {
+    float cameraY, int viewportWidth, int viewportHeight, float zoom) {
   if (world.grid.empty()) {
     WORLD_MANAGER_WARN(
         "TileRenderer: Cannot render tiles - world grid is empty");
@@ -1848,8 +1848,20 @@ void HammerEngine::TileRenderer::renderVisibleTiles(
   const float flooredCamY = std::floor(cameraY);
 
   // Sub-pixel offset for final composite (negative = camera moves in that direction)
-  const float subPixelOffsetX = -(cameraX - flooredCamX);
-  const float subPixelOffsetY = -(cameraY - flooredCamY);
+  // Quantize to zoom-aligned pixel grid to prevent jitter at high zoom levels.
+  // At zoom=2, offsets snap to 0.5 increments (0, -0.5 become 0, -1 screen pixels).
+  // At zoom=3, offsets snap to ~0.33 increments (0, -0.33, -0.67 become 0, -1, -2).
+  float rawOffsetX = -(cameraX - flooredCamX);
+  float rawOffsetY = -(cameraY - flooredCamY);
+
+  if (zoom > 1.0f) {
+    float pixelStep = 1.0f / zoom;
+    rawOffsetX = std::round(rawOffsetX / pixelStep) * pixelStep;
+    rawOffsetY = std::round(rawOffsetY / pixelStep) * pixelStep;
+  }
+
+  const float subPixelOffsetX = rawOffsetX;
+  const float subPixelOffsetY = rawOffsetY;
 
   // Calculate visible chunk range using floored camera
   const int worldWidth = static_cast<int>(world.grid[0].size());

@@ -62,7 +62,8 @@ public:
     TileRenderer& operator=(const TileRenderer&) = delete;
 
     void renderVisibleTiles(const WorldData& world, SDL_Renderer* renderer,
-                           float cameraX, float cameraY, int viewportWidth, int viewportHeight);
+                           float cameraX, float cameraY, int viewportWidth, int viewportHeight,
+                           float zoom = 1.0f);
     void renderTile(const Tile& tile, SDL_Renderer* renderer, float screenX, float screenY) const;
 
     // Chunk texture management
@@ -351,7 +352,7 @@ public:
 
     void update();
     void render(SDL_Renderer* renderer, float cameraX, float cameraY,
-               int viewportWidth, int viewportHeight);
+               int viewportWidth, int viewportHeight, float zoom = 1.0f);
 
     bool handleHarvestResource(int entityId, int targetX, int targetY);
     bool updateTile(int x, int y, const HammerEngine::Tile& newTile);
