@@ -1874,7 +1874,7 @@ void CollisionManager::broadphaseMultiThreaded(size_t batchCount,
 
 #ifndef NDEBUG
   static thread_local uint64_t logFrameCounter = 0;
-  if (++logFrameCounter % 300 == 0 && movableIndices.size() > 0) {
+  if (++logFrameCounter % 2100 == 0 && movableIndices.size() > 0) {  // ~35 seconds at 60fps
     COLLISION_DEBUG(std::format("Broadphase: multi-threaded [{} batches, {} "
                                 "movables, {} MM pairs, {} MS pairs]",
                                 batchCount, movableIndices.size(),
@@ -2881,9 +2881,9 @@ void CollisionManager::updatePerformanceMetrics(
           "Slow frame: {:.2f}ms (broad:{:.2f}, narrow:{:.2f}, pairs:{})",
           m_perf.lastTotalMs, d12, d23, pairCount));
 
-  // Periodic statistics (every 300 frames) - concise format with phase
+  // Periodic statistics (~35 seconds at 60fps) - concise format with phase
   // breakdown
-  if (logFrameCounter % 300 == 0 && bodyCount > 0) {
+  if (logFrameCounter % 2100 == 0 && bodyCount > 0) {  // ~35 seconds at 60fps
     size_t staticsInBroadphase = m_collisionPool.staticIndices.size();
     size_t triggerDetectionEntities =
         EntityDataManager::Instance().getTriggerDetectionIndices().size();

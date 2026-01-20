@@ -128,7 +128,7 @@ ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, siz
         static thread_local uint64_t debugCounterColl = 0;
         static thread_local uint64_t debugCounterAI = 0;
         uint64_t& counter = (system == SystemType::Collision) ? debugCounterColl : debugCounterAI;
-        if (++counter % 300 == 0) {
+        if (++counter % 2400 == 0) {  // ~40 seconds at 60fps
             size_t framesSince = state.framesSinceOtherMode.load(std::memory_order_relaxed);
             bool wasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
             const char* name = (system == SystemType::Collision) ? "Collision" : "AI";
@@ -271,35 +271,17 @@ bool WorkerBudgetManager::shouldExploreOtherMode(SystemType system) const {
         }
     }
 
-    // Signal 2: Stale data - haven't sampled other mode in a while
-    size_t framesSince = state.framesSinceOtherMode.load(std::memory_order_relaxed);
-
-    // CRITICAL: Force exploration if data is too stale, regardless of crossover band
-    // Throughput characteristics change with hardware, workload, and game state
-    // Don't let the system get stuck with old assumptions
-    if (framesSince >= SystemTuningState::MAX_STALE_FRAMES) {
-        return true;  // Must re-validate - we might be wrong
-    }
-
-    // Near crossover point - explore more frequently to maintain accurate data
-    if (framesSince >= SystemTuningState::SAMPLE_INTERVAL) {
-        double singleTP = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
-        double multiTP = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
-
-        // If we don't have data for the other mode, explore to get some
-        if ((wasThreaded && singleTP <= 0.0) || (!wasThreaded && multiTP <= 0.0)) {
-            return true;
-        }
-
-        // Near crossover = neither mode is clearly better
-        if (singleTP > 0.0 && multiTP > 0.0) {
-            double ratio = multiTP / singleTP;
-            if (ratio > SystemTuningState::CROSSOVER_BAND_LOW &&
-                ratio < SystemTuningState::CROSSOVER_BAND_HIGH) {
-                return true;  // Explore to refine our knowledge
-            }
-        }
-    }
+    // REMOVED: Forced frame-based exploration (MAX_STALE_FRAMES, SAMPLE_INTERVAL)
+    // These caused periodic hitches every ~10 seconds. The multiplier-based exploration
+    // above handles performance degradation detection. Mode switching only happens when
+    // there's actual evidence the current mode is suboptimal.
+    //
+    // Why this is safe:
+    // - Hardware doesn't change during gameplay
+    // - Workload changes are detected by multiplier dropping
+    // - Game state changes affect workload size, triggering re-evaluation naturally
+    // - Initial data collection (lines 149-169) still gathers baseline for both modes
+    // - Mode switching (line 177) still switches when other mode is 15%+ better
 
     return false;
 }
