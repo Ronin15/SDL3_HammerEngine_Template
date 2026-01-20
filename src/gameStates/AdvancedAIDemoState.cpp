@@ -530,7 +530,7 @@ void AdvancedAIDemoState::render(SDL_Renderer *renderer,
 
   // Render world first (background layer) using pixel-snapped camera
   if (m_camera && worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-    worldMgr.render(renderer, renderCamX, renderCamY, viewWidth, viewHeight);
+    worldMgr.render(renderer, renderCamX, renderCamY, viewWidth, viewHeight, zoom);
   }
 
   // Render data-driven NPCs via NPCRenderController

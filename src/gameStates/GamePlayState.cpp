@@ -299,7 +299,7 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   }
 
   if (m_camera && worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-    worldMgr.render(renderer, renderCamX, renderCamY, viewWidth, viewHeight);
+    worldMgr.render(renderer, renderCamX, renderCamY, viewWidth, viewHeight, zoom);
   }
 
   // Render world resources (dropped items, harvestables, containers)

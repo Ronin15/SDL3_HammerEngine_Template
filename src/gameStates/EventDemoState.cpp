@@ -749,7 +749,7 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
 
   // Render world first (background layer) using pixel-snapped camera
   if (m_camera && worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-    worldMgr.render(renderer, renderCamX, renderCamY, viewWidth, viewHeight);
+    worldMgr.render(renderer, renderCamX, renderCamY, viewWidth, viewHeight, zoom);
   }
 
   // Render background particles first (rain, snow) - behind player/NPCs
