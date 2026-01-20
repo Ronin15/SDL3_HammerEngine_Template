@@ -20,6 +20,7 @@
 #include "managers/WorldManager.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <format>
 
 Player::Player() : Entity() {
@@ -241,9 +242,9 @@ void Player::renderAtPosition(SDL_Renderer *renderer, const Vector2D &interpPos,
   }
 
   // Convert world coords to screen coords using passed camera offset
-  // Using floating-point for smooth sub-pixel rendering (no pixel-snapping)
-  float renderX = interpPos.getX() - cameraX - (m_frameWidth / 2.0f);
-  float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
+  // Pixel snap to prevent shimmer during diagonal camera movement
+  float renderX = std::floor(interpPos.getX() - cameraX - (m_frameWidth / 2.0f));
+  float renderY = std::floor(interpPos.getY() - cameraY - (m_height / 2.0f));
 
   // Direct SDL call with cached texture - no hash lookup!
   SDL_FRect srcRect = {static_cast<float>(m_frameWidth * m_currentFrame),

@@ -8,6 +8,7 @@
 #include "managers/EntityDataManager.hpp"
 #include "managers/AIManager.hpp"
 #include <SDL3/SDL.h>
+#include <cmath>
 
 void NPCRenderController::update(float deltaTime) {
     auto& edm = EntityDataManager::Instance();
@@ -66,9 +67,10 @@ void NPCRenderController::renderNPCs(SDL_Renderer* renderer, float cameraX, floa
 
         float halfW = static_cast<float>(r.frameWidth) * 0.5f;
         float halfH = static_cast<float>(r.frameHeight) * 0.5f;
+        // Pixel snap to prevent shimmer during diagonal camera movement
         SDL_FRect destRect = {
-            interpX - cameraX - halfW,
-            interpY - cameraY - halfH,
+            std::floor(interpX - cameraX - halfW),
+            std::floor(interpY - cameraY - halfH),
             static_cast<float>(r.frameWidth),
             static_cast<float>(r.frameHeight)
         };
