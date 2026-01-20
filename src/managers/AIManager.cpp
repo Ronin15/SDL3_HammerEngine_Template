@@ -317,6 +317,10 @@ void AIManager::update(float deltaTime) {
         HammerEngine::SystemType::AI, entityCount);
     bool useThreading = decision.shouldThread;
 
+    // Track what actually happened (not just what was planned)
+    bool actualWasThreaded = false;
+    size_t actualBatchCount = 1;
+
 #ifndef NDEBUG
     // Track threading decision for interval logging (local vars, no storage
     // overhead) - only needed for debug logging
@@ -326,6 +330,10 @@ void AIManager::update(float deltaTime) {
 
     if (useThreading) {
       auto &threadSystem = HammerEngine::ThreadSystem::Instance();
+
+      // Get optimal worker count (needed for queue pressure logic)
+      size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+          HammerEngine::SystemType::AI, entityCount);
 
       // Check queue pressure before submitting tasks
       size_t queueSize = threadSystem.getQueueSize();
@@ -338,22 +346,74 @@ void AIManager::update(float deltaTime) {
           queueCapacity * HammerEngine::QUEUE_PRESSURE_CRITICAL);
 
       if (queueSize > pressureThreshold) {
-        // Graceful degradation: fallback to single-threaded processing
-        AI_DEBUG(std::format(
-            "Queue pressure detected ({}/{}), using single-threaded processing",
-            queueSize, queueCapacity));
+        // Graceful degradation: reduce parallelism under queue pressure
+        // Try with fewer workers instead of full single-thread fallback
+        size_t reducedWorkers = std::max(size_t{1}, optimalWorkerCount / 2);
+        auto [reducedBatchCount, reducedBatchSize] = budgetMgr.getBatchStrategy(
+            HammerEngine::SystemType::AI, entityCount, reducedWorkers);
 
-        processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
-                     worldWidth, worldHeight, cachedPlayerHandle,
-                     cachedPlayerPosition, cachedPlayerVelocity,
-                     cachedPlayerValid);
+        if (reducedBatchCount > 1) {
+          // Still using some threading, just less
+          AI_DEBUG(std::format(
+              "Queue pressure detected ({}/{}), reducing workers from {} to {}",
+              queueSize, queueCapacity, optimalWorkerCount, reducedWorkers));
+
+          actualWasThreaded = true;
+          actualBatchCount = reducedBatchCount;
+        } else {
+          // Fallback to single-threaded as last resort
+          AI_DEBUG(std::format(
+              "High queue pressure detected ({}/{}), using single-threaded processing",
+              queueSize, queueCapacity));
+
+          actualWasThreaded = false;
+          actualBatchCount = 1;
+        }
+
+        // Use the reduced batch strategy
+        if (reducedBatchCount <= 1) {
+          processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
+                       worldWidth, worldHeight, cachedPlayerHandle,
+                       cachedPlayerPosition, cachedPlayerVelocity,
+                       cachedPlayerValid);
+        } else {
+          // Submit reduced batches
+          m_batchFutures.clear();
+          m_batchFutures.reserve(reducedBatchCount);
+
+          for (size_t i = 0; i < reducedBatchCount; ++i) {
+            size_t start = i * reducedBatchSize;
+            size_t end = (i == reducedBatchCount - 1) ?
+                         entityCount : start + reducedBatchSize;
+
+            m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+                [this, start, end, deltaTime, worldWidth, worldHeight,
+                 cachedPlayerHandle, cachedPlayerPosition, cachedPlayerVelocity,
+                 cachedPlayerValid]() -> void {
+                  try {
+                    processBatch(m_activeIndicesBuffer, start, end, deltaTime,
+                                 worldWidth, worldHeight, cachedPlayerHandle,
+                                 cachedPlayerPosition, cachedPlayerVelocity,
+                                 cachedPlayerValid);
+                  } catch (const std::exception &e) {
+                    AI_ERROR(std::format("Exception in AI batch: {}", e.what()));
+                  } catch (...) {
+                    AI_ERROR("Unknown exception in AI batch");
+                  }
+                },
+                HammerEngine::TaskPriority::High, "AI_Batch"));
+          }
+        }
+
+        // Wait for batches to complete (required for accurate timing)
+        for (auto &future : m_batchFutures) {
+          if (future.valid()) {
+            future.get();
+          }
+        }
       } else {
         // Use centralized WorkerBudgetManager for smart worker allocation
         // (budgetMgr already cached at function scope)
-
-        // Get optimal workers (WorkerBudget determines everything dynamically)
-        size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-            HammerEngine::SystemType::AI, entityCount);
 
         // Get adaptive batch strategy (maximizes parallelism, fine-tunes based
         // on timing)
@@ -368,11 +428,15 @@ void AIManager::update(float deltaTime) {
 
         // Single batch optimization: avoid thread overhead
         if (batchCount <= 1) {
+          actualWasThreaded = false;
+          actualBatchCount = 1;
           processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
                        worldWidth, worldHeight, cachedPlayerHandle,
                        cachedPlayerPosition, cachedPlayerVelocity,
                        cachedPlayerValid);
         } else {
+          actualWasThreaded = true;
+          actualBatchCount = batchCount;
           size_t entitiesPerBatch = entityCount / batchCount;
           size_t remainingEntities = entityCount % batchCount;
 
@@ -419,6 +483,8 @@ void AIManager::update(float deltaTime) {
 
     } else {
       // Single-threaded processing (threading disabled in config)
+      actualWasThreaded = false;
+      actualBatchCount = 1;
       processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth,
                    worldHeight, cachedPlayerHandle, cachedPlayerPosition,
                    cachedPlayerVelocity, cachedPlayerValid);
@@ -442,15 +508,10 @@ void AIManager::update(float deltaTime) {
     double totalUpdateTime =
         std::chrono::duration<double, std::milli>(endTime - startTime).count();
 
-    // Report results for unified adaptive tuning
+    // Report results for unified adaptive tuning - report what actually happened
     if (entityCount > 0) {
       budgetMgr.reportExecution(HammerEngine::SystemType::AI,
-                                entityCount,
-#ifndef NDEBUG
-                                logWasThreaded, logBatchCount,
-#else
-                                false, 1,
-#endif
+                                entityCount, actualWasThreaded, actualBatchCount,
                                 totalUpdateTime);
     }
 

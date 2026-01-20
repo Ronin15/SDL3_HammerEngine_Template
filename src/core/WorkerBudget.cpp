@@ -107,7 +107,33 @@ ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, siz
         return {false, 0};
     }
 
+    // System-specific threading thresholds
+    size_t systemThreshold = SystemTuningState::DEFAULT_THREADING_THRESHOLD;
+    if (system == SystemType::AI) {
+        // AI can benefit from threading at lower workloads due to behavioral complexity
+        systemThreshold = 150;
+    } else if (system == SystemType::Collision) {
+        // Collision systems need more bodies to benefit from threading overhead
+        systemThreshold = 250;
+    }
+
     auto& state = m_systemState[static_cast<size_t>(system)];
+
+    // Check for significant workload changes (triggers exploration)
+    size_t lastWorkload = state.lastWorkloadSize.load(std::memory_order_relaxed);
+    if (lastWorkload > 0) {
+        double workloadChange = static_cast<double>(workloadSize) / static_cast<double>(lastWorkload);
+        if (workloadChange < (1.0 - SystemTuningState::WORKLOAD_CHANGE_THRESHOLD) ||
+            workloadChange > (1.0 + SystemTuningState::WORKLOAD_CHANGE_THRESHOLD)) {
+            // Significant workload change - trigger exploration
+            state.explorationPending.store(true, std::memory_order_relaxed);
+            state.explorationWorkloadSize.store(workloadSize, std::memory_order_relaxed);
+            state.lastWorkloadSize.store(workloadSize, std::memory_order_relaxed);
+            bool wasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
+            return {!wasThreaded, 2};  // probePhase=2 indicates workload change exploration
+        }
+    }
+    state.lastWorkloadSize.store(workloadSize, std::memory_order_relaxed);
 
     // Check if exploration of alternate mode should be triggered
     if (shouldExploreOtherMode(system)) {
@@ -131,10 +157,11 @@ ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, siz
         if (++counter % 2400 == 0) {  // ~40 seconds at 60fps
             size_t framesSince = state.framesSinceOtherMode.load(std::memory_order_relaxed);
             bool wasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
+            float multiplier = state.multiplier.load(std::memory_order_relaxed);
             const char* name = (system == SystemType::Collision) ? "Collision" : "AI";
             HAMMER_DEBUG("WorkerBudget", std::format(
-                "{}: wl={}, sTP={:.0f}, mTP={:.0f}, was={}, frames={}",
-                name, workloadSize, singleTP, multiTP, wasThreaded, framesSince));
+                "{}: wl={}, sTP={:.0f}, mTP={:.0f}, was={}, frames={}, mult={:.2f}",
+                name, workloadSize, singleTP, multiTP, wasThreaded, framesSince, multiplier));
         }
     }
 #endif
@@ -142,7 +169,7 @@ ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, siz
     // No data yet - use default behavior based on workload size
     if (singleTP <= 0.0 && multiTP <= 0.0) {
         // Start with threading for larger workloads until we have data
-        bool shouldThread = workloadSize >= SystemTuningState::DEFAULT_THREADING_THRESHOLD;
+        bool shouldThread = workloadSize >= systemThreshold;
         return {shouldThread, 0};
     }
 
@@ -161,7 +188,7 @@ ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, siz
     if (multiTP <= 0.0) {
         // Only have single-threaded data - we NEED multi-threaded data
         // For large workloads, try threading immediately to get comparison data
-        if (workloadSize >= SystemTuningState::DEFAULT_THREADING_THRESHOLD) {
+        if (workloadSize >= systemThreshold) {
             state.explorationPending.store(true, std::memory_order_relaxed);
             return {true, 1};  // Try multi-threaded to collect data
         }
@@ -269,6 +296,32 @@ bool WorkerBudgetManager::shouldExploreOtherMode(SystemType system) const {
             }
             return true;  // Try single-threaded
         }
+    }
+
+    // Signal 2: Performance degradation detection
+    // If current mode's throughput is significantly worse than recent peak, explore
+    double currentTP, otherTP;
+    if (wasThreaded) {
+        currentTP = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
+        otherTP = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
+    } else {
+        currentTP = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
+        otherTP = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
+    }
+
+    if (currentTP > 0.0 && otherTP > 0.0) {
+        double ratio = currentTP / otherTP;
+        // If current mode is more than 20% worse than the other mode, explore
+        if (ratio < 0.8) {
+            return true;
+        }
+    }
+
+    // Signal 3: Periodic exploration to prevent getting stuck
+    // Even with good performance, occasionally try the other mode to see if it's better now
+    size_t framesSinceOther = state.framesSinceOtherMode.load(std::memory_order_relaxed);
+    if (framesSinceOther > SystemTuningState::SAMPLE_INTERVAL) {
+        return true;  // Time for a periodic check
     }
 
     // REMOVED: Forced frame-based exploration (MAX_STALE_FRAMES, SAMPLE_INTERVAL)
