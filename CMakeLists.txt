@@ -256,6 +256,11 @@ target_link_libraries(HammerEngineObjects PUBLIC
     SDL3_mixer::SDL3_mixer
 )
 
+# Pass project name to code for file logging paths
+target_compile_definitions(HammerEngineObjects PRIVATE
+    HAMMER_APP_NAME="${PROJECT_NAME}"
+)
+
 # Apply aggressive optimization flags to our project targets only (not SDL3)
 # These flags like -ffast-math conflict with SDL3's audio code
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
