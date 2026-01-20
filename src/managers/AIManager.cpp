@@ -446,7 +446,7 @@ void AIManager::update(float deltaTime) {
     }
 
     // Periodic frame tracking (balanced frequency)
-    if (currentFrame % 300 == 0) {
+    if (currentFrame % 1800 == 0) {  // ~30 seconds at 60fps
       m_lastCleanupFrame.store(currentFrame, std::memory_order_relaxed);
     }
 
@@ -454,7 +454,7 @@ void AIManager::update(float deltaTime) {
     // Interval stats logging - zero overhead in release (entire block compiles
     // out)
     static thread_local uint64_t logFrameCounter = 0;
-    if (++logFrameCounter % 300 == 0 && entityCount > 0) {
+    if (++logFrameCounter % 1800 == 0 && entityCount > 0) {  // ~30 seconds at 60fps
       double entitiesPerSecond =
           totalUpdateTime > 0 ? (entityCount * 1000.0 / totalUpdateTime) : 0.0;
       const auto crowdStats = AIInternal::GetCrowdStats();
