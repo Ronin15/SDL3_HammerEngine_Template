@@ -247,6 +247,12 @@ inline std::mutex Logger::s_logMutex{};
 #define CAMERA_INFO(msg) HAMMER_INFO("Camera", msg)
 #define CAMERA_DEBUG(msg) HAMMER_DEBUG("Camera", msg)
 
+#define SCENE_RENDERER_CRITICAL(msg) HAMMER_CRITICAL("SceneRenderer", msg)
+#define SCENE_RENDERER_ERROR(msg) HAMMER_ERROR("SceneRenderer", msg)
+#define SCENE_RENDERER_WARN(msg) HAMMER_WARN("SceneRenderer", msg)
+#define SCENE_RENDERER_INFO(msg) HAMMER_INFO("SceneRenderer", msg)
+#define SCENE_RENDERER_DEBUG(msg) HAMMER_DEBUG("SceneRenderer", msg)
+
 #define SAVEGAME_CRITICAL(msg) HAMMER_CRITICAL("SaveGameManager", msg)
 #define SAVEGAME_ERROR(msg) HAMMER_ERROR("SaveGameManager", msg)
 #define SAVEGAME_WARN(msg) HAMMER_WARN("SaveGameManager", msg)

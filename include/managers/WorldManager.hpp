@@ -62,9 +62,23 @@ public:
     TileRenderer(const TileRenderer&) = delete;
     TileRenderer& operator=(const TileRenderer&) = delete;
 
-    void renderVisibleTiles(const WorldData& world, SDL_Renderer* renderer,
-                           float cameraX, float cameraY, int viewportWidth, int viewportHeight,
-                           float zoom = 1.0f);
+    /**
+     * @brief Render tiles to the current render target
+     *
+     * Renders visible tile chunks directly to the current render target.
+     * SceneRenderer manages the intermediate texture; TileRenderer just draws tiles.
+     *
+     * @param world World data to render
+     * @param renderer SDL renderer
+     * @param cameraX Camera X offset (floored for pixel-perfect tile alignment)
+     * @param cameraY Camera Y offset (floored for pixel-perfect tile alignment)
+     * @param viewportWidth Viewport width at 1x scale
+     * @param viewportHeight Viewport height at 1x scale
+     */
+    void render(const WorldData& world, SDL_Renderer* renderer,
+                float cameraX, float cameraY,
+                float viewportWidth, float viewportHeight);
+
     void renderTile(const Tile& tile, SDL_Renderer* renderer, float screenX, float screenY) const;
 
     // Chunk texture management
@@ -213,12 +227,6 @@ private:
     uint64_t m_frameCounter{0};  // For LRU tracking
     static constexpr size_t MAX_CACHED_CHUNKS = 64;  // ~256MB max VRAM (4MB per 1024x1024 chunk)
 
-    // Intermediate texture for smooth scrolling (render chunks at integer positions,
-    // then composite with sub-pixel offset to screen)
-    std::shared_ptr<SDL_Texture> m_intermediateTexture;
-    int m_intermediateWidth{0};
-    int m_intermediateHeight{0};
-
     // Reusable buffers for render loop (avoids per-frame allocations per CLAUDE.md)
     mutable std::vector<uint64_t> m_visibleKeysBuffer;
     mutable std::unordered_set<uint64_t> m_visibleKeysSet;  // O(1) lookup for eviction
@@ -353,8 +361,21 @@ public:
     bool hasActiveWorld() const;
 
     void update();
+
+    /**
+     * @brief Render tiles to the current render target
+     *
+     * Renders visible tile chunks directly to the current render target.
+     * Call this within SceneRenderer's begin/end block.
+     *
+     * @param renderer SDL renderer
+     * @param cameraX Camera X offset (floored for pixel-perfect tile alignment)
+     * @param cameraY Camera Y offset (floored for pixel-perfect tile alignment)
+     * @param viewportWidth Viewport width at 1x scale
+     * @param viewportHeight Viewport height at 1x scale
+     */
     void render(SDL_Renderer* renderer, float cameraX, float cameraY,
-               int viewportWidth, int viewportHeight, float zoom = 1.0f);
+                float viewportWidth, float viewportHeight);
 
     bool handleHarvestResource(int entityId, int targetX, int targetY);
     bool updateTile(int x, int y, const HammerEngine::Tile& newTile);

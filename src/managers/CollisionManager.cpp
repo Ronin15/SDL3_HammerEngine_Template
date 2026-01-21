@@ -2404,6 +2404,8 @@ void CollisionManager::resolve(const CollisionInfo &collision) {
     store4_aligned(resultB, posB);
 
     // Write positions back to EDM
+    // Update both position AND previousPosition to make collision push instantaneous
+    // (no interpolation from pre-collision position - prevents jitter for stationary entities)
     transformA.position.setX(resultA[0]);
     transformA.position.setY(resultA[1]);
     transformA.previousPosition = transformA.position;
@@ -2411,6 +2413,29 @@ void CollisionManager::resolve(const CollisionInfo &collision) {
     transformB.position.setX(resultB[0]);
     transformB.position.setY(resultB[1]);
     transformB.previousPosition = transformB.position;
+
+    // Cancel velocity components pointing into collision for both bodies
+    // This prevents vibration from repeated collision/resolution cycles
+    float nx = collision.normal.getX();
+    float ny = collision.normal.getY();
+
+    // Body A: cancel velocity in +normal direction
+    float vxA = transformA.velocity.getX();
+    float vyA = transformA.velocity.getY();
+    float dotA = vxA * nx + vyA * ny;
+    if (dotA > 0.0f) {
+      transformA.velocity.setX(vxA - dotA * nx);
+      transformA.velocity.setY(vyA - dotA * ny);
+    }
+
+    // Body B: cancel velocity in -normal direction
+    float vxB = transformB.velocity.getX();
+    float vyB = transformB.velocity.getY();
+    float dotB = vxB * (-nx) + vyB * (-ny);
+    if (dotB > 0.0f) {
+      transformB.velocity.setX(vxB - dotB * (-nx));
+      transformB.velocity.setY(vyB - dotB * (-ny));
+    }
   } else {
     // MOVABLE-STATIC: indexA is EDM index (movable), indexB is storage index
     // (static)
@@ -2435,9 +2460,25 @@ void CollisionManager::resolve(const CollisionInfo &collision) {
     store4_aligned(result, pos);
 
     // Write position back to EDM
+    // Update both position AND previousPosition to make collision push instantaneous
     transform.position.setX(result[0]);
     transform.position.setY(result[1]);
     transform.previousPosition = transform.position;
+
+    // Cancel velocity in collision direction to prevent vibration
+    // Project velocity onto normal: v_normal = (v . n) * n
+    // New velocity = v - v_normal (removes component pointing into wall)
+    float nx = collision.normal.getX();
+    float ny = collision.normal.getY();
+    float vx = transform.velocity.getX();
+    float vy = transform.velocity.getY();
+    float dot = vx * nx + vy * ny;
+
+    // Only cancel if velocity is pointing into the wall (dot > 0 means moving into normal)
+    if (dot > 0.0f) {
+      transform.velocity.setX(vx - dot * nx);
+      transform.velocity.setY(vy - dot * ny);
+    }
   }
 }
 

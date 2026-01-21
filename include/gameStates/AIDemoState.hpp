@@ -11,6 +11,7 @@
 #include "entities/EntityHandle.hpp"
 #include "entities/Player.hpp"
 #include "utils/Camera.hpp"
+#include "utils/SceneRenderer.hpp"
 
 #include <memory>
 #include <vector>
@@ -69,6 +70,9 @@ private:
     // Camera for world navigation
     std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
 
+    // Scene renderer for pixel-perfect zoomed world rendering
+    std::unique_ptr<HammerEngine::SceneRenderer> m_sceneRenderer{nullptr};
+
     // AI pause state
     bool m_aiPaused{false};
     bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit
@@ -81,9 +85,6 @@ private:
 
     // Cached entity count (updated in update(), used in render())
     size_t m_cachedEntityCount{0};
-
-    // Render scale caching - avoid GPU state changes when zoom unchanged
-    float m_lastRenderedZoom{1.0f};
 };
 
 #endif // AI_DEMO_STATE_HPP
