@@ -7,6 +7,8 @@
 #include "ai/behaviors/ChaseBehavior.hpp"
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
+#include "controllers/world/DayNightController.hpp"
+#include "controllers/world/WeatherController.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "events/NPCSpawnEvent.hpp"
@@ -19,6 +21,7 @@
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/GameStateManager.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
@@ -32,7 +35,6 @@
 #include <cstddef>
 #include <ctime>
 #include <format>
-#include <random>
 
 namespace {
 // Static lookup table for WeatherType -> string conversion
@@ -124,76 +126,56 @@ bool EventDemoState::enter() {
     // Set player reference in AIManager for distance optimization
     aiMgr.setPlayerHandle(m_player->getHandle());
 
-    // Initialize timing
-
     // Setup achievement thresholds for demonstration
     setupResourceAchievements();
 
-    // Setup initial demo state
-    m_currentPhase = DemoPhase::Initialization;
-    m_phaseTimer = 0.0f;
+    // Initialize timing
     m_totalDemoTime = 0.0f;
     m_lastEventTriggerTime = -1.0f;
     m_limitMessageShown = false;
-    m_weatherChangesShown = 0;
-    m_weatherDemoComplete = false;
+
+    // Register controllers (following GamePlayState pattern)
+    m_controllers.add<WeatherController>();
+    m_controllers.add<DayNightController>();
+
+    // Enable automatic weather changes via GameTimeManager
+    auto &gameTimeMgr = GameTimeManager::Instance();
+    gameTimeMgr.enableAutoWeather(true);
+    gameTimeMgr.setWeatherCheckInterval(4.0f);
+    gameTimeMgr.setTimeScale(60.0f);
 
     // Setup AI behaviors for integration demo
     setupAIBehaviors();
 
-    // Create test events
-    createTestEvents();
-
-    // Setup instructions
-    updateInstructions();
-
     // Add initial log entry
     addLogEntry("Event Demo System Initialized");
 
-    // Create simple UI components using auto-detecting methods with dramatic spacing
+    // Create simple UI components using auto-detecting methods
     auto &ui = UIManager::Instance();
     ui.createTitleAtTop(
         "event_title", "Event Demo State",
         UIConstants::DEFAULT_TITLE_HEIGHT); // Use standard title height
-                                            // (auto-repositions)
 
-    ui.createLabel("event_phase",
-                   {UIConstants::INFO_LABEL_MARGIN_X,
-                    UIConstants::INFO_FIRST_LINE_Y, 300,
-                    UIConstants::INFO_LABEL_HEIGHT},
-                   "Phase: Initialization");
-    // Set auto-repositioning: top-aligned with calculated position (fixes
-    // fullscreen transition)
-    ui.setComponentPositioning(
-        "event_phase",
-        {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X,
-         UIConstants::INFO_FIRST_LINE_Y, 300, UIConstants::INFO_LABEL_HEIGHT});
-
-    const int statusY = UIConstants::INFO_FIRST_LINE_Y +
-                        UIConstants::INFO_LABEL_HEIGHT +
-                        UIConstants::INFO_LINE_SPACING;
+    // Status label at top
+    const int statusY = UIConstants::INFO_FIRST_LINE_Y;
     ui.createLabel("event_status",
                    {UIConstants::INFO_LABEL_MARGIN_X, statusY, 400,
                     UIConstants::INFO_LABEL_HEIGHT},
                    "FPS: -- | Weather: Clear | NPCs: 0");
-    // Set auto-repositioning: top-aligned with calculated position (fixes
-    // fullscreen transition)
     ui.setComponentPositioning("event_status",
                                {UIPositionMode::TOP_ALIGNED,
                                 UIConstants::INFO_LABEL_MARGIN_X, statusY, 400,
                                 UIConstants::INFO_LABEL_HEIGHT});
 
+    // Controls label
     const int controlsY = statusY + UIConstants::INFO_LABEL_HEIGHT +
-                          UIConstants::INFO_LINE_SPACING +
-                          UIConstants::INFO_STATUS_SPACING;
+                          UIConstants::INFO_LINE_SPACING;
     ui.createLabel(
         "event_controls",
         {UIConstants::INFO_LABEL_MARGIN_X, controlsY,
          ui.getLogicalWidth() - 2 * UIConstants::INFO_LABEL_MARGIN_X,
          UIConstants::INFO_LABEL_HEIGHT},
-        "[B] Exit | [SPACE] Manual | [1-6] Events | [A] Auto | [R] "
-        "Reset | [F] Fire | [S] Smoke | [K] Sparks | [I] Inventory | [ ] Zoom");
-    // Set auto-repositioning: top-aligned, spans full width minus margins
+        "[B] Exit | [1-6] Events | [R] Reset | [F] Fire | [S] Smoke | [K] Sparks | [I] Inventory | [ ] Zoom");
     ui.setComponentPositioning("event_controls",
                                {UIPositionMode::TOP_ALIGNED,
                                 UIConstants::INFO_LABEL_MARGIN_X, controlsY,
@@ -330,9 +312,8 @@ bool EventDemoState::enter() {
     // LoadingState)
     initializeCamera();
 
-    // Pre-allocate status buffers to avoid per-frame allocations
-    m_phaseBuffer.reserve(32);
-    m_statusBuffer2.reserve(64);
+    // Pre-allocate status buffer to avoid per-frame allocations
+    m_statusBuffer.reserve(64);
 
     // Mark as fully initialized to prevent re-entering loading logic
     m_initialized = true;
@@ -382,9 +363,8 @@ bool EventDemoState::exit() {
       m_eventLog.clear();
       m_eventStates.clear();
 
-      // Reset demo state
-      m_currentPhase = DemoPhase::Initialization;
-      m_phaseTimer = 0.0f;
+      // Clear controllers
+      m_controllers.clear();
 
       // Unregister our specific handlers via tokens
       unregisterEventHandlers();
@@ -447,18 +427,14 @@ bool EventDemoState::exit() {
     m_eventLog.clear();
     m_eventStates.clear();
 
-    // Reset demo state
-    m_currentPhase = DemoPhase::Initialization;
-    m_phaseTimer = 0.0f;
+    // Clear controllers
+    m_controllers.clear();
 
     // Unregister our specific handlers via tokens
     unregisterEventHandlers();
 
     // Remove all events from EventManager
     eventMgr.clearAllEvents();
-
-    // Optional: leave global handlers intact for other states; no blanket clear
-    // here
 
     // Use manager prepareForStateTransition methods for deterministic cleanup
     // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
@@ -560,7 +536,7 @@ void EventDemoState::update(float deltaTime) {
   }
 
   // Update timing
-  updateDemoTimer(deltaTime);
+  m_totalDemoTime += deltaTime;
 
   // Update player
   if (m_player) {
@@ -577,132 +553,7 @@ void EventDemoState::update(float deltaTime) {
   updateCamera(deltaTime);
 
   // AI Manager is updated globally by GameEngine for optimal performance
-  // This prevents double-updating AI entities which was causing them to move
-  // twice as fast Entity updates are handled by AIManager::update() in
-  // GameEngine No need to manually update AIManager here
-
-  // Note: NPC cleanup is handled by AIManager::prepareForStateTransition() in
-  // exit() Attempting cleanup here causes undefined behavior by calling
-  // AIManager methods on null pointers
-
-  if (m_autoMode) {
-    // Cache EDM reference for NPC count checks
-    EntityDataManager &edm = EntityDataManager::Instance();
-    // Auto mode processing
-    switch (m_currentPhase) {
-    case DemoPhase::Initialization:
-      if (m_phaseTimer >= 2.0f) {
-        m_currentPhase = DemoPhase::WeatherDemo;
-        m_phaseTimer = 0.0f;
-        triggerWeatherDemoAuto();
-        m_lastEventTriggerTime = m_totalDemoTime;
-        m_weatherChangesShown = 1;
-        addLogEntry("Weather demo started");
-      }
-      break;
-
-    case DemoPhase::WeatherDemo:
-      if (!m_weatherDemoComplete &&
-          (m_totalDemoTime - m_lastEventTriggerTime) >=
-              m_weatherChangeInterval) {
-        if (m_weatherChangesShown < m_weatherSequence.size()) {
-          triggerWeatherDemoAuto();
-          m_lastEventTriggerTime = m_totalDemoTime;
-          m_weatherChangesShown++;
-          m_phaseTimer = 0.0f;
-
-          if (m_weatherChangesShown >= m_weatherSequence.size()) {
-            m_weatherDemoComplete = true;
-            addLogEntry("Weather demo complete");
-          }
-        } else {
-          m_weatherDemoComplete = true;
-        }
-      }
-      if (m_weatherDemoComplete && m_phaseTimer >= 2.0f) {
-        m_currentPhase = DemoPhase::NPCSpawnDemo;
-        m_phaseTimer = 0.0f;
-        addLogEntry("NPC spawn demo");
-      }
-      break;
-
-    case DemoPhase::NPCSpawnDemo:
-      if ((m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval &&
-          edm.getEntityCount(EntityKind::NPC) < 5000) {
-        triggerNPCSpawnDemo();
-        m_lastEventTriggerTime = m_totalDemoTime;
-      }
-      if (m_phaseTimer >= m_phaseDuration) {
-        m_currentPhase = DemoPhase::SceneTransitionDemo;
-        m_phaseTimer = 0.0f;
-        addLogEntry("Scene transition demo");
-      }
-      break;
-
-    case DemoPhase::SceneTransitionDemo:
-      if (m_phaseTimer >= 3.0f &&
-          (m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval) {
-        triggerSceneTransitionDemo();
-        m_lastEventTriggerTime = m_totalDemoTime;
-      }
-      if (m_phaseTimer >= m_phaseDuration) {
-        m_currentPhase = DemoPhase::ParticleEffectDemo;
-        m_phaseTimer = 0.0f;
-        addLogEntry("Particle effect demo");
-      }
-      break;
-
-    case DemoPhase::ParticleEffectDemo:
-      if (m_phaseTimer >= 2.0f &&
-          (m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval) {
-        triggerParticleEffectDemo();
-        m_lastEventTriggerTime = m_totalDemoTime;
-      }
-      if (m_phaseTimer >= m_phaseDuration) {
-        m_currentPhase = DemoPhase::ResourceDemo;
-        m_phaseTimer = 0.0f;
-        addLogEntry("Resource demo");
-      }
-      break;
-
-    case DemoPhase::ResourceDemo:
-      if (m_phaseTimer >= 2.0f &&
-          (m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval) {
-        triggerResourceDemo();
-        m_lastEventTriggerTime = m_totalDemoTime;
-      }
-      if (m_phaseTimer >= m_phaseDuration) {
-        m_currentPhase = DemoPhase::CustomEventDemo;
-        m_phaseTimer = 0.0f;
-        addLogEntry("Custom event demo");
-      }
-      break;
-
-    case DemoPhase::CustomEventDemo:
-      if (m_phaseTimer >= 3.0f &&
-          (m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval &&
-          edm.getEntityCount(EntityKind::NPC) < 5000) {
-        triggerCustomEventDemo();
-        m_lastEventTriggerTime = m_totalDemoTime;
-      }
-      if (m_phaseTimer >= m_phaseDuration) {
-        m_currentPhase = DemoPhase::InteractiveMode;
-        m_phaseTimer = 0.0f;
-        addLogEntry("Interactive mode (1-5 for events)");
-      }
-      break;
-
-    case DemoPhase::InteractiveMode:
-      m_phaseTimer = 0.0f;
-      break;
-
-    case DemoPhase::Complete:
-      break;
-    }
-  }
-
-  // Update instructions
-  updateInstructions();
+  // Entity updates are handled by AIManager::update() in GameEngine
 
   // Update UI (moved from render path for consistent frame timing)
   auto &uiMgr = UIManager::Instance();
@@ -711,8 +562,7 @@ void EventDemoState::update(float deltaTime) {
   }
 
   // Note: EventManager is updated globally by GameEngine in the main update
-  // loop for optimal performance and consistency with other global systems (AI,
-  // Input)
+  // loop for optimal performance and consistency with other global systems
 }
 
 void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
@@ -784,22 +634,6 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
 
   // Render UI components (update moved to update() for consistent frame timing)
   if (!uiMgr.isShutdown()) {
-    // Lazy-cache phase string (only compute when enum changes)
-    if (m_currentPhase != m_lastCachedPhase) {
-      m_cachedPhaseStr = getCurrentPhaseString();
-      m_lastCachedPhase = m_currentPhase;
-    }
-
-    // Update UI displays only when values change (C++20 type-safe, zero
-    // allocations)
-    if (m_cachedPhaseStr != m_lastDisplayedPhase) {
-      m_phaseBuffer.clear();
-      std::format_to(std::back_inserter(m_phaseBuffer), "Phase: {}",
-                     m_cachedPhaseStr);
-      uiMgr.setText("event_phase", m_phaseBuffer);
-      m_lastDisplayedPhase = m_cachedPhaseStr;
-    }
-
     // Lazy-cache weather string (only compute when enum changes)
     if (m_currentWeather != m_lastCachedWeather) {
       m_cachedWeatherStr = getCurrentWeatherString();
@@ -816,19 +650,16 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
         m_cachedWeatherStr != m_lastDisplayedWeather ||
         npcCount != m_lastDisplayedNPCCount) {
 
-      m_statusBuffer2.clear();
-      std::format_to(std::back_inserter(m_statusBuffer2),
+      m_statusBuffer.clear();
+      std::format_to(std::back_inserter(m_statusBuffer),
                      "FPS: {:.1f} | Weather: {} | NPCs: {}", currentFPS,
                      m_cachedWeatherStr, npcCount);
-      uiMgr.setText("event_status", m_statusBuffer2);
+      uiMgr.setText("event_status", m_statusBuffer);
 
       m_lastDisplayedFPS = currentFPS;
       m_lastDisplayedWeather = m_cachedWeatherStr;
       m_lastDisplayedNPCCount = npcCount;
     }
-
-    // Update inventory display
-    // updateInventoryUI(); // Now handled by data binding
   }
   uiMgr.render(renderer);
 }
@@ -868,49 +699,6 @@ void EventDemoState::setupEventSystem() {
   addLogEntry("Event system ready");
 }
 
-void EventDemoState::createTestEvents() {
-  auto &eventMgr = EventManager::Instance();
-
-  // Create and register weather events using convenience methods
-  bool success1 =
-      eventMgr.createWeatherEvent("demo_clear", "Clear", 1.0f, 2.0f);
-  bool success2 =
-      eventMgr.createWeatherEvent("demo_rainy", "Rainy", 0.1f, 3.0f);
-  bool success3 =
-      eventMgr.createWeatherEvent("demo_stormy", "Stormy", 0.9f, 1.5f);
-  bool success4 =
-      eventMgr.createWeatherEvent("demo_foggy", "Foggy", 0.6f, 4.0f);
-
-  // Create and register NPC spawn events using convenience methods
-  bool success5 =
-      eventMgr.createNPCSpawnEvent("demo_guard_spawn", "Guard", 1, 20.0f);
-  bool success6 = eventMgr.createNPCSpawnEvent("demo_villager_spawn",
-                                               "Villager", 2, 15.0f);
-  bool success7 = eventMgr.createNPCSpawnEvent("demo_merchant_spawn",
-                                               "Merchant", 1, 25.0f);
-  bool success8 = eventMgr.createNPCSpawnEvent("demo_warrior_spawn",
-                                               "Warrior", 1, 30.0f);
-
-  // Create and register scene change events using convenience methods
-  bool success9 = eventMgr.createSceneChangeEvent("demo_forest", "Forest",
-                                                  "fade", 2.0f);
-  bool success10 = eventMgr.createSceneChangeEvent("demo_village", "Village",
-                                                   "slide", 1.5f);
-  bool success11 = eventMgr.createSceneChangeEvent("demo_castle", "Castle",
-                                                   "dissolve", 2.5f);
-
-  // Report creation results
-  int const successCount = success1 + success2 + success3 + success4 +
-                           success5 + success6 + success7 + success8 +
-                           success9 + success10 + success11;
-
-  if (successCount == 11) {
-    addLogEntry("Created 11 demo events");
-  } else {
-    addLogEntry(std::format("Created {}/11 events", successCount));
-  }
-}
-
 void EventDemoState::handleInput() {
   // Get manager references at function start
   const InputManager &inputMgr = InputManager::Instance();
@@ -918,155 +706,102 @@ void EventDemoState::handleInput() {
   const UIManager &ui = UIManager::Instance();
   EntityDataManager &edm = EntityDataManager::Instance();
 
-  // Use InputManager's new event-driven key press detection
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) {
-    // Advance to next phase manually
-    switch (m_currentPhase) {
-    case DemoPhase::Initialization:
-      m_currentPhase = DemoPhase::WeatherDemo;
-      triggerWeatherDemo();
-      break;
-    case DemoPhase::WeatherDemo:
-      m_currentPhase = DemoPhase::NPCSpawnDemo;
-      triggerNPCSpawnDemo();
-      break;
-    case DemoPhase::NPCSpawnDemo:
-      m_currentPhase = DemoPhase::SceneTransitionDemo;
-      triggerSceneTransitionDemo();
-      break;
-    case DemoPhase::SceneTransitionDemo:
-      m_currentPhase = DemoPhase::ParticleEffectDemo;
-      triggerParticleEffectDemo();
-      break;
-    case DemoPhase::ParticleEffectDemo:
-      m_currentPhase = DemoPhase::ResourceDemo;
-      triggerResourceDemo();
-      break;
-    case DemoPhase::ResourceDemo:
-      m_currentPhase = DemoPhase::CustomEventDemo;
-      triggerCustomEventDemo();
-      break;
-    case DemoPhase::CustomEventDemo:
-      m_currentPhase = DemoPhase::InteractiveMode;
-      break;
-    default:
-      break;
-    }
-    m_phaseTimer = 0.0f;
-  }
-
+  // Manual event triggers (keys 1-6)
+  // [1] Weather - cycle through weather types
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1) &&
       (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
-    if (m_autoMode && m_currentPhase == DemoPhase::WeatherDemo) {
-      m_phaseTimer = 0.0f;
-    }
-    triggerWeatherDemoManual();
+    triggerWeatherDemo();
     m_lastEventTriggerTime = m_totalDemoTime;
   }
 
+  // [2] NPC Spawn
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2) &&
       (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
       edm.getEntityCount(EntityKind::NPC) < 5000) {
-    if (m_autoMode && m_currentPhase == DemoPhase::NPCSpawnDemo) {
-      m_phaseTimer = 0.0f;
-    }
     triggerNPCSpawnDemo();
     m_lastEventTriggerTime = m_totalDemoTime;
+  } else if (inputMgr.wasKeyPressed(SDL_SCANCODE_2) &&
+             edm.getEntityCount(EntityKind::NPC) >= 5000) {
+    addLogEntry("NPC limit (R to reset)");
   }
 
+  // [3] Scene Transition
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_3) &&
       (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
-    if (m_autoMode && m_currentPhase == DemoPhase::SceneTransitionDemo) {
-      m_phaseTimer = 0.0f;
-    }
     triggerSceneTransitionDemo();
     m_lastEventTriggerTime = m_totalDemoTime;
   }
 
+  // [4] Custom Event (weather + NPCs)
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
       (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
       edm.getEntityCount(EntityKind::NPC) < 5000) {
-    if (m_autoMode && m_currentPhase == DemoPhase::CustomEventDemo) {
-      m_phaseTimer = 0.0f;
-    }
     triggerCustomEventDemo();
     m_lastEventTriggerTime = m_totalDemoTime;
-  }
-  // Provide feedback when NPC cap reached
-  else if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
-           (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
-           edm.getEntityCount(EntityKind::NPC) >= 5000) {
+  } else if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
+             edm.getEntityCount(EntityKind::NPC) >= 5000) {
     addLogEntry("NPC limit (R to reset)");
   }
 
+  // [5] Events Reset
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
     resetAllEvents();
     addLogEntry("Events reset");
   }
 
+  // [6] Resource Demo
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_6) &&
       (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
-    if (m_autoMode && m_currentPhase == DemoPhase::ResourceDemo) {
-      m_phaseTimer = 0.0f;
-    }
     triggerResourceDemo();
     m_lastEventTriggerTime = m_totalDemoTime;
   }
 
+  // [R] Full Reset
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_R)) {
     resetAllEvents();
-    m_currentPhase = DemoPhase::Initialization;
-    m_phaseTimer = 0.0f;
     m_totalDemoTime = 0.0f;
     m_lastEventTriggerTime = 0.0f;
     m_limitMessageShown = false;
-    m_weatherChangesShown = 0;
-    m_weatherDemoComplete = false;
     addLogEntry("Demo reset");
   }
 
+  // [C] Convenience Methods Demo
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_C) &&
       (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
     triggerConvenienceMethodsDemo();
     m_lastEventTriggerTime = m_totalDemoTime;
   }
 
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_A)) {
-    m_autoMode = !m_autoMode;
-    addLogEntry(m_autoMode ? "Auto mode ON" : "Auto mode OFF");
-  }
-
-  // Fire effect toggle (F key)
+  // Particle effect toggles
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_F)) {
     particleMgr.toggleFireEffect();
     addLogEntry("Fire toggled");
   }
 
-  // Smoke effect toggle (S key)
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_S)) {
     particleMgr.toggleSmokeEffect();
     addLogEntry("Smoke toggled");
   }
 
-  // Sparks effect toggle (K key)
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_K)) {
     particleMgr.toggleSparksEffect();
     addLogEntry("Sparks toggled");
   }
 
-  // Inventory toggle (I key)
+  // Inventory toggle
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_I)) {
     toggleInventoryDisplay();
   }
 
   // Camera zoom controls
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_LEFTBRACKET) && m_camera) {
-    m_camera->zoomIn(); // [ key = zoom in (objects larger)
+    m_camera->zoomIn();
   }
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_RIGHTBRACKET) && m_camera) {
-    m_camera->zoomOut(); // ] key = zoom out (objects smaller)
+    m_camera->zoomOut();
   }
 
+  // Back to main menu
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
     mp_stateManager->changeState("MainMenuState");
   }
@@ -1074,39 +809,23 @@ void EventDemoState::handleInput() {
   // Mouse input for world interaction
   if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
     Vector2D const mousePos = inputMgr.getMousePosition();
-    // ui already cached at top of function
-
     if (!ui.isClickOnUI(mousePos)) {
-      // World interaction at mouse position
-      // Currently unused - world click coordinates available via
-      // m_camera->screenToWorld(mousePos)
       (void)m_camera->screenToWorld(mousePos);
     }
   }
 }
 
-void EventDemoState::updateDemoTimer(float deltaTime) {
-  if (m_autoMode) {
-    m_phaseTimer += deltaTime;
-  }
-  m_totalDemoTime += deltaTime;
-}
-
-void EventDemoState::triggerWeatherDemo() { triggerWeatherDemoManual(); }
-
-void EventDemoState::triggerWeatherDemoAuto() {
+void EventDemoState::triggerWeatherDemo() {
+  // Cycle through weather types
   WeatherType newWeather = m_weatherSequence[m_currentWeatherIndex];
   std::string customType = m_customWeatherTypes[m_currentWeatherIndex];
-  m_currentWeatherIndex =
-      (m_currentWeatherIndex + 1) % m_weatherSequence.size();
+  m_currentWeatherIndex = (m_currentWeatherIndex + 1) % m_weatherSequence.size();
 
   // Use EventManager hub to change weather
   if (newWeather == WeatherType::Custom && !customType.empty()) {
-    // Custom type by string
     EventManager::Instance().changeWeather(customType, m_weatherTransitionTime,
                                EventManager::DispatchMode::Deferred);
   } else {
-    // Use lookup table for enum to string conversion
     const char* wt = kWeatherTypeNames[static_cast<size_t>(newWeather)];
     EventManager::Instance().changeWeather(wt, m_weatherTransitionTime,
                                EventManager::DispatchMode::Deferred);
@@ -1115,34 +834,7 @@ void EventDemoState::triggerWeatherDemoAuto() {
   m_currentWeather = newWeather;
   std::string weatherName =
       customType.empty() ? getCurrentWeatherString() : customType;
-  addLogEntry(std::format("Weather: {} (auto)", weatherName));
-}
-
-void EventDemoState::triggerWeatherDemoManual() {
-  size_t currentIndex = m_manualWeatherIndex;
-  WeatherType newWeather = m_weatherSequence[m_manualWeatherIndex];
-  std::string customType = m_customWeatherTypes[m_manualWeatherIndex];
-
-  // Suppress unused variable warning - currentIndex used for internal tracking
-  (void)currentIndex;
-
-  m_manualWeatherIndex = (m_manualWeatherIndex + 1) % m_weatherSequence.size();
-
-  // Use EventManager hub to change weather
-  if (newWeather == WeatherType::Custom && !customType.empty()) {
-    EventManager::Instance().changeWeather(customType, m_weatherTransitionTime,
-                               EventManager::DispatchMode::Deferred);
-  } else {
-    // Use lookup table for enum to string conversion
-    const char* wt = kWeatherTypeNames[static_cast<size_t>(newWeather)];
-    EventManager::Instance().changeWeather(wt, m_weatherTransitionTime,
-                               EventManager::DispatchMode::Deferred);
-  }
-
-  m_currentWeather = newWeather;
-  std::string weatherName =
-      customType.empty() ? getCurrentWeatherString() : customType;
-  addLogEntry(std::format("Weather: {} (manual)", weatherName));
+  addLogEntry(std::format("Weather: {}", weatherName));
 }
 
 void EventDemoState::triggerNPCSpawnDemo() {
@@ -1380,7 +1072,7 @@ void EventDemoState::triggerResourceDemo() {
 void EventDemoState::triggerCustomEventDemo() {
   addLogEntry("Custom event demo");
 
-  triggerWeatherDemoManual();
+  triggerWeatherDemo();
 
   if (EntityDataManager::Instance().getEntityCount(EntityKind::NPC) >= 5000) {
     addLogEntry("NPC limit reached (5000)");
@@ -1602,31 +1294,6 @@ void EventDemoState::addLogEntry(const std::string &entry) {
   }
 }
 
-std::string EventDemoState::getCurrentPhaseString() const {
-  switch (m_currentPhase) {
-  case DemoPhase::Initialization:
-    return "Initialization";
-  case DemoPhase::WeatherDemo:
-    return "Weather Demo";
-  case DemoPhase::NPCSpawnDemo:
-    return "NPC Spawn Demo";
-  case DemoPhase::SceneTransitionDemo:
-    return "Scene Transition Demo";
-  case DemoPhase::ParticleEffectDemo:
-    return "Particle Effect Demo";
-  case DemoPhase::ResourceDemo:
-    return "Resource Demo";
-  case DemoPhase::CustomEventDemo:
-    return "Custom Event Demo";
-  case DemoPhase::InteractiveMode:
-    return "Interactive Mode";
-  case DemoPhase::Complete:
-    return "Complete";
-  default:
-    return "Unknown";
-  }
-}
-
 std::string EventDemoState::getCurrentWeatherString() const {
   switch (m_currentWeather) {
   case WeatherType::Clear:
@@ -1647,59 +1314,6 @@ std::string EventDemoState::getCurrentWeatherString() const {
     return "Custom";
   default:
     return "Unknown";
-  }
-}
-
-void EventDemoState::updateInstructions() {
-  // OPTIMIZATION: Only update instructions when phase changes
-  // Avoids ~20 string allocations per frame
-  if (m_currentPhase == m_lastInstructionsPhase) {
-    return; // Phase unchanged, skip string allocations
-  }
-  m_lastInstructionsPhase = m_currentPhase;
-
-  m_instructions.clear();
-
-  switch (m_currentPhase) {
-  case DemoPhase::Initialization:
-    m_instructions.push_back("Initializing event system...");
-    m_instructions.push_back("Press SPACE to start weather demo");
-    break;
-  case DemoPhase::WeatherDemo:
-    m_instructions.push_back("Demonstrating weather events");
-    m_instructions.push_back("Watch the weather change over time");
-    break;
-  case DemoPhase::NPCSpawnDemo:
-    m_instructions.push_back("Demonstrating NPC spawn events");
-    m_instructions.push_back("NPCs will spawn around the player");
-    break;
-  case DemoPhase::SceneTransitionDemo:
-    m_instructions.push_back("Demonstrating scene transition events");
-    m_instructions.push_back("Scene changes will be logged");
-    break;
-  case DemoPhase::ParticleEffectDemo:
-    m_instructions.push_back("Demonstrating particle effects via EventManager");
-    m_instructions.push_back("Particles triggered at various coordinates");
-    break;
-  case DemoPhase::ResourceDemo:
-    m_instructions.push_back(
-        "Demonstrating resource management via EventManager");
-    m_instructions.push_back("Resources added/removed with events fired");
-    m_instructions.push_back("Watch inventory panel for real-time changes");
-    break;
-  case DemoPhase::CustomEventDemo:
-    m_instructions.push_back("Demonstrating custom event combinations");
-    m_instructions.push_back("Multiple events triggered together");
-    break;
-  case DemoPhase::InteractiveMode:
-    m_instructions.push_back("Interactive Mode - Manual Control (Permanent)");
-    m_instructions.push_back("Use number keys 1-6 to trigger events");
-    m_instructions.push_back("Press 'C' for convenience methods demo");
-    m_instructions.push_back("Press 'A' to toggle auto mode on/off");
-    m_instructions.push_back("Press 'R' to reset all events");
-    break;
-  default:
-    break;
   }
 }
 

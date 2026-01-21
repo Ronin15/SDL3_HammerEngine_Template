@@ -6,6 +6,7 @@
 #ifndef EVENT_DEMO_STATE_HPP
 #define EVENT_DEMO_STATE_HPP
 
+#include "controllers/ControllerRegistry.hpp"
 #include "events/WeatherEvent.hpp"
 #include "gameStates/GameState.hpp"
 #include "managers/EventManager.hpp" // For EventData
@@ -42,51 +43,28 @@ public:
 private:
   // Demo management methods
   void setupEventSystem();
-  void createTestEvents();
   void unregisterEventHandlers();
-  void updateDemoTimer(float deltaTime);
 
   void renderUI();
 
-  // Event demonstration methods
+  // Event demonstration methods (manual triggers only)
   void triggerWeatherDemo();
-  void triggerWeatherDemoAuto();   // Auto demo progression version
-  void triggerWeatherDemoManual(); // Manual trigger version
   void triggerNPCSpawnDemo();
   void triggerSceneTransitionDemo();
-  void triggerParticleEffectDemo(); // NEW: Demonstrate particle effects via
-                                    // EventManager
-  void triggerResourceDemo();       // NEW: Demonstrate resource management via
-                                    // EventManager
+  void triggerParticleEffectDemo();
+  void triggerResourceDemo();
   void triggerCustomEventDemo();
-  void triggerConvenienceMethodsDemo(); // NEW: Demonstrate convenience methods
+  void triggerConvenienceMethodsDemo();
   void resetAllEvents();
 
   // Event handler methods
   void onWeatherChanged(const std::string &message);
   void onNPCSpawned(const EventData &data);
   void onSceneChanged(const std::string &message);
-  void onResourceChanged(
-      const EventData &data); // NEW: Resource change event handler
+  void onResourceChanged(const EventData &data);
 
-  // Demo state tracking
-  enum class DemoPhase {
-    Initialization,
-    WeatherDemo,
-    NPCSpawnDemo,
-    SceneTransitionDemo,
-    ParticleEffectDemo,
-    ResourceDemo,
-    CustomEventDemo,
-    InteractiveMode,
-    Complete
-  };
-
-  DemoPhase m_currentPhase{DemoPhase::Initialization};
-  DemoPhase m_lastInstructionsPhase{DemoPhase::Complete};  // Track to avoid per-frame string allocations
-  float m_phaseTimer{0.0f};
-  float m_phaseDuration{8.0f}; // 8 seconds per phase for better pacing
-  bool m_autoMode{true}; // Auto-advance through demos - enabled by default
+  // Controllers (owned by ControllerRegistry, following GamePlayState pattern)
+  ControllerRegistry m_controllers{};
 
   // Data-driven NPC rendering (velocity-based animation)
   NPCRenderController m_npcRenderCtrl{};
@@ -118,7 +96,7 @@ private:
   // Track if state is fully initialized (after returning from LoadingState)
   bool m_initialized{false};
 
-  // Weather demo variables
+  // Weather demo variables (for manual cycling through weather types)
   WeatherType m_currentWeather{WeatherType::Clear};
   float m_weatherTransitionTime{3.0f};
   std::vector<WeatherType> m_weatherSequence{
@@ -130,9 +108,6 @@ private:
   std::vector<std::string> m_customWeatherTypes{
       "", "", "", "", "", "", "", "HeavyRain", "HeavySnow", "WindyDust", "WindyStorm"};
   size_t m_currentWeatherIndex{0};
-  float m_weatherChangeInterval{4.0f}; // Time between weather changes
-  size_t m_weatherChangesShown{0};     // Track how many weather types shown
-  bool m_weatherDemoComplete{false}; // Flag to prevent infinite weather cycling
 
   // NPC spawn demo variables
   std::vector<std::string> m_npcTypes{"Guard", "Villager", "Merchant",
@@ -154,13 +129,10 @@ private:
 
   // UI and display
   std::string m_statusText{};
-  std::vector<std::string> m_instructions{};
 
-  // Demo timing using accumulated deltaTime
+  // Event trigger debouncing
   float m_totalDemoTime{0.0f};
   float m_lastEventTriggerTime{0.0f};
-  float m_eventFireInterval{4.0f}; // Minimum seconds between event triggers -
-                                   // slower for better visibility
   bool m_limitMessageShown{false}; // Track if limit message has been shown
 
   // Inventory UI
@@ -177,9 +149,7 @@ private:
 
   // Helper methods
   void addLogEntry(const std::string &entry);
-  std::string getCurrentPhaseString() const;
   std::string getCurrentWeatherString() const;
-  void updateInstructions();
   void cleanupSpawnedNPCs();
   void setupResourceAchievements(); // Setup achievement demonstration
 
@@ -224,20 +194,16 @@ private:
   std::vector<EventManager::HandlerToken> m_handlerTokens{};
 
   // Status display optimization - zero per-frame allocations (C++20 type-safe)
-  std::string m_phaseBuffer{};
-  std::string m_statusBuffer2{};  // Named to avoid conflict with existing m_statusText
+  std::string m_statusBuffer{};
   float m_lastDisplayedFPS{-1.0f};  // Float for decimal precision
   size_t m_lastDisplayedNPCCount{0};
   std::string m_lastDisplayedWeather{};
-  std::string m_lastDisplayedPhase{};
 
   // Cached NPC count (updated in update(), used in render())
   size_t m_cachedNPCCount{0};
 
-  // Lazy-cached strings (computed only when underlying enum changes)
-  DemoPhase m_lastCachedPhase{DemoPhase::Complete};  // Initialize to invalid to force first compute
+  // Lazy-cached weather string (computed only when underlying enum changes)
   WeatherType m_lastCachedWeather{WeatherType::Custom};  // Initialize to invalid to force first compute
-  std::string m_cachedPhaseStr{};
   std::string m_cachedWeatherStr{};
 
   // Render scale caching - avoid GPU state changes when zoom unchanged
