@@ -63,9 +63,9 @@ Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
 }
 
 void Camera::update(float deltaTime) {
-    // Store previous position BEFORE updating for render interpolation
-    // This enables smooth camera at any refresh rate with fixed 60Hz updates
-    m_previousPosition = m_position;
+    // NOTE: previousPosition storage moved to getRenderOffset()
+    // This ensures it's stored once per visual frame, not once per update()
+    // (update() can run multiple times per visual frame with fixed timestep catchup)
 
     // Update camera shake first (no-ops if inactive)
     if (m_shakeTimeRemaining > 0.0f) {
@@ -307,7 +307,7 @@ void Camera::computeOffsetFromCenter(float centerX, float centerY,
     }
 }
 
-Vector2D Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) const {
+Vector2D Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) {
     // Interpolate between previous and current position for smooth rendering
     Vector2D center(
         m_previousPosition.getX() + (m_position.getX() - m_previousPosition.getX()) * interpolationAlpha,
@@ -315,6 +315,10 @@ Vector2D Camera::getRenderOffset(float& offsetX, float& offsetY, float interpola
 
     // Compute screen offset from the interpolated center position
     computeOffsetFromCenter(center.getX(), center.getY(), offsetX, offsetY);
+
+    // Store current position as previous for NEXT frame's interpolation
+    // This runs once per visual frame (render calls this once)
+    m_previousPosition = m_position;
 
     // Return the center position we used - caller should render followed entity here
     return center;
