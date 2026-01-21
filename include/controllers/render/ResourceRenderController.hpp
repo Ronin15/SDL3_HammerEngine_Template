@@ -55,26 +55,35 @@ public:
     /**
      * @brief Render all visible dropped items using spatial query
      * @param renderer SDL renderer from GameState::render()
-     * @param camera Camera for viewport and position info
+     * @param camera Camera for viewport and visibility queries
+     * @param cameraX Interpolated camera X offset for rendering
+     * @param cameraY Interpolated camera Y offset for rendering
      * @param alpha Interpolation alpha for smooth rendering (0.0-1.0)
      */
-    void renderDroppedItems(SDL_Renderer* renderer, const HammerEngine::Camera& camera, float alpha);
+    void renderDroppedItems(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
+                            float cameraX, float cameraY, float alpha);
 
     /**
      * @brief Render all visible containers using spatial query
      * @param renderer SDL renderer from GameState::render()
-     * @param camera Camera for viewport and position info
+     * @param camera Camera for viewport and visibility queries
+     * @param cameraX Interpolated camera X offset for rendering
+     * @param cameraY Interpolated camera Y offset for rendering
      * @param alpha Interpolation alpha for smooth rendering (0.0-1.0)
      */
-    void renderContainers(SDL_Renderer* renderer, const HammerEngine::Camera& camera, float alpha);
+    void renderContainers(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
+                          float cameraX, float cameraY, float alpha);
 
     /**
      * @brief Render all visible harvestables using spatial query
      * @param renderer SDL renderer from GameState::render()
-     * @param camera Camera for viewport and position info
+     * @param camera Camera for viewport and visibility queries
+     * @param cameraX Interpolated camera X offset for rendering
+     * @param cameraY Interpolated camera Y offset for rendering
      * @param alpha Interpolation alpha for smooth rendering (0.0-1.0)
      */
-    void renderHarvestables(SDL_Renderer* renderer, const HammerEngine::Camera& camera, float alpha);
+    void renderHarvestables(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
+                            float cameraX, float cameraY, float alpha);
 
     /**
      * @brief Clear all spawned resources (cleanup for state transitions)
