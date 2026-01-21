@@ -67,11 +67,12 @@ void ResourceRenderController::updateHarvestableStates([[maybe_unused]] float de
     // For now, harvestables are static
 }
 
-void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const HammerEngine::Camera& camera, float alpha) {
+void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
+                                                   float cameraX, float cameraY, float alpha) {
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Get visibility info from Camera (clean - no reaching into other managers)
+    // Get visibility info from Camera for spatial query (culling tolerance is fine)
     Vector2D cameraCenter = camera.getPosition();
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
@@ -81,9 +82,7 @@ void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const 
     m_visibleItemIndices.clear();
     wrm.queryDroppedItemsInRadius(cameraCenter, visibleRadius, m_visibleItemIndices);
 
-    // Get camera offset for world-to-screen conversion
-    float cameraX = cameraCenter.getX() - viewport.width * 0.5f;
-    float cameraY = cameraCenter.getY() - viewport.height * 0.5f;
+    // Use passed cameraX/cameraY (interpolated) for actual rendering
 
     for (size_t idx : m_visibleItemIndices) {
         const auto& hot = edm.getStaticHotDataByIndex(idx);  // Static pool accessor
@@ -126,11 +125,12 @@ void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const 
     }
 }
 
-void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const HammerEngine::Camera& camera, float alpha) {
+void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
+                                                 float cameraX, float cameraY, float alpha) {
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Get visibility info from Camera
+    // Get visibility info from Camera for spatial query (culling tolerance is fine)
     Vector2D cameraCenter = camera.getPosition();
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
@@ -140,9 +140,7 @@ void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const Ha
     m_visibleContainerIndices.clear();
     wrm.queryContainersInRadius(cameraCenter, visibleRadius, m_visibleContainerIndices);
 
-    // Get camera offset for world-to-screen conversion
-    float cameraX = cameraCenter.getX() - viewport.width * 0.5f;
-    float cameraY = cameraCenter.getY() - viewport.height * 0.5f;
+    // Use passed cameraX/cameraY (interpolated) for actual rendering
 
     for (size_t idx : m_visibleContainerIndices) {
         const auto& hot = edm.getStaticHotDataByIndex(idx);  // Static pool accessor
@@ -184,11 +182,12 @@ void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const Ha
     }
 }
 
-void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, const HammerEngine::Camera& camera, float alpha) {
+void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
+                                                   float cameraX, float cameraY, float alpha) {
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Get visibility info from Camera
+    // Get visibility info from Camera for spatial query (culling tolerance is fine)
     Vector2D cameraCenter = camera.getPosition();
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
@@ -198,9 +197,7 @@ void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, const 
     m_visibleHarvestableIndices.clear();
     wrm.queryHarvestablesInRadius(cameraCenter, visibleRadius, m_visibleHarvestableIndices);
 
-    // Get camera offset for world-to-screen conversion
-    float cameraX = cameraCenter.getX() - viewport.width * 0.5f;
-    float cameraY = cameraCenter.getY() - viewport.height * 0.5f;
+    // Use passed cameraX/cameraY (interpolated) for actual rendering
 
     for (size_t idx : m_visibleHarvestableIndices) {
         const auto& hot = edm.getStaticHotDataByIndex(idx);  // Static pool accessor
