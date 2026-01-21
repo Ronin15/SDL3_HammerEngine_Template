@@ -296,12 +296,16 @@ public:
      * In Free/Fixed modes, uses camera's own interpolation and returns the
      * camera's interpolated center position.
      *
+     * NOTE: This method stores m_previousPosition for next frame's interpolation.
+     * Called once per visual frame from render(), ensuring correct interpolation
+     * even when update() runs multiple times per frame (fixed timestep catchup).
+     *
      * @param offsetX Output: camera X offset (top-left of view)
      * @param offsetY Output: camera Y offset (top-left of view)
      * @param interpolationAlpha Blend factor for position interpolation
      * @return The center position used for offset calculation (for synced rendering)
      */
-    Vector2D getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha = 1.0f) const;
+    Vector2D getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha = 1.0f);
 
 
     /**
