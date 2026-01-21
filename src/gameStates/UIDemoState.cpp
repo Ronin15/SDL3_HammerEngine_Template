@@ -10,7 +10,7 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
-
+#include <array>
 #include <sstream>
 #include <iomanip>
 
@@ -84,7 +84,9 @@ bool UIExampleState::enter() {
     ui.createLabel("uiexample_event_log_label", {rightColumnX, ui.getLogicalHeight() - 220, rightColumnWidth/2, 20}, "Event Log (Fixed Size):");
     ui.setComponentPositioning("uiexample_event_log_label", {UIPositionMode::BOTTOM_RIGHT, 10, 210, 730, 20});
 
-    ui.setupDemoEventLog("uiexample_demo_event_log");
+    // Initialize event log with initial messages
+    ui.addEventLogEntry("uiexample_demo_event_log", "Event log initialized");
+    ui.addEventLogEntry("uiexample_demo_event_log", "Demo components created");
 
     // Right column components - use CENTERED_H for responsive center-based layout
     // CENTERED_H: bounds.x = (width - bounds.width) / 2 + offsetX
@@ -151,6 +153,9 @@ void UIExampleState::update(float deltaTime) {
 
     // Update progress bar animation
     updateProgressBar(deltaTime);
+
+    // Update event log demo with sample messages
+    updateEventLogDemo(deltaTime);
 }
 
 void UIExampleState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
@@ -276,6 +281,28 @@ void UIExampleState::applyDarkTheme(bool dark) {
     }
 
     // Title styling is handled automatically by UIManager's TITLE component type
+}
+
+void UIExampleState::updateEventLogDemo(float deltaTime) {
+    m_eventLogTimer += deltaTime;
+
+    if (m_eventLogTimer >= EVENT_LOG_INTERVAL) {
+        m_eventLogTimer = 0.0f;
+
+        // Sample messages for demo (state-owned, not in UIManager)
+        static constexpr std::array<const char*, 10> sampleMessages = {{
+            "System initialized successfully", "User interface components loaded",
+            "Database connection established", "Configuration files validated",
+            "Network module started",          "Audio system ready",
+            "Graphics renderer initialized",   "Input handlers registered",
+            "Memory pools allocated",          "Security protocols activated"
+        }};
+
+        UIManager::Instance().addEventLogEntry(
+            "uiexample_demo_event_log",
+            sampleMessages[m_eventLogMessageIndex % sampleMessages.size()]);
+        m_eventLogMessageIndex++;
+    }
 }
 
 // Pure UIManager implementation - no UIScreen needed
