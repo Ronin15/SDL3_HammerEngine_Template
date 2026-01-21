@@ -1088,13 +1088,6 @@ void UIManager::setLabelAlignment(const std::string &labelID,
   }
 }
 
-void UIManager::setupDemoEventLog(const std::string &logID) {
-  addEventLogEntry(logID, "Event log initialized");
-  addEventLogEntry(logID, "Demo components created");
-
-  // Enable auto-updates for this event log
-  enableEventLogAutoUpdate(logID, 2.0f); // 2 second interval
-}
 
 void UIManager::enableEventLogAutoUpdate(const std::string &logID,
                                          float interval) {
@@ -1117,25 +1110,17 @@ void UIManager::disableEventLogAutoUpdate(const std::string &logID) {
 }
 
 void UIManager::updateEventLogs(float deltaTime) {
+  // Update timers only - no sample message auto-generation
+  // States can query timer state via getEventLogState() if needed
   for (auto &[logID, state] : m_eventLogStates) {
     if (!state.m_autoUpdate)
       continue;
 
     state.m_timer += deltaTime;
 
-    // Add a new log entry based on the interval
+    // Reset timer when interval exceeded - let state handle actual content
     if (state.m_timer >= state.m_updateInterval) {
       state.m_timer = 0.0f;
-
-      std::vector<std::string> sampleMessages = {
-          "System initialized successfully", "User interface components loaded",
-          "Database connection established", "Configuration files validated",
-          "Network module started",          "Audio system ready",
-          "Graphics renderer initialized",   "Input handlers registered",
-          "Memory pools allocated",          "Security protocols activated"};
-
-      addEventLogEntry(
-          logID, sampleMessages[state.m_messageIndex % sampleMessages.size()]);
       state.m_messageIndex++;
     }
   }

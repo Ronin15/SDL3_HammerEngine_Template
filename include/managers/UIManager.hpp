@@ -380,7 +380,6 @@ public:
   void addEventLogEntry(const std::string &logID, const std::string &entry);
   void clearEventLog(const std::string &logID);
   void setEventLogMaxEntries(const std::string &logID, int maxEntries);
-  void setupDemoEventLog(const std::string &logID);
   void enableEventLogAutoUpdate(const std::string &logID,
                                 float interval = UIConstants::DEFAULT_EVENT_LOG_UPDATE_INTERVAL);
   void disableEventLogAutoUpdate(const std::string &logID);
