@@ -178,10 +178,10 @@ Contributions welcome!
 
 ## Art
 All art license follows artists licensing. See thier page below for more details!
-- World Tiles : [Pipoya](https://pipoya.itch.io/pipoya-rpg-tileset-32x32)
+- World Tiles/Assets : [Pipoya](https://pipoya.itch.io/pipoya-rpg-tileset-32x32)
 - Slimes [patvanmackelberg](https://opengameart.org/users/patvanmackelberg)
 - Player Abigail [adythewolf](https://opengameart.org/users/adythewolf)
-- Various Ore deposits/ore/bars/gems [Senmou](https://opengameart.org/users/senmou)
+- World/Various Ore deposits/ore/bars/gems [Senmou](https://opengameart.org/users/senmou)
 
 ## License
 
