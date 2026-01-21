@@ -14,6 +14,7 @@
 #include <atomic>
 #include <shared_mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include "managers/EventManager.hpp"
 
@@ -220,6 +221,7 @@ private:
 
     // Reusable buffers for render loop (avoids per-frame allocations per CLAUDE.md)
     mutable std::vector<uint64_t> m_visibleKeysBuffer;
+    mutable std::unordered_set<uint64_t> m_visibleKeysSet;  // O(1) lookup for eviction
     mutable std::vector<std::pair<uint64_t, uint64_t>> m_evictionBuffer;
     mutable std::vector<YSortedSprite> m_ySortBuffer;  // For Y-sorted obstacle rendering in chunks
 

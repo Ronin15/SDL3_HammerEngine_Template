@@ -1921,12 +1921,14 @@ void HammerEngine::TileRenderer::renderVisibleTiles(
 
   // Track currently visible chunk keys for LRU eviction
   m_visibleKeysBuffer.clear();
+  m_visibleKeysSet.clear();
 
   // Render visible chunks to intermediate texture
   for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
     for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
       const uint64_t key = makeChunkKey(chunkX, chunkY);
       m_visibleKeysBuffer.push_back(key);
+      m_visibleKeysSet.insert(key);  // O(1) lookup for eviction
 
       // Get or create chunk cache entry
       auto it = m_chunkCache.find(key);
@@ -2015,12 +2017,14 @@ void HammerEngine::TileRenderer::renderVisibleTiles(
 
   // ========================================================================
   // LRU eviction: Remove oldest chunks when cache exceeds limit
+  // Uses hysteresis to avoid eviction thrashing (evict when 8 over limit)
   // ========================================================================
-  if (m_chunkCache.size() > MAX_CACHED_CHUNKS) {
+  constexpr size_t EVICTION_HYSTERESIS = 8;
+  if (m_chunkCache.size() > MAX_CACHED_CHUNKS + EVICTION_HYSTERESIS) {
     m_evictionBuffer.clear();
     for (const auto &[key, cache] : m_chunkCache) {
-      if (std::find(m_visibleKeysBuffer.begin(), m_visibleKeysBuffer.end(),
-                    key) == m_visibleKeysBuffer.end()) {
+      // O(1) hash set lookup instead of O(n) linear search
+      if (m_visibleKeysSet.find(key) == m_visibleKeysSet.end()) {
         m_evictionBuffer.emplace_back(key, cache.lastUsedFrame);
       }
     }
