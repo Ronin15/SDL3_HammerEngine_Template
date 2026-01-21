@@ -111,12 +111,12 @@ void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const 
         };
 
         // Calculate destination rect (centered on position, with bob)
-        // Pixel snap to prevent shimmer during diagonal camera movement
+        // Sub-pixel rendering - unified with Player/Particles for smooth diagonal movement
         float halfW = static_cast<float>(r.frameWidth) * 0.5f;
         float halfH = static_cast<float>(r.frameHeight) * 0.5f;
         SDL_FRect destRect = {
-            std::floor(interpX - cameraX - halfW),
-            std::floor(interpY - cameraY - halfH + bobOffset),
+            interpX - cameraX - halfW,
+            interpY - cameraY - halfH + bobOffset,
             static_cast<float>(r.frameWidth),
             static_cast<float>(r.frameHeight)
         };
@@ -168,12 +168,12 @@ void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const Ha
         };
 
         // Calculate destination rect (centered)
-        // Pixel snap to prevent shimmer during diagonal camera movement
+        // Sub-pixel rendering - unified with Player/Particles for smooth diagonal movement
         float halfW = static_cast<float>(r.frameWidth) * 0.5f;
         float halfH = static_cast<float>(r.frameHeight) * 0.5f;
         SDL_FRect destRect = {
-            std::floor(interpX - cameraX - halfW),
-            std::floor(interpY - cameraY - halfH),
+            interpX - cameraX - halfW,
+            interpY - cameraY - halfH,
             static_cast<float>(r.frameWidth),
             static_cast<float>(r.frameHeight)
         };
@@ -226,12 +226,12 @@ void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, const 
         };
 
         // Calculate destination rect (centered)
-        // Pixel snap to prevent shimmer during diagonal camera movement
+        // Sub-pixel rendering - unified with Player/Particles for smooth diagonal movement
         float halfW = static_cast<float>(r.frameWidth) * 0.5f;
         float halfH = static_cast<float>(r.frameHeight) * 0.5f;
         SDL_FRect destRect = {
-            std::floor(interpX - cameraX - halfW),
-            std::floor(interpY - cameraY - halfH),
+            interpX - cameraX - halfW,
+            interpY - cameraY - halfH,
             static_cast<float>(r.frameWidth),
             static_cast<float>(r.frameHeight)
         };

@@ -14,6 +14,7 @@
 #include "events/WeatherEvent.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Camera.hpp"
+#include "utils/SceneRenderer.hpp"
 #include "controllers/ControllerRegistry.hpp"
 #include <memory>
 #include <string>
@@ -43,6 +44,9 @@ private:
   // Camera for world navigation and player following
   std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
 
+  // Scene renderer for pixel-perfect zoomed world rendering
+  std::unique_ptr<HammerEngine::SceneRenderer> m_sceneRenderer{nullptr};
+
   // Resource handles resolved at initialization (resource handle system
   // compliance)
   HammerEngine::ResourceHandle m_goldHandle;
@@ -55,9 +59,6 @@ private:
 
   // Track if we need to transition to loading screen on first update
   bool m_needsLoading{false};
-
-  // Render scale caching - avoid GPU state changes when zoom unchanged
-  float m_lastRenderedZoom{1.0f};
 
   // FPS counter (toggled with F2)
   bool m_fpsVisible{false};

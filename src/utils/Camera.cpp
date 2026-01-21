@@ -63,9 +63,8 @@ Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
 }
 
 void Camera::update(float deltaTime) {
-    // NOTE: previousPosition storage moved to getRenderOffset()
-    // This ensures it's stored once per visual frame, not once per update()
-    // (update() can run multiple times per visual frame with fixed timestep catchup)
+    // Store previous position BEFORE updating for render interpolation
+    m_previousPosition = m_position;
 
     // Update camera shake first (no-ops if inactive)
     if (m_shakeTimeRemaining > 0.0f) {
@@ -88,32 +87,23 @@ void Camera::update(float deltaTime) {
                 syncWorldBounds();
             }
         }
-        Vector2D const targetPos = getTargetPosition();  // Target's UNCLAMPED position
 
-        // Deadzone check: skip movement if within deadzone radius
-        if (m_config.deadZoneRadius > 0.0f) {
-            float const distSq = (targetPos - m_position).lengthSquared();
-            if (distSq < m_config.deadZoneRadius * m_config.deadZoneRadius) {
-                return; // Don't move if within deadzone
-            }
+        // SNAP directly to target's position - no smoothing.
+        // This ensures camera and target use identical interpolation paths during render,
+        // eliminating diagonal movement jitter. Both will interpolate from the same
+        // previous/current position values.
+        if (auto targetPtr = m_target.lock()) {
+            m_position = targetPtr->getPosition();
+            m_previousPosition = targetPtr->getPreviousPosition();
+        } else if (m_positionGetter) {
+            // Function-based target: use smoothing since we can't access previous position
+            Vector2D const targetPos = m_positionGetter();
+            float const t = std::clamp(
+                1.0f - std::pow(m_config.smoothingFactor,
+                               deltaTime * 60.0f * m_config.followSpeed),
+                0.0f, 1.0f);
+            m_position = m_position + (targetPos - m_position) * t;
         }
-
-        // Frame-rate independent exponential smoothing for smooth camera follow.
-        // Formula: t = 1 - smoothingFactor^(deltaTime * 60 * followSpeed)
-        //
-        // With default values (smoothingFactor=0.85, followSpeed=5.0):
-        // - At 60fps (dt=1/60): t = 1 - 0.85^5 ≈ 0.56 (camera moves 56% of gap)
-        // - At 120fps (dt=1/120): t = 1 - 0.85^2.5 ≈ 0.33, two frames: 0.56 ✓
-        // - Reaches 99% of target in ~0.15 seconds
-        //
-        // The offset clamping happens in computeOffsetFromCenter(), NOT here
-        // This ensures entity renders at correct position when camera hits world bounds
-        float const t = std::clamp(
-            1.0f - std::pow(m_config.smoothingFactor,
-                           deltaTime * 60.0f * m_config.followSpeed),
-            0.0f, 1.0f);  // Safety clamp for extreme dt values
-
-        m_position = m_position + (targetPos - m_position) * t;
     } else {
         // Non-Follow modes: clamp camera position
         if (m_config.clampToWorldBounds) {
@@ -307,20 +297,32 @@ void Camera::computeOffsetFromCenter(float centerX, float centerY,
     }
 }
 
-Vector2D Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) {
-    // Interpolate between previous and current position for smooth rendering
-    Vector2D center(
-        m_previousPosition.getX() + (m_position.getX() - m_previousPosition.getX()) * interpolationAlpha,
-        m_previousPosition.getY() + (m_position.getY() - m_previousPosition.getY()) * interpolationAlpha);
+Vector2D Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) const {
+    Vector2D center;
 
-    // Compute screen offset from the interpolated center position
+    // In Follow mode with entity target, query position at RENDER TIME
+    // This ensures we use post-collision position (collision runs after camera update)
+    if (m_mode == Mode::Follow) {
+        if (auto targetPtr = m_target.lock()) {
+            // Get target's current interpolated position - includes collision corrections
+            center = targetPtr->getInterpolatedPosition(interpolationAlpha);
+        } else {
+            // No valid target - use camera's own interpolation
+            center = Vector2D(
+                m_previousPosition.getX() + (m_position.getX() - m_previousPosition.getX()) * interpolationAlpha,
+                m_previousPosition.getY() + (m_position.getY() - m_previousPosition.getY()) * interpolationAlpha);
+        }
+    } else {
+        // Non-Follow modes: use camera's own interpolation
+        center = Vector2D(
+            m_previousPosition.getX() + (m_position.getX() - m_previousPosition.getX()) * interpolationAlpha,
+            m_previousPosition.getY() + (m_position.getY() - m_previousPosition.getY()) * interpolationAlpha);
+    }
+
+    // Compute screen offset from the center position
     computeOffsetFromCenter(center.getX(), center.getY(), offsetX, offsetY);
 
-    // Store current position as previous for NEXT frame's interpolation
-    // This runs once per visual frame (render calls this once)
-    m_previousPosition = m_position;
-
-    // Return the center position we used - caller should render followed entity here
+    // Return the center position we used
     return center;
 }
 

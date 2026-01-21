@@ -12,6 +12,7 @@
 #include "entities/EntityHandle.hpp"
 #include "entities/Player.hpp"
 #include "utils/Camera.hpp"
+#include "utils/SceneRenderer.hpp"
 
 #include <memory>
 #include <vector>
@@ -50,6 +51,9 @@ private:
     // Player entity
     PlayerPtr m_player{};
     std::unique_ptr<HammerEngine::Camera> m_camera;
+
+    // Scene renderer for pixel-perfect zoomed world rendering
+    std::unique_ptr<HammerEngine::SceneRenderer> m_sceneRenderer{nullptr};
 
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
 
@@ -91,9 +95,6 @@ private:
 
     // Cached NPC count (updated in update(), used in render())
     size_t m_cachedNPCCount{0};
-
-    // Render scale caching - avoid GPU state changes when zoom unchanged
-    float m_lastRenderedZoom{1.0f};
 };
 
 #endif // ADVANCED_AI_DEMO_STATE_HPP

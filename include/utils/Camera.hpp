@@ -305,7 +305,7 @@ public:
      * @param interpolationAlpha Blend factor for position interpolation
      * @return The center position used for offset calculation (for synced rendering)
      */
-    Vector2D getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha = 1.0f);
+    Vector2D getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha = 1.0f) const;
 
 
     /**

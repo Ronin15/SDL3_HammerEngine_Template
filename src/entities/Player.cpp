@@ -208,8 +208,8 @@ void Player::update(float deltaTime) {
     }
   }
 
-  // Write position to EntityDataManager (single source of truth)
-  setPosition(newPos);
+  // Write position using movement method (preserves previousPosition for interpolation)
+  updatePositionFromMovement(newPos);
 
   // Update collision body with new position and velocity
   auto &cm = CollisionManager::Instance();
@@ -242,9 +242,9 @@ void Player::renderAtPosition(SDL_Renderer *renderer, const Vector2D &interpPos,
   }
 
   // Convert world coords to screen coords using passed camera offset
-  // Pixel snap to prevent shimmer during diagonal camera movement
-  float renderX = std::floor(interpPos.getX() - cameraX - (m_frameWidth / 2.0f));
-  float renderY = std::floor(interpPos.getY() - cameraY - (m_height / 2.0f));
+  // Sub-pixel rendering for smooth motion (matches particle rendering)
+  float renderX = interpPos.getX() - cameraX - (m_frameWidth / 2.0f);
+  float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
 
   // Direct SDL call with cached texture - no hash lookup!
   SDL_FRect srcRect = {static_cast<float>(m_frameWidth * m_currentFrame),

@@ -16,6 +16,7 @@
 #include "entities/EntityHandle.hpp"
 #include "entities/Player.hpp"
 #include "utils/Camera.hpp"
+#include "utils/SceneRenderer.hpp"
 
 #include <memory>
 #include <string>
@@ -74,6 +75,9 @@ private:
   
   // Camera for world navigation
   std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
+
+  // Scene renderer for pixel-perfect zoomed world rendering
+  std::unique_ptr<HammerEngine::SceneRenderer> m_sceneRenderer{nullptr};
 
   // Event tracking
   std::unordered_map<std::string, bool> m_eventStates{};
@@ -205,9 +209,6 @@ private:
   // Lazy-cached weather string (computed only when underlying enum changes)
   WeatherType m_lastCachedWeather{WeatherType::Custom};  // Initialize to invalid to force first compute
   std::string m_cachedWeatherStr{};
-
-  // Render scale caching - avoid GPU state changes when zoom unchanged
-  float m_lastRenderedZoom{1.0f};
 };
 
 #endif // EVENT_DEMO_STATE_HPP

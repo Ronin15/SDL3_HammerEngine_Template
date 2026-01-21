@@ -336,6 +336,9 @@ bool AIDemoState::enter() {
     // Initialize camera (world is already loaded by LoadingState)
     initializeCamera();
 
+    // Create scene renderer for pixel-perfect zoomed rendering
+    m_sceneRenderer = std::make_unique<HammerEngine::SceneRenderer>();
+
     // Pre-allocate status buffer to avoid per-frame allocations
     m_statusBuffer.reserve(64);
 
@@ -393,8 +396,9 @@ bool AIDemoState::exit() {
       collisionMgr.prepareForStateTransition();
     }
 
-    // Clean up camera
+    // Clean up camera and scene renderer
     m_camera.reset();
+    m_sceneRenderer.reset();
 
     // Clean up UI
     ui.prepareForStateTransition();
@@ -443,8 +447,9 @@ bool AIDemoState::exit() {
     collisionMgr.prepareForStateTransition();
   }
 
-  // Clean up camera first to stop world rendering
+  // Clean up camera and scene renderer first to stop world rendering
   m_camera.reset();
+  m_sceneRenderer.reset();
 
   // Clean up UI components using simplified method
   ui.prepareForStateTransition();
@@ -545,53 +550,31 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   WorldManager &worldMgr = WorldManager::Instance();
   UIManager &ui = UIManager::Instance();
 
-  // Camera offset with unified interpolation (single atomic read for sync)
-  float renderCamX = 0.0f;
-  float renderCamY = 0.0f;
-  float zoom = 1.0f;
-  float viewWidth = 0.0f;
-  float viewHeight = 0.0f;
-  Vector2D playerInterpPos; // Position synced with camera
+  // ========== BEGIN SCENE (to SceneRenderer's intermediate target) ==========
+  const bool worldActive = m_camera && m_sceneRenderer && worldMgr.isInitialized() && worldMgr.hasActiveWorld();
 
-  if (m_camera) {
-    zoom = m_camera->getZoom();
-    // Returns the position used for offset - use it for player rendering
-    playerInterpPos =
-        m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
-
-    // Derive view dimensions from viewport/zoom (no per-frame GameEngine calls)
-    viewWidth = m_camera->getViewport().width / zoom;
-    viewHeight = m_camera->getViewport().height / zoom;
+  HammerEngine::SceneRenderer::SceneContext ctx;
+  if (worldActive) {
+    ctx = m_sceneRenderer->beginScene(renderer, *m_camera, interpolationAlpha);
   }
 
-  // Set render scale for zoom only when changed (avoids GPU state change
-  // overhead)
-  if (zoom != m_lastRenderedZoom) {
-    SDL_SetRenderScale(renderer, zoom, zoom);
-    m_lastRenderedZoom = zoom;
+  if (ctx) {
+    // Render tiles (pixel-perfect alignment)
+    worldMgr.render(renderer, ctx.flooredCameraX, ctx.flooredCameraY,
+                    ctx.viewWidth, ctx.viewHeight);
+
+    // Render Active tier NPCs (sub-pixel smoothness from entity interpolation)
+    m_npcRenderCtrl.renderNPCs(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+
+    // Render player (sub-pixel smoothness from entity's own interpolation)
+    if (m_player) {
+      m_player->render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+    }
   }
 
-  // Render world first (background layer) using pixel-snapped camera
-  if (m_camera && worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-    worldMgr.render(renderer, renderCamX, renderCamY, viewWidth, viewHeight, zoom);
-  }
-
-  // Render Active tier NPCs only using data-driven rendering
-  // NPCRenderController handles iteration and rendering for visible NPCs
-  m_npcRenderCtrl.renderNPCs(renderer, renderCamX, renderCamY, interpolationAlpha);
-
-  // Render player at the position camera used for offset calculation
-  if (m_player) {
-    // Use position camera returned - no separate atomic read
-    m_player->renderAtPosition(renderer, playerInterpPos, renderCamX,
-                               renderCamY);
-  }
-
-  // Reset render scale to 1.0 for UI rendering only when needed (UI should not
-  // be zoomed)
-  if (m_lastRenderedZoom != 1.0f) {
-    SDL_SetRenderScale(renderer, 1.0f, 1.0f);
-    m_lastRenderedZoom = 1.0f;
+  // ========== END SCENE (composite with zoom) ==========
+  if (worldActive && m_sceneRenderer) {
+    m_sceneRenderer->endScene(renderer);
   }
 
   // Render UI components (update moved to update() for consistent frame timing)

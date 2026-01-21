@@ -77,6 +77,9 @@ bool GamePlayState::enter() {
     // Initialize camera (world already loaded)
     initializeCamera();
 
+    // Create scene renderer for pixel-perfect zoomed rendering
+    m_sceneRenderer = std::make_unique<HammerEngine::SceneRenderer>();
+
     // Register controllers with the registry
     m_controllers.add<WeatherController>();
     m_controllers.add<DayNightController>();
@@ -267,72 +270,53 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   WorldManager &worldMgr = WorldManager::Instance();
   UIManager &ui = UIManager::Instance();
 
-  // Camera offset with unified interpolation (single atomic read for sync)
-  float renderCamX = 0.0f;
-  float renderCamY = 0.0f;
-  float zoom = 1.0f;
-  float viewWidth = 0.0f;
-  float viewHeight = 0.0f;
-  Vector2D playerInterpPos; // Position synced with camera
+  // ========== BEGIN SCENE (to SceneRenderer's intermediate target) ==========
+  // All world content renders to intermediate texture at 1x, then composited with zoom
+  const bool worldActive = m_camera && m_sceneRenderer && worldMgr.isInitialized() && worldMgr.hasActiveWorld();
 
-  if (m_camera) {
-    zoom = m_camera->getZoom();
-    // ONE atomic read - returns center position for entity rendering
-    // All camera state reads use camera's own atomic interpState
-    // (self-contained)
-    playerInterpPos =
-        m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
-
-    // Derive view dimensions from viewport/zoom (no second atomic read)
-    viewWidth = m_camera->getViewport().width / zoom;
-    viewHeight = m_camera->getViewport().height / zoom;
+  HammerEngine::SceneRenderer::SceneContext ctx;
+  if (worldActive) {
+    ctx = m_sceneRenderer->beginScene(renderer, *m_camera, interpolationAlpha);
   }
 
-  if (zoom != m_lastRenderedZoom) {
-    SDL_SetRenderScale(renderer, zoom, zoom);
-    m_lastRenderedZoom = zoom;
+  if (ctx) {
+    // Background particles (rain, snow behind everything)
+    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+      particleMgr.renderBackground(renderer, ctx.cameraX, ctx.cameraY,
+                                   interpolationAlpha);
+    }
+
+    // Render tiles (pixel-perfect alignment)
+    worldMgr.render(renderer, ctx.flooredCameraX, ctx.flooredCameraY,
+                    ctx.viewWidth, ctx.viewHeight);
+
+    // Render world resources (dropped items, harvestables, containers)
+    if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>(); resourceCtrl && m_camera) {
+      resourceCtrl->renderDroppedItems(renderer, *m_camera, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+      resourceCtrl->renderHarvestables(renderer, *m_camera, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+      resourceCtrl->renderContainers(renderer, *m_camera, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+    }
+
+    // Render player (sub-pixel smoothness from entity's own interpolation)
+    if (mp_Player) {
+      mp_Player->render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+    }
+
+    // Render world-space and foreground particles (after player)
+    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+      particleMgr.render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+      particleMgr.renderForeground(renderer, ctx.cameraX, ctx.cameraY,
+                                   interpolationAlpha);
+    }
   }
 
-  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    particleMgr.renderBackground(renderer, renderCamX, renderCamY,
-                                 interpolationAlpha);
+  // ========== END SCENE (composite with zoom) ==========
+  // This composites all world content and resets render scale to 1.0
+  if (worldActive && m_sceneRenderer) {
+    m_sceneRenderer->endScene(renderer);
   }
 
-  if (m_camera && worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-    worldMgr.render(renderer, renderCamX, renderCamY, viewWidth, viewHeight, zoom);
-  }
-
-  // Render world resources (dropped items, harvestables, containers)
-  // Uses Camera for spatial queries, but passed offsets for rendering sync
-  if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>(); resourceCtrl && m_camera) {
-    resourceCtrl->renderDroppedItems(renderer, *m_camera, renderCamX, renderCamY, interpolationAlpha);
-    resourceCtrl->renderHarvestables(renderer, *m_camera, renderCamX, renderCamY, interpolationAlpha);
-    resourceCtrl->renderContainers(renderer, *m_camera, renderCamX, renderCamY, interpolationAlpha);
-  }
-
-  if (mp_Player) {
-    // Render player at the EXACT position camera used for offset calculation
-    // No separate atomic read - eliminates race condition jitter
-    mp_Player->renderAtPosition(renderer, playerInterpPos, renderCamX,
-                                renderCamY);
-  }
-
-  // Render world-space and foreground particles (after player)
-  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    particleMgr.render(renderer, renderCamX, renderCamY, interpolationAlpha);
-    particleMgr.renderForeground(renderer, renderCamX, renderCamY,
-                                 interpolationAlpha);
-  }
-
-  // Reset render scale to 1.0 BEFORE overlay and UI (neither should be zoomed)
-  if (m_lastRenderedZoom != 1.0f) {
-    SDL_SetRenderScale(renderer, 1.0f, 1.0f);
-    m_lastRenderedZoom = 1.0f;
-  }
-
-  // Render day/night overlay tint (now at 1.0 scale, after zoom reset)
-  // Uses camera viewport (synced with engine) - avoids GameEngine access in hot
-  // path
+  // Render day/night overlay tint (at 1.0 scale, after zoom reset)
   if (m_camera) {
     const auto &viewport = m_camera->getViewport();
     renderDayNightOverlay(renderer, static_cast<int>(viewport.width),
@@ -392,8 +376,9 @@ bool GamePlayState::exit() {
       particleMgr.prepareForStateTransition();
     }
 
-    // Clean up camera
+    // Clean up camera and scene renderer
     m_camera.reset();
+    m_sceneRenderer.reset();
 
     // Unload world (LoadingState will reload it)
     if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
@@ -438,8 +423,9 @@ bool GamePlayState::exit() {
     particleMgr.prepareForStateTransition();
   }
 
-  // Clean up camera first to stop world rendering
+  // Clean up camera and scene renderer first to stop world rendering
   m_camera.reset();
+  m_sceneRenderer.reset();
 
   // Unload the world when fully exiting gameplay
   if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {

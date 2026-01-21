@@ -67,10 +67,10 @@ void NPCRenderController::renderNPCs(SDL_Renderer* renderer, float cameraX, floa
 
         float halfW = static_cast<float>(r.frameWidth) * 0.5f;
         float halfH = static_cast<float>(r.frameHeight) * 0.5f;
-        // Pixel snap to prevent shimmer during diagonal camera movement
+        // Sub-pixel rendering - unified with Player/Particles for smooth diagonal movement
         SDL_FRect destRect = {
-            std::floor(interpX - cameraX - halfW),
-            std::floor(interpY - cameraY - halfH),
+            interpX - cameraX - halfW,
+            interpY - cameraY - halfH,
             static_cast<float>(r.frameWidth),
             static_cast<float>(r.frameHeight)
         };
