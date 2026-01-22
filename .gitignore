@@ -1,6 +1,7 @@
 build/
 .cache/
 !cppcheck_suppressions.txt
+!clang_tidy_suppressions.txt
 compile_commands.json
 .env
 tools/*.html
@@ -10,3 +11,5 @@ res/sprites/
 tools/__pycache__
 *.plist
 bin/
+*.txt
+*.log

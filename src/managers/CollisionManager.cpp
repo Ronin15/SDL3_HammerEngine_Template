@@ -1375,7 +1375,7 @@ void CollisionManager::updateCollisionBodySize(EntityID id,
   }
 }
 
-void CollisionManager::attachEntity(EntityID id, EntityPtr entity) {
+void CollisionManager::attachEntity(EntityID id, const EntityPtr& entity) {
   auto it = m_storage.entityToIndex.find(id);
   if (it != m_storage.entityToIndex.end()) {
     size_t index = it->second;

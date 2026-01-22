@@ -876,11 +876,11 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D &start,
 #ifndef NDEBUG
   m_stats.totalRequests++;
   m_stats.totalIterations += iterations;
-  if (hitIterationCap) {
-    m_stats.timeouts++;
-  }
 #endif
   if (hitIterationCap) {
+#ifndef NDEBUG
+    m_stats.timeouts++;
+#endif
     return PathfindingResult::TIMEOUT;
   }
   // No path found within explored region
@@ -1128,7 +1128,9 @@ PathfindingGrid::findPathHierarchical(const Vector2D &start,
   // Step 3: Validate refined path has no disconnected segments
   // When segment refinement fails, refineCoarsePath() inserts direct waypoints
   // which can create large gaps. Detect and fallback to direct A* if needed.
-  if (refineResult == PathfindingResult::SUCCESS && outPath.size() >= 2) {
+  // Note: refineCoarsePath always returns SUCCESS, so we only check path size
+  (void)refineResult; // Mark as used for clarity
+  if (outPath.size() >= 2) {
     // Allow gaps up to 8x coarse cell size (accounts for diagonal + refinement
     // skips) Larger tolerance prevents unnecessary fallbacks to direct A*
     float const maxAllowedGap = m_cell * COARSE_GRID_MULTIPLIER * 8.0f;

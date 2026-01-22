@@ -373,7 +373,7 @@ EventPtr EventFactory::createResourceChangeEvent(const std::string& name,
 
 void EventFactory::registerCustomEventCreator(const std::string& eventType,
                                            std::function<EventPtr(const EventDefinition&)> creatorFunc) {
-    m_eventCreators[eventType] = creatorFunc;
+    m_eventCreators[eventType] = std::move(creatorFunc);
 }
 
 std::vector<EventPtr> EventFactory::createEventSequence(const std::string& name,

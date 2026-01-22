@@ -231,7 +231,7 @@ public:
      * @brief Sets the target entity for following mode
      * @param target Weak pointer to target entity
      */
-    void setTarget(std::weak_ptr<Entity> target);
+    void setTarget(const std::weak_ptr<Entity>& target);
     
     /**
      * @brief Sets target using a function that returns position

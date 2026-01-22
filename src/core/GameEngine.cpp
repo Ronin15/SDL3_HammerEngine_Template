@@ -184,9 +184,6 @@ bool GameEngine::init(std::string_view title) {
 #endif
   if (fullscreen) {
     flags |= SDL_WINDOW_FULLSCREEN;
-  }
-
-  if (fullscreen) {
 #ifdef __APPLE__
     // On macOS, keep logical dimensions for proper scaling
     // Don't override m_windowWidth and m_windowHeight for macOS

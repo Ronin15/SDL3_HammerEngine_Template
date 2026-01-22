@@ -368,11 +368,11 @@ void WeatherEvent::addTimeCondition(std::function<bool()> condition) {
   // Clear existing conditions first to make tests more predictable
   m_conditions.clear();
   // Add the new condition
-  m_conditions.push_back(condition);
+  m_conditions.push_back(std::move(condition));
 }
 
 void WeatherEvent::addLocationCondition(std::function<bool()> condition) {
-  m_conditions.push_back(condition);
+  m_conditions.push_back(std::move(condition));
 }
 
 void WeatherEvent::addRandomChanceCondition(float probability) {

@@ -259,7 +259,7 @@ bool SceneChangeEvent::isPlayerInTriggerZone() const {
 }
 
 void SceneChangeEvent::addCondition(std::function<bool()> condition) {
-    m_conditions.push_back(condition);
+    m_conditions.push_back(std::move(condition));
 }
 
 bool SceneChangeEvent::isPlayerInputTriggered() const {

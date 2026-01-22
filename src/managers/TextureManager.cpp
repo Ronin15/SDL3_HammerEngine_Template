@@ -38,7 +38,7 @@ bool TextureManager::load(const std::string& fileName,
         }
 
         // Get file path and extension
-        std::filesystem::path filePath = entry.path();
+        const auto& filePath = entry.path();
         std::string extension = filePath.extension().string();
 
         // Convert extension to lowercase for case-insensitive comparison
