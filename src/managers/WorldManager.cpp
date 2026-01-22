@@ -1802,8 +1802,9 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
     SDL_RenderTexture(renderer, sprite.tex->ptr, &srcRect, &destRect);
   }
 
-  // Reset render target to default (screen)
-  SDL_SetRenderTarget(renderer, nullptr);
+  // NOTE: Do not reset render target here. The caller (TileRenderer::render)
+  // is responsible for restoring the previous render target after this call.
+  // This allows proper nesting when SceneRenderer's intermediate texture is active.
 }
 
 void HammerEngine::TileRenderer::render(
@@ -1890,10 +1891,12 @@ void HammerEngine::TileRenderer::render(
       ChunkCache& chunk = it->second;
       chunk.lastUsedFrame = m_frameCounter;  // Update LRU timestamp
 
-      // Re-render chunk if dirty
+      // Re-render chunk if dirty (save/restore render target for proper nesting)
       if (chunk.dirty && chunk.texture) {
+        SDL_Texture* previousTarget = SDL_GetRenderTarget(renderer);
         renderChunkToTexture(world, renderer, chunkX, chunkY,
                              chunk.texture.get());
+        SDL_SetRenderTarget(renderer, previousTarget);
         chunk.dirty = false;
       }
 
