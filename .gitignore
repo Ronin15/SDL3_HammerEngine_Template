@@ -1,4 +1,5 @@
 build/
+test_results/
 .cache/
 !cppcheck_suppressions.txt
 !clang_tidy_suppressions.txt
