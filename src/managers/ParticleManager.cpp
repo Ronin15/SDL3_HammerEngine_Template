@@ -863,13 +863,12 @@ void ParticleManager::update(float deltaTime) {
     // Report results for adaptive tuning - report for BOTH modes
     // Even though threaded timing isn't perfectly accurate (fire-and-forget pattern),
     // having some data lets WorkerBudget make comparisons and transition between modes.
-    if (activeCount > 0) {
-      auto updateEndTime = std::chrono::high_resolution_clock::now();
-      double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
-      budgetMgr.reportExecution(HammerEngine::SystemType::Particle,
-                                activeCount, threadingInfo.wasThreaded,
-                                threadingInfo.batchCount, totalUpdateTime);
-    }
+    // Note: activeCount > 0 guaranteed here due to early return at line 770
+    auto updateEndTime = std::chrono::high_resolution_clock::now();
+    double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
+    budgetMgr.reportExecution(HammerEngine::SystemType::Particle,
+                              activeCount, threadingInfo.wasThreaded,
+                              threadingInfo.batchCount, totalUpdateTime);
 
   } catch (const std::exception &e) {
     PARTICLE_ERROR(std::format("Exception in ParticleManager::update: {}", e.what()));

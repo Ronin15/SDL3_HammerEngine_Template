@@ -186,7 +186,7 @@ public:
     void updateCollisionBodyVelocity(EntityID id, const Vector2D& newVelocity);
     Vector2D getCollisionBodyVelocity(EntityID id) const;
     void updateCollisionBodySize(EntityID id, const Vector2D& newHalfSize);
-    void attachEntity(EntityID id, EntityPtr entity);
+    void attachEntity(EntityID id, const EntityPtr& entity);
 
     // Body State Management Methods
     void setBodyEnabled(EntityID id, bool enabled);

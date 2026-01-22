@@ -536,10 +536,10 @@ BOOST_FIXTURE_TEST_CASE(TestPerformanceStats, ParticleManagerCoreFixture) {
   BOOST_CHECK_NE(effectId, 0);
   BOOST_CHECK(manager->isEffectPlaying(effectId));
 
-  // Update 1201 times to ensure we hit the performance recording threshold
-  // Performance stats are only recorded every 1200 frames for performance
-  // reasons
-  for (int i = 0; i < 1201; ++i) {
+  // Update 2401 times to ensure we hit the performance recording threshold
+  // Performance stats are only recorded every 2400 frames in debug builds
+  // (see ParticleManager.cpp line ~843)
+  for (int i = 0; i < 2401; ++i) {
     manager->update(0.016f);
   }
 
@@ -547,7 +547,7 @@ BOOST_FIXTURE_TEST_CASE(TestPerformanceStats, ParticleManagerCoreFixture) {
   size_t particleCount = manager->getActiveParticleCount();
   BOOST_CHECK_GT(particleCount, 0);
 
-  // Stats should have been updated after 600+ frames
+  // Stats should have been updated after 2400+ frames
   stats = manager->getPerformanceStats();
   BOOST_CHECK_GT(stats.updateCount, 0);
   BOOST_CHECK_GT(stats.totalUpdateTime, 0.0);

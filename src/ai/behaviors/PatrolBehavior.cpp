@@ -390,7 +390,7 @@ bool PatrolBehavior::isAtWaypoint(const Vector2D &position,
   return distanceSquared < (dynamicRadius * dynamicRadius);
 }
 
-void PatrolBehavior::resetEntityPosition(EntityPtr entity) {
+void PatrolBehavior::resetEntityPosition(const EntityPtr& entity) {
   if (!entity)
     return;
 

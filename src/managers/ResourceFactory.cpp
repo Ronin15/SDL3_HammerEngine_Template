@@ -79,7 +79,7 @@ bool ResourceFactory::registerCreator(const std::string &typeName,
     return false;
   }
 
-  creators[typeName] = creator;
+  creators[typeName] = std::move(creator);
   RESOURCE_DEBUG(std::format("ResourceFactory::registerCreator - Registered creator for type: {}",
                              typeName));
   return true;
@@ -585,7 +585,7 @@ ResourceFactory::createGameResource(HammerEngine::ResourceHandle handle,
 
   return gameResource;
 }
-void ResourceFactory::setCommonProperties(ResourcePtr resource,
+void ResourceFactory::setCommonProperties(const ResourcePtr& resource,
                                           const JsonValue &json) {
   if (!resource)
     return;
