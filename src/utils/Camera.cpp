@@ -215,8 +215,8 @@ void Camera::setTarget(const std::weak_ptr<Entity>& target) {
 void Camera::setTargetPositionGetter(std::function<Vector2D()> positionGetter) {
     m_positionGetter = std::move(positionGetter);
     m_target.reset(); // Clear entity-based target
-    
-    if (positionGetter) {
+
+    if (m_positionGetter) {
         CAMERA_INFO("Camera target set to position getter function");
         // If in follow mode, update target position immediately
         if (m_mode == Mode::Follow) {
@@ -506,10 +506,10 @@ void Camera::fireModeChangedEvent(Mode oldMode, Mode newMode) {
     }
 }
 
-void Camera::fireTargetChangedEvent(std::weak_ptr<Entity> oldTarget, std::weak_ptr<Entity> newTarget) {
+void Camera::fireTargetChangedEvent(const std::weak_ptr<Entity>& oldTarget, const std::weak_ptr<Entity>& newTarget) {
     try {
         const EventManager& eventMgr = EventManager::Instance();
-        (void)eventMgr.triggerCameraTargetChanged(std::move(newTarget), std::move(oldTarget),
+        (void)eventMgr.triggerCameraTargetChanged(newTarget, oldTarget,
                                                   EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
         CAMERA_ERROR(std::format("Failed to fire CameraTargetChangedEvent: {}", ex.what()));

@@ -574,3 +574,20 @@ duplicateAssignExpression:*/src/managers/CollisionManager.cpp:426
 # Line 378 checks m_isShutdown AFTER lock acquisition (guards against shutdown during lock wait)
 # This is intentional thread-safe double-checked locking - NOT a redundant condition
 identicalInnerCondition:*/src/managers/PathfinderManager.cpp:378
+
+# ============================================================================
+# Confirmed False Positives (2025-01-22 Quality Gate Review)
+# ============================================================================
+
+# --- Unsigned integer wraparound handling (valid overflow semantics) ---
+# uint8_t generation wraps from 255 to 0; code correctly skips 0 (reserved for invalid)
+knownConditionTrueFalse:*/src/managers/EntityDataManager.cpp:1552
+
+# --- Bounding box initialization from single point ---
+# Setting minX=maxX=first, minY=maxY=first is standard bounding box initialization
+duplicateAssignExpression:*/src/managers/CollisionManager.cpp:388
+duplicateAssignExpression:*/src/managers/CollisionManager.cpp:390
+
+# --- STL algorithm suggestion: raw loop equally readable for function call accumulation ---
+# Loop sums values via function calls; std::accumulate offers no clarity improvement
+useStlAlgorithm:*/src/managers/WorldResourceManager.cpp:325

@@ -149,10 +149,8 @@ inline DecorationType selectWeightedDecoration(
     const std::vector<WeightedDecoration>& decorations,
     std::default_random_engine& rng) {
 
-    float totalWeight = 0.0f;
-    for (const auto& d : decorations) {
-        totalWeight += d.weight;
-    }
+    float totalWeight = std::accumulate(decorations.begin(), decorations.end(), 0.0f,
+        [](float sum, const auto& d) { return sum + d.weight; });
 
     std::uniform_real_distribution<float> dist(0.0f, totalWeight);
     float roll = dist(rng);

@@ -443,7 +443,11 @@ std::vector<std::string> FontManager::wrapTextToLines(const std::string& text,
     std::string word;
     
     while (words >> word) {
-      std::string testLine = workingLine.empty() ? word : workingLine + " " + word;
+      std::string testLine = workingLine;
+      if (!testLine.empty()) {
+        testLine += " ";
+      }
+      testLine += word;
       int testWidth = 0;
       
       if (TTF_GetStringSize(fontIt->second.get(), testLine.c_str(), 0, &testWidth, nullptr)) {

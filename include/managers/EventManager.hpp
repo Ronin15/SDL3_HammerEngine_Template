@@ -274,7 +274,7 @@ public:
    * @param event Shared pointer to the event to register
    * @return true if registration successful, false otherwise
    */
-  bool registerEvent(const std::string &name, EventPtr event);
+  bool registerEvent(const std::string &name, const EventPtr& event);
 
   /**
    * @brief Registers a weather event with the event system
@@ -538,8 +538,8 @@ public:
   bool
   triggerCameraShakeEnded(DispatchMode mode = DispatchMode::Deferred) const;
   bool
-  triggerCameraTargetChanged(std::weak_ptr<Entity> newTarget,
-                             std::weak_ptr<Entity> oldTarget,
+  triggerCameraTargetChanged(const std::weak_ptr<Entity>& newTarget,
+                             const std::weak_ptr<Entity>& oldTarget,
                              DispatchMode mode = DispatchMode::Deferred) const;
   bool triggerCameraZoomChanged(float newZoom, float oldZoom,
                                 DispatchMode mode = DispatchMode::Deferred) const;
@@ -579,7 +579,7 @@ public:
    * @param mode Deferred (processed in update()) or Immediate
    * @return true if dispatch successful, false otherwise
    */
-  bool dispatchEvent(EventPtr event, DispatchMode mode = DispatchMode::Deferred) const;
+  bool dispatchEvent(const EventPtr& event, DispatchMode mode = DispatchMode::Deferred) const;
 
   // Performance monitoring
   PerformanceStats getPerformanceStats(EventTypeId typeId) const;
@@ -689,10 +689,10 @@ private:
                      const char* errorContext = "dispatchEvent") const;
 
   // Release pooled events back to their respective pools after dispatch
-  void releaseEventToPool(EventTypeId typeId, EventPtr event) const;
+  void releaseEventToPool(EventTypeId typeId, const EventPtr& event) const;
 
   // Internal registration helper
-  bool registerEventInternal(const std::string &name, EventPtr event,
+  bool registerEventInternal(const std::string &name, const EventPtr& event,
                              EventTypeId typeId, uint32_t priority = EventPriority::NORMAL);
 };
 

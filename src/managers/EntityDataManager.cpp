@@ -2692,11 +2692,9 @@ std::span<const size_t> EntityDataManager::getActiveIndicesWithCollision() const
         m_activeCollisionIndices.clear();
         m_activeCollisionIndices.reserve(m_activeIndices.size() / 4); // ~25% have collision
 
-        for (size_t idx : m_activeIndices) {
-            if (m_hotData[idx].hasCollision()) {
-                m_activeCollisionIndices.push_back(idx);
-            }
-        }
+        std::copy_if(m_activeIndices.begin(), m_activeIndices.end(),
+            std::back_inserter(m_activeCollisionIndices),
+            [this](size_t idx) { return m_hotData[idx].hasCollision(); });
         m_activeCollisionDirty = false;
     }
     return std::span<const size_t>(m_activeCollisionIndices);
@@ -2713,11 +2711,9 @@ std::span<const size_t> EntityDataManager::getTriggerDetectionIndices() const {
         // Only Player has this flag by default, but NPCs can enable it too
         m_triggerDetectionIndices.reserve(16);
 
-        for (size_t idx : m_activeIndices) {
-            if (m_hotData[idx].needsTriggerDetection()) {
-                m_triggerDetectionIndices.push_back(idx);
-            }
-        }
+        std::copy_if(m_activeIndices.begin(), m_activeIndices.end(),
+            std::back_inserter(m_triggerDetectionIndices),
+            [this](size_t idx) { return m_hotData[idx].needsTriggerDetection(); });
         m_triggerDetectionDirty = false;
     }
     return std::span<const size_t>(m_triggerDetectionIndices);

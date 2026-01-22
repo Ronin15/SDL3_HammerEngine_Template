@@ -1560,12 +1560,8 @@ CollisionManager::buildActiveIndices(const CullingArea &cullingArea) const {
   // Build reverse mapping: EDM index → pool index for O(1) lookup in trigger detection
   // This replaces the O(N) linear search in findPoolIndex()
   // Find max EDM index to size the vector appropriately
-  size_t maxEdmIdx = 0;
-  for (size_t edmIdx : pools.movableIndices) {
-    if (edmIdx > maxEdmIdx) {
-      maxEdmIdx = edmIdx;
-    }
-  }
+  size_t maxEdmIdx = pools.movableIndices.empty() ? 0 :
+      *std::max_element(pools.movableIndices.begin(), pools.movableIndices.end());
   pools.edmToPoolIndex.assign(maxEdmIdx + 1, SIZE_MAX);
   for (size_t poolIdx = 0; poolIdx < pools.movableIndices.size(); ++poolIdx) {
     size_t edmIdx = pools.movableIndices[poolIdx];

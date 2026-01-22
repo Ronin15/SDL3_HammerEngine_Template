@@ -236,7 +236,7 @@ bool NPCSpawnEvent::checkConditions() {
 }
 
 void NPCSpawnEvent::addCondition(std::function<bool()> condition) {
-  m_conditions.push_back(condition);
+  m_conditions.push_back(std::move(condition));
 }
 
 void NPCSpawnEvent::setProximityTrigger(float distance) {
