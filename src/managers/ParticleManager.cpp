@@ -840,7 +840,7 @@ void ParticleManager::update(float deltaTime) {
 #ifndef NDEBUG
     // Interval stats logging - zero overhead in release (entire block compiles out)
     static thread_local uint64_t logFrameCounter = 0;
-    if (++logFrameCounter % 300 == 0) {
+    if (++logFrameCounter % 2400 == 0) {  // ~40 seconds at 60fps (staggered: AI@30s, Collision@35s)
       size_t currentActiveCount = countActiveParticles();
       recordPerformance(false, timeMs, currentActiveCount);
 
