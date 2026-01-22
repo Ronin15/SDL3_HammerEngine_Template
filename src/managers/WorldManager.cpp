@@ -327,25 +327,53 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile &newTile) {
 
   m_currentWorld->grid[y][x] = newTile;
 
-  // Invalidate chunk containing this tile AND adjacent chunks (for sprite
-  // overhang) Sprites can extend from adjacent tiles into neighboring chunks
+  // Invalidate chunk containing this tile AND adjacent chunks only if tile is
+  // near chunk edge (within overhang distance). Sprites can extend up to 2 tiles
+  // (SPRITE_OVERHANG / TILE_SIZE) into neighboring chunks.
   if (m_tileRenderer) {
-    constexpr int chunkSize = 32; // TileRenderer::CHUNK_SIZE
+    constexpr int chunkSize = 32;    // TileRenderer::CHUNK_SIZE
+    constexpr int overhangTiles = 2; // SPRITE_OVERHANG (64) / TILE_SIZE (32)
+
     const int chunkX = x / chunkSize;
     const int chunkY = y / chunkSize;
+    const int localX = x % chunkSize;
+    const int localY = y % chunkSize;
 
-    // Invalidate primary chunk
+    // Primary chunk always invalidated
     m_tileRenderer->invalidateChunk(chunkX, chunkY);
 
-    // Invalidate adjacent chunks that might render this tile's sprites
-    m_tileRenderer->invalidateChunk(chunkX - 1, chunkY);     // Left
-    m_tileRenderer->invalidateChunk(chunkX + 1, chunkY);     // Right
-    m_tileRenderer->invalidateChunk(chunkX, chunkY - 1);     // Top
-    m_tileRenderer->invalidateChunk(chunkX, chunkY + 1);     // Bottom
-    m_tileRenderer->invalidateChunk(chunkX - 1, chunkY - 1); // Top-left
-    m_tileRenderer->invalidateChunk(chunkX + 1, chunkY - 1); // Top-right
-    m_tileRenderer->invalidateChunk(chunkX - 1, chunkY + 1); // Bottom-left
-    m_tileRenderer->invalidateChunk(chunkX + 1, chunkY + 1); // Bottom-right
+    // Neighbors only if tile is near edge (within overhang distance)
+    const bool nearLeft = localX < overhangTiles;
+    const bool nearRight = localX >= (chunkSize - overhangTiles);
+    const bool nearTop = localY < overhangTiles;
+    const bool nearBottom = localY >= (chunkSize - overhangTiles);
+
+    if (nearLeft) {
+      m_tileRenderer->invalidateChunk(chunkX - 1, chunkY);
+    }
+    if (nearRight) {
+      m_tileRenderer->invalidateChunk(chunkX + 1, chunkY);
+    }
+    if (nearTop) {
+      m_tileRenderer->invalidateChunk(chunkX, chunkY - 1);
+    }
+    if (nearBottom) {
+      m_tileRenderer->invalidateChunk(chunkX, chunkY + 1);
+    }
+
+    // Diagonal neighbors only if near both edges
+    if (nearLeft && nearTop) {
+      m_tileRenderer->invalidateChunk(chunkX - 1, chunkY - 1);
+    }
+    if (nearRight && nearTop) {
+      m_tileRenderer->invalidateChunk(chunkX + 1, chunkY - 1);
+    }
+    if (nearLeft && nearBottom) {
+      m_tileRenderer->invalidateChunk(chunkX - 1, chunkY + 1);
+    }
+    if (nearRight && nearBottom) {
+      m_tileRenderer->invalidateChunk(chunkX + 1, chunkY + 1);
+    }
   }
 
   fireTileChangedEvent(x, y, newTile);
@@ -1572,10 +1600,11 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
 
   // LAYER 2: Decorations (ground-level, rendered before Y-sorted obstacles)
   // Extended range to capture decorations that overhang into this chunk
+  // Match sprite ranges: 4 tiles up (tall sprites extend upward), 1 tile down
   const int decoStartX = std::max(0, startTileX - 2);  // 2 tiles for wide decorations
-  const int decoStartY = std::max(0, startTileY - 2);  // 2 tiles for tall decorations
+  const int decoStartY = std::max(0, startTileY - 4);  // 4 tiles (match sprite range)
   const int decoEndX = std::min(worldWidth, endTileX + 2);
-  const int decoEndY = std::min(worldHeight, endTileY + 2);
+  const int decoEndY = std::min(worldHeight, endTileY + 1);  // +1 (decorations extend up, not down)
 
   for (int y = decoStartY; y < decoEndY; ++y) {
     for (int x = decoStartX; x < decoEndX; ++x) {
@@ -1919,16 +1948,28 @@ void HammerEngine::TileRenderer::render(
         float destH = srcH;
 
         // Exclude padding from non-edge chunks to prevent overlap/double-blend
+        // LEFT EDGE: Clip left padding if there's a chunk to the left
         if (chunkX > startChunkX) {
           srcX = SPRITE_OVERHANG;
           srcW -= SPRITE_OVERHANG;
           screenX += SPRITE_OVERHANG;
           destW = srcW;
         }
+        // TOP EDGE: Clip top padding if there's a chunk above
         if (chunkY > startChunkY) {
           srcY = SPRITE_OVERHANG;
           srcH -= SPRITE_OVERHANG;
           screenY += SPRITE_OVERHANG;
+          destH = srcH;
+        }
+        // RIGHT EDGE: Clip right padding if there's a chunk to the right
+        if (chunkX < endChunkX) {
+          srcW -= SPRITE_OVERHANG;
+          destW = srcW;
+        }
+        // BOTTOM EDGE: Clip bottom padding if there's a chunk below
+        if (chunkY < endChunkY) {
+          srcH -= SPRITE_OVERHANG;
           destH = srcH;
         }
 
