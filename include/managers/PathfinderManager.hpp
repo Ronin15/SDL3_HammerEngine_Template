@@ -299,7 +299,7 @@ public:
      * @param nodeRadius Radius for reaching path nodes
      * @return true if successfully following path, false if path complete
      */
-    bool followPathStep(EntityPtr entity, const Vector2D& currentPos,
+    bool followPathStep(const EntityPtr& entity, const Vector2D& currentPos,
                        std::vector<Vector2D>& path, size_t& pathIndex,
                        float speed, float nodeRadius = 64.0f) const;
 

@@ -636,7 +636,7 @@ void UIManager::bindText(const std::string &id,
     } else if (component->m_textBinding && !binding) {
       --m_activeBindingCount;
     }
-    component->m_textBinding = binding;
+    component->m_textBinding = std::move(binding);
   }
 }
 
@@ -651,7 +651,7 @@ void UIManager::bindList(
     } else if (component->m_listBinding && !binding) {
       --m_activeBindingCount;
     }
-    component->m_listBinding = binding;
+    component->m_listBinding = std::move(binding);
   }
 }
 
@@ -731,7 +731,7 @@ void UIManager::setOnClick(const std::string &id,
                            std::function<void()> callback) {
   auto component = getComponent(id);
   if (component) {
-    component->m_onClick = callback;
+    component->m_onClick = std::move(callback);
   }
 }
 
@@ -739,7 +739,7 @@ void UIManager::setOnValueChanged(const std::string &id,
                                   std::function<void(float)> callback) {
   auto component = getComponent(id);
   if (component) {
-    component->m_onValueChanged = callback;
+    component->m_onValueChanged = std::move(callback);
   }
 }
 
@@ -747,7 +747,7 @@ void UIManager::setOnTextChanged(
     const std::string &id, std::function<void(const std::string &)> callback) {
   auto component = getComponent(id);
   if (component) {
-    component->m_onTextChanged = callback;
+    component->m_onTextChanged = std::move(callback);
   }
 }
 
@@ -755,7 +755,7 @@ void UIManager::setOnHover(const std::string &id,
                            std::function<void()> callback) {
   auto component = getComponent(id);
   if (component) {
-    component->m_onHover = callback;
+    component->m_onHover = std::move(callback);
   }
 }
 
@@ -763,7 +763,7 @@ void UIManager::setOnFocus(const std::string &id,
                            std::function<void()> callback) {
   auto component = getComponent(id);
   if (component) {
-    component->m_onFocus = callback;
+    component->m_onFocus = std::move(callback);
   }
 }
 
@@ -1161,7 +1161,7 @@ void UIManager::animateMove(const std::string &id, const UIRect &targetBounds,
   animation->m_active = true;
   animation->m_startBounds = component->m_bounds;
   animation->m_targetBounds = targetBounds;
-  animation->m_onComplete = onComplete;
+  animation->m_onComplete = std::move(onComplete);
 
   // Remove any existing animation for this component
   stopAnimation(id);
@@ -1184,7 +1184,7 @@ void UIManager::animateColor(const std::string &id,
   animation->m_active = true;
   animation->m_startColor = component->m_style.backgroundColor;
   animation->m_targetColor = targetColor;
-  animation->m_onComplete = onComplete;
+  animation->m_onComplete = std::move(onComplete);
 
   // Remove any existing animation for this component
   stopAnimation(id);

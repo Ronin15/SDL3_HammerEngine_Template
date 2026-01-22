@@ -480,7 +480,7 @@ private:
     // Event firing helpers
     void firePositionChangedEvent(const Vector2D& oldPosition, const Vector2D& newPosition);
     void fireModeChangedEvent(Mode oldMode, Mode newMode);
-    void fireTargetChangedEvent(std::weak_ptr<Entity> oldTarget, std::weak_ptr<Entity> newTarget);
+    void fireTargetChangedEvent(const std::weak_ptr<Entity>& oldTarget, const std::weak_ptr<Entity>& newTarget);
     void fireShakeStartedEvent(float duration, float intensity);
     void fireShakeEndedEvent();
     void fireZoomChangedEvent(float oldZoom, float newZoom);

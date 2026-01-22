@@ -240,8 +240,8 @@ uint64_t PathfinderManager::requestPath(
     // Callback is captured and called when task completes
     auto& threadSystem = HammerEngine::ThreadSystem::Instance();
 
-    // Capture callback by value for async execution
-    auto work = [this, entityId, nStart, nGoal, cacheKey, callback]() {
+    // Capture callback by move for async execution (avoids copy)
+    auto work = [this, entityId, nStart, nGoal, cacheKey, callback = std::move(callback)]() {
         std::vector<Vector2D> path;
         bool cacheHit = false;
 
@@ -1119,7 +1119,7 @@ void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal,
     goal = clampToWorldBounds(goal, EDGE_MARGIN, grid);
 }
 
-bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& currentPos,
+bool PathfinderManager::followPathStep(const EntityPtr& entity, const Vector2D& currentPos,
                                      std::vector<Vector2D>& path, size_t& pathIndex,
                                      float speed, float nodeRadius) const {
     if (!entity || path.empty() || pathIndex >= path.size()) {

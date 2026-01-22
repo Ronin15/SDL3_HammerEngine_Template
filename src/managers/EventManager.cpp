@@ -546,7 +546,7 @@ void EventManager::drainAllDeferredEvents() {
   }
 }
 
-bool EventManager::registerEvent(const std::string &name, EventPtr event) {
+bool EventManager::registerEvent(const std::string &name, const EventPtr& event) {
   if (!event) {
     EVENT_ERROR(std::format("Cannot register null event with name: {}", name));
     return false;
@@ -594,7 +594,7 @@ bool EventManager::registerCameraEvent(const std::string &name,
 }
 
 bool EventManager::registerEventInternal(const std::string &name,
-                                         EventPtr event, EventTypeId typeId,
+                                         const EventPtr& event, EventTypeId typeId,
                                          uint32_t priority) {
   if (!event) {
     return false;
@@ -1874,7 +1874,7 @@ bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
   return true;
 }
 
-void EventManager::releaseEventToPool(EventTypeId typeId, EventPtr event) const {
+void EventManager::releaseEventToPool(EventTypeId typeId, const EventPtr& event) const {
   if (!event) return;
 
   switch (typeId) {
@@ -2027,8 +2027,8 @@ bool EventManager::triggerCameraShakeEnded(DispatchMode mode) const {
                        "triggerCameraShakeEnded");
 }
 
-bool EventManager::triggerCameraTargetChanged(std::weak_ptr<Entity> newTarget,
-                                              std::weak_ptr<Entity> oldTarget,
+bool EventManager::triggerCameraTargetChanged(const std::weak_ptr<Entity>& newTarget,
+                                              const std::weak_ptr<Entity>& oldTarget,
                                               DispatchMode mode) const {
   EventData data;
   data.typeId = EventTypeId::Camera;
@@ -2049,7 +2049,7 @@ bool EventManager::triggerCameraZoomChanged(float newZoom, float oldZoom,
 }
 
 // Public dispatch method for EventPtr (used by GameTime for TimeEvents)
-bool EventManager::dispatchEvent(EventPtr event, DispatchMode mode) const {
+bool EventManager::dispatchEvent(const EventPtr& event, DispatchMode mode) const {
   if (!event) {
     EVENT_ERROR("dispatchEvent called with null event");
     return false;
