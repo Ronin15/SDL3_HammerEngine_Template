@@ -370,10 +370,12 @@ void EventManager::update() {
   // Track threading decision for interval logging (local struct, zero overhead
   // in release)
   EventThreadingInfo threadingInfo;
+  bool anyThreaded = false;
+  size_t totalThreadedBatches = 0;
 
   // Update all event types in optimized batches with per-type threading
   // WorkerBudget is the AUTHORITATIVE source - no manager overrides
-  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
   auto decision = budgetMgr.shouldUseThreading(
       HammerEngine::SystemType::Event, totalEventCount);
   bool useThreadingGlobal = decision.shouldThread;
@@ -382,7 +384,8 @@ void EventManager::update() {
   // WorkerBudget is the AUTHORITATIVE source - getBatchStrategy() returns
   // batchCount=1 for small workloads, naturally triggering single-threaded path.
   auto updateEventType = [this, useThreadingGlobal, &eventCountsByType,
-                          &threadingInfo](EventTypeId typeId) {
+                          &threadingInfo, &budgetMgr, &anyThreaded,
+                          &totalThreadedBatches](EventTypeId typeId) {
     // Early exit for empty event types - avoids lock acquisition and iteration
     // overhead
     size_t typeEventCount = eventCountsByType[static_cast<size_t>(typeId)];
@@ -397,8 +400,30 @@ void EventManager::update() {
     }
 
     // Global threshold met - let WorkerBudget decide batching per type
-    // getBatchStrategy() returns batchCount=1 for small workloads
-    updateEventTypeBatchThreaded(typeId, threadingInfo);
+    // Skip threaded path when batchCount <= 1 to avoid shared_ptr/local copy overhead.
+    size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::Event, typeEventCount);
+    auto [batchCount, calculatedBatchSize] = budgetMgr.getBatchStrategy(
+        HammerEngine::SystemType::Event, typeEventCount, optimalWorkerCount);
+    (void)calculatedBatchSize;
+
+    if (batchCount <= 1) {
+      updateEventTypeBatch(typeId);
+      return;
+    }
+
+    EventThreadingInfo perTypeInfo;
+    updateEventTypeBatchThreaded(typeId, optimalWorkerCount, batchCount,
+                                 perTypeInfo);
+    if (perTypeInfo.wasThreaded) {
+      anyThreaded = true;
+      totalThreadedBatches += perTypeInfo.batchCount;
+      threadingInfo.workerCount =
+          std::max(threadingInfo.workerCount, perTypeInfo.workerCount);
+      threadingInfo.availableWorkers =
+          std::max(threadingInfo.availableWorkers, perTypeInfo.availableWorkers);
+      threadingInfo.budget = std::max(threadingInfo.budget, perTypeInfo.budget);
+    }
   };
 
   // Process each event type with adaptive threading decision
@@ -413,6 +438,9 @@ void EventManager::update() {
   updateEventType(EventTypeId::Custom);
   updateEventType(EventTypeId::Collision);
   updateEventType(EventTypeId::WorldTrigger);
+
+  threadingInfo.wasThreaded = anyThreaded;
+  threadingInfo.batchCount = anyThreaded ? std::max<size_t>(1, totalThreadedBatches) : 0;
 
   // Simplified performance tracking - reduce lock contention
   // Drain deferred dispatch queue with budget after event updates
@@ -1017,7 +1045,8 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) const {
 }
 
 void EventManager::updateEventTypeBatchThreaded(
-    EventTypeId typeId, EventThreadingInfo &outThreadingInfo) {
+    EventTypeId typeId, size_t optimalWorkerCount, size_t batchCount,
+    EventThreadingInfo &outThreadingInfo) {
   if (m_isShutdown || !HammerEngine::ThreadSystem::Exists()) {
     // Fall back to single-threaded if shutting down or ThreadSystem not
     // available
@@ -1052,24 +1081,11 @@ void EventManager::updateEventTypeBatchThreaded(
     return;
   }
 
-  // Use centralized WorkerBudgetManager for smart worker allocation
-  // WorkerBudget handles queue pressure internally - returns 1 worker under
-  // critical pressure, which triggers single-batch path naturally.
-  auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-  const auto &budget = budgetMgr.getBudget();
-
   // Set thread allocation info for debug output
   outThreadingInfo.availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+  auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  const auto &budget = budgetMgr.getBudget();
   outThreadingInfo.budget = budget.totalWorkers;
-
-  // Get optimal workers (WorkerBudget determines everything dynamically)
-  size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-      HammerEngine::SystemType::Event, localEvents->size());
-
-  // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on
-  // timing)
-  auto [batchCount, calculatedBatchSize] = budgetMgr.getBatchStrategy(
-      HammerEngine::SystemType::Event, localEvents->size(), optimalWorkerCount);
 
   // Set threading info based on actual batch strategy
   outThreadingInfo.workerCount = optimalWorkerCount;

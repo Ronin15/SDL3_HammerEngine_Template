@@ -675,7 +675,9 @@ private:
   EventTypeId getEventTypeId(const EventPtr &event) const;
   std::string getEventTypeName(EventTypeId typeId) const;
   void updateEventTypeBatch(EventTypeId typeId) const;
-  void updateEventTypeBatchThreaded(EventTypeId typeId, EventThreadingInfo& outThreadingInfo);
+  void updateEventTypeBatchThreaded(EventTypeId typeId, size_t optimalWorkerCount,
+                                    size_t batchCount,
+                                    EventThreadingInfo& outThreadingInfo);
   void recordPerformance(EventTypeId typeId, double timeMs) const;
   uint64_t getCurrentTimeNanos() const;
   void enqueueDispatch(EventTypeId typeId, const EventData &data) const;
