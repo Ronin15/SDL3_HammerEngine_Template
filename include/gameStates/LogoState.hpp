@@ -18,6 +18,8 @@ class LogoState : public GameState {
   std::string getName() const override;
 
  private:
+  void recalculateLayout();
+
   float m_stateTimer{0.0f};
 
   // Cached layout calculations (computed once in enter())

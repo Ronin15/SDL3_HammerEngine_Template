@@ -23,7 +23,17 @@ bool LogoState::enter() {
   // Reset timer when entering state
   m_stateTimer = 0.0f;
 
-  // Cache layout calculations (done once, used every render frame)
+  // Calculate initial layout
+  recalculateLayout();
+
+  // Cache SoundManager reference for better performance
+  SoundManager& soundMgr = SoundManager::Instance();
+  soundMgr.playSFX("sfx_logo", 0, 0);//change right value from 0 -> 1. For dev.
+  return true;
+}
+
+void LogoState::recalculateLayout() {
+  // Cache layout calculations
   GameEngine& gameEngine = GameEngine::Instance();
   m_windowWidth = gameEngine.getLogicalWidth();
   m_windowHeight = gameEngine.getLogicalHeight();
@@ -54,11 +64,6 @@ bool LogoState::enter() {
   m_titleY = (m_windowHeight / 2) + static_cast<int>(180 * scale);
   m_subtitleY = (m_windowHeight / 2) + static_cast<int>(220 * scale);
   m_versionY = (m_windowHeight / 2) + static_cast<int>(260 * scale);
-
-  // Cache SoundManager reference for better performance
-  SoundManager& soundMgr = SoundManager::Instance();
-  soundMgr.playSFX("sfx_logo", 0, 0);//change right value from 0 -> 1. For dev.
-  return true;
 }
 
 void LogoState::update(float deltaTime) {
@@ -72,6 +77,14 @@ void LogoState::update(float deltaTime) {
   }
 }
 void LogoState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
+  // Check if window dimensions changed (fullscreen toggle, etc.)
+  GameEngine& gameEngine = GameEngine::Instance();
+  int currentWidth = gameEngine.getLogicalWidth();
+  int currentHeight = gameEngine.getLogicalHeight();
+  if (currentWidth != m_windowWidth || currentHeight != m_windowHeight) {
+    recalculateLayout();
+  }
+
   // Cache manager references for better performance
   TextureManager& texMgr = TextureManager::Instance();
   FontManager& fontMgr = FontManager::Instance();
