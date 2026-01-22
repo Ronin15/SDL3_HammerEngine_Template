@@ -1864,22 +1864,30 @@ void HammerEngine::TileRenderer::render(
   const float flooredCamX = cameraX;
   const float flooredCamY = cameraY;
 
-  // Calculate visible chunk range
+  // Calculate visible chunk range (what's actually on screen)
   const int worldWidth = static_cast<int>(world.grid[0].size());
   const int worldHeight = static_cast<int>(world.grid.size());
   const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
   const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
-  const int startChunkX = std::max(
+  const int visibleStartX = std::max(
       0, static_cast<int>(flooredCamX / (CHUNK_SIZE * TILE_SIZE)));
-  const int startChunkY = std::max(
+  const int visibleStartY = std::max(
       0, static_cast<int>(flooredCamY / (CHUNK_SIZE * TILE_SIZE)));
-  const int endChunkX =
+  const int visibleEndX =
       std::min(maxChunkX, static_cast<int>((flooredCamX + viewportWidth) /
                                            (CHUNK_SIZE * TILE_SIZE)) + 1);
-  const int endChunkY =
+  const int visibleEndY =
       std::min(maxChunkY, static_cast<int>((flooredCamY + viewportHeight) /
                                            (CHUNK_SIZE * TILE_SIZE)) + 1);
+
+  // Pre-load range: 1 chunk padding around visible area for smooth movement
+  // Chunks are created and rendered to texture before they become visible
+  constexpr int PRELOAD_PADDING = 1;
+  const int startChunkX = std::max(0, visibleStartX - PRELOAD_PADDING);
+  const int startChunkY = std::max(0, visibleStartY - PRELOAD_PADDING);
+  const int endChunkX = std::min(maxChunkX - 1, visibleEndX + PRELOAD_PADDING);
+  const int endChunkY = std::min(maxChunkY - 1, visibleEndY + PRELOAD_PADDING);
 
   // Chunk texture size includes padding for sprites extending beyond tile bounds
   constexpr int chunkPixelSize =
@@ -1889,7 +1897,8 @@ void HammerEngine::TileRenderer::render(
   m_visibleKeysBuffer.clear();
   m_visibleKeysSet.clear();
 
-  // Render visible chunks to current render target (SceneRenderer's intermediate texture)
+  // Process chunks in pre-load range (visible + 1 chunk padding)
+  // This ensures chunks are ready before they scroll into view
   for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
     for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
       const uint64_t key = makeChunkKey(chunkX, chunkY);
@@ -1921,12 +1930,20 @@ void HammerEngine::TileRenderer::render(
       chunk.lastUsedFrame = m_frameCounter;  // Update LRU timestamp
 
       // Re-render chunk if dirty (save/restore render target for proper nesting)
+      // This happens for ALL chunks in pre-load range, ensuring they're ready
       if (chunk.dirty && chunk.texture) {
         SDL_Texture* previousTarget = SDL_GetRenderTarget(renderer);
         renderChunkToTexture(world, renderer, chunkX, chunkY,
                              chunk.texture.get());
         SDL_SetRenderTarget(renderer, previousTarget);
         chunk.dirty = false;
+      }
+
+      // Only blit VISIBLE chunks to screen (skip pre-loaded chunks outside viewport)
+      const bool isVisible = (chunkX >= visibleStartX && chunkX <= visibleEndX &&
+                              chunkY >= visibleStartY && chunkY <= visibleEndY);
+      if (!isVisible) {
+        continue;  // Chunk is pre-loaded but not yet visible
       }
 
       // Render chunk to current target at integer positions
@@ -1948,27 +1965,28 @@ void HammerEngine::TileRenderer::render(
         float destH = srcH;
 
         // Exclude padding from non-edge chunks to prevent overlap/double-blend
+        // Use VISIBLE range for edge detection (not pre-load range)
         // LEFT EDGE: Clip left padding if there's a chunk to the left
-        if (chunkX > startChunkX) {
+        if (chunkX > visibleStartX) {
           srcX = SPRITE_OVERHANG;
           srcW -= SPRITE_OVERHANG;
           screenX += SPRITE_OVERHANG;
           destW = srcW;
         }
         // TOP EDGE: Clip top padding if there's a chunk above
-        if (chunkY > startChunkY) {
+        if (chunkY > visibleStartY) {
           srcY = SPRITE_OVERHANG;
           srcH -= SPRITE_OVERHANG;
           screenY += SPRITE_OVERHANG;
           destH = srcH;
         }
         // RIGHT EDGE: Clip right padding if there's a chunk to the right
-        if (chunkX < endChunkX) {
+        if (chunkX < visibleEndX) {
           srcW -= SPRITE_OVERHANG;
           destW = srcW;
         }
         // BOTTOM EDGE: Clip bottom padding if there's a chunk below
-        if (chunkY < endChunkY) {
+        if (chunkY < visibleEndY) {
           srcH -= SPRITE_OVERHANG;
           destH = srcH;
         }
