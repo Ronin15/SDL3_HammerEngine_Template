@@ -214,9 +214,9 @@ For complete integration examples, see the [JSON Resource Loading Guide](utils/J
 
 ### Linux
 - Follow the [official SDL3 Linux instructions](https://wiki.libsdl.org/SDL3/README-linux) for dependencies.
-- Install Boost for tests, Valgrind for memory/thread testing, and cppcheck for static analysis:
+- Install Boost for tests, Valgrind for memory/thread testing, and cppcheck clang-tidy for static analysis. Freetype is optional for SDL3_TTF:
   ```
-  sudo apt-get install libboost-all-dev valgrind cppcheck
+  sudo apt-get install libboost-all-dev valgrind cppcheck clang-tidy mold libfreetype-dev
   ```
 - Example tested environment:
   - Ubuntu 24.04.2 LTS
