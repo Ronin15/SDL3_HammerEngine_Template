@@ -20,7 +20,7 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_
 
 ## Testing
 
-Boost.Test (58 executables). **Prefer direct test execution** - much faster than test scripts.
+Boost.Test (65 executables). **Prefer direct test execution** - much faster than test scripts.
 
 ```bash
 # Direct test execution (PREFERRED for development - fast feedback)
@@ -41,15 +41,21 @@ See `tests/TESTING.md` for comprehensive documentation.
 
 ## Architecture
 
-**Core**: GameEngine (fixed timestep) | ThreadSystem (WorkerBudget) | Logger (thread-safe)
+**Core**: GameEngine (fixed timestep) | ThreadSystem (WorkerBudget) | Logger (thread-safe) | TimestepManager
 
-**Managers**: AIManager (10K+ entities, SIMD batch) | EventManager (thread-safe batch) | CollisionManager (spatial hash) | ParticleManager (camera-aware) | WorldManager (tile-based procedural) | UIManager (theming, DPI) | GameTimeManager + WeatherController/DayNightController
+**Managers**: EntityDataManager (central data store, SoA) | AIManager (10K+ entities, SIMD) | EventManager (17 event types) | CollisionManager (HierarchicalSpatialHash) | ParticleManager (SoA, pooled) | PathfinderManager | WorldManager (chunk-based procedural) | BackgroundSimulationManager (tiered) | UIManager (theming, DPI) | GameTimeManager | InputManager | TextureManager | FontManager | SoundManager
 
-**Utils**: Camera (world↔screen) | Vector2D | JsonReader | BinarySerializer
+**Entities**: EntityKind (9 types) | SimulationTier (Active/Background/Hibernated) | EntityHandle (generation-safe)
 
-**Controllers**: State-scoped helpers (no data ownership). Dir: `controllers/{world,combat}/`
+**AI**: AIBehavior base → 8 behaviors (Idle, Wander, Patrol, Chase, Flee, Follow, Guard, Attack) | BehaviorContext (lock-free EDM access)
+
+**Controllers**: State-scoped helpers via ControllerRegistry. Dir: `controllers/{combat,world,render}/`
+
+**Utils**: Camera (world↔screen) | Vector2D | SIMDMath (SSE2/NEON) | JsonReader | BinarySerializer | UniqueID
 
 **Structure**: `src/{core,managers,controllers,gameStates,entities,events,ai,collisions,utils,world}` | `include/` mirrors src | `tests/` | `res/`
+
+**Layer Dependencies**: Core → Managers → GameStates → Entities/Controllers
 
 ## Standards
 
@@ -156,4 +162,10 @@ m_controllers.get<WeatherController>()->getCurrentWeather();
 
 ## Workflow
 
-Search existing patterns before implementing. Reference states: EventDemoState, UIDemoState, SettingsMenuState, MainMenuState.
+Search existing patterns before implementing.
+
+**Demo States**: States with "Demo" suffix (EventDemoState, UIDemoState, AIDemoState, OverlayDemoState) are for testing/showcasing features.
+
+**GamePlayState**: The pristine official gameplay state. Keep clean and production-ready.
+
+**Reference States**: SettingsMenuState, MainMenuState for menu patterns.
