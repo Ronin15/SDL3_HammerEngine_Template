@@ -114,9 +114,8 @@ All resources share these common fields:
 
 ## Example JSON Files
 
-See the example files in `res/data/`:
-- `items.json` - Equipment, consumables, quest items
-- `materials_and_currency.json` - Materials, currency, game resources
+See the unified resource file in `res/data/`:
+- `resources.json` - All resources: equipment, consumables, quest items, materials, currency, game resources
 
 ## Error Handling
 
