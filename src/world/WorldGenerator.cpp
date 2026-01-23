@@ -25,15 +25,23 @@ namespace WorldSpawnConfig {
 // ----------------------------------------------------------------------------
 namespace Biome {
     // Humidity thresholds (0.0 = dry, 1.0 = wet)
-    constexpr float DESERT_HUMIDITY_MAX = 0.3f;
-    constexpr float SWAMP_HUMIDITY_MIN = 0.7f;
-    constexpr float SWAMP_ELEVATION_MAX = 0.4f;
-    constexpr float FOREST_HUMIDITY_MIN = 0.5f;
-    constexpr float FOREST_ELEVATION_MIN = 0.6f;
+    constexpr float DESERT_HUMIDITY_MAX = 0.35f;
+    constexpr float SWAMP_HUMIDITY_MIN = 0.70f;
+    constexpr float SWAMP_ELEVATION_MAX = 0.45f;
+
+    // PLAINS: moderate humidity, mid elevation (temperate default)
+    constexpr float PLAINS_HUMIDITY_MIN = 0.35f;
+    constexpr float PLAINS_HUMIDITY_MAX = 0.60f;
+    constexpr float PLAINS_ELEVATION_MIN = 0.35f;
+    constexpr float PLAINS_ELEVATION_MAX = 0.65f;
+
+    // FOREST: higher humidity with moderate-to-high elevation
+    constexpr float FOREST_HUMIDITY_MIN = 0.55f;
+    constexpr float FOREST_ELEVATION_MIN = 0.40f;
 
     // Special biome spawn chances (applied when no other biome matches)
-    constexpr float HAUNTED_CHANCE = 0.05f;    // 5%
-    constexpr float CELESTIAL_CHANCE = 0.05f;  // 5% (cumulative with haunted = 10% total special)
+    constexpr float HAUNTED_CHANCE = 0.03f;    // 3% (reduced from 5%)
+    constexpr float CELESTIAL_CHANCE = 0.03f;  // 3% (reduced from 5%)
 }
 
 // ----------------------------------------------------------------------------
@@ -50,6 +58,7 @@ namespace Water {
 // ----------------------------------------------------------------------------
 namespace Obstacles {
     // Per-biome spawn chances (0.0 - 1.0)
+    constexpr float PLAINS_CHANCE = 0.12f;    // Sparse trees in open grassland
     constexpr float FOREST_CHANCE = 0.40f;
     constexpr float MOUNTAIN_CHANCE = 0.30f;
     constexpr float SWAMP_CHANCE = 0.20f;
@@ -99,6 +108,7 @@ namespace Deposits {
 // ----------------------------------------------------------------------------
 namespace Buildings {
     // Per-biome spawn chances (0.0 - 1.0)
+    constexpr float PLAINS_CHANCE = 0.025f;    // 2.5% - same as forest
     constexpr float FOREST_CHANCE = 0.025f;    // 2.5%
     constexpr float HAUNTED_CHANCE = 0.030f;   // 3.0%
     constexpr float DESERT_CHANCE = 0.015f;    // 1.5%
@@ -115,6 +125,7 @@ namespace Buildings {
 // ----------------------------------------------------------------------------
 namespace Decorations {
     // Per-biome spawn chances (0.0 - 1.0)
+    constexpr float PLAINS_CHANCE = 0.35f;     // High decoration density (flowers, grass)
     constexpr float FOREST_CHANCE = 0.25f;
     constexpr float CELESTIAL_CHANCE = 0.20f;
     constexpr float SWAMP_CHANCE = 0.30f;
@@ -326,21 +337,40 @@ void WorldGenerator::assignBiomes(
 
       namespace BiomeCfg = WorldSpawnConfig::Biome;
 
+      // Water check first (lowest elevation)
       if (elevation < config.waterLevel) {
         biome = Biome::OCEAN;
         world.grid[y][x].isWater = true;
-      } else if (elevation >= config.mountainLevel) {
+      }
+      // Mountain check (highest elevation)
+      else if (elevation >= config.mountainLevel) {
         biome = Biome::MOUNTAIN;
-      } else {
-        // Assign biome based on humidity and elevation
+      }
+      // Land biomes based on humidity and elevation
+      else {
+        // DESERT: Low humidity, any non-water elevation
         if (humidity < BiomeCfg::DESERT_HUMIDITY_MAX) {
           biome = Biome::DESERT;
-        } else if (humidity > BiomeCfg::SWAMP_HUMIDITY_MIN && elevation < BiomeCfg::SWAMP_ELEVATION_MAX) {
+        }
+        // SWAMP: High humidity AND low elevation
+        else if (humidity > BiomeCfg::SWAMP_HUMIDITY_MIN &&
+                 elevation < BiomeCfg::SWAMP_ELEVATION_MAX) {
           biome = Biome::SWAMP;
-        } else if (elevation > BiomeCfg::FOREST_ELEVATION_MIN && humidity > BiomeCfg::FOREST_HUMIDITY_MIN) {
+        }
+        // FOREST: High humidity with moderate-to-high elevation
+        else if (humidity >= BiomeCfg::FOREST_HUMIDITY_MIN &&
+                 elevation >= BiomeCfg::FOREST_ELEVATION_MIN) {
           biome = Biome::FOREST;
-        } else {
-          // Special biomes with lower probability
+        }
+        // PLAINS: Moderate humidity, mid elevation (temperate default)
+        else if (humidity >= BiomeCfg::PLAINS_HUMIDITY_MIN &&
+                 humidity <= BiomeCfg::PLAINS_HUMIDITY_MAX &&
+                 elevation >= BiomeCfg::PLAINS_ELEVATION_MIN &&
+                 elevation <= BiomeCfg::PLAINS_ELEVATION_MAX) {
+          biome = Biome::PLAINS;
+        }
+        // Remaining land: check for special biomes, else default to PLAINS
+        else {
           std::default_random_engine rng(config.seed + x * 1000 + y);
           std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
@@ -350,7 +380,8 @@ void WorldGenerator::assignBiomes(
           } else if (special < BiomeCfg::HAUNTED_CHANCE + BiomeCfg::CELESTIAL_CHANCE) {
             biome = Biome::CELESTIAL;
           } else {
-            biome = Biome::FOREST;
+            // Default to PLAINS instead of FOREST for uncategorized mid-terrain
+            biome = Biome::PLAINS;
           }
         }
       }
@@ -520,6 +551,10 @@ void WorldGenerator::distributeObstacles(WorldData &world,
       ObstacleType obstacleType = ObstacleType::NONE;
 
       switch (tile.biome) {
+      case Biome::PLAINS:
+        obstacleChance = ObsCfg::PLAINS_CHANCE;
+        obstacleType = ObstacleType::TREE;  // Sparse trees in open grassland
+        break;
       case Biome::FOREST:
         obstacleChance = ObsCfg::FOREST_CHANCE;
         obstacleType = ObstacleType::TREE;
@@ -624,6 +659,20 @@ void WorldGenerator::distributeDecorations(WorldData& world,
       } else {
         // Land decorations by biome
         switch (tile.biome) {
+          case Biome::PLAINS:
+            decorationChance = DecoCfg::PLAINS_CHANCE;
+            weightedDecorations = {
+                {DecorationType::FLOWER_BLUE, DecoCfg::FLOWER_WEIGHT * 1.5f},
+                {DecorationType::FLOWER_PINK, DecoCfg::FLOWER_WEIGHT * 1.5f},
+                {DecorationType::FLOWER_WHITE, DecoCfg::FLOWER_WEIGHT * 1.5f},
+                {DecorationType::FLOWER_YELLOW, DecoCfg::FLOWER_WEIGHT * 1.5f},
+                {DecorationType::GRASS_SMALL, DecoCfg::GRASS_WEIGHT * 2.0f},
+                {DecorationType::GRASS_LARGE, DecoCfg::GRASS_WEIGHT * 2.0f},
+                {DecorationType::BUSH, DecoCfg::BUSH_WEIGHT * 0.5f},
+                {DecorationType::ROCK_SMALL, DecoCfg::ROCK_WEIGHT * 0.5f}
+            };
+            break;
+
           case Biome::FOREST:
             decorationChance = DecoCfg::FOREST_CHANCE;
             weightedDecorations = {
@@ -762,6 +811,9 @@ void WorldGenerator::generateBuildings(WorldData& world, std::default_random_eng
       const Tile& tile = world.grid[y][x];
 
       switch (tile.biome) {
+      case Biome::PLAINS:
+        buildingChance = BldgCfg::PLAINS_CHANCE;
+        break;
       case Biome::FOREST:
         buildingChance = BldgCfg::FOREST_CHANCE;
         break;

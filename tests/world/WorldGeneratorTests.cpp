@@ -253,6 +253,7 @@ BOOST_AUTO_TEST_CASE(TestLargeWorld) {
 
     // Large worlds should have all major biomes represented
     BOOST_CHECK_GT(biomeCount[static_cast<int>(Biome::FOREST)], 0);
+    BOOST_CHECK_GT(biomeCount[static_cast<int>(Biome::PLAINS)], 0);
     BOOST_CHECK_GT(biomeCount[static_cast<int>(Biome::DESERT)], 0);
     BOOST_CHECK_GT(biomeCount[static_cast<int>(Biome::MOUNTAIN)], 0);
 }

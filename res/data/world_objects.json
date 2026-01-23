@@ -16,6 +16,11 @@
       "textureId": "biome_forest",
       "seasonal": true
     },
+    "plains": {
+      "name": "Plains",
+      "textureId": "biome_plains",
+      "seasonal": true
+    },
     "mountain": {
       "name": "Mountain",
       "textureId": "biome_mountain",

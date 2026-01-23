@@ -448,8 +448,8 @@ void AdvancedAIDemoState::update(float deltaTime) {
       config.width = 350; // Medium-sized world for advanced AI showcase
       config.height = 350;
       config.seed = static_cast<int>(std::time(nullptr));
-      config.elevationFrequency = 0.08f;
-      config.humidityFrequency = 0.06f;
+      config.elevationFrequency = 0.025f;  // Lower frequency = larger biome regions
+      config.humidityFrequency = 0.018f;
       config.waterLevel = 0.3f;
       config.mountainLevel = 0.7f;
 
