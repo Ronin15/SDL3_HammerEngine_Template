@@ -197,10 +197,10 @@ void GamePlayState::update(float deltaTime) {
     config.width = 200; // Standard gameplay world
     config.height = 200;
     config.seed = static_cast<int>(std::time(nullptr));
-    config.elevationFrequency = 0.05f;
-    config.humidityFrequency = 0.03f;
-    config.waterLevel = 0.3f;
-    config.mountainLevel = 0.7f;
+    config.elevationFrequency = 0.018f;  // Lower frequency = larger biome regions
+    config.humidityFrequency = 0.012f;
+    config.waterLevel = 0.28f;
+    config.mountainLevel = 0.72f;
 
     // Configure LoadingState and transition to it
     auto *loadingState = dynamic_cast<LoadingState *>(

@@ -941,6 +941,7 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
     m_cachedTextureIDs.biome_default = getTextureId(m_worldObjects.biomes, "default", "biome_default");
     m_cachedTextureIDs.biome_desert = getTextureId(m_worldObjects.biomes, "desert", "biome_desert");
     m_cachedTextureIDs.biome_forest = getTextureId(m_worldObjects.biomes, "forest", "biome_forest");
+    m_cachedTextureIDs.biome_plains = getTextureId(m_worldObjects.biomes, "plains", "biome_plains");
     m_cachedTextureIDs.biome_mountain = getTextureId(m_worldObjects.biomes, "mountain", "biome_mountain");
     m_cachedTextureIDs.biome_swamp = getTextureId(m_worldObjects.biomes, "swamp", "biome_swamp");
     m_cachedTextureIDs.biome_haunted = getTextureId(m_worldObjects.biomes, "haunted", "biome_haunted");
@@ -970,6 +971,7 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
     m_cachedTextureIDs.biome_default = std::string(prefix) + "biome_default";
     m_cachedTextureIDs.biome_desert = std::string(prefix) + "biome_desert";
     m_cachedTextureIDs.biome_forest = std::string(prefix) + "biome_forest";
+    m_cachedTextureIDs.biome_plains = std::string(prefix) + "biome_plains";
     m_cachedTextureIDs.biome_mountain = std::string(prefix) + "biome_mountain";
     m_cachedTextureIDs.biome_swamp = std::string(prefix) + "biome_swamp";
     m_cachedTextureIDs.biome_haunted = std::string(prefix) + "biome_haunted";
@@ -1015,6 +1017,7 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
                m_cachedTextureIDs.biome_default);
   cacheTexture(m_cachedTextures.biome_desert, m_cachedTextureIDs.biome_desert);
   cacheTexture(m_cachedTextures.biome_forest, m_cachedTextureIDs.biome_forest);
+  cacheTexture(m_cachedTextures.biome_plains, m_cachedTextureIDs.biome_plains);
   cacheTexture(m_cachedTextures.biome_mountain,
                m_cachedTextureIDs.biome_mountain);
   cacheTexture(m_cachedTextures.biome_swamp, m_cachedTextureIDs.biome_swamp);
@@ -1275,6 +1278,7 @@ void HammerEngine::TileRenderer::initAtlasCoords() {
     loadBiome(coords.biome_default, "default");
     loadBiome(coords.biome_desert, "desert");
     loadBiome(coords.biome_forest, "forest");
+    loadBiome(coords.biome_plains, "plains");
     loadBiome(coords.biome_mountain, "mountain");
     loadBiome(coords.biome_swamp, "swamp");
     loadBiome(coords.biome_haunted, "haunted");
@@ -1422,6 +1426,7 @@ void HammerEngine::TileRenderer::applyCoordsToTextures(Season season) {
   apply(m_cachedTextures.biome_default, coords.biome_default);
   apply(m_cachedTextures.biome_desert, coords.biome_desert);
   apply(m_cachedTextures.biome_forest, coords.biome_forest);
+  apply(m_cachedTextures.biome_plains, coords.biome_plains);
   apply(m_cachedTextures.biome_mountain, coords.biome_mountain);
   apply(m_cachedTextures.biome_swamp, coords.biome_swamp);
   apply(m_cachedTextures.biome_haunted, coords.biome_haunted);
@@ -1567,6 +1572,9 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
           break;
         case HammerEngine::Biome::FOREST:
           tex = &m_cachedTextures.biome_forest;
+          break;
+        case HammerEngine::Biome::PLAINS:
+          tex = &m_cachedTextures.biome_plains;
           break;
         case HammerEngine::Biome::MOUNTAIN:
           tex = &m_cachedTextures.biome_mountain;
@@ -2099,6 +2107,8 @@ HammerEngine::TileRenderer::getBiomeTexture(HammerEngine::Biome biome) const {
     return "biome_desert";
   case HammerEngine::Biome::FOREST:
     return "biome_forest";
+  case HammerEngine::Biome::PLAINS:
+    return "biome_plains";
   case HammerEngine::Biome::MOUNTAIN:
     return "biome_mountain";
   case HammerEngine::Biome::SWAMP:

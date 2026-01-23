@@ -29,6 +29,7 @@ constexpr float TILE_SIZE = 32.0f;  // Tile size in pixels
 enum class Biome {
     DESERT,
     FOREST,
+    PLAINS,     // Open grassland with sparse vegetation
     MOUNTAIN,
     SWAMP,
     HAUNTED,
@@ -81,6 +82,7 @@ inline std::ostream& operator<<(std::ostream& os, const Biome& biome) {
     switch (biome) {
         case Biome::DESERT: return os << "DESERT";
         case Biome::FOREST: return os << "FOREST";
+        case Biome::PLAINS: return os << "PLAINS";
         case Biome::MOUNTAIN: return os << "MOUNTAIN";
         case Biome::SWAMP: return os << "SWAMP";
         case Biome::HAUNTED: return os << "HAUNTED";

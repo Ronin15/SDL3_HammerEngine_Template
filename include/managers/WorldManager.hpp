@@ -105,6 +105,7 @@ private:
         std::string biome_default;
         std::string biome_desert;
         std::string biome_forest;
+        std::string biome_plains;
         std::string biome_mountain;
         std::string biome_swamp;
         std::string biome_haunted;
@@ -172,6 +173,7 @@ private:
         CachedTexture biome_default;
         CachedTexture biome_desert;
         CachedTexture biome_forest;
+        CachedTexture biome_plains;
         CachedTexture biome_mountain;
         CachedTexture biome_swamp;
         CachedTexture biome_haunted;
@@ -280,6 +282,7 @@ private:
         AtlasCoords biome_default;
         AtlasCoords biome_desert;
         AtlasCoords biome_forest;
+        AtlasCoords biome_plains;
         AtlasCoords biome_mountain;
         AtlasCoords biome_swamp;
         AtlasCoords biome_haunted;

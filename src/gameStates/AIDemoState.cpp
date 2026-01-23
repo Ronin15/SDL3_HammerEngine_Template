@@ -488,8 +488,8 @@ void AIDemoState::update(float deltaTime) {
       config.width = 500; // Massive world matching EventDemoState
       config.height = 500;
       config.seed = static_cast<int>(std::time(nullptr));
-      config.elevationFrequency = 0.1f;
-      config.humidityFrequency = 0.1f;
+      config.elevationFrequency = 0.02f;   // Lower frequency = larger biome regions
+      config.humidityFrequency = 0.015f;
       config.waterLevel = 0.25f;
       config.mountainLevel = 0.75f;
 
