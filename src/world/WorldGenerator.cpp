@@ -104,20 +104,26 @@ namespace Deposits {
 }
 
 // ----------------------------------------------------------------------------
-// BUILDING SPAWN RATES
+// VILLAGE/BUILDING SPAWN CONFIGURATION
 // ----------------------------------------------------------------------------
 namespace Buildings {
-    // Per-biome spawn chances (0.0 - 1.0)
-    constexpr float PLAINS_CHANCE = 0.025f;    // 2.5% - same as forest
-    constexpr float FOREST_CHANCE = 0.025f;    // 2.5%
-    constexpr float HAUNTED_CHANCE = 0.030f;   // 3.0%
-    constexpr float DESERT_CHANCE = 0.015f;    // 1.5%
-    constexpr float SWAMP_CHANCE = 0.015f;     // 1.5%
-    constexpr float CELESTIAL_CHANCE = 0.020f; // 2.0%
-    constexpr float DEFAULT_CHANCE = 0.015f;   // 1.5%
-
     constexpr int BUILDING_SIZE = 2;           // 2x2 tiles per building
     constexpr int MAX_CONNECTED_SIZE = 4;      // Max connected building size (hut->house->large->cityhall)
+
+    // Village clustering parameters
+    constexpr int VILLAGE_DENSITY_DIVISOR = 8000;   // Villages = area / this (e.g., 200x200 = ~5 villages)
+    constexpr int VILLAGE_MIN_DISTANCE = 40;        // Minimum tiles between village centers
+    constexpr int VILLAGE_RADIUS = 12;              // Max radius for building placement from center
+    constexpr int VILLAGE_MIN_BUILDINGS = 3;        // Minimum buildings per village
+    constexpr int VILLAGE_MAX_BUILDINGS = 8;        // Maximum buildings per village
+
+    // Per-biome village spawn weight (higher = more likely to have villages)
+    constexpr float PLAINS_VILLAGE_WEIGHT = 1.0f;   // Most common
+    constexpr float FOREST_VILLAGE_WEIGHT = 0.6f;
+    constexpr float DESERT_VILLAGE_WEIGHT = 0.3f;
+    constexpr float SWAMP_VILLAGE_WEIGHT = 0.2f;
+    constexpr float HAUNTED_VILLAGE_WEIGHT = 0.4f;
+    constexpr float CELESTIAL_VILLAGE_WEIGHT = 0.3f;
 }
 
 // ----------------------------------------------------------------------------
@@ -791,65 +797,104 @@ void WorldGenerator::generateBuildings(WorldData& world, std::default_random_eng
   if (width <= BldgCfg::BUILDING_SIZE || height <= BldgCfg::BUILDING_SIZE) return;
 
   std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+  std::uniform_int_distribution<int> xDist(BldgCfg::VILLAGE_RADIUS, width - BldgCfg::VILLAGE_RADIUS - 1);
+  std::uniform_int_distribution<int> yDist(BldgCfg::VILLAGE_RADIUS, height - BldgCfg::VILLAGE_RADIUS - 1);
   uint32_t nextBuildingId = 1;
 
-  // Iterate through potential building sites (leaving room for 2x2 structures)
-  for (int y = 0; y < height - 1; ++y) {
-    for (int x = 0; x < width - 1; ++x) {
-      // Skip if this tile already has a building
-      if (world.grid[y][x].buildingId > 0) {
-        continue;
-      }
+  // Calculate number of villages based on world size
+  int targetVillages = std::max(1, (width * height) / BldgCfg::VILLAGE_DENSITY_DIVISOR);
 
-      // Check if we can place a building here
-      if (!canPlaceBuilding(world, x, y)) {
-        continue;
-      }
-
-      // Determine building chance based on biome
-      float buildingChance = 0.0f;
-      const Tile& tile = world.grid[y][x];
-
-      switch (tile.biome) {
-      case Biome::PLAINS:
-        buildingChance = BldgCfg::PLAINS_CHANCE;
-        break;
-      case Biome::FOREST:
-        buildingChance = BldgCfg::FOREST_CHANCE;
-        break;
-      case Biome::HAUNTED:
-        buildingChance = BldgCfg::HAUNTED_CHANCE;
-        break;
-      case Biome::DESERT:
-        buildingChance = BldgCfg::DESERT_CHANCE;
-        break;
-      case Biome::SWAMP:
-        buildingChance = BldgCfg::SWAMP_CHANCE;
-        break;
-      case Biome::CELESTIAL:
-        buildingChance = BldgCfg::CELESTIAL_CHANCE;
-        break;
+  // Helper to get biome village weight
+  auto getBiomeWeight = [](Biome biome) -> float {
+    switch (biome) {
+      case Biome::PLAINS: return BldgCfg::PLAINS_VILLAGE_WEIGHT;
+      case Biome::FOREST: return BldgCfg::FOREST_VILLAGE_WEIGHT;
+      case Biome::DESERT: return BldgCfg::DESERT_VILLAGE_WEIGHT;
+      case Biome::SWAMP: return BldgCfg::SWAMP_VILLAGE_WEIGHT;
+      case Biome::HAUNTED: return BldgCfg::HAUNTED_VILLAGE_WEIGHT;
+      case Biome::CELESTIAL: return BldgCfg::CELESTIAL_VILLAGE_WEIGHT;
       case Biome::MOUNTAIN:
       case Biome::OCEAN:
-        // No buildings in these biomes
-        continue;
-      default:
-        buildingChance = BldgCfg::DEFAULT_CHANCE;
-        break;
+      default: return 0.0f;
+    }
+  };
+
+  // Helper to check if position is valid for village center
+  auto isValidVillageCenter = [&](int cx, int cy) -> bool {
+    if (cx < BldgCfg::VILLAGE_RADIUS || cx >= width - BldgCfg::VILLAGE_RADIUS ||
+        cy < BldgCfg::VILLAGE_RADIUS || cy >= height - BldgCfg::VILLAGE_RADIUS) {
+      return false;
+    }
+    const Tile& tile = world.grid[cy][cx];
+    return !tile.isWater && tile.biome != Biome::MOUNTAIN && tile.biome != Biome::OCEAN;
+  };
+
+  // Store village centers to enforce minimum distance
+  std::vector<std::pair<int, int>> villageCenters;
+
+  // Helper to check distance from existing villages
+  auto isFarEnoughFromVillages = [&](int x, int y) -> bool {
+    for (const auto& center : villageCenters) {
+      int dx = x - center.first;
+      int dy = y - center.second;
+      if (dx * dx + dy * dy < BldgCfg::VILLAGE_MIN_DISTANCE * BldgCfg::VILLAGE_MIN_DISTANCE) {
+        return false;
       }
+    }
+    return true;
+  };
 
-      if (buildingChance > 0.0f && dist(rng) < buildingChance) {
-        // Create a new building at this location
-        uint32_t newBuildingId = createBuilding(world, x, y, nextBuildingId);
+  // Find village center locations
+  int maxAttempts = targetVillages * 50;  // Allow many attempts to find valid spots
+  for (int attempt = 0; attempt < maxAttempts && static_cast<int>(villageCenters.size()) < targetVillages; ++attempt) {
+    int cx = xDist(rng);
+    int cy = yDist(rng);
 
-        // Only try to connect if building was successfully created
-        if (newBuildingId > 0) {
-          // Try to connect to adjacent buildings
-          tryConnectBuildings(world, x, y, newBuildingId);
-        }
+    if (!isValidVillageCenter(cx, cy)) continue;
+    if (!isFarEnoughFromVillages(cx, cy)) continue;
+
+    // Check biome suitability
+    float biomeWeight = getBiomeWeight(world.grid[cy][cx].biome);
+    if (biomeWeight <= 0.0f || dist(rng) > biomeWeight) continue;
+
+    villageCenters.emplace_back(cx, cy);
+  }
+
+  // Generate buildings for each village
+  std::uniform_int_distribution<int> buildingCountDist(BldgCfg::VILLAGE_MIN_BUILDINGS, BldgCfg::VILLAGE_MAX_BUILDINGS);
+
+  for (const auto& center : villageCenters) {
+    int villageX = center.first;
+    int villageY = center.second;
+    int targetBuildings = buildingCountDist(rng);
+    int buildingsPlaced = 0;
+
+    // Try to place buildings within village radius, favoring positions near center
+    int placementAttempts = targetBuildings * 20;
+    for (int attempt = 0; attempt < placementAttempts && buildingsPlaced < targetBuildings; ++attempt) {
+      // Generate offset from center with bias toward center (gaussian-like distribution)
+      float angle = dist(rng) * 2.0f * 3.14159f;
+      float radiusFactor = dist(rng) * dist(rng);  // Square for center bias
+      float radius = radiusFactor * static_cast<float>(BldgCfg::VILLAGE_RADIUS);
+
+      int bx = villageX + static_cast<int>(radius * std::cos(angle));
+      int by = villageY + static_cast<int>(radius * std::sin(angle));
+
+      // Validate position
+      if (bx < 0 || bx >= width - 1 || by < 0 || by >= height - 1) continue;
+      if (world.grid[by][bx].buildingId > 0) continue;
+      if (!canPlaceBuilding(world, bx, by)) continue;
+
+      // Create building
+      uint32_t newBuildingId = createBuilding(world, bx, by, nextBuildingId);
+      if (newBuildingId > 0) {
+        tryConnectBuildings(world, bx, by, newBuildingId);
+        buildingsPlaced++;
       }
     }
   }
+
+  WORLD_MANAGER_DEBUG(std::format("Generated {} villages with buildings", villageCenters.size()));
 }
 
 bool WorldGenerator::canPlaceBuilding(const WorldData& world, int x, int y) {
