@@ -103,13 +103,11 @@ python3 tools/atlas_tool.py pack
 - `res/sprites/mappings.json` - Rename mappings (created by map, consumed by pack)
 - `res/data/atlas.json` - Atlas region definitions
 
-**JSON files updated by pack:**
-- `res/data/items.json` - Items (matches worldTextureId)
-- `res/data/materials_and_currency.json` - Materials (matches worldTextureId)
-- `res/data/races.json` - Races (matches textureId)
-- `res/data/monster_types.json` - Monsters (matches textureId)
-- `res/data/species.json` - Animals (matches textureId)
-- `res/data/world_objects.json` - World objects (matches textureId)
+**Output:**
+- `res/data/atlas.json` - Atlas region coordinates (single source of truth)
+
+Note: Data files (`resources.json`, `races.json`, etc.) define `textureId` but NOT atlas coordinates.
+C++ code looks up coordinates from `atlas.json` at runtime using the `textureId`.
 
 ### Adding New Sprites
 

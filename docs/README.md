@@ -170,7 +170,7 @@ The HammerEngine features a comprehensive resource management system that integr
 - **[InventoryComponent](../../include/entities/resources/InventoryComponent.hpp)** - Entity-based inventory management with resource stacking and validation
 
 ### Integration Points
-- **JSON Loading**: Resources are loaded from `res/data/items.json` and `res/data/materials_and_currency.json` using the [JsonReader](utils/JsonReader.md) system
+- **JSON Loading**: Resources are loaded from `res/data/resources.json` using the [JsonReader](utils/JsonReader.md) system
 - **Event System**: Resource changes trigger [ResourceChangeEvent](../../include/events/ResourceChangeEvent.hpp) through the EventManager for real-time updates
 - **Entity System**: NPCs and Players can own and manipulate resources through the InventoryComponent
 - **Game States**: Resource interactions are demonstrated in EventDemoState and GamePlayState
