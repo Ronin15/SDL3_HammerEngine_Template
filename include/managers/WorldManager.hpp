@@ -251,6 +251,13 @@ private:
     mutable std::vector<uint64_t> m_visibleKeysBuffer;
     mutable std::vector<std::pair<uint64_t, uint64_t>> m_evictionBuffer;
     std::atomic<bool> m_cachePendingClear{false};
+    bool m_hasDirtyChunks{false};  // Early-out flag for updateDirtyChunks
+
+    // Last visible chunk range for change detection (early-out when camera hasn't moved)
+    int m_lastStartChunkX{-1};
+    int m_lastStartChunkY{-1};
+    int m_lastEndChunkX{-1};
+    int m_lastEndChunkY{-1};
 
     void renderChunkToTexture(const WorldData& world, SDL_Renderer* renderer,
                               int chunkX, int chunkY, SDL_Texture* target);

@@ -1205,6 +1205,7 @@ void HammerEngine::TileRenderer::invalidateChunk(int chunkX, int chunkY) {
   auto it = m_chunkCache.find(key);
   if (it != m_chunkCache.end()) {
     it->second.dirty = true;
+    m_hasDirtyChunks = true;
   }
 }
 
@@ -1853,12 +1854,12 @@ void HammerEngine::TileRenderer::updateDirtyChunks(
     return;
   }
 
-  // Handle deferred cache clear
+  // Handle deferred cache clear (sets dirty flag since chunks need recreation)
   if (m_cachePendingClear.exchange(false, std::memory_order_acq_rel)) {
     m_chunkCache.clear();
+    m_hasDirtyChunks = true;  // New chunks will be created dirty
+    m_lastStartChunkX = -1;   // Force re-check of visible range
   }
-
-  ++m_frameCounter;
 
   const int worldWidth = static_cast<int>(world.grid[0].size());
   const int worldHeight = static_cast<int>(world.grid.size());
@@ -1878,12 +1879,32 @@ void HammerEngine::TileRenderer::updateDirtyChunks(
                                            (CHUNK_SIZE * TILE_SIZE)) +
                               1);
 
+  // Check if visible range changed (camera moved enough to need new chunks)
+  const bool rangeChanged = (startChunkX != m_lastStartChunkX ||
+                             startChunkY != m_lastStartChunkY ||
+                             endChunkX != m_lastEndChunkX ||
+                             endChunkY != m_lastEndChunkY);
+
+  // Early-out: no dirty chunks, range unchanged, and cache populated
+  if (!m_hasDirtyChunks && !rangeChanged && !m_chunkCache.empty()) {
+    return;
+  }
+
+  // Update last visible range
+  m_lastStartChunkX = startChunkX;
+  m_lastStartChunkY = startChunkY;
+  m_lastEndChunkX = endChunkX;
+  m_lastEndChunkY = endChunkY;
+
+  ++m_frameCounter;
+
   constexpr int chunkPixelSize =
       CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
 
   // Limit chunk re-renders per frame to avoid hitches when many chunks are dirty
   constexpr int MAX_CHUNK_RENDERS_PER_FRAME = 2;
   int chunksRenderedThisFrame = 0;
+  bool anyChunkStillDirty = false;
 
   m_visibleKeysBuffer.clear();
 
@@ -1895,6 +1916,7 @@ void HammerEngine::TileRenderer::updateDirtyChunks(
 
       auto it = m_chunkCache.find(key);
       if (it == m_chunkCache.end()) {
+        // New chunk needed - create texture
         SDL_Texture *tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
                                              SDL_TEXTUREACCESS_TARGET,
                                              chunkPixelSize, chunkPixelSize);
@@ -1915,15 +1937,21 @@ void HammerEngine::TileRenderer::updateDirtyChunks(
       chunk.lastUsedFrame = m_frameCounter;
 
       // Render dirty chunks (limited per frame to avoid hitches)
-      if (chunk.dirty && chunk.texture &&
-          chunksRenderedThisFrame < MAX_CHUNK_RENDERS_PER_FRAME) {
-        renderChunkToTexture(world, renderer, chunkX, chunkY,
-                             chunk.texture.get());
-        chunk.dirty = false;
-        ++chunksRenderedThisFrame;
+      if (chunk.dirty && chunk.texture) {
+        if (chunksRenderedThisFrame < MAX_CHUNK_RENDERS_PER_FRAME) {
+          renderChunkToTexture(world, renderer, chunkX, chunkY,
+                               chunk.texture.get());
+          chunk.dirty = false;
+          ++chunksRenderedThisFrame;
+        } else {
+          anyChunkStillDirty = true;  // Hit limit, some chunks still dirty
+        }
       }
     }
   }
+
+  // Update dirty flag for next frame
+  m_hasDirtyChunks = anyChunkStillDirty;
 
   // Cache eviction - keep only MAX_CACHED_CHUNKS
   if (m_chunkCache.size() > MAX_CACHED_CHUNKS) {
