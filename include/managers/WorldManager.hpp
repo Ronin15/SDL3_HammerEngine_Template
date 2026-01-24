@@ -49,7 +49,7 @@ class TileRenderer {
 private:
     static constexpr float TILE_SIZE = 32.0f;  // Use float for smooth movement
     static constexpr int VIEWPORT_PADDING = 2;
-    static constexpr int SPRITE_OVERHANG = 64;  // Padding for sprites extending beyond tile bounds (increased for tall trees/buildings)
+    static constexpr int SPRITE_OVERHANG = 96;  // Padding for sprites extending beyond tile bounds (3 tiles for wide logs, tall trees)
 
     // Chunk-based rendering for scalability to massive maps
     static constexpr int CHUNK_SIZE = 32;  // 32x32 tiles per chunk
