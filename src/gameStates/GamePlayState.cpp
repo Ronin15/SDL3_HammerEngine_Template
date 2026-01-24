@@ -4,6 +4,8 @@
  */
 
 #include "gameStates/GamePlayState.hpp"
+#include "entities/Player.hpp"
+#include "utils/SceneRenderer.hpp"
 #include "controllers/combat/CombatController.hpp"
 #include "controllers/world/DayNightController.hpp"
 #include "controllers/world/ItemController.hpp"
