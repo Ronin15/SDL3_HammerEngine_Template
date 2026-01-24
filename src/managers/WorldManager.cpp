@@ -247,6 +247,22 @@ void WorldManager::update() {
   // This could be extended for dynamic world changes, weather effects, etc.
 }
 
+void WorldManager::updateDirtyChunks(SDL_Renderer* renderer, float cameraX,
+                                     float cameraY, float viewportWidth,
+                                     float viewportHeight) {
+  if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled ||
+      !renderer) {
+    return;
+  }
+
+  if (!m_currentWorld || !m_tileRenderer) {
+    return;
+  }
+
+  m_tileRenderer->updateDirtyChunks(*m_currentWorld, renderer, cameraX, cameraY,
+                                    viewportWidth, viewportHeight);
+}
+
 void WorldManager::render(SDL_Renderer* renderer, float cameraX, float cameraY,
                           float viewportWidth, float viewportHeight) {
   if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled ||
@@ -1527,6 +1543,8 @@ std::string HammerEngine::TileRenderer::getSeasonalTextureID(
 void HammerEngine::TileRenderer::renderChunkToTexture(
     const HammerEngine::WorldData &world, SDL_Renderer *renderer, int chunkX,
     int chunkY, SDL_Texture *target) {
+  // Called from updateDirtyChunks() which runs before SceneRenderer pipeline,
+  // so no need to save/restore render target
   SDL_SetRenderTarget(renderer, target);
   SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
   SDL_RenderClear(renderer);
@@ -1538,10 +1556,13 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
   const int endTileX = std::min(startTileX + CHUNK_SIZE, worldWidth);
   const int endTileY = std::min(startTileY + CHUNK_SIZE, worldHeight);
 
-  const int extStartX = std::max(0, startTileX - 1);
-  const int extStartY = std::max(0, startTileY - 1);
-  const int extEndX = std::min(worldWidth, endTileX + 1);
-  const int extEndY = std::min(worldHeight, endTileY + 1);
+  // Extend sampling area by SPRITE_OVERHANG tiles to catch sprites whose origin
+  // is in neighboring chunks but extend into this chunk
+  constexpr int extTiles = SPRITE_OVERHANG / static_cast<int>(TILE_SIZE);
+  const int extStartX = std::max(0, startTileX - extTiles);
+  const int extStartY = std::max(0, startTileY - extTiles);
+  const int extEndX = std::min(worldWidth, endTileX + extTiles);
+  const int extEndY = std::min(worldHeight, endTileY + extTiles);
 
   constexpr int tileSize = static_cast<int>(TILE_SIZE);
 
@@ -1808,22 +1829,18 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
     SDL_RenderTexture(renderer, sprite.tex->ptr, &srcRect, &destRect);
   }
 
+  // Reset render target (updateDirtyChunks runs before SceneRenderer pipeline)
   SDL_SetRenderTarget(renderer, nullptr);
 }
 
-void HammerEngine::TileRenderer::render(
+void HammerEngine::TileRenderer::updateDirtyChunks(
     const HammerEngine::WorldData &world, SDL_Renderer *renderer, float cameraX,
     float cameraY, float viewportWidth, float viewportHeight) {
-  if (world.grid.empty()) {
-    WORLD_MANAGER_WARN("TileRenderer: Cannot render - world grid is empty");
+  if (world.grid.empty() || !renderer) {
     return;
   }
 
-  if (!renderer) {
-    WORLD_MANAGER_ERROR("TileRenderer: Cannot render - renderer is null");
-    return;
-  }
-
+  // Handle deferred cache clear
   if (m_cachePendingClear.exchange(false, std::memory_order_acq_rel)) {
     m_chunkCache.clear();
   }
@@ -1851,8 +1868,13 @@ void HammerEngine::TileRenderer::render(
   constexpr int chunkPixelSize =
       CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
 
+  // Limit chunk re-renders per frame to avoid hitches when many chunks are dirty
+  constexpr int MAX_CHUNK_RENDERS_PER_FRAME = 2;
+  int chunksRenderedThisFrame = 0;
+
   m_visibleKeysBuffer.clear();
 
+  // Create missing chunks and update dirty ones
   for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
     for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
       const uint64_t key = makeChunkKey(chunkX, chunkY);
@@ -1879,49 +1901,18 @@ void HammerEngine::TileRenderer::render(
       ChunkCache &chunk = it->second;
       chunk.lastUsedFrame = m_frameCounter;
 
-      if (chunk.dirty && chunk.texture) {
+      // Render dirty chunks (limited per frame to avoid hitches)
+      if (chunk.dirty && chunk.texture &&
+          chunksRenderedThisFrame < MAX_CHUNK_RENDERS_PER_FRAME) {
         renderChunkToTexture(world, renderer, chunkX, chunkY,
                              chunk.texture.get());
         chunk.dirty = false;
-      }
-
-      if (chunk.texture) {
-        constexpr int chunkWorldSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
-
-        float srcX = 0;
-        float srcY = 0;
-        float srcW = static_cast<float>(chunkPixelSize);
-        float srcH = static_cast<float>(chunkPixelSize);
-
-        float screenX = static_cast<float>(chunkX * chunkWorldSize) - cameraX -
-                        SPRITE_OVERHANG;
-        float screenY = static_cast<float>(chunkY * chunkWorldSize) - cameraY -
-                        SPRITE_OVERHANG;
-        float destW = srcW;
-        float destH = srcH;
-
-        if (chunkX > startChunkX) {
-          srcX = SPRITE_OVERHANG;
-          srcW -= SPRITE_OVERHANG;
-          screenX += SPRITE_OVERHANG;
-          destW = srcW;
-        }
-
-        if (chunkY > startChunkY) {
-          srcY = SPRITE_OVERHANG;
-          srcH -= SPRITE_OVERHANG;
-          screenY += SPRITE_OVERHANG;
-          destH = srcH;
-        }
-
-        SDL_FRect srcRect = {srcX, srcY, srcW, srcH};
-        SDL_FRect destRect = {std::floor(screenX), std::floor(screenY), destW,
-                              destH};
-        SDL_RenderTexture(renderer, chunk.texture.get(), &srcRect, &destRect);
+        ++chunksRenderedThisFrame;
       }
     }
   }
 
+  // Cache eviction - keep only MAX_CACHED_CHUNKS
   if (m_chunkCache.size() > MAX_CACHED_CHUNKS) {
     m_evictionBuffer.clear();
     for (const auto &[key, cache] : m_chunkCache) {
@@ -1937,6 +1928,86 @@ void HammerEngine::TileRenderer::render(
     const size_t toEvict = m_chunkCache.size() - MAX_CACHED_CHUNKS;
     for (size_t i = 0; i < std::min(toEvict, m_evictionBuffer.size()); ++i) {
       m_chunkCache.erase(m_evictionBuffer[i].first);
+    }
+  }
+}
+
+void HammerEngine::TileRenderer::render(
+    const HammerEngine::WorldData &world, SDL_Renderer *renderer, float cameraX,
+    float cameraY, float viewportWidth, float viewportHeight) {
+  if (world.grid.empty()) {
+    WORLD_MANAGER_WARN("TileRenderer: Cannot render - world grid is empty");
+    return;
+  }
+
+  if (!renderer) {
+    WORLD_MANAGER_ERROR("TileRenderer: Cannot render - renderer is null");
+    return;
+  }
+
+  const int worldWidth = static_cast<int>(world.grid[0].size());
+  const int worldHeight = static_cast<int>(world.grid.size());
+  const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
+  const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+  const int startChunkX =
+      std::max(0, static_cast<int>(cameraX / (CHUNK_SIZE * TILE_SIZE)));
+  const int startChunkY =
+      std::max(0, static_cast<int>(cameraY / (CHUNK_SIZE * TILE_SIZE)));
+  const int endChunkX =
+      std::min(maxChunkX, static_cast<int>((cameraX + viewportWidth) /
+                                           (CHUNK_SIZE * TILE_SIZE)) +
+                              1);
+  const int endChunkY =
+      std::min(maxChunkY, static_cast<int>((cameraY + viewportHeight) /
+                                           (CHUNK_SIZE * TILE_SIZE)) +
+                              1);
+
+  constexpr int chunkPixelSize =
+      CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
+
+  // Only composite cached chunks - no render target changes
+  for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
+    for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
+      const uint64_t key = makeChunkKey(chunkX, chunkY);
+
+      auto it = m_chunkCache.find(key);
+      if (it == m_chunkCache.end() || !it->second.texture) {
+        continue;  // Chunk not ready yet - will be rendered next frame
+      }
+
+      constexpr int chunkWorldSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
+
+      float srcX = 0;
+      float srcY = 0;
+      float srcW = static_cast<float>(chunkPixelSize);
+      float srcH = static_cast<float>(chunkPixelSize);
+
+      float screenX = static_cast<float>(chunkX * chunkWorldSize) - cameraX -
+                      SPRITE_OVERHANG;
+      float screenY = static_cast<float>(chunkY * chunkWorldSize) - cameraY -
+                      SPRITE_OVERHANG;
+      float destW = srcW;
+      float destH = srcH;
+
+      if (chunkX > startChunkX) {
+        srcX = SPRITE_OVERHANG;
+        srcW -= SPRITE_OVERHANG;
+        screenX += SPRITE_OVERHANG;
+        destW = srcW;
+      }
+
+      if (chunkY > startChunkY) {
+        srcY = SPRITE_OVERHANG;
+        srcH -= SPRITE_OVERHANG;
+        screenY += SPRITE_OVERHANG;
+        destH = srcH;
+      }
+
+      SDL_FRect srcRect = {srcX, srcY, srcW, srcH};
+      SDL_FRect destRect = {std::floor(screenX), std::floor(screenY), destW,
+                            destH};
+      SDL_RenderTexture(renderer, it->second.texture.get(), &srcRect, &destRect);
     }
   }
 }
