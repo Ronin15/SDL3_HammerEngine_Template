@@ -17,16 +17,22 @@ namespace HammerEngine {
 class Camera;
 
 /**
- * @brief Utility class for pixel-perfect zoomed scene rendering
+ * @brief Utility class for pixel-perfect zoomed scene rendering with smooth scrolling
  *
- * Owns intermediate render texture for smooth sub-pixel scrolling and zoom.
+ * Owns intermediate render texture for smooth sub-pixel camera scrolling and zoom.
  * GameStates own an instance (not singleton) following the Camera pattern.
+ *
+ * ARCHITECTURE:
+ * All content renders to intermediate texture using FLOORED camera coordinates.
+ * Sub-pixel camera smoothness is achieved via composite offset in endScene(),
+ * not per-entity positioning. This ensures tiles and entities move together
+ * without relative jitter.
  *
  * Render flow:
  *   ctx = sceneRenderer.beginScene(renderer, camera, alpha)
  *   worldMgr.render(renderer, ctx.flooredCameraX, ctx.flooredCameraY, ...)
- *   entities.render(renderer, ctx.cameraX, ctx.cameraY, ...)
- *   sceneRenderer.endScene(renderer)
+ *   entities.render(renderer, ctx.cameraX, ctx.cameraY, ...)  // Also floored
+ *   sceneRenderer.endScene(renderer)  // Applies sub-pixel offset
  *   ui.render(renderer)  // At 1.0 scale (endScene resets render scale)
  */
 class SceneRenderer {
@@ -34,16 +40,17 @@ public:
     /**
      * @brief Context returned by beginScene() containing all render parameters
      *
-     * Provides both raw camera position (for entities) and floored position
-     * (for tiles). This separation allows pixel-perfect tile alignment while
-     * permitting smooth sub-pixel entity movement.
+     * Both cameraX/Y and flooredCameraX/Y are FLOORED (integer) values.
+     * All rendering uses floored camera for consistent positioning in the
+     * intermediate texture. Sub-pixel smoothness comes from the composite
+     * offset applied in endScene().
      */
     struct SceneContext {
-        // Raw camera position (for entities that need sub-pixel positioning)
+        // Camera position for entities (floored - sub-pixel via composite offset)
         float cameraX{0.0f};
         float cameraY{0.0f};
 
-        // Floored camera position (for tiles - integer pixel alignment)
+        // Camera position for tiles (floored - pixel-aligned, same as cameraX/Y)
         float flooredCameraX{0.0f};
         float flooredCameraY{0.0f};
 
@@ -77,9 +84,9 @@ public:
     /**
      * @brief Begin scene rendering - sets intermediate texture as render target
      *
-     * Sets up the intermediate render texture and calculates both raw and floored
-     * camera positions. Tiles should use floored positions for pixel-perfect
-     * alignment; entities should use raw positions for smooth movement.
+     * Sets up the intermediate render texture and calculates floored camera position.
+     * All content (tiles AND entities) should use the floored camera coordinates.
+     * Sub-pixel camera smoothness is handled by the composite offset in endScene().
      *
      * @param renderer SDL renderer
      * @param camera Camera for position and zoom

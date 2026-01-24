@@ -115,11 +115,11 @@ SceneRenderer::SceneContext SceneRenderer::beginScene(
     m_sceneActive = true;
 
     // Populate context
-    // Tiles use FLOORED camera for pixel-perfect grid alignment.
-    // Entities use RAW camera so interpolated positions stay consistent relative to camera center.
-    // This prevents entity oscillation when camera crosses pixel boundaries.
-    ctx.cameraX = rawCameraX;           // For entities (smooth)
-    ctx.cameraY = rawCameraY;           // For entities (smooth)
+    // ALL rendering uses FLOORED camera for consistent positioning in intermediate texture.
+    // Sub-pixel smoothness is achieved via the composite offset in endScene(), not per-entity math.
+    // This ensures tiles and entities move together without relative jitter.
+    ctx.cameraX = flooredCameraX;        // For entities (floored - sub-pixel via composite)
+    ctx.cameraY = flooredCameraY;        // For entities (floored - sub-pixel via composite)
     ctx.flooredCameraX = flooredCameraX; // For tiles (pixel-aligned)
     ctx.flooredCameraY = flooredCameraY; // For tiles (pixel-aligned)
     ctx.viewWidth = viewWidth;
