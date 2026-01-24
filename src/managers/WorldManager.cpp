@@ -1545,6 +1545,7 @@ void HammerEngine::TileRenderer::render(
   const int worldWidth = static_cast<int>(world.grid[0].size());
   const int worldHeight = static_cast<int>(world.grid.size());
   constexpr int tileSize = static_cast<int>(TILE_SIZE);
+  constexpr float tileSizeF = static_cast<float>(TILE_SIZE);  // Pre-cast for render calls
 
   // Visible tile range (with 1 tile padding for partial tiles at edges)
   const int startTileX = std::max(0, static_cast<int>(flooredCamX / TILE_SIZE) - VIEWPORT_PADDING);
@@ -1604,7 +1605,7 @@ void HammerEngine::TileRenderer::render(
 
       if (tex->ptr) {
         SDL_FRect srcRect = {tex->atlasX, tex->atlasY, tex->w, tex->h};
-        SDL_FRect destRect = {screenX, screenY, static_cast<float>(tileSize), static_cast<float>(tileSize)};
+        SDL_FRect destRect = {screenX, screenY, tileSizeF, tileSizeF};
         SDL_RenderTexture(renderer, tex->ptr, &srcRect, &destRect);
       }
     }
@@ -1682,8 +1683,8 @@ void HammerEngine::TileRenderer::render(
         }
 
         if (tex && tex->ptr) {
-          const float offsetX = (TILE_SIZE - tex->w) * 0.5f;
-          const float offsetY = TILE_SIZE - tex->h;
+          const float offsetX = (tileSizeF - tex->w) * 0.5f;
+          const float offsetY = tileSizeF - tex->h;
           SDL_FRect srcRect = {tex->atlasX, tex->atlasY, tex->w, tex->h};
           SDL_FRect destRect = {screenX + offsetX, screenY + offsetY, tex->w, tex->h};
           SDL_RenderTexture(renderer, tex->ptr, &srcRect, &destRect);
@@ -1744,12 +1745,12 @@ void HammerEngine::TileRenderer::render(
           break;
         }
 
-        const float offsetX = (TILE_SIZE - tex->w) / 2.0f;
-        const float offsetY = TILE_SIZE - tex->h;
-        const float sortY = screenY + TILE_SIZE;
+        const float offsetX = (tileSizeF - tex->w) * 0.5f;
+        const float offsetY = tileSizeF - tex->h;
+        const float sortY = screenY + tileSizeF;
 
-        m_ySortBuffer.push_back(
-            {sortY, screenX + offsetX, screenY + offsetY, tex, false, 0, 0});
+        m_ySortBuffer.emplace_back(YSortedSprite{
+            sortY, screenX + offsetX, screenY + offsetY, tex, false, 0, 0});
       }
 
       // Buildings - from top-left tile only
@@ -1773,11 +1774,11 @@ void HammerEngine::TileRenderer::render(
           break;
         }
 
-        float sortY = screenY + (tile.buildingSize * TILE_SIZE);
+        const float sortY = screenY + (tile.buildingSize * tileSizeF);
 
-        m_ySortBuffer.push_back({sortY, screenX, screenY, tex, true,
-                                 static_cast<int>(tex->w),
-                                 static_cast<int>(tex->h)});
+        m_ySortBuffer.emplace_back(YSortedSprite{
+            sortY, screenX, screenY, tex, true,
+            static_cast<int>(tex->w), static_cast<int>(tex->h)});
       }
     }
   }
