@@ -30,7 +30,7 @@ The Hammer Game Engine is a high-performance game development framework built on
 Foundation systems that power the game engine architecture and timing.
 
 - **[GameEngine](core/GameEngine.md)** - Central engine singleton managing all systems and coordination
-- **[GameTime](core/GameTime.md)** - Fantasy calendar, day/night cycles, seasons, weather, and time events
+- **[GameTimeManager](managers/GameTimeManager.md)** - Fantasy calendar, day/night cycles, seasons, weather, and time events
 - **[TimestepManager](managers/TimestepManager.md)** - Fixed timestep timing with accumulator-based updates
 
 ### AI System
@@ -135,13 +135,14 @@ Core utility classes and helper systems used throughout the engine.
 
 See the [Utility Documentation Index](utils/README.md) for additional utility documentation and organization.
 
+- **[SceneRenderer](utils/SceneRenderer.md)** - Pixel-perfect zoomed scene rendering with smooth sub-pixel scrolling via intermediate texture
+- **[Camera](utils/Camera.md)** - 2D camera utility with smooth target following, discrete zoom levels, world bounds clamping, and coordinate transformation
 - **[Logger System](utils/Logger.md)** - Comprehensive logging system with debug/release optimization and system-specific macros
 - **[JsonReader](utils/JsonReader.md)** - RFC 8259 compliant JSON parser with type-safe accessors and robust error handling
 - **[JSON Resource Loading](utils/JSON_Resource_Loading_Guide.md)** - Complete guide to loading items, materials, currency, and game resources from JSON files with ResourceTemplateManager integration
 - **[Binary Serialization](utils/SERIALIZATION.md)** - Fast, header-only serialization system for game data
 - **[ResourceHandle System](utils/ResourceHandle_System.md)** - Lightweight, type-safe handle indirection for resource lookups across modules
 - **[SIMDMath](utils/SIMDMath.md)** - Cross-platform SIMD abstraction layer for x86-64 (SSE2/AVX2) and ARM64 (NEON) with 2-4x performance improvements
-- **[Camera](utils/Camera.md)** - 2D camera utility with smooth target following, discrete zoom levels, world bounds clamping, and coordinate transformation
 - **[Interpolation System](architecture/InterpolationSystem.md)** - Lock-free atomic interpolation for smooth rendering across threads
 - **[Power Efficiency](performance/PowerEfficiency.md)** - Race-to-idle strategy achieving 80%+ idle residency, 2-3W average during gameplay, detailed benchmarks and optimization tips
 

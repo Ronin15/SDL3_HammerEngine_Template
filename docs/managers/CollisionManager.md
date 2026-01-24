@@ -582,6 +582,47 @@ size_t createStaticObstacleBodies();
 void onTileChanged(int x, int y);
 ```
 
+### World Boundary Handling
+
+CollisionManager automatically synchronizes with world boundaries when worlds are loaded or generated.
+
+#### Automatic Boundary Updates
+
+When `WorldLoadedEvent` or `WorldGeneratedEvent` fires, CollisionManager:
+1. Queries `WorldManager::getWorldBounds()` for min/max coordinates
+2. Updates internal `m_worldBounds` AABB
+3. Rebuilds static colliders from world data
+
+```cpp
+// In event handler (automatic)
+const auto& worldManager = WorldManager::Instance();
+float minX, minY, maxX, maxY;
+if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+    this->setWorldBounds(minX, minY, maxX, maxY);
+}
+```
+
+#### Manual Boundary Configuration
+
+```cpp
+// Set world boundaries manually (in pixels)
+CollisionManager::Instance().setWorldBounds(0.0f, 0.0f, 3200.0f, 3200.0f);
+```
+
+#### Entity Boundary Clamping
+
+Entity boundary clamping is NOT handled by CollisionManager. Instead:
+- **Player**: Clamps position in `Player::update()` using cached world bounds
+- **NPCs**: Use `PathfinderManager::clampInsideExtents()` for boundary-safe movement
+- **Projectiles**: Destroyed when leaving world bounds
+
+#### Spatial Hash Behavior at World Edges
+
+The HierarchicalSpatialHash handles world edge cases:
+- **Static hash**: Includes all obstacles within world bounds
+- **Dynamic hash**: Only includes active entities near camera
+- **Edge queries**: Return empty results outside world bounds (no wraparound)
+
 ---
 
 ## Integration Examples

@@ -4,6 +4,20 @@ This directory contains documentation for core utility classes and helper system
 
 ## Available Utilities
 
+### Rendering & View Systems
+- **[SceneRenderer](SceneRenderer.md)** - Pixel-perfect zoomed scene rendering
+  - Intermediate render texture for smooth sub-pixel scrolling
+  - Works with Camera's discrete zoom levels
+  - Eliminates tile/entity relative jitter
+  - Non-singleton pattern (GameState-owned)
+
+- **[Camera](Camera.md)** - 2D camera for world navigation
+  - Multiple modes: Free, Follow, Fixed
+  - Smooth interpolation for target following
+  - Discrete zoom levels (pixel-perfect)
+  - World bounds clamping and camera shake
+  - Event-driven state changes
+
 ### Performance & Resource Systems
 - **[ResourceHandle System](ResourceHandle_System.md)** - High-performance resource identification
   - 48-bit lightweight handles for optimal runtime performance

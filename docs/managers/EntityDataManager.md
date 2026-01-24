@@ -270,6 +270,80 @@ std::span<const size_t> getTriggerDetectionIndices() const;
 std::span<const size_t> getIndicesByKind(EntityKind kind) const;
 ```
 
+### Active Indices API
+
+The `getActiveIndices()` family of methods returns pre-computed lists of entity indices filtered by simulation tier and other criteria. These lists are updated by `updateSimulationTiers()` and enable efficient batch processing.
+
+#### Why Use Active Indices?
+
+Instead of iterating all entities and checking tier/kind per-entity:
+
+```cpp
+// SLOW: Check every entity, filter at runtime
+for (size_t i = 0; i < edm.getEntityCount(); ++i) {
+    const auto& hot = edm.getHotDataByIndex(i);
+    if (hot.tier != SimulationTier::Active) continue;  // Branching per entity
+    if (hot.kind != EntityKind::NPC) continue;
+    processEntity(i);
+}
+
+// FAST: Use pre-filtered index list
+for (size_t edmIndex : edm.getActiveIndices()) {
+    // All indices are guaranteed Active tier
+    processEntity(edmIndex);
+}
+```
+
+#### Available Index Lists
+
+| Method | Returns | Use Case |
+|--------|---------|----------|
+| `getActiveIndices()` | All Active tier entities | AIManager batch processing |
+| `getBackgroundIndices()` | All Background tier entities | BackgroundSimulationManager |
+| `getActiveIndicesWithCollision()` | Active entities with collision enabled | CollisionManager |
+| `getTriggerDetectionIndices()` | Entities that detect triggers | Trigger overlap checks |
+| `getIndicesByKind(kind)` | All entities of specific EntityKind | Type-specific processing |
+
+#### Tier Update Frequency
+
+Tier assignments are recalculated periodically (not every frame) for performance:
+
+```cpp
+// In GameEngine or BackgroundSimulationManager
+// Called every ~60 frames (~1 second at 60Hz)
+if (m_framesSinceTierUpdate++ >= TIER_UPDATE_INTERVAL) {
+    edm.updateSimulationTiers(playerPosition, activeRadius, backgroundRadius);
+    m_framesSinceTierUpdate = 0;
+}
+```
+
+#### Batch Processing Pattern
+
+```cpp
+void AIManager::update(float dt) {
+    auto& edm = EntityDataManager::Instance();
+
+    // Get pre-filtered indices (O(1) - just returns span)
+    const auto activeIndices = edm.getActiveIndices();
+
+    // Process in batches using WorkerBudget
+    auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+        SystemType::AI, activeIndices.size(), workers);
+
+    for (size_t batch = 0; batch < batchCount; ++batch) {
+        size_t start = batch * batchSize;
+        size_t end = std::min(start + batchSize, activeIndices.size());
+
+        threadSystem.enqueueTask([this, &activeIndices, start, end, dt] {
+            for (size_t i = start; i < end; ++i) {
+                size_t edmIndex = activeIndices[i];
+                processBehavior(edmIndex, dt);
+            }
+        });
+    }
+}
+```
+
 ### Queries
 
 ```cpp
