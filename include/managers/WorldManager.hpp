@@ -156,18 +156,27 @@ private:
         float atlasX{0}, atlasY{0};  // Source rect origin in atlas (0,0 = full texture)
     };
 
-    // Y-sorted sprite data for unified chunk rendering (obstacles rendered into chunks)
     struct YSortedSprite {
-        float y;           // Y position for sorting (bottom of sprite)
-        float renderX;     // Local X in chunk texture
-        float renderY;     // Local Y in chunk texture
+        float y;
+        float renderX;
+        float renderY;
         const CachedTexture* tex;
         bool isBuilding;
         int buildingWidth;
         int buildingHeight;
     };
 
-    // Cached texture pointers and dimensions - eliminates hash map lookups in hot render loop
+    struct ChunkCache {
+        std::shared_ptr<SDL_Texture> texture;
+        bool dirty{true};
+        uint64_t lastUsedFrame{0};
+    };
+
+    static uint64_t makeChunkKey(int chunkX, int chunkY) {
+        return (static_cast<uint64_t>(chunkY) << 32) | static_cast<uint32_t>(chunkX);
+    }
+
+    // Cached texture pointers - eliminates hash map lookups in hot render loop
     struct CachedTileTextures {
         CachedTexture biome_default;
         CachedTexture biome_desert;
@@ -216,10 +225,18 @@ private:
         CachedTexture decoration_water_flower;
     } m_cachedTextures;
 
-    // Reusable buffer for Y-sorted sprite rendering (avoids per-frame allocations per CLAUDE.md)
     mutable std::vector<YSortedSprite> m_ySortBuffer;
 
-    // Season change handler
+    std::unordered_map<uint64_t, ChunkCache> m_chunkCache;
+    uint64_t m_frameCounter{0};
+    static constexpr size_t MAX_CACHED_CHUNKS = 64;
+    mutable std::vector<uint64_t> m_visibleKeysBuffer;
+    mutable std::vector<std::pair<uint64_t, uint64_t>> m_evictionBuffer;
+    std::atomic<bool> m_cachePendingClear{false};
+
+    void renderChunkToTexture(const WorldData& world, SDL_Renderer* renderer,
+                              int chunkX, int chunkY, SDL_Texture* target);
+
     void onSeasonChange(const EventData& data);
 
     // Seasonal texture ID helper
