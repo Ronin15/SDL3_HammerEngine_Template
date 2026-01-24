@@ -986,6 +986,9 @@ void EventDemoState::triggerResourceDemo() {
   std::string resourceName = selectedResource->getName();
   int currentQuantity = edm.getInventoryQuantity(invIdx, handle);
 
+  // Get UIManager reference for marking bindings dirty after inventory changes
+  auto &ui = UIManager::Instance();
+
   if (m_resourceIsAdding) {
     // Add resources to player inventory
     bool success = edm.addToInventory(invIdx, handle, quantity);
@@ -998,6 +1001,10 @@ void EventDemoState::triggerResourceDemo() {
       eventMgr.triggerResourceChange(m_player->getHandle(), handle,
                                      currentQuantity, newQuantity,
                                      "event_demo");
+
+      // Mark inventory UI bindings dirty so they refresh
+      ui.markBindingDirty("inventory_status");
+      ui.markBindingDirty("inventory_list");
     } else {
       addLogEntry(std::format("Failed: {} (full)", resourceName));
     }
@@ -1016,6 +1023,10 @@ void EventDemoState::triggerResourceDemo() {
         eventMgr.triggerResourceChange(m_player->getHandle(), handle,
                                        currentQuantity, newQuantity,
                                        "event_demo");
+
+        // Mark inventory UI bindings dirty so they refresh
+        ui.markBindingDirty("inventory_status");
+        ui.markBindingDirty("inventory_list");
       } else {
         addLogEntry(std::format("Failed: remove {}", resourceName));
       }

@@ -800,6 +800,11 @@ void GamePlayState::addDemoResource(HammerEngine::ResourceHandle resourceHandle,
   }
 
   mp_Player->addToInventory(resourceHandle, quantity);
+
+  // Mark inventory UI bindings dirty so they refresh
+  auto &ui = UIManager::Instance();
+  ui.markBindingDirty("gameplay_inventory_status");
+  ui.markBindingDirty("gameplay_inventory_list");
 }
 
 void GamePlayState::removeDemoResource(
@@ -813,6 +818,11 @@ void GamePlayState::removeDemoResource(
   }
 
   mp_Player->removeFromInventory(resourceHandle, quantity);
+
+  // Mark inventory UI bindings dirty so they refresh
+  auto &ui = UIManager::Instance();
+  ui.markBindingDirty("gameplay_inventory_status");
+  ui.markBindingDirty("gameplay_inventory_list");
 }
 
 void GamePlayState::initializeResourceHandles() {

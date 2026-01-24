@@ -165,6 +165,7 @@ struct UIComponent {
   // Component-specific data
   std::string m_text{};
   std::function<std::string()> m_textBinding{}; // For data-bound text
+  bool m_bindingDirty{true}; // Skip binding callbacks when false (perf optimization)
   std::string m_textureID{};
   float m_value{0.0f};
   float m_minValue{0.0f};
@@ -322,6 +323,8 @@ public:
   void bindText(const std::string &id, std::function<std::string()> binding);
   void bindList(const std::string &id,
                 std::function<void(std::vector<std::string>&, std::vector<std::pair<std::string, int>>&)> binding);
+  void markBindingDirty(const std::string &id);
+  void markAllBindingsDirty();
 
   // Component property getters
   std::string getText(const std::string &id) const;

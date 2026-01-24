@@ -76,9 +76,9 @@ void UIManager::update(float deltaTime) {
   // PERFORMANCE: Only iterate components if there are active bindings
   // This skips the O(n) loop entirely when no bindings exist
   if (m_activeBindingCount > 0) {
-    // Process data bindings - ONLY for visible components to avoid unnecessary work
-    for (auto const& [id, component] : m_components) {
-        if (component && component->m_visible) {
+    // Process data bindings - ONLY for visible AND dirty components
+    for (auto &[id, component] : m_components) {
+        if (component && component->m_visible && component->m_bindingDirty) {
             // Handle text bindings
             if (component->m_textBinding) {
                 setText(id, component->m_textBinding());
@@ -96,6 +96,8 @@ void UIManager::update(float deltaTime) {
                     component->m_listItemsDirty = true;
                 }
             }
+            // Reset dirty flag after processing bindings
+            component->m_bindingDirty = false;
         }
     }
   }
@@ -642,6 +644,21 @@ void UIManager::bindList(
       --m_activeBindingCount;
     }
     component->m_listBinding = std::move(binding);
+  }
+}
+
+void UIManager::markBindingDirty(const std::string &id) {
+  auto component = getComponent(id);
+  if (component) {
+    component->m_bindingDirty = true;
+  }
+}
+
+void UIManager::markAllBindingsDirty() {
+  for (auto &[id, component] : m_components) {
+    if (component) {
+      component->m_bindingDirty = true;
+    }
   }
 }
 
