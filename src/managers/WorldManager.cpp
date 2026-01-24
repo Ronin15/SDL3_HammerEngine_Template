@@ -254,9 +254,8 @@ void WorldManager::render(SDL_Renderer* renderer, float cameraX, float cameraY,
     return;
   }
 
-  std::shared_lock<std::shared_mutex> lock(m_worldMutex);
-
-  // Check m_currentWorld AFTER acquiring lock to prevent TOCTOU race condition
+  // No lock needed - render always runs on main thread after update completes.
+  // World modifications (load/unload/harvest) also run on main thread sequentially.
   if (!m_currentWorld || !m_tileRenderer) {
     return;
   }
