@@ -5,6 +5,9 @@
 
 #include "gameStates/EventDemoState.hpp"
 #include "ai/behaviors/ChaseBehavior.hpp"
+#include "ai/behaviors/FleeBehavior.hpp"
+#include "ai/behaviors/FollowBehavior.hpp"
+#include "ai/behaviors/IdleBehavior.hpp"
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "controllers/world/DayNightController.hpp"
@@ -175,7 +178,7 @@ bool EventDemoState::enter() {
         {UIConstants::INFO_LABEL_MARGIN_X, controlsY,
          ui.getLogicalWidth() - 2 * UIConstants::INFO_LABEL_MARGIN_X,
          UIConstants::INFO_LABEL_HEIGHT},
-        "[B] Exit | [1-6] Events | [R] Reset | [F] Fire | [S] Smoke | [K] Sparks | [I] Inventory | [ ] Zoom");
+        "[B] Exit | [1-6] Events | [R] Reset | [F] Fire | [G] Smoke | [K] Sparks | [I] Inventory | [ ] Zoom");
     ui.setComponentPositioning("event_controls",
                                {UIPositionMode::TOP_ALIGNED,
                                 UIConstants::INFO_LABEL_MARGIN_X, controlsY,
@@ -362,10 +365,6 @@ bool EventDemoState::exit() {
       m_npcRenderCtrl.clearSpawnedNPCs();
       m_limitMessageShown = false;
 
-      // Clear event log
-      m_eventLog.clear();
-      m_eventStates.clear();
-
       // Clear controllers
       m_controllers.clear();
 
@@ -426,10 +425,6 @@ bool EventDemoState::exit() {
     // Clear spawned NPCs (data-driven via NPCRenderController)
     m_npcRenderCtrl.clearSpawnedNPCs();
     m_limitMessageShown = false;
-
-    // Clear event log
-    m_eventLog.clear();
-    m_eventStates.clear();
 
     // Clear controllers
     m_controllers.clear();
@@ -716,11 +711,11 @@ void EventDemoState::handleInput() {
     m_lastEventTriggerTime = m_totalDemoTime;
   }
 
-  // [4] Custom Event (weather + NPCs)
+  // [4] Mass NPC Spawn with varied behaviors
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
       (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
       edm.getEntityCount(EntityKind::NPC) < 5000) {
-    triggerCustomEventDemo();
+    triggerMassNPCSpawnDemo();
     m_lastEventTriggerTime = m_totalDemoTime;
   } else if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
              edm.getEntityCount(EntityKind::NPC) >= 5000) {
@@ -762,7 +757,7 @@ void EventDemoState::handleInput() {
     addLogEntry("Fire toggled");
   }
 
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_S)) {
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_G)) {
     particleMgr.toggleSmokeEffect();
     addLogEntry("Smoke toggled");
   }
@@ -861,27 +856,6 @@ void EventDemoState::triggerSceneTransitionDemo() {
                            EventManager::DispatchMode::Deferred);
 
   addLogEntry("Scene: " + sceneName + " (" + std::string(transitionName) + ")");
-}
-
-void EventDemoState::triggerParticleEffectDemo() {
-  // Get current effect and position
-  std::string effectName = m_particleEffectNames[m_particleEffectIndex];
-  Vector2D position = m_particleEffectPositions[m_particlePositionIndex];
-
-  // Trigger particle effect via EventManager (deferred by default)
-  bool queued = EventManager::Instance().triggerParticleEffect(effectName, position, 1.2f,
-                                                   5.0f, "demo_effects");
-  if (queued) {
-    addLogEntry("Particle: " + effectName);
-  } else {
-    addLogEntry("Particle: no handler");
-  }
-
-  // Advance to next effect and position
-  m_particleEffectIndex =
-      (m_particleEffectIndex + 1) % m_particleEffectNames.size();
-  m_particlePositionIndex =
-      (m_particlePositionIndex + 1) % m_particleEffectPositions.size();
 }
 
 void EventDemoState::triggerResourceDemo() {
@@ -1057,21 +1031,56 @@ void EventDemoState::triggerResourceDemo() {
   }
 }
 
-void EventDemoState::triggerCustomEventDemo() {
-  addLogEntry("Custom event demo");
+void EventDemoState::triggerMassNPCSpawnDemo() {
+  EntityDataManager& edm = EntityDataManager::Instance();
+  AIManager& aiMgr = AIManager::Instance();
 
-  triggerWeatherDemo();
-
-  if (EntityDataManager::Instance().getEntityCount(EntityKind::NPC) >= 5000) {
+  // Check NPC limit
+  if (edm.getEntityCount(EntityKind::NPC) >= 5000) {
     addLogEntry("NPC limit reached (5000)");
     return;
   }
 
+  // Behaviors to use (all except Guard and Attack)
+  static const std::array<const char*, 6> behaviors = {
+      "Idle", "Wander", "Patrol", "Chase", "Flee", "Follow"
+  };
+
   Vector2D playerPos = m_player->getPosition();
 
-  // Spawn 2 random NPCs near player using event system
-  EventManager::Instance().spawnNPC("Random", playerPos.getX() + 150.0f,
-                                     playerPos.getY() + 80.0f, 2, 100.0f);
+  // Random generation for spread positioning
+  thread_local std::mt19937 gen{std::random_device{}()};
+  std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * M_PI);
+  std::uniform_real_distribution<float> radiusDist(150.0f, 600.0f);
+
+  int spawned = 0;
+  constexpr int targetCount = 200;
+
+  for (int i = 0; i < targetCount; ++i) {
+    // Calculate spawn position in circle around player
+    float angle = angleDist(gen);
+    float distance = radiusDist(gen);
+
+    Vector2D position(
+        playerPos.getX() + distance * std::cos(angle),
+        playerPos.getY() + distance * std::sin(angle)
+    );
+
+    // Clamp to world bounds
+    position.setX(std::max(100.0f, std::min(position.getX(), m_worldWidth - 100.0f)));
+    position.setY(std::max(100.0f, std::min(position.getY(), m_worldHeight - 100.0f)));
+
+    // Create NPC - EDM auto-registers with AIManager
+    EntityHandle handle = edm.createNPCWithRaceClass(position, "Human", "Villager");
+
+    if (handle.isValid()) {
+      // Assign behavior based on index (rotate through behaviors)
+      aiMgr.assignBehavior(handle, behaviors[i % behaviors.size()]);
+      spawned++;
+    }
+  }
+
+  addLogEntry(std::format("Spawned {} NPCs (6 behaviors)", spawned));
 }
 
 void EventDemoState::triggerConvenienceMethodsDemo() {
@@ -1267,6 +1276,29 @@ void EventDemoState::setupAIBehaviors() {
                    "AIManager::getPlayerReference())");
   }
 
+  if (!aiMgr.hasBehavior("Idle")) {
+    auto idleBehavior = std::make_unique<IdleBehavior>(
+        IdleBehavior::IdleMode::SUBTLE_SWAY, 20.0f);
+    aiMgr.registerBehavior("Idle", std::move(idleBehavior));
+    GAMESTATE_INFO("EventDemoState: Registered Idle behavior");
+  }
+
+  if (!aiMgr.hasBehavior("Flee")) {
+    auto fleeBehavior = std::make_unique<FleeBehavior>(
+        100.0f,   // fleeSpeed
+        400.0f,   // detectionRange
+        600.0f);  // safeDistance
+    aiMgr.registerBehavior("Flee", std::move(fleeBehavior));
+    GAMESTATE_INFO("EventDemoState: Registered Flee behavior");
+  }
+
+  if (!aiMgr.hasBehavior("Follow")) {
+    auto followBehavior = std::make_unique<FollowBehavior>(
+        FollowBehavior::FollowMode::LOOSE_FOLLOW, 60.0f);
+    aiMgr.registerBehavior("Follow", std::move(followBehavior));
+    GAMESTATE_INFO("EventDemoState: Registered Follow behavior");
+  }
+
   GAMESTATE_DEBUG("AI Behaviors configured for NPC integration");
 }
 
@@ -1288,26 +1320,11 @@ void EventDemoState::addLogEntry(const std::string &entry) {
 }
 
 std::string EventDemoState::getCurrentWeatherString() const {
-  switch (m_currentWeather) {
-  case WeatherType::Clear:
-    return "Clear";
-  case WeatherType::Cloudy:
-    return "Cloudy";
-  case WeatherType::Rainy:
-    return "Rainy";
-  case WeatherType::Stormy:
-    return "Stormy";
-  case WeatherType::Foggy:
-    return "Foggy";
-  case WeatherType::Snowy:
-    return "Snowy";
-  case WeatherType::Windy:
-    return "Windy";
-  case WeatherType::Custom:
-    return "Custom";
-  default:
-    return "Unknown";
+  size_t index = static_cast<size_t>(m_currentWeather);
+  if (index < kWeatherTypeNames.size()) {
+    return kWeatherTypeNames[index];
   }
+  return "Unknown";
 }
 
 void EventDemoState::cleanupSpawnedNPCs() {

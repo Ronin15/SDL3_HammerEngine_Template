@@ -46,15 +46,12 @@ private:
   void setupEventSystem();
   void unregisterEventHandlers();
 
-  void renderUI();
-
   // Event demonstration methods (manual triggers only)
   void triggerWeatherDemo();
   void triggerNPCSpawnDemo();
   void triggerSceneTransitionDemo();
-  void triggerParticleEffectDemo();
   void triggerResourceDemo();
-  void triggerCustomEventDemo();
+  void triggerMassNPCSpawnDemo();
   void triggerConvenienceMethodsDemo();
   void resetAllEvents();
 
@@ -78,11 +75,6 @@ private:
 
   // Scene renderer for pixel-perfect zoomed world rendering
   std::unique_ptr<HammerEngine::SceneRenderer> m_sceneRenderer{nullptr};
-
-  // Event tracking
-  std::unordered_map<std::string, bool> m_eventStates{};
-  std::vector<std::string> m_eventLog{};
-  size_t m_maxLogEntries{10};
 
   // Demo settings
   float m_worldWidth{800.0f};
@@ -123,16 +115,6 @@ private:
                                         "Dungeon"};
   size_t m_currentSceneIndex{0};
 
-  // Independent particle effects tracking
-  uint32_t m_fireEffectId{0};
-  uint32_t m_smokeEffectId{0};
-  uint32_t m_sparksEffectId{0};
-  bool m_fireActive{false};
-  bool m_smokeActive{false};
-  bool m_sparksActive{false};
-
-  // UI and display
-  std::string m_statusText{};
 
   // Event trigger debouncing
   float m_totalDemoTime{0.0f};
@@ -176,23 +158,10 @@ private:
   // Camera auto-manages world bounds; no state-level setup needed
   // Camera render offset computed in render() via unified single-read pattern
   
-  // Thread-safe replacements for static variables
-  size_t m_manualWeatherIndex{0};
-  size_t m_particleEffectIndex{0};
-  size_t m_particlePositionIndex{0};
+  // Resource demo state
   size_t m_resourceDemonstrationStep{0};
   bool m_resourceIsAdding{true};
   int m_convenienceDemoCounter{0};
-  
-  // Particle effect demo data (moved from static)
-  std::vector<std::string> m_particleEffectNames{"Fire", "Smoke", "Sparks"};
-  std::vector<Vector2D> m_particleEffectPositions{
-      Vector2D(200, 150), // Top-left area
-      Vector2D(600, 150), // Top-right area
-      Vector2D(400, 300), // Center
-      Vector2D(300, 450), // Bottom-left
-      Vector2D(500, 450), // Bottom-right
-  };
 
   // Registered handler tokens for cleanup
   std::vector<EventManager::HandlerToken> m_handlerTokens{};
