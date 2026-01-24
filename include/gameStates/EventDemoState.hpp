@@ -119,7 +119,6 @@ private:
   // Event trigger debouncing
   float m_totalDemoTime{0.0f};
   float m_lastEventTriggerTime{0.0f};
-  bool m_limitMessageShown{false}; // Track if limit message has been shown
 
   // Inventory UI
   bool m_showInventory{false}; // Hide inventory panel by default like GamePlayState

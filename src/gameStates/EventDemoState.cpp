@@ -135,7 +135,6 @@ bool EventDemoState::enter() {
     // Initialize timing
     m_totalDemoTime = 0.0f;
     m_lastEventTriggerTime = -1.0f;
-    m_limitMessageShown = false;
 
     // Register controllers (following GamePlayState pattern)
     m_controllers.add<WeatherController>();
@@ -363,7 +362,6 @@ bool EventDemoState::exit() {
 
       // Clear spawned NPCs (data-driven via NPCRenderController)
       m_npcRenderCtrl.clearSpawnedNPCs();
-      m_limitMessageShown = false;
 
       // Clear controllers
       m_controllers.clear();
@@ -424,7 +422,6 @@ bool EventDemoState::exit() {
 
     // Clear spawned NPCs (data-driven via NPCRenderController)
     m_npcRenderCtrl.clearSpawnedNPCs();
-    m_limitMessageShown = false;
 
     // Clear controllers
     m_controllers.clear();
@@ -708,15 +705,19 @@ void EventDemoState::handleInput() {
     m_lastEventTriggerTime = m_totalDemoTime;
   }
 
+  // Cache NPC count once for all limit checks
+  const size_t npcCount = edm.getEntityCount(EntityKind::NPC);
+  constexpr size_t NPC_LIMIT = 5000;
+
   // [2] NPC Spawn
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2) &&
-      (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
-      edm.getEntityCount(EntityKind::NPC) < 5000) {
-    triggerNPCSpawnDemo();
-    m_lastEventTriggerTime = m_totalDemoTime;
-  } else if (inputMgr.wasKeyPressed(SDL_SCANCODE_2) &&
-             edm.getEntityCount(EntityKind::NPC) >= 5000) {
-    addLogEntry("NPC limit (R to reset)");
+      (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
+    if (npcCount < NPC_LIMIT) {
+      triggerNPCSpawnDemo();
+      m_lastEventTriggerTime = m_totalDemoTime;
+    } else {
+      addLogEntry("NPC limit (R to reset)");
+    }
   }
 
   // [3] Scene Transition
@@ -728,13 +729,13 @@ void EventDemoState::handleInput() {
 
   // [4] Mass NPC Spawn with varied behaviors
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
-      (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
-      edm.getEntityCount(EntityKind::NPC) < 5000) {
-    triggerMassNPCSpawnDemo();
-    m_lastEventTriggerTime = m_totalDemoTime;
-  } else if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
-             edm.getEntityCount(EntityKind::NPC) >= 5000) {
-    addLogEntry("NPC limit (R to reset)");
+      (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
+    if (npcCount < NPC_LIMIT) {
+      triggerMassNPCSpawnDemo();
+      m_lastEventTriggerTime = m_totalDemoTime;
+    } else {
+      addLogEntry("NPC limit (R to reset)");
+    }
   }
 
   // [5] Events Reset
@@ -755,7 +756,6 @@ void EventDemoState::handleInput() {
     resetAllEvents();
     m_totalDemoTime = 0.0f;
     m_lastEventTriggerTime = 0.0f;
-    m_limitMessageShown = false;
     addLogEntry("Demo reset");
   }
 
@@ -870,7 +870,7 @@ void EventDemoState::triggerSceneTransitionDemo() {
   EventManager::Instance().changeScene(sceneName, transitionName, 2.0f,
                            EventManager::DispatchMode::Deferred);
 
-  addLogEntry("Scene: " + sceneName + " (" + std::string(transitionName) + ")");
+  addLogEntry(std::format("Scene: {} ({})", sceneName, transitionName));
 }
 
 void EventDemoState::triggerResourceDemo() {
@@ -1010,7 +1010,7 @@ void EventDemoState::triggerResourceDemo() {
                                      currentQuantity, newQuantity,
                                      "event_demo");
     } else {
-      addLogEntry("Failed: " + resourceName + " (full)");
+      addLogEntry(std::format("Failed: {} (full)", resourceName));
     }
   } else {
     // Remove resources from player inventory
@@ -1028,10 +1028,10 @@ void EventDemoState::triggerResourceDemo() {
                                        currentQuantity, newQuantity,
                                        "event_demo");
       } else {
-        addLogEntry("Failed: remove " + resourceName);
+        addLogEntry(std::format("Failed: remove {}", resourceName));
       }
     } else {
-      addLogEntry("No " + resourceName + " to remove");
+      addLogEntry(std::format("No {} to remove", resourceName));
     }
   }
 
@@ -1041,8 +1041,7 @@ void EventDemoState::triggerResourceDemo() {
   if (m_resourceDemonstrationStep % 6 == 0) {
     m_resourceIsAdding = !m_resourceIsAdding; // Switch between adding and
                                               // removing after full cycle
-    std::string mode = m_resourceIsAdding ? "Adding" : "Removing";
-    addLogEntry("Mode: " + mode);
+    addLogEntry(std::format("Mode: {}", m_resourceIsAdding ? "Adding" : "Removing"));
   }
 }
 
@@ -1130,7 +1129,6 @@ void EventDemoState::resetAllEvents() {
   m_currentSceneIndex = 0;
 
   m_lastEventTriggerTime = 0.0f;
-  m_limitMessageShown = false;
 
   addLogEntry("Events cleared");
 }
@@ -1155,7 +1153,7 @@ void EventDemoState::onNPCSpawned(const EventData &data) {
 }
 
 void EventDemoState::onSceneChanged(const std::string &message) {
-  addLogEntry("Scene: " + message);
+  addLogEntry(std::format("Scene: {}", message));
 }
 
 void EventDemoState::onResourceChanged(const EventData &data) {
@@ -1191,8 +1189,8 @@ void EventDemoState::onResourceChanged(const EventData &data) {
 }
 
 void EventDemoState::setupAIBehaviors() {
-  // TODO: need to make sure that this loigic is moved out of the gamestate.
-  // Maybe on AI Manager init. init/configure all availible behviors
+  // TODO: need to make sure that this logic is moved out of the gamestate.
+  // Maybe on AI Manager init. init/configure all available behaviors
   GAMESTATE_INFO(
       "EventDemoState: Setting up AI behaviors for NPC integration...");
   // Cache AIManager reference for better performance
@@ -1315,7 +1313,6 @@ std::string EventDemoState::getCurrentWeatherString() const {
 void EventDemoState::cleanupSpawnedNPCs() {
   // Data-driven cleanup via NPCRenderController (handles AI unregistration and EDM destruction)
   m_npcRenderCtrl.clearSpawnedNPCs();
-  m_limitMessageShown = false;
 }
 
 void EventDemoState::setupResourceAchievements() {
@@ -1464,9 +1461,7 @@ void EventDemoState::initializeCamera() {
     m_camera->setEventFiringEnabled(false);
 
     // Set target and enable follow mode
-    std::weak_ptr<Entity> playerAsEntity =
-        std::static_pointer_cast<Entity>(m_player);
-    m_camera->setTarget(playerAsEntity);
+    m_camera->setTarget(std::static_pointer_cast<Entity>(m_player));
     m_camera->setMode(HammerEngine::Camera::Mode::Follow);
 
     // Set up camera configuration for fast, smooth following (match
