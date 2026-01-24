@@ -821,6 +821,9 @@ void WorldManager::setCurrentSeason(Season season) {
 
 HammerEngine::TileRenderer::TileRenderer()
     : m_currentSeason(Season::Spring), m_subscribedToSeasons(false) {
+  // Pre-allocate Y-sort buffer to avoid per-frame reallocations
+  m_ySortBuffer.reserve(512);
+
   // Load world object definitions from JSON
   loadWorldObjects();
 
@@ -1607,106 +1610,87 @@ void HammerEngine::TileRenderer::render(
     }
   }
 
-  // LAYER 2: Render decorations (ground-level, before Y-sorted obstacles)
-  for (int y = spriteStartY; y < spriteEndY; ++y) {
-    for (int x = spriteStartX; x < spriteEndX; ++x) {
-      const HammerEngine::Tile& tile = world.grid[y][x];
-
-      if (tile.decorationType == HammerEngine::DecorationType::NONE) {
-        continue;
-      }
-
-      // Skip decorations on land obstacles (trees, rocks have visual priority)
-      if (tile.obstacleType != HammerEngine::ObstacleType::NONE &&
-          tile.obstacleType != HammerEngine::ObstacleType::WATER) {
-        continue;
-      }
-
-      const float screenX = static_cast<float>(x * tileSize) - flooredCamX;
-      const float screenY = static_cast<float>(y * tileSize) - flooredCamY;
-
-      const CachedTexture* tex = nullptr;
-      switch (tile.decorationType) {
-      case HammerEngine::DecorationType::FLOWER_BLUE:
-        tex = &m_cachedTextures.decoration_flower_blue;
-        break;
-      case HammerEngine::DecorationType::FLOWER_PINK:
-        tex = &m_cachedTextures.decoration_flower_pink;
-        break;
-      case HammerEngine::DecorationType::FLOWER_WHITE:
-        tex = &m_cachedTextures.decoration_flower_white;
-        break;
-      case HammerEngine::DecorationType::FLOWER_YELLOW:
-        tex = &m_cachedTextures.decoration_flower_yellow;
-        break;
-      case HammerEngine::DecorationType::MUSHROOM_PURPLE:
-        tex = &m_cachedTextures.decoration_mushroom_purple;
-        break;
-      case HammerEngine::DecorationType::MUSHROOM_TAN:
-        tex = &m_cachedTextures.decoration_mushroom_tan;
-        break;
-      case HammerEngine::DecorationType::GRASS_SMALL:
-        tex = &m_cachedTextures.decoration_grass_small;
-        break;
-      case HammerEngine::DecorationType::GRASS_LARGE:
-        tex = &m_cachedTextures.decoration_grass_large;
-        break;
-      case HammerEngine::DecorationType::BUSH:
-        tex = &m_cachedTextures.decoration_bush;
-        break;
-      case HammerEngine::DecorationType::STUMP_SMALL:
-        tex = &m_cachedTextures.decoration_stump_small;
-        break;
-      case HammerEngine::DecorationType::STUMP_MEDIUM:
-        tex = &m_cachedTextures.decoration_stump_medium;
-        break;
-      case HammerEngine::DecorationType::ROCK_SMALL:
-        tex = &m_cachedTextures.decoration_rock_small;
-        break;
-      case HammerEngine::DecorationType::DEAD_LOG_HZ:
-        tex = &m_cachedTextures.decoration_dead_log_hz;
-        break;
-      case HammerEngine::DecorationType::DEAD_LOG_VERTICAL:
-        tex = &m_cachedTextures.decoration_dead_log_vertical;
-        break;
-      case HammerEngine::DecorationType::LILY_PAD:
-        tex = &m_cachedTextures.decoration_lily_pad;
-        break;
-      case HammerEngine::DecorationType::WATER_FLOWER:
-        tex = &m_cachedTextures.decoration_water_flower;
-        break;
-      default:
-        continue;
-      }
-
-      if (!tex || !tex->ptr) {
-        continue;
-      }
-
-      // Center decoration horizontally, align bottom to tile bottom
-      const float offsetX = (TILE_SIZE - tex->w) / 2.0f;
-      const float offsetY = TILE_SIZE - tex->h;
-
-      SDL_FRect srcRect = {tex->atlasX, tex->atlasY, tex->w, tex->h};
-      SDL_FRect destRect = {screenX + offsetX, screenY + offsetY, tex->w, tex->h};
-      SDL_RenderTexture(renderer, tex->ptr, &srcRect, &destRect);
-    }
-  }
-
-  // LAYER 3: Collect obstacles and buildings for Y-sorted rendering
+  // LAYERS 2 & 3: Single pass for decorations + obstacle collection
+  // Combines two loops over the same tile range for better cache efficiency
   m_ySortBuffer.clear();
-  // Reserve capacity to prevent per-frame reallocations (estimated max visible sprites)
-  if (m_ySortBuffer.capacity() < 512) {
-    m_ySortBuffer.reserve(512);
-  }
 
   for (int y = spriteStartY; y < spriteEndY; ++y) {
     for (int x = spriteStartX; x < spriteEndX; ++x) {
       const HammerEngine::Tile& tile = world.grid[y][x];
 
+      // Calculate screen position once per tile
       const float screenX = static_cast<float>(x * tileSize) - flooredCamX;
       const float screenY = static_cast<float>(y * tileSize) - flooredCamY;
 
+      // DECORATIONS: Render immediately (ground-level, no Y-sort needed)
+      if (tile.decorationType != HammerEngine::DecorationType::NONE &&
+          (tile.obstacleType == HammerEngine::ObstacleType::NONE ||
+           tile.obstacleType == HammerEngine::ObstacleType::WATER)) {
+
+        const CachedTexture* tex = nullptr;
+        switch (tile.decorationType) {
+        case HammerEngine::DecorationType::FLOWER_BLUE:
+          tex = &m_cachedTextures.decoration_flower_blue;
+          break;
+        case HammerEngine::DecorationType::FLOWER_PINK:
+          tex = &m_cachedTextures.decoration_flower_pink;
+          break;
+        case HammerEngine::DecorationType::FLOWER_WHITE:
+          tex = &m_cachedTextures.decoration_flower_white;
+          break;
+        case HammerEngine::DecorationType::FLOWER_YELLOW:
+          tex = &m_cachedTextures.decoration_flower_yellow;
+          break;
+        case HammerEngine::DecorationType::MUSHROOM_PURPLE:
+          tex = &m_cachedTextures.decoration_mushroom_purple;
+          break;
+        case HammerEngine::DecorationType::MUSHROOM_TAN:
+          tex = &m_cachedTextures.decoration_mushroom_tan;
+          break;
+        case HammerEngine::DecorationType::GRASS_SMALL:
+          tex = &m_cachedTextures.decoration_grass_small;
+          break;
+        case HammerEngine::DecorationType::GRASS_LARGE:
+          tex = &m_cachedTextures.decoration_grass_large;
+          break;
+        case HammerEngine::DecorationType::BUSH:
+          tex = &m_cachedTextures.decoration_bush;
+          break;
+        case HammerEngine::DecorationType::STUMP_SMALL:
+          tex = &m_cachedTextures.decoration_stump_small;
+          break;
+        case HammerEngine::DecorationType::STUMP_MEDIUM:
+          tex = &m_cachedTextures.decoration_stump_medium;
+          break;
+        case HammerEngine::DecorationType::ROCK_SMALL:
+          tex = &m_cachedTextures.decoration_rock_small;
+          break;
+        case HammerEngine::DecorationType::DEAD_LOG_HZ:
+          tex = &m_cachedTextures.decoration_dead_log_hz;
+          break;
+        case HammerEngine::DecorationType::DEAD_LOG_VERTICAL:
+          tex = &m_cachedTextures.decoration_dead_log_vertical;
+          break;
+        case HammerEngine::DecorationType::LILY_PAD:
+          tex = &m_cachedTextures.decoration_lily_pad;
+          break;
+        case HammerEngine::DecorationType::WATER_FLOWER:
+          tex = &m_cachedTextures.decoration_water_flower;
+          break;
+        default:
+          break;
+        }
+
+        if (tex && tex->ptr) {
+          const float offsetX = (TILE_SIZE - tex->w) * 0.5f;
+          const float offsetY = TILE_SIZE - tex->h;
+          SDL_FRect srcRect = {tex->atlasX, tex->atlasY, tex->w, tex->h};
+          SDL_FRect destRect = {screenX + offsetX, screenY + offsetY, tex->w, tex->h};
+          SDL_RenderTexture(renderer, tex->ptr, &srcRect, &destRect);
+        }
+      }
+
+      // OBSTACLES: Collect for Y-sorted rendering
       const bool isPartOfBuilding =
           (tile.obstacleType == HammerEngine::ObstacleType::BUILDING &&
            !tile.isTopLeftOfBuilding);
