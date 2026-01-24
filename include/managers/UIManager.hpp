@@ -10,7 +10,6 @@
 #include <SDL3/SDL.h>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -531,9 +530,6 @@ private:
   int m_currentLogicalWidth{0};
   int m_currentLogicalHeight{0};
 
-  // Thread safety
-  mutable std::recursive_mutex m_componentsMutex;
-
   // Input state
   Vector2D m_lastMousePosition{};
   bool m_mousePressed{false};
@@ -543,7 +539,7 @@ private:
   mutable std::vector<std::shared_ptr<UIComponent>> m_sortedComponentsCache{};
   mutable bool m_sortedComponentsDirty{true};
 
-  // Performance optimization: Value caches to avoid mutex lock + hash lookup when values unchanged
+  // Performance optimization: Value caches to avoid hash lookup when values unchanged
   std::unordered_map<std::string, float> m_valueCache{};
   std::unordered_map<std::string, std::string> m_textCache{};
 

@@ -70,7 +70,6 @@ void UIManager::update(float deltaTime) {
     return;
   }
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   // Note: Window resize is now event-driven via onWindowResize(), not polled every frame
 
@@ -144,7 +143,6 @@ void UIManager::render(SDL_Renderer *renderer) {
     return;
   }
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   // Early exit if no components to render
   if (m_components.empty()) {
@@ -227,7 +225,6 @@ void UIManager::createButton(const std::string &id, const UIRect &bounds,
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
   invalidateComponentCache();
 }
@@ -243,7 +240,6 @@ void UIManager::createButtonDanger(const std::string &id, const UIRect &bounds,
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_DANGER);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
   invalidateComponentCache();
 }
@@ -259,7 +255,6 @@ void UIManager::createButtonSuccess(const std::string &id, const UIRect &bounds,
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_SUCCESS);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
   invalidateComponentCache();
 }
@@ -275,7 +270,6 @@ void UIManager::createButtonWarning(const std::string &id, const UIRect &bounds,
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_WARNING);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
   invalidateComponentCache();
 }
@@ -291,7 +285,6 @@ void UIManager::createLabel(const std::string &id, const UIRect &bounds,
   component->m_style = m_currentTheme.getStyle(UIComponentType::LABEL);
   component->m_zOrder = UIConstants::ZORDER_LABEL; // Text on top
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
 
   // Apply auto-sizing after creation
@@ -412,7 +405,6 @@ void UIManager::createList(const std::string &id, const UIRect &bounds) {
   component->m_style = m_currentTheme.getStyle(UIComponentType::LIST);
   component->m_zOrder = UIConstants::ZORDER_LIST; // UI elements
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
 
   // Enable auto-sizing for dynamic content-based sizing
@@ -443,7 +435,6 @@ void UIManager::createEventLog(const std::string &id, const UIRect &bounds,
       UIComponentType::EVENT_LOG); // Use event log styling
   component->m_zOrder = UIConstants::ZORDER_EVENT_LOG;           // UI elements
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
   invalidateComponentCache();
 }
@@ -490,7 +481,6 @@ void UIManager::refreshAllComponentThemes() const {
 
 // Component manipulation
 void UIManager::removeComponent(const std::string &id) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   // BUGFIX: Decrement binding count if component has active bindings
   // This prevents m_activeBindingCount from drifting when bound components are removed
@@ -867,7 +857,6 @@ void UIManager::setProgressBarRange(const std::string &id, float minVal,
 // List specific methods
 void UIManager::addListItem(const std::string &listID,
                             const std::string &item) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   auto component = getComponent(listID);
   if (component && component->m_type == UIComponentType::LIST) {
@@ -879,7 +868,6 @@ void UIManager::addListItem(const std::string &listID,
 }
 
 void UIManager::removeListItem(const std::string &listID, int index) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   auto component = getComponent(listID);
   if (component && component->m_type == UIComponentType::LIST && index >= 0 &&
@@ -947,7 +935,6 @@ void UIManager::setListMaxItems(const std::string &listID, int maxItems) {
 
 void UIManager::addListItemWithAutoScroll(const std::string &listID,
                                           const std::string &item) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   auto component = getComponent(listID);
   if (component && component->m_type == UIComponentType::LIST) {
@@ -983,7 +970,6 @@ void UIManager::addListItemWithAutoScroll(const std::string &listID,
 }
 
 void UIManager::clearListItems(const std::string &listID) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   auto component = getComponent(listID);
   if (component && component->m_type == UIComponentType::LIST) {
@@ -995,7 +981,6 @@ void UIManager::clearListItems(const std::string &listID) {
 
 void UIManager::addEventLogEntry(const std::string &logID,
                                  const std::string &entry) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   auto component = getComponent(logID);
   if (component && component->m_type == UIComponentType::EVENT_LOG) {
@@ -1021,7 +1006,6 @@ void UIManager::addEventLogEntry(const std::string &logID,
 }
 
 void UIManager::clearEventLog(const std::string &logID) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   auto component = getComponent(logID);
   if (component && component->m_type == UIComponentType::EVENT_LOG) {
@@ -1035,7 +1019,6 @@ void UIManager::clearEventLog(const std::string &logID) {
 
 void UIManager::setEventLogMaxEntries(const std::string &logID,
                                       int maxEntries) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   auto component = getComponent(logID);
   if (component && component->m_type == UIComponentType::EVENT_LOG) {
@@ -1611,7 +1594,6 @@ void UIManager::removeOverlay() {
 }
 
 void UIManager::removeComponentsWithPrefix(const std::string &prefix) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   // Collect components to remove (can't modify map while iterating)
   std::vector<std::string> componentsToRemove;
@@ -1753,14 +1735,12 @@ float UIManager::calculateOptimalScale(int width, int height) const {
 
 // Private helper methods
 std::shared_ptr<UIComponent> UIManager::getComponent(const std::string &id) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   auto it = m_components.find(id);
   return (it != m_components.end()) ? it->second : nullptr;
 }
 
 std::shared_ptr<const UIComponent>
 UIManager::getComponent(const std::string &id) const {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   auto it = m_components.find(id);
   return (it != m_components.end()) ? it->second : nullptr;
 }
@@ -3139,7 +3119,6 @@ void UIManager::createCenteredButton(const std::string &id, int offsetY,
 
 // Auto-repositioning system implementation
 void UIManager::onWindowResize(int newLogicalWidth, int newLogicalHeight) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   UI_DEBUG(std::format("Window resized: {}x{} - auto-repositioning UI components",
                        newLogicalWidth, newLogicalHeight));
@@ -3155,7 +3134,7 @@ void UIManager::onWindowResize(int newLogicalWidth, int newLogicalHeight) {
 }
 
 void UIManager::repositionAllComponents(int width, int height) {
-  // Note: Called from onWindowResize() which already holds m_componentsMutex
+  // No lock needed - UI is single-threaded (main thread only)
   for (auto &[id, component] : m_components) {
     if (component) {
       applyPositioning(component, width, height);
@@ -3270,7 +3249,6 @@ void UIManager::applyPositioning(std::shared_ptr<UIComponent> component,
 
 void UIManager::setComponentPositioning(const std::string &id,
                                         const UIPositioning &positioning) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   auto component = getComponent(id);
   if (component) {
     component->m_positioning = positioning;
