@@ -22,6 +22,7 @@ struct SDL_Renderer;
 struct SDL_Texture;
 
 namespace HammerEngine {
+class Camera;  // Forward declaration for camera pointer storage
 
 // World object definition loaded from JSON
 struct WorldObjectDef {
@@ -365,19 +366,22 @@ public:
     void update();
 
     /**
-     * @brief Update dirty chunk textures (call BEFORE SceneRenderer::beginScene)
-     *
-     * This method handles all render target switching for chunk texture updates.
-     * Call this before beginScene() to avoid render target conflicts.
-     *
-     * @param renderer SDL renderer
-     * @param cameraX Camera X offset
-     * @param cameraY Camera Y offset
-     * @param viewportWidth Viewport width at 1x scale
-     * @param viewportHeight Viewport height at 1x scale
+     * @brief Set renderer for chunk texture updates (called by GameEngine at init)
      */
-    void updateDirtyChunks(SDL_Renderer* renderer, float cameraX, float cameraY,
-                           float viewportWidth, float viewportHeight);
+    void setRenderer(SDL_Renderer* renderer) { mp_renderer = renderer; }
+
+    /**
+     * @brief Set active camera for chunk visibility (called by states with world rendering)
+     */
+    void setActiveCamera(HammerEngine::Camera* camera) { mp_activeCamera = camera; }
+
+    /**
+     * @brief Update dirty chunk textures (call in GameState::update before render)
+     *
+     * Uses stored renderer and active camera. Handles all render target switching
+     * for chunk texture updates before SceneRenderer pipeline begins.
+     */
+    void updateDirtyChunks();
 
     /**
      * @brief Render tiles to the current render target
@@ -478,6 +482,10 @@ private:
 
     // Handler tokens for clean unregister
     std::vector<EventManager::HandlerToken> m_handlerTokens;
+
+    // Renderer and camera for chunk texture updates
+    SDL_Renderer* mp_renderer{nullptr};
+    HammerEngine::Camera* mp_activeCamera{nullptr};
 };
 
 #endif // WORLD_MANAGER_HPP

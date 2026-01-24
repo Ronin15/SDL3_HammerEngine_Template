@@ -862,6 +862,7 @@ bool GameEngine::init(std::string_view title) {
     WorldManager &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized()) {
       worldMgr.setupEventHandlers();
+      worldMgr.setRenderer(mp_renderer.get());
       GAMEENGINE_INFO("WorldManager event handlers setup complete");
     } else {
       GAMEENGINE_ERROR(

@@ -238,6 +238,9 @@ void GamePlayState::update(float deltaTime) {
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
 
+  // Update dirty chunk textures (camera must be updated first)
+  WorldManager::Instance().updateDirtyChunks();
+
   // Update resource animations (dropped items bobbing, etc.) - camera-based culling
   if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>(); resourceCtrl && m_camera) {
     resourceCtrl->update(deltaTime, *m_camera);
@@ -275,23 +278,8 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   WorldManager &worldMgr = WorldManager::Instance();
   UIManager &ui = UIManager::Instance();
 
-  // ========== UPDATE DIRTY CHUNKS (before SceneRenderer pipeline) ==========
-  // All world content renders to intermediate texture at 1x, then composited with zoom
+  // Chunk texture updates are now done in update() via WorldManager::updateDirtyChunks()
   const bool worldActive = m_camera && m_sceneRenderer && worldMgr.isInitialized() && worldMgr.hasActiveWorld();
-
-  if (worldActive) {
-    // Get camera parameters for chunk visibility calculation
-    float zoom = m_camera->getZoom();
-    const auto& viewport = m_camera->getViewport();
-    float rawCameraX = 0.0f;
-    float rawCameraY = 0.0f;
-    m_camera->getRenderOffset(rawCameraX, rawCameraY, interpolationAlpha);
-    float viewWidth = viewport.width / zoom;
-    float viewHeight = viewport.height / zoom;
-
-    // Update dirty chunk textures BEFORE beginScene (no render target conflicts)
-    worldMgr.updateDirtyChunks(renderer, rawCameraX, rawCameraY, viewWidth, viewHeight);
-  }
 
   // ========== BEGIN SCENE (to SceneRenderer's intermediate target) ==========
   HammerEngine::SceneRenderer::SceneContext ctx;
@@ -887,6 +875,9 @@ void GamePlayState::initializeCamera() {
 
     // Camera auto-synchronizes world bounds on update
   }
+
+  // Register camera with WorldManager for chunk texture updates
+  WorldManager::Instance().setActiveCamera(m_camera.get());
 }
 
 void GamePlayState::updateCamera(float deltaTime) {

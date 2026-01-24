@@ -486,6 +486,9 @@ void AdvancedAIDemoState::update(float deltaTime) {
     // Update camera (follows player automatically)
     updateCamera(deltaTime);
 
+    // Update dirty chunk textures (camera must be updated first)
+    WorldManager::Instance().updateDirtyChunks();
+
     // Update controllers (CombatController handles cooldowns, stamina regen)
     m_controllers.updateAll(deltaTime);
 
@@ -508,22 +511,8 @@ void AdvancedAIDemoState::render(SDL_Renderer *renderer,
   WorldManager &worldMgr = WorldManager::Instance();
   UIManager &ui = UIManager::Instance();
 
-  // ========== UPDATE DIRTY CHUNKS (before SceneRenderer pipeline) ==========
+  // Chunk texture updates are now done in update() via WorldManager::updateDirtyChunks()
   const bool worldActive = m_camera && m_sceneRenderer && worldMgr.isInitialized() && worldMgr.hasActiveWorld();
-
-  if (worldActive) {
-    // Get camera parameters for chunk visibility calculation
-    float zoom = m_camera->getZoom();
-    const auto& viewport = m_camera->getViewport();
-    float rawCameraX = 0.0f;
-    float rawCameraY = 0.0f;
-    m_camera->getRenderOffset(rawCameraX, rawCameraY, interpolationAlpha);
-    float viewWidth = viewport.width / zoom;
-    float viewHeight = viewport.height / zoom;
-
-    // Update dirty chunk textures BEFORE beginScene (no render target conflicts)
-    worldMgr.updateDirtyChunks(renderer, rawCameraX, rawCameraY, viewWidth, viewHeight);
-  }
 
   // ========== BEGIN SCENE (to SceneRenderer's intermediate target) ==========
   HammerEngine::SceneRenderer::SceneContext ctx;
@@ -734,6 +723,9 @@ void AdvancedAIDemoState::initializeCamera() {
 
     // Camera auto-synchronizes world bounds on update
   }
+
+  // Register camera with WorldManager for chunk texture updates
+  WorldManager::Instance().setActiveCamera(m_camera.get());
 }
 
 void AdvancedAIDemoState::updateCamera(float deltaTime) {
