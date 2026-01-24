@@ -30,7 +30,6 @@
 // Forward declarations
 class Player;
 class Entity;
-class NPC;
 
 class CombatController : public ControllerBase, public IUpdatable
 {
@@ -86,14 +85,6 @@ public:
      * @return EntityHandle of targeted NPC, or invalid handle if no target
      */
     [[nodiscard]] EntityHandle getTargetedHandle() const { return m_targetedHandle; }
-
-    /**
-     * @brief Get the currently targeted NPC (deprecated - use getTargetedHandle())
-     * @return Always returns nullptr - use EDM for data access
-     * @deprecated Use getTargetedHandle() + EntityDataManager for data access
-     */
-    [[deprecated("Use getTargetedHandle() + EDM for data access")]]
-    [[nodiscard]] std::shared_ptr<NPC> getTargetedNPC() const;
 
     /**
      * @brief Get remaining time for target display

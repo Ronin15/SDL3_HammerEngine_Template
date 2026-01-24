@@ -43,7 +43,7 @@ See `tests/TESTING.md` for comprehensive documentation.
 
 **Core**: GameEngine (fixed timestep) | ThreadSystem (WorkerBudget) | Logger (thread-safe) | TimestepManager
 
-**Managers**: EntityDataManager (central data store, SoA) | AIManager (10K+ entities, SIMD) | EventManager (17 event types) | CollisionManager (HierarchicalSpatialHash) | ParticleManager (SoA, pooled) | PathfinderManager | WorldManager (chunk-based procedural) | BackgroundSimulationManager (tiered) | UIManager (theming, DPI) | GameTimeManager | InputManager | TextureManager | FontManager | SoundManager
+**Managers**: EntityDataManager (central data store, SoA) | AIManager (10K+ entities, SIMD) | EventManager (15 event types) | CollisionManager (HierarchicalSpatialHash) | ParticleManager (SoA, pooled) | PathfinderManager | WorldManager (chunk-based procedural) | BackgroundSimulationManager (tiered) | UIManager (theming, DPI) | GameTimeManager | InputManager | TextureManager | FontManager | SoundManager
 
 **Entities**: EntityKind (9 types) | SimulationTier (Active/Background/Hibernated) | EntityHandle (generation-safe)
 
@@ -71,15 +71,18 @@ See `tests/TESTING.md` for comprehensive documentation.
 
 **ThreadSystem**: Pool of `hardware_concurrency - 1` workers. 5 priority levels (Critical→Idle). Use `enqueueTaskWithResult()` for futures, `batchEnqueueTasks()` for bulk submission.
 
-**WorkerBudget**: Adaptive batch sizing. `getOptimalWorkers()` returns all workers (sequential model). `getBatchStrategy()` calculates batch count/size. `reportBatchCompletion()` for throughput tuning.
+**WorkerBudget**: Adaptive batch sizing with unified threshold learning. `shouldUseThreading()` returns threading decision. `getBatchStrategy()` calculates batch count/size. `reportExecution()` for unified throughput tracking.
 
 **Manager Pattern** (AIManager, ParticleManager):
 ```cpp
-auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(SystemType::AI, count, workers);
-for (size_t i = 0; i < batchCount; ++i) {
-    m_futures.push_back(threadSystem.enqueueTaskWithResult([...] { processBatch(...); }));
+auto decision = budgetMgr.shouldUseThreading(SystemType::AI, count);
+if (decision.shouldThread) {
+    for (size_t i = 0; i < decision.batchCount; ++i) {
+        m_futures.push_back(threadSystem.enqueueTaskWithResult([...] { processBatch(...); }));
+    }
+    for (auto& f : m_futures) { f.get(); }  // Wait before frame ends
 }
-for (auto& f : m_futures) { f.get(); }  // Wait before frame ends
+budgetMgr.reportExecution(SystemType::AI, count, decision.shouldThread, decision.batchCount, elapsedMs);
 ```
 
 **State Transitions**: Call `prepareForStateTransition()` on managers before cleanup. Pauses work, waits for pending batches, drains message queues.

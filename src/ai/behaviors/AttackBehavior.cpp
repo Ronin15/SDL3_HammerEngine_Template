@@ -279,7 +279,8 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
   // Notify animation state change if state changed
   if (attack.currentState != previousState) {
     notifyAnimationStateChange(ctx.edmIndex,
-                               static_cast<AttackState>(attack.currentState));
+                               static_cast<AttackState>(attack.currentState),
+                               targetPos);
   }
 }
 
@@ -608,7 +609,8 @@ void AttackBehavior::changeState(BehaviorData &data, AttackState newState) {
 }
 
 void AttackBehavior::notifyAnimationStateChange(size_t edmIndex,
-                                                AttackState newState) {
+                                                AttackState newState,
+                                                const Vector2D& targetPos) {
   // Data-driven NPCs: Animation handled by NPCRenderController via velocity
   // Apply velocity burst for lunge effect on attack states
   if (edmIndex == SIZE_MAX) {
@@ -618,7 +620,7 @@ void AttackBehavior::notifyAnimationStateChange(size_t edmIndex,
   // Lunge toward target when attacking (2x movement speed burst)
   if (newState == AttackState::ATTACKING) {
     auto& edm = EntityDataManager::Instance();
-    Vector2D targetPos = getTargetPosition();
+    // targetPos passed as parameter - avoids re-fetching from AIManager (thread-safe)
     Vector2D entityPos = edm.getHotDataByIndex(edmIndex).transform.position;
     Vector2D direction = (targetPos - entityPos);
     float dist = direction.length();

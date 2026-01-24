@@ -123,9 +123,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     // Render with interpolation alpha (calculated from remaining accumulator)
     gameEngine.render();
 
-    // Process background tasks during vsync wait (non-critical, async work)
-    //gameEngine.processBackgroundTasks();
-
     // End frame (VSync or software frame limiting)
     ts.endFrame();
   }
