@@ -556,9 +556,24 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   WorldManager &worldMgr = WorldManager::Instance();
   UIManager &ui = UIManager::Instance();
 
-  // ========== BEGIN SCENE (to SceneRenderer's intermediate target) ==========
+  // ========== UPDATE DIRTY CHUNKS (before SceneRenderer pipeline) ==========
   const bool worldActive = m_camera && m_sceneRenderer && worldMgr.isInitialized() && worldMgr.hasActiveWorld();
 
+  if (worldActive) {
+    // Get camera parameters for chunk visibility calculation
+    float zoom = m_camera->getZoom();
+    const auto& viewport = m_camera->getViewport();
+    float rawCameraX = 0.0f;
+    float rawCameraY = 0.0f;
+    m_camera->getRenderOffset(rawCameraX, rawCameraY, interpolationAlpha);
+    float viewWidth = viewport.width / zoom;
+    float viewHeight = viewport.height / zoom;
+
+    // Update dirty chunk textures BEFORE beginScene (no render target conflicts)
+    worldMgr.updateDirtyChunks(renderer, rawCameraX, rawCameraY, viewWidth, viewHeight);
+  }
+
+  // ========== BEGIN SCENE (to SceneRenderer's intermediate target) ==========
   HammerEngine::SceneRenderer::SceneContext ctx;
   if (worldActive) {
     ctx = m_sceneRenderer->beginScene(renderer, *m_camera, interpolationAlpha);

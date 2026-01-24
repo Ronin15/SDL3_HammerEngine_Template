@@ -62,10 +62,27 @@ public:
     TileRenderer& operator=(const TileRenderer&) = delete;
 
     /**
-     * @brief Render tiles to the current render target
+     * @brief Update dirty chunk textures (call BEFORE SceneRenderer::beginScene)
      *
-     * Renders visible tile chunks directly to the current render target.
-     * SceneRenderer manages the intermediate texture; TileRenderer just draws tiles.
+     * This method handles all render target switching for chunk texture updates.
+     * Call this before beginScene() to avoid render target conflicts.
+     *
+     * @param world World data
+     * @param renderer SDL renderer
+     * @param cameraX Camera X offset
+     * @param cameraY Camera Y offset
+     * @param viewportWidth Viewport width at 1x scale
+     * @param viewportHeight Viewport height at 1x scale
+     */
+    void updateDirtyChunks(const WorldData& world, SDL_Renderer* renderer,
+                           float cameraX, float cameraY,
+                           float viewportWidth, float viewportHeight);
+
+    /**
+     * @brief Render cached chunk textures to the current render target
+     *
+     * Only composites pre-rendered chunk textures - no render target changes.
+     * Safe to call within SceneRenderer's begin/end block.
      *
      * @param world World data to render
      * @param renderer SDL renderer
@@ -346,6 +363,21 @@ public:
     bool hasActiveWorld() const;
 
     void update();
+
+    /**
+     * @brief Update dirty chunk textures (call BEFORE SceneRenderer::beginScene)
+     *
+     * This method handles all render target switching for chunk texture updates.
+     * Call this before beginScene() to avoid render target conflicts.
+     *
+     * @param renderer SDL renderer
+     * @param cameraX Camera X offset
+     * @param cameraY Camera Y offset
+     * @param viewportWidth Viewport width at 1x scale
+     * @param viewportHeight Viewport height at 1x scale
+     */
+    void updateDirtyChunks(SDL_Renderer* renderer, float cameraX, float cameraY,
+                           float viewportWidth, float viewportHeight);
 
     /**
      * @brief Render tiles to the current render target
