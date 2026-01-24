@@ -88,20 +88,10 @@ SceneRenderer::SceneContext SceneRenderer::beginScene(
     float flooredCameraX = std::floor(rawCameraX);
     float flooredCameraY = std::floor(rawCameraY);
 
-    // Calculate sub-pixel offset for final composite
-    // Negative offset = camera moves in that direction
-    // Quantize to zoom-aligned pixel grid to prevent jitter at high zoom levels
-    float rawOffsetX = -(rawCameraX - flooredCameraX);
-    float rawOffsetY = -(rawCameraY - flooredCameraY);
-
-    if (zoom > 1.0f) {
-        float pixelStep = 1.0f / zoom;
-        rawOffsetX = std::round(rawOffsetX / pixelStep) * pixelStep;
-        rawOffsetY = std::round(rawOffsetY / pixelStep) * pixelStep;
-    }
-
-    m_subPixelOffsetX = rawOffsetX;
-    m_subPixelOffsetY = rawOffsetY;
+    // With NEAREST scalemode, sub-pixel offsets cause shifting artifacts.
+    // Use integer-only camera positioning for consistent pixel-perfect rendering.
+    m_subPixelOffsetX = 0.0f;
+    m_subPixelOffsetY = 0.0f;
 
     // Store render state for endScene
     m_currentZoom = zoom;
@@ -124,14 +114,13 @@ SceneRenderer::SceneContext SceneRenderer::beginScene(
     m_sceneActive = true;
 
     // Populate context
-    // Use FLOORED camera for all rendering (tiles AND entities).
-    // Entity sub-pixel smoothness comes from their own interpolated positions.
-    // The composite sub-pixel offset then shifts everything equally, maintaining
-    // correct relative positions between tiles and entities.
-    ctx.cameraX = flooredCameraX;
-    ctx.cameraY = flooredCameraY;
-    ctx.flooredCameraX = flooredCameraX;
-    ctx.flooredCameraY = flooredCameraY;
+    // Tiles use FLOORED camera for pixel-perfect grid alignment.
+    // Entities use RAW camera so interpolated positions stay consistent relative to camera center.
+    // This prevents entity oscillation when camera crosses pixel boundaries.
+    ctx.cameraX = rawCameraX;           // For entities (smooth)
+    ctx.cameraY = rawCameraY;           // For entities (smooth)
+    ctx.flooredCameraX = flooredCameraX; // For tiles (pixel-aligned)
+    ctx.flooredCameraY = flooredCameraY; // For tiles (pixel-aligned)
     ctx.viewWidth = viewWidth;
     ctx.viewHeight = viewHeight;
     ctx.zoom = zoom;
