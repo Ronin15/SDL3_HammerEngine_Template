@@ -6,6 +6,7 @@
 #include "events/NPCSpawnEvent.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
+#include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/GameTimeManager.hpp"
@@ -295,16 +296,25 @@ NPCSpawnEvent::spawnNPCs(const SpawnParameters &params, float x, float y) {
   spawnedHandles.reserve(static_cast<size_t>(params.count));
   auto &edm = EntityDataManager::Instance();
 
-  // Random selection if type is "Random" or empty
-  bool isRandom = params.npcType.empty() || params.npcType == "Random";
+  // Check if we're spawning random class and/or race
+  bool isRandomClass = params.npcType.empty() || params.npcType == "Random";
+  bool isRandomRace = params.npcRace == "Random";
+
   std::vector<std::string> races;
   std::vector<std::string> classes;
 
-  if (isRandom) {
+  if (isRandomRace) {
     races = edm.getRaceIds();
+    if (races.empty()) {
+      EVENT_ERROR("No races registered for random NPC spawn");
+      return spawnedHandles;
+    }
+  }
+
+  if (isRandomClass) {
     classes = edm.getClassIds();
-    if (races.empty() || classes.empty()) {
-      EVENT_ERROR("No races or classes registered for random NPC spawn");
+    if (classes.empty()) {
+      EVENT_ERROR("No classes registered for random NPC spawn");
       return spawnedHandles;
     }
   }
@@ -320,8 +330,10 @@ NPCSpawnEvent::spawnNPCs(const SpawnParameters &params, float x, float y) {
     }
   }
 
-  EVENT_INFO(std::format("Spawning {} NPCs of type: {} {}",
-                         params.count, isRandom ? "Random" : params.npcType,
+  std::string raceLabel = isRandomRace ? "Random" : (params.npcRace.empty() ? "Human" : params.npcRace);
+  std::string classLabel = isRandomClass ? "Random" : params.npcType;
+  EVENT_INFO(std::format("Spawning {} {} {} NPCs {}",
+                         params.count, raceLabel, classLabel,
                          useWorldBounds ? "across world" : std::format("at ({}, {})", x, y)));
 
   try {
@@ -359,19 +371,34 @@ NPCSpawnEvent::spawnNPCs(const SpawnParameters &params, float x, float y) {
             spawnPos, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f);
       }
 
-      EntityHandle handle;
-      if (isRandom) {
-        // Random race and class
+      // Determine race and class for this NPC
+      std::string race;
+      std::string npcClass;
+
+      if (isRandomRace) {
         std::uniform_int_distribution<size_t> raceDist(0, races.size() - 1);
-        std::uniform_int_distribution<size_t> classDist(0, classes.size() - 1);
-        handle = edm.createNPCWithRaceClass(spawnPos, races[raceDist(gen)],
-                                             classes[classDist(gen)]);
+        race = races[raceDist(gen)];
       } else {
-        // Specific class with Human race
-        handle = edm.createNPCWithRaceClass(spawnPos, "Human", params.npcType);
+        race = params.npcRace.empty() ? "Human" : params.npcRace;
       }
 
+      if (isRandomClass) {
+        std::uniform_int_distribution<size_t> classDist(0, classes.size() - 1);
+        npcClass = classes[classDist(gen)];
+      } else {
+        npcClass = params.npcType;
+      }
+
+      EntityHandle handle = edm.createNPCWithRaceClass(spawnPos, race, npcClass);
+
       if (handle.isValid()) {
+        // Assign AI behavior - rotate through list if multiple, otherwise use single
+        if (!params.aiBehaviors.empty()) {
+          const auto& behavior = params.aiBehaviors[i % params.aiBehaviors.size()];
+          AIManager::Instance().assignBehavior(handle, behavior);
+        } else if (!params.aiBehavior.empty()) {
+          AIManager::Instance().assignBehavior(handle, params.aiBehavior);
+        }
         spawnedHandles.push_back(handle);
       }
     }

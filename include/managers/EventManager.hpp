@@ -449,6 +449,8 @@ public:
                    DispatchMode mode = DispatchMode::Deferred) const;
   bool spawnNPC(const std::string &npcType, float x, float y,
                 int count = 1, float spawnRadius = 0.0f,
+                const std::string &npcRace = "",
+                const std::vector<std::string> &aiBehaviors = {},
                 bool worldWide = false,
                 DispatchMode mode = DispatchMode::Deferred) const;
 
@@ -550,7 +552,8 @@ public:
   bool triggerSceneChange(const std::string &sceneId,
                           const std::string &transitionType = "fade",
                           float transitionTime = 1.0f) const;
-  bool triggerNPCSpawn(const std::string &npcType, float x, float y) const;
+  bool triggerNPCSpawn(const std::string &npcType, float x, float y,
+                       const std::string &npcRace = "") const;
 
   // Resource change convenience method
   bool triggerResourceChange(EntityHandle ownerHandle,

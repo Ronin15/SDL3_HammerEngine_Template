@@ -316,7 +316,7 @@ BOOST_FIXTURE_TEST_CASE(ConvenienceMethods, EventManagerFixture) {
   // Test trigger aliases with immediate dispatch - should return true when handlers are registered
   BOOST_CHECK(EventManager::Instance().changeWeather("Stormy", 2.0f, EventManager::DispatchMode::Immediate));
   BOOST_CHECK(EventManager::Instance().changeScene("NewScene", "dissolve", 1.0f, EventManager::DispatchMode::Immediate));
-  BOOST_CHECK(EventManager::Instance().spawnNPC("Villager", 100.0f, 200.0f, 1, 0.0f, false, EventManager::DispatchMode::Immediate));
+  BOOST_CHECK(EventManager::Instance().spawnNPC("Villager", 100.0f, 200.0f, 1, 0.0f, "", {}, false, EventManager::DispatchMode::Immediate));
 
   // Verify handlers were called immediately
   BOOST_CHECK(weatherHandlerCalled);
@@ -405,7 +405,7 @@ BOOST_FIXTURE_TEST_CASE(NPCSpawnEvents, EventManagerFixture) {
       });
 
   // Test NPC spawn trigger
-  EventManager::Instance().spawnNPC("Guard", 100.0f, 200.0f, 1, 0.0f, false, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().spawnNPC("Guard", 100.0f, 200.0f, 1, 0.0f, "", {}, false, EventManager::DispatchMode::Immediate);
 
   BOOST_CHECK(handlerCalled);
 }
@@ -1467,8 +1467,8 @@ BOOST_FIXTURE_TEST_CASE(EventPoolRecycling, EventManagerFixture) {
         if (!firstNPC) firstNPC = data.event;
         else secondNPC = data.event;
       });
-  EventManager::Instance().spawnNPC("A", 0, 0, 1, 0, false, EventManager::DispatchMode::Immediate);
-  EventManager::Instance().spawnNPC("B", 0, 0, 1, 0, false, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().spawnNPC("A", 0, 0, 1, 0, "", {}, false, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().spawnNPC("B", 0, 0, 1, 0, "", {}, false, EventManager::DispatchMode::Immediate);
   BOOST_CHECK_EQUAL(firstNPC.get(), secondNPC.get());
 
   // Collision recycling

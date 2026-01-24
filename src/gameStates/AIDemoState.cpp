@@ -200,14 +200,14 @@ void AIDemoState::handleInput() {
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_N)) {
       // Spawn 2000 Villagers across entire world via events
       GAMESTATE_INFO("Spawning 2000 Villagers across world...");
-      eventMgr.spawnNPC("Villager", 0, 0, 2000, 0, true);
+      eventMgr.spawnNPC("Villager", 0, 0, 2000, 0, "Random", {}, true);
     }
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_M)) {
       // Spawn 2000 random NPCs across entire world via events (random
       // race/class)
       GAMESTATE_INFO("Spawning 2000 random NPCs across world...");
-      eventMgr.spawnNPC("Random", 0, 0, 2000, 0, true);
+      eventMgr.spawnNPC("Random", 0, 0, 2000, 0, "Random", {}, true);
     }
   }
 }
