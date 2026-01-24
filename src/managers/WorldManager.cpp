@@ -6,6 +6,7 @@
 #include "managers/WorldManager.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
+#include "utils/Camera.hpp"
 #include "core/ThreadSystem.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "events/TimeEvent.hpp"
@@ -18,6 +19,7 @@
 
 #include "events/HarvestResourceEvent.hpp"
 #include <algorithm>
+#include <cmath>
 #include <format>
 
 bool WorldManager::init() {
@@ -247,11 +249,9 @@ void WorldManager::update() {
   // This could be extended for dynamic world changes, weather effects, etc.
 }
 
-void WorldManager::updateDirtyChunks(SDL_Renderer* renderer, float cameraX,
-                                     float cameraY, float viewportWidth,
-                                     float viewportHeight) {
+void WorldManager::updateDirtyChunks() {
   if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled ||
-      !renderer) {
+      !mp_renderer || !mp_activeCamera) {
     return;
   }
 
@@ -259,8 +259,21 @@ void WorldManager::updateDirtyChunks(SDL_Renderer* renderer, float cameraX,
     return;
   }
 
-  m_tileRenderer->updateDirtyChunks(*m_currentWorld, renderer, cameraX, cameraY,
-                                    viewportWidth, viewportHeight);
+  // Get camera parameters for chunk visibility calculation
+  float zoom = mp_activeCamera->getZoom();
+  const auto& viewport = mp_activeCamera->getViewport();
+  float viewWidth = viewport.width / zoom;
+  float viewHeight = viewport.height / zoom;
+
+  // Get floored camera position for chunk alignment
+  float rawX = 0.0f;
+  float rawY = 0.0f;
+  mp_activeCamera->getRenderOffset(rawX, rawY, 0.0f);
+  float cameraX = std::floor(rawX);
+  float cameraY = std::floor(rawY);
+
+  m_tileRenderer->updateDirtyChunks(*m_currentWorld, mp_renderer, cameraX,
+                                    cameraY, viewWidth, viewHeight);
 }
 
 void WorldManager::render(SDL_Renderer* renderer, float cameraX, float cameraY,
