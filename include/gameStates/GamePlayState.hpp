@@ -6,18 +6,21 @@
 #ifndef GAME_PLAY_STATE_HPP
 #define GAME_PLAY_STATE_HPP
 
-#include "entities/Player.hpp"
-#include "gameStates/GameState.hpp"
-#include "managers/ParticleManager.hpp"
-#include "managers/EventManager.hpp"
+#include "controllers/ControllerRegistry.hpp"
 #include "events/TimeEvent.hpp"
 #include "events/WeatherEvent.hpp"
+#include "gameStates/GameState.hpp"
+#include "managers/EventManager.hpp"
 #include "utils/ResourceHandle.hpp"
-#include "utils/Camera.hpp"
-#include "utils/SceneRenderer.hpp"
-#include "controllers/ControllerRegistry.hpp"
 #include <memory>
 #include <string>
+
+// Forward declarations (full includes in .cpp)
+class Player;
+namespace HammerEngine {
+class Camera;
+class SceneRenderer;
+}
 
 class GamePlayState : public GameState {
 public:
