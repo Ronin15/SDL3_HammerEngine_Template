@@ -1032,55 +1032,25 @@ void EventDemoState::triggerResourceDemo() {
 }
 
 void EventDemoState::triggerMassNPCSpawnDemo() {
-  EntityDataManager& edm = EntityDataManager::Instance();
-  AIManager& aiMgr = AIManager::Instance();
-
   // Check NPC limit
-  if (edm.getEntityCount(EntityKind::NPC) >= 5000) {
+  if (EntityDataManager::Instance().getEntityCount(EntityKind::NPC) >= 5000) {
     addLogEntry("NPC limit reached (5000)");
     return;
   }
 
-  // Behaviors to use (all except Guard and Attack)
-  static const std::array<const char*, 6> behaviors = {
-      "Idle", "Wander", "Patrol", "Chase", "Flee", "Follow"
-  };
-
   Vector2D playerPos = m_player->getPosition();
 
-  // Random generation for spread positioning
-  thread_local std::mt19937 gen{std::random_device{}()};
-  std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * M_PI);
-  std::uniform_real_distribution<float> radiusDist(150.0f, 600.0f);
+  // Spawn 200 NPCs via event system - random races, rotating through 6 behaviors
+  EventManager::Instance().spawnNPC(
+      "Villager",                                           // npcType
+      playerPos.getX(), playerPos.getY(),                   // center position
+      200,                                                  // count
+      1500.0f,                                              // spawnRadius
+      "Random",                                             // npcRace
+      {"Idle", "Wander", "Patrol", "Chase", "Flee", "Follow"} // aiBehaviors
+  );
 
-  int spawned = 0;
-  constexpr int targetCount = 200;
-
-  for (int i = 0; i < targetCount; ++i) {
-    // Calculate spawn position in circle around player
-    float angle = angleDist(gen);
-    float distance = radiusDist(gen);
-
-    Vector2D position(
-        playerPos.getX() + distance * std::cos(angle),
-        playerPos.getY() + distance * std::sin(angle)
-    );
-
-    // Clamp to world bounds
-    position.setX(std::max(100.0f, std::min(position.getX(), m_worldWidth - 100.0f)));
-    position.setY(std::max(100.0f, std::min(position.getY(), m_worldHeight - 100.0f)));
-
-    // Create NPC - EDM auto-registers with AIManager
-    EntityHandle handle = edm.createNPCWithRaceClass(position, "Human", "Villager");
-
-    if (handle.isValid()) {
-      // Assign behavior based on index (rotate through behaviors)
-      aiMgr.assignBehavior(handle, behaviors[i % behaviors.size()]);
-      spawned++;
-    }
-  }
-
-  addLogEntry(std::format("Spawned {} NPCs (6 behaviors)", spawned));
+  addLogEntry("Spawned 200 NPCs (random races, 6 behaviors)");
 }
 
 void EventDemoState::triggerConvenienceMethodsDemo() {

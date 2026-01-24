@@ -94,8 +94,8 @@ bool EventManager::triggerSceneChange(const std::string &sceneId,
 }
 
 bool EventManager::triggerNPCSpawn(const std::string &npcType, float x,
-                                   float y) const {
-  return spawnNPC(npcType, x, y);
+                                   float y, const std::string &npcRace) const {
+  return spawnNPC(npcType, x, y, 1, 0.0f, npcRace);
 }
 
 bool EventManager::init() {
@@ -1240,10 +1240,14 @@ bool EventManager::changeScene(const std::string &sceneId,
 }
 
 bool EventManager::spawnNPC(const std::string &npcType, float x, float y,
-                            int count, float spawnRadius, bool worldWide,
+                            int count, float spawnRadius,
+                            const std::string &npcRace,
+                            const std::vector<std::string> &aiBehaviors,
+                            bool worldWide,
                             DispatchMode mode) const {
-  // Build payload with count, radius, and worldWide flag
-  SpawnParameters params(npcType, count, spawnRadius);
+  // Build payload with count, radius, race, behaviors, and worldWide flag
+  SpawnParameters params(npcType, count, spawnRadius, npcRace);
+  params.aiBehaviors = aiBehaviors;
   params.worldWide = worldWide;
   auto npcEvent = m_npcSpawnPool.acquire();
   if (!npcEvent)
