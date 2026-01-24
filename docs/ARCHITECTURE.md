@@ -173,23 +173,31 @@ sequenceDiagram
 sequenceDiagram
     participant GE as GameEngine
     participant GSM as GameStateManager
+    participant SR as SceneRenderer
     participant WM as WorldManager
     participant EDM as EntityDataManager
     participant PART as ParticleManager
     participant UIM as UIManager
 
-    GE->>GSM: render()
-    GSM->>WM: render()
-    Note over WM: Tile layers
+    GE->>GSM: render(interpolationAlpha)
+    GSM->>SR: beginScene(renderer, camera, alpha)
+    Note over SR: Set intermediate texture target
+    SR-->>GSM: SceneContext (floored camera)
+
+    GSM->>WM: render(flooredCameraX/Y)
+    Note over WM: Tile layers (pixel-aligned)
 
     GSM->>EDM: render entities
-    Note over EDM: Sprites
+    Note over EDM: Sprites (pixel-aligned)
 
     GSM->>PART: render()
     Note over PART: Particles
 
+    GSM->>SR: endScene()
+    Note over SR: Composite with zoom + sub-pixel offset
+
     GSM->>UIM: render()
-    Note over UIM: UI overlays
+    Note over UIM: UI overlays (at 1.0 scale)
 
     GE->>GE: SDL_RenderPresent()
 ```
@@ -264,13 +272,13 @@ classDiagram
         Player
         NPC
         DroppedItem
-        Resource
         Container
         Harvestable
         Projectile
         AreaEffect
         Prop
         Trigger
+        StaticObstacle
     }
 ```
 
@@ -515,6 +523,13 @@ graph TB
 | **WorldManager** | Tile rendering | Chunk caching, procedural gen |
 | **UIManager** | UI components | DPI scaling, theming |
 | **GameTimeManager** | Day/night cycle | Weather scheduling |
+
+## Utility Classes
+
+| Utility | Responsibility | Key Features |
+|---------|---------------|--------------|
+| **SceneRenderer** | Pixel-perfect zoomed rendering | Intermediate texture, sub-pixel scrolling |
+| **Camera** | View management | Follow mode, zoom levels, interpolation |
 
 ## Performance Characteristics
 

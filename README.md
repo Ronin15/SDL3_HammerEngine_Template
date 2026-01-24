@@ -132,7 +132,7 @@ ninja -C build
 
 **📚 [Documentation Hub](docs/README.md)** – Full guides, API references, and best practices.
 
-- **Core:** [GameEngine](docs/core/GameEngine.md), [GameTime](docs/core/GameTime.md), [ThreadSystem](docs/core/ThreadSystem.md), [TimestepManager](docs/managers/TimestepManager.md)
+- **Core:** [GameEngine](docs/core/GameEngine.md), [GameTimeManager](docs/managers/GameTimeManager.md), [ThreadSystem](docs/core/ThreadSystem.md), [TimestepManager](docs/managers/TimestepManager.md)
 - **AI System:** [Overview](docs/ai/AIManager.md), [Optimization](docs/ai/AIManager_Optimization_Summary.md), [Behaviors](docs/ai/BehaviorModes.md), [Quick Reference](docs/ai/BehaviorQuickReference.md), [Pathfinding System](docs/ai/PathfindingSystem.md)
 - **Collision & Physics:** [CollisionManager](docs/managers/CollisionManager.md)
 - **Entity System:** [Overview](docs/entities/README.md), [EntityHandle](docs/entities/EntityHandle.md), [EntityDataManager](docs/managers/EntityDataManager.md), [BackgroundSimulationManager](docs/managers/BackgroundSimulationManager.md)
@@ -140,7 +140,7 @@ ninja -C build
 - **Controllers:** [Overview](docs/controllers/README.md), [ControllerRegistry](docs/controllers/ControllerRegistry.md), [WeatherController](docs/controllers/WeatherController.md), [DayNightController](docs/controllers/DayNightController.md), [CombatController](docs/controllers/CombatController.md)
 - **Managers:** [BackgroundSimulationManager](docs/managers/BackgroundSimulationManager.md), [CollisionManager](docs/managers/CollisionManager.md), [EntityDataManager](docs/managers/EntityDataManager.md), [FontManager](docs/managers/FontManager.md), [ParticleManager](docs/managers/ParticleManager.md), [PathfinderManager](docs/managers/PathfinderManager.md), [ResourceFactory](docs/managers/ResourceFactory.md), [ResourceTemplateManager](docs/managers/ResourceTemplateManager.md), [SoundManager](docs/managers/SoundManager.md), [TextureManager](docs/managers/TextureManager.md), [WorldManager](docs/managers/WorldManager.md), [WorldResourceManager](docs/managers/WorldResourceManager.md)
 - **UI:** [UIManager Guide](docs/ui/UIManager_Guide.md), [UIConstants Reference](docs/ui/UIConstants.md), [Auto-Sizing](docs/ui/Auto_Sizing_System.md), [DPI-Aware Fonts](docs/ui/DPI_Aware_Font_System.md), [Minimap Implementation](docs/ui/Minimap_Implementation.md)
-- **Utilities:** [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [ResourceHandle System](docs/utils/ResourceHandle_System.md), [Camera](docs/utils/Camera.md)
+- **Utilities:** [SceneRenderer](docs/utils/SceneRenderer.md), [Camera](docs/utils/Camera.md), [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [ResourceHandle System](docs/utils/ResourceHandle_System.md)
 - **Architecture:** [Interpolation System](docs/architecture/InterpolationSystem.md)
 - **Performance:** [Power Efficiency](docs/performance/PowerEfficiency.md), [EntityDataManager Power Analysis](docs/performance_reports/power_profile_edm_comparison_2025-12-30.md)
 - **Development:** [Claude Code Skills](docs/development/ClaudeSkills.md)
