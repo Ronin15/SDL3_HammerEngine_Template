@@ -43,21 +43,21 @@ void PlayerRunningState::handleMovementInput(float deltaTime) {
     bool hasInput = false;
 
     // Keyboard input (highest priority - most responsive)
-    if (input.isKeyDown(SDL_SCANCODE_RIGHT)) {
+    if (input.isKeyDown(SDL_SCANCODE_D)) {
         velocity.setX(speed);
         m_player.get().setFlip(SDL_FLIP_NONE);
         hasInput = true;
     }
-    if (input.isKeyDown(SDL_SCANCODE_LEFT)) {
+    if (input.isKeyDown(SDL_SCANCODE_A)) {
         velocity.setX(-speed);
         m_player.get().setFlip(SDL_FLIP_HORIZONTAL);
         hasInput = true;
     }
-    if (input.isKeyDown(SDL_SCANCODE_UP)) {
+    if (input.isKeyDown(SDL_SCANCODE_W)) {
         velocity.setY(-speed);
         hasInput = true;
     }
-    if (input.isKeyDown(SDL_SCANCODE_DOWN)) {
+    if (input.isKeyDown(SDL_SCANCODE_S)) {
         velocity.setY(speed);
         hasInput = true;
     }
@@ -147,10 +147,10 @@ bool PlayerRunningState::hasInputDetected() const {
     const InputManager& input = InputManager::Instance();
 
     // Keyboard or controller input
-    if (input.isKeyDown(SDL_SCANCODE_RIGHT) ||
-        input.isKeyDown(SDL_SCANCODE_LEFT) ||
-        input.isKeyDown(SDL_SCANCODE_UP) ||
-        input.isKeyDown(SDL_SCANCODE_DOWN) ||
+    if (input.isKeyDown(SDL_SCANCODE_D) ||
+        input.isKeyDown(SDL_SCANCODE_A) ||
+        input.isKeyDown(SDL_SCANCODE_W) ||
+        input.isKeyDown(SDL_SCANCODE_S) ||
         input.getAxisX(0, 1) != 0 ||
         input.getAxisY(0, 1) != 0) {
         return true;
