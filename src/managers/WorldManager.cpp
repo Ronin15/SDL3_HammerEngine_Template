@@ -1169,21 +1169,15 @@ void HammerEngine::TileRenderer::setCurrentSeason(Season season) {
   }
 }
 
-void HammerEngine::TileRenderer::invalidateChunk(int chunkX, int chunkY) {
-  const uint64_t key = makeChunkKey(chunkX, chunkY);
-  auto it = m_chunkCache.find(key);
-  if (it != m_chunkCache.end()) {
-    it->second.dirty = true;
-  }
+void HammerEngine::TileRenderer::invalidateChunk([[maybe_unused]] int chunkX,
+                                                 [[maybe_unused]] int chunkY) {
+  // No-op: Direct rendering mode doesn't cache chunks
+  // Kept for API compatibility with WorldManager::updateTile()
 }
 
 void HammerEngine::TileRenderer::clearChunkCache() {
-  // Defer cache clear to render thread to prevent Metal command encoder crash
-  // Update thread calls this during season change events while render may be
-  // using textures
-  m_cachePendingClear.store(true, std::memory_order_release);
-  WORLD_MANAGER_DEBUG(
-      "TileRenderer: Chunk cache invalidated (deferred clear pending)");
+  // No-op: Direct rendering mode doesn't cache chunks
+  // Kept for API compatibility with season changes and world unload
 }
 
 HammerEngine::TileRenderer::~TileRenderer() { unsubscribeFromSeasonEvents(); }
@@ -1527,42 +1521,51 @@ std::string HammerEngine::TileRenderer::getSeasonalTextureID(
   return seasonPrefixes[static_cast<int>(m_currentSeason)] + baseID;
 }
 
-void HammerEngine::TileRenderer::renderChunkToTexture(
-    const HammerEngine::WorldData &world, SDL_Renderer *renderer, int chunkX,
-    int chunkY, SDL_Texture *target) {
-  // Set render target to chunk texture
-  SDL_SetRenderTarget(renderer, target);
-  SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
-  SDL_RenderClear(renderer);
+void HammerEngine::TileRenderer::render(
+    const HammerEngine::WorldData& world, SDL_Renderer* renderer,
+    float cameraX, float cameraY, float viewportWidth, float viewportHeight) {
+  if (world.grid.empty()) {
+    WORLD_MANAGER_WARN("TileRenderer: Cannot render - world grid is empty");
+    return;
+  }
 
-  // Calculate tile range for this chunk (extended by 1 tile for padding fill)
+  if (!renderer) {
+    WORLD_MANAGER_ERROR("TileRenderer: Cannot render - renderer is null");
+    return;
+  }
+
+  // Camera position is already floored by SceneRenderer for pixel-perfect tiles
+  const float flooredCamX = cameraX;
+  const float flooredCamY = cameraY;
+
+  // Calculate visible tile range with padding for sprites extending beyond bounds
   const int worldWidth = static_cast<int>(world.grid[0].size());
   const int worldHeight = static_cast<int>(world.grid.size());
-  const int startTileX = chunkX * CHUNK_SIZE;
-  const int startTileY = chunkY * CHUNK_SIZE;
-  const int endTileX = std::min(startTileX + CHUNK_SIZE, worldWidth);
-  const int endTileY = std::min(startTileY + CHUNK_SIZE, worldHeight);
-
-  // Extended range for biome rendering (fills padding area)
-  const int extStartX = std::max(0, startTileX - 1);
-  const int extStartY = std::max(0, startTileY - 1);
-  const int extEndX = std::min(worldWidth, endTileX + 1);
-  const int extEndY = std::min(worldHeight, endTileY + 1);
-
   constexpr int tileSize = static_cast<int>(TILE_SIZE);
 
-  // LAYER 1: Biomes - fill entire texture including padding
-  for (int y = extStartY; y < extEndY; ++y) {
-    for (int x = extStartX; x < extEndX; ++x) {
-      const HammerEngine::Tile &tile = world.grid[y][x];
-      // Biomes render without SPRITE_OVERHANG offset for padding fill
-      const float localX =
-          static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-      const float localY =
-          static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
+  // Visible tile range (with 1 tile padding for partial tiles at edges)
+  const int startTileX = std::max(0, static_cast<int>(flooredCamX / TILE_SIZE) - VIEWPORT_PADDING);
+  const int startTileY = std::max(0, static_cast<int>(flooredCamY / TILE_SIZE) - VIEWPORT_PADDING);
+  const int endTileX = std::min(worldWidth, static_cast<int>((flooredCamX + viewportWidth) / TILE_SIZE) + VIEWPORT_PADDING + 1);
+  const int endTileY = std::min(worldHeight, static_cast<int>((flooredCamY + viewportHeight) / TILE_SIZE) + VIEWPORT_PADDING + 1);
 
-      const CachedTexture *tex = &m_cachedTextures.biome_default;
-      // Render water for both true water (rivers/ocean) AND water obstacles (swamp puddles)
+  // Extended range for sprites that overhang into view (trees, buildings extend upward)
+  const int spriteStartX = std::max(0, startTileX - 2);
+  const int spriteStartY = std::max(0, startTileY - 4);  // 4 tiles for tall sprites
+  const int spriteEndX = std::min(worldWidth, endTileX + 2);
+  const int spriteEndY = std::min(worldHeight, endTileY + 1);
+
+  // LAYER 1: Render biome tiles directly from atlas
+  // SDL3 automatically batches these draws since they all use the same atlas texture
+  for (int y = startTileY; y < endTileY; ++y) {
+    for (int x = startTileX; x < endTileX; ++x) {
+      const HammerEngine::Tile& tile = world.grid[y][x];
+
+      // Calculate screen position
+      const float screenX = static_cast<float>(x * tileSize) - flooredCamX;
+      const float screenY = static_cast<float>(y * tileSize) - flooredCamY;
+
+      const CachedTexture* tex = &m_cachedTextures.biome_default;
       if (tile.isWater || tile.obstacleType == HammerEngine::ObstacleType::WATER) {
         tex = &m_cachedTextures.obstacle_water;
       } else {
@@ -1595,46 +1598,34 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
           break;
         }
       }
-      // CRITICAL: Use tileSize,tileSize for biomes - NOT tex->w,tex->h
-      // This ensures exact grid alignment regardless of source texture size
-      // Use source rect for atlas-based rendering
+
       if (tex->ptr) {
         SDL_FRect srcRect = {tex->atlasX, tex->atlasY, tex->w, tex->h};
-        SDL_FRect destRect = {localX, localY, static_cast<float>(tileSize), static_cast<float>(tileSize)};
+        SDL_FRect destRect = {screenX, screenY, static_cast<float>(tileSize), static_cast<float>(tileSize)};
         SDL_RenderTexture(renderer, tex->ptr, &srcRect, &destRect);
       }
     }
   }
 
-  // LAYER 2: Decorations (ground-level, rendered before Y-sorted obstacles)
-  // Extended range to capture decorations that overhang into this chunk
-  // Match sprite ranges: 4 tiles up (tall sprites extend upward), 1 tile down
-  const int decoStartX = std::max(0, startTileX - 2);  // 2 tiles for wide decorations
-  const int decoStartY = std::max(0, startTileY - 4);  // 4 tiles (match sprite range)
-  const int decoEndX = std::min(worldWidth, endTileX + 2);
-  const int decoEndY = std::min(worldHeight, endTileY + 1);  // +1 (decorations extend up, not down)
-
-  for (int y = decoStartY; y < decoEndY; ++y) {
-    for (int x = decoStartX; x < decoEndX; ++x) {
-      const HammerEngine::Tile &tile = world.grid[y][x];
+  // LAYER 2: Render decorations (ground-level, before Y-sorted obstacles)
+  for (int y = spriteStartY; y < spriteEndY; ++y) {
+    for (int x = spriteStartX; x < spriteEndX; ++x) {
+      const HammerEngine::Tile& tile = world.grid[y][x];
 
       if (tile.decorationType == HammerEngine::DecorationType::NONE) {
         continue;
       }
 
-      // Skip decorations on land obstacle tiles (trees, rocks have visual priority)
-      // Allow water decorations on WATER obstacle tiles
+      // Skip decorations on land obstacles (trees, rocks have visual priority)
       if (tile.obstacleType != HammerEngine::ObstacleType::NONE &&
           tile.obstacleType != HammerEngine::ObstacleType::WATER) {
         continue;
       }
 
-      const float localX =
-          static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-      const float localY =
-          static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
+      const float screenX = static_cast<float>(x * tileSize) - flooredCamX;
+      const float screenY = static_cast<float>(y * tileSize) - flooredCamY;
 
-      const CachedTexture *tex = nullptr;
+      const CachedTexture* tex = nullptr;
       switch (tile.decorationType) {
       case HammerEngine::DecorationType::FLOWER_BLUE:
         tex = &m_cachedTextures.decoration_flower_blue;
@@ -1688,8 +1679,6 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
         continue;
       }
 
-      // Skip if texture not loaded (e.g., flowers in winter have empty texture
-      // ID)
       if (!tex || !tex->ptr) {
         continue;
       }
@@ -1698,34 +1687,25 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
       const float offsetX = (TILE_SIZE - tex->w) / 2.0f;
       const float offsetY = TILE_SIZE - tex->h;
 
-      // Use source rect for atlas-based rendering
       SDL_FRect srcRect = {tex->atlasX, tex->atlasY, tex->w, tex->h};
-      SDL_FRect destRect = {localX + offsetX, localY + offsetY, tex->w, tex->h};
+      SDL_FRect destRect = {screenX + offsetX, screenY + offsetY, tex->w, tex->h};
       SDL_RenderTexture(renderer, tex->ptr, &srcRect, &destRect);
     }
   }
 
   // LAYER 3: Collect obstacles and buildings for Y-sorted rendering
-  // Extended range to capture sprites that overhang into this chunk from
-  // adjacent tiles
-  const int spriteStartX =
-      std::max(0, startTileX - 2); // 2 tiles for building overhang
-  const int spriteStartY =
-      std::max(0, startTileY - 4); // 4 tiles for tall sprites above
-  const int spriteEndX = std::min(worldWidth, endTileX + 2);
-  const int spriteEndY = std::min(worldHeight, endTileY + 1);
-
   m_ySortBuffer.clear();
+  // Reserve capacity to prevent per-frame reallocations (estimated max visible sprites)
+  if (m_ySortBuffer.capacity() < 512) {
+    m_ySortBuffer.reserve(512);
+  }
 
   for (int y = spriteStartY; y < spriteEndY; ++y) {
     for (int x = spriteStartX; x < spriteEndX; ++x) {
-      const HammerEngine::Tile &tile = world.grid[y][x];
+      const HammerEngine::Tile& tile = world.grid[y][x];
 
-      // Calculate local position in chunk texture
-      const float localX =
-          static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-      const float localY =
-          static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
+      const float screenX = static_cast<float>(x * tileSize) - flooredCamX;
+      const float screenY = static_cast<float>(y * tileSize) - flooredCamY;
 
       const bool isPartOfBuilding =
           (tile.obstacleType == HammerEngine::ObstacleType::BUILDING &&
@@ -1736,7 +1716,7 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
           tile.obstacleType != HammerEngine::ObstacleType::NONE &&
           tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
 
-        const CachedTexture *tex = &m_cachedTextures.biome_default;
+        const CachedTexture* tex = &m_cachedTextures.biome_default;
         switch (tile.obstacleType) {
         case HammerEngine::ObstacleType::TREE:
           tex = &m_cachedTextures.obstacle_tree;
@@ -1745,8 +1725,7 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
           tex = &m_cachedTextures.obstacle_rock;
           break;
         case HammerEngine::ObstacleType::WATER:
-          continue; // Water is biome layer
-        // Ore deposits
+          continue;
         case HammerEngine::ObstacleType::IRON_DEPOSIT:
           tex = &m_cachedTextures.obstacle_iron_deposit;
           break;
@@ -1765,7 +1744,6 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
         case HammerEngine::ObstacleType::COAL_DEPOSIT:
           tex = &m_cachedTextures.obstacle_coal_deposit;
           break;
-        // Gem deposits
         case HammerEngine::ObstacleType::EMERALD_DEPOSIT:
           tex = &m_cachedTextures.obstacle_emerald_deposit;
           break;
@@ -1784,18 +1762,16 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
 
         const float offsetX = (TILE_SIZE - tex->w) / 2.0f;
         const float offsetY = TILE_SIZE - tex->h;
-
-        // Y-sort key is bottom of sprite (tile Y + 1 tile = bottom)
-        const float sortY = localY + TILE_SIZE;
+        const float sortY = screenY + TILE_SIZE;
 
         m_ySortBuffer.push_back(
-            {sortY, localX + offsetX, localY + offsetY, tex, false, 0, 0});
+            {sortY, screenX + offsetX, screenY + offsetY, tex, false, 0, 0});
       }
 
       // Buildings - from top-left tile only
       if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING &&
           tile.isTopLeftOfBuilding) {
-        const CachedTexture *tex = &m_cachedTextures.building_hut;
+        const CachedTexture* tex = &m_cachedTextures.building_hut;
         switch (tile.buildingSize) {
         case 1:
           tex = &m_cachedTextures.building_hut;
@@ -1813,23 +1789,27 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
           break;
         }
 
-        // Y-sort key is bottom of building footprint
-        float sortY = localY + (tile.buildingSize * TILE_SIZE);
+        float sortY = screenY + (tile.buildingSize * TILE_SIZE);
 
-        m_ySortBuffer.push_back({sortY, localX, localY, tex, true,
+        m_ySortBuffer.push_back({sortY, screenX, screenY, tex, true,
                                  static_cast<int>(tex->w),
                                  static_cast<int>(tex->h)});
       }
     }
   }
 
-  // Sort by Y (bottom of sprite) for proper layering
+  // Sort by Y (bottom of sprite) for proper depth layering
+  // Secondary sort by X, then renderY for fully deterministic ordering
   std::sort(
       m_ySortBuffer.begin(), m_ySortBuffer.end(),
-      [](const YSortedSprite &a, const YSortedSprite &b) { return a.y < b.y; });
+      [](const YSortedSprite& a, const YSortedSprite& b) {
+        if (a.y != b.y) return a.y < b.y;
+        if (a.renderX != b.renderX) return a.renderX < b.renderX;
+        return a.renderY < b.renderY;  // Final tie-breaker
+      });
 
-  // Render sorted sprites into chunk texture using source rects for atlas
-  for (const auto &sprite : m_ySortBuffer) {
+  // Render sorted sprites directly from atlas
+  for (const auto& sprite : m_ySortBuffer) {
     const float spriteW = sprite.isBuilding ? static_cast<float>(sprite.buildingWidth)
                                             : sprite.tex->w;
     const float spriteH = sprite.isBuilding ? static_cast<float>(sprite.buildingHeight)
@@ -1838,226 +1818,6 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
     SDL_FRect destRect = {sprite.renderX, sprite.renderY, spriteW, spriteH};
     SDL_RenderTexture(renderer, sprite.tex->ptr, &srcRect, &destRect);
   }
-
-  // NOTE: Do not reset render target here. The caller (TileRenderer::render)
-  // is responsible for restoring the previous render target after this call.
-  // This allows proper nesting when SceneRenderer's intermediate texture is active.
-}
-
-void HammerEngine::TileRenderer::render(
-    const HammerEngine::WorldData& world, SDL_Renderer* renderer,
-    float cameraX, float cameraY, float viewportWidth, float viewportHeight) {
-  if (world.grid.empty()) {
-    WORLD_MANAGER_WARN("TileRenderer: Cannot render - world grid is empty");
-    return;
-  }
-
-  if (!renderer) {
-    WORLD_MANAGER_ERROR("TileRenderer: Cannot render - renderer is null");
-    return;
-  }
-
-  // Process deferred cache clear safely on render thread (before any texture
-  // access) This prevents Metal command encoder crash when season change clears
-  // cache during render
-  if (m_cachePendingClear.exchange(false, std::memory_order_acq_rel)) {
-    m_chunkCache.clear();
-    WORLD_MANAGER_DEBUG("TileRenderer: Chunk cache cleared (deferred)");
-  }
-
-  // Increment frame counter for LRU tracking
-  ++m_frameCounter;
-
-  // Camera position is already floored by SceneRenderer for pixel-perfect tiles
-  const float flooredCamX = cameraX;
-  const float flooredCamY = cameraY;
-
-  // Calculate visible chunk range (what's actually on screen)
-  const int worldWidth = static_cast<int>(world.grid[0].size());
-  const int worldHeight = static_cast<int>(world.grid.size());
-  const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
-  const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
-
-  const int visibleStartX = std::max(
-      0, static_cast<int>(flooredCamX / (CHUNK_SIZE * TILE_SIZE)));
-  const int visibleStartY = std::max(
-      0, static_cast<int>(flooredCamY / (CHUNK_SIZE * TILE_SIZE)));
-  const int visibleEndX =
-      std::min(maxChunkX, static_cast<int>((flooredCamX + viewportWidth) /
-                                           (CHUNK_SIZE * TILE_SIZE)) + 1);
-  const int visibleEndY =
-      std::min(maxChunkY, static_cast<int>((flooredCamY + viewportHeight) /
-                                           (CHUNK_SIZE * TILE_SIZE)) + 1);
-
-  // Pre-load range: 1 chunk padding around visible area for smooth movement
-  // Chunks are created and rendered to texture before they become visible
-  constexpr int PRELOAD_PADDING = 1;
-  const int startChunkX = std::max(0, visibleStartX - PRELOAD_PADDING);
-  const int startChunkY = std::max(0, visibleStartY - PRELOAD_PADDING);
-  const int endChunkX = std::min(maxChunkX - 1, visibleEndX + PRELOAD_PADDING);
-  const int endChunkY = std::min(maxChunkY - 1, visibleEndY + PRELOAD_PADDING);
-
-  // Chunk texture size includes padding for sprites extending beyond tile bounds
-  constexpr int chunkPixelSize =
-      CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
-
-  // Track currently visible chunk keys for LRU eviction
-  m_visibleKeysBuffer.clear();
-  m_visibleKeysSet.clear();
-
-  // Process chunks in pre-load range (visible + 1 chunk padding)
-  // This ensures chunks are ready before they scroll into view
-  for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
-    for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
-      const uint64_t key = makeChunkKey(chunkX, chunkY);
-      m_visibleKeysBuffer.push_back(key);
-      m_visibleKeysSet.insert(key);  // O(1) lookup for eviction
-
-      // Get or create chunk cache entry
-      auto it = m_chunkCache.find(key);
-      if (it == m_chunkCache.end()) {
-        // Create new chunk texture
-        SDL_Texture* tex =
-            SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
-                              SDL_TEXTUREACCESS_TARGET, chunkPixelSize,
-                              chunkPixelSize);
-        if (!tex) {
-          WORLD_MANAGER_ERROR("Failed to create chunk texture");
-          continue;
-        }
-        SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
-
-        ChunkCache cache;
-        cache.texture = std::shared_ptr<SDL_Texture>(tex, SDL_DestroyTexture);
-        cache.dirty = true;
-        cache.lastUsedFrame = m_frameCounter;
-        it = m_chunkCache.emplace(key, std::move(cache)).first;
-      }
-
-      ChunkCache& chunk = it->second;
-      chunk.lastUsedFrame = m_frameCounter;  // Update LRU timestamp
-
-      // Re-render chunk if dirty (save/restore render target for proper nesting)
-      // This happens for ALL chunks in pre-load range, ensuring they're ready
-      if (chunk.dirty && chunk.texture) {
-        SDL_Texture* previousTarget = SDL_GetRenderTarget(renderer);
-        renderChunkToTexture(world, renderer, chunkX, chunkY,
-                             chunk.texture.get());
-        SDL_SetRenderTarget(renderer, previousTarget);
-        chunk.dirty = false;
-      }
-
-      // Only blit VISIBLE chunks to screen (skip pre-loaded chunks outside viewport)
-      const bool isVisible = (chunkX >= visibleStartX && chunkX <= visibleEndX &&
-                              chunkY >= visibleStartY && chunkY <= visibleEndY);
-      if (!isVisible) {
-        continue;  // Chunk is pre-loaded but not yet visible
-      }
-
-      // Render chunk to current target at integer positions
-      if (chunk.texture) {
-        constexpr int chunkWorldSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
-
-        // Calculate position using floored camera (all positions are integer - no sub-pixel)
-        float screenX = static_cast<float>(chunkX * chunkWorldSize) -
-                        flooredCamX - SPRITE_OVERHANG;
-        float screenY = static_cast<float>(chunkY * chunkWorldSize) -
-                        flooredCamY - SPRITE_OVERHANG;
-
-        // Default: full chunk texture
-        float srcX = 0;
-        float srcY = 0;
-        float srcW = static_cast<float>(chunkPixelSize);
-        float srcH = static_cast<float>(chunkPixelSize);
-        float destW = srcW;
-        float destH = srcH;
-
-        // Exclude padding from non-edge chunks to prevent overlap/double-blend
-        // Use VISIBLE range for edge detection (not pre-load range)
-        // LEFT EDGE: Clip left padding if there's a chunk to the left
-        if (chunkX > visibleStartX) {
-          srcX = SPRITE_OVERHANG;
-          srcW -= SPRITE_OVERHANG;
-          screenX += SPRITE_OVERHANG;
-          destW = srcW;
-        }
-        // TOP EDGE: Clip top padding if there's a chunk above
-        if (chunkY > visibleStartY) {
-          srcY = SPRITE_OVERHANG;
-          srcH -= SPRITE_OVERHANG;
-          screenY += SPRITE_OVERHANG;
-          destH = srcH;
-        }
-        // RIGHT EDGE: Clip right padding if there's a chunk to the right
-        if (chunkX < visibleEndX) {
-          srcW -= SPRITE_OVERHANG;
-          destW = srcW;
-        }
-        // BOTTOM EDGE: Clip bottom padding if there's a chunk below
-        if (chunkY < visibleEndY) {
-          srcH -= SPRITE_OVERHANG;
-          destH = srcH;
-        }
-
-        // Render at integer positions (floor for pixel-perfect tiles)
-        SDL_FRect srcRect = {srcX, srcY, srcW, srcH};
-        SDL_FRect destRect = {std::floor(screenX), std::floor(screenY), destW, destH};
-        SDL_RenderTexture(renderer, chunk.texture.get(), &srcRect, &destRect);
-      }
-    }
-  }
-
-  // LRU eviction: Remove oldest chunks when cache exceeds limit
-  // Uses hysteresis to avoid eviction thrashing (evict when 8 over limit)
-  constexpr size_t EVICTION_HYSTERESIS = 8;
-  if (m_chunkCache.size() > MAX_CACHED_CHUNKS + EVICTION_HYSTERESIS) {
-    m_evictionBuffer.clear();
-    for (const auto& [key, cache] : m_chunkCache) {
-      // O(1) hash set lookup instead of O(n) linear search
-      if (m_visibleKeysSet.find(key) == m_visibleKeysSet.end()) {
-        m_evictionBuffer.emplace_back(key, cache.lastUsedFrame);
-      }
-    }
-
-    std::sort(m_evictionBuffer.begin(), m_evictionBuffer.end(),
-              [](const auto& a, const auto& b) { return a.second < b.second; });
-
-    const size_t toEvict = m_chunkCache.size() - MAX_CACHED_CHUNKS;
-    for (size_t i = 0; i < std::min(toEvict, m_evictionBuffer.size()); ++i) {
-      m_chunkCache.erase(m_evictionBuffer[i].first);
-    }
-
-    WORLD_MANAGER_DEBUG(std::format(
-        "TileRenderer: Evicted {} chunks from cache (cache size: {})",
-        std::min(toEvict, m_evictionBuffer.size()), m_chunkCache.size()));
-  }
-}
-
-HammerEngine::TileRenderer::ChunkBounds
-HammerEngine::TileRenderer::calculateVisibleChunks(float cameraX, float cameraY,
-                                                   int viewportWidth,
-                                                   int viewportHeight) const {
-
-  // Add generous padding for chunk pre-loading (load chunks well in advance)
-  const float chunkPadding = (CHUNK_SIZE * TILE_SIZE) *
-                             2.0f; // Load 2 full chunks ahead in each direction
-
-  // Calculate camera bounds with expanded padding for chunk pre-loading
-  const float leftBound = cameraX - (viewportWidth * 0.5f) - chunkPadding;
-  const float rightBound = cameraX + (viewportWidth * 0.5f) + chunkPadding;
-  const float topBound = cameraY - (viewportHeight * 0.5f) - chunkPadding;
-  const float bottomBound = cameraY + (viewportHeight * 0.5f) + chunkPadding;
-
-  // Convert to chunk coordinates
-  ChunkBounds bounds;
-  const int chunkPixelSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
-  bounds.startChunkX =
-      std::max(0, static_cast<int>(leftBound) / chunkPixelSize);
-  bounds.endChunkX = static_cast<int>(rightBound) / chunkPixelSize;
-  bounds.startChunkY = std::max(0, static_cast<int>(topBound) / chunkPixelSize);
-  bounds.endChunkY = static_cast<int>(bottomBound) / chunkPixelSize;
-
-  return bounds;
 }
 
 void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile &tile,

@@ -14,7 +14,6 @@
 #include <atomic>
 #include <shared_mutex>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 #include "managers/EventManager.hpp"
 
@@ -217,44 +216,14 @@ private:
         CachedTexture decoration_water_flower;
     } m_cachedTextures;
 
-    // Chunk texture cache - pre-rendered tile chunks to reduce draw calls
-    // Thread safety: Season events (onSeasonChange) dispatch from update thread while
-    // render runs on main thread. Deferred cache clear pattern ensures safe texture destruction.
-    struct ChunkCache {
-        std::shared_ptr<SDL_Texture> texture;
-        bool dirty{true};  // Needs re-render
-        uint64_t lastUsedFrame{0};  // For LRU eviction
-    };
-    std::unordered_map<uint64_t, ChunkCache> m_chunkCache;  // Key: (chunkY << 32) | chunkX
-    uint64_t m_frameCounter{0};  // For LRU tracking
-    static constexpr size_t MAX_CACHED_CHUNKS = 64;  // ~256MB max VRAM (4MB per 1024x1024 chunk)
-
-    // Reusable buffers for render loop (avoids per-frame allocations per CLAUDE.md)
-    mutable std::vector<uint64_t> m_visibleKeysBuffer;
-    mutable std::unordered_set<uint64_t> m_visibleKeysSet;  // O(1) lookup for eviction
-    mutable std::vector<std::pair<uint64_t, uint64_t>> m_evictionBuffer;
-    mutable std::vector<YSortedSprite> m_ySortBuffer;  // For Y-sorted obstacle rendering in chunks
-
-    // Chunk cache helpers
-    static uint64_t makeChunkKey(int chunkX, int chunkY) {
-        return (static_cast<uint64_t>(chunkY) << 32) | static_cast<uint32_t>(chunkX);
-    }
-    void renderChunkToTexture(const WorldData& world, SDL_Renderer* renderer,
-                              int chunkX, int chunkY, SDL_Texture* target);
+    // Reusable buffer for Y-sorted sprite rendering (avoids per-frame allocations per CLAUDE.md)
+    mutable std::vector<YSortedSprite> m_ySortBuffer;
 
     // Season change handler
     void onSeasonChange(const EventData& data);
 
     // Seasonal texture ID helper
     std::string getSeasonalTextureID(const std::string& baseID) const;
-
-    // Chunk-based rendering helpers
-    struct ChunkBounds {
-        int startChunkX, endChunkX;
-        int startChunkY, endChunkY;
-    };
-
-    ChunkBounds calculateVisibleChunks(float cameraX, float cameraY, int viewportWidth, int viewportHeight) const;
 
     std::string getBiomeTexture(HammerEngine::Biome biome) const;
     std::string getObstacleTexture(HammerEngine::ObstacleType obstacle) const;
@@ -266,10 +235,6 @@ private:
 
     // World object definitions loaded from JSON
     WorldObjectsData m_worldObjects;
-
-    // Deferred cache invalidation - set by update thread, cleared by render thread
-    // Ensures textures are only destroyed when not in use by Metal command encoder
-    std::atomic<bool> m_cachePendingClear{false};
 
     // Atlas-based rendering (single texture, source rects from JSON)
     // Pre-loaded seasonal coords - eliminates runtime lookups on season change
