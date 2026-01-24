@@ -19,9 +19,15 @@ namespace HammerEngine {
  * - Direct execution from project directory
  * - Future modding support via search path priorities
  *
+ * THREAD-SAFETY NOTE:
+ * ResourcePath::init() must be called exactly once during single-threaded
+ * initialization (before any game threads start). Once initialized, all
+ * methods are thread-safe for reading. The static state is immutable after
+ * init() completes.
+ *
  * Usage:
- *   ResourcePath::init();  // Call once at startup
- *   std::string path = ResourcePath::resolve("res/img/icon.png");
+ *   ResourcePath::init();  // Call once at startup (single-threaded)
+ *   std::string path = ResourcePath::resolve("res/img/icon.png");  // Thread-safe reads
  */
 class ResourcePath {
 public:
@@ -29,6 +35,9 @@ public:
      * Initialize the resource path system.
      * Detects execution context (bundle vs direct) and sets up base paths.
      * Must be called once before any resolve() calls.
+     *
+     * THREAD-SAFETY: Must be called from main thread before ThreadSystem starts.
+     * After initialization, all methods are safe for concurrent reads.
      */
     static void init();
 

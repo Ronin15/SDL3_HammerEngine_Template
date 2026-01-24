@@ -96,7 +96,7 @@ public:
   int getCurrentCombo() const;
 
   // State change notification - applies velocity lunge for attack states
-  void notifyAnimationStateChange(size_t edmIndex, AttackState newState);
+  void notifyAnimationStateChange(size_t edmIndex, AttackState newState, const Vector2D& targetPos);
 
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
