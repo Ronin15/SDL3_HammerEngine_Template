@@ -356,11 +356,11 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile &newTile) {
   m_currentWorld->grid[y][x] = newTile;
 
   // Invalidate chunk containing this tile AND adjacent chunks only if tile is
-  // near chunk edge (within overhang distance). Sprites can extend up to 2 tiles
+  // near chunk edge (within overhang distance). Sprites can extend up to 3 tiles
   // (SPRITE_OVERHANG / TILE_SIZE) into neighboring chunks.
   if (m_tileRenderer) {
     constexpr int chunkSize = 32;    // TileRenderer::CHUNK_SIZE
-    constexpr int overhangTiles = 2; // SPRITE_OVERHANG (64) / TILE_SIZE (32)
+    constexpr int overhangTiles = 3; // SPRITE_OVERHANG (96) / TILE_SIZE (32)
 
     const int chunkX = x / chunkSize;
     const int chunkY = y / chunkSize;
