@@ -88,10 +88,11 @@ SceneRenderer::SceneContext SceneRenderer::beginScene(
     float flooredCameraX = std::floor(rawCameraX);
     float flooredCameraY = std::floor(rawCameraY);
 
-    // With NEAREST scalemode, sub-pixel offsets cause shifting artifacts.
-    // Use integer-only camera positioning for consistent pixel-perfect rendering.
-    m_subPixelOffsetX = 0.0f;
-    m_subPixelOffsetY = 0.0f;
+    // Calculate sub-pixel offset for smooth camera scrolling.
+    // This represents the fractional pixel position lost when flooring for tile alignment.
+    // Applied as negative offset during composite to smoothly shift the entire scene.
+    m_subPixelOffsetX = rawCameraX - flooredCameraX;
+    m_subPixelOffsetY = rawCameraY - flooredCameraY;
 
     // Store render state for endScene
     m_currentZoom = zoom;
@@ -148,10 +149,20 @@ void SceneRenderer::endScene(SDL_Renderer* renderer) {
     // Apply zoom via render scale
     SDL_SetRenderScale(renderer, m_currentZoom, m_currentZoom);
 
-    // Composite intermediate texture to screen with sub-pixel offset
+    // Use LINEAR filtering for final composite to enable smooth sub-pixel scrolling.
+    // This allows fractional pixel offsets without shimmer artifacts.
+    // Tiles remain pixel-perfect in the intermediate texture; only the composite is filtered.
+    SDL_SetTextureScaleMode(m_intermediateTexture.get(), SDL_SCALEMODE_LINEAR);
+
+    // Composite intermediate texture to screen with sub-pixel offset.
+    // Negative offset shifts the scene to compensate for floored tile positions,
+    // creating smooth continuous scrolling as camera moves between pixel boundaries.
     SDL_FRect srcRect = {0, 0, m_viewportWidth, m_viewportHeight};
-    SDL_FRect destRect = {m_subPixelOffsetX, m_subPixelOffsetY, m_viewportWidth, m_viewportHeight};
+    SDL_FRect destRect = {-m_subPixelOffsetX, -m_subPixelOffsetY, m_viewportWidth, m_viewportHeight};
     SDL_RenderTexture(renderer, m_intermediateTexture.get(), &srcRect, &destRect);
+
+    // Restore NEAREST filtering for next frame's tile rendering
+    SDL_SetTextureScaleMode(m_intermediateTexture.get(), SDL_SCALEMODE_NEAREST);
 
     // Reset render scale to 1.0 for UI rendering
     SDL_SetRenderScale(renderer, 1.0f, 1.0f);
