@@ -155,14 +155,17 @@ bool GamePlayState::enter() {
     // Initialize combat HUD (health/stamina bars, target frame)
     initializeCombatHUD();
 
+    // Cache EventManager reference for event subscriptions
+    auto &eventMgr = EventManager::Instance();
+
     // Subscribe to TimePeriodChangedEvent for day/night overlay rendering
-    m_dayNightEventToken = EventManager::Instance().registerHandlerWithToken(
+    m_dayNightEventToken = eventMgr.registerHandlerWithToken(
         EventTypeId::Time,
         [this](const EventData &data) { onTimePeriodChanged(data); });
     m_dayNightSubscribed = true;
 
     // Subscribe to WeatherChangedEvent for ambient particle management
-    m_weatherEventToken = EventManager::Instance().registerHandlerWithToken(
+    m_weatherEventToken = eventMgr.registerHandlerWithToken(
         EventTypeId::Weather,
         [this](const EventData &data) { onWeatherChanged(data); });
     m_weatherSubscribed = true;
@@ -449,16 +452,19 @@ bool GamePlayState::exit() {
   // Stop ambient particles before unsubscribing
   stopAmbientParticles();
 
-  // Unsubscribe from TimePeriodChangedEvent
-  if (m_dayNightSubscribed) {
-    EventManager::Instance().removeHandler(m_dayNightEventToken);
-    m_dayNightSubscribed = false;
-  }
+  // Unsubscribe from event handlers
+  if (m_dayNightSubscribed || m_weatherSubscribed) {
+    auto &eventMgr = EventManager::Instance();
 
-  // Unsubscribe from WeatherChangedEvent
-  if (m_weatherSubscribed) {
-    EventManager::Instance().removeHandler(m_weatherEventToken);
-    m_weatherSubscribed = false;
+    if (m_dayNightSubscribed) {
+      eventMgr.removeHandler(m_dayNightEventToken);
+      m_dayNightSubscribed = false;
+    }
+
+    if (m_weatherSubscribed) {
+      eventMgr.removeHandler(m_weatherEventToken);
+      m_weatherSubscribed = false;
+    }
   }
 
   // Reset initialization flag for next fresh start
@@ -637,8 +643,9 @@ void GamePlayState::handleInput() {
       int const tileY =
           static_cast<int>(worldPos.getY() / HammerEngine::TILE_SIZE);
 
-      if (WorldManager::Instance().isValidPosition(tileX, tileY)) {
-        const auto *tile = WorldManager::Instance().getTileAt(tileX, tileY);
+      auto &worldMgr = WorldManager::Instance();
+      if (worldMgr.isValidPosition(tileX, tileY)) {
+        const auto *tile = worldMgr.getTileAt(tileX, tileY);
         // Log tile information for debugging
         GAMEPLAY_DEBUG_IF(
             tile,
@@ -975,29 +982,32 @@ void GamePlayState::updateAmbientParticles(TimePeriod period) {
     stopAmbientParticles();
   }
 
+  // Cache ParticleManager reference for multiple effect calls
+  auto &particleMgr = ParticleManager::Instance();
+
   // Start appropriate particles for the new period
   switch (period) {
   case TimePeriod::Morning:
     // Light dust motes in morning sunlight
-    m_ambientDustEffectId = ParticleManager::Instance().playIndependentEffect(
+    m_ambientDustEffectId = particleMgr.playIndependentEffect(
         ParticleEffectType::AmbientDust, screenCenter, 0.6f, -1.0f, "ambient");
     break;
 
   case TimePeriod::Day:
     // Subtle dust particles during the day
-    m_ambientDustEffectId = ParticleManager::Instance().playIndependentEffect(
+    m_ambientDustEffectId = particleMgr.playIndependentEffect(
         ParticleEffectType::AmbientDust, screenCenter, 0.4f, -1.0f, "ambient");
     break;
 
   case TimePeriod::Evening:
     // Golden dust in evening light
-    m_ambientDustEffectId = ParticleManager::Instance().playIndependentEffect(
+    m_ambientDustEffectId = particleMgr.playIndependentEffect(
         ParticleEffectType::AmbientDust, screenCenter, 0.8f, -1.0f, "ambient");
     break;
 
   case TimePeriod::Night:
     // Fireflies at night
-    m_ambientFireflyEffectId = ParticleManager::Instance().playIndependentEffect(
+    m_ambientFireflyEffectId = particleMgr.playIndependentEffect(
         ParticleEffectType::AmbientFirefly, screenCenter, 1.0f, -1.0f,
         "ambient");
     break;
@@ -1008,14 +1018,18 @@ void GamePlayState::updateAmbientParticles(TimePeriod period) {
 }
 
 void GamePlayState::stopAmbientParticles() {
-  if (m_ambientDustEffectId != 0) {
-    ParticleManager::Instance().stopIndependentEffect(m_ambientDustEffectId);
-    m_ambientDustEffectId = 0;
-  }
+  if (m_ambientDustEffectId != 0 || m_ambientFireflyEffectId != 0) {
+    auto &particleMgr = ParticleManager::Instance();
 
-  if (m_ambientFireflyEffectId != 0) {
-    ParticleManager::Instance().stopIndependentEffect(m_ambientFireflyEffectId);
-    m_ambientFireflyEffectId = 0;
+    if (m_ambientDustEffectId != 0) {
+      particleMgr.stopIndependentEffect(m_ambientDustEffectId);
+      m_ambientDustEffectId = 0;
+    }
+
+    if (m_ambientFireflyEffectId != 0) {
+      particleMgr.stopIndependentEffect(m_ambientFireflyEffectId);
+      m_ambientFireflyEffectId = 0;
+    }
   }
 
   m_ambientParticlesActive = false;

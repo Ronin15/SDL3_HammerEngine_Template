@@ -11,12 +11,14 @@
 #include "core/GameEngine.hpp"
 
 bool PauseState::enter() {
-  // Pause all game managers via GameEngine (collision, pathfinding, AI, particles, GameTime)
-  GameEngine::Instance().setGlobalPause(true);
-
-  // Create pause state UI
+  // Cache manager references at function start
   auto& gameEngine = GameEngine::Instance();
   auto& ui = UIManager::Instance();
+
+  // Pause all game managers via GameEngine (collision, pathfinding, AI, particles, GameTime)
+  gameEngine.setGlobalPause(true);
+
+  // Create pause state UI
   int windowWidth = gameEngine.getLogicalWidth();
   int windowHeight = gameEngine.getLogicalHeight();
 

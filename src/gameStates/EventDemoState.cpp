@@ -806,13 +806,14 @@ void EventDemoState::triggerWeatherDemo() {
   m_currentWeatherIndex = (m_currentWeatherIndex + 1) % m_weatherSequence.size();
 
   // Use EventManager hub to change weather
+  auto &eventMgr = EventManager::Instance();
   if (newWeather == WeatherType::Custom && !customType.empty()) {
-    EventManager::Instance().changeWeather(customType, m_weatherTransitionTime,
-                               EventManager::DispatchMode::Deferred);
+    eventMgr.changeWeather(customType, m_weatherTransitionTime,
+                           EventManager::DispatchMode::Deferred);
   } else {
     const char* wt = kWeatherTypeNames[static_cast<size_t>(newWeather)];
-    EventManager::Instance().changeWeather(wt, m_weatherTransitionTime,
-                               EventManager::DispatchMode::Deferred);
+    eventMgr.changeWeather(wt, m_weatherTransitionTime,
+                           EventManager::DispatchMode::Deferred);
   }
 
   m_currentWeather = newWeather;
@@ -896,7 +897,8 @@ void EventDemoState::triggerResourceDemo() {
   }
 
   // Cache manager references for better performance
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
+  auto &eventMgr = EventManager::Instance();
   const auto &templateManager = ResourceTemplateManager::Instance();
 
   if (!templateManager.isInitialized()) {
@@ -1015,8 +1017,9 @@ void EventDemoState::triggerResourceDemo() {
                               newQuantity));
 
       // Trigger resource change via EventManager (deferred by default)
-      EventManager::Instance().triggerResourceChange(m_player->getHandle(), handle, currentQuantity,
-                                         newQuantity, "event_demo");
+      eventMgr.triggerResourceChange(m_player->getHandle(), handle,
+                                     currentQuantity, newQuantity,
+                                     "event_demo");
     } else {
       addLogEntry("Failed: " + resourceName + " (full)");
     }
@@ -1032,8 +1035,9 @@ void EventDemoState::triggerResourceDemo() {
                                 resourceName, newQuantity));
 
         // Trigger resource change via EventManager (deferred by default)
-        EventManager::Instance().triggerResourceChange(m_player->getHandle(), handle, currentQuantity,
-                                           newQuantity, "event_demo");
+        eventMgr.triggerResourceChange(m_player->getHandle(), handle,
+                                       currentQuantity, newQuantity,
+                                       "event_demo");
       } else {
         addLogEntry("Failed: remove " + resourceName);
       }
@@ -1075,22 +1079,25 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
 
   m_convenienceDemoCounter++;
 
-  bool success1 = EventManager::Instance().createWeatherEvent(
+  // Cache EventManager reference for multiple calls
+  auto &eventMgr = EventManager::Instance();
+
+  bool success1 = eventMgr.createWeatherEvent(
       std::format("conv_fog_{}", m_convenienceDemoCounter), "Foggy", 0.7f,
       2.5f);
-  bool success2 = EventManager::Instance().createWeatherEvent(
+  bool success2 = eventMgr.createWeatherEvent(
       std::format("conv_storm_{}", m_convenienceDemoCounter), "Stormy", 0.9f,
       1.5f);
-  bool success3 = EventManager::Instance().createSceneChangeEvent(
+  bool success3 = eventMgr.createSceneChangeEvent(
       std::format("conv_dungeon_{}", m_convenienceDemoCounter), "DungeonDemo",
       "dissolve", 2.0f);
-  bool success4 = EventManager::Instance().createSceneChangeEvent(
+  bool success4 = eventMgr.createSceneChangeEvent(
       std::format("conv_town_{}", m_convenienceDemoCounter), "TownDemo",
       "slide", 1.0f);
-  bool success5 = EventManager::Instance().createNPCSpawnEvent(
+  bool success5 = eventMgr.createNPCSpawnEvent(
       std::format("conv_guards_{}", m_convenienceDemoCounter), "Guard", 2,
       30.0f);
-  bool success6 = EventManager::Instance().createNPCSpawnEvent(
+  bool success6 = eventMgr.createNPCSpawnEvent(
       std::format("conv_merchants_{}", m_convenienceDemoCounter), "Merchant", 1,
       15.0f);
 
@@ -1100,8 +1107,8 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
     addLogEntry("Created 6 events successfully");
 
     // Trigger via EventManager for demonstration
-    EventManager::Instance().changeWeather("Foggy", 2.5f,
-                               EventManager::DispatchMode::Deferred);
+    eventMgr.changeWeather("Foggy", 2.5f,
+                           EventManager::DispatchMode::Deferred);
 
     m_currentWeather = WeatherType::Foggy;
     addLogEntry("Weather: Foggy (demo)");
@@ -1113,12 +1120,14 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
 void EventDemoState::resetAllEvents() {
   cleanupSpawnedNPCs();
 
+  // Cache EventManager reference for multiple calls
+  auto &eventMgr = EventManager::Instance();
+
   // Remove all events from EventManager
-  EventManager::Instance().clearAllEvents();
+  eventMgr.clearAllEvents();
 
   // Trigger clear weather via EventManager
-  EventManager::Instance().changeWeather("Clear", 1.0f,
-                             EventManager::DispatchMode::Deferred);
+  eventMgr.changeWeather("Clear", 1.0f, EventManager::DispatchMode::Deferred);
 
   m_currentWeather = WeatherType::Clear;
 
