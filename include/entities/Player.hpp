@@ -133,7 +133,7 @@ private:
   int m_spriteSheetRows{0};           // Number of rows in the sprite sheet
   SDL_FlipMode m_flip{SDL_FLIP_NONE}; // Default flip direction
   // Note: Animation timing uses m_animationAccumulator inherited from Entity
-  float m_movementSpeed{80.0f};      // Movement speed in pixels per second 120 run (2 px/frame at 60 FPS)
+  float m_movementSpeed{120.0f};      // Movement speed in pixels per second 120 run (2 px/frame at 60 FPS running speed)
   // m_animationMap and m_animationLoops inherited from Entity
 
   // Equipment slots - store handles instead of item IDs
