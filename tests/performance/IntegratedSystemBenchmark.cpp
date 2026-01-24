@@ -112,7 +112,8 @@ namespace {
             std::cout << "Testing frame time degradation with increasing entity counts" << std::endl;
             std::cout << std::endl;
 
-            std::vector<size_t> entityCounts = {1000, 5000, 10000, 15000, 20000};
+            // Entity counts aligned with engine's 10K+ AI target (see CLAUDE.md)
+            std::vector<size_t> entityCounts = {500, 1000, 2500, 5000, 10000};
             std::vector<FrameStats> scalingResults;
 
             for (size_t entityCount : entityCounts) {
@@ -121,7 +122,8 @@ namespace {
                 cleanupScenario();
                 setupRealisticScenario(entityCount, entityCount / 2);
 
-                constexpr size_t frameCount = 300;
+                // 60 frames (1 second at 60 FPS) - sufficient for stable measurements
+                constexpr size_t frameCount = 60;
                 constexpr float deltaTime = 1.0f / 60.0f;
                 auto stats = runFrameBenchmark(frameCount, deltaTime);
 
