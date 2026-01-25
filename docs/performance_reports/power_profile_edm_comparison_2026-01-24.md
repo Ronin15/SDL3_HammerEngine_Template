@@ -1,27 +1,38 @@
-# Power Profile Analysis: Old Manager-Owned vs EntityDataManager Architecture
+# Power Profile Analysis: EntityDataManager Architecture Evolution
 
-**Date**: 2025-12-30
-**Test Scenario**: 200 entities, particles active, EventDemoState
+**Last Updated**: 2026-01-24
+**Test Scenario**: 200 entities, 10-minute idle baseline, EventDemoState
 **Hardware**: M3 Pro MacBook (70Wh battery, 11 CPUs)
-**Both tests**: 10-minute gameplay on battery power
-
----
-
-## Executive Summary
-
-The EntityDataManager (EDM) architecture refactor delivers significant efficiency improvements:
-
-| Benefit | Value |
-|---------|-------|
-| P-core usage reduction | **55%** |
-| Peak power (P99) reduction | **52%** |
-| E-core frequency reduction | **21%** |
-| Entity scaling improvement | **~2x** |
-| Cache efficiency gain | **~21%** |
 
 ---
 
 ## Summary Comparison
+
+| Metric | Jan 8 (Baseline) | Jan 11 (Full EDM) | Jan 24 (+ Races/Classes/Resources) |
+|--------|------------------|-------------------|-------------------------------------|
+| **Avg Power** | 0.79 W | 0.61 W | 0.87 W |
+| **Idle Residency** | 84.46% | 85.97% | 85.75% |
+| **Avg CPU Frequency** | 1467 MHz | 1370 MHz | 1285 MHz |
+| **Peak Power** | 8.18 W | 6.89 W | 27.88 W (init) |
+| **Continuous Play** | ~17 hrs | ~22 hrs | ~16 hrs |
+
+---
+
+## Jan 24 Highlights: NPC Races/Classes + 28K World Resources
+
+The Jan 24 profile added:
+- NPC races and classes system
+- **28,000 world resources** (harvestables)
+
+Results:
+- Added 28K resources with only **+0.08W** increase over baseline (0.87W vs 0.79W)
+- Maintained 85.75% idle residency
+- Lowest average CPU frequency (1285 MHz) - work completing more efficiently
+- Init spike (27.88W) is pathfinding grid rebuild + cache pre-warming (expected)
+
+---
+
+## Historical Comparison (Dec 2025)
 
 | Metric | 12/27 Old Arch | 12/30 New EDM | Change |
 |--------|----------------|---------------|--------|
@@ -227,5 +238,11 @@ The 21% lower CPU frequency at identical workload indicates:
 
 ## Files Analyzed
 
-- `tests/test_results/power_profiling/power_realapp_gameplay_20251227_191851.plist` (2.9MB, 610 samples)
-- `tests/test_results/power_profiling/power_realapp_gameplay_20251230_065725.plist` (2.9MB, 610 samples)
+**Jan 2026 Profiles:**
+- `power_realapp_gameplay_20260108_070830.plist` - Baseline (pre-full EDM)
+- `power_realapp_gameplay_20260111_081706.plist` - Full EDM integration
+- `power_realapp_gameplay_20260124_135336.plist` - EDM + ChunkRendering + 28K resources
+
+**Dec 2025 Profiles:**
+- `power_realapp_gameplay_20251227_191851.plist` - Old architecture
+- `power_realapp_gameplay_20251230_065725.plist` - Initial EDM
