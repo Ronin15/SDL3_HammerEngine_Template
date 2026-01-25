@@ -14,6 +14,7 @@
 #include <atomic>
 #include <shared_mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include "managers/EventManager.hpp"
 
@@ -49,10 +50,10 @@ class TileRenderer {
 private:
     static constexpr float TILE_SIZE = 32.0f;  // Use float for smooth movement
     static constexpr int VIEWPORT_PADDING = 2;
-    static constexpr int SPRITE_OVERHANG = 96;  // Padding for sprites extending beyond tile bounds (3 tiles for wide logs, tall trees)
+    static constexpr int SPRITE_OVERHANG = 64;  // Padding for sprites extending beyond tile bounds (2 tiles)
 
-    // Chunk-based rendering for scalability to massive maps
-    static constexpr int CHUNK_SIZE = 32;  // 32x32 tiles per chunk
+    // Chunk-based rendering - smaller chunks = faster per-chunk render, more chunks total
+    static constexpr int CHUNK_SIZE = 16;  // 16x16 tiles per chunk (256 tiles vs 1024)
 
 public:
     TileRenderer();
@@ -243,15 +244,35 @@ private:
         CachedTexture decoration_water_flower;
     } m_cachedTextures;
 
+    // Lookup tables for O(1) texture access (indexed by enum value)
+    static constexpr size_t BIOME_COUNT = 8;
+    static constexpr size_t DECORATION_COUNT = 17;
+    static constexpr size_t OBSTACLE_COUNT = 15;
+    const CachedTexture* m_biomeLUT[BIOME_COUNT]{};
+    const CachedTexture* m_decorationLUT[DECORATION_COUNT]{};
+    const CachedTexture* m_obstacleLUT[OBSTACLE_COUNT]{};
+    void buildLookupTables();
+
     mutable std::vector<YSortedSprite> m_ySortBuffer;
 
     std::unordered_map<uint64_t, ChunkCache> m_chunkCache;
     uint64_t m_frameCounter{0};
-    static constexpr size_t MAX_CACHED_CHUNKS = 64;
+    static constexpr size_t MAX_CACHED_CHUNKS = 128;  // More chunks since they're smaller
+    static constexpr size_t TEXTURE_POOL_SIZE = 150;  // Pool for chunk textures
+    static constexpr int MAX_CHUNK_RENDERS_PER_FRAME = 1;  // Single chunk per frame eliminates hitches
+    static constexpr int MAX_CHUNK_CREATES_PER_FRAME = 2;  // Keep creates low too
     mutable std::vector<uint64_t> m_visibleKeysBuffer;
+    mutable std::unordered_set<uint64_t> m_visibleKeySet;  // O(1) lookup for eviction
     mutable std::vector<std::pair<uint64_t, uint64_t>> m_evictionBuffer;
     std::atomic<bool> m_cachePendingClear{false};
     bool m_hasDirtyChunks{false};  // Early-out flag for updateDirtyChunks
+
+    // Texture pool - reuse textures instead of create/destroy during gameplay
+    std::vector<std::shared_ptr<SDL_Texture>> m_texturePool;
+    bool m_poolInitialized{false};
+    void initTexturePool(SDL_Renderer* renderer);
+    std::shared_ptr<SDL_Texture> acquireTexture(SDL_Renderer* renderer);
+    void releaseTexture(std::shared_ptr<SDL_Texture> tex);
 
     // Last visible chunk range for change detection (early-out when camera hasn't moved)
     int m_lastStartChunkX{-1};
