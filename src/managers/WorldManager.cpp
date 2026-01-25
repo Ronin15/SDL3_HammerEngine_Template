@@ -353,54 +353,76 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile &newTile) {
     return false;
   }
 
+  const HammerEngine::Tile &oldTile = m_currentWorld->grid[y][x];
+
+  // Skip invalidation entirely if tile data hasn't changed
+  if (oldTile.biome == newTile.biome &&
+      oldTile.obstacleType == newTile.obstacleType &&
+      oldTile.decorationType == newTile.decorationType &&
+      oldTile.buildingId == newTile.buildingId &&
+      oldTile.buildingSize == newTile.buildingSize &&
+      oldTile.isTopLeftOfBuilding == newTile.isTopLeftOfBuilding &&
+      oldTile.isWater == newTile.isWater) {
+    return true; // No visual change, skip chunk invalidation
+  }
+
+  // Check if change affects sprite overhang (obstacles/buildings have tall sprites)
+  const bool hasOverhangChange =
+      (oldTile.obstacleType != newTile.obstacleType ||
+       oldTile.buildingId != newTile.buildingId ||
+       oldTile.buildingSize != newTile.buildingSize ||
+       oldTile.isTopLeftOfBuilding != newTile.isTopLeftOfBuilding);
+
   m_currentWorld->grid[y][x] = newTile;
 
-  // Invalidate chunk containing this tile AND adjacent chunks only if tile is
-  // near chunk edge (within overhang distance). Sprites can extend up to 3 tiles
-  // (SPRITE_OVERHANG / TILE_SIZE) into neighboring chunks.
+  // Invalidate chunk containing this tile AND adjacent chunks only if sprite
+  // overhang is affected. Sprites can extend up to 2 tiles into neighbors.
   if (m_tileRenderer) {
-    constexpr int chunkSize = 32;    // TileRenderer::CHUNK_SIZE
-    constexpr int overhangTiles = 3; // SPRITE_OVERHANG (96) / TILE_SIZE (32)
+    constexpr int chunkSize = 16;    // TileRenderer::CHUNK_SIZE
+    constexpr int overhangTiles = 2; // SPRITE_OVERHANG (64) / TILE_SIZE (32)
 
     const int chunkX = x / chunkSize;
     const int chunkY = y / chunkSize;
-    const int localX = x % chunkSize;
-    const int localY = y % chunkSize;
 
-    // Primary chunk always invalidated
+    // Primary chunk always invalidated when tile changes
     m_tileRenderer->invalidateChunk(chunkX, chunkY);
 
-    // Neighbors only if tile is near edge (within overhang distance)
-    const bool nearLeft = localX < overhangTiles;
-    const bool nearRight = localX >= (chunkSize - overhangTiles);
-    const bool nearTop = localY < overhangTiles;
-    const bool nearBottom = localY >= (chunkSize - overhangTiles);
+    // Neighbors only invalidated for sprite overhang changes (obstacles/buildings)
+    if (hasOverhangChange) {
+      const int localX = x % chunkSize;
+      const int localY = y % chunkSize;
 
-    if (nearLeft) {
-      m_tileRenderer->invalidateChunk(chunkX - 1, chunkY);
-    }
-    if (nearRight) {
-      m_tileRenderer->invalidateChunk(chunkX + 1, chunkY);
-    }
-    if (nearTop) {
-      m_tileRenderer->invalidateChunk(chunkX, chunkY - 1);
-    }
-    if (nearBottom) {
-      m_tileRenderer->invalidateChunk(chunkX, chunkY + 1);
-    }
+      const bool nearLeft = localX < overhangTiles;
+      const bool nearRight = localX >= (chunkSize - overhangTiles);
+      const bool nearTop = localY < overhangTiles;
+      const bool nearBottom = localY >= (chunkSize - overhangTiles);
 
-    // Diagonal neighbors only if near both edges
-    if (nearLeft && nearTop) {
-      m_tileRenderer->invalidateChunk(chunkX - 1, chunkY - 1);
-    }
-    if (nearRight && nearTop) {
-      m_tileRenderer->invalidateChunk(chunkX + 1, chunkY - 1);
-    }
-    if (nearLeft && nearBottom) {
-      m_tileRenderer->invalidateChunk(chunkX - 1, chunkY + 1);
-    }
-    if (nearRight && nearBottom) {
-      m_tileRenderer->invalidateChunk(chunkX + 1, chunkY + 1);
+      if (nearLeft) {
+        m_tileRenderer->invalidateChunk(chunkX - 1, chunkY);
+      }
+      if (nearRight) {
+        m_tileRenderer->invalidateChunk(chunkX + 1, chunkY);
+      }
+      if (nearTop) {
+        m_tileRenderer->invalidateChunk(chunkX, chunkY - 1);
+      }
+      if (nearBottom) {
+        m_tileRenderer->invalidateChunk(chunkX, chunkY + 1);
+      }
+
+      // Diagonal neighbors only if near both edges
+      if (nearLeft && nearTop) {
+        m_tileRenderer->invalidateChunk(chunkX - 1, chunkY - 1);
+      }
+      if (nearRight && nearTop) {
+        m_tileRenderer->invalidateChunk(chunkX + 1, chunkY - 1);
+      }
+      if (nearLeft && nearBottom) {
+        m_tileRenderer->invalidateChunk(chunkX - 1, chunkY + 1);
+      }
+      if (nearRight && nearBottom) {
+        m_tileRenderer->invalidateChunk(chunkX + 1, chunkY + 1);
+      }
     }
   }
 
@@ -849,8 +871,10 @@ void WorldManager::setCurrentSeason(Season season) {
 
 HammerEngine::TileRenderer::TileRenderer()
     : m_currentSeason(Season::Spring), m_subscribedToSeasons(false) {
-  // Pre-allocate Y-sort buffer to avoid per-frame reallocations
+  // Pre-allocate buffers to avoid per-frame reallocations
   m_ySortBuffer.reserve(512);
+  m_visibleKeysBuffer.reserve(64);   // Typical viewport ~24 chunks
+  m_evictionBuffer.reserve(64);
 
   // Load world object definitions from JSON
   loadWorldObjects();
@@ -941,6 +965,7 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
   // If using atlas, just apply pre-loaded coords (no lookups)
   if (m_useAtlas) {
     applyCoordsToTextures(m_currentSeason);
+    buildLookupTables();  // Must build LUTs for render loop
     return;
   }
 
@@ -1189,6 +1214,57 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
         "TileRenderer: Missing obstacle_water texture for season {}",
         static_cast<int>(m_currentSeason)));
   }
+
+  // Build O(1) lookup tables for render loop
+  buildLookupTables();
+}
+
+void HammerEngine::TileRenderer::buildLookupTables() {
+  // Biome lookup table (indexed by Biome enum: DESERT=0...OCEAN=7)
+  m_biomeLUT[0] = &m_cachedTextures.biome_desert;    // DESERT
+  m_biomeLUT[1] = &m_cachedTextures.biome_forest;    // FOREST
+  m_biomeLUT[2] = &m_cachedTextures.biome_plains;    // PLAINS
+  m_biomeLUT[3] = &m_cachedTextures.biome_mountain;  // MOUNTAIN
+  m_biomeLUT[4] = &m_cachedTextures.biome_swamp;     // SWAMP
+  m_biomeLUT[5] = &m_cachedTextures.biome_haunted;   // HAUNTED
+  m_biomeLUT[6] = &m_cachedTextures.biome_celestial; // CELESTIAL
+  m_biomeLUT[7] = &m_cachedTextures.biome_ocean;     // OCEAN
+
+  // Decoration lookup table (indexed by DecorationType enum: NONE=0...WATER_FLOWER=16)
+  m_decorationLUT[0] = nullptr;  // NONE
+  m_decorationLUT[1] = &m_cachedTextures.decoration_flower_blue;
+  m_decorationLUT[2] = &m_cachedTextures.decoration_flower_pink;
+  m_decorationLUT[3] = &m_cachedTextures.decoration_flower_white;
+  m_decorationLUT[4] = &m_cachedTextures.decoration_flower_yellow;
+  m_decorationLUT[5] = &m_cachedTextures.decoration_mushroom_purple;
+  m_decorationLUT[6] = &m_cachedTextures.decoration_mushroom_tan;
+  m_decorationLUT[7] = &m_cachedTextures.decoration_grass_small;
+  m_decorationLUT[8] = &m_cachedTextures.decoration_grass_large;
+  m_decorationLUT[9] = &m_cachedTextures.decoration_bush;
+  m_decorationLUT[10] = &m_cachedTextures.decoration_stump_small;
+  m_decorationLUT[11] = &m_cachedTextures.decoration_stump_medium;
+  m_decorationLUT[12] = &m_cachedTextures.decoration_rock_small;
+  m_decorationLUT[13] = &m_cachedTextures.decoration_dead_log_hz;
+  m_decorationLUT[14] = &m_cachedTextures.decoration_dead_log_vertical;
+  m_decorationLUT[15] = &m_cachedTextures.decoration_lily_pad;
+  m_decorationLUT[16] = &m_cachedTextures.decoration_water_flower;
+
+  // Obstacle lookup table (indexed by ObstacleType enum: NONE=0...DIAMOND_DEPOSIT=14)
+  m_obstacleLUT[0] = nullptr;  // NONE
+  m_obstacleLUT[1] = &m_cachedTextures.obstacle_rock;           // ROCK
+  m_obstacleLUT[2] = &m_cachedTextures.obstacle_tree;           // TREE
+  m_obstacleLUT[3] = &m_cachedTextures.obstacle_water;          // WATER
+  m_obstacleLUT[4] = nullptr;  // BUILDING (handled separately)
+  m_obstacleLUT[5] = &m_cachedTextures.obstacle_iron_deposit;
+  m_obstacleLUT[6] = &m_cachedTextures.obstacle_gold_deposit;
+  m_obstacleLUT[7] = &m_cachedTextures.obstacle_copper_deposit;
+  m_obstacleLUT[8] = &m_cachedTextures.obstacle_mithril_deposit;
+  m_obstacleLUT[9] = &m_cachedTextures.obstacle_limestone_deposit;
+  m_obstacleLUT[10] = &m_cachedTextures.obstacle_coal_deposit;
+  m_obstacleLUT[11] = &m_cachedTextures.obstacle_emerald_deposit;
+  m_obstacleLUT[12] = &m_cachedTextures.obstacle_ruby_deposit;
+  m_obstacleLUT[13] = &m_cachedTextures.obstacle_sapphire_deposit;
+  m_obstacleLUT[14] = &m_cachedTextures.obstacle_diamond_deposit;
 }
 
 void HammerEngine::TileRenderer::setCurrentSeason(Season season) {
@@ -1211,6 +1287,59 @@ void HammerEngine::TileRenderer::invalidateChunk(int chunkX, int chunkY) {
 
 void HammerEngine::TileRenderer::clearChunkCache() {
   m_cachePendingClear.store(true, std::memory_order_release);
+}
+
+void HammerEngine::TileRenderer::initTexturePool(SDL_Renderer *renderer) {
+  if (m_poolInitialized || !renderer) {
+    return;
+  }
+
+  constexpr int chunkPixelSize =
+      CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
+
+  m_texturePool.reserve(TEXTURE_POOL_SIZE);
+  for (size_t i = 0; i < TEXTURE_POOL_SIZE; ++i) {
+    SDL_Texture *tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
+                                         SDL_TEXTUREACCESS_TARGET,
+                                         chunkPixelSize, chunkPixelSize);
+    if (tex) {
+      SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+      m_texturePool.push_back(
+          std::shared_ptr<SDL_Texture>(tex, SDL_DestroyTexture));
+    }
+  }
+  m_poolInitialized = true;
+  WORLD_MANAGER_INFO(
+      std::format("Texture pool initialized with {} textures", m_texturePool.size()));
+}
+
+std::shared_ptr<SDL_Texture>
+HammerEngine::TileRenderer::acquireTexture(SDL_Renderer *renderer) {
+  // Try to get from pool first
+  if (!m_texturePool.empty()) {
+    auto tex = std::move(m_texturePool.back());
+    m_texturePool.pop_back();
+    return tex;
+  }
+
+  // Pool empty - create new texture (should be rare after warmup)
+  constexpr int chunkPixelSize =
+      CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
+  SDL_Texture *tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
+                                       SDL_TEXTUREACCESS_TARGET,
+                                       chunkPixelSize, chunkPixelSize);
+  if (!tex) {
+    return nullptr;
+  }
+  SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+  return std::shared_ptr<SDL_Texture>(tex, SDL_DestroyTexture);
+}
+
+void HammerEngine::TileRenderer::releaseTexture(std::shared_ptr<SDL_Texture> tex) {
+  if (tex && m_texturePool.size() < TEXTURE_POOL_SIZE) {
+    m_texturePool.push_back(std::move(tex));
+  }
+  // If pool is full, texture is destroyed via shared_ptr destructor
 }
 
 HammerEngine::TileRenderer::~TileRenderer() { unsubscribeFromSeasonEvents(); }
@@ -1570,280 +1699,158 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
   const int endTileX = std::min(startTileX + CHUNK_SIZE, worldWidth);
   const int endTileY = std::min(startTileY + CHUNK_SIZE, worldHeight);
 
-  // Extend sampling area by SPRITE_OVERHANG tiles to catch sprites whose origin
-  // is in neighboring chunks but extend into this chunk
-  constexpr int extTiles = SPRITE_OVERHANG / static_cast<int>(TILE_SIZE);
-  const int extStartX = std::max(0, startTileX - extTiles);
-  const int extStartY = std::max(0, startTileY - extTiles);
-  const int extEndX = std::min(worldWidth, endTileX + extTiles);
-  const int extEndY = std::min(worldHeight, endTileY + extTiles);
-
   constexpr int tileSize = static_cast<int>(TILE_SIZE);
+  constexpr float tileSizeF = TILE_SIZE;
 
-  // LAYER 1: Biomes
-  for (int y = extStartY; y < extEndY; ++y) {
-    for (int x = extStartX; x < extEndX; ++x) {
-      const HammerEngine::Tile &tile = world.grid[y][x];
-      const float localX =
-          static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-      const float localY =
-          static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
+  // LAYER 1: Biomes - O(1) lookup table, no switch statements
+  // NOTE: Biomes don't overhang, so we render ONLY the chunk area (not extended)
+  // This reduces draw calls from 400 to 256 per chunk
+  const CachedTexture *waterTex = &m_cachedTextures.obstacle_water;
+  const CachedTexture *defaultTex = &m_cachedTextures.biome_default;
 
-      const CachedTexture *tex = &m_cachedTextures.biome_default;
-      if (tile.isWater ||
-          tile.obstacleType == HammerEngine::ObstacleType::WATER) {
-        tex = &m_cachedTextures.obstacle_water;
+  float baseLocalY = static_cast<float>(SPRITE_OVERHANG);
+  for (int y = startTileY; y < endTileY; ++y) {
+    const auto &row = world.grid[y];
+    float localX = static_cast<float>(SPRITE_OVERHANG);
+
+    for (int x = startTileX; x < endTileX; ++x) {
+      const HammerEngine::Tile &tile = row[x];
+
+      // O(1) texture lookup - no branching for biome type
+      const CachedTexture *tex;
+      if (tile.isWater || tile.obstacleType == HammerEngine::ObstacleType::WATER) {
+        tex = waterTex;
       } else {
-        switch (tile.biome) {
-        case HammerEngine::Biome::DESERT:
-          tex = &m_cachedTextures.biome_desert;
-          break;
-        case HammerEngine::Biome::FOREST:
-          tex = &m_cachedTextures.biome_forest;
-          break;
-        case HammerEngine::Biome::PLAINS:
-          tex = &m_cachedTextures.biome_plains;
-          break;
-        case HammerEngine::Biome::MOUNTAIN:
-          tex = &m_cachedTextures.biome_mountain;
-          break;
-        case HammerEngine::Biome::SWAMP:
-          tex = &m_cachedTextures.biome_swamp;
-          break;
-        case HammerEngine::Biome::HAUNTED:
-          tex = &m_cachedTextures.biome_haunted;
-          break;
-        case HammerEngine::Biome::CELESTIAL:
-          tex = &m_cachedTextures.biome_celestial;
-          break;
-        case HammerEngine::Biome::OCEAN:
-          tex = &m_cachedTextures.biome_ocean;
-          break;
-        default:
-          break;
-        }
+        const size_t biomeIdx = static_cast<size_t>(tile.biome);
+        tex = (biomeIdx < BIOME_COUNT) ? m_biomeLUT[biomeIdx] : defaultTex;
       }
-      if (tex->ptr) {
+
+      if (tex && tex->ptr) {
         SDL_FRect srcRect = {tex->atlasX, tex->atlasY, tex->w, tex->h};
-        SDL_FRect destRect = {localX, localY, static_cast<float>(tileSize),
-                              static_cast<float>(tileSize)};
+        SDL_FRect destRect = {localX, baseLocalY, tileSizeF, tileSizeF};
         SDL_RenderTexture(renderer, tex->ptr, &srcRect, &destRect);
       }
+      localX += tileSizeF;
     }
+    baseLocalY += tileSizeF;
   }
 
-  // LAYER 2: Decorations (skip if obstacle present except water)
+  // LAYER 2: Decorations - O(1) lookup, early continue for common case
+  baseLocalY = static_cast<float>(SPRITE_OVERHANG);
   for (int y = startTileY; y < endTileY; ++y) {
-    for (int x = startTileX; x < endTileX; ++x) {
-      const HammerEngine::Tile &tile = world.grid[y][x];
+    const auto &row = world.grid[y];
+    float localX = static_cast<float>(SPRITE_OVERHANG);
 
-      if (tile.decorationType == HammerEngine::DecorationType::NONE ||
+    for (int x = startTileX; x < endTileX; ++x) {
+      const HammerEngine::Tile &tile = row[x];
+      const auto decoType = static_cast<size_t>(tile.decorationType);
+
+      // Fast path: skip if no decoration or blocked by obstacle
+      if (decoType == 0 ||
           (tile.obstacleType != HammerEngine::ObstacleType::NONE &&
            tile.obstacleType != HammerEngine::ObstacleType::WATER)) {
+        localX += tileSizeF;
         continue;
       }
 
-      const float localX =
-          static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-      const float localY =
-          static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
+      // O(1) lookup
+      const CachedTexture *tex = (decoType < DECORATION_COUNT) ? m_decorationLUT[decoType] : nullptr;
 
-      const CachedTexture *tex = nullptr;
-      switch (tile.decorationType) {
-      case HammerEngine::DecorationType::FLOWER_BLUE:
-        tex = &m_cachedTextures.decoration_flower_blue;
-        break;
-      case HammerEngine::DecorationType::FLOWER_PINK:
-        tex = &m_cachedTextures.decoration_flower_pink;
-        break;
-      case HammerEngine::DecorationType::FLOWER_WHITE:
-        tex = &m_cachedTextures.decoration_flower_white;
-        break;
-      case HammerEngine::DecorationType::FLOWER_YELLOW:
-        tex = &m_cachedTextures.decoration_flower_yellow;
-        break;
-      case HammerEngine::DecorationType::MUSHROOM_PURPLE:
-        tex = &m_cachedTextures.decoration_mushroom_purple;
-        break;
-      case HammerEngine::DecorationType::MUSHROOM_TAN:
-        tex = &m_cachedTextures.decoration_mushroom_tan;
-        break;
-      case HammerEngine::DecorationType::GRASS_SMALL:
-        tex = &m_cachedTextures.decoration_grass_small;
-        break;
-      case HammerEngine::DecorationType::GRASS_LARGE:
-        tex = &m_cachedTextures.decoration_grass_large;
-        break;
-      case HammerEngine::DecorationType::BUSH:
-        tex = &m_cachedTextures.decoration_bush;
-        break;
-      case HammerEngine::DecorationType::STUMP_SMALL:
-        tex = &m_cachedTextures.decoration_stump_small;
-        break;
-      case HammerEngine::DecorationType::STUMP_MEDIUM:
-        tex = &m_cachedTextures.decoration_stump_medium;
-        break;
-      case HammerEngine::DecorationType::ROCK_SMALL:
-        tex = &m_cachedTextures.decoration_rock_small;
-        break;
-      case HammerEngine::DecorationType::DEAD_LOG_HZ:
-        tex = &m_cachedTextures.decoration_dead_log_hz;
-        break;
-      case HammerEngine::DecorationType::DEAD_LOG_VERTICAL:
-        tex = &m_cachedTextures.decoration_dead_log_vertical;
-        break;
-      case HammerEngine::DecorationType::LILY_PAD:
-        tex = &m_cachedTextures.decoration_lily_pad;
-        break;
-      case HammerEngine::DecorationType::WATER_FLOWER:
-        tex = &m_cachedTextures.decoration_water_flower;
-        break;
-      default:
-        continue;
+      if (tex && tex->ptr) {
+        const float offsetX = (tileSizeF - tex->w) * 0.5f;
+        const float offsetY = tileSizeF - tex->h;
+        SDL_FRect srcRect = {tex->atlasX, tex->atlasY, tex->w, tex->h};
+        SDL_FRect destRect = {localX + offsetX, baseLocalY + offsetY, tex->w, tex->h};
+        SDL_RenderTexture(renderer, tex->ptr, &srcRect, &destRect);
       }
-
-      if (!tex || !tex->ptr) {
-        continue;
-      }
-
-      const float offsetX = (TILE_SIZE - tex->w) / 2.0f;
-      const float offsetY = TILE_SIZE - tex->h;
-
-      SDL_FRect srcRect = {tex->atlasX, tex->atlasY, tex->w, tex->h};
-      SDL_FRect destRect = {localX + offsetX, localY + offsetY, tex->w, tex->h};
-      SDL_RenderTexture(renderer, tex->ptr, &srcRect, &destRect);
+      localX += tileSizeF;
     }
+    baseLocalY += tileSizeF;
   }
 
-  // LAYER 3: Y-sorted obstacles and buildings
-  const int spriteStartX = std::max(0, startTileX - 2);
-  const int spriteStartY = std::max(0, startTileY - 4);
-  const int spriteEndX = std::min(worldWidth, endTileX + 2);
-  const int spriteEndY = std::min(worldHeight, endTileY + 1);
+  // LAYER 3: Y-sorted obstacles and buildings - optimized with lookup tables
+  // Sprites extend UPWARD from their base, so scan BELOW chunk for tall sprite bases
+  // X: ±1 tile for sprite width overhang
+  // Y: 0 above (sprites don't extend down), +4 below (tallest buildings are 4 tiles)
+  const int spriteStartX = std::max(0, startTileX - 1);
+  const int spriteStartY = startTileY;  // No extension above - sprites extend upward, not down
+  const int spriteEndX = std::min(worldWidth, endTileX + 1);
+  const int spriteEndY = std::min(worldHeight, endTileY + 4);  // Scan below for tall sprites
 
   m_ySortBuffer.clear();
 
+  // Building textures array for O(1) lookup by size
+  const CachedTexture* buildingLUT[5] = {
+    &m_cachedTextures.building_hut,    // size 0 (fallback)
+    &m_cachedTextures.building_hut,    // size 1
+    &m_cachedTextures.building_house,  // size 2
+    &m_cachedTextures.building_large,  // size 3
+    &m_cachedTextures.building_cityhall // size 4
+  };
+
+  baseLocalY = static_cast<float>((spriteStartY - startTileY) * tileSize + SPRITE_OVERHANG);
   for (int y = spriteStartY; y < spriteEndY; ++y) {
+    const auto &row = world.grid[y];
+    float localX = static_cast<float>((spriteStartX - startTileX) * tileSize + SPRITE_OVERHANG);
+
     for (int x = spriteStartX; x < spriteEndX; ++x) {
-      const HammerEngine::Tile &tile = world.grid[y][x];
+      const HammerEngine::Tile &tile = row[x];
+      const auto obstacleIdx = static_cast<size_t>(tile.obstacleType);
 
-      const float localX =
-          static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-      const float localY =
-          static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
-
-      const bool isPartOfBuilding =
-          (tile.obstacleType == HammerEngine::ObstacleType::BUILDING &&
-           !tile.isTopLeftOfBuilding);
-
-      if (!isPartOfBuilding &&
-          tile.obstacleType != HammerEngine::ObstacleType::NONE &&
-          tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
-
-        const CachedTexture *tex = &m_cachedTextures.biome_default;
-        switch (tile.obstacleType) {
-        case HammerEngine::ObstacleType::TREE:
-          tex = &m_cachedTextures.obstacle_tree;
-          break;
-        case HammerEngine::ObstacleType::ROCK:
-          tex = &m_cachedTextures.obstacle_rock;
-          break;
-        case HammerEngine::ObstacleType::WATER:
-          continue;
-        case HammerEngine::ObstacleType::IRON_DEPOSIT:
-          tex = &m_cachedTextures.obstacle_iron_deposit;
-          break;
-        case HammerEngine::ObstacleType::GOLD_DEPOSIT:
-          tex = &m_cachedTextures.obstacle_gold_deposit;
-          break;
-        case HammerEngine::ObstacleType::COPPER_DEPOSIT:
-          tex = &m_cachedTextures.obstacle_copper_deposit;
-          break;
-        case HammerEngine::ObstacleType::MITHRIL_DEPOSIT:
-          tex = &m_cachedTextures.obstacle_mithril_deposit;
-          break;
-        case HammerEngine::ObstacleType::LIMESTONE_DEPOSIT:
-          tex = &m_cachedTextures.obstacle_limestone_deposit;
-          break;
-        case HammerEngine::ObstacleType::COAL_DEPOSIT:
-          tex = &m_cachedTextures.obstacle_coal_deposit;
-          break;
-        case HammerEngine::ObstacleType::EMERALD_DEPOSIT:
-          tex = &m_cachedTextures.obstacle_emerald_deposit;
-          break;
-        case HammerEngine::ObstacleType::RUBY_DEPOSIT:
-          tex = &m_cachedTextures.obstacle_ruby_deposit;
-          break;
-        case HammerEngine::ObstacleType::SAPPHIRE_DEPOSIT:
-          tex = &m_cachedTextures.obstacle_sapphire_deposit;
-          break;
-        case HammerEngine::ObstacleType::DIAMOND_DEPOSIT:
-          tex = &m_cachedTextures.obstacle_diamond_deposit;
-          break;
-        default:
-          break;
-        }
-
-        const float offsetX = (TILE_SIZE - tex->w) / 2.0f;
-        const float offsetY = TILE_SIZE - tex->h;
-        const float sortY = localY + TILE_SIZE;
-
-        m_ySortBuffer.push_back(
-            {sortY, localX + offsetX, localY + offsetY, tex, false, 0, 0});
+      // Skip NONE, WATER (rendered in layer 1), and building parts (not top-left)
+      if (obstacleIdx == 0 || obstacleIdx == 3) {  // NONE=0, WATER=3
+        localX += tileSizeF;
+        continue;
       }
 
-      if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING &&
-          tile.isTopLeftOfBuilding) {
-        const CachedTexture *tex = &m_cachedTextures.building_hut;
-        switch (tile.buildingSize) {
-        case 1:
-          tex = &m_cachedTextures.building_hut;
-          break;
-        case 2:
-          tex = &m_cachedTextures.building_house;
-          break;
-        case 3:
-          tex = &m_cachedTextures.building_large;
-          break;
-        case 4:
-          tex = &m_cachedTextures.building_cityhall;
-          break;
-        default:
-          break;
+      // Handle buildings
+      if (obstacleIdx == 4) {  // BUILDING
+        if (tile.isTopLeftOfBuilding) {
+          const size_t sizeIdx = std::min(static_cast<size_t>(tile.buildingSize), size_t{4});
+          const CachedTexture *tex = buildingLUT[sizeIdx];
+          if (tex && tex->ptr) {
+            const float sortY = baseLocalY + (tile.buildingSize * tileSizeF);
+            m_ySortBuffer.push_back({sortY, localX, baseLocalY, tex, true,
+                                     static_cast<int>(tex->w),
+                                     static_cast<int>(tex->h)});
+          }
         }
-
-        float sortY = localY + (tile.buildingSize * TILE_SIZE);
-
-        m_ySortBuffer.push_back({sortY, localX, localY, tex, true,
-                                 static_cast<int>(tex->w),
-                                 static_cast<int>(tex->h)});
+        localX += tileSizeF;
+        continue;
       }
+
+      // Regular obstacles - O(1) lookup
+      const CachedTexture *tex = (obstacleIdx < OBSTACLE_COUNT) ? m_obstacleLUT[obstacleIdx] : nullptr;
+      if (tex && tex->ptr) {
+        const float offsetX = (tileSizeF - tex->w) * 0.5f;
+        const float offsetY = tileSizeF - tex->h;
+        const float sortY = baseLocalY + tileSizeF;
+        m_ySortBuffer.push_back({sortY, localX + offsetX, baseLocalY + offsetY, tex, false, 0, 0});
+      }
+      localX += tileSizeF;
+    }
+    baseLocalY += tileSizeF;
+  }
+
+  // Sort is unavoidable for correct Y-ordering, but buffer is pre-allocated
+  if (!m_ySortBuffer.empty()) {
+    std::sort(m_ySortBuffer.begin(), m_ySortBuffer.end(),
+              [](const YSortedSprite &a, const YSortedSprite &b) {
+                if (a.y != b.y) return a.y < b.y;
+                if (a.renderX != b.renderX) return a.renderX < b.renderX;
+                return a.renderY < b.renderY;
+              });
+
+    // Render all sorted sprites
+    for (const auto &sprite : m_ySortBuffer) {
+      const float spriteW = sprite.isBuilding ? static_cast<float>(sprite.buildingWidth) : sprite.tex->w;
+      const float spriteH = sprite.isBuilding ? static_cast<float>(sprite.buildingHeight) : sprite.tex->h;
+      SDL_FRect srcRect = {sprite.tex->atlasX, sprite.tex->atlasY, sprite.tex->w, sprite.tex->h};
+      SDL_FRect destRect = {sprite.renderX, sprite.renderY, spriteW, spriteH};
+      SDL_RenderTexture(renderer, sprite.tex->ptr, &srcRect, &destRect);
     }
   }
 
-  std::sort(m_ySortBuffer.begin(), m_ySortBuffer.end(),
-            [](const YSortedSprite &a, const YSortedSprite &b) {
-              if (a.y != b.y)
-                return a.y < b.y;
-              if (a.renderX != b.renderX)
-                return a.renderX < b.renderX;
-              return a.renderY < b.renderY;
-            });
-
-  for (const auto &sprite : m_ySortBuffer) {
-    const float spriteW = sprite.isBuilding
-                              ? static_cast<float>(sprite.buildingWidth)
-                              : sprite.tex->w;
-    const float spriteH = sprite.isBuilding
-                              ? static_cast<float>(sprite.buildingHeight)
-                              : sprite.tex->h;
-    SDL_FRect srcRect = {sprite.tex->atlasX, sprite.tex->atlasY,
-                         sprite.tex->w, sprite.tex->h};
-    SDL_FRect destRect = {sprite.renderX, sprite.renderY, spriteW, spriteH};
-    SDL_RenderTexture(renderer, sprite.tex->ptr, &srcRect, &destRect);
-  }
-
-  // Reset render target (updateDirtyChunks runs before SceneRenderer pipeline)
   SDL_SetRenderTarget(renderer, nullptr);
 }
 
@@ -1854,13 +1861,24 @@ void HammerEngine::TileRenderer::updateDirtyChunks(
     return;
   }
 
-  // Handle deferred cache clear (sets dirty flag since chunks need recreation)
-  if (m_cachePendingClear.exchange(false, std::memory_order_acq_rel)) {
-    m_chunkCache.clear();
-    m_hasDirtyChunks = true;  // New chunks will be created dirty
-    m_lastStartChunkX = -1;   // Force re-check of visible range
+  // Initialize texture pool on first call (pre-allocates textures)
+  if (!m_poolInitialized) {
+    initTexturePool(renderer);
   }
 
+  // Handle deferred cache clear - return textures to pool
+  if (m_cachePendingClear.exchange(false, std::memory_order_acq_rel)) {
+    for (auto &[key, cache] : m_chunkCache) {
+      if (cache.texture) {
+        releaseTexture(std::move(cache.texture));
+      }
+    }
+    m_chunkCache.clear();
+    m_hasDirtyChunks = true;
+    m_lastStartChunkX = -1;
+  }
+
+  // Calculate visible chunk range
   const int worldWidth = static_cast<int>(world.grid[0].size());
   const int worldHeight = static_cast<int>(world.grid.size());
   const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
@@ -1879,18 +1897,16 @@ void HammerEngine::TileRenderer::updateDirtyChunks(
                                            (CHUNK_SIZE * TILE_SIZE)) +
                               1);
 
-  // Check if visible range changed (camera moved enough to need new chunks)
   const bool rangeChanged = (startChunkX != m_lastStartChunkX ||
                              startChunkY != m_lastStartChunkY ||
                              endChunkX != m_lastEndChunkX ||
                              endChunkY != m_lastEndChunkY);
 
-  // Early-out: no dirty chunks, range unchanged, and cache populated
+  // FAST PATH: No work needed - skip all iteration
   if (!m_hasDirtyChunks && !rangeChanged && !m_chunkCache.empty()) {
     return;
   }
 
-  // Update last visible range
   m_lastStartChunkX = startChunkX;
   m_lastStartChunkY = startChunkY;
   m_lastEndChunkX = endChunkX;
@@ -1898,45 +1914,49 @@ void HammerEngine::TileRenderer::updateDirtyChunks(
 
   ++m_frameCounter;
 
-  constexpr int chunkPixelSize =
-      CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
-
-  // Limit chunk re-renders per frame to avoid hitches when many chunks are dirty
-  constexpr int MAX_CHUNK_RENDERS_PER_FRAME = 2;
+  int chunksCreatedThisFrame = 0;
   int chunksRenderedThisFrame = 0;
   bool anyChunkStillDirty = false;
 
-  m_visibleKeysBuffer.clear();
+  // Only rebuild visible keys when range changed (for eviction)
+  if (rangeChanged) {
+    m_visibleKeysBuffer.clear();
+    for (int cy = startChunkY; cy <= endChunkY; ++cy) {
+      for (int cx = startChunkX; cx <= endChunkX; ++cx) {
+        m_visibleKeysBuffer.push_back(makeChunkKey(cx, cy));
+      }
+    }
+  }
 
-  // Create missing chunks and update dirty ones
+  // Process visible chunks
   for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
     for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
       const uint64_t key = makeChunkKey(chunkX, chunkY);
-      m_visibleKeysBuffer.push_back(key);
 
       auto it = m_chunkCache.find(key);
       if (it == m_chunkCache.end()) {
-        // New chunk needed - create texture
-        SDL_Texture *tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
-                                             SDL_TEXTUREACCESS_TARGET,
-                                             chunkPixelSize, chunkPixelSize);
-        if (!tex) {
-          WORLD_MANAGER_ERROR("Failed to create chunk texture");
+        // New chunk needed
+        if (chunksCreatedThisFrame >= MAX_CHUNK_CREATES_PER_FRAME) {
+          anyChunkStillDirty = true;
           continue;
         }
-        SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+
+        auto tex = acquireTexture(renderer);
+        if (!tex) {
+          continue;
+        }
 
         ChunkCache cache;
-        cache.texture = std::shared_ptr<SDL_Texture>(tex, SDL_DestroyTexture);
+        cache.texture = std::move(tex);
         cache.dirty = true;
         cache.lastUsedFrame = m_frameCounter;
         it = m_chunkCache.emplace(key, std::move(cache)).first;
+        ++chunksCreatedThisFrame;
       }
 
       ChunkCache &chunk = it->second;
-      chunk.lastUsedFrame = m_frameCounter;
 
-      // Render dirty chunks (limited per frame to avoid hitches)
+      // Render dirty chunks
       if (chunk.dirty && chunk.texture) {
         if (chunksRenderedThisFrame < MAX_CHUNK_RENDERS_PER_FRAME) {
           renderChunkToTexture(world, renderer, chunkX, chunkY,
@@ -1944,31 +1964,45 @@ void HammerEngine::TileRenderer::updateDirtyChunks(
           chunk.dirty = false;
           ++chunksRenderedThisFrame;
         } else {
-          anyChunkStillDirty = true;  // Hit limit, some chunks still dirty
+          anyChunkStillDirty = true;
         }
       }
     }
   }
 
-  // Update dirty flag for next frame
   m_hasDirtyChunks = anyChunkStillDirty;
 
-  // Cache eviction - keep only MAX_CACHED_CHUNKS
-  if (m_chunkCache.size() > MAX_CACHED_CHUNKS) {
+  // Eviction: only run when significantly over limit to reduce overhead
+  constexpr size_t EVICTION_THRESHOLD = MAX_CACHED_CHUNKS + 8;
+  if (m_chunkCache.size() > EVICTION_THRESHOLD) {
+    // Build visible set once
+    m_visibleKeySet.clear();
+    m_visibleKeySet.insert(m_visibleKeysBuffer.begin(),
+                           m_visibleKeysBuffer.end());
+
     m_evictionBuffer.clear();
     for (const auto &[key, cache] : m_chunkCache) {
-      if (std::find(m_visibleKeysBuffer.begin(), m_visibleKeysBuffer.end(),
-                    key) == m_visibleKeysBuffer.end()) {
+      if (m_visibleKeySet.find(key) == m_visibleKeySet.end()) {
         m_evictionBuffer.emplace_back(key, cache.lastUsedFrame);
       }
     }
 
-    std::sort(m_evictionBuffer.begin(), m_evictionBuffer.end(),
-              [](const auto &a, const auto &b) { return a.second < b.second; });
+    // Only sort and evict if we have candidates
+    if (!m_evictionBuffer.empty()) {
+      std::sort(m_evictionBuffer.begin(), m_evictionBuffer.end(),
+                [](const auto &a, const auto &b) { return a.second < b.second; });
 
-    const size_t toEvict = m_chunkCache.size() - MAX_CACHED_CHUNKS;
-    for (size_t i = 0; i < std::min(toEvict, m_evictionBuffer.size()); ++i) {
-      m_chunkCache.erase(m_evictionBuffer[i].first);
+      // Evict down to MAX_CACHED_CHUNKS
+      const size_t toEvict = m_chunkCache.size() - MAX_CACHED_CHUNKS;
+      for (size_t i = 0; i < std::min(toEvict, m_evictionBuffer.size()); ++i) {
+        auto evictIt = m_chunkCache.find(m_evictionBuffer[i].first);
+        if (evictIt != m_chunkCache.end()) {
+          if (evictIt->second.texture) {
+            releaseTexture(std::move(evictIt->second.texture));
+          }
+          m_chunkCache.erase(evictIt);
+        }
+      }
     }
   }
 }
