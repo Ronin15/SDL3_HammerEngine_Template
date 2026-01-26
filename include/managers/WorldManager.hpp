@@ -319,6 +319,12 @@ private:
     int m_lastEndChunkX{-1};
     int m_lastEndChunkY{-1};
 
+    // Prefetch range tracking (separate from visible range since prefetch extends beyond)
+    int m_lastPrefetchStartX{-1};
+    int m_lastPrefetchStartY{-1};
+    int m_lastPrefetchEndX{-1};
+    int m_lastPrefetchEndY{-1};
+
     void renderChunkToTexture(const WorldData& world, SDL_Renderer* renderer,
                               int chunkX, int chunkY, SDL_Texture* target);
 

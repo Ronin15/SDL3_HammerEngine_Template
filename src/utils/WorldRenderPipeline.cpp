@@ -37,39 +37,44 @@ void WorldRenderPipeline::prepareChunks(Camera& camera, float deltaTime) {
     // Get current camera position
     const Vector2D currentPos = camera.getPosition();
 
-    // Calculate velocity with adaptive smoothing for stability
-    if (m_hasLastPosition && deltaTime > 0.0f) {
-        Vector2D instantVelocity = (currentPos - m_lastCameraPos) / deltaTime;
+    // Calculate displacement since last frame
+    float dx = currentPos.getX() - m_lastCameraPos.getX();
+    float dy = currentPos.getY() - m_lastCameraPos.getY();
 
-        // Use higher smoothing when accelerating, lower when decelerating
-        // This makes prefetch respond quickly to new movement but not jitter on stops
-        float instantSpeed = std::sqrt(instantVelocity.getX() * instantVelocity.getX() +
-                                       instantVelocity.getY() * instantVelocity.getY());
-        float currentSpeed = getCameraSpeed();
+    // OPTIMIZATION: Skip velocity calculation if camera barely moved
+    constexpr float MOVEMENT_EPSILON_SQ = 0.25f;  // 0.5 pixel squared
+    bool cameraMoved = (dx * dx + dy * dy) > MOVEMENT_EPSILON_SQ;
 
-        // Accelerating: respond quickly (high smoothing factor)
-        // Decelerating: smooth out gradually (lower smoothing factor)
-        float adaptiveSmoothing = (instantSpeed > currentSpeed) ? 0.7f : 0.3f;
+    if (m_hasLastPosition && cameraMoved) {
+        // Calculate instant velocity
+        float invDt = 1.0f / deltaTime;
+        float instantVelX = dx * invDt;
+        float instantVelY = dy * invDt;
+        float instantSpeedSq = instantVelX * instantVelX + instantVelY * instantVelY;
+        float currentSpeedSq = m_cameraVelocity.getX() * m_cameraVelocity.getX() +
+                               m_cameraVelocity.getY() * m_cameraVelocity.getY();
 
-        m_cameraVelocity.setX(m_cameraVelocity.getX() * (1.0f - adaptiveSmoothing) +
-                              instantVelocity.getX() * adaptiveSmoothing);
-        m_cameraVelocity.setY(m_cameraVelocity.getY() * (1.0f - adaptiveSmoothing) +
-                              instantVelocity.getY() * adaptiveSmoothing);
+        // Adaptive smoothing: fast response to acceleration, gradual deceleration
+        float adaptiveSmoothing = (instantSpeedSq > currentSpeedSq) ? 0.7f : 0.3f;
+        float oneMinusSmooth = 1.0f - adaptiveSmoothing;
+
+        m_cameraVelocity.setX(m_cameraVelocity.getX() * oneMinusSmooth + instantVelX * adaptiveSmoothing);
+        m_cameraVelocity.setY(m_cameraVelocity.getY() * oneMinusSmooth + instantVelY * adaptiveSmoothing);
+
+        m_lastCameraPos = currentPos;
+    } else if (!m_hasLastPosition) {
+        m_lastCameraPos = currentPos;
+        m_hasLastPosition = true;
     }
+    // NOTE: When stationary, we keep the existing velocity (will decay via prefetch logic)
 
-    m_lastCameraPos = currentPos;
     m_hasLastPosition = true;
 
-    // Set active camera for WorldManager (needed for updateDirtyChunks and prefetch)
+    // Only update active camera if it changed (avoid redundant pointer assignment)
     worldMgr.setActiveCamera(&camera);
 
-    // Calculate camera speed for dynamic budget
-    float speed = getCameraSpeed();
-
-    // Prefetch chunks in movement direction with dynamic budget
-    // Uses renderer stored in WorldManager (set via WorldManager::setRenderer)
-    // NOTE: prefetchChunksInternal handles both prefetching AND dirty chunk updates
-    worldMgr.prefetchChunksInternal(m_cameraVelocity, speed);
+    // Prefetch with cached speed calculation
+    worldMgr.prefetchChunksInternal(m_cameraVelocity, getCameraSpeed());
 }
 
 WorldRenderPipeline::RenderContext WorldRenderPipeline::beginScene(
