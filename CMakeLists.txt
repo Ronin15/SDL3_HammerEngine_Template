@@ -62,6 +62,10 @@ if(APPLE)
         set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -mcpu=apple-m1")
     endif()
 
+    # LTO requires linker flags to match compiler flags
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto")
+    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -flto")
+
     # Store aggressive flags for our project targets only
     set(HAMMER_AGGRESSIVE_C_FLAGS
         "-ffunction-sections -fdata-sections -ffast-math -ftree-vectorize -funroll-loops")
@@ -73,6 +77,10 @@ else()
         -fno-strict-aliasing -fomit-frame-pointer")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto \
         -fno-strict-aliasing -fomit-frame-pointer")
+
+    # LTO requires linker flags to match compiler flags
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto -fuse-linker-plugin")
+    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -flto -fuse-linker-plugin")
 
     # Store aggressive flags for our project targets only
     set(HAMMER_AGGRESSIVE_C_FLAGS
