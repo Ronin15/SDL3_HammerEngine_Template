@@ -11,7 +11,7 @@
 #include "entities/EntityHandle.hpp"
 #include "entities/Player.hpp"
 #include "utils/Camera.hpp"
-#include "utils/SceneRenderer.hpp"
+#include "utils/WorldRenderPipeline.hpp"
 
 #include <memory>
 #include <vector>
@@ -70,8 +70,8 @@ private:
     // Camera for world navigation
     std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
 
-    // Scene renderer for pixel-perfect zoomed world rendering
-    std::unique_ptr<HammerEngine::SceneRenderer> m_sceneRenderer{nullptr};
+    // World render pipeline for coordinated chunk management and scene rendering
+    std::unique_ptr<HammerEngine::WorldRenderPipeline> m_renderPipeline{nullptr};
 
     // AI pause state
     bool m_aiPaused{false};

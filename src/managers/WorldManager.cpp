@@ -293,6 +293,79 @@ void WorldManager::render(SDL_Renderer* renderer, float cameraX, float cameraY,
                          viewportWidth, viewportHeight);
 }
 
+void WorldManager::prefetchChunks(SDL_Renderer* renderer, HammerEngine::Camera& camera,
+                                   const Vector2D& cameraVelocity, float cameraSpeed) {
+  if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled ||
+      !renderer) {
+    return;
+  }
+
+  if (!m_currentWorld || !m_tileRenderer) {
+    return;
+  }
+
+  // Get camera parameters
+  float zoom = camera.getZoom();
+  const auto& viewport = camera.getViewport();
+  float viewWidth = viewport.width / zoom;
+  float viewHeight = viewport.height / zoom;
+
+  // Get floored camera position
+  float rawX = 0.0f;
+  float rawY = 0.0f;
+  camera.getRenderOffset(rawX, rawY, 0.0f);
+  float cameraX = std::floor(rawX);
+  float cameraY = std::floor(rawY);
+
+  m_tileRenderer->prefetchChunks(*m_currentWorld, renderer, cameraX, cameraY,
+                                  viewWidth, viewHeight,
+                                  cameraVelocity.getX(), cameraVelocity.getY(),
+                                  cameraSpeed);
+}
+
+void WorldManager::prewarmChunks(SDL_Renderer* renderer, float cameraX, float cameraY,
+                                  float viewportWidth, float viewportHeight) {
+  if (!m_initialized.load(std::memory_order_acquire) || !renderer) {
+    return;
+  }
+
+  if (!m_currentWorld || !m_tileRenderer) {
+    return;
+  }
+
+  m_tileRenderer->prewarmChunks(*m_currentWorld, renderer, cameraX, cameraY,
+                                 viewportWidth, viewportHeight);
+}
+
+void WorldManager::prefetchChunksInternal(const Vector2D& cameraVelocity, float cameraSpeed) {
+  if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled ||
+      !mp_renderer || !mp_activeCamera) {
+    return;
+  }
+
+  if (!m_currentWorld || !m_tileRenderer) {
+    return;
+  }
+
+  // Get camera parameters
+  float zoom = mp_activeCamera->getZoom();
+  const auto& viewport = mp_activeCamera->getViewport();
+  float viewWidth = viewport.width / zoom;
+  float viewHeight = viewport.height / zoom;
+
+  // Get floored camera position
+  float rawX = 0.0f;
+  float rawY = 0.0f;
+  mp_activeCamera->getRenderOffset(rawX, rawY, 0.0f);
+  float cameraX = std::floor(rawX);
+  float cameraY = std::floor(rawY);
+
+  m_tileRenderer->prefetchChunks(*m_currentWorld, mp_renderer, cameraX, cameraY,
+                                  viewWidth, viewHeight,
+                                  cameraVelocity.getX(), cameraVelocity.getY(),
+                                  cameraSpeed);
+}
+
 bool WorldManager::handleHarvestResource(int entityId, int targetX,
                                          int targetY) {
   if (!m_initialized.load(std::memory_order_acquire) || !m_currentWorld) {
@@ -2085,6 +2158,196 @@ void HammerEngine::TileRenderer::render(
       SDL_RenderTexture(renderer, it->second.texture.get(), &srcRect, &destRect);
     }
   }
+}
+
+void HammerEngine::TileRenderer::prefetchChunks(
+    const HammerEngine::WorldData &world, SDL_Renderer *renderer,
+    float cameraX, float cameraY, float viewportWidth, float viewportHeight,
+    float velocityX, float velocityY, float cameraSpeed) {
+  if (world.grid.empty() || !renderer) {
+    return;
+  }
+
+  // Initialize texture pool on first call
+  if (!m_poolInitialized) {
+    initTexturePool(renderer);
+  }
+
+  // Tuned thresholds for smooth scrolling
+  constexpr float VELOCITY_THRESHOLD = 30.0f;     // Very low - extend bounds at any noticeable movement
+  constexpr float MEDIUM_SPEED = 150.0f;          // Medium speed threshold
+  constexpr float FAST_SPEED = 300.0f;            // Fast speed threshold
+
+  // Calculate base visible chunk range
+  const int worldWidth = static_cast<int>(world.grid[0].size());
+  const int worldHeight = static_cast<int>(world.grid.size());
+  const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
+  const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+  int startChunkX = static_cast<int>(cameraX / (CHUNK_SIZE * TILE_SIZE));
+  int startChunkY = static_cast<int>(cameraY / (CHUNK_SIZE * TILE_SIZE));
+  int endChunkX = static_cast<int>((cameraX + viewportWidth) / (CHUNK_SIZE * TILE_SIZE)) + 1;
+  int endChunkY = static_cast<int>((cameraY + viewportHeight) / (CHUNK_SIZE * TILE_SIZE)) + 1;
+
+  // Extend bounds proportionally to velocity (more speed = more prefetch)
+  auto calcMargin = [](float velocity, float threshold) -> int {
+    float absVel = std::abs(velocity);
+    if (absVel < threshold) return 1;  // Always at least 1 chunk margin
+    if (absVel < 150.0f) return 2;
+    if (absVel < 300.0f) return 3;
+    return 4;  // Very fast movement
+  };
+
+  int marginX = calcMargin(velocityX, VELOCITY_THRESHOLD);
+  int marginY = calcMargin(velocityY, VELOCITY_THRESHOLD);
+
+  if (velocityX > VELOCITY_THRESHOLD) {
+    endChunkX += marginX;
+  } else if (velocityX < -VELOCITY_THRESHOLD) {
+    startChunkX -= marginX;
+  } else {
+    // Even when stationary, keep 1 chunk margin for immediate movement response
+    startChunkX -= 1;
+    endChunkX += 1;
+  }
+
+  if (velocityY > VELOCITY_THRESHOLD) {
+    endChunkY += marginY;
+  } else if (velocityY < -VELOCITY_THRESHOLD) {
+    startChunkY -= marginY;
+  } else {
+    startChunkY -= 1;
+    endChunkY += 1;
+  }
+
+  // Clamp to world bounds
+  startChunkX = std::max(0, startChunkX);
+  startChunkY = std::max(0, startChunkY);
+  endChunkX = std::min(maxChunkX, endChunkX);
+  endChunkY = std::min(maxChunkY, endChunkY);
+
+  // Tiered budget based on camera speed - scales smoothly
+  int renderBudget, createBudget;
+  if (cameraSpeed > FAST_SPEED) {
+    renderBudget = 8;
+    createBudget = 10;
+  } else if (cameraSpeed > MEDIUM_SPEED) {
+    renderBudget = 5;
+    createBudget = 6;
+  } else {
+    renderBudget = 3;
+    createBudget = 4;
+  }
+
+  ++m_frameCounter;
+  int chunksCreatedThisFrame = 0;
+  int chunksRenderedThisFrame = 0;
+  bool anyChunkStillDirty = false;
+
+  // Process chunks (direction-extended bounds already prioritize movement direction)
+  for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
+    for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
+      const uint64_t key = makeChunkKey(chunkX, chunkY);
+
+      auto it = m_chunkCache.find(key);
+      if (it == m_chunkCache.end()) {
+        // New chunk needed
+        if (chunksCreatedThisFrame >= createBudget) {
+          anyChunkStillDirty = true;
+          continue;
+        }
+
+        auto tex = acquireTexture(renderer);
+        if (!tex) {
+          continue;
+        }
+
+        ChunkCache cache;
+        cache.texture = std::move(tex);
+        cache.dirty = true;
+        cache.lastUsedFrame = m_frameCounter;
+        it = m_chunkCache.emplace(key, std::move(cache)).first;
+        ++chunksCreatedThisFrame;
+      }
+
+      ChunkCache &chunk = it->second;
+      chunk.lastUsedFrame = m_frameCounter;
+
+      // Render dirty chunks with dynamic budget
+      if (chunk.dirty && chunk.texture) {
+        if (chunksRenderedThisFrame < renderBudget) {
+          renderChunkToTexture(world, renderer, chunkX, chunkY, chunk.texture.get());
+          chunk.dirty = false;
+          ++chunksRenderedThisFrame;
+        } else {
+          anyChunkStillDirty = true;
+        }
+      }
+    }
+  }
+
+  m_hasDirtyChunks = anyChunkStillDirty;
+}
+
+void HammerEngine::TileRenderer::prewarmChunks(
+    const HammerEngine::WorldData &world, SDL_Renderer *renderer,
+    float cameraX, float cameraY, float viewportWidth, float viewportHeight) {
+  if (world.grid.empty() || !renderer) {
+    return;
+  }
+
+  // Initialize texture pool
+  if (!m_poolInitialized) {
+    initTexturePool(renderer);
+  }
+
+  // Calculate visible chunk range
+  const int worldWidth = static_cast<int>(world.grid[0].size());
+  const int worldHeight = static_cast<int>(world.grid.size());
+  const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
+  const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+  // Extend by 3 chunks in each direction for smooth initial scrolling
+  const int margin = 3;
+  int startChunkX = std::max(0, static_cast<int>(cameraX / (CHUNK_SIZE * TILE_SIZE)) - margin);
+  int startChunkY = std::max(0, static_cast<int>(cameraY / (CHUNK_SIZE * TILE_SIZE)) - margin);
+  int endChunkX = std::min(maxChunkX, static_cast<int>((cameraX + viewportWidth) / (CHUNK_SIZE * TILE_SIZE)) + 1 + margin);
+  int endChunkY = std::min(maxChunkY, static_cast<int>((cameraY + viewportHeight) / (CHUNK_SIZE * TILE_SIZE)) + 1 + margin);
+
+  ++m_frameCounter;
+
+  // Process ALL chunks - no budget limit for pre-warm
+  for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
+    for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
+      const uint64_t key = makeChunkKey(chunkX, chunkY);
+
+      auto it = m_chunkCache.find(key);
+      if (it == m_chunkCache.end()) {
+        // Create new chunk
+        auto tex = acquireTexture(renderer);
+        if (!tex) {
+          continue;
+        }
+
+        ChunkCache cache;
+        cache.texture = std::move(tex);
+        cache.dirty = true;
+        cache.lastUsedFrame = m_frameCounter;
+        it = m_chunkCache.emplace(key, std::move(cache)).first;
+      }
+
+      ChunkCache &chunk = it->second;
+      chunk.lastUsedFrame = m_frameCounter;
+
+      // Render immediately - no budget limit
+      if (chunk.dirty && chunk.texture) {
+        renderChunkToTexture(world, renderer, chunkX, chunkY, chunk.texture.get());
+        chunk.dirty = false;
+      }
+    }
+  }
+
+  m_hasDirtyChunks = false;  // All visible chunks are now rendered
 }
 
 void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile &tile,

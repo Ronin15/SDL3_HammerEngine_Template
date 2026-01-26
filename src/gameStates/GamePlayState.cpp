@@ -5,7 +5,7 @@
 
 #include "gameStates/GamePlayState.hpp"
 #include "entities/Player.hpp"
-#include "utils/SceneRenderer.hpp"
+#include "utils/WorldRenderPipeline.hpp"
 #include "controllers/combat/CombatController.hpp"
 #include "controllers/world/DayNightController.hpp"
 #include "controllers/world/ItemController.hpp"
@@ -79,8 +79,8 @@ bool GamePlayState::enter() {
     // Initialize camera (world already loaded)
     initializeCamera();
 
-    // Create scene renderer for pixel-perfect zoomed rendering
-    m_sceneRenderer = std::make_unique<HammerEngine::SceneRenderer>();
+    // Create world render pipeline for coordinated chunk management and scene rendering
+    m_renderPipeline = std::make_unique<HammerEngine::WorldRenderPipeline>();
 
     // Register controllers with the registry
     m_controllers.add<WeatherController>();
@@ -238,8 +238,10 @@ void GamePlayState::update(float deltaTime) {
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
 
-  // Update dirty chunk textures (camera must be updated first)
-  WorldManager::Instance().updateDirtyChunks();
+  // Prepare chunks via WorldRenderPipeline (predictive prefetching + dirty chunk updates)
+  if (m_renderPipeline && m_camera) {
+    m_renderPipeline->prepareChunks(*m_camera, deltaTime);
+  }
 
   // Update resource animations (dropped items bobbing, etc.) - camera-based culling
   if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>(); resourceCtrl && m_camera) {
@@ -275,16 +277,15 @@ void GamePlayState::update(float deltaTime) {
 void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   // Cache manager references for better performance
   ParticleManager &particleMgr = ParticleManager::Instance();
-  WorldManager &worldMgr = WorldManager::Instance();
   UIManager &ui = UIManager::Instance();
 
-  // Chunk texture updates are now done in update() via WorldManager::updateDirtyChunks()
-  const bool worldActive = m_camera && m_sceneRenderer && worldMgr.isInitialized() && worldMgr.hasActiveWorld();
+  // Use WorldRenderPipeline for coordinated world rendering
+  const bool worldActive = m_camera && m_renderPipeline;
 
-  // ========== BEGIN SCENE (to SceneRenderer's intermediate target) ==========
-  HammerEngine::SceneRenderer::SceneContext ctx;
+  // ========== BEGIN SCENE (to intermediate target) ==========
+  HammerEngine::WorldRenderPipeline::RenderContext ctx;
   if (worldActive) {
-    ctx = m_sceneRenderer->beginScene(renderer, *m_camera, interpolationAlpha);
+    ctx = m_renderPipeline->beginScene(renderer, *m_camera, interpolationAlpha);
   }
 
   if (ctx) {
@@ -294,9 +295,8 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
                                    interpolationAlpha);
     }
 
-    // Render tiles (pixel-perfect alignment)
-    worldMgr.render(renderer, ctx.flooredCameraX, ctx.flooredCameraY,
-                    ctx.viewWidth, ctx.viewHeight);
+    // Render world tiles via pipeline (uses pre-computed context)
+    m_renderPipeline->renderWorld(renderer, ctx);
 
     // Render world resources (dropped items, harvestables, containers)
     if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>(); resourceCtrl && m_camera) {
@@ -320,8 +320,8 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
 
   // ========== END SCENE (composite with zoom) ==========
   // This composites all world content and resets render scale to 1.0
-  if (worldActive && m_sceneRenderer) {
-    m_sceneRenderer->endScene(renderer);
+  if (worldActive) {
+    m_renderPipeline->endScene(renderer);
   }
 
   // Render day/night overlay tint (at 1.0 scale, after zoom reset)
@@ -386,7 +386,7 @@ bool GamePlayState::exit() {
 
     // Clean up camera and scene renderer
     m_camera.reset();
-    m_sceneRenderer.reset();
+    m_renderPipeline.reset();
 
     // Unload world (LoadingState will reload it)
     if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
@@ -433,7 +433,7 @@ bool GamePlayState::exit() {
 
   // Clean up camera and scene renderer first to stop world rendering
   m_camera.reset();
-  m_sceneRenderer.reset();
+  m_renderPipeline.reset();
 
   // Unload the world when fully exiting gameplay
   if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {

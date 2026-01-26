@@ -9,6 +9,7 @@
 #include "world/WorldData.hpp"
 #include "world/WorldGenerator.hpp"
 #include "managers/GameTimeManager.hpp"
+#include "utils/Vector2D.hpp"
 #include <memory>
 #include <string>
 #include <atomic>
@@ -102,6 +103,44 @@ public:
     // Chunk texture management
     void invalidateChunk(int chunkX, int chunkY);  // Mark chunk for re-rendering
     void clearChunkCache();  // Clean up all chunk textures
+
+    /**
+     * @brief Predictive chunk prefetching based on camera velocity
+     *
+     * Extends chunk bounds in the direction of camera movement and uses
+     * dynamic render budget based on camera speed.
+     *
+     * @param world World data
+     * @param renderer SDL renderer
+     * @param cameraX Camera X offset
+     * @param cameraY Camera Y offset
+     * @param viewportWidth Viewport width
+     * @param viewportHeight Viewport height
+     * @param velocityX Camera velocity X component
+     * @param velocityY Camera velocity Y component
+     * @param cameraSpeed Camera speed for dynamic budget
+     */
+    void prefetchChunks(const WorldData& world, SDL_Renderer* renderer,
+                        float cameraX, float cameraY,
+                        float viewportWidth, float viewportHeight,
+                        float velocityX, float velocityY, float cameraSpeed);
+
+    /**
+     * @brief Pre-warm all visible chunks without budget limits
+     *
+     * Renders all chunks in the visible area. Called during loading to
+     * eliminate hitches on initial camera movement.
+     *
+     * @param world World data
+     * @param renderer SDL renderer
+     * @param cameraX Camera X offset
+     * @param cameraY Camera Y offset
+     * @param viewportWidth Viewport width
+     * @param viewportHeight Viewport height
+     */
+    void prewarmChunks(const WorldData& world, SDL_Renderer* renderer,
+                       float cameraX, float cameraY,
+                       float viewportWidth, float viewportHeight);
 
     // Season management
     void subscribeToSeasonEvents();
@@ -425,6 +464,48 @@ public:
      */
     void render(SDL_Renderer* renderer, float cameraX, float cameraY,
                 float viewportWidth, float viewportHeight);
+
+    /**
+     * @brief Predictive chunk prefetching based on camera velocity
+     *
+     * Called from WorldRenderPipeline::prepareChunks() to prefetch chunks in the
+     * direction of camera movement. Uses velocity to extend prefetch bounds and
+     * dynamic render budget based on camera speed.
+     *
+     * @param renderer SDL renderer
+     * @param camera Camera for position and viewport
+     * @param cameraVelocity Camera velocity for direction prediction
+     * @param cameraSpeed Camera speed for dynamic budget
+     */
+    void prefetchChunks(SDL_Renderer* renderer, HammerEngine::Camera& camera,
+                        const Vector2D& cameraVelocity, float cameraSpeed);
+
+    /**
+     * @brief Internal prefetch using stored renderer and camera
+     *
+     * Called from WorldRenderPipeline when renderer is not directly available.
+     * Uses mp_renderer and mp_activeCamera set via setRenderer() and setActiveCamera().
+     *
+     * @param cameraVelocity Camera velocity for direction prediction
+     * @param cameraSpeed Camera speed for dynamic budget
+     */
+    void prefetchChunksInternal(const Vector2D& cameraVelocity, float cameraSpeed);
+
+    /**
+     * @brief Pre-warm all visible chunks during loading
+     *
+     * Renders all chunks that would be visible at the given position without
+     * budget limits. Call during loading screen to eliminate hitches on initial
+     * camera movement.
+     *
+     * @param renderer SDL renderer
+     * @param cameraX Camera X offset
+     * @param cameraY Camera Y offset
+     * @param viewportWidth Viewport width
+     * @param viewportHeight Viewport height
+     */
+    void prewarmChunks(SDL_Renderer* renderer, float cameraX, float cameraY,
+                       float viewportWidth, float viewportHeight);
 
     bool handleHarvestResource(int entityId, int targetX, int targetY);
     bool updateTile(int x, int y, const HammerEngine::Tile& newTile);

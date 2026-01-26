@@ -12,6 +12,9 @@
 
 namespace HammerEngine {
 
+// Extra padding for intermediate texture to allow for sprite overhang
+static constexpr int TEXTURE_PADDING = 128;
+
 SceneRenderer::SceneRenderer() = default;
 
 SceneRenderer::~SceneRenderer() = default;
@@ -85,22 +88,38 @@ SceneRenderer::SceneContext SceneRenderer::beginScene(
     float flooredCameraX = std::floor(rawCameraX);
     float flooredCameraY = std::floor(rawCameraY);
 
+    // Calculate sub-pixel offset for smooth camera scrolling.
+    // This represents the fractional pixel position lost when flooring for tile alignment.
+    // Applied as negative offset during composite to smoothly shift the entire scene.
+    m_subPixelOffsetX = rawCameraX - flooredCameraX;
+    m_subPixelOffsetY = rawCameraY - flooredCameraY;
+
     // Store render state for endScene
     m_currentZoom = zoom;
     m_viewportWidth = viewWidth;
     m_viewportHeight = viewHeight;
 
-    // Apply zoom directly via SDL_SetRenderScale - NO intermediate texture needed
-    // This eliminates all render target switches which cause GPU sync/hitching
-    SDL_SetRenderScale(renderer, zoom, zoom);
+    // Ensure intermediate texture is large enough
+    int requiredWidth = static_cast<int>(viewWidth) + TEXTURE_PADDING;
+    int requiredHeight = static_cast<int>(viewHeight) + TEXTURE_PADDING;
+
+    if (!ensureTextureSize(renderer, requiredWidth, requiredHeight)) {
+        return ctx;
+    }
+
+    // Set render target to intermediate texture
+    SDL_SetRenderTarget(renderer, m_intermediateTexture.get());
 
     m_sceneActive = true;
 
     // Populate context
-    ctx.cameraX = flooredCameraX;
-    ctx.cameraY = flooredCameraY;
-    ctx.flooredCameraX = flooredCameraX;
-    ctx.flooredCameraY = flooredCameraY;
+    // ALL rendering uses FLOORED camera for consistent positioning in intermediate texture.
+    // Sub-pixel smoothness is achieved via the composite offset in endScene(), not per-entity math.
+    // This ensures tiles and entities move together without relative jitter.
+    ctx.cameraX = flooredCameraX;        // For entities (floored - sub-pixel via composite)
+    ctx.cameraY = flooredCameraY;        // For entities (floored - sub-pixel via composite)
+    ctx.flooredCameraX = flooredCameraX; // For tiles (pixel-aligned)
+    ctx.flooredCameraY = flooredCameraY; // For tiles (pixel-aligned)
     ctx.viewWidth = viewWidth;
     ctx.viewHeight = viewHeight;
     ctx.zoom = zoom;
@@ -122,8 +141,28 @@ void SceneRenderer::endScene(SDL_Renderer* renderer) {
         return;
     }
 
+    // Restore screen as render target
+    SDL_SetRenderTarget(renderer, nullptr);
+
+    // Apply zoom via render scale
+    SDL_SetRenderScale(renderer, m_currentZoom, m_currentZoom);
+
+    // Use LINEAR filtering for final composite to enable smooth sub-pixel scrolling.
+    // This allows fractional pixel offsets without shimmer artifacts.
+    // Tiles remain pixel-perfect in the intermediate texture; only the composite is filtered.
+    SDL_SetTextureScaleMode(m_intermediateTexture.get(), SDL_SCALEMODE_LINEAR);
+
+    // Composite intermediate texture to screen with sub-pixel offset.
+    // Negative offset shifts the scene to compensate for floored tile positions,
+    // creating smooth continuous scrolling as camera moves between pixel boundaries.
+    SDL_FRect srcRect = {0, 0, m_viewportWidth, m_viewportHeight};
+    SDL_FRect destRect = {-m_subPixelOffsetX, -m_subPixelOffsetY, m_viewportWidth, m_viewportHeight};
+    SDL_RenderTexture(renderer, m_intermediateTexture.get(), &srcRect, &destRect);
+
+    // Restore NEAREST filtering for next frame's tile rendering
+    SDL_SetTextureScaleMode(m_intermediateTexture.get(), SDL_SCALEMODE_NEAREST);
+
     // Reset render scale to 1.0 for UI rendering
-    // No intermediate texture, no render target switches - just reset scale
     SDL_SetRenderScale(renderer, 1.0f, 1.0f);
 
     m_sceneActive = false;
