@@ -32,6 +32,7 @@ const char* FrameProfiler::getPhaseName(FramePhase phase)
     case FramePhase::Events: return "Events";
     case FramePhase::Update: return "Update";
     case FramePhase::Render: return "Render";
+    case FramePhase::Present: return "Present";
     default: return "Unknown";
     }
 }
@@ -56,6 +57,24 @@ ManagerPhase FrameProfiler::findWorstManager() const
     return static_cast<ManagerPhase>(std::distance(m_managerTimes.begin(), maxIt));
 }
 
+const char* FrameProfiler::getRenderPhaseName(RenderPhase phase)
+{
+    switch (phase) {
+    case RenderPhase::BeginScene: return "BeginScene";
+    case RenderPhase::WorldTiles: return "WorldTiles";
+    case RenderPhase::Entities: return "Entities";
+    case RenderPhase::EndScene: return "EndScene";
+    case RenderPhase::UI: return "UI";
+    default: return "Unknown";
+    }
+}
+
+RenderPhase FrameProfiler::findWorstRenderPhase() const
+{
+    auto maxIt = std::max_element(m_renderTimes.begin(), m_renderTimes.end());
+    return static_cast<RenderPhase>(std::distance(m_renderTimes.begin(), maxIt));
+}
+
 void FrameProfiler::beginFrame()
 {
     m_frameStart = Clock::now();
@@ -63,6 +82,7 @@ void FrameProfiler::beginFrame()
     // Reset timing arrays for this frame
     m_phaseTimes.fill(0.0);
     m_managerTimes.fill(0.0);
+    m_renderTimes.fill(0.0);
 }
 
 void FrameProfiler::endFrame()
@@ -82,12 +102,13 @@ void FrameProfiler::endFrame()
     if (totalMs > m_thresholdMs) {
         ++m_hitchCount;
 
-        // Find the cause
+        // Get all phase times
         double eventsTime = m_phaseTimes[static_cast<size_t>(FramePhase::Events)];
         double updateTime = m_phaseTimes[static_cast<size_t>(FramePhase::Update)];
         double renderTime = m_phaseTimes[static_cast<size_t>(FramePhase::Render)];
+        double presentTime = m_phaseTimes[static_cast<size_t>(FramePhase::Present)];
 
-        // Determine which phase is the culprit
+        // Find worst phase
         FramePhase cause = FramePhase::Events;
         double maxPhaseTime = eventsTime;
 
@@ -97,6 +118,10 @@ void FrameProfiler::endFrame()
         }
         if (renderTime > maxPhaseTime) {
             cause = FramePhase::Render;
+            maxPhaseTime = renderTime;
+        }
+        if (presentTime > maxPhaseTime) {
+            cause = FramePhase::Present;
         }
 
         // Store for overlay
@@ -104,30 +129,33 @@ void FrameProfiler::endFrame()
         m_hadRecentHitch = true;
         m_lastHitchFrame = m_frameCount;
 
-        // Log the hitch
+        // Log the hitch with all phases
         PROFILER_WARN(std::format("[HITCH] Frame {}: {:.1f}ms > {:.1f}ms threshold",
                                    m_frameCount, totalMs, m_thresholdMs));
 
-        // Log phase breakdown with cause highlighted
-        if (cause == FramePhase::Render) {
-            PROFILER_WARN(std::format("  RENDER: {:.1f}ms  <-- CAUSE", renderTime));
-            PROFILER_WARN(std::format("  Update: {:.1f}ms", updateTime));
-            PROFILER_WARN(std::format("  Events: {:.1f}ms", eventsTime));
-        } else if (cause == FramePhase::Update) {
-            PROFILER_WARN(std::format("  Render: {:.1f}ms", renderTime));
-            PROFILER_WARN(std::format("  UPDATE: {:.1f}ms  <-- CAUSE", updateTime));
+        // Log each phase, marking the cause
+        auto logPhase = [&](FramePhase phase, double time, const char* name) {
+            if (phase == cause) {
+                PROFILER_WARN(std::format("  {}: {:.1f}ms  <-- CAUSE", name, time));
+            } else {
+                PROFILER_WARN(std::format("  {}: {:.1f}ms", name, time));
+            }
+        };
 
-            // Show manager breakdown for update hitches
+        logPhase(FramePhase::Present, presentTime, "Present");
+        logPhase(FramePhase::Render, renderTime, "Render");
+        logPhase(FramePhase::Update, updateTime, "Update");
+        logPhase(FramePhase::Events, eventsTime, "Events");
+
+        // Show manager breakdown for update hitches
+        if (cause == FramePhase::Update) {
             ManagerPhase worstMgr = findWorstManager();
             m_lastHitchManager = worstMgr;
 
             double worstTime = m_managerTimes[static_cast<size_t>(worstMgr)];
-            double otherTime = updateTime - worstTime;
-
             PROFILER_WARN(std::format("    {}: {:.1f}ms  <-- WORST",
                                        getManagerName(worstMgr), worstTime));
 
-            // Log other significant managers
             for (size_t i = 0; i < static_cast<size_t>(ManagerPhase::COUNT); ++i) {
                 if (static_cast<ManagerPhase>(i) != worstMgr && m_managerTimes[i] > 1.0) {
                     PROFILER_WARN(std::format("    {}: {:.1f}ms",
@@ -135,17 +163,25 @@ void FrameProfiler::endFrame()
                                                m_managerTimes[i]));
                 }
             }
+        }
 
-            if (otherTime > 1.0) {
-                PROFILER_WARN(std::format("    Other: {:.1f}ms", otherTime));
+        // Show render breakdown for render hitches
+        if (cause == FramePhase::Render || cause == FramePhase::Present) {
+            RenderPhase worstRender = findWorstRenderPhase();
+            double worstRenderTime = m_renderTimes[static_cast<size_t>(worstRender)];
+
+            if (worstRenderTime > 0.1) {  // Only show if meaningful time
+                PROFILER_WARN(std::format("    {}: {:.1f}ms  <-- WORST RENDER",
+                                           getRenderPhaseName(worstRender), worstRenderTime));
+
+                for (size_t i = 0; i < static_cast<size_t>(RenderPhase::COUNT); ++i) {
+                    if (static_cast<RenderPhase>(i) != worstRender && m_renderTimes[i] > 0.1) {
+                        PROFILER_WARN(std::format("    {}: {:.1f}ms",
+                                                   getRenderPhaseName(static_cast<RenderPhase>(i)),
+                                                   m_renderTimes[i]));
+                    }
+                }
             }
-
-            PROFILER_WARN(std::format("  Events: {:.1f}ms", eventsTime));
-        } else {
-            // Events was the cause (rare)
-            PROFILER_WARN(std::format("  Render: {:.1f}ms", renderTime));
-            PROFILER_WARN(std::format("  Update: {:.1f}ms", updateTime));
-            PROFILER_WARN(std::format("  EVENTS: {:.1f}ms  <-- CAUSE", eventsTime));
         }
     }
 
@@ -181,6 +217,19 @@ void FrameProfiler::endManager(ManagerPhase mgr)
         std::chrono::duration<double, std::milli>(now - start).count();
 }
 
+void FrameProfiler::beginRender(RenderPhase phase)
+{
+    m_renderStarts[static_cast<size_t>(phase)] = Clock::now();
+}
+
+void FrameProfiler::endRender(RenderPhase phase)
+{
+    auto now = Clock::now();
+    auto start = m_renderStarts[static_cast<size_t>(phase)];
+    m_renderTimes[static_cast<size_t>(phase)] =
+        std::chrono::duration<double, std::milli>(now - start).count();
+}
+
 void FrameProfiler::renderOverlay(SDL_Renderer* renderer, FontManager* /*fontMgr*/)
 {
     if (!renderer) {
@@ -207,8 +256,9 @@ void FrameProfiler::renderOverlay(SDL_Renderer* renderer, FontManager* /*fontMgr
     updateOverlayText();
 
     uiMgr.setText("profiler_frame", m_frameText);
-    uiMgr.setText("profiler_update", m_updateText);
+    uiMgr.setText("profiler_present", m_presentText);
     uiMgr.setText("profiler_render", m_renderText);
+    uiMgr.setText("profiler_update", m_updateText);
     uiMgr.setText("profiler_events", m_eventsText);
     uiMgr.setText("profiler_threshold", m_thresholdText);
     uiMgr.setText("profiler_hitch", m_hitchText);
@@ -259,23 +309,27 @@ void FrameProfiler::createOverlayComponents()
     ui.setStyle("profiler_frame", labelStyle);
     ui.setComponentZOrder("profiler_frame", UIConstants::PROFILER_ZORDER_LABEL);
 
-    ui.createLabelAtBottomRight("profiler_update", "Update: --", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 2*LINE_H);
-    ui.setStyle("profiler_update", labelStyle);
-    ui.setComponentZOrder("profiler_update", UIConstants::PROFILER_ZORDER_LABEL);
+    ui.createLabelAtBottomRight("profiler_present", "Present: --", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 2*LINE_H);
+    ui.setStyle("profiler_present", labelStyle);
+    ui.setComponentZOrder("profiler_present", UIConstants::PROFILER_ZORDER_LABEL);
 
     ui.createLabelAtBottomRight("profiler_render", "Render: --", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 3*LINE_H);
     ui.setStyle("profiler_render", labelStyle);
     ui.setComponentZOrder("profiler_render", UIConstants::PROFILER_ZORDER_LABEL);
 
-    ui.createLabelAtBottomRight("profiler_events", "Events: --", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 4*LINE_H);
+    ui.createLabelAtBottomRight("profiler_update", "Update: --", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 4*LINE_H);
+    ui.setStyle("profiler_update", labelStyle);
+    ui.setComponentZOrder("profiler_update", UIConstants::PROFILER_ZORDER_LABEL);
+
+    ui.createLabelAtBottomRight("profiler_events", "Events: --", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 5*LINE_H);
     ui.setStyle("profiler_events", labelStyle);
     ui.setComponentZOrder("profiler_events", UIConstants::PROFILER_ZORDER_LABEL);
 
-    ui.createLabelAtBottomRight("profiler_threshold", "Threshold: --", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 5*LINE_H);
+    ui.createLabelAtBottomRight("profiler_threshold", "Threshold: --", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 6*LINE_H);
     ui.setStyle("profiler_threshold", labelStyle);
     ui.setComponentZOrder("profiler_threshold", UIConstants::PROFILER_ZORDER_LABEL);
 
-    ui.createLabelAtBottomRight("profiler_hitch", "", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 6*LINE_H);
+    ui.createLabelAtBottomRight("profiler_hitch", "", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 7*LINE_H);
     ui.setStyle("profiler_hitch", labelStyle);
     ui.setComponentZOrder("profiler_hitch", UIConstants::PROFILER_ZORDER_LABEL);
 }
@@ -285,8 +339,9 @@ void FrameProfiler::destroyOverlayComponents()
     auto& uiMgr = UIManager::Instance();
     uiMgr.removeComponent("profiler_panel");
     uiMgr.removeComponent("profiler_frame");
-    uiMgr.removeComponent("profiler_update");
+    uiMgr.removeComponent("profiler_present");
     uiMgr.removeComponent("profiler_render");
+    uiMgr.removeComponent("profiler_update");
     uiMgr.removeComponent("profiler_events");
     uiMgr.removeComponent("profiler_threshold");
     uiMgr.removeComponent("profiler_hitch");
@@ -299,13 +354,28 @@ void FrameProfiler::updateOverlayText()
                                m_lastFrameTimeMs, m_hitchCount);
 
     // Phase times
+    double eventsTime = m_phaseTimes[static_cast<size_t>(FramePhase::Events)];
     double updateTime = m_phaseTimes[static_cast<size_t>(FramePhase::Update)];
     double renderTime = m_phaseTimes[static_cast<size_t>(FramePhase::Render)];
-    double eventsTime = m_phaseTimes[static_cast<size_t>(FramePhase::Events)];
+    double presentTime = m_phaseTimes[static_cast<size_t>(FramePhase::Present)];
 
     // Find worst manager
     ManagerPhase worstMgr = findWorstManager();
     double worstMgrTime = m_managerTimes[static_cast<size_t>(worstMgr)];
+
+    // Present with cause marker (vsync wait)
+    if (m_hadRecentHitch && m_lastHitchCause == FramePhase::Present) {
+        m_presentText = std::format("PRESENT: {:.1f}ms <-", presentTime);
+    } else {
+        m_presentText = std::format("Present: {:.1f}ms", presentTime);
+    }
+
+    // Render with cause marker
+    if (m_hadRecentHitch && m_lastHitchCause == FramePhase::Render) {
+        m_renderText = std::format("RENDER: {:.1f}ms <-", renderTime);
+    } else {
+        m_renderText = std::format("Render: {:.1f}ms", renderTime);
+    }
 
     // Update with cause marker
     if (m_hadRecentHitch && m_lastHitchCause == FramePhase::Update) {
@@ -314,13 +384,6 @@ void FrameProfiler::updateOverlayText()
     } else {
         m_updateText = std::format("Update: {:.1f}ms [{}: {:.1f}ms]",
                                     updateTime, getManagerName(worstMgr), worstMgrTime);
-    }
-
-    // Render with cause marker
-    if (m_hadRecentHitch && m_lastHitchCause == FramePhase::Render) {
-        m_renderText = std::format("RENDER: {:.1f}ms <-", renderTime);
-    } else {
-        m_renderText = std::format("Render: {:.1f}ms", renderTime);
     }
 
     // Events with cause marker

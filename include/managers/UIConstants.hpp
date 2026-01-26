@@ -154,10 +154,10 @@ namespace UIConstants {
 
   // Debug Profiler Overlay Constants (Debug builds only)
   constexpr int PROFILER_OVERLAY_WIDTH = 300;       // Width of profiler overlay panel
-  constexpr int PROFILER_OVERLAY_HEIGHT = 150;      // Height of profiler overlay panel
+  constexpr int PROFILER_OVERLAY_HEIGHT = 172;      // Height of profiler overlay panel (7 lines)
   constexpr int PROFILER_OVERLAY_MARGIN = 10;       // Margin from screen edge
   constexpr int PROFILER_LINE_HEIGHT = 22;          // Height per profiler text line
-  constexpr int PROFILER_LABEL_COUNT = 6;           // Number of profiler labels
+  constexpr int PROFILER_LABEL_COUNT = 7;           // Number of profiler labels
   constexpr int PROFILER_ZORDER_PANEL = 9000;       // Z-order for profiler panel (high priority)
   constexpr int PROFILER_ZORDER_LABEL = 9001;       // Z-order for profiler labels
 

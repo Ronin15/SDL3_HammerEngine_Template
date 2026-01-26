@@ -99,6 +99,13 @@ public:
   void render();
 
   /**
+   * @brief Presents the rendered frame (vsync wait)
+   * @details Separated from render() for accurate profiling.
+   *          SDL_RenderPresent blocks on vsync - this is NOT rendering work.
+   */
+  void present();
+
+  /**
    * @brief Cleans up all engine resources and shuts down systems
    */
   void clean();

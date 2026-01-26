@@ -21,6 +21,7 @@
 #include "managers/WorldManager.hpp"
 #include "managers/EventManager.hpp"
 #include "utils/Camera.hpp"
+#include "utils/FrameProfiler.hpp"
 #include "utils/WorldRenderPipeline.hpp"
 #include "world/WorldData.hpp"
 #include <cmath>
@@ -572,14 +573,18 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
 
   if (ctx) {
     // Render world tiles via pipeline (uses pre-computed context)
+    // Note: PROFILE_RENDER(WorldTiles) is inside TileRenderer::render
     m_renderPipeline->renderWorld(renderer, ctx);
 
     // Render Active tier NPCs (sub-pixel smoothness from entity interpolation)
-    m_npcRenderCtrl.renderNPCs(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+    {
+      PROFILE_RENDER_GPU(HammerEngine::RenderPhase::Entities, renderer);
+      m_npcRenderCtrl.renderNPCs(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
 
-    // Render player (sub-pixel smoothness from entity's own interpolation)
-    if (m_player) {
-      m_player->render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+      // Render player (sub-pixel smoothness from entity's own interpolation)
+      if (m_player) {
+        m_player->render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+      }
     }
   }
 
@@ -613,7 +618,10 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
       m_lastDisplayedPauseState = m_aiPaused;
     }
   }
-  ui.render(renderer);
+  {
+    PROFILE_RENDER_GPU(HammerEngine::RenderPhase::UI, renderer);
+    ui.render(renderer);
+  }
 }
 
 void AIDemoState::setupAIBehaviors() {
