@@ -7,6 +7,7 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "utils/Camera.hpp"
+#include "utils/SIMDMath.hpp"
 #include "core/ThreadSystem.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "events/TimeEvent.hpp"
@@ -21,6 +22,8 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+
+using namespace HammerEngine::SIMD;
 
 bool WorldManager::init() {
   if (m_initialized.load(std::memory_order_acquire)) {
@@ -946,8 +949,7 @@ HammerEngine::TileRenderer::TileRenderer()
     : m_currentSeason(Season::Spring), m_subscribedToSeasons(false) {
   // Pre-allocate buffers to avoid per-frame reallocations
   m_ySortBuffer.reserve(512);
-  m_visibleKeysBuffer.reserve(64);   // Typical viewport ~24 chunks
-  m_evictionBuffer.reserve(64);
+  m_visibleChunks.reserve(64);   // Typical viewport ~24 chunks
 
   // Load world object definitions from JSON
   loadWorldObjects();
@@ -1350,16 +1352,18 @@ void HammerEngine::TileRenderer::setCurrentSeason(Season season) {
 }
 
 void HammerEngine::TileRenderer::invalidateChunk(int chunkX, int chunkY) {
-  const uint64_t key = makeChunkKey(chunkX, chunkY);
-  auto it = m_chunkCache.find(key);
-  if (it != m_chunkCache.end()) {
-    it->second.dirty = true;
+  if (!m_gridInitialized) return;
+  if (chunkY >= 0 && chunkY < m_gridHeight &&
+      chunkX >= 0 && chunkX < m_gridWidth) {
+    m_chunkGrid[chunkY][chunkX].dirty = true;
     m_hasDirtyChunks = true;
   }
 }
 
 void HammerEngine::TileRenderer::clearChunkCache() {
+  // Mark all chunks as dirty for re-rendering (e.g., on season change)
   m_cachePendingClear.store(true, std::memory_order_release);
+  m_hasDirtyChunks = true;
 }
 
 void HammerEngine::TileRenderer::initTexturePool(SDL_Renderer *renderer) {
@@ -1939,224 +1943,103 @@ void HammerEngine::TileRenderer::updateDirtyChunks(
     initTexturePool(renderer);
   }
 
-  // Handle deferred cache clear - return textures to pool
-  if (m_cachePendingClear.exchange(false, std::memory_order_acq_rel)) {
-    for (auto &[key, cache] : m_chunkCache) {
-      if (cache.texture) {
-        releaseTexture(std::move(cache.texture));
-      }
-    }
-    m_chunkCache.clear();
-    m_hasDirtyChunks = true;
-    // Reset both visible and prefetch range tracking
-    m_lastStartChunkX = -1;
-    m_lastPrefetchStartX = -1;
+  // Initialize chunk grid if needed (first call after world load)
+  if (!m_gridInitialized) {
+    initChunkGrid(world, renderer);
+    return;  // Grid init renders all chunks, no more work needed this frame
   }
 
-  // Pre-computed constant (avoid repeated multiplications)
-  constexpr int CHUNK_PIXELS = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
-  constexpr float INV_CHUNK_PIXELS = 1.0f / static_cast<float>(CHUNK_PIXELS);
+  // Handle deferred cache clear (e.g., season change)
+  if (m_cachePendingClear.exchange(false, std::memory_order_acq_rel)) {
+    // Mark all chunks dirty for re-rendering
+    for (auto& row : m_chunkGrid) {
+      for (auto& chunk : row) {
+        chunk.dirty = true;
+      }
+    }
+    m_hasDirtyChunks = true;
+    m_lastCamChunkX = -1;  // Force visible list rebuild
+  }
 
-  // Calculate visible chunk range
-  const int worldWidth = static_cast<int>(world.grid[0].size());
-  const int worldHeight = static_cast<int>(world.grid.size());
-  const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
-  const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
-
-  // Use multiplication instead of division (faster)
-  const int startChunkX = std::max(0, static_cast<int>(cameraX * INV_CHUNK_PIXELS));
-  const int startChunkY = std::max(0, static_cast<int>(cameraY * INV_CHUNK_PIXELS));
-  const int endChunkX = std::min(maxChunkX,
-      static_cast<int>((cameraX + viewportWidth) * INV_CHUNK_PIXELS) + 1);
-  const int endChunkY = std::min(maxChunkY,
-      static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 1);
-
-  const bool rangeChanged = (startChunkX != m_lastStartChunkX ||
-                             startChunkY != m_lastStartChunkY ||
-                             endChunkX != m_lastEndChunkX ||
-                             endChunkY != m_lastEndChunkY);
-
-  // FAST PATH: No work needed - skip all iteration
-  if (!m_hasDirtyChunks && !rangeChanged && !m_chunkCache.empty()) {
+  // Early-out: no dirty chunks
+  if (!m_hasDirtyChunks) {
     return;
   }
 
-  m_lastStartChunkX = startChunkX;
-  m_lastStartChunkY = startChunkY;
-  m_lastEndChunkX = endChunkX;
-  m_lastEndChunkY = endChunkY;
+  // Re-render dirty chunks (limited per frame to avoid stuttering)
+  int rendered = 0;
+  bool anyDirty = false;
 
-  ++m_frameCounter;
+  // Only process visible range + margin for efficiency
+  const int startX = std::max(0, static_cast<int>(cameraX * INV_CHUNK_PIXELS) - 1);
+  const int startY = std::max(0, static_cast<int>(cameraY * INV_CHUNK_PIXELS) - 1);
+  const int endX = std::min(m_gridWidth, static_cast<int>((cameraX + viewportWidth) * INV_CHUNK_PIXELS) + 2);
+  const int endY = std::min(m_gridHeight, static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 2);
 
-  int chunksCreatedThisFrame = 0;
-  int chunksRenderedThisFrame = 0;
-  bool anyChunkStillDirty = false;
-
-  // Only rebuild visible keys when range changed (for eviction)
-  if (rangeChanged) {
-    m_visibleKeysBuffer.clear();
-    for (int cy = startChunkY; cy <= endChunkY; ++cy) {
-      for (int cx = startChunkX; cx <= endChunkX; ++cx) {
-        m_visibleKeysBuffer.push_back(makeChunkKey(cx, cy));
-      }
-    }
-  }
-
-  // Process visible chunks
-  for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
-    for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
-      const uint64_t key = makeChunkKey(chunkX, chunkY);
-
-      auto it = m_chunkCache.find(key);
-      if (it == m_chunkCache.end()) {
-        // New chunk needed
-        if (chunksCreatedThisFrame >= MAX_CHUNK_CREATES_PER_FRAME) {
-          anyChunkStillDirty = true;
-          continue;
-        }
-
-        auto tex = acquireTexture(renderer);
-        if (!tex) {
-          continue;
-        }
-
-        ChunkCache cache;
-        cache.texture = std::move(tex);
-        cache.dirty = true;
-        cache.lastUsedFrame = m_frameCounter;
-        it = m_chunkCache.emplace(key, std::move(cache)).first;
-        ++chunksCreatedThisFrame;
-      }
-
-      ChunkCache &chunk = it->second;
-
-      // Render dirty chunks
+  for (int cy = startY; cy < endY && rendered < MAX_DIRTY_PER_FRAME; ++cy) {
+    for (int cx = startX; cx < endX && rendered < MAX_DIRTY_PER_FRAME; ++cx) {
+      auto& chunk = m_chunkGrid[cy][cx];
       if (chunk.dirty && chunk.texture) {
-        if (chunksRenderedThisFrame < MAX_CHUNK_RENDERS_PER_FRAME) {
-          renderChunkToTexture(world, renderer, chunkX, chunkY,
-                               chunk.texture.get());
-          chunk.dirty = false;
-          ++chunksRenderedThisFrame;
-        } else {
-          anyChunkStillDirty = true;
-        }
+        renderChunkToTexture(world, renderer, cx, cy, chunk.texture.get());
+        chunk.dirty = false;
+        ++rendered;
       }
     }
   }
 
-  m_hasDirtyChunks = anyChunkStillDirty;
-
-  // Eviction: only run when significantly over limit to reduce overhead
-  constexpr size_t EVICTION_THRESHOLD = MAX_CACHED_CHUNKS + 8;
-  if (m_chunkCache.size() > EVICTION_THRESHOLD) {
-    // Build visible set once
-    m_visibleKeySet.clear();
-    m_visibleKeySet.insert(m_visibleKeysBuffer.begin(),
-                           m_visibleKeysBuffer.end());
-
-    m_evictionBuffer.clear();
-    for (const auto &[key, cache] : m_chunkCache) {
-      if (m_visibleKeySet.find(key) == m_visibleKeySet.end()) {
-        m_evictionBuffer.emplace_back(key, cache.lastUsedFrame);
-      }
-    }
-
-    // Only sort and evict if we have candidates
-    if (!m_evictionBuffer.empty()) {
-      std::sort(m_evictionBuffer.begin(), m_evictionBuffer.end(),
-                [](const auto &a, const auto &b) { return a.second < b.second; });
-
-      // Evict down to MAX_CACHED_CHUNKS
-      const size_t toEvict = m_chunkCache.size() - MAX_CACHED_CHUNKS;
-      for (size_t i = 0; i < std::min(toEvict, m_evictionBuffer.size()); ++i) {
-        auto evictIt = m_chunkCache.find(m_evictionBuffer[i].first);
-        if (evictIt != m_chunkCache.end()) {
-          if (evictIt->second.texture) {
-            releaseTexture(std::move(evictIt->second.texture));
-          }
-          m_chunkCache.erase(evictIt);
+  // Check if any chunks remain dirty
+  if (rendered == MAX_DIRTY_PER_FRAME) {
+    // May have more dirty chunks
+    for (int cy = startY; cy < endY; ++cy) {
+      for (int cx = startX; cx < endX; ++cx) {
+        if (m_chunkGrid[cy][cx].dirty) {
+          anyDirty = true;
+          break;
         }
       }
+      if (anyDirty) break;
     }
+  }
+
+  m_hasDirtyChunks = anyDirty;
+
+  // Force visible list rebuild if chunks were re-rendered
+  if (rendered > 0) {
+    m_lastCamChunkX = -1;
   }
 }
 
 void HammerEngine::TileRenderer::render(
     const HammerEngine::WorldData &world, SDL_Renderer *renderer, float cameraX,
     float cameraY, float viewportWidth, float viewportHeight) {
-  if (world.grid.empty()) {
-    WORLD_MANAGER_WARN("TileRenderer: Cannot render - world grid is empty");
+  if (world.grid.empty() || !renderer || !m_gridInitialized) {
     return;
   }
 
-  if (!renderer) {
-    WORLD_MANAGER_ERROR("TileRenderer: Cannot render - renderer is null");
-    return;
+  // Check if camera crossed chunk boundary - rebuild visible list
+  const int camChunkX = static_cast<int>(cameraX * INV_CHUNK_PIXELS);
+  const int camChunkY = static_cast<int>(cameraY * INV_CHUNK_PIXELS);
+
+  if (camChunkX != m_lastCamChunkX || camChunkY != m_lastCamChunkY) {
+    rebuildVisibleList(camChunkX, camChunkY, viewportWidth, viewportHeight);
+    m_lastCamChunkX = camChunkX;
+    m_lastCamChunkY = camChunkY;
   }
 
-  // Pre-computed constant (avoid repeated multiplications)
-  constexpr int CHUNK_PIXELS = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
-  constexpr float INV_CHUNK_PIXELS = 1.0f / static_cast<float>(CHUNK_PIXELS);
+  // SIMD: Calculate screen positions (4 chunks at a time)
+  calculateScreenPositionsSIMD(cameraX, cameraY);
 
-  const int worldWidth = static_cast<int>(world.grid[0].size());
-  const int worldHeight = static_cast<int>(world.grid.size());
-  const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
-  const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
-
-  // Use multiplication instead of division (faster)
-  const int startChunkX = std::max(0, static_cast<int>(cameraX * INV_CHUNK_PIXELS));
-  const int startChunkY = std::max(0, static_cast<int>(cameraY * INV_CHUNK_PIXELS));
-  const int endChunkX = std::min(maxChunkX,
-      static_cast<int>((cameraX + viewportWidth) * INV_CHUNK_PIXELS) + 1);
-  const int endChunkY = std::min(maxChunkY,
-      static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 1);
-
-  constexpr int chunkPixelSize =
-      CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
-
-  // Only composite cached chunks - no render target changes
-  for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
-    for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
-      const uint64_t key = makeChunkKey(chunkX, chunkY);
-
-      auto it = m_chunkCache.find(key);
-      if (it == m_chunkCache.end() || !it->second.texture) {
-        continue;  // Chunk not ready yet - will be rendered next frame
-      }
-
-      constexpr int chunkWorldSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
-
-      float srcX = 0;
-      float srcY = 0;
-      float srcW = static_cast<float>(chunkPixelSize);
-      float srcH = static_cast<float>(chunkPixelSize);
-
-      float screenX = static_cast<float>(chunkX * chunkWorldSize) - cameraX -
-                      SPRITE_OVERHANG;
-      float screenY = static_cast<float>(chunkY * chunkWorldSize) - cameraY -
-                      SPRITE_OVERHANG;
-      float destW = srcW;
-      float destH = srcH;
-
-      if (chunkX > startChunkX) {
-        srcX = SPRITE_OVERHANG;
-        srcW -= SPRITE_OVERHANG;
-        screenX += SPRITE_OVERHANG;
-        destW = srcW;
-      }
-
-      if (chunkY > startChunkY) {
-        srcY = SPRITE_OVERHANG;
-        srcH -= SPRITE_OVERHANG;
-        screenY += SPRITE_OVERHANG;
-        destH = srcH;
-      }
-
-      SDL_FRect srcRect = {srcX, srcY, srcW, srcH};
-      SDL_FRect destRect = {std::floor(screenX), std::floor(screenY), destW,
-                            destH};
-      SDL_RenderTexture(renderer, it->second.texture.get(), &srcRect, &destRect);
-    }
+  // Draw all visible chunks
+  for (size_t i = 0; i < m_visibleChunks.count; ++i) {
+    SDL_FRect srcRect = {
+        m_visibleChunks.srcX[i], m_visibleChunks.srcY[i],
+        m_visibleChunks.srcW[i], m_visibleChunks.srcH[i]
+    };
+    SDL_FRect destRect = {
+        m_visibleChunks.screenX[i], m_visibleChunks.screenY[i],
+        m_visibleChunks.srcW[i], m_visibleChunks.srcH[i]
+    };
+    SDL_RenderTexture(renderer, m_visibleChunks.textures[i], &srcRect, &destRect);
   }
 }
 
@@ -2164,171 +2047,65 @@ void HammerEngine::TileRenderer::prefetchChunks(
     const HammerEngine::WorldData &world, SDL_Renderer *renderer,
     float cameraX, float cameraY, float viewportWidth, float viewportHeight,
     float velocityX, float velocityY, float cameraSpeed) {
-  if (world.grid.empty() || !renderer) {
+  // With pre-rendered chunk grid, prefetch only handles dirty chunk re-rendering
+  // in an extended area based on camera velocity
+  if (world.grid.empty() || !renderer || !m_gridInitialized) {
     return;
   }
 
-  // Initialize texture pool on first call
-  if (!m_poolInitialized) {
-    initTexturePool(renderer);
-  }
-
-  // OPTIMIZATION: Early exit when camera stationary and no dirty chunks
-  constexpr float STATIONARY_THRESHOLD_SQ = 25.0f;  // 5 px/s squared
-  float speedSq = cameraSpeed * cameraSpeed;
-  if (speedSq < STATIONARY_THRESHOLD_SQ && !m_hasDirtyChunks) {
-    ++m_frameCounter;  // Still increment for LRU tracking
+  // Early-out: no dirty chunks
+  if (!m_hasDirtyChunks) {
     return;
   }
 
-  // Pre-computed constants (avoid repeated multiplications)
-  constexpr int CHUNK_PIXELS = CHUNK_SIZE * TILE_SIZE;
-  constexpr float INV_CHUNK_PIXELS = 1.0f / static_cast<float>(CHUNK_PIXELS);
+  // Suppress unused parameter warnings - velocity-based extension not needed
+  // since all chunks are pre-rendered
+  (void)velocityX;
+  (void)velocityY;
+  (void)cameraSpeed;
 
-  // Squared thresholds (avoid sqrt in comparisons)
-  constexpr float VELOCITY_THRESHOLD_SQ = 30.0f * 30.0f;   // 900
-  constexpr float MEDIUM_SPEED_SQ = 150.0f * 150.0f;       // 22500
-  constexpr float FAST_SPEED_SQ = 300.0f * 300.0f;         // 90000
+  // Calculate extended chunk range (visible + 2 chunk margin in all directions)
+  constexpr int margin = 2;
+  const int startX = std::max(0, static_cast<int>(cameraX * INV_CHUNK_PIXELS) - margin);
+  const int startY = std::max(0, static_cast<int>(cameraY * INV_CHUNK_PIXELS) - margin);
+  const int endX = std::min(m_gridWidth, static_cast<int>((cameraX + viewportWidth) * INV_CHUNK_PIXELS) + 1 + margin);
+  const int endY = std::min(m_gridHeight, static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 1 + margin);
 
-  // Calculate base visible chunk range using multiplication (faster than division)
-  const int worldWidth = static_cast<int>(world.grid[0].size());
-  const int worldHeight = static_cast<int>(world.grid.size());
-  const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
-  const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
+  // Re-render dirty chunks with budget to avoid stuttering
+  constexpr int renderBudget = 4;
+  int rendered = 0;
+  bool anyDirty = false;
 
-  int startChunkX = static_cast<int>(cameraX * INV_CHUNK_PIXELS);
-  int startChunkY = static_cast<int>(cameraY * INV_CHUNK_PIXELS);
-  int endChunkX = static_cast<int>((cameraX + viewportWidth) * INV_CHUNK_PIXELS) + 1;
-  int endChunkY = static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 1;
-
-  // Calculate velocity squared for margin determination (avoid abs/sqrt)
-  float velXSq = velocityX * velocityX;
-  float velYSq = velocityY * velocityY;
-
-  // Extend bounds proportionally to velocity (using squared comparisons)
-  auto calcMarginSq = [](float velSq) -> int {
-    if (velSq < 900.0f) return 1;      // < 30 px/s
-    if (velSq < 22500.0f) return 2;    // < 150 px/s
-    if (velSq < 90000.0f) return 3;    // < 300 px/s
-    return 4;                          // Very fast movement
-  };
-
-  int marginX = calcMarginSq(velXSq);
-  int marginY = calcMarginSq(velYSq);
-
-  // Apply directional margins (sign check is cheaper than threshold comparison)
-  if (velXSq >= VELOCITY_THRESHOLD_SQ) {
-    if (velocityX > 0) {
-      endChunkX += marginX;
-    } else {
-      startChunkX -= marginX;
-    }
-  } else {
-    // Stationary: keep 1 chunk margin for immediate movement response
-    startChunkX -= 1;
-    endChunkX += 1;
-  }
-
-  if (velYSq >= VELOCITY_THRESHOLD_SQ) {
-    if (velocityY > 0) {
-      endChunkY += marginY;
-    } else {
-      startChunkY -= marginY;
-    }
-  } else {
-    startChunkY -= 1;
-    endChunkY += 1;
-  }
-
-  // Clamp to world bounds
-  startChunkX = std::max(0, startChunkX);
-  startChunkY = std::max(0, startChunkY);
-  endChunkX = std::min(maxChunkX, endChunkX);
-  endChunkY = std::min(maxChunkY, endChunkY);
-
-  // OPTIMIZATION: Skip chunk iteration if range unchanged and no dirty chunks
-  const bool rangeChanged = (startChunkX != m_lastPrefetchStartX ||
-                             startChunkY != m_lastPrefetchStartY ||
-                             endChunkX != m_lastPrefetchEndX ||
-                             endChunkY != m_lastPrefetchEndY);
-
-  if (!rangeChanged && !m_hasDirtyChunks) {
-    ++m_frameCounter;  // Still increment for LRU consistency
-    return;  // No work needed - cached chunks are untouched
-  }
-
-  // Update range tracking
-  m_lastPrefetchStartX = startChunkX;
-  m_lastPrefetchStartY = startChunkY;
-  m_lastPrefetchEndX = endChunkX;
-  m_lastPrefetchEndY = endChunkY;
-
-  // Tiered budget based on camera speed (using squared thresholds)
-  int renderBudget, createBudget;
-  if (speedSq > FAST_SPEED_SQ) {
-    renderBudget = 8;
-    createBudget = 10;
-  } else if (speedSq > MEDIUM_SPEED_SQ) {
-    renderBudget = 5;
-    createBudget = 6;
-  } else {
-    renderBudget = 3;
-    createBudget = 4;
-  }
-
-  ++m_frameCounter;
-  int chunksCreatedThisFrame = 0;
-  int chunksRenderedThisFrame = 0;
-  bool anyChunkStillDirty = false;
-
-  // Process chunks (direction-extended bounds already prioritize movement direction)
-  for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
-    for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
-      const uint64_t key = makeChunkKey(chunkX, chunkY);
-
-      auto it = m_chunkCache.find(key);
-      if (it == m_chunkCache.end()) {
-        // New chunk needed
-        if (chunksCreatedThisFrame >= createBudget) {
-          anyChunkStillDirty = true;
-          continue;
-        }
-
-        auto tex = acquireTexture(renderer);
-        if (!tex) {
-          continue;
-        }
-
-        ChunkCache cache;
-        cache.texture = std::move(tex);
-        cache.dirty = true;
-        cache.lastUsedFrame = m_frameCounter;
-        it = m_chunkCache.emplace(key, std::move(cache)).first;
-        ++chunksCreatedThisFrame;
-      }
-
-      ChunkCache &chunk = it->second;
-
-      // Only update LRU if this is a new chunk entering the range
-      // (existing chunks in unchanged positions don't need updates)
-      if (rangeChanged) {
-        chunk.lastUsedFrame = m_frameCounter;
-      }
-
-      // Render dirty chunks with dynamic budget
+  for (int cy = startY; cy < endY && rendered < renderBudget; ++cy) {
+    for (int cx = startX; cx < endX && rendered < renderBudget; ++cx) {
+      auto& chunk = m_chunkGrid[cy][cx];
       if (chunk.dirty && chunk.texture) {
-        if (chunksRenderedThisFrame < renderBudget) {
-          renderChunkToTexture(world, renderer, chunkX, chunkY, chunk.texture.get());
-          chunk.dirty = false;
-          ++chunksRenderedThisFrame;
-        } else {
-          anyChunkStillDirty = true;
-        }
+        renderChunkToTexture(world, renderer, cx, cy, chunk.texture.get());
+        chunk.dirty = false;
+        ++rendered;
       }
     }
   }
 
-  m_hasDirtyChunks = anyChunkStillDirty;
+  // Check if more dirty chunks remain
+  if (rendered == renderBudget) {
+    for (int cy = startY; cy < endY; ++cy) {
+      for (int cx = startX; cx < endX; ++cx) {
+        if (m_chunkGrid[cy][cx].dirty) {
+          anyDirty = true;
+          break;
+        }
+      }
+      if (anyDirty) break;
+    }
+  }
+
+  m_hasDirtyChunks = anyDirty;
+
+  // Force visible list rebuild if chunks were re-rendered
+  if (rendered > 0) {
+    m_lastCamChunkX = -1;
+  }
 }
 
 void HammerEngine::TileRenderer::prewarmChunks(
@@ -2343,57 +2120,140 @@ void HammerEngine::TileRenderer::prewarmChunks(
     initTexturePool(renderer);
   }
 
-  // Pre-computed constant (avoid repeated multiplications)
-  constexpr int CHUNK_PIXELS = CHUNK_SIZE * TILE_SIZE;
-  constexpr float INV_CHUNK_PIXELS = 1.0f / static_cast<float>(CHUNK_PIXELS);
+  // Initialize chunk grid if not done yet
+  if (!m_gridInitialized) {
+    initChunkGrid(world, renderer);
+    return;  // Grid init renders all chunks
+  }
 
-  // Calculate visible chunk range
-  const int worldWidth = static_cast<int>(world.grid[0].size());
-  const int worldHeight = static_cast<int>(world.grid.size());
-  const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
-  const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
-
-  // Extend by 3 chunks in each direction for smooth initial scrolling
+  // Calculate visible chunk range with margin for smooth initial scrolling
   constexpr int margin = 3;
-  int startChunkX = std::max(0, static_cast<int>(cameraX * INV_CHUNK_PIXELS) - margin);
-  int startChunkY = std::max(0, static_cast<int>(cameraY * INV_CHUNK_PIXELS) - margin);
-  int endChunkX = std::min(maxChunkX, static_cast<int>((cameraX + viewportWidth) * INV_CHUNK_PIXELS) + 1 + margin);
-  int endChunkY = std::min(maxChunkY, static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 1 + margin);
+  const int startX = std::max(0, static_cast<int>(cameraX * INV_CHUNK_PIXELS) - margin);
+  const int startY = std::max(0, static_cast<int>(cameraY * INV_CHUNK_PIXELS) - margin);
+  const int endX = std::min(m_gridWidth, static_cast<int>((cameraX + viewportWidth) * INV_CHUNK_PIXELS) + 1 + margin);
+  const int endY = std::min(m_gridHeight, static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 1 + margin);
 
-  ++m_frameCounter;
-
-  // Process ALL chunks - no budget limit for pre-warm
-  for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
-    for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
-      const uint64_t key = makeChunkKey(chunkX, chunkY);
-
-      auto it = m_chunkCache.find(key);
-      if (it == m_chunkCache.end()) {
-        // Create new chunk
-        auto tex = acquireTexture(renderer);
-        if (!tex) {
-          continue;
-        }
-
-        ChunkCache cache;
-        cache.texture = std::move(tex);
-        cache.dirty = true;
-        cache.lastUsedFrame = m_frameCounter;
-        it = m_chunkCache.emplace(key, std::move(cache)).first;
-      }
-
-      ChunkCache &chunk = it->second;
-      chunk.lastUsedFrame = m_frameCounter;
-
-      // Render immediately - no budget limit
+  // Re-render any dirty chunks in visible area - no budget limit for prewarm
+  for (int cy = startY; cy < endY; ++cy) {
+    for (int cx = startX; cx < endX; ++cx) {
+      auto& chunk = m_chunkGrid[cy][cx];
       if (chunk.dirty && chunk.texture) {
-        renderChunkToTexture(world, renderer, chunkX, chunkY, chunk.texture.get());
+        renderChunkToTexture(world, renderer, cx, cy, chunk.texture.get());
         chunk.dirty = false;
       }
     }
   }
 
   m_hasDirtyChunks = false;  // All visible chunks are now rendered
+  m_lastCamChunkX = -1;      // Force visible list rebuild
+}
+
+void HammerEngine::TileRenderer::initChunkGrid(
+    const HammerEngine::WorldData &world, SDL_Renderer *renderer) {
+  if (world.grid.empty() || !renderer) {
+    return;
+  }
+
+  const int worldWidth = static_cast<int>(world.grid[0].size());
+  const int worldHeight = static_cast<int>(world.grid.size());
+  m_gridWidth = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
+  m_gridHeight = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+  WORLD_MANAGER_INFO(std::format("Initializing chunk grid: {}x{} chunks ({} total)",
+                                  m_gridWidth, m_gridHeight, m_gridWidth * m_gridHeight));
+
+  // Allocate 2D grid
+  m_chunkGrid.resize(m_gridHeight);
+  for (auto& row : m_chunkGrid) {
+    row.resize(m_gridWidth);
+  }
+
+  // Create and render all chunk textures
+  for (int cy = 0; cy < m_gridHeight; ++cy) {
+    for (int cx = 0; cx < m_gridWidth; ++cx) {
+      auto tex = acquireTexture(renderer);
+      if (tex) {
+        renderChunkToTexture(world, renderer, cx, cy, tex.get());
+        m_chunkGrid[cy][cx].texture = std::move(tex);
+        m_chunkGrid[cy][cx].dirty = false;
+      }
+    }
+  }
+
+  m_gridInitialized = true;
+  m_hasDirtyChunks = false;
+  m_lastCamChunkX = -1;  // Force visible list rebuild on first render
+
+  WORLD_MANAGER_INFO("Chunk grid initialization complete");
+}
+
+void HammerEngine::TileRenderer::rebuildVisibleList(
+    int camChunkX, int camChunkY, float viewW, float viewH) {
+  m_visibleChunks.clear();
+
+  // Calculate visible range with 1 chunk margin for edge sprites
+  const int chunksX = static_cast<int>(viewW * INV_CHUNK_PIXELS) + 3;
+  const int chunksY = static_cast<int>(viewH * INV_CHUNK_PIXELS) + 3;
+
+  const int startX = std::max(0, camChunkX - 1);
+  const int startY = std::max(0, camChunkY - 1);
+  const int endX = std::min(m_gridWidth, camChunkX + chunksX);
+  const int endY = std::min(m_gridHeight, camChunkY + chunksY);
+
+  // Reserve space for expected visible chunks
+  m_visibleChunks.reserve((endX - startX) * (endY - startY));
+
+  for (int cy = startY; cy < endY; ++cy) {
+    for (int cx = startX; cx < endX; ++cx) {
+      SDL_Texture* tex = m_chunkGrid[cy][cx].texture.get();
+      if (!tex) continue;
+
+      // Calculate source rect with edge clipping for sprite overhang
+      const float srcX = (cx > startX) ? static_cast<float>(SPRITE_OVERHANG) : 0.0f;
+      const float srcY = (cy > startY) ? static_cast<float>(SPRITE_OVERHANG) : 0.0f;
+      const float srcW = static_cast<float>(CHUNK_TEXTURE_SIZE) - srcX;
+      const float srcH = static_cast<float>(CHUNK_TEXTURE_SIZE) - srcY;
+
+      // Calculate world position (accounting for overhang offset)
+      const float worldX = static_cast<float>(cx * CHUNK_PIXELS) -
+                           static_cast<float>(SPRITE_OVERHANG) + srcX;
+      const float worldY = static_cast<float>(cy * CHUNK_PIXELS) -
+                           static_cast<float>(SPRITE_OVERHANG) + srcY;
+
+      m_visibleChunks.push_back(tex, worldX, worldY, srcX, srcY, srcW, srcH);
+    }
+  }
+}
+
+void HammerEngine::TileRenderer::calculateScreenPositionsSIMD(
+    float cameraX, float cameraY) {
+  const size_t count = m_visibleChunks.count;
+  if (count == 0) return;
+
+  // Ensure output vectors have proper size
+  m_visibleChunks.screenX.resize(count);
+  m_visibleChunks.screenY.resize(count);
+
+  size_t i = 0;
+
+  // SIMD: Process 4 chunks at a time
+  const Float4 camXVec = broadcast(cameraX);
+  const Float4 camYVec = broadcast(cameraY);
+
+  for (; i + 4 <= count; i += 4) {
+    Float4 wx = load4(&m_visibleChunks.worldX[i]);
+    Float4 wy = load4(&m_visibleChunks.worldY[i]);
+    Float4 sx = sub(wx, camXVec);
+    Float4 sy = sub(wy, camYVec);
+    store4(&m_visibleChunks.screenX[i], sx);
+    store4(&m_visibleChunks.screenY[i], sy);
+  }
+
+  // Scalar tail for remaining chunks
+  for (; i < count; ++i) {
+    m_visibleChunks.screenX[i] = m_visibleChunks.worldX[i] - cameraX;
+    m_visibleChunks.screenY[i] = m_visibleChunks.worldY[i] - cameraY;
+  }
 }
 
 void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile &tile,

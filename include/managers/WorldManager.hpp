@@ -15,7 +15,6 @@
 #include <atomic>
 #include <shared_mutex>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 #include "managers/EventManager.hpp"
 
@@ -224,15 +223,49 @@ private:
         int buildingHeight;
     };
 
-    struct ChunkCache {
+    // New: Direct 2D grid for O(1) chunk access (replaces hash map)
+    struct ChunkData {
         std::shared_ptr<SDL_Texture> texture;
         bool dirty{true};
-        uint64_t lastUsedFrame{0};
     };
 
-    static uint64_t makeChunkKey(int chunkX, int chunkY) {
-        return (static_cast<uint64_t>(chunkY) << 32) | static_cast<uint32_t>(chunkX);
-    }
+    // SoA layout for SIMD screen position calculation
+    struct VisibleChunks {
+        std::vector<SDL_Texture*> textures;
+        std::vector<float> worldX, worldY;        // World positions
+        std::vector<float> srcX, srcY, srcW, srcH; // Source rects (edge clipping)
+        std::vector<float> screenX, screenY;       // Computed each frame via SIMD
+        size_t count{0};
+
+        void clear() {
+            textures.clear();
+            worldX.clear(); worldY.clear();
+            srcX.clear(); srcY.clear(); srcW.clear(); srcH.clear();
+            screenX.clear(); screenY.clear();
+            count = 0;
+        }
+
+        void reserve(size_t n) {
+            textures.reserve(n);
+            worldX.reserve(n); worldY.reserve(n);
+            srcX.reserve(n); srcY.reserve(n); srcW.reserve(n); srcH.reserve(n);
+            screenX.reserve(n); screenY.reserve(n);
+        }
+
+        void push_back(SDL_Texture* tex, float wx, float wy,
+                       float sx, float sy, float sw, float sh) {
+            textures.push_back(tex);
+            worldX.push_back(wx); worldY.push_back(wy);
+            srcX.push_back(sx); srcY.push_back(sy);
+            srcW.push_back(sw); srcH.push_back(sh);
+            screenX.push_back(0.0f); screenY.push_back(0.0f);
+            ++count;
+        }
+    };
+
+
+
+    // Removed: makeChunkKey() - no longer needed with 2D grid
 
     // Cached texture pointers - eliminates hash map lookups in hot render loop
     struct CachedTileTextures {
@@ -294,15 +327,21 @@ private:
 
     mutable std::vector<YSortedSprite> m_ySortBuffer;
 
-    std::unordered_map<uint64_t, ChunkCache> m_chunkCache;
-    uint64_t m_frameCounter{0};
-    static constexpr size_t MAX_CACHED_CHUNKS = 128;  // More chunks since they're smaller
+    // 2D chunk grid - O(1) access, replaces hash map
+    std::vector<std::vector<ChunkData>> m_chunkGrid;
+    int m_gridWidth{0};   // Number of chunks in X
+    int m_gridHeight{0};  // Number of chunks in Y
+    bool m_gridInitialized{false};
+
+    // Visible chunk cache with SoA layout for SIMD
+    VisibleChunks m_visibleChunks;
+    int m_lastCamChunkX{-1};  // Last camera chunk for change detection
+    int m_lastCamChunkY{-1};
+
+    // Constants
     static constexpr size_t TEXTURE_POOL_SIZE = 150;  // Pool for chunk textures
-    static constexpr int MAX_CHUNK_RENDERS_PER_FRAME = 1;  // Single chunk per frame eliminates hitches
-    static constexpr int MAX_CHUNK_CREATES_PER_FRAME = 2;  // Keep creates low too
-    mutable std::vector<uint64_t> m_visibleKeysBuffer;
-    mutable std::unordered_set<uint64_t> m_visibleKeySet;  // O(1) lookup for eviction
-    mutable std::vector<std::pair<uint64_t, uint64_t>> m_evictionBuffer;
+    static constexpr int MAX_DIRTY_PER_FRAME = 2;     // Max chunks to re-render per frame
+
     std::atomic<bool> m_cachePendingClear{false};
     bool m_hasDirtyChunks{false};  // Early-out flag for updateDirtyChunks
 
@@ -313,20 +352,45 @@ private:
     std::shared_ptr<SDL_Texture> acquireTexture(SDL_Renderer* renderer);
     void releaseTexture(std::shared_ptr<SDL_Texture> tex);
 
-    // Last visible chunk range for change detection (early-out when camera hasn't moved)
-    int m_lastStartChunkX{-1};
-    int m_lastStartChunkY{-1};
-    int m_lastEndChunkX{-1};
-    int m_lastEndChunkY{-1};
+    // Pre-computed constants for chunk calculations
+    static constexpr int CHUNK_PIXELS = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
+    static constexpr float INV_CHUNK_PIXELS = 1.0f / static_cast<float>(CHUNK_PIXELS);
+    static constexpr int CHUNK_TEXTURE_SIZE = CHUNK_PIXELS + SPRITE_OVERHANG * 2;
 
-    // Prefetch range tracking (separate from visible range since prefetch extends beyond)
-    int m_lastPrefetchStartX{-1};
-    int m_lastPrefetchStartY{-1};
-    int m_lastPrefetchEndX{-1};
-    int m_lastPrefetchEndY{-1};
 
     void renderChunkToTexture(const WorldData& world, SDL_Renderer* renderer,
                               int chunkX, int chunkY, SDL_Texture* target);
+
+    /**
+     * @brief Initialize entire chunk grid at load time
+     *
+     * Pre-renders all chunks during loading phase. Called once when world loads.
+     *
+     * @param world World data
+     * @param renderer SDL renderer
+     */
+    void initChunkGrid(const WorldData& world, SDL_Renderer* renderer);
+
+    /**
+     * @brief Rebuild visible chunk list when camera crosses chunk boundary
+     *
+     * Populates m_visibleChunks with chunks that are currently visible,
+     * including edge clipping information for proper rendering.
+     *
+     * @param camChunkX Camera chunk X coordinate
+     * @param camChunkY Camera chunk Y coordinate
+     * @param viewW Viewport width in pixels
+     * @param viewH Viewport height in pixels
+     */
+    void rebuildVisibleList(int camChunkX, int camChunkY, float viewW, float viewH);
+
+    /**
+     * @brief Calculate screen positions using SIMD (4 chunks at a time)
+     *
+     * @param cameraX Camera X offset
+     * @param cameraY Camera Y offset
+     */
+    void calculateScreenPositionsSIMD(float cameraX, float cameraY);
 
     void onSeasonChange(const EventData& data);
 
