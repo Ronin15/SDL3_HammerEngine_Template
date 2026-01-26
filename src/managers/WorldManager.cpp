@@ -1948,8 +1948,14 @@ void HammerEngine::TileRenderer::updateDirtyChunks(
     }
     m_chunkCache.clear();
     m_hasDirtyChunks = true;
+    // Reset both visible and prefetch range tracking
     m_lastStartChunkX = -1;
+    m_lastPrefetchStartX = -1;
   }
+
+  // Pre-computed constant (avoid repeated multiplications)
+  constexpr int CHUNK_PIXELS = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
+  constexpr float INV_CHUNK_PIXELS = 1.0f / static_cast<float>(CHUNK_PIXELS);
 
   // Calculate visible chunk range
   const int worldWidth = static_cast<int>(world.grid[0].size());
@@ -1957,18 +1963,13 @@ void HammerEngine::TileRenderer::updateDirtyChunks(
   const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
   const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
-  const int startChunkX =
-      std::max(0, static_cast<int>(cameraX / (CHUNK_SIZE * TILE_SIZE)));
-  const int startChunkY =
-      std::max(0, static_cast<int>(cameraY / (CHUNK_SIZE * TILE_SIZE)));
-  const int endChunkX =
-      std::min(maxChunkX, static_cast<int>((cameraX + viewportWidth) /
-                                           (CHUNK_SIZE * TILE_SIZE)) +
-                              1);
-  const int endChunkY =
-      std::min(maxChunkY, static_cast<int>((cameraY + viewportHeight) /
-                                           (CHUNK_SIZE * TILE_SIZE)) +
-                              1);
+  // Use multiplication instead of division (faster)
+  const int startChunkX = std::max(0, static_cast<int>(cameraX * INV_CHUNK_PIXELS));
+  const int startChunkY = std::max(0, static_cast<int>(cameraY * INV_CHUNK_PIXELS));
+  const int endChunkX = std::min(maxChunkX,
+      static_cast<int>((cameraX + viewportWidth) * INV_CHUNK_PIXELS) + 1);
+  const int endChunkY = std::min(maxChunkY,
+      static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 1);
 
   const bool rangeChanged = (startChunkX != m_lastStartChunkX ||
                              startChunkY != m_lastStartChunkY ||
@@ -2093,23 +2094,22 @@ void HammerEngine::TileRenderer::render(
     return;
   }
 
+  // Pre-computed constant (avoid repeated multiplications)
+  constexpr int CHUNK_PIXELS = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
+  constexpr float INV_CHUNK_PIXELS = 1.0f / static_cast<float>(CHUNK_PIXELS);
+
   const int worldWidth = static_cast<int>(world.grid[0].size());
   const int worldHeight = static_cast<int>(world.grid.size());
   const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
   const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
-  const int startChunkX =
-      std::max(0, static_cast<int>(cameraX / (CHUNK_SIZE * TILE_SIZE)));
-  const int startChunkY =
-      std::max(0, static_cast<int>(cameraY / (CHUNK_SIZE * TILE_SIZE)));
-  const int endChunkX =
-      std::min(maxChunkX, static_cast<int>((cameraX + viewportWidth) /
-                                           (CHUNK_SIZE * TILE_SIZE)) +
-                              1);
-  const int endChunkY =
-      std::min(maxChunkY, static_cast<int>((cameraY + viewportHeight) /
-                                           (CHUNK_SIZE * TILE_SIZE)) +
-                              1);
+  // Use multiplication instead of division (faster)
+  const int startChunkX = std::max(0, static_cast<int>(cameraX * INV_CHUNK_PIXELS));
+  const int startChunkY = std::max(0, static_cast<int>(cameraY * INV_CHUNK_PIXELS));
+  const int endChunkX = std::min(maxChunkX,
+      static_cast<int>((cameraX + viewportWidth) * INV_CHUNK_PIXELS) + 1);
+  const int endChunkY = std::min(maxChunkY,
+      static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 1);
 
   constexpr int chunkPixelSize =
       CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
@@ -2173,48 +2173,68 @@ void HammerEngine::TileRenderer::prefetchChunks(
     initTexturePool(renderer);
   }
 
-  // Tuned thresholds for smooth scrolling
-  constexpr float VELOCITY_THRESHOLD = 30.0f;     // Very low - extend bounds at any noticeable movement
-  constexpr float MEDIUM_SPEED = 150.0f;          // Medium speed threshold
-  constexpr float FAST_SPEED = 300.0f;            // Fast speed threshold
+  // OPTIMIZATION: Early exit when camera stationary and no dirty chunks
+  constexpr float STATIONARY_THRESHOLD_SQ = 25.0f;  // 5 px/s squared
+  float speedSq = cameraSpeed * cameraSpeed;
+  if (speedSq < STATIONARY_THRESHOLD_SQ && !m_hasDirtyChunks) {
+    ++m_frameCounter;  // Still increment for LRU tracking
+    return;
+  }
 
-  // Calculate base visible chunk range
+  // Pre-computed constants (avoid repeated multiplications)
+  constexpr int CHUNK_PIXELS = CHUNK_SIZE * TILE_SIZE;
+  constexpr float INV_CHUNK_PIXELS = 1.0f / static_cast<float>(CHUNK_PIXELS);
+
+  // Squared thresholds (avoid sqrt in comparisons)
+  constexpr float VELOCITY_THRESHOLD_SQ = 30.0f * 30.0f;   // 900
+  constexpr float MEDIUM_SPEED_SQ = 150.0f * 150.0f;       // 22500
+  constexpr float FAST_SPEED_SQ = 300.0f * 300.0f;         // 90000
+
+  // Calculate base visible chunk range using multiplication (faster than division)
   const int worldWidth = static_cast<int>(world.grid[0].size());
   const int worldHeight = static_cast<int>(world.grid.size());
   const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
   const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
-  int startChunkX = static_cast<int>(cameraX / (CHUNK_SIZE * TILE_SIZE));
-  int startChunkY = static_cast<int>(cameraY / (CHUNK_SIZE * TILE_SIZE));
-  int endChunkX = static_cast<int>((cameraX + viewportWidth) / (CHUNK_SIZE * TILE_SIZE)) + 1;
-  int endChunkY = static_cast<int>((cameraY + viewportHeight) / (CHUNK_SIZE * TILE_SIZE)) + 1;
+  int startChunkX = static_cast<int>(cameraX * INV_CHUNK_PIXELS);
+  int startChunkY = static_cast<int>(cameraY * INV_CHUNK_PIXELS);
+  int endChunkX = static_cast<int>((cameraX + viewportWidth) * INV_CHUNK_PIXELS) + 1;
+  int endChunkY = static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 1;
 
-  // Extend bounds proportionally to velocity (more speed = more prefetch)
-  auto calcMargin = [](float velocity, float threshold) -> int {
-    float absVel = std::abs(velocity);
-    if (absVel < threshold) return 1;  // Always at least 1 chunk margin
-    if (absVel < 150.0f) return 2;
-    if (absVel < 300.0f) return 3;
-    return 4;  // Very fast movement
+  // Calculate velocity squared for margin determination (avoid abs/sqrt)
+  float velXSq = velocityX * velocityX;
+  float velYSq = velocityY * velocityY;
+
+  // Extend bounds proportionally to velocity (using squared comparisons)
+  auto calcMarginSq = [](float velSq) -> int {
+    if (velSq < 900.0f) return 1;      // < 30 px/s
+    if (velSq < 22500.0f) return 2;    // < 150 px/s
+    if (velSq < 90000.0f) return 3;    // < 300 px/s
+    return 4;                          // Very fast movement
   };
 
-  int marginX = calcMargin(velocityX, VELOCITY_THRESHOLD);
-  int marginY = calcMargin(velocityY, VELOCITY_THRESHOLD);
+  int marginX = calcMarginSq(velXSq);
+  int marginY = calcMarginSq(velYSq);
 
-  if (velocityX > VELOCITY_THRESHOLD) {
-    endChunkX += marginX;
-  } else if (velocityX < -VELOCITY_THRESHOLD) {
-    startChunkX -= marginX;
+  // Apply directional margins (sign check is cheaper than threshold comparison)
+  if (velXSq >= VELOCITY_THRESHOLD_SQ) {
+    if (velocityX > 0) {
+      endChunkX += marginX;
+    } else {
+      startChunkX -= marginX;
+    }
   } else {
-    // Even when stationary, keep 1 chunk margin for immediate movement response
+    // Stationary: keep 1 chunk margin for immediate movement response
     startChunkX -= 1;
     endChunkX += 1;
   }
 
-  if (velocityY > VELOCITY_THRESHOLD) {
-    endChunkY += marginY;
-  } else if (velocityY < -VELOCITY_THRESHOLD) {
-    startChunkY -= marginY;
+  if (velYSq >= VELOCITY_THRESHOLD_SQ) {
+    if (velocityY > 0) {
+      endChunkY += marginY;
+    } else {
+      startChunkY -= marginY;
+    }
   } else {
     startChunkY -= 1;
     endChunkY += 1;
@@ -2226,12 +2246,29 @@ void HammerEngine::TileRenderer::prefetchChunks(
   endChunkX = std::min(maxChunkX, endChunkX);
   endChunkY = std::min(maxChunkY, endChunkY);
 
-  // Tiered budget based on camera speed - scales smoothly
+  // OPTIMIZATION: Skip chunk iteration if range unchanged and no dirty chunks
+  const bool rangeChanged = (startChunkX != m_lastPrefetchStartX ||
+                             startChunkY != m_lastPrefetchStartY ||
+                             endChunkX != m_lastPrefetchEndX ||
+                             endChunkY != m_lastPrefetchEndY);
+
+  if (!rangeChanged && !m_hasDirtyChunks) {
+    ++m_frameCounter;  // Still increment for LRU consistency
+    return;  // No work needed - cached chunks are untouched
+  }
+
+  // Update range tracking
+  m_lastPrefetchStartX = startChunkX;
+  m_lastPrefetchStartY = startChunkY;
+  m_lastPrefetchEndX = endChunkX;
+  m_lastPrefetchEndY = endChunkY;
+
+  // Tiered budget based on camera speed (using squared thresholds)
   int renderBudget, createBudget;
-  if (cameraSpeed > FAST_SPEED) {
+  if (speedSq > FAST_SPEED_SQ) {
     renderBudget = 8;
     createBudget = 10;
-  } else if (cameraSpeed > MEDIUM_SPEED) {
+  } else if (speedSq > MEDIUM_SPEED_SQ) {
     renderBudget = 5;
     createBudget = 6;
   } else {
@@ -2271,7 +2308,12 @@ void HammerEngine::TileRenderer::prefetchChunks(
       }
 
       ChunkCache &chunk = it->second;
-      chunk.lastUsedFrame = m_frameCounter;
+
+      // Only update LRU if this is a new chunk entering the range
+      // (existing chunks in unchanged positions don't need updates)
+      if (rangeChanged) {
+        chunk.lastUsedFrame = m_frameCounter;
+      }
 
       // Render dirty chunks with dynamic budget
       if (chunk.dirty && chunk.texture) {
@@ -2301,6 +2343,10 @@ void HammerEngine::TileRenderer::prewarmChunks(
     initTexturePool(renderer);
   }
 
+  // Pre-computed constant (avoid repeated multiplications)
+  constexpr int CHUNK_PIXELS = CHUNK_SIZE * TILE_SIZE;
+  constexpr float INV_CHUNK_PIXELS = 1.0f / static_cast<float>(CHUNK_PIXELS);
+
   // Calculate visible chunk range
   const int worldWidth = static_cast<int>(world.grid[0].size());
   const int worldHeight = static_cast<int>(world.grid.size());
@@ -2308,11 +2354,11 @@ void HammerEngine::TileRenderer::prewarmChunks(
   const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
   // Extend by 3 chunks in each direction for smooth initial scrolling
-  const int margin = 3;
-  int startChunkX = std::max(0, static_cast<int>(cameraX / (CHUNK_SIZE * TILE_SIZE)) - margin);
-  int startChunkY = std::max(0, static_cast<int>(cameraY / (CHUNK_SIZE * TILE_SIZE)) - margin);
-  int endChunkX = std::min(maxChunkX, static_cast<int>((cameraX + viewportWidth) / (CHUNK_SIZE * TILE_SIZE)) + 1 + margin);
-  int endChunkY = std::min(maxChunkY, static_cast<int>((cameraY + viewportHeight) / (CHUNK_SIZE * TILE_SIZE)) + 1 + margin);
+  constexpr int margin = 3;
+  int startChunkX = std::max(0, static_cast<int>(cameraX * INV_CHUNK_PIXELS) - margin);
+  int startChunkY = std::max(0, static_cast<int>(cameraY * INV_CHUNK_PIXELS) - margin);
+  int endChunkX = std::min(maxChunkX, static_cast<int>((cameraX + viewportWidth) * INV_CHUNK_PIXELS) + 1 + margin);
+  int endChunkY = std::min(maxChunkY, static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 1 + margin);
 
   ++m_frameCounter;
 
