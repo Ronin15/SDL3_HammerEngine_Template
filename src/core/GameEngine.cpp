@@ -10,6 +10,7 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
+#include "utils/FrameProfiler.hpp"
 #include "gameStates/AIDemoState.hpp"
 #include "gameStates/AdvancedAIDemoState.hpp"
 #include "gameStates/EventDemoState.hpp"
@@ -25,7 +26,7 @@
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
-#include "managers/FontManager.hpp"
+#include "managers/FontManager.hpp"  // For FrameProfiler overlay
 #include "managers/GameStateManager.hpp"
 #include "managers/GameTimeManager.hpp"
 #include "managers/InputManager.hpp"
@@ -962,6 +963,11 @@ void GameEngine::handleEvents() {
     toggleFullscreen();
   }
 
+  // Debug profiler overlay toggle (F3 key) - Debug builds only
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_F3)) {
+    HammerEngine::FrameProfiler::Instance().toggleOverlay();
+  }
+
   // Handle game state input on main thread where SDL events are processed
   mp_gameStateManager->handleInput();
 }
@@ -1012,37 +1018,44 @@ void GameEngine::update(float deltaTime) {
   HammerEngine::WorkerBudgetManager::Instance().markFrameStart();
 
   // 1. Event system - FIRST: process global events, state changes, weather triggers
-  mp_eventManager->update();
+  { PROFILE_MANAGER(HammerEngine::ManagerPhase::Event);
+    mp_eventManager->update(); }
 
   // 2. Game states - player movement and state logic
   //    MUST update BEFORE AIManager so NPCs react to current player position.
   //    Push FPS to GameStateManager so states don't need to call GameEngine::Instance()
-  mp_gameStateManager->setCurrentFPS(m_timestepManager->getCurrentFPS());
-  mp_gameStateManager->update(deltaTime);
+  { PROFILE_MANAGER(HammerEngine::ManagerPhase::GameState);
+    mp_gameStateManager->setCurrentFPS(m_timestepManager->getCurrentFPS());
+    mp_gameStateManager->update(deltaTime); }
 
   // 3. AI system - processes NPC behaviors with internal parallelization
   //    Sets NPC velocities and applies position updates.
   //    Batches run in parallel, waits for completion internally before returning.
-  mp_aiManager->update(deltaTime);
+  { PROFILE_MANAGER(HammerEngine::ManagerPhase::AI);
+    mp_aiManager->update(deltaTime); }
 
   // 4. Particle system - global weather and effect particles
-  mp_particleManager->update(deltaTime);
+  { PROFILE_MANAGER(HammerEngine::ManagerPhase::Particle);
+    mp_particleManager->update(deltaTime); }
 
   // 5. Pathfinding system - periodic grid updates (every 300/600 frames)
   // PathfinderManager initialized by AIManager, cached by GameEngine for
   // performance
-  mp_pathfinderManager->update();
+  { PROFILE_MANAGER(HammerEngine::ManagerPhase::Pathfinder);
+    mp_pathfinderManager->update(); }
 
   // 6. Collision system - processes complete NPC updates from AIManager
   //    AIManager guarantees all batches complete before returning, so collision
   //    always receives complete, consistent updates (no partial/stale data).
-  mp_collisionManager->update(deltaTime);
+  { PROFILE_MANAGER(HammerEngine::ManagerPhase::Collision);
+    mp_collisionManager->update(deltaTime); }
 
   // 7. Background simulation (tier updates + entity processing)
   // Single call handles everything: tier recalc every 60 frames,
   // background entity processing at 10Hz when entities exist.
   // Power-efficient: immediate return when paused or no work needed.
-  mp_backgroundSimManager->update(mp_aiManager->getPlayerPosition(), deltaTime);
+  { PROFILE_MANAGER(HammerEngine::ManagerPhase::BackgroundSim);
+    mp_backgroundSimManager->update(mp_aiManager->getPlayerPosition(), deltaTime); }
 }
 
 void GameEngine::render() {
@@ -1055,6 +1068,10 @@ void GameEngine::render() {
   SDL_RenderClear(mp_renderer.get());
 
   mp_gameStateManager->render(mp_renderer.get(), interpolationAlpha);
+
+  // Debug profiler overlay (renders only when visible, compiles out in Release)
+  HammerEngine::FrameProfiler::Instance().renderOverlay(
+      mp_renderer.get(), &FontManager::Instance());
 
   SDL_RenderPresent(mp_renderer.get());
 }

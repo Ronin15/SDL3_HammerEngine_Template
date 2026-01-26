@@ -8,6 +8,7 @@
 
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
+#include <array>
 #include <functional>
 #include <memory>
 #include <string>
@@ -472,6 +473,32 @@ public:
                             const std::string &theme = "dark");
   void createCenteredButton(const std::string &id, int offsetY,
                            int width, int height, const std::string &text);
+
+  /**
+   * @brief Creates a panel positioned at bottom-right corner
+   * @param id Panel component ID
+   * @param width Panel width
+   * @param height Panel height
+   * @param offsetX Offset from right edge (default: BOTTOM_RIGHT_OFFSET_X)
+   * @param offsetY Offset from bottom edge (default: BOTTOM_RIGHT_OFFSET_Y)
+   */
+  void createPanelAtBottomRight(const std::string &id, int width, int height,
+                                int offsetX = UIConstants::BOTTOM_RIGHT_OFFSET_X,
+                                int offsetY = UIConstants::BOTTOM_RIGHT_OFFSET_Y);
+
+  /**
+   * @brief Creates a label positioned at bottom-right corner
+   * @param id Label component ID
+   * @param text Initial label text
+   * @param width Label width
+   * @param height Label height
+   * @param offsetX Offset from right edge (default: BOTTOM_RIGHT_OFFSET_X)
+   * @param offsetY Offset from bottom edge (default: BOTTOM_RIGHT_OFFSET_Y)
+   */
+  void createLabelAtBottomRight(const std::string &id, const std::string &text,
+                                int width, int height,
+                                int offsetX = UIConstants::BOTTOM_RIGHT_OFFSET_X,
+                                int offsetY = UIConstants::BOTTOM_RIGHT_OFFSET_Y);
 
   // Utility methods
   void setGlobalFont(const std::string &fontID);
