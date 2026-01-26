@@ -12,7 +12,7 @@
 #include "entities/EntityHandle.hpp"
 #include "entities/Player.hpp"
 #include "utils/Camera.hpp"
-#include "utils/SceneRenderer.hpp"
+#include "utils/WorldRenderPipeline.hpp"
 
 #include <memory>
 #include <vector>
@@ -52,8 +52,8 @@ private:
     PlayerPtr m_player{};
     std::unique_ptr<HammerEngine::Camera> m_camera;
 
-    // Scene renderer for pixel-perfect zoomed world rendering
-    std::unique_ptr<HammerEngine::SceneRenderer> m_sceneRenderer{nullptr};
+    // World render pipeline for coordinated chunk management and scene rendering
+    std::unique_ptr<HammerEngine::WorldRenderPipeline> m_renderPipeline{nullptr};
 
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
 

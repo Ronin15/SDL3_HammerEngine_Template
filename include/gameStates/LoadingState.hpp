@@ -75,6 +75,8 @@ private:
     std::atomic<bool> m_loadComplete{false};
     std::atomic<bool> m_loadFailed{false};
     std::atomic<bool> m_waitingForPathfinding{false};
+    std::atomic<bool> m_waitingForPrewarm{false};  // Pathfinding done, waiting for chunk prewarm
+    std::atomic<bool> m_prewarmComplete{false};    // Chunk prewarm complete
 
     // Status message (mutex-protected for string safety)
     std::string m_statusText{"Initializing..."};

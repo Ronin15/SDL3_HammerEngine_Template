@@ -32,6 +32,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "utils/Camera.hpp"
+#include "utils/WorldRenderPipeline.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -314,8 +315,8 @@ bool EventDemoState::enter() {
     // LoadingState)
     initializeCamera();
 
-    // Create scene renderer for pixel-perfect zoomed rendering
-    m_sceneRenderer = std::make_unique<HammerEngine::SceneRenderer>();
+    // Create world render pipeline for coordinated chunk management and scene rendering
+    m_renderPipeline = std::make_unique<HammerEngine::WorldRenderPipeline>();
 
     // Pre-allocate status buffer to avoid per-frame allocations
     m_statusBuffer.reserve(64);
@@ -393,7 +394,7 @@ bool EventDemoState::exit() {
 
       // Clean up camera and scene renderer
       m_camera.reset();
-      m_sceneRenderer.reset();
+      m_renderPipeline.reset();
 
       // Clean up UI
       ui.prepareForStateTransition();
@@ -456,7 +457,7 @@ bool EventDemoState::exit() {
 
     // Clean up camera and scene renderer first to stop world rendering
     m_camera.reset();
-    m_sceneRenderer.reset();
+    m_renderPipeline.reset();
 
     // Clean up UI components before world cleanup
     ui.prepareForStateTransition();
@@ -549,8 +550,10 @@ void EventDemoState::update(float deltaTime) {
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
 
-  // Update dirty chunk textures (camera must be updated first)
-  WorldManager::Instance().updateDirtyChunks();
+  // Prepare chunks via WorldRenderPipeline (predictive prefetching + dirty chunk updates)
+  if (m_renderPipeline && m_camera) {
+    m_renderPipeline->prepareChunks(*m_camera, deltaTime);
+  }
 
   // AI Manager is updated globally by GameEngine for optimal performance
   // Entity updates are handled by AIManager::update() in GameEngine
@@ -567,17 +570,16 @@ void EventDemoState::update(float deltaTime) {
 
 void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   // Get manager references at function start
-  auto &worldMgr = WorldManager::Instance();
   auto &particleMgr = ParticleManager::Instance();
   auto &uiMgr = UIManager::Instance();
 
-  // Chunk texture updates are now done in update() via WorldManager::updateDirtyChunks()
-  const bool worldActive = m_camera && m_sceneRenderer && worldMgr.isInitialized() && worldMgr.hasActiveWorld();
+  // Use WorldRenderPipeline for coordinated world rendering
+  const bool worldActive = m_camera && m_renderPipeline;
 
-  // ========== BEGIN SCENE (to SceneRenderer's intermediate target) ==========
-  HammerEngine::SceneRenderer::SceneContext ctx;
+  // ========== BEGIN SCENE (to intermediate target) ==========
+  HammerEngine::WorldRenderPipeline::RenderContext ctx;
   if (worldActive) {
-    ctx = m_sceneRenderer->beginScene(renderer, *m_camera, interpolationAlpha);
+    ctx = m_renderPipeline->beginScene(renderer, *m_camera, interpolationAlpha);
   }
 
   if (ctx) {
@@ -587,9 +589,8 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
                                    interpolationAlpha);
     }
 
-    // Render tiles (pixel-perfect alignment)
-    worldMgr.render(renderer, ctx.flooredCameraX, ctx.flooredCameraY,
-                    ctx.viewWidth, ctx.viewHeight);
+    // Render world tiles via pipeline (uses pre-computed context)
+    m_renderPipeline->renderWorld(renderer, ctx);
 
     // Render player (sub-pixel smoothness from entity's own interpolation)
     if (m_player) {
@@ -608,8 +609,8 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   }
 
   // ========== END SCENE (composite with zoom) ==========
-  if (worldActive && m_sceneRenderer) {
-    m_sceneRenderer->endScene(renderer);
+  if (worldActive) {
+    m_renderPipeline->endScene(renderer);
   }
 
   // Render UI components (update moved to update() for consistent frame timing)

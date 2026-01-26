@@ -19,7 +19,7 @@
 class Player;
 namespace HammerEngine {
 class Camera;
-class SceneRenderer;
+class WorldRenderPipeline;
 }
 
 class GamePlayState : public GameState {
@@ -47,8 +47,8 @@ private:
   // Camera for world navigation and player following
   std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
 
-  // Scene renderer for pixel-perfect zoomed world rendering
-  std::unique_ptr<HammerEngine::SceneRenderer> m_sceneRenderer{nullptr};
+  // World render pipeline for coordinated chunk management and scene rendering
+  std::unique_ptr<HammerEngine::WorldRenderPipeline> m_renderPipeline{nullptr};
 
   // Resource handles resolved at initialization (resource handle system
   // compliance)
