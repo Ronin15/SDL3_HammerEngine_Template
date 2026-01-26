@@ -7,6 +7,7 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "utils/Camera.hpp"
+#include "utils/FrameProfiler.hpp"
 #include "utils/SIMDMath.hpp"
 #include "core/ThreadSystem.hpp"
 #include "events/ResourceChangeEvent.hpp"
@@ -2012,6 +2013,8 @@ void HammerEngine::TileRenderer::updateDirtyChunks(
 void HammerEngine::TileRenderer::render(
     const HammerEngine::WorldData &world, SDL_Renderer *renderer, float cameraX,
     float cameraY, float viewportWidth, float viewportHeight) {
+  PROFILE_RENDER_GPU(HammerEngine::RenderPhase::WorldTiles, renderer);
+
   if (world.grid.empty() || !renderer || !m_gridInitialized) {
     return;
   }

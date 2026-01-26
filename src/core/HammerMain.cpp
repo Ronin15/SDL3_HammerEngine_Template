@@ -138,6 +138,12 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
       gameEngine.render();
     }
 
+    // Present (vsync wait) - separate from render for accurate profiling
+    {
+      PROFILE_PHASE(HammerEngine::FramePhase::Present);
+      gameEngine.present();
+    }
+
     // End frame (VSync or software frame limiting)
     ts.endFrame();
 

@@ -5,6 +5,7 @@
 
 #include "utils/SceneRenderer.hpp"
 #include "utils/Camera.hpp"
+#include "utils/FrameProfiler.hpp"
 #include "core/Logger.hpp"
 #include <SDL3/SDL.h>
 #include <cmath>
@@ -59,6 +60,8 @@ SceneRenderer::SceneContext SceneRenderer::beginScene(
     Camera& camera,
     float interpolationAlpha
 ) {
+    PROFILE_RENDER_GPU(HammerEngine::RenderPhase::BeginScene, renderer);
+
     SceneContext ctx;
 
     if (!renderer) {
@@ -130,6 +133,8 @@ SceneRenderer::SceneContext SceneRenderer::beginScene(
 }
 
 void SceneRenderer::endScene(SDL_Renderer* renderer) {
+    PROFILE_RENDER_GPU(HammerEngine::RenderPhase::EndScene, renderer);
+
     if (!m_sceneActive) {
         SCENE_RENDERER_WARN( "endScene called without matching beginScene");
         return;

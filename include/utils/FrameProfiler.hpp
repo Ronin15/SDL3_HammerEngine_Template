@@ -15,6 +15,11 @@
 struct SDL_Renderer;
 class FontManager;
 
+// Forward declaration for GPU flush (Debug only - used for accurate GPU timing)
+#ifndef NDEBUG
+extern "C" bool SDL_FlushRenderer(SDL_Renderer* renderer);
+#endif
+
 namespace HammerEngine {
 
 /**
@@ -24,6 +29,7 @@ enum class FramePhase : uint8_t {
     Events = 0,
     Update,
     Render,
+    Present,  // SDL_RenderPresent / vsync wait (separated from Render)
     COUNT
 };
 
@@ -38,6 +44,18 @@ enum class ManagerPhase : uint8_t {
     Pathfinder,
     Collision,
     BackgroundSim,
+    COUNT
+};
+
+/**
+ * @brief Render phases for detailed render profiling
+ */
+enum class RenderPhase : uint8_t {
+    BeginScene = 0,   // SceneRenderer setup, render target switch
+    WorldTiles,       // TileRenderer chunk drawing
+    Entities,         // NPCs, player, etc.
+    EndScene,         // Composite to screen
+    UI,               // UIManager render
     COUNT
 };
 
@@ -132,6 +150,18 @@ public:
     void endManager(ManagerPhase mgr);
 
     /**
+     * @brief Begins timing a render sub-phase
+     * @param phase The render phase to begin timing
+     */
+    void beginRender(RenderPhase phase);
+
+    /**
+     * @brief Ends timing a render sub-phase
+     * @param phase The render phase to end timing
+     */
+    void endRender(RenderPhase phase);
+
+    /**
      * @brief Renders the debug overlay
      * @param renderer SDL renderer
      * @param fontMgr Font manager for text rendering
@@ -175,14 +205,18 @@ private:
 
     static const char* getPhaseName(FramePhase phase);
     static const char* getManagerName(ManagerPhase mgr);
+    static const char* getRenderPhaseName(RenderPhase phase);
     ManagerPhase findWorstManager() const;
+    RenderPhase findWorstRenderPhase() const;
 
     // Timing data
     TimePoint m_frameStart{};
     std::array<TimePoint, static_cast<size_t>(FramePhase::COUNT)> m_phaseStarts{};
     std::array<TimePoint, static_cast<size_t>(ManagerPhase::COUNT)> m_managerStarts{};
+    std::array<TimePoint, static_cast<size_t>(RenderPhase::COUNT)> m_renderStarts{};
     std::array<double, static_cast<size_t>(FramePhase::COUNT)> m_phaseTimes{};
     std::array<double, static_cast<size_t>(ManagerPhase::COUNT)> m_managerTimes{};
+    std::array<double, static_cast<size_t>(RenderPhase::COUNT)> m_renderTimes{};
 
     // Configuration
     double m_thresholdMs{20.0};  // 1.5x of 16.67ms (60fps) by default
@@ -207,6 +241,7 @@ private:
     std::string m_frameText{};
     std::string m_updateText{};
     std::string m_renderText{};
+    std::string m_presentText{};
     std::string m_eventsText{};
     std::string m_thresholdText{};
     std::string m_hitchText{};
@@ -251,11 +286,56 @@ private:
     ManagerPhase m_mgr;
 };
 
+/**
+ * @brief RAII scoped timer for render phases (no GPU flush - measures CPU queue time)
+ */
+class ScopedRenderTimer {
+public:
+    explicit ScopedRenderTimer(RenderPhase phase) : m_phase(phase) {
+        FrameProfiler::Instance().beginRender(m_phase);
+    }
+    ~ScopedRenderTimer() {
+        FrameProfiler::Instance().endRender(m_phase);
+    }
+    ScopedRenderTimer(const ScopedRenderTimer&) = delete;
+    ScopedRenderTimer& operator=(const ScopedRenderTimer&) = delete;
+private:
+    RenderPhase m_phase;
+};
+
+/**
+ * @brief RAII scoped timer for render phases with GPU flush (measures actual GPU time)
+ *
+ * This variant calls SDL_FlushRenderer before ending the timer to force GPU
+ * command completion, giving accurate GPU execution time instead of just
+ * CPU command queue time.
+ */
+class ScopedRenderTimerGPU {
+public:
+    ScopedRenderTimerGPU(RenderPhase phase, SDL_Renderer* renderer)
+        : m_phase(phase), m_renderer(renderer) {
+        FrameProfiler::Instance().beginRender(m_phase);
+    }
+    ~ScopedRenderTimerGPU() {
+        if (m_renderer) {
+            SDL_FlushRenderer(m_renderer);
+        }
+        FrameProfiler::Instance().endRender(m_phase);
+    }
+    ScopedRenderTimerGPU(const ScopedRenderTimerGPU&) = delete;
+    ScopedRenderTimerGPU& operator=(const ScopedRenderTimerGPU&) = delete;
+private:
+    RenderPhase m_phase;
+    SDL_Renderer* m_renderer;
+};
+
 // Debug macros - compile to actual profiling
 #define PROFILE_FRAME_BEGIN() HammerEngine::FrameProfiler::Instance().beginFrame()
 #define PROFILE_FRAME_END() HammerEngine::FrameProfiler::Instance().endFrame()
 #define PROFILE_PHASE(p) HammerEngine::ScopedPhaseTimer _scopedPhaseTimer##__LINE__(p)
 #define PROFILE_MANAGER(m) HammerEngine::ScopedManagerTimer _scopedManagerTimer##__LINE__(m)
+#define PROFILE_RENDER(r) HammerEngine::ScopedRenderTimer _scopedRenderTimer##__LINE__(r)
+#define PROFILE_RENDER_GPU(r, renderer) HammerEngine::ScopedRenderTimerGPU _scopedRenderTimerGPU##__LINE__(r, renderer)
 
 #else  // NDEBUG - Release build
 
@@ -278,6 +358,8 @@ public:
     void endPhase(FramePhase) {}
     void beginManager(ManagerPhase) {}
     void endManager(ManagerPhase) {}
+    void beginRender(RenderPhase) {}
+    void endRender(RenderPhase) {}
     void renderOverlay(SDL_Renderer*, FontManager*) {}
     uint32_t getHitchCount() const { return 0; }
     uint64_t getFrameCount() const { return 0; }
@@ -291,6 +373,8 @@ public:
 #define PROFILE_FRAME_END() ((void)0)
 #define PROFILE_PHASE(p) ((void)0)
 #define PROFILE_MANAGER(m) ((void)0)
+#define PROFILE_RENDER(r) ((void)0)
+#define PROFILE_RENDER_GPU(r, renderer) ((void)0)
 
 #endif  // NDEBUG
 

@@ -1072,7 +1072,11 @@ void GameEngine::render() {
   // Debug profiler overlay (renders only when visible, compiles out in Release)
   HammerEngine::FrameProfiler::Instance().renderOverlay(
       mp_renderer.get(), &FontManager::Instance());
+}
 
+void GameEngine::present() {
+  // Present is separate from render for accurate profiling
+  // SDL_RenderPresent blocks on vsync - this is NOT rendering work
   SDL_RenderPresent(mp_renderer.get());
 }
 
