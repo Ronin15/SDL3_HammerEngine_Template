@@ -6,6 +6,7 @@
 #include "managers/GameStateManager.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/GameState.hpp"
+#include "utils/FrameProfiler.hpp"
 #include <algorithm>
 #include <format>
 #include <stdexcept>
@@ -38,6 +39,9 @@ void GameStateManager::addState(std::unique_ptr<GameState> state) {
 void GameStateManager::pushState(const std::string &stateName) {
   auto it = m_registeredStates.find(stateName);
   if (it != m_registeredStates.end()) {
+    // Suppress profiler hitch detection during state transition
+    HammerEngine::FrameProfiler::Instance().suppressFrames(5);
+
     // Pause the current top state if it exists
     if (!m_activeStates.empty()) {
       m_activeStates.back()->pause();
@@ -60,10 +64,13 @@ void GameStateManager::pushState(const std::string &stateName) {
 
 void GameStateManager::popState() {
   if (!m_activeStates.empty()) {
+    // Suppress profiler hitch detection during state transition
+    HammerEngine::FrameProfiler::Instance().suppressFrames(5);
+
     // CRITICAL: Wait for exit to complete BEFORE removing from stack
     auto currentState = m_activeStates.back();
     currentState->exit(); // Wait for exit to complete fully
-    
+
     // Only remove after exit is complete
     m_activeStates.pop_back();
     GAMESTATE_INFO("Popped state");

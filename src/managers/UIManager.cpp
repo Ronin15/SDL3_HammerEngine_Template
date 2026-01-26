@@ -3134,6 +3134,24 @@ void UIManager::createCenteredButton(const std::string &id, int offsetY,
                                height});
 }
 
+void UIManager::createPanelAtBottomRight(const std::string &id, int width, int height,
+                                         int offsetX, int offsetY) {
+  // Calculate initial bounds in baseline coordinates
+  int const x = UIConstants::BASELINE_WIDTH - width - offsetX;
+  int const y = UIConstants::BASELINE_HEIGHT - height - offsetY;
+  createPanel(id, UIRect{x, y, width, height});
+  setComponentPositioning(id, {UIPositionMode::BOTTOM_RIGHT, offsetX, offsetY, width, height});
+}
+
+void UIManager::createLabelAtBottomRight(const std::string &id, const std::string &text,
+                                         int width, int height, int offsetX, int offsetY) {
+  // Calculate initial bounds in baseline coordinates
+  int const x = UIConstants::BASELINE_WIDTH - width - offsetX;
+  int const y = UIConstants::BASELINE_HEIGHT - height - offsetY;
+  createLabel(id, UIRect{x, y, width, height}, text);
+  setComponentPositioning(id, {UIPositionMode::BOTTOM_RIGHT, offsetX, offsetY, width, height});
+}
+
 // Auto-repositioning system implementation
 void UIManager::onWindowResize(int newLogicalWidth, int newLogicalHeight) {
 

@@ -118,6 +118,8 @@ namespace UIConstants {
   // Positioning Constants
   constexpr int TITLE_TOP_OFFSET = 10;          // Default top offset for titles
   constexpr int BUTTON_BOTTOM_OFFSET = 20;      // Default bottom offset for buttons
+  constexpr int BOTTOM_RIGHT_OFFSET_X = 10;     // Default offset from right edge for bottom-right elements
+  constexpr int BOTTOM_RIGHT_OFFSET_Y = 10;     // Default offset from bottom edge for bottom-right elements
   constexpr int DEFAULT_TITLE_HEIGHT = 40;      // Default title component height
   constexpr int DEFAULT_BUTTON_WIDTH = 120;     // Default button width
   constexpr int DEFAULT_BUTTON_HEIGHT = 40;     // Default button height
@@ -149,6 +151,15 @@ namespace UIConstants {
   // Performance/Memory Constants
   constexpr int DEFAULT_COMPONENT_BATCH_SIZE = 32;  // Reserve size for component removal operations
   constexpr int MAX_COMPONENT_BATCH_SIZE = 64;      // Reserve size for bulk component clearing
+
+  // Debug Profiler Overlay Constants (Debug builds only)
+  constexpr int PROFILER_OVERLAY_WIDTH = 300;       // Width of profiler overlay panel
+  constexpr int PROFILER_OVERLAY_HEIGHT = 150;      // Height of profiler overlay panel
+  constexpr int PROFILER_OVERLAY_MARGIN = 10;       // Margin from screen edge
+  constexpr int PROFILER_LINE_HEIGHT = 22;          // Height per profiler text line
+  constexpr int PROFILER_LABEL_COUNT = 6;           // Number of profiler labels
+  constexpr int PROFILER_ZORDER_PANEL = 9000;       // Z-order for profiler panel (high priority)
+  constexpr int PROFILER_ZORDER_LABEL = 9001;       // Z-order for profiler labels
 
 } // namespace UIConstants
 

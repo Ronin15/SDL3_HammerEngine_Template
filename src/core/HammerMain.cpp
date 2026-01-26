@@ -7,6 +7,7 @@
 #include "core/ThreadSystem.hpp"
 #include "core/TimestepManager.hpp"
 #include "core/Logger.hpp"
+#include "utils/FrameProfiler.hpp"
 #include <array>
 #include <chrono>
 #include <format>
@@ -62,6 +63,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   // Push initial state before starting main loop
   gameEngine.getGameStateManager()->pushState("LogoState");
 
+  // Suppress hitch detection for first few frames while engine stabilizes
+  HammerEngine::FrameProfiler::Instance().suppressFrames(10);
+
   GAMEENGINE_INFO("Starting Main Loop");
 
   // Get TimestepManager reference for main loop
@@ -79,11 +83,16 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   // Main game loop - classic fixed timestep pattern
   // Updates drain accumulator, THEN render reads alpha - no race conditions
   while (gameEngine.isRunning()) {
+    PROFILE_FRAME_BEGIN();
+
     // Start frame timing (adds delta to accumulator)
     ts.startFrame();
 
     // Process SDL events (must be on main thread)
-    gameEngine.handleEvents();
+    {
+      PROFILE_PHASE(HammerEngine::FramePhase::Events);
+      gameEngine.handleEvents();
+    }
 
     // Fixed timestep updates - run until accumulator is drained
 #ifndef NDEBUG
@@ -91,11 +100,14 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     size_t updateIterations = 0;
 #endif
 
-    while (ts.shouldUpdate()) {
-      gameEngine.update(ts.getUpdateDeltaTime());
+    {
+      PROFILE_PHASE(HammerEngine::FramePhase::Update);
+      while (ts.shouldUpdate()) {
+        gameEngine.update(ts.getUpdateDeltaTime());
 #ifndef NDEBUG
-      ++updateIterations;
+        ++updateIterations;
 #endif
+      }
     }
 
 #ifndef NDEBUG
@@ -121,10 +133,15 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 #endif
 
     // Render with interpolation alpha (calculated from remaining accumulator)
-    gameEngine.render();
+    {
+      PROFILE_PHASE(HammerEngine::FramePhase::Render);
+      gameEngine.render();
+    }
 
     // End frame (VSync or software frame limiting)
     ts.endFrame();
+
+    PROFILE_FRAME_END();  // Hitch check + console log happens here
   }
 
   GAMEENGINE_INFO(std::format("Game {} shutting down", GAME_NAME));
