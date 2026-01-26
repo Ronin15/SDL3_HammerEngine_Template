@@ -120,6 +120,7 @@ private:
 
     // Render state
     bool m_sceneActive{false};
+    bool m_useDirectRendering{false};  // Skip intermediate texture when zoom == 1.0
     float m_currentZoom{1.0f};
     float m_viewportWidth{0.0f};
     float m_viewportHeight{0.0f};
