@@ -118,6 +118,8 @@ bool GameEngine::init(std::string_view title) {
 #ifdef __APPLE__
   // Use true exclusive fullscreen (not Spaces) for Game Mode support
   SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "0");
+  // Use OpenGL instead of Metal to test for Metal-specific render target hitches
+  SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
 #endif
 
   GAMEENGINE_DEBUG("SDL rendering hints configured for optimal quality");

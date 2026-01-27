@@ -64,23 +64,6 @@ public:
     TileRenderer& operator=(const TileRenderer&) = delete;
 
     /**
-     * @brief Update dirty chunk textures (call BEFORE SceneRenderer::beginScene)
-     *
-     * This method handles all render target switching for chunk texture updates.
-     * Call this before beginScene() to avoid render target conflicts.
-     *
-     * @param world World data
-     * @param renderer SDL renderer
-     * @param cameraX Camera X offset
-     * @param cameraY Camera Y offset
-     * @param viewportWidth Viewport width at 1x scale
-     * @param viewportHeight Viewport height at 1x scale
-     */
-    void updateDirtyChunks(const WorldData& world, SDL_Renderer* renderer,
-                           float cameraX, float cameraY,
-                           float viewportWidth, float viewportHeight);
-
-    /**
      * @brief Render cached chunk textures to the current render target
      *
      * Only composites pre-rendered chunk textures - no render target changes.
@@ -104,10 +87,13 @@ public:
     void clearChunkCache();  // Clean up all chunk textures
 
     /**
-     * @brief Predictive chunk prefetching based on camera velocity
+     * @brief Handle dirty chunk re-rendering with proper render target management
      *
-     * Extends chunk bounds in the direction of camera movement and uses
-     * dynamic render budget based on camera speed.
+     * Processes dirty chunks (from season changes, etc.) with a per-frame budget
+     * to avoid stuttering. Handles deferred cache clears and ensures proper
+     * render target restoration after chunk operations.
+     *
+     * Called during update phase via WorldRenderPipeline::prepareChunks().
      *
      * @param world World data
      * @param renderer SDL renderer
@@ -115,14 +101,10 @@ public:
      * @param cameraY Camera Y offset
      * @param viewportWidth Viewport width
      * @param viewportHeight Viewport height
-     * @param velocityX Camera velocity X component
-     * @param velocityY Camera velocity Y component
-     * @param cameraSpeed Camera speed for dynamic budget
      */
     void prefetchChunks(const WorldData& world, SDL_Renderer* renderer,
                         float cameraX, float cameraY,
-                        float viewportWidth, float viewportHeight,
-                        float velocityX, float velocityY, float cameraSpeed);
+                        float viewportWidth, float viewportHeight);
 
     /**
      * @brief Pre-warm all visible chunks without budget limits
@@ -343,7 +325,7 @@ private:
     static constexpr int MAX_DIRTY_PER_FRAME = 2;     // Max chunks to re-render per frame
 
     std::atomic<bool> m_cachePendingClear{false};
-    bool m_hasDirtyChunks{false};  // Early-out flag for updateDirtyChunks
+    bool m_hasDirtyChunks{false};  // Early-out flag for prefetchChunks
 
     // Texture pool - reuse textures instead of create/destroy during gameplay
     std::vector<std::shared_ptr<SDL_Texture>> m_texturePool;
@@ -513,14 +495,6 @@ public:
     void setActiveCamera(HammerEngine::Camera* camera) { mp_activeCamera = camera; }
 
     /**
-     * @brief Update dirty chunk textures (call in GameState::update before render)
-     *
-     * Uses stored renderer and active camera. Handles all render target switching
-     * for chunk texture updates before SceneRenderer pipeline begins.
-     */
-    void updateDirtyChunks();
-
-    /**
      * @brief Render tiles to the current render target
      *
      * Renders visible tile chunks directly to the current render target.
@@ -536,30 +510,23 @@ public:
                 float viewportWidth, float viewportHeight);
 
     /**
-     * @brief Predictive chunk prefetching based on camera velocity
+     * @brief Handle dirty chunk re-rendering
      *
-     * Called from WorldRenderPipeline::prepareChunks() to prefetch chunks in the
-     * direction of camera movement. Uses velocity to extend prefetch bounds and
-     * dynamic render budget based on camera speed.
+     * Called from WorldRenderPipeline::prepareChunks() to process dirty chunks
+     * (from season changes, etc.) with proper render target management.
      *
      * @param renderer SDL renderer
      * @param camera Camera for position and viewport
-     * @param cameraVelocity Camera velocity for direction prediction
-     * @param cameraSpeed Camera speed for dynamic budget
      */
-    void prefetchChunks(SDL_Renderer* renderer, HammerEngine::Camera& camera,
-                        const Vector2D& cameraVelocity, float cameraSpeed);
+    void prefetchChunks(SDL_Renderer* renderer, HammerEngine::Camera& camera);
 
     /**
      * @brief Internal prefetch using stored renderer and camera
      *
      * Called from WorldRenderPipeline when renderer is not directly available.
      * Uses mp_renderer and mp_activeCamera set via setRenderer() and setActiveCamera().
-     *
-     * @param cameraVelocity Camera velocity for direction prediction
-     * @param cameraSpeed Camera speed for dynamic budget
      */
-    void prefetchChunksInternal(const Vector2D& cameraVelocity, float cameraSpeed);
+    void prefetchChunksInternal();
 
     /**
      * @brief Pre-warm all visible chunks during loading

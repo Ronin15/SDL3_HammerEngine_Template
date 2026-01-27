@@ -19,11 +19,10 @@ class Camera;
 /**
  * @brief Unified facade for world rendering that coordinates chunk management and scene composition
  *
- * WorldRenderPipeline eliminates hitching when camera moves by providing:
- * - Predictive prefetching: Tracks camera velocity and prefetches chunks in movement direction
+ * WorldRenderPipeline provides:
+ * - Dirty chunk handling: Processes chunks marked dirty (season changes, etc.) with proper render target management
  * - Unified coordination: Single point of control for TileRenderer and SceneRenderer
  * - Loading-time pre-warm: Renders visible chunks during loading screen
- * - Dynamic render budget: Renders more chunks when camera moving fast
  *
  * ARCHITECTURE:
  * This class is a facade that owns the SceneRenderer and coordinates with WorldManager's
@@ -33,7 +32,7 @@ class Camera;
  * Usage in GameState:
  *   void update(float dt) {
  *       updateCamera(dt);
- *       m_renderPipeline->prepareChunks(renderer, *m_camera, dt);  // Prefetch
+ *       m_renderPipeline->prepareChunks(*m_camera, dt);  // Process dirty chunks
  *   }
  *
  *   void render(SDL_Renderer* renderer, float interpolation) {
@@ -74,10 +73,6 @@ public:
         // Current zoom level
         float zoom{1.0f};
 
-        // Camera velocity for external use (e.g., particle systems)
-        float velocityX{0.0f};
-        float velocityY{0.0f};
-
         // Camera world position (for followed entity - avoids double-interpolation jitter)
         Vector2D cameraCenter{0.0f, 0.0f};
 
@@ -101,12 +96,11 @@ public:
     /**
      * @brief Phase 1: Prepare chunks (call in update, before render)
      *
-     * Tracks camera velocity and prefetches chunks in the direction of movement.
-     * This is predictive - chunks are prepared before they enter the viewport.
-     * Gets renderer from WorldManager (must be set via WorldManager::setRenderer).
+     * Processes dirty chunks (from season changes, etc.) with proper render target
+     * management. Ensures render target is restored after chunk operations.
      *
-     * @param camera Camera for position and velocity tracking
-     * @param deltaTime Time since last update for velocity calculation
+     * @param camera Camera for position (used by WorldManager for visibility)
+     * @param deltaTime Time since last update (unused, kept for API compatibility)
      */
     void prepareChunks(Camera& camera, float deltaTime);
 
@@ -172,31 +166,9 @@ public:
      */
     bool isSceneActive() const;
 
-    /**
-     * @brief Get current camera velocity
-     * @return Camera velocity vector
-     */
-    const Vector2D& getCameraVelocity() const { return m_cameraVelocity; }
-
-    /**
-     * @brief Get camera speed magnitude
-     * @return Speed in pixels per second
-     */
-    float getCameraSpeed() const;
-
 private:
     // Scene rendering
     std::unique_ptr<SceneRenderer> m_sceneRenderer;
-
-    // Velocity tracking for predictive prefetching
-    Vector2D m_lastCameraPos{0.0f, 0.0f};
-    Vector2D m_cameraVelocity{0.0f, 0.0f};
-    bool m_hasLastPosition{false};
-
-    // Prefetch configuration
-    static constexpr int PREFETCH_MARGIN_CHUNKS = 3;
-    static constexpr float FAST_CAMERA_THRESHOLD = 200.0f;  // pixels/second
-    static constexpr float VELOCITY_SMOOTHING = 0.5f;  // Higher = more responsive to direction changes
 };
 
 } // namespace HammerEngine
