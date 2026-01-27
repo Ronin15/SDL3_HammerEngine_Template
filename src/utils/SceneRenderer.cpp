@@ -29,13 +29,18 @@ bool SceneRenderer::ensureTextureSize(SDL_Renderer* renderer, int width, int hei
         return true;
     }
 
-    // Create new texture with required dimensions
+    // Allocate for zoom 1.0 (largest view) to prevent reallocation on zoom changes
+    // Minimum zoom is 1.0, so current request at any zoom will be <= this size
+    int allocWidth = std::max(width * 3, m_textureWidth);   // 3x covers zoom 3→1 transition
+    int allocHeight = std::max(height * 3, m_textureHeight);
+
+    // Create texture with headroom for all zoom levels
     SDL_Texture* tex = SDL_CreateTexture(
         renderer,
         SDL_PIXELFORMAT_RGBA8888,
         SDL_TEXTUREACCESS_TARGET,
-        width,
-        height
+        allocWidth,
+        allocHeight
     );
 
     if (!tex) {
@@ -48,10 +53,11 @@ bool SceneRenderer::ensureTextureSize(SDL_Renderer* renderer, int width, int hei
     SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);  // Pixel-perfect, no bilinear filtering
 
     m_intermediateTexture = std::shared_ptr<SDL_Texture>(tex, SDL_DestroyTexture);
-    m_textureWidth = width;
-    m_textureHeight = height;
+    m_textureWidth = allocWidth;
+    m_textureHeight = allocHeight;
 
-    SCENE_RENDERER_DEBUG( std::format("Created intermediate texture {}x{}", width, height));
+    SCENE_RENDERER_DEBUG(std::format("Created intermediate texture {}x{} (requested {}x{})",
+                                      allocWidth, allocHeight, width, height));
     return true;
 }
 
