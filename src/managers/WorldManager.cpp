@@ -253,33 +253,6 @@ void WorldManager::update() {
   // This could be extended for dynamic world changes, weather effects, etc.
 }
 
-void WorldManager::updateDirtyChunks() {
-  if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled ||
-      !mp_renderer || !mp_activeCamera) {
-    return;
-  }
-
-  if (!m_currentWorld || !m_tileRenderer) {
-    return;
-  }
-
-  // Get camera parameters for chunk visibility calculation
-  float zoom = mp_activeCamera->getZoom();
-  const auto& viewport = mp_activeCamera->getViewport();
-  float viewWidth = viewport.width / zoom;
-  float viewHeight = viewport.height / zoom;
-
-  // Get floored camera position for chunk alignment
-  float rawX = 0.0f;
-  float rawY = 0.0f;
-  mp_activeCamera->getRenderOffset(rawX, rawY, 0.0f);
-  float cameraX = std::floor(rawX);
-  float cameraY = std::floor(rawY);
-
-  m_tileRenderer->updateDirtyChunks(*m_currentWorld, mp_renderer, cameraX,
-                                    cameraY, viewWidth, viewHeight);
-}
-
 void WorldManager::render(SDL_Renderer* renderer, float cameraX, float cameraY,
                           float viewportWidth, float viewportHeight) {
   if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled ||
@@ -297,8 +270,7 @@ void WorldManager::render(SDL_Renderer* renderer, float cameraX, float cameraY,
                          viewportWidth, viewportHeight);
 }
 
-void WorldManager::prefetchChunks(SDL_Renderer* renderer, HammerEngine::Camera& camera,
-                                   const Vector2D& cameraVelocity, float cameraSpeed) {
+void WorldManager::prefetchChunks(SDL_Renderer* renderer, HammerEngine::Camera& camera) {
   if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled ||
       !renderer) {
     return;
@@ -322,9 +294,7 @@ void WorldManager::prefetchChunks(SDL_Renderer* renderer, HammerEngine::Camera& 
   float cameraY = std::floor(rawY);
 
   m_tileRenderer->prefetchChunks(*m_currentWorld, renderer, cameraX, cameraY,
-                                  viewWidth, viewHeight,
-                                  cameraVelocity.getX(), cameraVelocity.getY(),
-                                  cameraSpeed);
+                                  viewWidth, viewHeight);
 }
 
 void WorldManager::prewarmChunks(SDL_Renderer* renderer, float cameraX, float cameraY,
@@ -341,7 +311,7 @@ void WorldManager::prewarmChunks(SDL_Renderer* renderer, float cameraX, float ca
                                  viewportWidth, viewportHeight);
 }
 
-void WorldManager::prefetchChunksInternal(const Vector2D& cameraVelocity, float cameraSpeed) {
+void WorldManager::prefetchChunksInternal() {
   if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled ||
       !mp_renderer || !mp_activeCamera) {
     return;
@@ -365,9 +335,7 @@ void WorldManager::prefetchChunksInternal(const Vector2D& cameraVelocity, float 
   float cameraY = std::floor(rawY);
 
   m_tileRenderer->prefetchChunks(*m_currentWorld, mp_renderer, cameraX, cameraY,
-                                  viewWidth, viewHeight,
-                                  cameraVelocity.getX(), cameraVelocity.getY(),
-                                  cameraSpeed);
+                                  viewWidth, viewHeight);
 }
 
 bool WorldManager::handleHarvestResource(int entityId, int targetX,
@@ -1932,84 +1900,6 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
   SDL_SetRenderTarget(renderer, nullptr);
 }
 
-void HammerEngine::TileRenderer::updateDirtyChunks(
-    const HammerEngine::WorldData &world, SDL_Renderer *renderer, float cameraX,
-    float cameraY, float viewportWidth, float viewportHeight) {
-  if (world.grid.empty() || !renderer) {
-    return;
-  }
-
-  // Initialize texture pool on first call (pre-allocates textures)
-  if (!m_poolInitialized) {
-    initTexturePool(renderer);
-  }
-
-  // Initialize chunk grid if needed (first call after world load)
-  if (!m_gridInitialized) {
-    initChunkGrid(world, renderer);
-    return;  // Grid init renders all chunks, no more work needed this frame
-  }
-
-  // Handle deferred cache clear (e.g., season change)
-  if (m_cachePendingClear.exchange(false, std::memory_order_acq_rel)) {
-    // Mark all chunks dirty for re-rendering
-    for (auto& row : m_chunkGrid) {
-      for (auto& chunk : row) {
-        chunk.dirty = true;
-      }
-    }
-    m_hasDirtyChunks = true;
-    m_lastCamChunkX = -1;  // Force visible list rebuild
-  }
-
-  // Early-out: no dirty chunks
-  if (!m_hasDirtyChunks) {
-    return;
-  }
-
-  // Re-render dirty chunks (limited per frame to avoid stuttering)
-  int rendered = 0;
-  bool anyDirty = false;
-
-  // Only process visible range + margin for efficiency
-  const int startX = std::max(0, static_cast<int>(cameraX * INV_CHUNK_PIXELS) - 1);
-  const int startY = std::max(0, static_cast<int>(cameraY * INV_CHUNK_PIXELS) - 1);
-  const int endX = std::min(m_gridWidth, static_cast<int>((cameraX + viewportWidth) * INV_CHUNK_PIXELS) + 2);
-  const int endY = std::min(m_gridHeight, static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 2);
-
-  for (int cy = startY; cy < endY && rendered < MAX_DIRTY_PER_FRAME; ++cy) {
-    for (int cx = startX; cx < endX && rendered < MAX_DIRTY_PER_FRAME; ++cx) {
-      auto& chunk = m_chunkGrid[cy][cx];
-      if (chunk.dirty && chunk.texture) {
-        renderChunkToTexture(world, renderer, cx, cy, chunk.texture.get());
-        chunk.dirty = false;
-        ++rendered;
-      }
-    }
-  }
-
-  // Check if any chunks remain dirty
-  if (rendered == MAX_DIRTY_PER_FRAME) {
-    // May have more dirty chunks
-    for (int cy = startY; cy < endY; ++cy) {
-      for (int cx = startX; cx < endX; ++cx) {
-        if (m_chunkGrid[cy][cx].dirty) {
-          anyDirty = true;
-          break;
-        }
-      }
-      if (anyDirty) break;
-    }
-  }
-
-  m_hasDirtyChunks = anyDirty;
-
-  // Force visible list rebuild if chunks were re-rendered
-  if (rendered > 0) {
-    m_lastCamChunkX = -1;
-  }
-}
-
 void HammerEngine::TileRenderer::render(
     const HammerEngine::WorldData &world, SDL_Renderer *renderer, float cameraX,
     float cameraY, float viewportWidth, float viewportHeight) {
@@ -2048,24 +1938,28 @@ void HammerEngine::TileRenderer::render(
 
 void HammerEngine::TileRenderer::prefetchChunks(
     const HammerEngine::WorldData &world, SDL_Renderer *renderer,
-    float cameraX, float cameraY, float viewportWidth, float viewportHeight,
-    float velocityX, float velocityY, float cameraSpeed) {
-  // With pre-rendered chunk grid, prefetch only handles dirty chunk re-rendering
-  // in an extended area based on camera velocity
+    float cameraX, float cameraY, float viewportWidth, float viewportHeight) {
+  // Handles dirty chunk re-rendering, deferred cache clears (season changes),
+  // and ensures proper render target restoration after chunk operations.
   if (world.grid.empty() || !renderer || !m_gridInitialized) {
     return;
+  }
+
+  // Handle deferred cache clear (e.g., season change)
+  if (m_cachePendingClear.exchange(false, std::memory_order_acq_rel)) {
+    for (auto& row : m_chunkGrid) {
+      for (auto& chunk : row) {
+        chunk.dirty = true;
+      }
+    }
+    m_hasDirtyChunks = true;
+    m_lastCamChunkX = -1;  // Force visible list rebuild
   }
 
   // Early-out: no dirty chunks
   if (!m_hasDirtyChunks) {
     return;
   }
-
-  // Suppress unused parameter warnings - velocity-based extension not needed
-  // since all chunks are pre-rendered
-  (void)velocityX;
-  (void)velocityY;
-  (void)cameraSpeed;
 
   // Calculate extended chunk range (visible + 2 chunk margin in all directions)
   constexpr int margin = 2;
@@ -2108,6 +2002,8 @@ void HammerEngine::TileRenderer::prefetchChunks(
   // Force visible list rebuild if chunks were re-rendered
   if (rendered > 0) {
     m_lastCamChunkX = -1;
+    // Restore render target after chunk operations
+    SDL_SetRenderTarget(renderer, nullptr);
   }
 }
 
@@ -2137,14 +2033,21 @@ void HammerEngine::TileRenderer::prewarmChunks(
   const int endY = std::min(m_gridHeight, static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 1 + margin);
 
   // Re-render any dirty chunks in visible area - no budget limit for prewarm
+  bool anyRendered = false;
   for (int cy = startY; cy < endY; ++cy) {
     for (int cx = startX; cx < endX; ++cx) {
       auto& chunk = m_chunkGrid[cy][cx];
       if (chunk.dirty && chunk.texture) {
         renderChunkToTexture(world, renderer, cx, cy, chunk.texture.get());
         chunk.dirty = false;
+        anyRendered = true;
       }
     }
+  }
+
+  // Restore render target after prewarming chunks
+  if (anyRendered) {
+    SDL_SetRenderTarget(renderer, nullptr);
   }
 
   m_hasDirtyChunks = false;  // All visible chunks are now rendered
@@ -2182,6 +2085,9 @@ void HammerEngine::TileRenderer::initChunkGrid(
       }
     }
   }
+
+  // Restore render target after initializing all chunks
+  SDL_SetRenderTarget(renderer, nullptr);
 
   m_gridInitialized = true;
   m_hasDirtyChunks = false;

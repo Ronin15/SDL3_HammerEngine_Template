@@ -8,7 +8,6 @@
 #include "managers/WorldManager.hpp"
 #include "core/Logger.hpp"
 #include <SDL3/SDL.h>
-#include <cmath>
 #include <format>
 
 namespace HammerEngine {
@@ -34,47 +33,11 @@ void WorldRenderPipeline::prepareChunks(Camera& camera, float deltaTime) {
         return;
     }
 
-    // Get current camera position
-    const Vector2D currentPos = camera.getPosition();
-
-    // Calculate displacement since last frame
-    float dx = currentPos.getX() - m_lastCameraPos.getX();
-    float dy = currentPos.getY() - m_lastCameraPos.getY();
-
-    // OPTIMIZATION: Skip velocity calculation if camera barely moved
-    constexpr float MOVEMENT_EPSILON_SQ = 0.25f;  // 0.5 pixel squared
-    bool cameraMoved = (dx * dx + dy * dy) > MOVEMENT_EPSILON_SQ;
-
-    if (m_hasLastPosition && cameraMoved) {
-        // Calculate instant velocity
-        float invDt = 1.0f / deltaTime;
-        float instantVelX = dx * invDt;
-        float instantVelY = dy * invDt;
-        float instantSpeedSq = instantVelX * instantVelX + instantVelY * instantVelY;
-        float currentSpeedSq = m_cameraVelocity.getX() * m_cameraVelocity.getX() +
-                               m_cameraVelocity.getY() * m_cameraVelocity.getY();
-
-        // Adaptive smoothing: fast response to acceleration, gradual deceleration
-        float adaptiveSmoothing = (instantSpeedSq > currentSpeedSq) ? 0.7f : 0.3f;
-        float oneMinusSmooth = 1.0f - adaptiveSmoothing;
-
-        m_cameraVelocity.setX(m_cameraVelocity.getX() * oneMinusSmooth + instantVelX * adaptiveSmoothing);
-        m_cameraVelocity.setY(m_cameraVelocity.getY() * oneMinusSmooth + instantVelY * adaptiveSmoothing);
-
-        m_lastCameraPos = currentPos;
-    } else if (!m_hasLastPosition) {
-        m_lastCameraPos = currentPos;
-        m_hasLastPosition = true;
-    }
-    // NOTE: When stationary, we keep the existing velocity (will decay via prefetch logic)
-
-    m_hasLastPosition = true;
-
-    // Only update active camera if it changed (avoid redundant pointer assignment)
+    // Set active camera for chunk visibility calculations
     worldMgr.setActiveCamera(&camera);
 
-    // Prefetch with cached speed calculation
-    worldMgr.prefetchChunksInternal(m_cameraVelocity, getCameraSpeed());
+    // Process dirty chunks (season changes, etc.) with proper render target management
+    worldMgr.prefetchChunksInternal();
 }
 
 WorldRenderPipeline::RenderContext WorldRenderPipeline::beginScene(
@@ -104,10 +67,6 @@ WorldRenderPipeline::RenderContext WorldRenderPipeline::beginScene(
     ctx.viewHeight = sceneCtx.viewHeight;
     ctx.zoom = sceneCtx.zoom;
     ctx.cameraCenter = sceneCtx.cameraCenter;
-
-    // Add velocity information
-    ctx.velocityX = m_cameraVelocity.getX();
-    ctx.velocityY = m_cameraVelocity.getY();
 
     ctx.valid = true;
     return ctx;
@@ -168,12 +127,6 @@ void WorldRenderPipeline::prewarmVisibleChunks(
 
 bool WorldRenderPipeline::isSceneActive() const {
     return m_sceneRenderer && m_sceneRenderer->isSceneActive();
-}
-
-float WorldRenderPipeline::getCameraSpeed() const {
-    float vx = m_cameraVelocity.getX();
-    float vy = m_cameraVelocity.getY();
-    return std::sqrt(vx * vx + vy * vy);
 }
 
 } // namespace HammerEngine
