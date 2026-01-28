@@ -1,26 +1,19 @@
 #version 450
 
-// Input from vertex shader
 layout(location = 0) in vec2 fragTexCoord;
 
-// Output color
 layout(location = 0) out vec4 outColor;
 
-// Scene texture sampler
-layout(set = 2, binding = 0) uniform sampler2D sceneSampler;
+layout(set = 2, binding = 0) uniform sampler2D sceneTex;
 
-// Composite uniforms
 layout(set = 3, binding = 0) uniform CompositeUBO {
-    float subPixelOffsetX;
-    float subPixelOffsetY;
+    vec2 subPixelOffset;
     float zoom;
-    float padding;
+    float _padding;
 };
 
 void main() {
-    // Apply sub-pixel offset for smooth camera movement
-    vec2 uv = fragTexCoord + vec2(subPixelOffsetX, subPixelOffsetY);
-
-    // Sample scene texture
-    outColor = texture(sceneSampler, uv);
+    // Apply sub-pixel offset and zoom
+    vec2 uv = fragTexCoord / zoom + subPixelOffset;
+    outColor = texture(sceneTex, uv);
 }
