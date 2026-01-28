@@ -28,6 +28,9 @@ struct SDL_Renderer;
 
 namespace HammerEngine {
 class Camera;
+#ifdef USE_SDL3_GPU
+struct GPUSceneContext;
+#endif
 }
 
 class ResourceRenderController : public ControllerBase {
@@ -84,6 +87,32 @@ public:
      */
     void renderHarvestables(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
                             float cameraX, float cameraY, float alpha);
+
+#ifdef USE_SDL3_GPU
+    /**
+     * @brief Record dropped items to GPU sprite batch
+     * @param ctx Scene context with sprite batch and camera params
+     * @param camera Camera for spatial queries
+     */
+    void recordGPUDroppedItems(const HammerEngine::GPUSceneContext& ctx,
+                               const HammerEngine::Camera& camera);
+
+    /**
+     * @brief Record containers to GPU sprite batch
+     * @param ctx Scene context with sprite batch and camera params
+     * @param camera Camera for spatial queries
+     */
+    void recordGPUContainers(const HammerEngine::GPUSceneContext& ctx,
+                             const HammerEngine::Camera& camera);
+
+    /**
+     * @brief Record harvestables to GPU sprite batch
+     * @param ctx Scene context with sprite batch and camera params
+     * @param camera Camera for spatial queries
+     */
+    void recordGPUHarvestables(const HammerEngine::GPUSceneContext& ctx,
+                               const HammerEngine::Camera& camera);
+#endif
 
     /**
      * @brief Clear all spawned resources (cleanup for state transitions)

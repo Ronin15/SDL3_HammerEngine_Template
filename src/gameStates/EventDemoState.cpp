@@ -33,6 +33,13 @@
 #include "managers/WorldManager.hpp"
 #include "utils/Camera.hpp"
 #include "utils/WorldRenderPipeline.hpp"
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#include "gpu/SpriteBatch.hpp"
+#include "utils/GPUSceneRenderer.hpp"
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -317,6 +324,11 @@ bool EventDemoState::enter() {
 
     // Create world render pipeline for coordinated chunk management and scene rendering
     m_renderPipeline = std::make_unique<HammerEngine::WorldRenderPipeline>();
+
+#ifdef USE_SDL3_GPU
+    // Create GPU scene renderer for coordinated GPU rendering
+    m_gpuSceneRenderer = std::make_unique<HammerEngine::GPUSceneRenderer>();
+#endif
 
     // Pre-allocate status buffer to avoid per-frame allocations
     m_statusBuffer.reserve(64);
@@ -1510,3 +1522,62 @@ void EventDemoState::toggleInventoryDisplay() {
   GAMESTATE_DEBUG(
       std::format("Inventory {}", m_showInventory ? "shown" : "hidden"));
 }
+
+#ifdef USE_SDL3_GPU
+void EventDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
+                                       float interpolationAlpha) {
+  if (!m_camera || !m_gpuSceneRenderer) { return; }
+
+  // Begin scene - sets up sprite batch with atlas texture and calculates camera params
+  auto ctx = m_gpuSceneRenderer->beginScene(gpuRenderer, *m_camera, interpolationAlpha);
+  if (!ctx) { return; }
+
+  // Record world tiles to sprite batch
+  auto &worldMgr = WorldManager::Instance();
+  worldMgr.recordGPU(*ctx.spriteBatch, ctx.cameraX, ctx.cameraY,
+                     ctx.viewWidth, ctx.viewHeight, ctx.zoom);
+
+  // Record NPCs to sprite batch (atlas-based)
+  m_npcRenderCtrl.recordGPU(ctx);
+
+  // End sprite batch recording (finalizes atlas-based sprites)
+  m_gpuSceneRenderer->endSpriteBatch();
+
+  // Record player (entity batch - separate texture)
+  if (m_player) {
+    m_player->recordGPUVertices(gpuRenderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+  }
+
+  // Record particles
+  auto &particleMgr = ParticleManager::Instance();
+  particleMgr.recordGPUVertices(gpuRenderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+
+  // Record UI vertices
+  UIManager::Instance().recordGPUVertices(gpuRenderer);
+
+  m_gpuSceneRenderer->endScene();
+}
+
+void EventDemoState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
+                                    SDL_GPURenderPass *scenePass,
+                                    [[maybe_unused]] float interpolationAlpha) {
+  if (!m_camera || !m_gpuSceneRenderer) { return; }
+
+  // Render world tiles (sprite batch)
+  m_gpuSceneRenderer->renderScene(gpuRenderer, scenePass);
+
+  // Render player (entity batch)
+  if (m_player) {
+    m_player->renderGPU(gpuRenderer, scenePass);
+  }
+
+  // Render particles
+  auto &particleMgr = ParticleManager::Instance();
+  particleMgr.renderGPU(gpuRenderer, scenePass);
+}
+
+void EventDemoState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
+                                 SDL_GPURenderPass *swapchainPass) {
+  UIManager::Instance().renderGPU(gpuRenderer, swapchainPass);
+}
+#endif

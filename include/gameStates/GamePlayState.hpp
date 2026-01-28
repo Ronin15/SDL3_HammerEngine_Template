@@ -20,14 +20,15 @@ class Player;
 namespace HammerEngine {
 class Camera;
 class WorldRenderPipeline;
+#ifdef USE_SDL3_GPU
+class GPUSceneRenderer;
+#endif
 }
 
 class GamePlayState : public GameState {
 public:
-  GamePlayState()
-      : m_transitioningToLoading{false},
-        mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false},
-        m_dayNightEventToken{}, m_weatherEventToken{} {}
+  GamePlayState();  // Defined in .cpp for unique_ptr with forward-declared types
+  ~GamePlayState() override;
   bool enter() override;
   void update(float deltaTime) override;
   void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;
@@ -61,6 +62,11 @@ private:
 
   // World render pipeline for coordinated chunk management and scene rendering
   std::unique_ptr<HammerEngine::WorldRenderPipeline> m_renderPipeline{nullptr};
+
+#ifdef USE_SDL3_GPU
+  // GPU scene renderer for coordinated GPU rendering
+  std::unique_ptr<HammerEngine::GPUSceneRenderer> m_gpuSceneRenderer{nullptr};
+#endif
 
   // Resource handles resolved at initialization (resource handle system
   // compliance)

@@ -21,9 +21,15 @@
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
+#ifdef USE_SDL3_GPU
+namespace HammerEngine {
+class GPUSceneRenderer;
+}
+#endif
+
 class AdvancedAIDemoState : public GameState {
 public:
-
+    AdvancedAIDemoState();  // Defined in .cpp for unique_ptr with forward-declared types
     ~AdvancedAIDemoState() override;
 
     void update(float deltaTime) override;
@@ -34,6 +40,18 @@ public:
     bool exit() override;
 
     std::string getName() const override { return "AdvancedAIDemoState"; }
+
+#ifdef USE_SDL3_GPU
+    // GPU rendering support
+    void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                           float interpolationAlpha) override;
+    void renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+                        SDL_GPURenderPass* scenePass,
+                        float interpolationAlpha) override;
+    void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+                     SDL_GPURenderPass* swapchainPass) override;
+    bool supportsGPURendering() const override { return true; }
+#endif
 
     // Get the player entity for AI behaviors to access
     EntityPtr getPlayer() const { return m_player; }
@@ -54,6 +72,11 @@ private:
 
     // World render pipeline for coordinated chunk management and scene rendering
     std::unique_ptr<HammerEngine::WorldRenderPipeline> m_renderPipeline{nullptr};
+
+#ifdef USE_SDL3_GPU
+    // GPU scene renderer for coordinated GPU rendering
+    std::unique_ptr<HammerEngine::GPUSceneRenderer> m_gpuSceneRenderer{nullptr};
+#endif
 
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
 

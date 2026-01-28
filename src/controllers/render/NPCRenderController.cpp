@@ -10,6 +10,11 @@
 #include <SDL3/SDL.h>
 #include <cmath>
 
+#ifdef USE_SDL3_GPU
+#include "gpu/SpriteBatch.hpp"
+#include "utils/GPUSceneRenderer.hpp"
+#endif
+
 void NPCRenderController::update(float deltaTime) {
     auto& edm = EntityDataManager::Instance();
 
@@ -96,3 +101,49 @@ void NPCRenderController::clearSpawnedNPCs() {
         }
     }
 }
+
+#ifdef USE_SDL3_GPU
+void NPCRenderController::recordGPU(const HammerEngine::GPUSceneContext& ctx) {
+    if (!ctx.spriteBatch) { return; }
+
+    auto& edm = EntityDataManager::Instance();
+    const float alpha = ctx.interpolationAlpha;
+
+    // Only render Active tier NPCs (same as AIManager)
+    for (size_t idx : edm.getActiveIndices()) {
+        const auto& hot = edm.getHotDataByIndex(idx);
+        if (hot.kind != EntityKind::NPC) { continue; }
+
+        const auto& r = edm.getNPCRenderDataByTypeIndex(hot.typeLocalIndex);
+
+        // Interpolate position
+        float interpX = hot.transform.previousPosition.getX() +
+            (hot.transform.position.getX() - hot.transform.previousPosition.getX()) * alpha;
+        float interpY = hot.transform.previousPosition.getY() +
+            (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
+
+        // Source rect from atlas
+        float srcX = static_cast<float>(r.atlasX + r.currentFrame * r.frameWidth);
+        float srcY = static_cast<float>(r.atlasY + r.currentRow * r.frameHeight);
+        float srcW = static_cast<float>(r.frameWidth);
+        float srcH = static_cast<float>(r.frameHeight);
+
+        // Destination rect (screen space)
+        float halfW = srcW * 0.5f;
+        float halfH = srcH * 0.5f;
+        float dstX = interpX - ctx.cameraX - halfW;
+        float dstY = interpY - ctx.cameraY - halfH;
+
+        // Handle flip via UV swap
+        bool flipH = (r.flipMode == static_cast<uint8_t>(SDL_FLIP_HORIZONTAL));
+        if (flipH) {
+            // Swap srcX to the right edge and use negative width to flip UVs
+            ctx.spriteBatch->draw(srcX + srcW, srcY, -srcW, srcH,
+                                  dstX, dstY, srcW, srcH);
+        } else {
+            ctx.spriteBatch->draw(srcX, srcY, srcW, srcH,
+                                  dstX, dstY, srcW, srcH);
+        }
+    }
+}
+#endif

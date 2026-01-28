@@ -12,6 +12,11 @@
 #include <cmath>
 #include <vector>
 
+#ifdef USE_SDL3_GPU
+#include "gpu/SpriteBatch.hpp"
+#include "utils/GPUSceneRenderer.hpp"
+#endif
+
 void ResourceRenderController::update(float deltaTime, const HammerEngine::Camera& camera) {
     updateDroppedItemAnimations(deltaTime, camera);
     updateContainerStates(deltaTime, camera);
@@ -271,3 +276,165 @@ void ResourceRenderController::clearAll() {
         }
     }
 }
+
+#ifdef USE_SDL3_GPU
+void ResourceRenderController::recordGPUDroppedItems(const HammerEngine::GPUSceneContext& ctx,
+                                                      const HammerEngine::Camera& camera) {
+    if (!ctx.spriteBatch) { return; }
+
+    auto& edm = EntityDataManager::Instance();
+    auto& wrm = WorldResourceManager::Instance();
+
+    // Query visible items using camera viewport
+    Vector2D cameraCenter = camera.getPosition();
+    const auto& viewport = camera.getViewport();
+    float visibleRadius = std::sqrt(viewport.width * viewport.width +
+                                    viewport.height * viewport.height) * 0.5f;
+
+    m_visibleItemIndices.clear();
+    wrm.queryDroppedItemsInRadius(cameraCenter, visibleRadius, m_visibleItemIndices);
+
+    const float alpha = ctx.interpolationAlpha;
+
+    for (size_t idx : m_visibleItemIndices) {
+        const auto& hot = edm.getStaticHotDataByIndex(idx);
+        if (!hot.isAlive()) { continue; }
+
+        const auto& r = edm.getItemRenderDataByTypeIndex(hot.typeLocalIndex);
+
+        // Skip unmapped textures (atlasX and atlasY both 0) - will use default when wired up
+        if (r.atlasX == 0 && r.atlasY == 0) { continue; }
+
+        // Interpolate position
+        float interpX = hot.transform.previousPosition.getX() +
+            (hot.transform.position.getX() - hot.transform.previousPosition.getX()) * alpha;
+        float interpY = hot.transform.previousPosition.getY() +
+            (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
+
+        // Add bobbing offset
+        float bobOffset = std::sin(r.bobPhase) * r.bobAmplitude;
+
+        // Source rect from atlas coords
+        float srcX = static_cast<float>(r.atlasX + r.currentFrame * r.frameWidth);
+        float srcY = static_cast<float>(r.atlasY);
+        float srcW = static_cast<float>(r.frameWidth);
+        float srcH = static_cast<float>(r.frameHeight);
+
+        // Destination rect (screen space, centered with bob)
+        float halfW = srcW * 0.5f;
+        float halfH = srcH * 0.5f;
+        float dstX = interpX - ctx.cameraX - halfW;
+        float dstY = interpY - ctx.cameraY - halfH + bobOffset;
+
+        ctx.spriteBatch->draw(srcX, srcY, srcW, srcH, dstX, dstY, srcW, srcH);
+    }
+}
+
+void ResourceRenderController::recordGPUContainers(const HammerEngine::GPUSceneContext& ctx,
+                                                    const HammerEngine::Camera& camera) {
+    if (!ctx.spriteBatch) { return; }
+
+    auto& edm = EntityDataManager::Instance();
+    auto& wrm = WorldResourceManager::Instance();
+
+    // Query visible containers using camera viewport
+    Vector2D cameraCenter = camera.getPosition();
+    const auto& viewport = camera.getViewport();
+    float visibleRadius = std::sqrt(viewport.width * viewport.width +
+                                    viewport.height * viewport.height) * 0.5f;
+
+    m_visibleContainerIndices.clear();
+    wrm.queryContainersInRadius(cameraCenter, visibleRadius, m_visibleContainerIndices);
+
+    const float alpha = ctx.interpolationAlpha;
+
+    for (size_t idx : m_visibleContainerIndices) {
+        const auto& hot = edm.getStaticHotDataByIndex(idx);
+        if (!hot.isAlive()) { continue; }
+
+        const auto& containerData = edm.getContainerData(hot.typeLocalIndex);
+        const auto& r = edm.getContainerRenderDataByTypeIndex(hot.typeLocalIndex);
+
+        // Choose atlas coords based on open/closed state
+        uint16_t atlasX = containerData.isOpen() ? r.openAtlasX : r.atlasX;
+        uint16_t atlasY = containerData.isOpen() ? r.openAtlasY : r.atlasY;
+
+        // Skip unmapped textures (both coords 0) - will use default when wired up
+        if (atlasX == 0 && atlasY == 0) { continue; }
+
+        // Interpolate position
+        float interpX = hot.transform.previousPosition.getX() +
+            (hot.transform.position.getX() - hot.transform.previousPosition.getX()) * alpha;
+        float interpY = hot.transform.previousPosition.getY() +
+            (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
+
+        // Source rect from atlas coords
+        float srcX = static_cast<float>(atlasX + r.currentFrame * r.frameWidth);
+        float srcY = static_cast<float>(atlasY);
+        float srcW = static_cast<float>(r.frameWidth);
+        float srcH = static_cast<float>(r.frameHeight);
+
+        // Destination rect (screen space, centered)
+        float halfW = srcW * 0.5f;
+        float halfH = srcH * 0.5f;
+        float dstX = interpX - ctx.cameraX - halfW;
+        float dstY = interpY - ctx.cameraY - halfH;
+
+        ctx.spriteBatch->draw(srcX, srcY, srcW, srcH, dstX, dstY, srcW, srcH);
+    }
+}
+
+void ResourceRenderController::recordGPUHarvestables(const HammerEngine::GPUSceneContext& ctx,
+                                                      const HammerEngine::Camera& camera) {
+    if (!ctx.spriteBatch) { return; }
+
+    auto& edm = EntityDataManager::Instance();
+    auto& wrm = WorldResourceManager::Instance();
+
+    // Query visible harvestables using camera viewport
+    Vector2D cameraCenter = camera.getPosition();
+    const auto& viewport = camera.getViewport();
+    float visibleRadius = std::sqrt(viewport.width * viewport.width +
+                                    viewport.height * viewport.height) * 0.5f;
+
+    m_visibleHarvestableIndices.clear();
+    wrm.queryHarvestablesInRadius(cameraCenter, visibleRadius, m_visibleHarvestableIndices);
+
+    const float alpha = ctx.interpolationAlpha;
+
+    for (size_t idx : m_visibleHarvestableIndices) {
+        const auto& hot = edm.getStaticHotDataByIndex(idx);
+        if (!hot.isAlive()) { continue; }
+
+        const auto& harvData = edm.getHarvestableData(hot.typeLocalIndex);
+        const auto& r = edm.getHarvestableRenderDataByTypeIndex(hot.typeLocalIndex);
+
+        // Choose atlas coords based on depleted state
+        uint16_t atlasX = harvData.isDepleted ? r.depletedAtlasX : r.atlasX;
+        uint16_t atlasY = harvData.isDepleted ? r.depletedAtlasY : r.atlasY;
+
+        // Skip unmapped textures (both coords 0) - will use default when wired up
+        if (atlasX == 0 && atlasY == 0) { continue; }
+
+        // Interpolate position
+        float interpX = hot.transform.previousPosition.getX() +
+            (hot.transform.position.getX() - hot.transform.previousPosition.getX()) * alpha;
+        float interpY = hot.transform.previousPosition.getY() +
+            (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
+
+        // Source rect from atlas coords
+        float srcX = static_cast<float>(atlasX + r.currentFrame * r.frameWidth);
+        float srcY = static_cast<float>(atlasY);
+        float srcW = static_cast<float>(r.frameWidth);
+        float srcH = static_cast<float>(r.frameHeight);
+
+        // Destination rect (screen space, centered)
+        float halfW = srcW * 0.5f;
+        float halfH = srcH * 0.5f;
+        float dstX = interpX - ctx.cameraX - halfW;
+        float dstY = interpY - ctx.cameraY - halfH;
+
+        ctx.spriteBatch->draw(srcX, srcY, srcW, srcH, dstX, dstY, srcW, srcH);
+    }
+}
+#endif

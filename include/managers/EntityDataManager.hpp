@@ -685,6 +685,10 @@ struct ContainerRenderData {
     // NON-OWNING: Managed by TextureManager, may become invalid on state transition
     SDL_Texture* closedTexture{nullptr};
     SDL_Texture* openTexture{nullptr};
+    uint16_t atlasX{0};                   // Atlas X offset (0 = unmapped, use default)
+    uint16_t atlasY{0};                   // Atlas Y offset (0 = unmapped, use default)
+    uint16_t openAtlasX{0};               // Atlas X offset for open state
+    uint16_t openAtlasY{0};               // Atlas Y offset for open state
     uint16_t frameWidth{32};              // Sprite width
     uint16_t frameHeight{32};             // Sprite height
     uint8_t currentFrame{0};              // For animated open/close
@@ -694,6 +698,10 @@ struct ContainerRenderData {
     void clear() noexcept {
         closedTexture = nullptr;
         openTexture = nullptr;
+        atlasX = 0;
+        atlasY = 0;
+        openAtlasX = 0;
+        openAtlasY = 0;
         frameWidth = 32;
         frameHeight = 32;
         currentFrame = 0;
@@ -712,6 +720,10 @@ struct HarvestableRenderData {
     // NON-OWNING: Managed by TextureManager, may become invalid on state transition
     SDL_Texture* normalTexture{nullptr};
     SDL_Texture* depletedTexture{nullptr};
+    uint16_t atlasX{0};                     // Atlas X offset (0 = unmapped, use default)
+    uint16_t atlasY{0};                     // Atlas Y offset (0 = unmapped, use default)
+    uint16_t depletedAtlasX{0};             // Atlas X offset for depleted state
+    uint16_t depletedAtlasY{0};             // Atlas Y offset for depleted state
     uint16_t frameWidth{32};                // Sprite width
     uint16_t frameHeight{32};               // Sprite height
     uint8_t currentFrame{0};                // Animation frame
@@ -721,6 +733,10 @@ struct HarvestableRenderData {
     void clear() noexcept {
         normalTexture = nullptr;
         depletedTexture = nullptr;
+        atlasX = 0;
+        atlasY = 0;
+        depletedAtlasX = 0;
+        depletedAtlasY = 0;
         frameWidth = 32;
         frameHeight = 32;
         currentFrame = 0;
