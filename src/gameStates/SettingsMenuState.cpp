@@ -12,6 +12,10 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#endif
+
 #include <thread>
 #include <chrono>
 
@@ -57,14 +61,16 @@ bool SettingsMenuState::enter() {
 }
 
 void SettingsMenuState::update([[maybe_unused]] float deltaTime) {
-    // UI updates handled in render() for thread safety
+    // Process UI input (click detection, hover states, callbacks)
+    auto& ui = UIManager::Instance();
+    if (!ui.isShutdown()) {
+        ui.update(0.0f);
+    }
 }
 
 void SettingsMenuState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
+    // Render UI components (input handled in update())
     auto& ui = UIManager::Instance();
-    if (!ui.isShutdown()) {
-        ui.update(0.0);
-    }
     ui.render(renderer);
 }
 
@@ -467,3 +473,21 @@ void SettingsMenuState::updateTabVisibility() {
             break;
     }
 }
+
+#ifdef USE_SDL3_GPU
+void SettingsMenuState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                                           [[maybe_unused]] float interpolationAlpha) {
+    auto& ui = UIManager::Instance();
+    if (!ui.isShutdown()) {
+        ui.recordGPUVertices(gpuRenderer);
+    }
+}
+
+void SettingsMenuState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+                                     SDL_GPURenderPass* swapchainPass) {
+    auto& ui = UIManager::Instance();
+    if (!ui.isShutdown()) {
+        ui.renderGPU(gpuRenderer, swapchainPass);
+    }
+}
+#endif

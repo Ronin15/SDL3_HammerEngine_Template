@@ -33,6 +33,10 @@
 #include <cmath>
 #include <format>
 
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#endif
+
 bool GamePlayState::enter() {
   // Resume all game managers (may be paused from menu states)
   GameEngine::Instance().setGlobalPause(false);
@@ -851,17 +855,19 @@ void GamePlayState::initializeResourceHandles() {
 }
 
 void GamePlayState::initializeCamera() {
-  const auto &gameEngine = GameEngine::Instance();
-
   // Initialize camera at player's position to avoid any interpolation jitter
   Vector2D playerPosition =
       mp_Player ? mp_Player->getPosition() : Vector2D(0, 0);
 
-  // Create camera starting at player position with logical viewport dimensions
-  m_camera = std::make_unique<HammerEngine::Camera>(
-      playerPosition.getX(), playerPosition.getY(),
-      static_cast<float>(gameEngine.getLogicalWidth()),
-      static_cast<float>(gameEngine.getLogicalHeight()));
+  // Create camera with position, then sync viewport from appropriate source
+  // (GPURenderer in GPU mode, GameEngine in SDL_Renderer mode)
+  m_camera = std::make_unique<HammerEngine::Camera>();
+  m_camera->setPosition(playerPosition);
+  m_camera->syncViewportWithEngine();  // Gets correct dimensions for current mode
+
+  GAMEPLAY_INFO(std::format("Camera initialized: pos=({}, {}), viewport={}x{}",
+                                 playerPosition.getX(), playerPosition.getY(),
+                                 m_camera->getViewport().width, m_camera->getViewport().height));
 
   // Configure camera to follow player
   if (mp_Player) {
@@ -1249,3 +1255,83 @@ void GamePlayState::updateCombatHUD() {
     ui.setComponentVisible("hud_target_health", false);
   }
 }
+
+#ifdef USE_SDL3_GPU
+void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
+                                      [[maybe_unused]] float interpolationAlpha) {
+  // Skip if world not active
+  if (!m_camera) {
+    return;
+  }
+
+  // Get viewport from GPURenderer (synced on resize events)
+  float viewWidth = static_cast<float>(gpuRenderer.getViewportWidth());
+  float viewHeight = static_cast<float>(gpuRenderer.getViewportHeight());
+
+  // Debug: Log viewport dimensions on first frame or change
+  static float lastViewW = 0, lastViewH = 0;
+  if (viewWidth != lastViewW || viewHeight != lastViewH) {
+    GAMEPLAY_INFO(std::format("GPU viewport: {}x{}", viewWidth, viewHeight));
+    lastViewW = viewWidth;
+    lastViewH = viewHeight;
+  }
+
+  // Camera viewport already synced in updateCamera() via syncViewportWithEngine()
+  float centerX = m_camera->getX();
+  float centerY = m_camera->getY();
+  float zoom = m_camera->getZoom();
+
+  // Calculate camera offset (top-left) from center
+  float rawCameraX = centerX - viewWidth / (2.0f * zoom);
+  float rawCameraY = centerY - viewHeight / (2.0f * zoom);
+  float cameraX = std::floor(rawCameraX);
+  float cameraY = std::floor(rawCameraY);
+
+  // Calculate sub-pixel offset for smooth scrolling
+  float subPixelX = (rawCameraX - cameraX) / viewWidth;
+  float subPixelY = (rawCameraY - cameraY) / viewHeight;
+
+  // Set composite params for this frame (zoom and sub-pixel offset)
+  gpuRenderer.setCompositeParams(zoom, subPixelX, subPixelY);
+
+  // Record world tile vertices
+  auto &worldMgr = WorldManager::Instance();
+  worldMgr.recordGPUVertices(gpuRenderer, cameraX, cameraY, viewWidth, viewHeight,
+                              zoom, interpolationAlpha);
+
+  // TODO: Record particle vertices via ParticleManager GPU method
+  // particleMgr.recordGPUVertices(gpuRenderer, cameraX, cameraY, interpolationAlpha);
+
+  // Record UI vertices
+  auto &ui = UIManager::Instance();
+  ui.recordGPUVertices(gpuRenderer);
+}
+
+void GamePlayState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
+                                   SDL_GPURenderPass *scenePass,
+                                   [[maybe_unused]] float interpolationAlpha) {
+  if (!m_camera) {
+    return;
+  }
+
+  // Render world tiles
+  auto &worldMgr = WorldManager::Instance();
+  worldMgr.renderGPU(gpuRenderer, scenePass);
+
+  // TODO: Render particles via ParticleManager GPU method
+}
+
+void GamePlayState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
+                                SDL_GPURenderPass *swapchainPass) {
+  // Render day/night overlay as a colored quad using primitive pipeline
+  if (m_dayNightOverlayA >= 0.5f && m_camera) {
+    // TODO: Add GPURenderer::drawFilledRect helper method
+    // For now, day/night overlay will be added with the primitive pipeline helper
+    // gpuRenderer.drawFilledRect(swapchainPass, 0.0f, 0.0f, viewport.width, viewport.height, ...);
+  }
+
+  // Render UI (this is already implemented)
+  auto &ui = UIManager::Instance();
+  ui.renderGPU(gpuRenderer, swapchainPass);
+}
+#endif

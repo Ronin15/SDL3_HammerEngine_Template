@@ -94,9 +94,9 @@ public:
      * @brief Viewport structure for rendering calculations
      */
     struct Viewport {
-        float width{1920.0f};
-        float height{1080.0f};
-        
+        float width{0.0f};   // Must be set via constructor or setViewport()
+        float height{0.0f};  // Must be set via constructor or setViewport()
+
         bool isValid() const {
             return width > 0.0f && height > 0.0f;
         }
@@ -432,11 +432,11 @@ public:
     void syncViewportWithEngine();
 
 private:
-    // Core camera state
-    Vector2D m_position{960.0f, 540.0f};    // Current camera position (center of 1920x1080)
-    Vector2D m_targetPosition{960.0f, 540.0f}; // Target position for interpolation
-    Viewport m_viewport{1920.0f, 1080.0f};    // Camera viewport size
-    Bounds m_worldBounds{0.0f, 0.0f, 1920.0f, 1080.0f}; // World boundaries
+    // Core camera state (initialized via constructor)
+    Vector2D m_position{0.0f, 0.0f};        // Current camera position
+    Vector2D m_targetPosition{0.0f, 0.0f};  // Target position for interpolation
+    Viewport m_viewport{};                   // Camera viewport size (set via constructor)
+    Bounds m_worldBounds{};                  // World boundaries (auto-synced from WorldManager)
     Config m_config{};                       // Camera configuration
     Mode m_mode{Mode::Free};                // Current camera mode
     

@@ -114,6 +114,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(USE_MOLD_LINKER "Use mold linker if available" ON)
+option(USE_SDL3_GPU "Use SDL3_GPU instead of SDL_Renderer" OFF)
 
 if(USE_MOLD_LINKER)
     find_program(MOLD_LINKER mold)
@@ -237,6 +238,61 @@ file(GLOB_RECURSE SOURCES
 # Exclude HammerMain.cpp from library sources (contains main() which conflicts with test frameworks)
 list(FILTER SOURCES EXCLUDE REGEX ".*HammerMain\\.cpp$")
 
+# SDL3_GPU support
+if(USE_SDL3_GPU)
+    # Add GPU module sources
+    file(GLOB GPU_SOURCES "src/gpu/*.cpp")
+    list(APPEND SOURCES ${GPU_SOURCES})
+
+    # Find glslang/glslangValidator for shader compilation
+    find_program(GLSLANG_VALIDATOR
+        NAMES glslangValidator glslang
+        HINTS ENV VULKAN_SDK
+        PATH_SUFFIXES bin
+    )
+
+    if(NOT GLSLANG_VALIDATOR)
+        message(FATAL_ERROR "glslangValidator not found. Install glslang package or Vulkan SDK.")
+    endif()
+
+    message(STATUS "Found glslangValidator: ${GLSLANG_VALIDATOR}")
+
+    # Shader source files
+    set(SHADER_SOURCES
+        ${CMAKE_SOURCE_DIR}/res/shaders/sprite.vert.glsl
+        ${CMAKE_SOURCE_DIR}/res/shaders/sprite.frag.glsl
+        ${CMAKE_SOURCE_DIR}/res/shaders/particle.vert.glsl
+        ${CMAKE_SOURCE_DIR}/res/shaders/particle.frag.glsl
+        ${CMAKE_SOURCE_DIR}/res/shaders/primitive.vert.glsl
+        ${CMAKE_SOURCE_DIR}/res/shaders/primitive.frag.glsl
+        ${CMAKE_SOURCE_DIR}/res/shaders/composite.vert.glsl
+        ${CMAKE_SOURCE_DIR}/res/shaders/composite.frag.glsl
+    )
+
+    # Compile each shader to SPIR-V
+    set(SHADER_SPIRV_OUTPUTS "")
+    foreach(SHADER_SOURCE ${SHADER_SOURCES})
+        get_filename_component(SHADER_NAME ${SHADER_SOURCE} NAME)
+        string(REPLACE ".glsl" ".spv" SHADER_SPV_NAME ${SHADER_NAME})
+        set(SHADER_SPV "${CMAKE_SOURCE_DIR}/res/shaders/${SHADER_SPV_NAME}")
+
+        add_custom_command(
+            OUTPUT ${SHADER_SPV}
+            COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} -o ${SHADER_SPV}
+            DEPENDS ${SHADER_SOURCE}
+            COMMENT "Compiling shader: ${SHADER_NAME} -> ${SHADER_SPV_NAME}"
+            VERBATIM
+        )
+
+        list(APPEND SHADER_SPIRV_OUTPUTS ${SHADER_SPV})
+    endforeach()
+
+    # Create shader compilation target
+    add_custom_target(compile_shaders ALL DEPENDS ${SHADER_SPIRV_OUTPUTS})
+
+    message(STATUS "SDL3_GPU enabled - shaders will be compiled to SPIR-V")
+endif()
+
 # Create object library for shared compilation (without main())
 add_library(HammerEngineObjects OBJECT ${SOURCES})
 target_include_directories(HammerEngineObjects PUBLIC
@@ -254,6 +310,7 @@ target_include_directories(HammerEngineObjects PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ui
     ${CMAKE_CURRENT_SOURCE_DIR}/include/world
     ${CMAKE_CURRENT_SOURCE_DIR}/include/collisions
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/gpu
 )
 target_include_directories(HammerEngineObjects PRIVATE
     ${INTERNAL_SRC_INCLUDE}
@@ -268,6 +325,12 @@ target_link_libraries(HammerEngineObjects PUBLIC
 target_compile_definitions(HammerEngineObjects PRIVATE
     HAMMER_APP_NAME="${PROJECT_NAME}"
 )
+
+# SDL3_GPU compile definition
+if(USE_SDL3_GPU)
+    target_compile_definitions(HammerEngineObjects PUBLIC USE_SDL3_GPU)
+    add_dependencies(HammerEngineObjects compile_shaders)
+endif()
 
 # Apply aggressive optimization flags to our project targets only (not SDL3)
 # These flags like -ffast-math conflict with SDL3's audio code

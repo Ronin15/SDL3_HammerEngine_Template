@@ -6,6 +6,7 @@
 #include "managers/GameStateManager.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/GameState.hpp"
+#include "gpu/GPURenderer.hpp"
 #include "utils/FrameProfiler.hpp"
 #include <algorithm>
 #include <format>
@@ -108,6 +109,30 @@ void GameStateManager::render(SDL_Renderer* renderer, float interpolationAlpha) 
     m_activeStates.back()->render(renderer, interpolationAlpha);
   }
 }
+
+#ifdef USE_SDL3_GPU
+void GameStateManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                                          float interpolationAlpha) {
+  if (!m_activeStates.empty()) {
+    m_activeStates.back()->recordGPUVertices(gpuRenderer, interpolationAlpha);
+  }
+}
+
+void GameStateManager::renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+                                        SDL_GPURenderPass* scenePass,
+                                        float interpolationAlpha) {
+  if (!m_activeStates.empty()) {
+    m_activeStates.back()->renderGPUScene(gpuRenderer, scenePass, interpolationAlpha);
+  }
+}
+
+void GameStateManager::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+                                     SDL_GPURenderPass* swapchainPass) {
+  if (!m_activeStates.empty()) {
+    m_activeStates.back()->renderGPUUI(gpuRenderer, swapchainPass);
+  }
+}
+#endif
 
 void GameStateManager::handleInput() {
   // Only the top state handles input

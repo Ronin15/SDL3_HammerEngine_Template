@@ -7,6 +7,12 @@
 #define LOGO_STATE_HPP
 
 #include "gameStates/GameState.hpp"
+#include <cstdint>
+#include <vector>
+
+#ifdef USE_SDL3_GPU
+struct SDL_GPUTexture;
+#endif
 
 class LogoState : public GameState {
  public:
@@ -16,6 +22,18 @@ class LogoState : public GameState {
   void handleInput() override;
   bool exit() override;
   std::string getName() const override;
+
+#ifdef USE_SDL3_GPU
+  // GPU rendering support
+  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                          float interpolationAlpha) override;
+  void renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+                       SDL_GPURenderPass* scenePass,
+                       float interpolationAlpha) override;
+  void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+                    SDL_GPURenderPass* swapchainPass) override;
+  bool supportsGPURendering() const override { return true; }
+#endif
 
  private:
   void recalculateLayout();
@@ -38,6 +56,19 @@ class LogoState : public GameState {
   int m_titleY{0};
   int m_subtitleY{0};
   int m_versionY{0};
+
+#ifdef USE_SDL3_GPU
+  // GPU draw commands for multiple textures (scene rendering)
+  struct GPUDrawCommand {
+    SDL_GPUTexture* texture{nullptr};
+    uint32_t vertexOffset{0};
+    uint32_t vertexCount{0};
+  };
+  std::vector<GPUDrawCommand> m_drawCommands;
+
+  // GPU draw commands for UI text (swapchain rendering)
+  std::vector<GPUDrawCommand> m_textDrawCommands;
+#endif
 };
 
 #endif  // LOGO_STATE_HPP

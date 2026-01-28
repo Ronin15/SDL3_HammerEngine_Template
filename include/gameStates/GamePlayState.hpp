@@ -37,6 +37,18 @@ public:
   void resume() override;
   std::string getName() const override;
 
+#ifdef USE_SDL3_GPU
+  // GPU rendering support
+  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                         float interpolationAlpha) override;
+  void renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+                      SDL_GPURenderPass* scenePass,
+                      float interpolationAlpha) override;
+  void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+                   SDL_GPURenderPass* swapchainPass) override;
+  bool supportsGPURendering() const override { return true; }
+#endif
+
 private:
   bool m_transitioningToLoading{
       false}; // Flag to indicate we're transitioning to loading state

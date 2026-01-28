@@ -16,6 +16,21 @@
 #include <mutex>
 // filesystem is used in the implementation file
 
+#ifdef USE_SDL3_GPU
+#include "gpu/GPUTexture.hpp"
+#include "gpu/GPURenderer.hpp"
+
+namespace HammerEngine {
+class GPURenderer;
+}
+
+struct GPUTextData {
+    std::unique_ptr<HammerEngine::GPUTexture> texture;
+    int width{0};
+    int height{0};
+};
+#endif
+
 class FontManager {
  public:
   ~FontManager() {
@@ -228,9 +243,41 @@ class FontManager {
    * @param maxWidth Maximum width constraint
    * @return Vector of wrapped lines
    */
-  std::vector<std::string> wrapTextToLines(const std::string& text, 
-                                          const std::string& fontID, 
+  std::vector<std::string> wrapTextToLines(const std::string& text,
+                                          const std::string& fontID,
                                           int maxWidth);
+
+#ifdef USE_SDL3_GPU
+  /**
+   * @brief Renders text to a GPU texture for SDL3_GPU rendering
+   * @param text Text string to render
+   * @param fontID Unique identifier of the font to use
+   * @param color Text color for rendering
+   * @return Pointer to GPUTextData, or nullptr if failed (cached, do not delete)
+   */
+  const GPUTextData* renderTextGPU(const std::string& text, const std::string& fontID,
+                                    SDL_Color color);
+
+  /**
+   * @brief Draw text using GPU renderer to the swapchain
+   * @param text Text string to draw
+   * @param fontID Unique identifier of the font to use
+   * @param x X coordinate (center point of text)
+   * @param y Y coordinate (center point of text)
+   * @param color Text color for drawing
+   * @param gpuRenderer GPU renderer instance
+   * @param pass Active render pass (swapchain pass)
+   */
+  void drawTextGPU(const std::string& text, const std::string& fontID,
+                   int x, int y, SDL_Color color,
+                   HammerEngine::GPURenderer& gpuRenderer,
+                   SDL_GPURenderPass* pass);
+
+  /**
+   * @brief Clear GPU text cache (call on state transitions or when memory is needed)
+   */
+  void clearGPUTextCache();
+#endif
 
  private:
   // Cache for rendered text textures to avoid re-creation
@@ -264,11 +311,16 @@ class FontManager {
   bool m_isShutdown{false};
   std::vector<std::string> m_fontFilePaths{};
   std::mutex m_fontLoadMutex{};
-  
+
   // Display size tracking to prevent unnecessary font reloads
   int m_lastWindowWidth{0};
   int m_lastWindowHeight{0};
   std::string m_lastFontPath{};
+
+#ifdef USE_SDL3_GPU
+  // GPU text cache for SDL3_GPU rendering
+  std::unordered_map<TextCacheKey, std::unique_ptr<GPUTextData>, TextCacheKeyHash> m_gpuTextCache{};
+#endif
 
   // Delete copy constructor and assignment operator
   FontManager(const FontManager&) = delete; // Prevent copying

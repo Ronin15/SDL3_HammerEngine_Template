@@ -22,8 +22,17 @@
 struct SDL_Renderer;
 struct SDL_Texture;
 
+#ifdef USE_SDL3_GPU
+struct SDL_GPURenderPass;
+#endif
+
 namespace HammerEngine {
 class Camera;  // Forward declaration for camera pointer storage
+
+#ifdef USE_SDL3_GPU
+class GPURenderer;  // Forward declaration for GPU rendering
+class GPUTexture;   // Forward declaration for GPU texture
+#endif
 
 // World object definition loaded from JSON
 struct WorldObjectDef {
@@ -85,6 +94,32 @@ public:
     // Chunk texture management
     void invalidateChunk(int chunkX, int chunkY);  // Mark chunk for re-rendering
     void clearChunkCache();  // Clean up all chunk textures
+
+#ifdef USE_SDL3_GPU
+    /**
+     * @brief Record visible tile vertices for GPU rendering
+     *
+     * Records all visible tile sprites to the GPU sprite batch using atlas coordinates.
+     * No chunk textures needed - renders directly from tile data each frame.
+     *
+     * @param gpuRenderer GPU renderer instance
+     * @param cameraX Camera X offset (floored for pixel-perfect alignment)
+     * @param cameraY Camera Y offset (floored for pixel-perfect alignment)
+     * @param viewportWidth Viewport width at 1x scale
+     * @param viewportHeight Viewport height at 1x scale
+     * @param zoom Current zoom level
+     * @param season Current season for seasonal textures
+     */
+    void recordGPUVertices(GPURenderer& gpuRenderer, float cameraX, float cameraY,
+                           float viewportWidth, float viewportHeight, float zoom,
+                           Season season);
+
+    /**
+     * @brief Get the atlas GPU texture
+     * @return Pointer to GPU texture, or nullptr if not using atlas
+     */
+    GPUTexture* getAtlasGPUTexture() const;
+#endif
 
     /**
      * @brief Handle dirty chunk re-rendering with proper render target management
@@ -448,6 +483,14 @@ private:
     SDL_Texture* m_atlasPtr{nullptr};        // Single shared atlas texture
     bool m_useAtlas{false};                  // True if atlas loaded successfully
 
+#ifdef USE_SDL3_GPU
+    GPUTexture* m_atlasGPUPtr{nullptr};  // GPU atlas texture pointer
+
+    // Helper to get atlas coords for a tile
+    const AtlasCoords& getBiomeAtlasCoords(Biome biome, Season season) const;
+    const AtlasCoords& getObstacleAtlasCoords(ObstacleType obstacle, Season season) const;
+#endif
+
     // Get atlas pointer from TextureManager and pre-load source rect coords from JSON
     void initAtlasCoords();
     void applyCoordsToTextures(Season season);
@@ -543,6 +586,37 @@ public:
      */
     void prewarmChunks(SDL_Renderer* renderer, float cameraX, float cameraY,
                        float viewportWidth, float viewportHeight);
+
+#ifdef USE_SDL3_GPU
+    /**
+     * @brief Record world tile vertices for GPU rendering
+     *
+     * Records all visible tile sprites to the GPU vertex batch for rendering.
+     * Uses the existing atlas texture coordinates for each tile type.
+     * Supports multithreaded vertex generation via ThreadSystem when beneficial.
+     *
+     * @param gpuRenderer GPU renderer instance
+     * @param cameraX Camera X offset (floored for pixel-perfect alignment)
+     * @param cameraY Camera Y offset (floored for pixel-perfect alignment)
+     * @param viewportWidth Viewport width at 1x scale
+     * @param viewportHeight Viewport height at 1x scale
+     * @param zoom Current zoom level
+     * @param interpolationAlpha Interpolation alpha for smooth rendering
+     */
+    void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer, float cameraX, float cameraY,
+                           float viewportWidth, float viewportHeight, float zoom,
+                           float interpolationAlpha);
+
+    /**
+     * @brief Render world tiles to the GPU scene pass
+     *
+     * Issues draw calls for all recorded world tile vertices.
+     *
+     * @param gpuRenderer GPU renderer instance
+     * @param scenePass Active scene render pass
+     */
+    void renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* scenePass);
+#endif
 
     bool handleHarvestResource(int entityId, int targetX, int targetY);
     bool updateTile(int x, int y, const HammerEngine::Tile& newTile);

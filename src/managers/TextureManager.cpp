@@ -8,6 +8,13 @@
 #include <algorithm>
 #include <filesystem>
 #include <format>
+#include <cstring>
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPUDevice.hpp"
+#include "gpu/GPUTexture.hpp"
+#include "gpu/GPUTransferBuffer.hpp"
+#endif
 
 
 
@@ -380,7 +387,237 @@ void TextureManager::clean() {
     return;
   }
 
+#ifdef USE_SDL3_GPU
+  // Clean up GPU textures
+  {
+    std::lock_guard<std::mutex> lock(m_gpuTextureMutex);
+    m_gpuTextureMap.clear();
+    m_pendingUploads.clear();
+  }
+#endif
+
   // Clear all textures before SDL shutdown
   m_textureMap.clear();
   m_isShutdown = true;
 }
+
+#ifdef USE_SDL3_GPU
+bool TextureManager::loadGPU(const std::string& fileName, const std::string& textureID) {
+  std::lock_guard<std::mutex> lock(m_gpuTextureMutex);
+
+  // Check if already loaded
+  if (m_gpuTextureMap.find(textureID) != m_gpuTextureMap.end()) {
+    TEXTURE_INFO(std::format("GPU texture already loaded: {}", textureID));
+    return true;
+  }
+
+  // Check if it's a directory
+  if (std::filesystem::exists(fileName) && std::filesystem::is_directory(fileName)) {
+    TEXTURE_INFO(std::format("Loading GPU textures from directory: {}", fileName));
+
+    bool loadedAny = false;
+    int texturesLoaded = 0;
+
+    try {
+      for (const auto& entry : std::filesystem::recursive_directory_iterator(fileName)) {
+        if (!entry.is_regular_file()) {
+          continue;
+        }
+
+        const auto& filePath = entry.path();
+        std::string extension = filePath.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+                      [](unsigned char c) { return std::tolower(c); });
+
+        if (extension == ".png") {
+          std::string fullPath = filePath.string();
+          std::string filename = filePath.stem().string();
+          std::string combinedID = textureID.empty() ? filename : std::format("{}_{}", textureID, filename);
+
+          if (loadSingleGPUTexture(fullPath, combinedID)) {
+            loadedAny = true;
+            texturesLoaded++;
+          }
+        }
+      }
+    } catch (const std::filesystem::filesystem_error& e) {
+      TEXTURE_ERROR(std::format("GPU texture filesystem error: {}", e.what()));
+    } catch (const std::exception& e) {
+      TEXTURE_ERROR(std::format("GPU texture load error: {}", e.what()));
+    }
+
+    TEXTURE_INFO(std::format("Loaded {} GPU textures from directory: {}", texturesLoaded, fileName));
+    return loadedAny;
+  }
+
+  // Single file loading
+  return loadSingleGPUTexture(fileName, textureID);
+}
+
+bool TextureManager::loadSingleGPUTexture(const std::string& fileName, const std::string& textureID) {
+  // Load PNG to surface
+  SDL_Surface* rawSurface = SDL_LoadPNG(fileName.c_str());
+  if (!rawSurface) {
+    TEXTURE_ERROR(std::format("GPU texture: could not load image: {} - {}", fileName, SDL_GetError()));
+    return false;
+  }
+
+  // Convert to ABGR8888 for GPU upload (maps to R8G8B8A8_UNORM byte order on little-endian)
+  // SDL_PIXELFORMAT_ABGR8888: 32-bit with A in high bits -> memory layout R,G,B,A on LE
+  SDL_Surface* convertedSurface = rawSurface;
+  if (rawSurface->format != SDL_PIXELFORMAT_ABGR8888) {
+    convertedSurface = SDL_ConvertSurface(rawSurface, SDL_PIXELFORMAT_ABGR8888);
+    SDL_DestroySurface(rawSurface);
+    if (!convertedSurface) {
+      TEXTURE_ERROR(std::format("GPU texture: could not convert surface: {}", SDL_GetError()));
+      return false;
+    }
+  }
+
+  // Premultiply alpha to ensure transparent pixels have zeroed RGB
+  // This prevents "halos" and gray backgrounds from PNG transparent areas
+  SDL_PremultiplyAlpha(convertedSurface->w, convertedSurface->h,
+                        SDL_PIXELFORMAT_ABGR8888, convertedSurface->pixels, convertedSurface->pitch,
+                        SDL_PIXELFORMAT_ABGR8888, convertedSurface->pixels, convertedSurface->pitch,
+                        false);
+
+  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+  if (!gpuDevice.isInitialized()) {
+    TEXTURE_ERROR("GPU texture: GPUDevice not initialized");
+    SDL_DestroySurface(convertedSurface);
+    return false;
+  }
+
+  uint32_t width = static_cast<uint32_t>(convertedSurface->w);
+  uint32_t height = static_cast<uint32_t>(convertedSurface->h);
+
+  // Create GPU texture with RGBA format
+  auto gpuTexture = std::make_unique<HammerEngine::GPUTexture>(
+      gpuDevice.get(),
+      width, height,
+      SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+      SDL_GPU_TEXTUREUSAGE_SAMPLER
+  );
+
+  if (!gpuTexture->isValid()) {
+    TEXTURE_ERROR(std::format("GPU texture: failed to create texture for: {}", textureID));
+    SDL_DestroySurface(convertedSurface);
+    return false;
+  }
+
+  // Store in map
+  GPUTextureData data;
+  data.texture = std::move(gpuTexture);
+  data.width = static_cast<float>(width);
+  data.height = static_cast<float>(height);
+  m_gpuTextureMap[textureID] = std::move(data);
+
+  // Queue surface for upload (will be processed in copy pass)
+  m_pendingUploads.push_back(PendingTextureUpload{
+      textureID,
+      std::unique_ptr<SDL_Surface, void(*)(SDL_Surface*)>(convertedSurface, SDL_DestroySurface),
+      width,
+      height
+  });
+
+  TEXTURE_INFO(std::format("GPU texture queued for upload: {} ({}x{})", textureID, width, height));
+  return true;
+}
+
+void TextureManager::processPendingUploads(SDL_GPUCopyPass* copyPass) {
+  if (!copyPass || m_pendingUploads.empty()) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(m_gpuTextureMutex);
+
+  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+  if (!gpuDevice.isInitialized()) {
+    TEXTURE_ERROR("GPU texture upload: GPUDevice not initialized");
+    return;
+  }
+
+  for (auto& pending : m_pendingUploads) {
+    auto it = m_gpuTextureMap.find(pending.textureID);
+    if (it == m_gpuTextureMap.end()) {
+      TEXTURE_WARN(std::format("GPU texture upload: texture not found: {}", pending.textureID));
+      continue;
+    }
+
+    SDL_Surface* surface = pending.surface.get();
+    if (!surface) {
+      TEXTURE_WARN(std::format("GPU texture upload: null surface for: {}", pending.textureID));
+      continue;
+    }
+
+    // Calculate data size (pitch * height)
+    uint32_t dataSize = static_cast<uint32_t>(surface->pitch * surface->h);
+
+    // Create transfer buffer for upload
+    HammerEngine::GPUTransferBuffer transferBuffer(
+        gpuDevice.get(),
+        SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        dataSize
+    );
+
+    if (!transferBuffer.isValid()) {
+      TEXTURE_ERROR(std::format("GPU texture upload: failed to create transfer buffer for: {}", pending.textureID));
+      continue;
+    }
+
+    // Map and copy pixel data
+    void* mapped = transferBuffer.map(false);
+    if (!mapped) {
+      TEXTURE_ERROR(std::format("GPU texture upload: failed to map transfer buffer for: {}", pending.textureID));
+      continue;
+    }
+
+    std::memcpy(mapped, surface->pixels, dataSize);
+    transferBuffer.unmap();
+
+    // Set up transfer info
+    SDL_GPUTextureTransferInfo srcInfo{};
+    srcInfo.transfer_buffer = transferBuffer.get();
+    srcInfo.offset = 0;
+    srcInfo.pixels_per_row = pending.width;
+    srcInfo.rows_per_layer = pending.height;
+
+    SDL_GPUTextureRegion dstRegion{};
+    dstRegion.texture = it->second.texture->get();
+    dstRegion.x = 0;
+    dstRegion.y = 0;
+    dstRegion.z = 0;
+    dstRegion.w = pending.width;
+    dstRegion.h = pending.height;
+    dstRegion.d = 1;
+
+    // Upload to GPU
+    SDL_UploadToGPUTexture(copyPass, &srcInfo, &dstRegion, false);
+
+    TEXTURE_DEBUG(std::format("GPU texture uploaded: {} ({}x{})", pending.textureID, pending.width, pending.height));
+  }
+
+  // Clear pending uploads (surfaces will be freed by unique_ptr destructors)
+  m_pendingUploads.clear();
+}
+
+HammerEngine::GPUTexture* TextureManager::getGPUTexture(const std::string& textureID) const {
+  std::lock_guard<std::mutex> lock(m_gpuTextureMutex);
+
+  auto it = m_gpuTextureMap.find(textureID);
+  if (it != m_gpuTextureMap.end()) {
+    return it->second.texture.get();
+  }
+  return nullptr;
+}
+
+const GPUTextureData* TextureManager::getGPUTextureData(const std::string& textureID) const {
+  std::lock_guard<std::mutex> lock(m_gpuTextureMutex);
+
+  auto it = m_gpuTextureMap.find(textureID);
+  if (it != m_gpuTextureMap.end()) {
+    return &it->second;
+  }
+  return nullptr;
+}
+#endif

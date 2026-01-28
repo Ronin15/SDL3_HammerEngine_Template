@@ -12,6 +12,12 @@
 #include <string>
 #include <atomic>
 #include <mutex>
+#include <vector>
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPUTexture.hpp"
+#include <SDL3/SDL_gpu.h>
+#endif
 
 /**
  * @brief Holds texture data with cached dimensions to avoid per-frame SDL_GetTextureSize() calls
@@ -21,6 +27,27 @@ struct TextureData {
     float width{0.0f};
     float height{0.0f};
 };
+
+#ifdef USE_SDL3_GPU
+/**
+ * @brief Holds GPU texture data with cached dimensions
+ */
+struct GPUTextureData {
+    std::unique_ptr<HammerEngine::GPUTexture> texture;
+    float width{0.0f};
+    float height{0.0f};
+};
+
+/**
+ * @brief Pending texture upload data (surface held until upload completes)
+ */
+struct PendingTextureUpload {
+    std::string textureID;
+    std::unique_ptr<SDL_Surface, void(*)(SDL_Surface*)> surface;
+    uint32_t width{0};
+    uint32_t height{0};
+};
+#endif
 
 class TextureManager {
  public:
@@ -186,12 +213,66 @@ class TextureManager {
    */
   bool isShutdown() const { return m_isShutdown; }
 
+#ifdef USE_SDL3_GPU
+  /**
+   * @brief Loads a texture for GPU rendering
+   * @param fileName Path to texture file or directory
+   * @param textureID Unique identifier for the texture
+   * @return true if texture was loaded and queued for upload
+   */
+  bool loadGPU(const std::string& fileName, const std::string& textureID);
+
+  /**
+   * @brief Process pending GPU texture uploads during copy pass
+   * @param copyPass Active GPU copy pass
+   */
+  void processPendingUploads(SDL_GPUCopyPass* copyPass);
+
+  /**
+   * @brief Get GPU texture by ID
+   * @param textureID Unique identifier of the texture
+   * @return Pointer to GPUTexture, or nullptr if not found
+   */
+  HammerEngine::GPUTexture* getGPUTexture(const std::string& textureID) const;
+
+  /**
+   * @brief Get GPU texture data (texture + dimensions)
+   * @param textureID Unique identifier of the texture
+   * @return Pointer to GPUTextureData, or nullptr if not found
+   */
+  const GPUTextureData* getGPUTextureData(const std::string& textureID) const;
+
+  /**
+   * @brief Check if GPU textures are available
+   */
+  bool hasGPUTextures() const { return !m_gpuTextureMap.empty(); }
+
+  /**
+   * @brief Check if there are pending uploads
+   */
+  bool hasPendingUploads() const { return !m_pendingUploads.empty(); }
+#endif
+
  private:
   std::string m_textureID{""};
   std::unordered_map<std::string, TextureData> m_textureMap{};  // Stores texture + cached dimensions
   std::atomic<bool> m_texturesLoaded{false};
   std::mutex m_textureLoadMutex{};
   bool m_isShutdown{false};
+
+#ifdef USE_SDL3_GPU
+  /**
+   * @brief Helper to load a single texture file for GPU rendering
+   * @param fileName Path to texture file
+   * @param textureID Unique identifier for the texture
+   * @return true if texture was loaded and queued for upload
+   */
+  bool loadSingleGPUTexture(const std::string& fileName, const std::string& textureID);
+
+  std::unordered_map<std::string, GPUTextureData> m_gpuTextureMap{};
+  std::vector<PendingTextureUpload> m_pendingUploads{};
+  mutable std::mutex m_gpuTextureMutex{};
+#endif
 
   // Delete copy constructor and assignment operator
   TextureManager(const TextureManager&) = delete; //prevent copy construction

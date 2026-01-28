@@ -13,6 +13,13 @@
 #include <algorithm>
 #include <format>
 
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#include "gpu/GPUVertexPool.hpp"
+#include "gpu/GPUTypes.hpp"
+#include "gpu/SpriteBatch.hpp"
+#endif
+
 bool UIManager::init() {
   if (m_isShutdown) {
     return false;
@@ -1597,6 +1604,13 @@ void UIManager::createOverlay(int windowWidth, int windowHeight) {
 
   // Create semi-transparent overlay panel using current theme's panel style
   createPanel("__overlay", {0, 0, windowWidth, windowHeight});
+
+  // Set overlay z-order to render behind dialogs and other components
+  auto overlay = getComponent("__overlay");
+  if (overlay) {
+    overlay->m_zOrder = UIConstants::ZORDER_OVERLAY;
+    invalidateComponentCache();
+  }
 
   // Set positioning to always fill window on resize (fixedWidth/Height = -1 means full window dimensions)
   // This ensures overlay properly resizes during fullscreen toggles and window resize events
@@ -3291,3 +3305,529 @@ void UIManager::setComponentPositioning(const std::string &id,
     applyPositioning(component, m_currentLogicalWidth, m_currentLogicalHeight);
   }
 }
+
+#ifdef USE_SDL3_GPU
+void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
+  if (m_components.empty()) {
+    return;
+  }
+
+  m_gpuPrimitiveCommands.clear();
+  m_gpuTextCommands.clear();
+
+  auto& primPool = gpuRenderer.getPrimitiveVertexPool();
+  auto& uiPool = gpuRenderer.getUIVertexPool();
+
+  auto* primBase = static_cast<HammerEngine::ColorVertex*>(primPool.getMappedPtr());
+  auto* uiBase = static_cast<HammerEngine::SpriteVertex*>(uiPool.getMappedPtr());
+
+  if (!primBase || !uiBase) {
+    return;
+  }
+
+  uint32_t primOffset = 0;
+  uint32_t uiOffset = 0;
+
+  // Helper to add a filled rectangle
+  auto addFilledRect = [&](const UIRect& rect, const SDL_Color& color) {
+    if (primOffset + 6 > 10000) return;  // Safety limit
+
+    float x = static_cast<float>(rect.x);
+    float y = static_cast<float>(rect.y);
+    float w = static_cast<float>(rect.width);
+    float h = static_cast<float>(rect.height);
+
+    HammerEngine::ColorVertex* v = primBase + primOffset;
+    // Triangle 1
+    v[0] = {x, y, color.r, color.g, color.b, color.a};
+    v[1] = {x + w, y, color.r, color.g, color.b, color.a};
+    v[2] = {x + w, y + h, color.r, color.g, color.b, color.a};
+    // Triangle 2
+    v[3] = {x, y, color.r, color.g, color.b, color.a};
+    v[4] = {x + w, y + h, color.r, color.g, color.b, color.a};
+    v[5] = {x, y + h, color.r, color.g, color.b, color.a};
+
+    UIGPUDrawCommand cmd;
+    cmd.type = UIGPUDrawCommand::Type::Rect;
+    cmd.vertexOffset = primOffset;
+    cmd.vertexCount = 6;
+    m_gpuPrimitiveCommands.push_back(cmd);
+    primOffset += 6;
+  };
+
+  // Helper to add border (4 thin rectangles)
+  auto addBorder = [&](const UIRect& rect, const SDL_Color& color, int width) {
+    if (width <= 0) return;
+    // Top
+    addFilledRect({rect.x, rect.y, rect.width, width}, color);
+    // Bottom
+    addFilledRect({rect.x, rect.y + rect.height - width, rect.width, width}, color);
+    // Left
+    addFilledRect({rect.x, rect.y + width, width, rect.height - 2 * width}, color);
+    // Right
+    addFilledRect({rect.x + rect.width - width, rect.y + width, width, rect.height - 2 * width}, color);
+  };
+
+  // Helper to add text
+  auto& fontMgr = FontManager::Instance();
+  auto addText = [&](const std::string& text, const std::string& fontID,
+                     int x, int y, const SDL_Color& color, int alignment) {
+    if (text.empty()) return;
+
+    const GPUTextData* textData = fontMgr.renderTextGPU(text, fontID, color);
+    if (!textData || !textData->texture || !textData->texture->isValid()) {
+      return;
+    }
+
+    if (uiOffset + 4 > 4000) return;  // Safety limit
+
+    // Calculate position based on alignment
+    float dstX = static_cast<float>(x);
+    float dstY = static_cast<float>(y);
+    float dstW = static_cast<float>(textData->width);
+    float dstH = static_cast<float>(textData->height);
+
+    switch (alignment) {
+      case 1: // Left
+        dstY -= dstH / 2;
+        break;
+      case 2: // Right
+        dstX -= dstW;
+        dstY -= dstH / 2;
+        break;
+      default: // Center (0)
+        dstX -= dstW / 2;
+        dstY -= dstH / 2;
+        break;
+    }
+
+    HammerEngine::SpriteVertex* v = uiBase + uiOffset;
+    v[0] = {dstX, dstY, 0.0f, 0.0f, color.r, color.g, color.b, color.a};
+    v[1] = {dstX + dstW, dstY, 1.0f, 0.0f, color.r, color.g, color.b, color.a};
+    v[2] = {dstX + dstW, dstY + dstH, 1.0f, 1.0f, color.r, color.g, color.b, color.a};
+    v[3] = {dstX, dstY + dstH, 0.0f, 1.0f, color.r, color.g, color.b, color.a};
+
+    UIGPUDrawCommand cmd;
+    cmd.type = UIGPUDrawCommand::Type::Text;
+    cmd.texture = textData->texture->get();
+    cmd.vertexOffset = uiOffset;
+    cmd.vertexCount = 4;
+    m_gpuTextCommands.push_back(cmd);
+    uiOffset += 4;
+  };
+
+  // Render components in z-order
+  const auto& sortedComponents = getSortedComponents();
+  for (const auto& component : sortedComponents) {
+    if (!component || !component->m_visible) continue;
+
+    SDL_Color bgColor = component->m_style.backgroundColor;
+
+    // Determine background color based on state
+    switch (component->m_state) {
+      case UIState::HOVERED:
+        bgColor = component->m_style.hoverColor;
+        break;
+      case UIState::PRESSED:
+        bgColor = component->m_style.pressedColor;
+        break;
+      case UIState::DISABLED:
+        bgColor = component->m_style.disabledColor;
+        break;
+      default:
+        break;
+    }
+
+    // Render based on component type
+    switch (component->m_type) {
+      case UIComponentType::BUTTON:
+      case UIComponentType::BUTTON_DANGER:
+      case UIComponentType::BUTTON_SUCCESS:
+      case UIComponentType::BUTTON_WARNING:
+      case UIComponentType::PANEL:
+      case UIComponentType::DIALOG:
+        // Draw background
+        addFilledRect(component->m_bounds, bgColor);
+        // Draw border
+        if (component->m_style.borderWidth > 0) {
+          addBorder(component->m_bounds, component->m_style.borderColor,
+                    component->m_style.borderWidth);
+        }
+        // Draw text for buttons
+        if (!component->m_text.empty() &&
+            (component->m_type == UIComponentType::BUTTON ||
+             component->m_type == UIComponentType::BUTTON_DANGER ||
+             component->m_type == UIComponentType::BUTTON_SUCCESS ||
+             component->m_type == UIComponentType::BUTTON_WARNING)) {
+          int textX = component->m_bounds.x + component->m_bounds.width / 2;
+          int textY = component->m_bounds.y + component->m_bounds.height / 2;
+          addText(component->m_text, component->m_style.fontID,
+                  textX, textY, component->m_style.textColor, 0);
+        }
+        break;
+
+      case UIComponentType::LABEL:
+      case UIComponentType::TITLE:
+        if (!component->m_text.empty()) {
+          int textX = component->m_bounds.x + component->m_bounds.width / 2;
+          int textY = component->m_bounds.y + component->m_bounds.height / 2;
+          addText(component->m_text, component->m_style.fontID,
+                  textX, textY, component->m_style.textColor, 0);
+        }
+        break;
+
+      case UIComponentType::PROGRESS_BAR:
+        // Draw background
+        addFilledRect(component->m_bounds, component->m_style.backgroundColor);
+        // Draw border
+        if (component->m_style.borderWidth > 0) {
+          addBorder(component->m_bounds, component->m_style.borderColor,
+                    component->m_style.borderWidth);
+        }
+        // Draw fill
+        {
+          float progress = (component->m_value - component->m_minValue) /
+                           (component->m_maxValue - component->m_minValue);
+          progress = std::clamp(progress, 0.0f, 1.0f);
+          int fillWidth = static_cast<int>(component->m_bounds.width * progress);
+          if (fillWidth > 0) {
+            UIRect fillRect = {component->m_bounds.x, component->m_bounds.y,
+                               fillWidth, component->m_bounds.height};
+            addFilledRect(fillRect, component->m_style.hoverColor);
+          }
+        }
+        break;
+
+      case UIComponentType::CHECKBOX:
+        {
+          // Scale checkbox size and padding for resolution-aware sizing
+          int scaledCheckboxSize = static_cast<int>(UIConstants::CHECKBOX_SIZE * m_globalScale);
+          int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+
+          // Draw checkbox box
+          UIRect boxBounds;
+          boxBounds.x = component->m_bounds.x;
+          boxBounds.y = component->m_bounds.y +
+                        (component->m_bounds.height - scaledCheckboxSize) / 2;
+          boxBounds.width = scaledCheckboxSize;
+          boxBounds.height = scaledCheckboxSize;
+
+          SDL_Color boxColor = component->m_style.backgroundColor;
+          if (component->m_state == UIState::HOVERED) {
+            boxColor = component->m_style.hoverColor;
+          }
+          addFilledRect(boxBounds, boxColor);
+
+          // Draw border around checkbox box
+          addBorder(boxBounds, component->m_style.borderColor, 1);
+
+          // Draw checkmark if checked
+          if (component->m_checked) {
+            int checkX = boxBounds.x + boxBounds.width / 2;
+            int checkY = boxBounds.y + boxBounds.height / 2;
+            addText("X", component->m_style.fontID, checkX, checkY,
+                    component->m_style.textColor, 0);  // Center
+          }
+
+          // Draw label text
+          if (!component->m_text.empty()) {
+            int textX = boxBounds.x + boxBounds.width + scaledPadding;
+            int textY = component->m_bounds.y + component->m_bounds.height / 2;
+            addText(component->m_text, component->m_style.fontID, textX, textY,
+                    component->m_style.textColor, 1);  // Left aligned
+          }
+        }
+        break;
+
+      case UIComponentType::SLIDER:
+        {
+          // Draw track
+          UIRect trackRect = {
+              component->m_bounds.x,
+              component->m_bounds.y + component->m_bounds.height / 2 - UIConstants::SLIDER_TRACK_OFFSET,
+              component->m_bounds.width,
+              UIConstants::SLIDER_TRACK_HEIGHT
+          };
+          addFilledRect(trackRect, component->m_style.backgroundColor);
+          addBorder(trackRect, component->m_style.borderColor, UIConstants::BORDER_WIDTH_NORMAL);
+
+          // Calculate handle position
+          float progress = (component->m_value - component->m_minValue) /
+                           (component->m_maxValue - component->m_minValue);
+          progress = std::clamp(progress, 0.0f, 1.0f);
+
+          int handleX = component->m_bounds.x +
+                        static_cast<int>((component->m_bounds.width - UIConstants::SLIDER_HANDLE_WIDTH) * progress);
+          UIRect handleRect = {
+              handleX,
+              component->m_bounds.y,
+              UIConstants::SLIDER_HANDLE_WIDTH,
+              component->m_bounds.height
+          };
+
+          SDL_Color handleColor = component->m_style.hoverColor;
+          if (component->m_state == UIState::PRESSED) {
+            handleColor = component->m_style.pressedColor;
+          }
+
+          addFilledRect(handleRect, handleColor);
+          addBorder(handleRect, component->m_style.borderColor, 1);
+        }
+        break;
+
+      case UIComponentType::INPUT_FIELD:
+        {
+          SDL_Color inputBgColor = component->m_style.backgroundColor;
+          if (component->m_state == UIState::FOCUSED) {
+            inputBgColor = component->m_style.hoverColor;
+          }
+
+          // Draw background
+          addFilledRect(component->m_bounds, inputBgColor);
+
+          // Draw border (blue if focused)
+          SDL_Color borderColor = component->m_style.borderColor;
+          if (component->m_state == UIState::FOCUSED) {
+            borderColor = {100, 150, 255, 255};  // Blue focus border
+          }
+          addBorder(component->m_bounds, borderColor, component->m_style.borderWidth);
+
+          // Scale padding
+          int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+
+          // Draw text or placeholder
+          std::string displayText =
+              component->m_text.empty() ? component->m_placeholder : component->m_text;
+          if (!displayText.empty()) {
+            SDL_Color textColor = component->m_text.empty()
+                                      ? SDL_Color{128, 128, 128, 255}  // Placeholder gray
+                                      : component->m_style.textColor;
+
+            int textX = component->m_bounds.x + scaledPadding;
+            int textY = component->m_bounds.y + component->m_bounds.height / 2;
+            addText(displayText, component->m_style.fontID, textX, textY, textColor, 1);  // Left aligned
+          }
+        }
+        break;
+
+      case UIComponentType::LIST:
+        {
+          // Draw background
+          addFilledRect(component->m_bounds, component->m_style.backgroundColor);
+
+          // Draw border
+          if (component->m_style.borderWidth > 0) {
+            addBorder(component->m_bounds, component->m_style.borderColor,
+                      component->m_style.borderWidth);
+          }
+
+          // Scale padding and item height
+          int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+          int scaledItemHeight = static_cast<int>(component->m_style.listItemHeight * m_globalScale);
+
+          // Draw list items
+          int itemY = component->m_bounds.y + scaledPadding;
+          int itemHeight = scaledItemHeight;
+
+          for (size_t i = 0; i < component->m_listItems.size(); ++i) {
+            UIRect itemBounds = {
+                component->m_bounds.x,
+                itemY,
+                component->m_bounds.width,
+                itemHeight
+            };
+
+            // Highlight selected item
+            if (static_cast<int>(i) == component->m_selectedIndex) {
+              addFilledRect(itemBounds, component->m_style.hoverColor);
+            }
+
+            // Draw item text
+            int textX = component->m_bounds.x + scaledPadding * 2;
+            int textY = itemY + itemHeight / 2;
+            addText(component->m_listItems[i], component->m_style.fontID,
+                    textX, textY, component->m_style.textColor, 1);  // Left aligned
+
+            itemY += itemHeight;
+
+            // Don't overflow bounds
+            if (itemY + itemHeight > component->m_bounds.y + component->m_bounds.height) {
+              break;
+            }
+          }
+        }
+        break;
+
+      case UIComponentType::EVENT_LOG:
+        {
+          // Draw background
+          addFilledRect(component->m_bounds, component->m_style.backgroundColor);
+
+          // Draw border
+          if (component->m_style.borderWidth > 0) {
+            addBorder(component->m_bounds, component->m_style.borderColor,
+                      component->m_style.borderWidth);
+          }
+
+          // Scale padding and item height
+          int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+          int scaledItemHeight = static_cast<int>(component->m_style.listItemHeight * m_globalScale);
+
+          // Event logs scroll from bottom to top (newest entries at bottom)
+          int itemHeight = scaledItemHeight;
+          int availableHeight = component->m_bounds.height - (2 * scaledPadding);
+          int maxVisibleItems = availableHeight / itemHeight;
+
+          // Calculate start index for bottom-aligned rendering
+          int startIndex = 0;
+          if (static_cast<int>(component->m_listItems.size()) > maxVisibleItems) {
+            startIndex = static_cast<int>(component->m_listItems.size()) - maxVisibleItems;
+          }
+
+          // Draw visible items from startIndex
+          int itemY = component->m_bounds.y + scaledPadding;
+          for (size_t i = static_cast<size_t>(startIndex); i < component->m_listItems.size(); ++i) {
+            int textX = component->m_bounds.x + scaledPadding * 2;
+            int textY = itemY + itemHeight / 2;
+            addText(component->m_listItems[i], component->m_style.fontID,
+                    textX, textY, component->m_style.textColor, 1);  // Left aligned
+
+            itemY += itemHeight;
+
+            // Don't overflow bounds
+            if (itemY + itemHeight > component->m_bounds.y + component->m_bounds.height) {
+              break;
+            }
+          }
+        }
+        break;
+
+      case UIComponentType::IMAGE:
+        // Images require TextureManager GPU integration - placeholder for now
+        // The TextureManager would need to provide GPUTexture* for the texture ID
+        break;
+
+      case UIComponentType::TOOLTIP:
+        // Tooltips are rendered separately (after all components)
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  // Render tooltip if visible (m_hoveredTooltip stores the component ID)
+  if (m_tooltipsEnabled && !m_hoveredTooltip.empty() && m_tooltipTimer >= m_tooltipDelay) {
+    auto tooltipComponent = getComponent(m_hoveredTooltip);
+    if (tooltipComponent && !tooltipComponent->m_text.empty() &&
+        tooltipComponent->m_type != UIComponentType::TITLE &&
+        tooltipComponent->m_text.find('\n') == std::string::npos) {
+
+      // Scale padding for resolution-aware sizing
+      int scaledPaddingWidth = static_cast<int>(UIConstants::TOOLTIP_PADDING_WIDTH * m_globalScale);
+      int scaledPaddingHeight = static_cast<int>(UIConstants::TOOLTIP_PADDING_HEIGHT * m_globalScale);
+      int scaledMouseOffset = static_cast<int>(UIConstants::TOOLTIP_MOUSE_OFFSET * m_globalScale);
+
+      // Get tooltip text dimensions for background sizing
+      const GPUTextData* tooltipTextData = fontMgr.renderTextGPU(
+          tooltipComponent->m_text, tooltipComponent->m_style.fontID,
+          tooltipComponent->m_style.textColor);
+
+      if (tooltipTextData && tooltipTextData->texture && tooltipTextData->texture->isValid()) {
+        int tooltipWidth = tooltipTextData->width + scaledPaddingWidth;
+        int tooltipHeight = tooltipTextData->height + scaledPaddingHeight;
+
+        // Position tooltip near mouse using m_lastMousePosition (updated in handleInput)
+        int tooltipX = static_cast<int>(m_lastMousePosition.getX()) + scaledMouseOffset;
+        int tooltipY = static_cast<int>(m_lastMousePosition.getY()) - tooltipHeight - scaledMouseOffset;
+
+        // Clamp tooltip to screen bounds
+        if (tooltipX + tooltipWidth > m_currentLogicalWidth) {
+          tooltipX = m_currentLogicalWidth - tooltipWidth;
+        }
+        if (tooltipY < 0) {
+          tooltipY = static_cast<int>(m_lastMousePosition.getY()) + scaledMouseOffset * 2;
+        }
+
+        UIRect tooltipBounds = {tooltipX, tooltipY, tooltipWidth, tooltipHeight};
+
+        // Draw tooltip background
+        SDL_Color tooltipBg = {50, 50, 50, 230};
+        addFilledRect(tooltipBounds, tooltipBg);
+
+        // Draw tooltip border
+        SDL_Color tooltipBorder = {100, 100, 100, 255};  // Default border color
+        addBorder(tooltipBounds, tooltipBorder, 1);
+
+        // Draw tooltip text (centered in the tooltip box)
+        int textX = tooltipX + tooltipWidth / 2;
+        int textY = tooltipY + tooltipHeight / 2;
+        addText(tooltipComponent->m_text, tooltipComponent->m_style.fontID,
+                textX, textY, tooltipComponent->m_style.textColor, 0);
+      }
+    }
+  }
+
+  primPool.setWrittenVertexCount(primOffset);
+  uiPool.setWrittenVertexCount(uiOffset);
+}
+
+void UIManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass) {
+  if (!pass) return;
+
+  // Create orthographic projection for screen-space rendering
+  float orthoMatrix[16];
+  HammerEngine::GPURenderer::createOrthoMatrix(
+      0.0f, static_cast<float>(gpuRenderer.getViewportWidth()),
+      static_cast<float>(gpuRenderer.getViewportHeight()), 0.0f,
+      orthoMatrix);
+
+  // Render primitives (filled rectangles)
+  if (!m_gpuPrimitiveCommands.empty()) {
+    SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUIPrimitivePipeline());
+    gpuRenderer.pushViewProjection(pass, orthoMatrix);
+
+    SDL_GPUBufferBinding vertexBinding{};
+    vertexBinding.buffer = gpuRenderer.getPrimitiveVertexPool().getGPUBuffer();
+    vertexBinding.offset = 0;
+    SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
+
+    // Draw all primitives in one call (they share the same pipeline)
+    uint32_t totalVertices = 0;
+    for (const auto& cmd : m_gpuPrimitiveCommands) {
+      totalVertices += cmd.vertexCount;
+    }
+    if (totalVertices > 0) {
+      SDL_DrawGPUPrimitives(pass, totalVertices, 1, 0, 0);
+    }
+  }
+
+  // Render text (each text has a different texture)
+  if (!m_gpuTextCommands.empty()) {
+    SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUISpritePipeline());
+    gpuRenderer.pushViewProjection(pass, orthoMatrix);
+
+    SDL_GPUBufferBinding vertexBinding{};
+    vertexBinding.buffer = gpuRenderer.getUIVertexPool().getGPUBuffer();
+    vertexBinding.offset = 0;
+    SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
+
+    // Bind index buffer
+    auto& batch = gpuRenderer.getSpriteBatch();
+    SDL_GPUBufferBinding indexBinding{};
+    indexBinding.buffer = batch.getIndexBuffer();
+    indexBinding.offset = 0;
+    SDL_BindGPUIndexBuffer(pass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+
+    for (const auto& cmd : m_gpuTextCommands) {
+      SDL_GPUTextureSamplerBinding texSampler{};
+      texSampler.texture = cmd.texture;
+      texSampler.sampler = gpuRenderer.getLinearSampler();
+      SDL_BindGPUFragmentSamplers(pass, 0, &texSampler, 1);
+
+      uint32_t firstIndex = (cmd.vertexOffset / 4) * 6;
+      SDL_DrawGPUIndexedPrimitives(pass, 6, 1, firstIndex, 0, 0);
+    }
+  }
+}
+#endif
