@@ -1,0 +1,90 @@
+/* Copyright (c) 2025 Hammer Forged Games
+ * Licensed under the MIT License */
+
+#include "gpu/GPUBuffer.hpp"
+#include "core/Logger.hpp"
+#include <format>
+
+namespace HammerEngine {
+
+GPUBuffer::GPUBuffer(SDL_GPUDevice* device, SDL_GPUBufferUsageFlags usage, uint32_t size)
+    : m_device(device)
+    , m_size(size)
+    , m_usage(usage)
+{
+    if (!device) {
+        GAMEENGINE_ERROR("GPUBuffer: null device");
+        return;
+    }
+
+    if (size == 0) {
+        GAMEENGINE_ERROR("GPUBuffer: invalid size 0");
+        return;
+    }
+
+    SDL_GPUBufferCreateInfo createInfo{};
+    createInfo.usage = usage;
+    createInfo.size = size;
+
+    m_buffer = SDL_CreateGPUBuffer(device, &createInfo);
+
+    if (!m_buffer) {
+        GAMEENGINE_ERROR(std::format("Failed to create GPU buffer ({} bytes): {}",
+                         size, SDL_GetError()));
+    }
+}
+
+GPUBuffer::~GPUBuffer() {
+    release();
+}
+
+GPUBuffer::GPUBuffer(GPUBuffer&& other) noexcept
+    : m_buffer(other.m_buffer)
+    , m_device(other.m_device)
+    , m_size(other.m_size)
+    , m_usage(other.m_usage)
+{
+    other.m_buffer = nullptr;
+    other.m_device = nullptr;
+    other.m_size = 0;
+}
+
+GPUBuffer& GPUBuffer::operator=(GPUBuffer&& other) noexcept {
+    if (this != &other) {
+        release();
+
+        m_buffer = other.m_buffer;
+        m_device = other.m_device;
+        m_size = other.m_size;
+        m_usage = other.m_usage;
+
+        other.m_buffer = nullptr;
+        other.m_device = nullptr;
+        other.m_size = 0;
+    }
+    return *this;
+}
+
+void GPUBuffer::release() {
+    if (m_buffer && m_device) {
+        SDL_ReleaseGPUBuffer(m_device, m_buffer);
+        m_buffer = nullptr;
+    }
+}
+
+SDL_GPUBufferBinding GPUBuffer::asBinding(uint32_t offset) const {
+    SDL_GPUBufferBinding binding{};
+    binding.buffer = m_buffer;
+    binding.offset = offset;
+    return binding;
+}
+
+SDL_GPUBufferRegion GPUBuffer::asRegion(uint32_t offset, uint32_t size) const {
+    SDL_GPUBufferRegion region{};
+    region.buffer = m_buffer;
+    region.offset = offset;
+    region.size = (size == 0) ? (m_size - offset) : size;
+    return region;
+}
+
+} // namespace HammerEngine

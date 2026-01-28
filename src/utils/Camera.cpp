@@ -9,11 +9,15 @@
 #include "core/GameEngine.hpp"
 #include "events/CameraEvent.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/WorldManager.hpp"
 #include <algorithm>
 #include <cmath>
 #include <random>
 #include <format>
-#include "managers/WorldManager.hpp"
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#endif
 
 namespace HammerEngine {
 
@@ -104,6 +108,11 @@ void Camera::update(float deltaTime) {
                 0.0f, 1.0f);
             m_position = m_position + (targetPos - m_position) * t;
         }
+
+        // Clamp camera to world bounds after following target
+        if (m_config.clampToWorldBounds) {
+            clampToWorldBounds();
+        }
     } else {
         // Non-Follow modes: clamp camera position
         if (m_config.clampToWorldBounds) {
@@ -132,8 +141,6 @@ void Camera::setViewport(float width, float height) {
     if (width > 0.0f && height > 0.0f) {
         m_viewport.width = width;
         m_viewport.height = height;
-        CAMERA_DEBUG(std::format("Viewport updated to: {}x{}",
-                                 static_cast<int>(width), static_cast<int>(height)));
     } else {
         CAMERA_WARN(std::format("Invalid viewport dimensions: {}x{}", width, height));
     }
@@ -142,8 +149,6 @@ void Camera::setViewport(float width, float height) {
 void Camera::setViewport(const Viewport& viewport) {
     if (viewport.isValid()) {
         m_viewport = viewport;
-        CAMERA_DEBUG(std::format("Viewport updated to: {}x{}",
-                                 static_cast<int>(viewport.width), static_cast<int>(viewport.height)));
     } else {
         CAMERA_WARN("Invalid viewport provided");
     }
@@ -605,18 +610,25 @@ bool Camera::setZoomLevel(int levelIndex) {
 }
 
 void Camera::syncViewportWithEngine() {
-    // Get current logical dimensions from GameEngine (authoritative source)
+    float viewportWidth = 0.0f;
+    float viewportHeight = 0.0f;
+
+#ifdef USE_SDL3_GPU
+    // In GPU mode, use GPURenderer viewport (actual window size)
+    const auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
+    viewportWidth = static_cast<float>(gpuRenderer.getViewportWidth());
+    viewportHeight = static_cast<float>(gpuRenderer.getViewportHeight());
+#else
+    // In SDL_Renderer mode, use GameEngine logical size
     const GameEngine& gameEngine = GameEngine::Instance();
-    float const logicalWidth = static_cast<float>(gameEngine.getLogicalWidth());
-    float const logicalHeight = static_cast<float>(gameEngine.getLogicalHeight());
+    viewportWidth = static_cast<float>(gameEngine.getLogicalWidth());
+    viewportHeight = static_cast<float>(gameEngine.getLogicalHeight());
+#endif
 
-    // Only update if dimensions actually changed (avoid unnecessary updates)
-    if (m_viewport.width != logicalWidth || m_viewport.height != logicalHeight) {
-        CAMERA_INFO(std::format("Syncing camera viewport: {}x{} -> {}x{}",
-                                static_cast<int>(m_viewport.width), static_cast<int>(m_viewport.height),
-                                static_cast<int>(logicalWidth), static_cast<int>(logicalHeight)));
-
-        setViewport(logicalWidth, logicalHeight);
+    // Only update if dimensions actually changed and valid
+    if (viewportWidth > 0.0f && viewportHeight > 0.0f &&
+        (m_viewport.width != viewportWidth || m_viewport.height != viewportHeight)) {
+        setViewport(viewportWidth, viewportHeight);
     }
 }
 

@@ -13,6 +13,11 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "utils/WorldRenderPipeline.hpp"
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#endif
+
 #include <format>
 
 void LoadingState::configure(
@@ -61,6 +66,12 @@ bool LoadingState::enter() {
 }
 
 void LoadingState::update([[maybe_unused]] float deltaTime) {
+  // Update UI state (progress bar and status text)
+  auto &ui = UIManager::Instance();
+  float currentProgress = m_progress.load(std::memory_order_acquire);
+  ui.updateProgressBar("loading_progress", currentProgress);
+  ui.setText("loading_status", getStatusText());
+
   // Fast path: Check with relaxed ordering first (no memory barrier)
   if (m_loadComplete.load(std::memory_order_relaxed)) {
     // Slow path: Verify with acquire barrier only when likely true
@@ -81,6 +92,17 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
         return;
       }
 
+#ifdef USE_SDL3_GPU
+      // GPU mode: Skip chunk prewarming - we render from vertex data each frame
+      // Mark prewarm as complete to proceed with transition
+      if (!m_prewarmComplete.load(std::memory_order_acquire)) {
+        setStatusText("Finalizing world...");
+        GAMESTATE_INFO("Pathfinding ready - GPU mode skips chunk prewarming");
+        m_waitingForPrewarm.store(true, std::memory_order_release);
+        m_prewarmComplete.store(true, std::memory_order_release);
+      }
+#else
+      // SDL_Renderer mode: Pre-warm chunk textures
       // Check if we need to pre-warm chunks
       if (!m_waitingForPrewarm.load(std::memory_order_acquire)) {
         // Pathfinding ready - now pre-warm visible chunks
@@ -95,6 +117,7 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
         // Pre-warm in progress (done in render())
         return;
       }
+#endif
 
       // All ready - proceed with transition
       if (m_loadFailed.load(std::memory_order_acquire)) {
@@ -131,8 +154,12 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
   }
 }
 
-void LoadingState::render(SDL_Renderer *renderer,
-                          [[maybe_unused]] float interpolationAlpha) {
+void LoadingState::render(SDL_Renderer *renderer, float interpolationAlpha) {
+#ifdef USE_SDL3_GPU
+  // GPU mode uses recordGPUVertices() and renderGPUUI() instead
+  (void)renderer;
+  (void)interpolationAlpha;
+#else
   // All rendering happens through GameEngine::render() -> this method
   // No manual SDL_RenderClear() or SDL_RenderPresent() calls needed!
 
@@ -176,15 +203,10 @@ void LoadingState::render(SDL_Renderer *renderer,
     }
   }
 
-  // Update progress bar
-  float currentProgress = m_progress.load(std::memory_order_acquire);
-  ui.updateProgressBar("loading_progress", currentProgress);
-
-  // Update status text
-  ui.setText("loading_status", getStatusText());
-
+  // UI state already updated in update()
   // Actually render the UI to the screen!
   ui.render(renderer);
+#endif
 }
 
 void LoadingState::handleInput() {
@@ -348,3 +370,21 @@ void LoadingState::cleanupUI() {
 
   GAMESTATE_INFO("Loading screen UI cleaned up");
 }
+
+#ifdef USE_SDL3_GPU
+void LoadingState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
+                                     float interpolationAlpha) {
+  (void)interpolationAlpha; // Loading UI doesn't need interpolation
+
+  // Record UI vertices for GPU rendering
+  auto &ui = UIManager::Instance();
+  ui.recordGPUVertices(gpuRenderer);
+}
+
+void LoadingState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
+                               SDL_GPURenderPass *swapchainPass) {
+  // Render UI to swapchain
+  auto &ui = UIManager::Instance();
+  ui.renderGPU(gpuRenderer, swapchainPass);
+}
+#endif

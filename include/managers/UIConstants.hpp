@@ -35,8 +35,9 @@ namespace UIConstants {
 
   // Z-Order Layering Constants
   // Controls the render order of UI components (lower values render first/behind)
-  constexpr int ZORDER_DIALOG = -10;          // Dialog backgrounds render behind everything
+  constexpr int ZORDER_OVERLAY = -10;         // Overlay backgrounds render behind everything
   constexpr int ZORDER_PANEL = 0;             // Background panels
+  constexpr int ZORDER_DIALOG = 2;            // Dialogs render above overlays and panels
   constexpr int ZORDER_IMAGE = 1;             // Background images
   constexpr int ZORDER_PROGRESS_BAR = 5;      // Progress indicators
   constexpr int ZORDER_EVENT_LOG = 6;         // Event log displays

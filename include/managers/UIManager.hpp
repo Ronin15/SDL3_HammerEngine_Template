@@ -8,6 +8,9 @@
 
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
+#ifdef USE_SDL3_GPU
+#include <SDL3/SDL_gpu.h>
+#endif
 #include <array>
 #include <functional>
 #include <memory>
@@ -22,6 +25,22 @@
 class FontManager;
 class InputManager;
 class TextureManager;
+struct SDL_GPURenderPass;
+
+namespace HammerEngine {
+class GPURenderer;
+}
+
+#ifdef USE_SDL3_GPU
+// GPU draw command for batching UI rendering
+struct UIGPUDrawCommand {
+    enum class Type { Rect, Text, Image };
+    Type type{Type::Rect};
+    SDL_GPUTexture* texture{nullptr};  // For text/image
+    uint32_t vertexOffset{0};
+    uint32_t vertexCount{0};
+};
+#endif
 
 // UI Component Types
 enum class UIComponentType {
@@ -262,6 +281,12 @@ public:
   void render(SDL_Renderer *renderer);
   void clean();
   bool isShutdown() const { return m_isShutdown; }
+
+#ifdef USE_SDL3_GPU
+  // GPU rendering methods
+  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer);
+  void renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass);
+#endif
 
   // Window resize notification (called by InputManager on SDL_EVENT_WINDOW_RESIZED)
   void onWindowResize(int newLogicalWidth, int newLogicalHeight);
@@ -644,6 +669,13 @@ private:
 
   // PERFORMANCE: Track active bindings to skip iteration when none exist
   size_t m_activeBindingCount{0};
+
+#ifdef USE_SDL3_GPU
+  // GPU rendering state
+  std::vector<UIGPUDrawCommand> m_gpuPrimitiveCommands{};  // Filled rects (backgrounds, borders)
+  std::vector<UIGPUDrawCommand> m_gpuTextCommands{};      // Text rendering
+  std::vector<UIGPUDrawCommand> m_gpuImageCommands{};     // Images/textures
+#endif
 
   // Delete copy constructor and assignment operator
   UIManager(const UIManager &) = delete;

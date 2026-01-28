@@ -12,6 +12,12 @@
 #include <memory>
 #include <string_view>
 
+#ifdef USE_SDL3_GPU
+namespace HammerEngine {
+class GPURenderer;
+}
+#endif
+
 // Forward declarations
 class AIManager;
 class BackgroundSimulationManager;
@@ -178,9 +184,17 @@ public:
 
   /**
    * @brief Gets the SDL renderer instance
-   * @return Pointer to SDL renderer
+   * @return Pointer to SDL renderer (nullptr when USE_SDL3_GPU is enabled)
    */
   SDL_Renderer *getRenderer() const noexcept { return mp_renderer.get(); }
+
+#ifdef USE_SDL3_GPU
+  /**
+   * @brief Checks if GPU rendering is active
+   * @return true if using SDL3_GPU, false if using SDL_Renderer
+   */
+  bool isGPURendering() const noexcept { return m_gpuRendering; }
+#endif
 
   /**
    * @brief Gets the SDL window instance
@@ -374,10 +388,10 @@ private:
   bool m_running{false};
   int m_windowWidth{0};
   int m_windowHeight{0};
-  int m_windowedWidth{1920};  // Windowed mode width (for restoring from fullscreen)
-  int m_windowedHeight{1080}; // Windowed mode height (for restoring from fullscreen)
-  int m_logicalWidth{1920};  // Logical rendering width for UI positioning
-  int m_logicalHeight{1080}; // Logical rendering height for UI positioning
+  int m_windowedWidth{0};   // Windowed mode width (set from window, for restoring from fullscreen)
+  int m_windowedHeight{0};  // Windowed mode height (set from window, for restoring from fullscreen)
+  int m_logicalWidth{0};    // Logical rendering width (set from window size)
+  int m_logicalHeight{0};   // Logical rendering height (set from window size)
 
   // Cached manager references for zero-overhead performance
   // Step 2: Re-implementing manager caching with proper initialization order
@@ -408,6 +422,11 @@ private:
 
   // Global pause state - propagated to managers which have their own atomics
   bool m_globallyPaused{false};
+
+#ifdef USE_SDL3_GPU
+  // GPU rendering mode flag
+  bool m_gpuRendering{false};
+#endif
 
   // Delete copy constructor and assignment operator
   GameEngine(const GameEngine &) = delete;            // Prevent copying

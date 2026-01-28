@@ -10,6 +10,11 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPUDevice.hpp"
+#include "gpu/GPURenderer.hpp"
+#endif
 #include "utils/FrameProfiler.hpp"
 #include "gameStates/AIDemoState.hpp"
 #include "gameStates/AdvancedAIDemoState.hpp"
@@ -219,6 +224,24 @@ bool GameEngine::init(std::string_view title) {
   // True exclusive fullscreen is used on all platforms for Game Mode support
   // (macOS hint SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES = "0" enables this)
 
+#ifdef USE_SDL3_GPU
+  // Initialize GPU device and renderer
+  GAMEENGINE_INFO("Initializing SDL3_GPU rendering backend");
+  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+  if (gpuDevice.init(mp_window.get())) {
+    auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
+    if (gpuRenderer.init()) {
+      m_gpuRendering = true;
+      GAMEENGINE_INFO("SDL3_GPU rendering initialized successfully");
+    } else {
+      GAMEENGINE_WARN("GPURenderer init failed - falling back to SDL_Renderer");
+      gpuDevice.shutdown();
+    }
+  } else {
+    GAMEENGINE_WARN("GPUDevice init failed - falling back to SDL_Renderer");
+  }
+#endif
+
   // Set window icon
   GAMEENGINE_INFO("Setting window icon");
 
@@ -251,26 +274,33 @@ bool GameEngine::init(std::string_view title) {
   }
 
   // Create renderer (let SDL3 choose the best available backend)
-  mp_renderer.reset(SDL_CreateRenderer(mp_window.get(), NULL));
+#ifdef USE_SDL3_GPU
+  if (!m_gpuRendering) {
+#endif
+    mp_renderer.reset(SDL_CreateRenderer(mp_window.get(), NULL));
 
-  if (!mp_renderer) {
-    GAMEENGINE_ERROR(
-        std::format("Failed to create renderer: {}", SDL_GetError()));
-    return false;
-  }
+    if (!mp_renderer) {
+      GAMEENGINE_ERROR(
+          std::format("Failed to create renderer: {}", SDL_GetError()));
+      return false;
+    }
 
-  // Log which renderer backend SDL3 actually selected
+    // Log which renderer backend SDL3 actually selected
 #ifdef DEBUG
-  auto rendererName = SDL_GetRendererName(mp_renderer.get());
-  if (rendererName) {
-    GAMEENGINE_INFO(
-        std::format("SDL3 selected renderer backend: {}", rendererName));
+    auto rendererName = SDL_GetRendererName(mp_renderer.get());
+    if (rendererName) {
+      GAMEENGINE_INFO(
+          std::format("SDL3 selected renderer backend: {}", rendererName));
+    } else {
+      GAMEENGINE_WARN("Could not determine selected renderer backend");
+    }
+#endif
+    GAMEENGINE_DEBUG("SDL_Renderer system online");
+#ifdef USE_SDL3_GPU
   } else {
-    GAMEENGINE_WARN("Could not determine selected renderer backend");
+    GAMEENGINE_DEBUG("GPU rendering system online (SDL_Renderer skipped)");
   }
 #endif
-
-  GAMEENGINE_DEBUG("Rendering system online");
 
   // Unified VSync initialization with automatic fallback
   // Detect platform for logging purposes only (not used to disable VSync)
@@ -310,25 +340,36 @@ bool GameEngine::init(std::string_view title) {
   GAMEENGINE_INFO(std::format("VSync setting from SettingsManager: {}",
                               vsyncRequested ? "enabled" : "disabled"));
 
-  // Attempt to set VSync based on user preference
-  bool vsyncSetSuccessfully =
-      SDL_SetRenderVSync(mp_renderer.get(), vsyncRequested ? 1 : 0);
-
-  GAMEENGINE_WARN_IF(!vsyncSetSuccessfully,
-                     std::format("Failed to {} VSync: {}",
-                                 vsyncRequested ? "enable" : "disable",
-                                 SDL_GetError()));
-
   // Create TimestepManager (uses default 60 FPS target and 1/60s fixed
   // timestep)
   m_timestepManager = std::make_unique<TimestepManager>();
 
-  // Verify VSync state and configure software frame limiting in TimestepManager
-  if (vsyncSetSuccessfully) {
-    verifyVSyncState(vsyncRequested);
+  // VSync handling - different for GPU vs SDL_Renderer
+#ifdef USE_SDL3_GPU
+  if (m_gpuRendering) {
+    // GPU rendering uses swapchain present mode for VSync
+    // SDL3_GPU handles this automatically
+    GAMEENGINE_INFO("GPU rendering: VSync handled by swapchain");
   } else {
-    m_timestepManager->setSoftwareFrameLimiting(true);
+#endif
+    // Attempt to set VSync based on user preference
+    bool vsyncSetSuccessfully =
+        SDL_SetRenderVSync(mp_renderer.get(), vsyncRequested ? 1 : 0);
+
+    GAMEENGINE_WARN_IF(!vsyncSetSuccessfully,
+                       std::format("Failed to {} VSync: {}",
+                                   vsyncRequested ? "enable" : "disable",
+                                   SDL_GetError()));
+
+    // Verify VSync state and configure software frame limiting in TimestepManager
+    if (vsyncSetSuccessfully) {
+      verifyVSyncState(vsyncRequested);
+    } else {
+      m_timestepManager->setSoftwareFrameLimiting(true);
+    }
+#ifdef USE_SDL3_GPU
   }
+#endif
 
   if (m_timestepManager->isUsingSoftwareFrameLimiting()) {
     TIMESTEP_INFO(std::format("Created: {:.0f} Hz updates, {:.0f} FPS target, "
@@ -340,36 +381,46 @@ bool GameEngine::init(std::string_view title) {
                               m_timestepManager->getUpdateFrequencyHz()));
   }
 
-  if (!SDL_SetRenderDrawColor(
-          mp_renderer.get(),
-          HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
-    GAMEENGINE_ERROR(std::format("Failed to set initial render draw color: {}",
-                                 SDL_GetError()));
-  }
-  // Use native resolution rendering on all platforms for crisp, sharp text
-  // This eliminates GPU scaling blur and provides consistent cross-platform
-  // behavior
+  // Store actual dimensions for UI positioning
   int const actualWidth = pixelWidth;
   int const actualHeight = pixelHeight;
-
-  // Store actual dimensions for UI positioning (no scaling needed)
   m_logicalWidth = actualWidth;
   m_logicalHeight = actualHeight;
 
-  // Disable logical presentation to render at native resolution
-  SDL_RendererLogicalPresentation const presentationMode =
-      SDL_LOGICAL_PRESENTATION_DISABLED;
-  if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth,
-                                        actualHeight, presentationMode)) {
-    GAMEENGINE_ERROR(std::format(
-        "Failed to set render logical presentation: {}", SDL_GetError()));
-  }
+#ifdef USE_SDL3_GPU
+  if (!m_gpuRendering) {
+#endif
+    if (!SDL_SetRenderDrawColor(
+            mp_renderer.get(),
+            HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
+      GAMEENGINE_ERROR(std::format("Failed to set initial render draw color: {}",
+                                   SDL_GetError()));
+    }
+    // Use native resolution rendering on all platforms for crisp, sharp text
+    // This eliminates GPU scaling blur and provides consistent cross-platform
+    // behavior
 
-  GAMEENGINE_INFO(
-      std::format("Using native resolution for crisp rendering: {}x{}",
-                  actualWidth, actualHeight));
-  // Render Mode.
-  SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
+    // Disable logical presentation to render at native resolution
+    SDL_RendererLogicalPresentation const presentationMode =
+        SDL_LOGICAL_PRESENTATION_DISABLED;
+    if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth,
+                                          actualHeight, presentationMode)) {
+      GAMEENGINE_ERROR(std::format(
+          "Failed to set render logical presentation: {}", SDL_GetError()));
+    }
+
+    GAMEENGINE_INFO(
+        std::format("Using native resolution for crisp rendering: {}x{}",
+                    actualWidth, actualHeight));
+    // Render Mode.
+    SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
+#ifdef USE_SDL3_GPU
+  } else {
+    GAMEENGINE_INFO(
+        std::format("GPU rendering at native resolution: {}x{}",
+                    actualWidth, actualHeight));
+  }
+#endif
 
   // Now check if the icon was loaded successfully
   try {
@@ -478,8 +529,17 @@ bool GameEngine::init(std::string_view title) {
   GAMEENGINE_INFO("Creating and loading textures");
   const std::string textureResPath = HammerEngine::ResourcePath::resolve("res/img");
   constexpr std::string_view texturePrefix = "";
-  texMgr.load(textureResPath, std::string(texturePrefix),
-              mp_renderer.get());
+
+#ifdef USE_SDL3_GPU
+  if (m_gpuRendering) {
+    // Load textures for GPU rendering
+    texMgr.loadGPU(textureResPath, std::string(texturePrefix));
+  } else {
+    texMgr.load(textureResPath, std::string(texturePrefix), mp_renderer.get());
+  }
+#else
+  texMgr.load(textureResPath, std::string(texturePrefix), mp_renderer.get());
+#endif
 
   // Initialize sound manager in a separate thread - #3
   // Resolve paths before lambda capture
@@ -1065,7 +1125,40 @@ void GameEngine::render() {
   float interpolationAlpha =
       static_cast<float>(m_timestepManager->getInterpolationAlpha());
 
-  // Clear and render
+#ifdef USE_SDL3_GPU
+  if (m_gpuRendering) {
+    auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
+
+    // Begin GPU frame (acquires command buffer, starts copy pass, maps vertex pools)
+    gpuRenderer.beginFrame();
+
+    // Record vertices for GPU rendering (before scene pass)
+    // This is where game states write sprite/particle/primitive vertices
+    mp_gameStateManager->recordGPUVertices(gpuRenderer, interpolationAlpha);
+
+    // Begin scene render pass (ends copy pass, uploads vertices, clears to dark color)
+    SDL_GPURenderPass* scenePass = gpuRenderer.beginScenePass();
+    if (scenePass) {
+      // Issue GPU draw calls for scene content
+      mp_gameStateManager->renderGPUScene(gpuRenderer, scenePass, interpolationAlpha);
+    }
+
+    // Begin swapchain pass for final composite (ends scene pass)
+    SDL_GPURenderPass* swapchainPass = gpuRenderer.beginSwapchainPass();
+    if (swapchainPass) {
+      // Composite scene texture to swapchain (uses params set by game state)
+      gpuRenderer.renderComposite(swapchainPass);
+
+      // Render UI and overlays to swapchain (no interpolation - UI is screen-space)
+      mp_gameStateManager->renderGPUUI(gpuRenderer, swapchainPass);
+    }
+
+    // Note: endFrame() called in present() to separate render/vsync timing
+    return;
+  }
+#endif
+
+  // SDL_Renderer path
   SDL_SetRenderDrawColor(mp_renderer.get(), HAMMER_GRAY);
   SDL_RenderClear(mp_renderer.get());
 
@@ -1079,6 +1172,13 @@ void GameEngine::render() {
 void GameEngine::present() {
   // Present is separate from render for accurate profiling
   // SDL_RenderPresent blocks on vsync - this is NOT rendering work
+#ifdef USE_SDL3_GPU
+  if (m_gpuRendering) {
+    // GPU command buffer submission handles vsync
+    HammerEngine::GPURenderer::Instance().endFrame();
+    return;
+  }
+#endif
   SDL_RenderPresent(mp_renderer.get());
 }
 
@@ -1230,6 +1330,16 @@ void GameEngine::clean() {
 
   // Explicitly reset smart pointers at the end, after all subsystems
   // are done using them - this will trigger their custom deleters
+#ifdef USE_SDL3_GPU
+  if (m_gpuRendering) {
+    GAMEENGINE_INFO("Shutting down GPU renderer...");
+    HammerEngine::GPURenderer::Instance().shutdown();
+    GAMEENGINE_INFO("Shutting down GPU device...");
+    HammerEngine::GPUDevice::Instance().shutdown();
+    m_gpuRendering = false;
+  }
+#endif
+
   GAMEENGINE_INFO("Destroying renderer...");
   renderer_to_destroy.reset();
   GAMEENGINE_INFO("Renderer destroyed successfully");
@@ -1451,9 +1561,14 @@ void GameEngine::onWindowResize(const SDL_Event &event) {
     actualHeight = newHeight;
   }
 
+#ifdef USE_SDL3_GPU
+  // GPURenderer syncs viewport from swapchain in beginFrame()
+  // No manual updateViewport needed - swapchain is authoritative source
+#else
   // Update renderer to native resolution (no scaling)
   SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth, actualHeight,
                                    SDL_LOGICAL_PRESENTATION_DISABLED);
+#endif
 
   // Update GameEngine's cached logical dimensions
   setLogicalSize(actualWidth, actualHeight);

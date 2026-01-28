@@ -24,6 +24,11 @@
 #include <cmath>
 #include <format>
 
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#include "gpu/SpriteBatch.hpp"
+#endif
+
 using namespace HammerEngine::SIMD;
 
 bool WorldManager::init() {
@@ -1392,13 +1397,31 @@ HammerEngine::TileRenderer::~TileRenderer() { unsubscribeFromSeasonEvents(); }
 
 void HammerEngine::TileRenderer::initAtlasCoords() {
   // Get atlas texture pointer from TextureManager (already loaded)
+  // For GPU rendering, SDL_Texture may not exist - check GPU texture instead
   auto atlasTex = TextureManager::Instance().getTexture("atlas");
+  if (atlasTex) {
+    m_atlasPtr = atlasTex.get();
+  }
+#ifdef USE_SDL3_GPU
+  else {
+    // Check if GPU texture is available (GPU rendering path)
+    auto* gpuTex = TextureManager::Instance().getGPUTexture("atlas");
+    if (gpuTex) {
+      m_atlasGPUPtr = gpuTex;
+      WORLD_MANAGER_INFO("Using GPU atlas texture for rendering");
+    } else {
+      WORLD_MANAGER_INFO("Atlas texture not found - using individual textures");
+      m_useAtlas = false;
+      return;
+    }
+  }
+#else
   if (!atlasTex) {
     WORLD_MANAGER_INFO("Atlas texture not found - using individual textures");
     m_useAtlas = false;
     return;
   }
-  m_atlasPtr = atlasTex.get();
+#endif
 
   // Load atlas.json for source rect coordinates
   JsonReader atlasReader;
@@ -2266,3 +2289,301 @@ std::string HammerEngine::TileRenderer::getObstacleTexture(
     return "biome_default";
   }
 }
+
+#ifdef USE_SDL3_GPU
+// ============================================================================
+// GPU Rendering Implementation
+// ============================================================================
+
+auto HammerEngine::TileRenderer::getBiomeAtlasCoords(Biome biome, Season season) const
+    -> const AtlasCoords& {
+  const auto& coords = m_seasonalCoords[static_cast<int>(season)];
+  switch (biome) {
+  case Biome::DESERT:
+    return coords.biome_desert;
+  case Biome::FOREST:
+    return coords.biome_forest;
+  case Biome::PLAINS:
+    return coords.biome_plains;
+  case Biome::MOUNTAIN:
+    return coords.biome_mountain;
+  case Biome::SWAMP:
+    return coords.biome_swamp;
+  case Biome::HAUNTED:
+    return coords.biome_haunted;
+  case Biome::CELESTIAL:
+    return coords.biome_celestial;
+  case Biome::OCEAN:
+    return coords.biome_ocean;
+  default:
+    return coords.biome_default;
+  }
+}
+
+auto HammerEngine::TileRenderer::getObstacleAtlasCoords(ObstacleType obstacle, Season season) const
+    -> const AtlasCoords& {
+  const auto& coords = m_seasonalCoords[static_cast<int>(season)];
+  switch (obstacle) {
+  case ObstacleType::TREE:
+    return coords.obstacle_tree;
+  case ObstacleType::ROCK:
+    return coords.obstacle_rock;
+  case ObstacleType::WATER:
+    return coords.obstacle_water;
+  case ObstacleType::BUILDING:
+    return coords.building_hut;
+  case ObstacleType::IRON_DEPOSIT:
+    return coords.obstacle_iron_deposit;
+  case ObstacleType::GOLD_DEPOSIT:
+    return coords.obstacle_gold_deposit;
+  case ObstacleType::COPPER_DEPOSIT:
+    return coords.obstacle_copper_deposit;
+  case ObstacleType::MITHRIL_DEPOSIT:
+    return coords.obstacle_mithril_deposit;
+  case ObstacleType::LIMESTONE_DEPOSIT:
+    return coords.obstacle_limestone_deposit;
+  case ObstacleType::COAL_DEPOSIT:
+    return coords.obstacle_coal_deposit;
+  case ObstacleType::EMERALD_DEPOSIT:
+    return coords.obstacle_emerald_deposit;
+  case ObstacleType::RUBY_DEPOSIT:
+    return coords.obstacle_ruby_deposit;
+  case ObstacleType::SAPPHIRE_DEPOSIT:
+    return coords.obstacle_sapphire_deposit;
+  case ObstacleType::DIAMOND_DEPOSIT:
+    return coords.obstacle_diamond_deposit;
+  default:
+    return coords.biome_default;
+  }
+}
+
+HammerEngine::GPUTexture*
+HammerEngine::TileRenderer::getAtlasGPUTexture() const {
+  if (!m_useAtlas) {
+    return nullptr;
+  }
+  // Get GPU texture from TextureManager
+  if (!m_atlasGPUPtr) {
+    const_cast<TileRenderer*>(this)->m_atlasGPUPtr =
+        TextureManager::Instance().getGPUTexture("atlas");
+  }
+  return m_atlasGPUPtr;
+}
+
+void HammerEngine::TileRenderer::recordGPUVertices(
+    GPURenderer& gpuRenderer, float cameraX, float cameraY,
+    float viewportWidth, float viewportHeight, float zoom,
+    Season season) {
+
+  // GPU rendering doesn't require chunk grid (m_gridInitialized)
+  // It only requires atlas coords to be loaded (m_useAtlas)
+  if (!m_useAtlas) {
+    return;
+  }
+
+  // Get atlas GPU texture
+  auto* atlasTexture = getAtlasGPUTexture();
+  if (!atlasTexture) {
+    return;
+  }
+
+  // Get world data from WorldManager
+  const auto* worldData = WorldManager::Instance().getWorldData();
+  if (!worldData || worldData->grid.empty()) {
+    return;
+  }
+
+  // 2D grid dimensions
+  const int worldHeight = static_cast<int>(worldData->grid.size());
+  const int worldWidth = static_cast<int>(worldData->grid[0].size());
+
+  // Calculate visible tile range (with padding for partially visible tiles)
+  const float effectiveViewWidth = viewportWidth / zoom;
+  const float effectiveViewHeight = viewportHeight / zoom;
+
+  const int startTileX = std::max(0, static_cast<int>(cameraX / TILE_SIZE) - VIEWPORT_PADDING);
+  const int startTileY = std::max(0, static_cast<int>(cameraY / TILE_SIZE) - VIEWPORT_PADDING);
+  const int endTileX = std::min(worldWidth,
+                                static_cast<int>((cameraX + effectiveViewWidth) / TILE_SIZE) + VIEWPORT_PADDING + 1);
+  const int endTileY = std::min(worldHeight,
+                                static_cast<int>((cameraY + effectiveViewHeight) / TILE_SIZE) + VIEWPORT_PADDING + 1);
+
+  // Early exit if no visible tiles
+  if (startTileX >= endTileX || startTileY >= endTileY) {
+    return;
+  }
+
+  // Get atlas dimensions for UV calculation
+  const float atlasWidth = static_cast<float>(atlasTexture->getWidth());
+  const float atlasHeight = static_cast<float>(atlasTexture->getHeight());
+
+  // Get sprite batch and vertex pool
+  auto& spriteBatch = gpuRenderer.getSpriteBatch();
+  auto& vertexPool = gpuRenderer.getSpriteVertexPool();
+
+  // Get mapped vertex buffer (GPURenderer::beginFrame already mapped it)
+  auto* writePtr = static_cast<SpriteVertex*>(vertexPool.getMappedPtr());
+  if (!writePtr) {
+    return;
+  }
+
+  spriteBatch.begin(writePtr, vertexPool.getMaxVertices(),
+                    atlasTexture->get(), gpuRenderer.getNearestSampler(),
+                    atlasWidth, atlasHeight);
+
+  // Pre-fetch seasonal coords (avoids per-tile lookups)
+  const auto& sc = m_seasonalCoords[static_cast<int>(season)];
+
+  // Render at 1x scale (matching SDL_Renderer approach)
+  // Zoom is handled in the composite shader, not by scaling tile positions
+  const float scaledTileSize = TILE_SIZE;  // 1x scale, no zoom multiplier
+  const float baseCameraX = cameraX;       // No zoom multiplier
+  const float baseCameraY = cameraY;
+  const float startScreenX = startTileX * scaledTileSize - baseCameraX;
+
+  // Debug: Log tile rendering params on viewport change
+  static float lastViewportW = 0, lastViewportH = 0;
+  if (viewportWidth != lastViewportW || viewportHeight != lastViewportH) {
+    WORLD_MANAGER_INFO(std::format(
+        "GPU tile params: viewport={}x{}, zoom={}, tileSize={}, "
+        "scaledTileSize={}, visibleTiles={}x{}, cameraY={}, effectiveH={}, endTileY={}",
+        viewportWidth, viewportHeight, zoom, TILE_SIZE,
+        scaledTileSize, endTileX - startTileX, endTileY - startTileY,
+        cameraY, effectiveViewHeight, endTileY));
+    lastViewportW = viewportWidth;
+    lastViewportH = viewportHeight;
+  }
+
+  // Build biome lookup table for O(1) access (enum value -> coords pointer)
+  // Avoids switch overhead in inner loop
+  const AtlasCoords* biomeLUT[8] = {
+      &sc.biome_desert, &sc.biome_forest, &sc.biome_plains, &sc.biome_mountain,
+      &sc.biome_swamp, &sc.biome_haunted, &sc.biome_celestial, &sc.biome_ocean
+  };
+
+  // Build obstacle lookup table (enum value -> coords pointer)
+  // Index 0 = NONE (unused), indices 1-14 match ObstacleType enum values
+  const AtlasCoords* obstacleLUT[15] = {
+      &sc.biome_default,          // NONE (never used)
+      &sc.obstacle_rock,          // ROCK
+      &sc.obstacle_tree,          // TREE
+      &sc.obstacle_water,         // WATER
+      &sc.building_hut,           // BUILDING
+      &sc.obstacle_iron_deposit,  // IRON_DEPOSIT
+      &sc.obstacle_gold_deposit,  // GOLD_DEPOSIT
+      &sc.obstacle_copper_deposit, // COPPER_DEPOSIT
+      &sc.obstacle_mithril_deposit, // MITHRIL_DEPOSIT
+      &sc.obstacle_limestone_deposit, // LIMESTONE_DEPOSIT
+      &sc.obstacle_coal_deposit,  // COAL_DEPOSIT
+      &sc.obstacle_emerald_deposit, // EMERALD_DEPOSIT
+      &sc.obstacle_ruby_deposit,  // RUBY_DEPOSIT
+      &sc.obstacle_sapphire_deposit, // SAPPHIRE_DEPOSIT
+      &sc.obstacle_diamond_deposit // DIAMOND_DEPOSIT
+  };
+
+  // Iterate visible tiles with cache-friendly row-major order
+  for (int tileY = startTileY; tileY < endTileY; ++tileY) {
+    // Cache row reference for contiguous memory access
+    const auto& row = worldData->grid[tileY];
+    const float screenY = tileY * scaledTileSize - baseCameraY;
+    float screenX = startScreenX;
+
+    for (int tileX = startTileX; tileX < endTileX; ++tileX) {
+      const auto& tile = row[tileX];
+
+      // Layer 1: Biome base tile - LUT for water or biome enum
+      const AtlasCoords* biomeCoords = tile.isWater
+          ? &sc.obstacle_water
+          : biomeLUT[static_cast<int>(tile.biome)];
+
+      spriteBatch.draw(
+          biomeCoords->x, biomeCoords->y, biomeCoords->w, biomeCoords->h,
+          screenX, screenY, scaledTileSize, scaledTileSize);
+
+      // Layer 2: Obstacle (if any) - direct LUT access
+      if (tile.obstacleType != ObstacleType::NONE) {
+        const auto obstacleIdx = static_cast<int>(tile.obstacleType);
+        const AtlasCoords* obstacleCoords = obstacleLUT[obstacleIdx];
+
+        spriteBatch.draw(
+            obstacleCoords->x, obstacleCoords->y, obstacleCoords->w, obstacleCoords->h,
+            screenX, screenY, scaledTileSize, scaledTileSize);
+      }
+
+      screenX += scaledTileSize;
+    }
+  }
+
+  // End recording (GPURenderer::beginScenePass handles endFrame)
+  spriteBatch.end();
+}
+
+// WorldManager GPU methods delegate to TileRenderer
+void WorldManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                                     float cameraX, float cameraY,
+                                     float viewportWidth, float viewportHeight,
+                                     float zoom, float interpolationAlpha) {
+  if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled) {
+    return;
+  }
+
+  if (!m_currentWorld || !m_tileRenderer) {
+    return;
+  }
+
+  // Get current season
+  auto season = getCurrentSeason();
+
+  // Delegate to TileRenderer
+  m_tileRenderer->recordGPUVertices(gpuRenderer, cameraX, cameraY,
+                                    viewportWidth, viewportHeight, zoom, season);
+
+  (void)interpolationAlpha; // May be used for animated tiles in future
+}
+
+void WorldManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
+                             SDL_GPURenderPass* scenePass) {
+  if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled) {
+    return;
+  }
+
+  if (!m_currentWorld || !m_tileRenderer) {
+    return;
+  }
+
+  // Get atlas GPU texture
+  auto* atlasTexture = m_tileRenderer->getAtlasGPUTexture();
+  if (!atlasTexture) {
+    return;
+  }
+
+  // Get sprite batch and vertex pool
+  auto& spriteBatch = gpuRenderer.getSpriteBatch();
+  auto& vertexPool = gpuRenderer.getSpriteVertexPool();
+
+  // Skip if no sprites recorded
+  if (!spriteBatch.hasSprites()) {
+    return;
+  }
+
+  // Get scene texture for ortho matrix dimensions
+  auto* sceneTexture = gpuRenderer.getSceneTexture();
+  if (!sceneTexture) {
+    return;
+  }
+
+  // Create orthographic projection for scene texture
+  float orthoMatrix[16];
+  HammerEngine::GPURenderer::createOrthoMatrix(
+      0.0f, static_cast<float>(sceneTexture->getWidth()),
+      static_cast<float>(sceneTexture->getHeight()), 0.0f,
+      orthoMatrix);
+
+  // Push view-projection matrix
+  gpuRenderer.pushViewProjection(scenePass, orthoMatrix);
+
+  // Issue draw call using the pre-recorded sprites
+  spriteBatch.render(scenePass, gpuRenderer.getSpriteAlphaPipeline(),
+                     vertexPool.getGPUBuffer());
+}
+#endif
