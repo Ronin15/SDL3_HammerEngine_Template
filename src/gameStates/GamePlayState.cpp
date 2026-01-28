@@ -1276,14 +1276,15 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
     lastViewH = viewHeight;
   }
 
-  // Camera viewport already synced in updateCamera() via syncViewportWithEngine()
-  float centerX = m_camera->getX();
-  float centerY = m_camera->getY();
+  // Get interpolated camera offset (properly synced with player interpolation)
+  // This uses the same interpolation path as the player, eliminating oscillation
+  float rawCameraX = 0.0f;
+  float rawCameraY = 0.0f;
+  m_camera->getRenderOffset(rawCameraX, rawCameraY, interpolationAlpha);
+
   float zoom = m_camera->getZoom();
 
-  // Calculate camera offset (top-left) from center
-  float rawCameraX = centerX - viewWidth / (2.0f * zoom);
-  float rawCameraY = centerY - viewHeight / (2.0f * zoom);
+  // Snap to pixel for tile-aligned rendering
   float cameraX = std::floor(rawCameraX);
   float cameraY = std::floor(rawCameraY);
 
@@ -1298,6 +1299,11 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   auto &worldMgr = WorldManager::Instance();
   worldMgr.recordGPUVertices(gpuRenderer, cameraX, cameraY, viewWidth, viewHeight,
                               zoom, interpolationAlpha);
+
+  // Record player vertices (after world, before particles)
+  if (mp_Player) {
+    mp_Player->recordGPUVertices(gpuRenderer, cameraX, cameraY, interpolationAlpha);
+  }
 
   // Record particle vertices
   auto &particleMgr = ParticleManager::Instance();
@@ -1320,6 +1326,11 @@ void GamePlayState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
   // Render world tiles
   auto &worldMgr = WorldManager::Instance();
   worldMgr.renderGPU(gpuRenderer, scenePass);
+
+  // Render player (after world tiles)
+  if (mp_Player) {
+    mp_Player->renderGPU(gpuRenderer, scenePass);
+  }
 
   // Render particles
   auto &particleMgr = ParticleManager::Instance();

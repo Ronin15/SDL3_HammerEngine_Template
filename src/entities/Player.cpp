@@ -74,46 +74,59 @@ void Player::loadDimensionsFromTexture() {
   // Cache TextureManager reference for better performance
   const TextureManager &texMgr = TextureManager::Instance();
 
-  // Get the texture from TextureManager
-  if (texMgr.isTextureInMap(m_textureID)) {
+  float width = 0.0f;
+  float height = 0.0f;
+  bool gotDimensions = false;
+
+#ifdef USE_SDL3_GPU
+  // Try GPU texture first (used in GPU rendering mode)
+  if (auto* gpuData = texMgr.getGPUTextureData(m_textureID); gpuData) {
+    width = gpuData->width;
+    height = gpuData->height;
+    gotDimensions = (width > 0 && height > 0);
+    if (gotDimensions) {
+      PLAYER_DEBUG(std::format("Got dimensions from GPU texture: {}x{}", width, height));
+    }
+  }
+#endif
+
+  // Fall back to SDL_Renderer texture if GPU texture not available
+  if (!gotDimensions && texMgr.isTextureInMap(m_textureID)) {
     auto texture = texMgr.getTexture(m_textureID);
     if (texture != nullptr) {
-      float width = 0.0f;
-      float height = 0.0f;
-      // Query the texture to get its width and height
-      // SDL3 uses SDL_GetTextureSize which returns float dimensions and returns
-      // a bool
       if (SDL_GetTextureSize(texture.get(), &width, &height)) {
-        PLAYER_DEBUG(
-            std::format("Original texture dimensions: {}x{}", width, height));
-
-        // Store original dimensions for full sprite sheet
-        m_width = static_cast<int>(width);
-        m_height = static_cast<int>(height);
-
-        // Calculate frame dimensions based on sprite sheet layout
-        m_frameWidth = m_width / m_numFrames;           // Width per frame
-        int frameHeight = m_height / m_spriteSheetRows; // Height per row
-
-        // Update height to be the height of a single frame
-        m_height = frameHeight;
-
-        // Sync new dimensions to collision body if already registered
-        Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
-        CollisionManager::Instance().updateCollisionBodySize(getID(),
-                                                             newHalfSize);
-
-        PLAYER_DEBUG(
-            std::format("Loaded texture dimensions: {}x{}", m_width, height));
-        PLAYER_DEBUG(
-            std::format("Frame dimensions: {}x{}", m_frameWidth, frameHeight));
-        PLAYER_DEBUG(std::format("Sprite layout: {} columns x {} rows",
-                                 m_numFrames, m_spriteSheetRows));
-      } else {
-        PLAYER_ERROR(std::format("Failed to query texture dimensions: {}",
-                                 SDL_GetError()));
+        gotDimensions = true;
+        PLAYER_DEBUG(std::format("Got dimensions from SDL texture: {}x{}", width, height));
       }
     }
+  }
+
+  if (gotDimensions) {
+    PLAYER_DEBUG(
+        std::format("Original texture dimensions: {}x{}", width, height));
+
+    // Store original dimensions for full sprite sheet
+    m_width = static_cast<int>(width);
+    m_height = static_cast<int>(height);
+
+    // Calculate frame dimensions based on sprite sheet layout
+    m_frameWidth = m_width / m_numFrames;           // Width per frame
+    int frameHeight = m_height / m_spriteSheetRows; // Height per row
+
+    // Update height to be the height of a single frame
+    m_height = frameHeight;
+
+    // Sync new dimensions to collision body if already registered
+    Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
+    CollisionManager::Instance().updateCollisionBodySize(getID(),
+                                                         newHalfSize);
+
+    PLAYER_DEBUG(
+        std::format("Loaded texture dimensions: {}x{}", m_width, height));
+    PLAYER_DEBUG(
+        std::format("Frame dimensions: {}x{}", m_frameWidth, frameHeight));
+    PLAYER_DEBUG(std::format("Sprite layout: {} columns x {} rows",
+                             m_numFrames, m_spriteSheetRows));
   } else {
     PLAYER_ERROR(
         std::format("Texture '{}' not found in TextureManager", m_textureID));
@@ -258,6 +271,100 @@ void Player::renderAtPosition(SDL_Renderer *renderer, const Vector2D &interpPos,
   SDL_RenderTextureRotated(renderer, m_cachedTexture, &srcRect, &destRect, 0.0,
                            &center, m_flip);
 }
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#include "gpu/GPUTypes.hpp"
+
+void Player::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                               float cameraX, float cameraY,
+                               float interpolationAlpha) {
+  // Get GPU texture for player
+  auto* gpuTextureData = TextureManager::Instance().getGPUTextureData(m_textureID);
+  if (!gpuTextureData || !gpuTextureData->texture) {
+    return;
+  }
+
+  // Get entity batch and vertex pool
+  auto& entityBatch = gpuRenderer.getEntityBatch();
+  auto& vertexPool = gpuRenderer.getEntityVertexPool();
+
+  auto* writePtr = static_cast<HammerEngine::SpriteVertex*>(vertexPool.getMappedPtr());
+  if (!writePtr) {
+    return;
+  }
+
+  // Get texture dimensions
+  float texWidth = gpuTextureData->width;
+  float texHeight = gpuTextureData->height;
+
+  entityBatch.begin(writePtr, vertexPool.getMaxVertices(),
+                    gpuTextureData->texture->get(), gpuRenderer.getNearestSampler(),
+                    texWidth, texHeight);
+
+  // Get interpolated position
+  Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
+
+  // Convert world coords to screen coords
+  float renderX = interpPos.getX() - cameraX - (m_frameWidth / 2.0f);
+  float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
+
+  // Source rect from sprite sheet
+  float srcX = static_cast<float>(m_frameWidth * m_currentFrame);
+  float srcY = static_cast<float>(m_height * (m_currentRow - 1));
+  float srcW = static_cast<float>(m_frameWidth);
+  float srcH = static_cast<float>(m_height);
+
+  // Calculate UV coordinates
+  float u0 = srcX / texWidth;
+  float v0 = srcY / texHeight;
+  float u1 = (srcX + srcW) / texWidth;
+  float v1 = (srcY + srcH) / texHeight;
+
+  // Handle horizontal flip by swapping U coordinates
+  if (m_flip == SDL_FLIP_HORIZONTAL) {
+    std::swap(u0, u1);
+  }
+
+  // Draw the sprite using UV coordinates
+  entityBatch.drawUV(u0, v0, u1, v1,
+                     renderX, renderY,
+                     static_cast<float>(m_frameWidth), static_cast<float>(m_height),
+                     255, 255, 255, 255);
+
+  entityBatch.end();
+}
+
+void Player::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
+                       SDL_GPURenderPass* scenePass) {
+  auto& entityBatch = gpuRenderer.getEntityBatch();
+  auto& vertexPool = gpuRenderer.getEntityVertexPool();
+
+  if (!entityBatch.hasSprites()) {
+    return;
+  }
+
+  // Get scene texture for ortho matrix dimensions
+  auto* sceneTexture = gpuRenderer.getSceneTexture();
+  if (!sceneTexture) {
+    return;
+  }
+
+  // Create orthographic projection
+  float orthoMatrix[16];
+  HammerEngine::GPURenderer::createOrthoMatrix(
+      0.0f, static_cast<float>(sceneTexture->getWidth()),
+      static_cast<float>(sceneTexture->getHeight()), 0.0f,
+      orthoMatrix);
+
+  // Push view-projection matrix
+  gpuRenderer.pushViewProjection(scenePass, orthoMatrix);
+
+  // Render using the sprite alpha pipeline (supports transparency)
+  entityBatch.render(scenePass, gpuRenderer.getSpriteAlphaPipeline(),
+                     vertexPool.getGPUBuffer());
+}
+#endif
 
 void Player::clean() {
   // Clean up any resources

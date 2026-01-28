@@ -77,6 +77,12 @@ bool GPURenderer::init() {
         return false;
     }
 
+    // Entity vertex pool for player/NPCs with separate textures
+    if (!m_entityVertexPool.init(m_device, sizeof(SpriteVertex), 1000)) {
+        GAMEENGINE_ERROR("GPURenderer: failed to init entity vertex pool");
+        return false;
+    }
+
     if (!m_particleVertexPool.init(m_device, sizeof(ColorVertex), 100000)) {
         GAMEENGINE_ERROR("GPURenderer: failed to init particle vertex pool");
         return false;
@@ -93,9 +99,14 @@ bool GPURenderer::init() {
         return false;
     }
 
-    // Initialize sprite batch
+    // Initialize sprite batches
     if (!m_spriteBatch.init(m_device)) {
         GAMEENGINE_ERROR("GPURenderer: failed to init sprite batch");
+        return false;
+    }
+
+    if (!m_entityBatch.init(m_device)) {
+        GAMEENGINE_ERROR("GPURenderer: failed to init entity batch");
         return false;
     }
 
@@ -109,11 +120,13 @@ void GPURenderer::shutdown() {
         return;
     }
 
-    // Release sprite batch
+    // Release sprite batches
     m_spriteBatch.shutdown();
+    m_entityBatch.shutdown();
 
     // Release vertex pools
     m_spriteVertexPool.shutdown();
+    m_entityVertexPool.shutdown();
     m_particleVertexPool.shutdown();
     m_primitiveVertexPool.shutdown();
     m_uiVertexPool.shutdown();
@@ -179,6 +192,7 @@ void GPURenderer::beginFrame() {
 
     // Begin vertex pool frames
     m_spriteVertexPool.beginFrame();
+    m_entityVertexPool.beginFrame();
     m_particleVertexPool.beginFrame();
     m_primitiveVertexPool.beginFrame();
     m_uiVertexPool.beginFrame();
@@ -205,6 +219,13 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
         }
         m_spriteVertexPool.endFrame(spriteVertexCount);
 
+        // End entity vertex pool (uses entity batch count or pending count)
+        size_t entityVertexCount = m_entityBatch.getVertexCount();
+        if (entityVertexCount == 0) {
+            entityVertexCount = m_entityVertexPool.getPendingVertexCount();
+        }
+        m_entityVertexPool.endFrame(entityVertexCount);
+
         // End particle vertex pool (uses pending count from ParticleManager writes)
         size_t particleVertexCount = m_particleVertexPool.getPendingVertexCount();
         m_particleVertexPool.endFrame(particleVertexCount);
@@ -219,6 +240,7 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
 
         // Upload vertex data
         m_spriteVertexPool.upload(m_copyPass);
+        m_entityVertexPool.upload(m_copyPass);
         m_particleVertexPool.upload(m_copyPass);
         m_primitiveVertexPool.upload(m_copyPass);
         m_uiVertexPool.upload(m_copyPass);
