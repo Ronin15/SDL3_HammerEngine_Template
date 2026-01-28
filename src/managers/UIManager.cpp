@@ -3368,10 +3368,12 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
     addFilledRect({rect.x + rect.width - width, rect.y + width, width, rect.height - 2 * width}, color);
   };
 
-  // Helper to add text
+  // Helper to add text with optional background
   auto& fontMgr = FontManager::Instance();
   auto addText = [&](const std::string& text, const std::string& fontID,
-                     int x, int y, const SDL_Color& color, int alignment) {
+                     int x, int y, const SDL_Color& color, int alignment,
+                     bool useBackground = false, const SDL_Color& bgColor = {0,0,0,0},
+                     int bgPadding = 0) {
     if (text.empty()) return;
 
     const GPUTextData* textData = fontMgr.renderTextGPU(text, fontID, color);
@@ -3388,17 +3390,36 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
     float dstH = static_cast<float>(textData->height);
 
     switch (alignment) {
-      case 1: // Left
+      case 1: // Left (vertically centered)
         dstY -= dstH / 2;
         break;
-      case 2: // Right
+      case 2: // Right (vertically centered)
         dstX -= dstW;
         dstY -= dstH / 2;
+        break;
+      case 3: // Top-left
+        // x and y stay as-is (top-left corner)
+        break;
+      case 4: // Top-center
+        dstX -= dstW / 2;
+        break;
+      case 5: // Top-right
+        dstX -= dstW;
         break;
       default: // Center (0)
         dstX -= dstW / 2;
         dstY -= dstH / 2;
         break;
+    }
+
+    // Draw background rectangle if enabled (added to primitive commands, renders before text)
+    if (useBackground && bgColor.a > 0) {
+      UIRect bgRect;
+      bgRect.x = static_cast<int>(dstX) - bgPadding;
+      bgRect.y = static_cast<int>(dstY) - bgPadding;
+      bgRect.width = static_cast<int>(dstW) + (bgPadding * 2);
+      bgRect.height = static_cast<int>(dstH) + (bgPadding * 2);
+      addFilledRect(bgRect, bgColor);
     }
 
     HammerEngine::SpriteVertex* v = uiBase + uiOffset;
@@ -3469,10 +3490,57 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
       case UIComponentType::LABEL:
       case UIComponentType::TITLE:
         if (!component->m_text.empty()) {
-          int textX = component->m_bounds.x + component->m_bounds.width / 2;
-          int textY = component->m_bounds.y + component->m_bounds.height / 2;
+          int textX, textY, alignment;
+          int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+
+          switch (component->m_style.textAlign) {
+            case UIAlignment::CENTER_CENTER:
+              textX = component->m_bounds.x + component->m_bounds.width / 2;
+              textY = component->m_bounds.y + component->m_bounds.height / 2;
+              alignment = 0; // center
+              break;
+            case UIAlignment::CENTER_RIGHT:
+              textX = component->m_bounds.x + component->m_bounds.width - scaledPadding;
+              textY = component->m_bounds.y + component->m_bounds.height / 2;
+              alignment = 2; // right
+              break;
+            case UIAlignment::CENTER_LEFT:
+              textX = component->m_bounds.x + scaledPadding;
+              textY = component->m_bounds.y + component->m_bounds.height / 2;
+              alignment = 1; // left
+              break;
+            case UIAlignment::TOP_CENTER:
+              textX = component->m_bounds.x + component->m_bounds.width / 2;
+              textY = component->m_bounds.y + scaledPadding;
+              alignment = 4; // top-center
+              break;
+            case UIAlignment::TOP_LEFT:
+              textX = component->m_bounds.x + scaledPadding;
+              textY = component->m_bounds.y + scaledPadding;
+              alignment = 3; // top-left
+              break;
+            case UIAlignment::TOP_RIGHT:
+              textX = component->m_bounds.x + component->m_bounds.width - scaledPadding;
+              textY = component->m_bounds.y + scaledPadding;
+              alignment = 5; // top-right
+              break;
+            default:
+              // CENTER_LEFT is default
+              textX = component->m_bounds.x + scaledPadding;
+              textY = component->m_bounds.y + component->m_bounds.height / 2;
+              alignment = 1; // left
+              break;
+          }
+
+          // Only use text backgrounds for components with transparent backgrounds
+          bool needsBackground = component->m_style.useTextBackground &&
+                                 component->m_style.backgroundColor.a == 0;
+          int scaledTextBgPadding = static_cast<int>(component->m_style.textBackgroundPadding * m_globalScale);
+
           addText(component->m_text, component->m_style.fontID,
-                  textX, textY, component->m_style.textColor, 0);
+                  textX, textY, component->m_style.textColor, alignment,
+                  needsBackground, component->m_style.textBackgroundColor,
+                  scaledTextBgPadding);
         }
         break;
 
