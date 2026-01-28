@@ -2370,20 +2370,14 @@ HammerEngine::TileRenderer::getAtlasGPUTexture() const {
   return m_atlasGPUPtr;
 }
 
-void HammerEngine::TileRenderer::recordGPUVertices(
-    GPURenderer& gpuRenderer, float cameraX, float cameraY,
+void HammerEngine::TileRenderer::recordGPUTiles(
+    SpriteBatch& spriteBatch, float cameraX, float cameraY,
     float viewportWidth, float viewportHeight, float zoom,
     Season season) {
 
   // GPU rendering doesn't require chunk grid (m_gridInitialized)
   // It only requires atlas coords to be loaded (m_useAtlas)
   if (!m_useAtlas) {
-    return;
-  }
-
-  // Get atlas GPU texture
-  auto* atlasTexture = getAtlasGPUTexture();
-  if (!atlasTexture) {
     return;
   }
 
@@ -2412,24 +2406,6 @@ void HammerEngine::TileRenderer::recordGPUVertices(
   if (startTileX >= endTileX || startTileY >= endTileY) {
     return;
   }
-
-  // Get atlas dimensions for UV calculation
-  const float atlasWidth = static_cast<float>(atlasTexture->getWidth());
-  const float atlasHeight = static_cast<float>(atlasTexture->getHeight());
-
-  // Get sprite batch and vertex pool
-  auto& spriteBatch = gpuRenderer.getSpriteBatch();
-  auto& vertexPool = gpuRenderer.getSpriteVertexPool();
-
-  // Get mapped vertex buffer (GPURenderer::beginFrame already mapped it)
-  auto* writePtr = static_cast<SpriteVertex*>(vertexPool.getMappedPtr());
-  if (!writePtr) {
-    return;
-  }
-
-  spriteBatch.begin(writePtr, vertexPool.getMaxVertices(),
-                    atlasTexture->get(), gpuRenderer.getNearestSampler(),
-                    atlasWidth, atlasHeight);
 
   // Pre-fetch seasonal coords (avoids per-tile lookups)
   const auto& sc = m_seasonalCoords[static_cast<int>(season)];
@@ -2513,16 +2489,13 @@ void HammerEngine::TileRenderer::recordGPUVertices(
       screenX += scaledTileSize;
     }
   }
-
-  // End recording (GPURenderer::beginScenePass handles endFrame)
-  spriteBatch.end();
+  // Batch end() is called by GPUSceneRenderer, not here
 }
 
-// WorldManager GPU methods delegate to TileRenderer
-void WorldManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
-                                     float cameraX, float cameraY,
-                                     float viewportWidth, float viewportHeight,
-                                     float zoom, float interpolationAlpha) {
+// WorldManager GPU method - delegates to TileRenderer
+void WorldManager::recordGPU(HammerEngine::SpriteBatch& spriteBatch,
+                             float cameraX, float cameraY,
+                             float viewWidth, float viewHeight, float zoom) {
   if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled) {
     return;
   }
@@ -2534,56 +2507,8 @@ void WorldManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
   // Get current season
   auto season = getCurrentSeason();
 
-  // Delegate to TileRenderer
-  m_tileRenderer->recordGPUVertices(gpuRenderer, cameraX, cameraY,
-                                    viewportWidth, viewportHeight, zoom, season);
-
-  (void)interpolationAlpha; // May be used for animated tiles in future
-}
-
-void WorldManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
-                             SDL_GPURenderPass* scenePass) {
-  if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled) {
-    return;
-  }
-
-  if (!m_currentWorld || !m_tileRenderer) {
-    return;
-  }
-
-  // Get atlas GPU texture
-  auto* atlasTexture = m_tileRenderer->getAtlasGPUTexture();
-  if (!atlasTexture) {
-    return;
-  }
-
-  // Get sprite batch and vertex pool
-  auto& spriteBatch = gpuRenderer.getSpriteBatch();
-  auto& vertexPool = gpuRenderer.getSpriteVertexPool();
-
-  // Skip if no sprites recorded
-  if (!spriteBatch.hasSprites()) {
-    return;
-  }
-
-  // Get scene texture for ortho matrix dimensions
-  auto* sceneTexture = gpuRenderer.getSceneTexture();
-  if (!sceneTexture) {
-    return;
-  }
-
-  // Create orthographic projection for scene texture
-  float orthoMatrix[16];
-  HammerEngine::GPURenderer::createOrthoMatrix(
-      0.0f, static_cast<float>(sceneTexture->getWidth()),
-      static_cast<float>(sceneTexture->getHeight()), 0.0f,
-      orthoMatrix);
-
-  // Push view-projection matrix
-  gpuRenderer.pushViewProjection(scenePass, orthoMatrix);
-
-  // Issue draw call using the pre-recorded sprites
-  spriteBatch.render(scenePass, gpuRenderer.getSpriteAlphaPipeline(),
-                     vertexPool.getGPUBuffer());
+  // Delegate to TileRenderer - batch is already begin()-ed by GPUSceneRenderer
+  m_tileRenderer->recordGPUTiles(spriteBatch, cameraX, cameraY,
+                                 viewWidth, viewHeight, zoom, season);
 }
 #endif

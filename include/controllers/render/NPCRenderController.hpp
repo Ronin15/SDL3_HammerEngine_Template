@@ -18,12 +18,19 @@
  *   - Add as member in GameState
  *   - Call update(deltaTime) in GameState::update()
  *   - Call renderNPCs(renderer, camX, camY, alpha) in GameState::render()
+ *   - (GPU) Call recordGPU(ctx) during vertex recording phase
  */
 
 #include "controllers/ControllerBase.hpp"
 #include "controllers/IUpdatable.hpp"
 
 struct SDL_Renderer;
+
+#ifdef USE_SDL3_GPU
+namespace HammerEngine {
+struct GPUSceneContext;
+}
+#endif
 
 class NPCRenderController : public ControllerBase, public IUpdatable {
 public:
@@ -51,6 +58,17 @@ public:
      * @param alpha Interpolation alpha for smooth rendering (0.0-1.0)
      */
     void renderNPCs(SDL_Renderer* renderer, float cameraX, float cameraY, float alpha);
+
+#ifdef USE_SDL3_GPU
+    /**
+     * @brief Record NPC sprites to the GPU sprite batch
+     * @param ctx Scene context with sprite batch and camera params
+     *
+     * Called during vertex recording phase. Uses ctx.spriteBatch->draw()
+     * for atlas-based rendering. Batch lifecycle managed by GPUSceneRenderer.
+     */
+    void recordGPU(const HammerEngine::GPUSceneContext& ctx);
+#endif
 
     /**
      * @brief Clear all spawned NPCs (cleanup for state transitions)

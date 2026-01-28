@@ -32,6 +32,7 @@ class Camera;  // Forward declaration for camera pointer storage
 #ifdef USE_SDL3_GPU
 class GPURenderer;  // Forward declaration for GPU rendering
 class GPUTexture;   // Forward declaration for GPU texture
+class SpriteBatch;  // Forward declaration for sprite batch
 #endif
 
 // World object definition loaded from JSON
@@ -99,10 +100,11 @@ public:
     /**
      * @brief Record visible tile vertices for GPU rendering
      *
-     * Records all visible tile sprites to the GPU sprite batch using atlas coordinates.
+     * Records all visible tile sprites to the sprite batch using atlas coordinates.
+     * Assumes batch is already begin()-ed by GPUSceneRenderer.
      * No chunk textures needed - renders directly from tile data each frame.
      *
-     * @param gpuRenderer GPU renderer instance
+     * @param spriteBatch Sprite batch to draw to (already begin()-ed)
      * @param cameraX Camera X offset (floored for pixel-perfect alignment)
      * @param cameraY Camera Y offset (floored for pixel-perfect alignment)
      * @param viewportWidth Viewport width at 1x scale
@@ -110,9 +112,9 @@ public:
      * @param zoom Current zoom level
      * @param season Current season for seasonal textures
      */
-    void recordGPUVertices(GPURenderer& gpuRenderer, float cameraX, float cameraY,
-                           float viewportWidth, float viewportHeight, float zoom,
-                           Season season);
+    void recordGPUTiles(SpriteBatch& spriteBatch, float cameraX, float cameraY,
+                        float viewportWidth, float viewportHeight, float zoom,
+                        Season season);
 
     /**
      * @brief Get the atlas GPU texture
@@ -591,31 +593,19 @@ public:
     /**
      * @brief Record world tile vertices for GPU rendering
      *
-     * Records all visible tile sprites to the GPU vertex batch for rendering.
+     * Records all visible tile sprites to the sprite batch.
      * Uses the existing atlas texture coordinates for each tile type.
-     * Supports multithreaded vertex generation via ThreadSystem when beneficial.
+     * Batch lifecycle is managed by caller (GPUSceneRenderer) - this just draws.
      *
-     * @param gpuRenderer GPU renderer instance
+     * @param spriteBatch Sprite batch to draw to (already begin()-ed)
      * @param cameraX Camera X offset (floored for pixel-perfect alignment)
      * @param cameraY Camera Y offset (floored for pixel-perfect alignment)
-     * @param viewportWidth Viewport width at 1x scale
-     * @param viewportHeight Viewport height at 1x scale
+     * @param viewWidth Viewport width at 1x scale
+     * @param viewHeight Viewport height at 1x scale
      * @param zoom Current zoom level
-     * @param interpolationAlpha Interpolation alpha for smooth rendering
      */
-    void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer, float cameraX, float cameraY,
-                           float viewportWidth, float viewportHeight, float zoom,
-                           float interpolationAlpha);
-
-    /**
-     * @brief Render world tiles to the GPU scene pass
-     *
-     * Issues draw calls for all recorded world tile vertices.
-     *
-     * @param gpuRenderer GPU renderer instance
-     * @param scenePass Active scene render pass
-     */
-    void renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* scenePass);
+    void recordGPU(HammerEngine::SpriteBatch& spriteBatch, float cameraX, float cameraY,
+                   float viewWidth, float viewHeight, float zoom);
 #endif
 
     bool handleHarvestResource(int entityId, int targetX, int targetY);

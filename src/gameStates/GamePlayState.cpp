@@ -35,7 +35,17 @@
 
 #ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
+#include "gpu/SpriteBatch.hpp"
+#include "utils/GPUSceneRenderer.hpp"
 #endif
+
+// Constructor/destructor defined here where GPUSceneRenderer is complete (for unique_ptr)
+GamePlayState::GamePlayState()
+    : m_transitioningToLoading{false},
+      mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false},
+      m_dayNightEventToken{}, m_weatherEventToken{} {}
+
+GamePlayState::~GamePlayState() = default;
 
 bool GamePlayState::enter() {
   // Resume all game managers (may be paused from menu states)
@@ -85,6 +95,11 @@ bool GamePlayState::enter() {
 
     // Create world render pipeline for coordinated chunk management and scene rendering
     m_renderPipeline = std::make_unique<HammerEngine::WorldRenderPipeline>();
+
+#ifdef USE_SDL3_GPU
+    // Create GPU scene renderer for coordinated GPU rendering
+    m_gpuSceneRenderer = std::make_unique<HammerEngine::GPUSceneRenderer>();
+#endif
 
     // Register controllers with the registry
     m_controllers.add<WeatherController>();
@@ -1258,60 +1273,41 @@ void GamePlayState::updateCombatHUD() {
 
 #ifdef USE_SDL3_GPU
 void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
-                                      [[maybe_unused]] float interpolationAlpha) {
-  // Skip if world not active
-  if (!m_camera) {
+                                      float interpolationAlpha) {
+  // Skip if world not active or GPU scene renderer not initialized
+  if (!m_camera || !m_gpuSceneRenderer) {
     return;
   }
 
-  // Get viewport from GPURenderer (synced on resize events)
-  float viewWidth = static_cast<float>(gpuRenderer.getViewportWidth());
-  float viewHeight = static_cast<float>(gpuRenderer.getViewportHeight());
-
-  // Debug: Log viewport dimensions on first frame or change
-  static float lastViewW = 0, lastViewH = 0;
-  if (viewWidth != lastViewW || viewHeight != lastViewH) {
-    GAMEPLAY_INFO(std::format("GPU viewport: {}x{}", viewWidth, viewHeight));
-    lastViewW = viewWidth;
-    lastViewH = viewHeight;
+  // Begin scene - sets up sprite batch with atlas, calculates camera params
+  auto ctx = m_gpuSceneRenderer->beginScene(gpuRenderer, *m_camera, interpolationAlpha);
+  if (!ctx) {
+    return;
   }
 
-  // Get interpolated camera offset (properly synced with player interpolation)
-  // This uses the same interpolation path as the player, eliminating oscillation
-  float rawCameraX = 0.0f;
-  float rawCameraY = 0.0f;
-  m_camera->getRenderOffset(rawCameraX, rawCameraY, interpolationAlpha);
-
-  float zoom = m_camera->getZoom();
-
-  // Snap to pixel for tile-aligned rendering
-  float cameraX = std::floor(rawCameraX);
-  float cameraY = std::floor(rawCameraY);
-
-  // Calculate sub-pixel offset for smooth scrolling
-  float subPixelX = (rawCameraX - cameraX) / viewWidth;
-  float subPixelY = (rawCameraY - cameraY) / viewHeight;
-
-  // Set composite params for this frame (zoom and sub-pixel offset)
-  gpuRenderer.setCompositeParams(zoom, subPixelX, subPixelY);
-
-  // Record world tile vertices
+  // Record world tile vertices (draws to ctx.spriteBatch)
   auto &worldMgr = WorldManager::Instance();
-  worldMgr.recordGPUVertices(gpuRenderer, cameraX, cameraY, viewWidth, viewHeight,
-                              zoom, interpolationAlpha);
+  worldMgr.recordGPU(*ctx.spriteBatch, ctx.cameraX, ctx.cameraY,
+                     ctx.viewWidth, ctx.viewHeight, ctx.zoom);
 
-  // Record player vertices (after world, before particles)
+  // End sprite batch recording before switching to entity batch
+  m_gpuSceneRenderer->endSpriteBatch();
+
+  // Record player vertices (uses entity batch - separate texture)
   if (mp_Player) {
-    mp_Player->recordGPUVertices(gpuRenderer, cameraX, cameraY, interpolationAlpha);
+    mp_Player->recordGPUVertices(gpuRenderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
   }
 
-  // Record particle vertices
+  // Record particle vertices (uses particle pool)
   auto &particleMgr = ParticleManager::Instance();
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    particleMgr.recordGPUVertices(gpuRenderer, cameraX, cameraY, interpolationAlpha);
+    particleMgr.recordGPUVertices(gpuRenderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
   }
 
-  // Record UI vertices
+  // End scene recording
+  m_gpuSceneRenderer->endScene();
+
+  // Record UI vertices (separate from scene)
   auto &ui = UIManager::Instance();
   ui.recordGPUVertices(gpuRenderer);
 }
@@ -1319,20 +1315,19 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
 void GamePlayState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
                                    SDL_GPURenderPass *scenePass,
                                    [[maybe_unused]] float interpolationAlpha) {
-  if (!m_camera) {
+  if (!m_camera || !m_gpuSceneRenderer) {
     return;
   }
 
-  // Render world tiles
-  auto &worldMgr = WorldManager::Instance();
-  worldMgr.renderGPU(gpuRenderer, scenePass);
+  // Render world tiles (sprite batch)
+  m_gpuSceneRenderer->renderScene(gpuRenderer, scenePass);
 
-  // Render player (after world tiles)
+  // Render player (entity batch)
   if (mp_Player) {
     mp_Player->renderGPU(gpuRenderer, scenePass);
   }
 
-  // Render particles
+  // Render particles (particle pool)
   auto &particleMgr = ParticleManager::Instance();
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
     particleMgr.renderGPU(gpuRenderer, scenePass);
