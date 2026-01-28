@@ -1299,8 +1299,11 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   worldMgr.recordGPUVertices(gpuRenderer, cameraX, cameraY, viewWidth, viewHeight,
                               zoom, interpolationAlpha);
 
-  // TODO: Record particle vertices via ParticleManager GPU method
-  // particleMgr.recordGPUVertices(gpuRenderer, cameraX, cameraY, interpolationAlpha);
+  // Record particle vertices
+  auto &particleMgr = ParticleManager::Instance();
+  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+    particleMgr.recordGPUVertices(gpuRenderer, cameraX, cameraY, interpolationAlpha);
+  }
 
   // Record UI vertices
   auto &ui = UIManager::Instance();
@@ -1318,7 +1321,11 @@ void GamePlayState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
   auto &worldMgr = WorldManager::Instance();
   worldMgr.renderGPU(gpuRenderer, scenePass);
 
-  // TODO: Render particles via ParticleManager GPU method
+  // Render particles
+  auto &particleMgr = ParticleManager::Instance();
+  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+    particleMgr.renderGPU(gpuRenderer, scenePass);
+  }
 }
 
 void GamePlayState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,

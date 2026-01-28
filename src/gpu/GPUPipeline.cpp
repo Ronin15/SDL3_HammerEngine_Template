@@ -202,10 +202,10 @@ PipelineConfig GPUPipeline::createParticleConfig(SDL_GPUShader* vertShader,
     config.vertexInput.num_vertex_attributes = 2;
     config.vertexInput.vertex_attributes = attributes;
 
-    // Additive blending for particles
+    // Standard alpha blending for particles (matches SDL_Renderer path)
     config.enableBlend = true;
     config.srcColorFactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-    config.dstColorFactor = SDL_GPU_BLENDFACTOR_ONE;
+    config.dstColorFactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
 
     return config;
 }
