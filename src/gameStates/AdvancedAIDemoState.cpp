@@ -562,18 +562,17 @@ void AdvancedAIDemoState::render(SDL_Renderer *renderer,
     // Update status only when values change (C++20 type-safe, zero allocations)
     // Use m_aiPaused member instead of polling AIManager::isGloballyPaused()
     // every frame
-    int currentFPS =
-        static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
+    float currentFPS = mp_stateManager->getCurrentFPS();
     // Use cached NPC count from update() to avoid EDM query in render path
     size_t npcCount = m_cachedNPCCount;
 
-    if (currentFPS != m_lastDisplayedFPS ||
+    if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
         npcCount != m_lastDisplayedNPCCount ||
         m_aiPaused != m_lastDisplayedPauseState) {
 
       m_statusBuffer.clear();
       std::format_to(std::back_inserter(m_statusBuffer),
-                     "FPS: {} | NPCs: {} | AI: {} | Combat: ON", currentFPS,
+                     "FPS: {:.1f} | NPCs: {} | AI: {} | Combat: ON", currentFPS,
                      npcCount, m_aiPaused ? "PAUSED" : "RUNNING");
       ui.setText("advanced_ai_status", m_statusBuffer);
 
@@ -781,17 +780,16 @@ void AdvancedAIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRender
   // Update status text before recording UI vertices
   auto &ui = UIManager::Instance();
   {
-    int currentFPS =
-        static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
+    float currentFPS = mp_stateManager->getCurrentFPS();
     size_t npcCount = m_cachedNPCCount;
 
-    if (currentFPS != m_lastDisplayedFPS ||
+    if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
         npcCount != m_lastDisplayedNPCCount ||
         m_aiPaused != m_lastDisplayedPauseState) {
 
       m_statusBuffer.clear();
       std::format_to(std::back_inserter(m_statusBuffer),
-                     "FPS: {} | NPCs: {} | AI: {} | Combat: ON", currentFPS,
+                     "FPS: {:.1f} | NPCs: {} | AI: {} | Combat: ON", currentFPS,
                      npcCount, m_aiPaused ? "PAUSED" : "RUNNING");
       ui.setText("advanced_ai_status", m_statusBuffer);
 

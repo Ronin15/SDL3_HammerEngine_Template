@@ -131,9 +131,9 @@ namespace UIConstants {
   constexpr int INFO_LABEL_HEIGHT_COMPACT = 24;    // Compact info labels (tighter layouts)
 
   // Info Label Positioning Constants (baseline pixels)
-  constexpr int INFO_FIRST_LINE_Y = 55;            // Y position of first info line after title (5px gap from title end)
+  constexpr int INFO_FIRST_LINE_Y = 62;            // Y position of first info line after title (12px gap from title end)
   constexpr int INFO_LINE_SPACING = 8;             // Vertical gap between consecutive info lines
-  constexpr int INFO_STATUS_SPACING = 12;          // Extra gap before status line
+  constexpr int INFO_STATUS_SPACING = 4;           // Extra gap before status line
   constexpr int INFO_LABEL_MARGIN_X = 10;          // Left margin for info labels
 
   // Form/Settings Layout Constants (reusable for any form-like interface)
