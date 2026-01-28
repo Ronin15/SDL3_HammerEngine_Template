@@ -1,6 +1,7 @@
 build/
 test_results/
-res/shaders/
+res/shaders/*.spv
+res/shaders/*.metal
 .cache/
 !cppcheck_suppressions.txt
 !clang_tidy_suppressions.txt
