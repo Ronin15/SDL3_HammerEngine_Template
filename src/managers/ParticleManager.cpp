@@ -1071,6 +1071,139 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
   flush();
 }
 
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#include "gpu/GPUTypes.hpp"
+
+void ParticleManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                                        float cameraX, float cameraY,
+                                        float interpolationAlpha) {
+  // Store camera position for weather particle spawning
+  m_viewport.x = cameraX;
+  m_viewport.y = cameraY;
+
+  if (m_globallyPaused.load(std::memory_order_acquire) ||
+      !m_globallyVisible.load(std::memory_order_acquire)) {
+    return;
+  }
+
+  // THREAD SAFETY: Get immutable snapshot of particle data
+  const auto &particles = m_storage.getParticlesForRead();
+  const size_t n = particles.getSafeAccessCount();
+  if (n == 0) return;
+
+  // Get particle vertex pool from GPURenderer (already mapped by GPURenderer::beginFrame)
+  auto& vertexPool = gpuRenderer.getParticleVertexPool();
+  auto* basePtr = static_cast<HammerEngine::ColorVertex*>(vertexPool.getMappedPtr());
+  if (!basePtr) {
+    return;
+  }
+
+  constexpr size_t VERTICES_PER_QUAD = 6;  // Two triangles
+  size_t maxVertices = vertexPool.getMaxVertices();
+  size_t vertexOffset = 0;
+
+  for (size_t i = 0; i < n; ++i) {
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
+        !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE)) continue;
+
+    const uint32_t c = particles.colors[i];
+    const uint8_t a8 = c & 0xFF;
+    if (a8 == 0) continue;
+
+    // Check we have space for another quad
+    if (vertexOffset + VERTICES_PER_QUAD > maxVertices) break;
+
+    // Extract RGBA (stored as RGBA in uint32_t)
+    const uint8_t r = static_cast<uint8_t>((c >> 24) & 0xFF);
+    const uint8_t g = static_cast<uint8_t>((c >> 16) & 0xFF);
+    const uint8_t b = static_cast<uint8_t>((c >> 8) & 0xFF);
+    const uint8_t a = a8;
+
+    const float size = particles.sizes[i];
+
+    // INTERPOLATION: Smooth position between previous and current
+    const float cx = (particles.prevPosX[i] + (particles.posX[i] - particles.prevPosX[i]) * interpolationAlpha) - cameraX;
+    const float cy = (particles.prevPosY[i] + (particles.posY[i] - particles.prevPosY[i]) * interpolationAlpha) - cameraY;
+    const float hx = size * 0.5f;
+    const float hy = size * 0.5f;
+
+    // Quad corners
+    const float x0 = cx - hx, y0 = cy - hy;
+    const float x1 = cx + hx, y1 = cy - hy;
+    const float x2 = cx + hx, y2 = cy + hy;
+    const float x3 = cx - hx, y3 = cy + hy;
+
+    // Helper to write a ColorVertex
+    auto writeVertex = [&](float px, float py) {
+      basePtr[vertexOffset].x = px;
+      basePtr[vertexOffset].y = py;
+      basePtr[vertexOffset].r = r;
+      basePtr[vertexOffset].g = g;
+      basePtr[vertexOffset].b = b;
+      basePtr[vertexOffset].a = a;
+      ++vertexOffset;
+    };
+
+    // Triangle 1: v0, v1, v2
+    writeVertex(x0, y0);
+    writeVertex(x1, y1);
+    writeVertex(x2, y2);
+
+    // Triangle 2: v2, v3, v0
+    writeVertex(x2, y2);
+    writeVertex(x3, y3);
+    writeVertex(x0, y0);
+  }
+
+  // Record actual vertex count written
+  vertexPool.setWrittenVertexCount(vertexOffset);
+}
+
+void ParticleManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
+                                SDL_GPURenderPass* scenePass) {
+  if (m_globallyPaused.load(std::memory_order_acquire) ||
+      !m_globallyVisible.load(std::memory_order_acquire)) {
+    return;
+  }
+
+  // Get particle vertex pool
+  auto& vertexPool = gpuRenderer.getParticleVertexPool();
+  size_t vertexCount = vertexPool.getPendingVertexCount();
+
+  if (vertexCount == 0) return;
+
+  // Get scene texture for ortho matrix dimensions
+  auto* sceneTexture = gpuRenderer.getSceneTexture();
+  if (!sceneTexture) return;
+
+  // Create orthographic projection for scene texture
+  float orthoMatrix[16];
+  HammerEngine::GPURenderer::createOrthoMatrix(
+      0.0f, static_cast<float>(sceneTexture->getWidth()),
+      static_cast<float>(sceneTexture->getHeight()), 0.0f,
+      orthoMatrix);
+
+  // Push view-projection matrix
+  gpuRenderer.pushViewProjection(scenePass, orthoMatrix);
+
+  // Bind particle pipeline
+  SDL_GPUGraphicsPipeline* particlePipeline = gpuRenderer.getParticlePipeline();
+  if (!particlePipeline) return;
+
+  SDL_BindGPUGraphicsPipeline(scenePass, particlePipeline);
+
+  // Bind vertex buffer
+  SDL_GPUBufferBinding vertexBinding{};
+  vertexBinding.buffer = vertexPool.getGPUBuffer();
+  vertexBinding.offset = 0;
+  SDL_BindGPUVertexBuffers(scenePass, 0, &vertexBinding, 1);
+
+  // Draw particles
+  SDL_DrawGPUPrimitives(scenePass, static_cast<uint32_t>(vertexCount), 1, 0, 0);
+}
+#endif
+
 uint32_t ParticleManager::playEffect(ParticleEffectType effectType,
                                      const Vector2D &position,
                                      float intensity) {

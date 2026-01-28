@@ -204,7 +204,10 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
             spriteVertexCount = m_spriteVertexPool.getPendingVertexCount();
         }
         m_spriteVertexPool.endFrame(spriteVertexCount);
-        m_particleVertexPool.endFrame(0);
+
+        // End particle vertex pool (uses pending count from ParticleManager writes)
+        size_t particleVertexCount = m_particleVertexPool.getPendingVertexCount();
+        m_particleVertexPool.endFrame(particleVertexCount);
 
         // End primitive vertex pool (uses pending count from UIManager writes)
         size_t primitiveVertexCount = m_primitiveVertexPool.getPendingVertexCount();
