@@ -1307,8 +1307,21 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   // End scene recording
   m_gpuSceneRenderer->endScene();
 
-  // Record UI vertices (separate from scene)
+  // Update FPS display if visible (must happen BEFORE recording UI vertices)
   auto &ui = UIManager::Instance();
+  if (m_fpsVisible) {
+    float const currentFPS = mp_stateManager->getCurrentFPS();
+    // Only update UI text if FPS changed by more than 0.05 (avoids flicker)
+    if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f) {
+      m_fpsBuffer.clear();
+      std::format_to(std::back_inserter(m_fpsBuffer), "FPS: {:.1f}",
+                     currentFPS);
+      ui.setText("gameplay_fps", m_fpsBuffer);
+      m_lastDisplayedFPS = currentFPS;
+    }
+  }
+
+  // Record UI vertices (separate from scene)
   ui.recordGPUVertices(gpuRenderer);
 }
 

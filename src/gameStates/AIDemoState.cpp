@@ -786,8 +786,31 @@ void AIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
     m_player->recordGPUVertices(gpuRenderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
   }
 
+  // Update status text before recording UI vertices
+  auto &ui = UIManager::Instance();
+  {
+    int currentFPS =
+        static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
+    size_t entityCount = m_cachedEntityCount;
+
+    if (currentFPS != m_lastDisplayedFPS ||
+        entityCount != m_lastDisplayedEntityCount ||
+        m_aiPaused != m_lastDisplayedPauseState) {
+
+      m_statusBuffer.clear();
+      std::format_to(std::back_inserter(m_statusBuffer),
+                     "FPS: {} | Entities: {} | AI: {}", currentFPS, entityCount,
+                     m_aiPaused ? "PAUSED" : "RUNNING");
+      ui.setText("ai_status", m_statusBuffer);
+
+      m_lastDisplayedFPS = currentFPS;
+      m_lastDisplayedEntityCount = entityCount;
+      m_lastDisplayedPauseState = m_aiPaused;
+    }
+  }
+
   // Record UI vertices
-  UIManager::Instance().recordGPUVertices(gpuRenderer);
+  ui.recordGPUVertices(gpuRenderer);
 
   m_gpuSceneRenderer->endScene();
 }
