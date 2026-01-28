@@ -257,6 +257,22 @@ if(USE_SDL3_GPU)
 
     message(STATUS "Found glslangValidator: ${GLSLANG_VALIDATOR}")
 
+    # Find spirv-cross for Metal shader generation (macOS)
+    find_program(SPIRV_CROSS
+        NAMES spirv-cross
+        HINTS ENV VULKAN_SDK /opt/homebrew/bin /usr/local/bin
+        PATH_SUFFIXES bin
+    )
+
+    if(SPIRV_CROSS)
+        message(STATUS "Found spirv-cross: ${SPIRV_CROSS} (Metal shaders will be generated)")
+        set(GENERATE_METAL_SHADERS ON)
+    else()
+        message(STATUS "spirv-cross not found - Metal shaders will not be generated")
+        message(STATUS "  Install with: brew install spirv-cross")
+        set(GENERATE_METAL_SHADERS OFF)
+    endif()
+
     # Shader source files
     set(SHADER_SOURCES
         ${CMAKE_SOURCE_DIR}/res/shaders/sprite.vert.glsl
@@ -269,13 +285,17 @@ if(USE_SDL3_GPU)
         ${CMAKE_SOURCE_DIR}/res/shaders/composite.frag.glsl
     )
 
-    # Compile each shader to SPIR-V
+    # Compile each shader to SPIR-V and optionally to Metal
     set(SHADER_SPIRV_OUTPUTS "")
+    set(SHADER_METAL_OUTPUTS "")
     foreach(SHADER_SOURCE ${SHADER_SOURCES})
         get_filename_component(SHADER_NAME ${SHADER_SOURCE} NAME)
         string(REPLACE ".glsl" ".spv" SHADER_SPV_NAME ${SHADER_NAME})
+        string(REPLACE ".glsl" ".metal" SHADER_METAL_NAME ${SHADER_NAME})
         set(SHADER_SPV "${CMAKE_SOURCE_DIR}/res/shaders/${SHADER_SPV_NAME}")
+        set(SHADER_METAL "${CMAKE_SOURCE_DIR}/res/shaders/${SHADER_METAL_NAME}")
 
+        # GLSL -> SPIR-V
         add_custom_command(
             OUTPUT ${SHADER_SPV}
             COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} -o ${SHADER_SPV}
@@ -283,14 +303,38 @@ if(USE_SDL3_GPU)
             COMMENT "Compiling shader: ${SHADER_NAME} -> ${SHADER_SPV_NAME}"
             VERBATIM
         )
-
         list(APPEND SHADER_SPIRV_OUTPUTS ${SHADER_SPV})
+
+        # SPIR-V -> Metal (if spirv-cross available)
+        if(GENERATE_METAL_SHADERS)
+            # Determine entry point name and stage based on shader type
+            if(SHADER_NAME MATCHES "\\.vert\\.")
+                set(METAL_ENTRY "vertexMain")
+                set(METAL_STAGE "vert")
+            else()
+                set(METAL_ENTRY "fragmentMain")
+                set(METAL_STAGE "frag")
+            endif()
+
+            add_custom_command(
+                OUTPUT ${SHADER_METAL}
+                COMMAND ${SPIRV_CROSS} --msl ${SHADER_SPV} --output ${SHADER_METAL} --rename-entry-point main ${METAL_ENTRY} ${METAL_STAGE}
+                DEPENDS ${SHADER_SPV}
+                COMMENT "Cross-compiling shader: ${SHADER_SPV_NAME} -> ${SHADER_METAL_NAME}"
+                VERBATIM
+            )
+            list(APPEND SHADER_METAL_OUTPUTS ${SHADER_METAL})
+        endif()
     endforeach()
 
     # Create shader compilation target
-    add_custom_target(compile_shaders ALL DEPENDS ${SHADER_SPIRV_OUTPUTS})
-
-    message(STATUS "SDL3_GPU enabled - shaders will be compiled to SPIR-V")
+    if(GENERATE_METAL_SHADERS)
+        add_custom_target(compile_shaders ALL DEPENDS ${SHADER_SPIRV_OUTPUTS} ${SHADER_METAL_OUTPUTS})
+        message(STATUS "SDL3_GPU enabled - shaders will be compiled to SPIR-V and Metal")
+    else()
+        add_custom_target(compile_shaders ALL DEPENDS ${SHADER_SPIRV_OUTPUTS})
+        message(STATUS "SDL3_GPU enabled - shaders will be compiled to SPIR-V only")
+    endif()
 endif()
 
 # Create object library for shared compilation (without main())
