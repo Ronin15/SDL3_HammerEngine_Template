@@ -12,7 +12,10 @@
 #include <cstdint>
 #include <unordered_map>
 
-namespace HammerEngine { class Camera; }  // Forward declaration
+namespace HammerEngine {
+class Camera;
+class GPURenderer;
+}  // Forward declarations
 
 class Player : public Entity {
 public:
@@ -37,6 +40,25 @@ public:
    */
   void renderAtPosition(SDL_Renderer* renderer, const Vector2D& interpPos,
                         float cameraX, float cameraY);
+
+#ifdef USE_SDL3_GPU
+  /**
+   * @brief Record player vertices to GPU vertex pool
+   * @param gpuRenderer GPU renderer instance
+   * @param cameraX Camera X offset
+   * @param cameraY Camera Y offset
+   * @param interpolationAlpha Interpolation factor for smooth rendering
+   */
+  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer, float cameraX,
+                         float cameraY, float interpolationAlpha);
+
+  /**
+   * @brief Render player using GPU pipeline
+   * @param gpuRenderer GPU renderer instance
+   * @param scenePass Active scene render pass
+   */
+  void renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* scenePass);
+#endif
 
   void clean() override;
 

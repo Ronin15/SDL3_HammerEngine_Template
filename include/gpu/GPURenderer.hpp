@@ -90,12 +90,14 @@ public:
 
     // Vertex pool accessors
     GPUVertexPool& getSpriteVertexPool() { return m_spriteVertexPool; }
+    GPUVertexPool& getEntityVertexPool() { return m_entityVertexPool; }
     GPUVertexPool& getParticleVertexPool() { return m_particleVertexPool; }
     GPUVertexPool& getPrimitiveVertexPool() { return m_primitiveVertexPool; }
     GPUVertexPool& getUIVertexPool() { return m_uiVertexPool; }
 
-    // Sprite batch accessor
+    // Sprite batch accessors
     SpriteBatch& getSpriteBatch() { return m_spriteBatch; }
+    SpriteBatch& getEntityBatch() { return m_entityBatch; }
 
     // Active command buffer (for advanced usage)
     SDL_GPUCommandBuffer* getCommandBuffer() const { return m_commandBuffer; }
@@ -198,12 +200,14 @@ private:
 
     // Vertex pools
     GPUVertexPool m_spriteVertexPool;
+    GPUVertexPool m_entityVertexPool;  // For entity sprites (player, NPCs) with separate textures
     GPUVertexPool m_particleVertexPool;
     GPUVertexPool m_primitiveVertexPool;
     GPUVertexPool m_uiVertexPool;  // For UI sprites (text, icons) rendered to swapchain
 
-    // Sprite batch
-    SpriteBatch m_spriteBatch;
+    // Sprite batches
+    SpriteBatch m_spriteBatch;      // World tiles (atlas)
+    SpriteBatch m_entityBatch;      // Entities (player, NPCs)
 
     // Viewport (initialized from window size in init())
     uint32_t m_viewportWidth{0};
