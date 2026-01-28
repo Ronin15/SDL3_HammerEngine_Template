@@ -1,14 +1,11 @@
 #version 450
 
-// Input: ColorVertex (12 bytes)
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec4 inColor;
 
-// Output to fragment shader
 layout(location = 0) out vec4 fragColor;
 
-// View-projection matrix (push constant slot 0)
-layout(set = 1, binding = 0) uniform ViewProjection {
+layout(set = 1, binding = 0) uniform UBO {
     mat4 viewProjection;
 };
 
