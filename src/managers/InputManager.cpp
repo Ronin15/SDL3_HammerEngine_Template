@@ -5,6 +5,9 @@
 
 #include "managers/InputManager.hpp"
 #include "core/Logger.hpp"
+#ifdef USE_SDL3_GPU
+#include "core/GameEngine.hpp"
+#endif
 #include "SDL3/SDL_gamepad.h"
 #include "SDL3/SDL_joystick.h"
 #include "utils/Vector2D.hpp"
@@ -218,8 +221,16 @@ void InputManager::onKeyUp(const SDL_Event& /*event*/) {
 }
 
 void InputManager::onMouseMove(const SDL_Event& event) {
+#ifdef USE_SDL3_GPU
+  // GPU renders at pixel resolution, but SDL mouse events are in window coordinates.
+  // Scale by pixel density to convert window coords to pixel coords.
+  float scale = SDL_GetWindowPixelDensity(GameEngine::Instance().getWindow());
+  m_mousePosition->setX(event.motion.x * scale);
+  m_mousePosition->setY(event.motion.y * scale);
+#else
   m_mousePosition->setX(event.motion.x);
   m_mousePosition->setY(event.motion.y);
+#endif
 }
 
 void InputManager::onMouseButtonDown(const SDL_Event& event) {
