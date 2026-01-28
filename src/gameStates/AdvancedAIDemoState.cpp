@@ -778,8 +778,31 @@ void AdvancedAIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRender
     m_player->recordGPUVertices(gpuRenderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
   }
 
+  // Update status text before recording UI vertices
+  auto &ui = UIManager::Instance();
+  {
+    int currentFPS =
+        static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
+    size_t npcCount = m_cachedNPCCount;
+
+    if (currentFPS != m_lastDisplayedFPS ||
+        npcCount != m_lastDisplayedNPCCount ||
+        m_aiPaused != m_lastDisplayedPauseState) {
+
+      m_statusBuffer.clear();
+      std::format_to(std::back_inserter(m_statusBuffer),
+                     "FPS: {} | NPCs: {} | AI: {} | Combat: ON", currentFPS,
+                     npcCount, m_aiPaused ? "PAUSED" : "RUNNING");
+      ui.setText("advanced_ai_status", m_statusBuffer);
+
+      m_lastDisplayedFPS = currentFPS;
+      m_lastDisplayedNPCCount = npcCount;
+      m_lastDisplayedPauseState = m_aiPaused;
+    }
+  }
+
   // Record UI vertices
-  UIManager::Instance().recordGPUVertices(gpuRenderer);
+  ui.recordGPUVertices(gpuRenderer);
 
   m_gpuSceneRenderer->endScene();
 }
