@@ -2457,9 +2457,44 @@ void HammerEngine::TileRenderer::recordGPUTiles(
       &sc.obstacle_diamond_deposit // DIAMOND_DEPOSIT
   };
 
-  // Iterate visible tiles with cache-friendly row-major order
+  // Build decoration lookup table (enum value -> coords pointer)
+  // Index 0 = NONE (null), indices 1-16 match DecorationType enum values
+  const AtlasCoords* decorationLUT[17] = {
+      nullptr,                          // NONE
+      &sc.decoration_flower_blue,       // FLOWER_BLUE
+      &sc.decoration_flower_pink,       // FLOWER_PINK
+      &sc.decoration_flower_white,      // FLOWER_WHITE
+      &sc.decoration_flower_yellow,     // FLOWER_YELLOW
+      &sc.decoration_mushroom_purple,   // MUSHROOM_PURPLE
+      &sc.decoration_mushroom_tan,      // MUSHROOM_TAN
+      &sc.decoration_grass_small,       // GRASS_SMALL
+      &sc.decoration_grass_large,       // GRASS_LARGE
+      &sc.decoration_bush,              // BUSH
+      &sc.decoration_stump_small,       // STUMP_SMALL
+      &sc.decoration_stump_medium,      // STUMP_MEDIUM
+      &sc.decoration_rock_small,        // ROCK_SMALL
+      &sc.decoration_dead_log_hz,       // DEAD_LOG_HZ
+      &sc.decoration_dead_log_vertical, // DEAD_LOG_VERTICAL
+      &sc.decoration_lily_pad,          // LILY_PAD
+      &sc.decoration_water_flower       // WATER_FLOWER
+  };
+
+  // Sprite data for deferred rendering (reusable buffers, avoids per-frame alloc)
+  struct GPUSprite {
+    float screenX, screenY;         // Destination position
+    float srcX, srcY, srcW, srcH;   // Atlas source rect
+    float dstW, dstH;               // Destination dimensions
+  };
+  struct GPUYSortedSprite : GPUSprite {
+    float sortY;                    // Y value for sorting (bottom of sprite)
+  };
+  static std::vector<GPUSprite> s_gpuDecoBuffer;
+  static std::vector<GPUYSortedSprite> s_gpuObstacleBuffer;
+  s_gpuDecoBuffer.clear();
+  s_gpuObstacleBuffer.clear();
+
+  // PASS 1: Render biomes, collect decorations + obstacles
   for (int tileY = startTileY; tileY < endTileY; ++tileY) {
-    // Cache row reference for contiguous memory access
     const auto& row = worldData->grid[tileY];
     const float screenY = tileY * scaledTileSize - baseCameraY;
     float screenX = startScreenX;
@@ -2467,7 +2502,7 @@ void HammerEngine::TileRenderer::recordGPUTiles(
     for (int tileX = startTileX; tileX < endTileX; ++tileX) {
       const auto& tile = row[tileX];
 
-      // Layer 1: Biome base tile - LUT for water or biome enum
+      // Draw biome tile immediately
       const AtlasCoords* biomeCoords = tile.isWater
           ? &sc.obstacle_water
           : biomeLUT[static_cast<int>(tile.biome)];
@@ -2476,17 +2511,72 @@ void HammerEngine::TileRenderer::recordGPUTiles(
           biomeCoords->x, biomeCoords->y, biomeCoords->w, biomeCoords->h,
           screenX, screenY, scaledTileSize, scaledTileSize);
 
-      // Layer 2: Obstacle (if any) - direct LUT access
-      if (tile.obstacleType != ObstacleType::NONE) {
+      // Collect decoration (if any, not blocked by non-water obstacle)
+      const auto decoIdx = static_cast<size_t>(tile.decorationType);
+      if (decoIdx != 0 &&
+          (tile.obstacleType == ObstacleType::NONE ||
+           tile.obstacleType == ObstacleType::WATER)) {
+        const AtlasCoords* decoCoords = (decoIdx < 17) ? decorationLUT[decoIdx] : nullptr;
+        if (decoCoords && decoCoords->w > 0) {
+          const float offsetX = (scaledTileSize - decoCoords->w) * 0.5f;
+          const float offsetY = scaledTileSize - decoCoords->h;
+          s_gpuDecoBuffer.push_back({
+              screenX + offsetX, screenY + offsetY,
+              static_cast<float>(decoCoords->x), static_cast<float>(decoCoords->y),
+              static_cast<float>(decoCoords->w), static_cast<float>(decoCoords->h),
+              static_cast<float>(decoCoords->w), static_cast<float>(decoCoords->h)
+          });
+        }
+      }
+
+      // Collect obstacle for Y-sorting
+      if (tile.obstacleType != ObstacleType::NONE &&
+          tile.obstacleType != ObstacleType::WATER) {
         const auto obstacleIdx = static_cast<int>(tile.obstacleType);
         const AtlasCoords* obstacleCoords = obstacleLUT[obstacleIdx];
 
-        spriteBatch.draw(
-            obstacleCoords->x, obstacleCoords->y, obstacleCoords->w, obstacleCoords->h,
-            screenX, screenY, scaledTileSize, scaledTileSize);
+        if (obstacleCoords && obstacleCoords->w > 0) {
+          const float spriteW = static_cast<float>(obstacleCoords->w);
+          const float spriteH = static_cast<float>(obstacleCoords->h);
+          const float offsetX = (scaledTileSize - spriteW) * 0.5f;
+          const float offsetY = scaledTileSize - spriteH;
+
+          s_gpuObstacleBuffer.push_back({
+              {screenX + offsetX, screenY + offsetY,
+               static_cast<float>(obstacleCoords->x), static_cast<float>(obstacleCoords->y),
+               static_cast<float>(obstacleCoords->w), static_cast<float>(obstacleCoords->h),
+               spriteW, spriteH},
+              screenY + scaledTileSize  // sortY = tile bottom
+          });
+        }
       }
 
       screenX += scaledTileSize;
+    }
+  }
+
+  // PASS 2: Render collected decorations, then sorted obstacles
+
+  // Decorations (no sorting needed, just deferred to render after all biomes)
+  for (const auto& deco : s_gpuDecoBuffer) {
+    spriteBatch.draw(
+        deco.srcX, deco.srcY, deco.srcW, deco.srcH,
+        deco.screenX, deco.screenY, deco.dstW, deco.dstH);
+  }
+
+  // Obstacles (Y-sorted for correct overlap)
+  if (!s_gpuObstacleBuffer.empty()) {
+    std::sort(s_gpuObstacleBuffer.begin(), s_gpuObstacleBuffer.end(),
+              [](const GPUYSortedSprite& a, const GPUYSortedSprite& b) {
+                if (a.sortY != b.sortY) return a.sortY < b.sortY;
+                if (a.screenX != b.screenX) return a.screenX < b.screenX;
+                return a.screenY < b.screenY;
+              });
+
+    for (const auto& obs : s_gpuObstacleBuffer) {
+      spriteBatch.draw(
+          obs.srcX, obs.srcY, obs.srcW, obs.srcH,
+          obs.screenX, obs.screenY, obs.dstW, obs.dstH);
     }
   }
   // Batch end() is called by GPUSceneRenderer, not here
