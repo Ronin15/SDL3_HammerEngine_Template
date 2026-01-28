@@ -1552,8 +1552,30 @@ void EventDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   auto &particleMgr = ParticleManager::Instance();
   particleMgr.recordGPUVertices(gpuRenderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
 
+  // Update status text before recording UI vertices
+  auto &uiMgr = UIManager::Instance();
+  {
+    float currentFPS = mp_stateManager->getCurrentFPS();
+    size_t npcCount = m_cachedNPCCount;
+
+    if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
+        m_cachedWeatherStr != m_lastDisplayedWeather ||
+        npcCount != m_lastDisplayedNPCCount) {
+
+      m_statusBuffer.clear();
+      std::format_to(std::back_inserter(m_statusBuffer),
+                     "FPS: {:.1f} | Weather: {} | NPCs: {}", currentFPS,
+                     m_cachedWeatherStr, npcCount);
+      uiMgr.setText("event_status", m_statusBuffer);
+
+      m_lastDisplayedFPS = currentFPS;
+      m_lastDisplayedWeather = m_cachedWeatherStr;
+      m_lastDisplayedNPCCount = npcCount;
+    }
+  }
+
   // Record UI vertices
-  UIManager::Instance().recordGPUVertices(gpuRenderer);
+  uiMgr.recordGPUVertices(gpuRenderer);
 
   m_gpuSceneRenderer->endScene();
 }

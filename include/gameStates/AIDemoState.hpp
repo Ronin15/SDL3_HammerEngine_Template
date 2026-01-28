@@ -102,7 +102,7 @@ private:
 
     // Status display optimization - zero per-frame allocations (C++20 type-safe)
     std::string m_statusBuffer{};
-    int m_lastDisplayedFPS{-1};
+    float m_lastDisplayedFPS{-1.0f};
     size_t m_lastDisplayedEntityCount{0};
     bool m_lastDisplayedPauseState{false};
 

@@ -613,18 +613,17 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
     // Update status only when values change (C++20 type-safe, zero allocations)
     // Use m_aiPaused member instead of polling AIManager::isGloballyPaused()
     // every frame
-    int currentFPS =
-        static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
+    float currentFPS = mp_stateManager->getCurrentFPS();
     // Use cached entity count from update() to avoid EDM query in render path
     size_t entityCount = m_cachedEntityCount;
 
-    if (currentFPS != m_lastDisplayedFPS ||
+    if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
         entityCount != m_lastDisplayedEntityCount ||
         m_aiPaused != m_lastDisplayedPauseState) {
 
       m_statusBuffer.clear(); // Keeps reserved capacity
       std::format_to(std::back_inserter(m_statusBuffer),
-                     "FPS: {} | Entities: {} | AI: {}", currentFPS, entityCount,
+                     "FPS: {:.1f} | Entities: {} | AI: {}", currentFPS, entityCount,
                      m_aiPaused ? "PAUSED" : "RUNNING");
       ui.setText("ai_status", m_statusBuffer);
 
@@ -789,17 +788,16 @@ void AIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   // Update status text before recording UI vertices
   auto &ui = UIManager::Instance();
   {
-    int currentFPS =
-        static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
+    float currentFPS = mp_stateManager->getCurrentFPS();
     size_t entityCount = m_cachedEntityCount;
 
-    if (currentFPS != m_lastDisplayedFPS ||
+    if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
         entityCount != m_lastDisplayedEntityCount ||
         m_aiPaused != m_lastDisplayedPauseState) {
 
       m_statusBuffer.clear();
       std::format_to(std::back_inserter(m_statusBuffer),
-                     "FPS: {} | Entities: {} | AI: {}", currentFPS, entityCount,
+                     "FPS: {:.1f} | Entities: {} | AI: {}", currentFPS, entityCount,
                      m_aiPaused ? "PAUSED" : "RUNNING");
       ui.setText("ai_status", m_statusBuffer);
 
