@@ -4,6 +4,7 @@
 
 - [Core Systems](#core-systems)
   - [GameEngine & Core Systems](#gameengine--core-systems)
+  - [GPU Rendering System](#gpu-rendering-system)
   - [AI System](#ai-system)
   - [Collision System](#collision-system)
   - [Combat System](#combat-system)
@@ -32,6 +33,22 @@ Foundation systems that power the game engine architecture and timing.
 - **[GameEngine](core/GameEngine.md)** - Central engine singleton managing all systems and coordination
 - **[GameTimeManager](managers/GameTimeManager.md)** - Fantasy calendar, day/night cycles, seasons, weather, and time events
 - **[TimestepManager](managers/TimestepManager.md)** - Fixed timestep timing with accumulator-based updates
+
+### GPU Rendering System
+Modern GPU rendering pipeline built on SDL3's GPU API, enabled via `-DUSE_SDL3_GPU=ON`.
+
+- **[GPU Rendering Overview](gpu/GPURendering.md)** - Complete GPU system documentation including two-pass rendering architecture, triple-buffered vertex pools, sprite batching, and shader system
+- **Key Components:**
+  - **GPUDevice** - SDL_GPUDevice wrapper and shader format queries
+  - **GPURenderer** - Frame orchestration, pipeline state, and uniform management
+  - **GPUShaderManager** - Automatic SPIR-V (Vulkan) / MSL (Metal) shader loading
+  - **SpriteBatch** - Up to 25,000 sprites per batch with atlas support
+  - **GPUVertexPool** - Triple-buffered vertex storage for zero CPU stalls
+  - **GPUSceneRenderer** - Scene rendering facade with GPUSceneContext
+- **Features:**
+  - Two-pass rendering: Scene texture → Composite pass (day/night tinting, zoom, sub-pixel offset)
+  - Day/night lighting via composite shader integration with DayNightController
+  - GameState integration via `recordGPUVertices()`, `renderGPUScene()`, `renderGPUUI()`
 
 ### AI System
 The AI system provides flexible, thread-safe behavior management for game entities with individual behavior instances and mode-based configuration.
@@ -67,7 +84,7 @@ State-scoped event handlers that control specific behaviors without owning data.
 - **[Controllers Overview](controllers/README.md)** - Controller pattern, lifecycle, vs. Managers comparison
 - **[ControllerRegistry](controllers/ControllerRegistry.md)** - Type-erased container for batch controller management with `add<T>()`, `subscribeAll()`, `updateAll()` operations
 - **[WeatherController](controllers/WeatherController.md)** - Weather event coordination
-- **[DayNightController](controllers/DayNightController.md)** - Time period tracking and visual effects
+- **[DayNightController](controllers/DayNightController.md)** - Time period tracking, lighting interpolation (requires `update(dt)` each frame), and GPU composite shader integration
 - **[CombatController](controllers/CombatController.md)** - Handles combat logic, including hit detection, damage, and status effects.
 
 ### UI System
@@ -135,7 +152,9 @@ Core utility classes and helper systems used throughout the engine.
 
 See the [Utility Documentation Index](utils/README.md) for additional utility documentation and organization.
 
-- **[SceneRenderer](utils/SceneRenderer.md)** - Pixel-perfect zoomed scene rendering with smooth sub-pixel scrolling via intermediate texture
+- **[SceneRenderer](utils/SceneRenderer.md)** - Pixel-perfect zoomed scene rendering with smooth sub-pixel scrolling via intermediate texture (SDL_Renderer path)
+- **[WorldRenderPipeline](utils/WorldRenderPipeline.md)** - Four-phase rendering facade (prepareChunks→beginScene→renderWorld→endScene) for SDL_Renderer path
+- **[FrameProfiler](utils/FrameProfiler.md)** - Debug-only frame timing with three-tier profiling (Frame→Manager→Render phases), hitch detection (>20ms), F3 overlay toggle, GPU-aware phases. Zero overhead in Release builds.
 - **[Camera](utils/Camera.md)** - 2D camera utility with smooth target following, discrete zoom levels, world bounds clamping, and coordinate transformation
 - **[Logger System](utils/Logger.md)** - Comprehensive logging system with debug/release optimization and system-specific macros
 - **[JsonReader](utils/JsonReader.md)** - RFC 8259 compliant JSON parser with type-safe accessors and robust error handling
