@@ -3,6 +3,7 @@
 
 #include "gpu/GPUVertexPool.hpp"
 #include "core/Logger.hpp"
+#include <algorithm>
 #include <format>
 
 namespace HammerEngine {
@@ -54,9 +55,8 @@ bool GPUVertexPool::init(SDL_GPUDevice* device, uint32_t vertexSize, size_t maxV
 void GPUVertexPool::shutdown() {
     m_gpuBuffer = GPUBuffer();
 
-    for (auto& tb : m_transferBuffers) {
-        tb = GPUTransferBuffer();
-    }
+    std::generate(m_transferBuffers.begin(), m_transferBuffers.end(),
+                  []() { return GPUTransferBuffer(); });
 
     m_device = nullptr;
     m_frameIndex = 0;

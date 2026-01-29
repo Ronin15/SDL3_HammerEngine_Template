@@ -48,8 +48,11 @@ GamePlayState::GamePlayState()
 GamePlayState::~GamePlayState() = default;
 
 bool GamePlayState::enter() {
+  // Cache GameEngine reference at function start
+  auto &gameEngine = GameEngine::Instance();
+
   // Resume all game managers (may be paused from menu states)
-  GameEngine::Instance().setGlobalPause(false);
+  gameEngine.setGlobalPause(false);
 
   // Reset transition flag when entering state
   m_transitioningToLoading = false;
@@ -68,7 +71,6 @@ bool GamePlayState::enter() {
 
   try {
     // Local references for init-only managers (not cached as members)
-    const auto &gameEngine = GameEngine::Instance();
     auto &gameTimeMgr = GameTimeManager::Instance();
 
     // Initialize resource handles first

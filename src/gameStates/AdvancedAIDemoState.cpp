@@ -156,8 +156,11 @@ void AdvancedAIDemoState::handleInput() {
 }
 
 bool AdvancedAIDemoState::enter() {
+  // Cache GameEngine reference at function start
+  auto &gameEngine = GameEngine::Instance();
+
   // Resume all game managers (may be paused from menu states)
-  GameEngine::Instance().setGlobalPause(false);
+  gameEngine.setGlobalPause(false);
 
   GAMESTATE_INFO("Entering AdvancedAIDemoState...");
 
@@ -183,8 +186,6 @@ bool AdvancedAIDemoState::enter() {
   GAMESTATE_INFO("World already loaded - initializing advanced AI demo");
 
   try {
-    // Cache GameEngine reference for better performance
-    const GameEngine &gameEngine = GameEngine::Instance();
     auto &worldManager = WorldManager::Instance();
 
     // Setup world size using actual world bounds from loaded world

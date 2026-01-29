@@ -78,8 +78,11 @@ EventDemoState::~EventDemoState() {
 }
 
 bool EventDemoState::enter() {
+  // Cache GameEngine reference at function start
+  auto &gameEngine = GameEngine::Instance();
+
   // Resume all game managers (may be paused from menu states)
-  GameEngine::Instance().setGlobalPause(false);
+  gameEngine.setGlobalPause(false);
 
   GAMESTATE_INFO("Entering EventDemoState...");
 
@@ -105,8 +108,6 @@ bool EventDemoState::enter() {
   GAMESTATE_INFO("World already loaded - initializing event demo");
 
   try {
-    // Cache GameEngine reference for better performance
-    const GameEngine &gameEngine = GameEngine::Instance();
     auto &worldManager = WorldManager::Instance();
 
     // Update world dimensions from loaded world
