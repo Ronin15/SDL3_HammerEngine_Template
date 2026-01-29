@@ -297,7 +297,7 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
     // Begin scene render pass
     SDL_GPUColorTargetInfo colorTarget = m_sceneTexture->asColorTarget(
         SDL_GPU_LOADOP_CLEAR,
-        {0.05f, 0.05f, 0.1f, 1.0f}  // Dark blue-ish clear color
+        {0.122f, 0.125f, 0.133f, 1.0f}  // HammerGray slate gray (31, 32, 34)
     );
 
     m_currentPass = SDL_BeginGPURenderPass(m_commandBuffer, &colorTarget, 1, nullptr);
