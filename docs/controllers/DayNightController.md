@@ -9,7 +9,9 @@
 
 ## Overview
 
-DayNightController tracks time periods (Morning/Day/Evening/Night) and dispatches `TimePeriodChangedEvent` when transitions occur. It does NOT render - rendering is handled by subscribers to the event. This separation allows multiple systems to react to time period changes independently.
+DayNightController tracks time periods (Morning/Day/Evening/Night) and dispatches `TimePeriodChangedEvent` when transitions occur. It also manages smooth lighting interpolation (30-second transitions) and integrates directly with the GPU rendering path.
+
+**Important:** DayNightController now requires `update(dt)` to be called each frame for lighting interpolation.
 
 ## Event Flow
 
@@ -17,8 +19,83 @@ DayNightController tracks time periods (Morning/Day/Evening/Night) and dispatche
 GameTimeManager::dispatchTimeEvents()
   → HourChangedEvent (Deferred)
     → DayNightController detects period change
+      → Sets target lighting values
       → Dispatches TimePeriodChangedEvent with visual config
         → GamePlayState (or other subscribers) handle rendering
+```
+
+## Update Pattern (Required)
+
+**Critical:** DayNightController now requires `update(dt)` each frame for smooth lighting interpolation.
+
+```cpp
+// In GamePlayState::update()
+void GamePlayState::update(float dt) {
+    // Update day/night lighting interpolation
+    m_dayNightController.update(dt);
+
+    // Other update logic...
+}
+```
+
+The `update()` method:
+1. Interpolates current RGBA values toward target values
+2. Updates GPU renderer with current lighting (GPU path only)
+3. Transition duration: 30 seconds for full period change
+
+### Lighting Interpolation
+
+When a time period changes, lighting transitions smoothly:
+
+```
+Period Change (e.g., Day → Evening)
+  → Target values set: {255, 80, 40, 40}
+  → update(dt) called each frame:
+      current += (target - current) * (dt / 30.0f)
+  → After 30 seconds: current == target
+```
+
+## GPU Integration
+
+For GPU rendering (`USE_SDL3_GPU`), DayNightController automatically updates the composite shader parameters:
+
+```cpp
+void DayNightController::update(float dt) {
+    // Interpolate lighting values
+    interpolateLighting(dt);
+
+#ifdef USE_SDL3_GPU
+    // Update GPU renderer with current lighting
+    GPURenderer::Instance().setDayNightParams(
+        m_currentR, m_currentG, m_currentB, m_currentA
+    );
+#endif
+}
+```
+
+The composite shader applies ambient tinting:
+```glsl
+vec3 tinted = mix(scene.rgb, scene.rgb * ambientColor.rgb, ambientColor.a);
+```
+
+### SDL_Renderer Path
+
+For SDL_Renderer, subscribers still handle rendering via the event system (no change from before):
+
+```cpp
+void onTimePeriodChanged(const EventData& data) {
+    auto periodEvent = std::static_pointer_cast<TimePeriodChangedEvent>(data.event);
+    m_currentVisuals = periodEvent->getVisuals();
+}
+
+void render() {
+    // Apply time-of-day overlay
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer,
+        m_currentVisuals.overlayR, m_currentVisuals.overlayG,
+        m_currentVisuals.overlayB, m_currentVisuals.overlayA);
+    SDL_RenderFillRect(renderer, nullptr);
+}
 ```
 
 ## Quick Start
@@ -36,11 +113,14 @@ private:
 // In GamePlayState::enter()
 m_dayNightController.subscribe();
 
-// Subscribe to time period changes for rendering
+// Subscribe to time period changes for rendering (SDL_Renderer path)
 m_periodToken = EventManager::Instance().registerHandlerWithToken(
     EventTypeId::Time,
     [this](const EventData& data) { onTimePeriodChanged(data); }
 );
+
+// In GamePlayState::update() - REQUIRED for lighting interpolation
+m_dayNightController.update(dt);
 
 // In GamePlayState::exit()
 EventManager::Instance().removeHandler(m_periodToken);
@@ -77,6 +157,21 @@ void unsubscribe();
 Unsubscribe from time events.
 
 **Note:** Called when a world state exits.
+
+### update()
+
+```cpp
+void update(float deltaTime);
+```
+
+Update lighting interpolation each frame. **Required** for smooth transitions.
+
+**Parameters:**
+- `deltaTime`: Time since last frame in seconds
+
+**Actions:**
+1. Interpolates RGBA values toward target (30-second transition)
+2. Updates GPURenderer with current lighting (GPU path only)
 
 ### getCurrentPeriod()
 
@@ -215,9 +310,10 @@ The controller monitors `HourChangedEvent` and detects when the hour crosses a p
 
 ## Performance Characteristics
 
-- **Per-frame cost:** Zero (event-driven only)
-- **Memory:** Minimal (handler tokens, current/previous period state)
+- **Per-frame cost:** ~0.01ms (interpolation math + GPU uniform update)
+- **Memory:** Minimal (handler tokens, current/target lighting state)
 - **Allocations:** Zero per-frame
+- **Transition duration:** 30 seconds for full period change
 
 ## Customizing Visuals
 
@@ -245,3 +341,4 @@ void onTimePeriodChanged(const EventData& data) {
 - **Controller Pattern:** `docs/controllers/README.md`
 - **GameTime:** `docs/core/GameTime.md`
 - **TimeEvents:** `docs/events/TimeEvents.md`
+- **GPURendering:** `docs/gpu/GPURendering.md` - GPU composite shader integration
