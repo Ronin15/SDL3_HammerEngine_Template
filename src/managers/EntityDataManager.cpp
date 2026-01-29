@@ -1645,9 +1645,7 @@ void EntityDataManager::destroyEntity(EntityHandle handle) {
     }
 
     // Route static resources to static destruction path (immediate, not queued)
-    if (handle.kind == EntityKind::DroppedItem ||
-        handle.kind == EntityKind::Container ||
-        handle.kind == EntityKind::Harvestable) {
+    if (EntityTraits::usesStaticPool(handle.kind)) {
         destroyStaticResource(handle);
         return;
     }
@@ -2109,9 +2107,7 @@ bool EntityDataManager::isValidHandle(EntityHandle handle) const {
     }
 
     // Check if this is a static pool entity (resources)
-    if (handle.kind == EntityKind::DroppedItem ||
-        handle.kind == EntityKind::Container ||
-        handle.kind == EntityKind::Harvestable) {
+    if (EntityTraits::usesStaticPool(handle.kind)) {
         auto it = m_staticIdToIndex.find(handle.id);
         if (it == m_staticIdToIndex.end()) {
             return false;
@@ -2147,9 +2143,7 @@ size_t EntityDataManager::getIndex(EntityHandle handle) const {
     }
 
     // Route to correct pool based on entity kind
-    if (handle.kind == EntityKind::DroppedItem ||
-        handle.kind == EntityKind::Container ||
-        handle.kind == EntityKind::Harvestable) {
+    if (EntityTraits::usesStaticPool(handle.kind)) {
         // Static pool lookup
         auto it = m_staticIdToIndex.find(handle.id);
         if (it == m_staticIdToIndex.end()) {
@@ -2221,9 +2215,7 @@ EntityHotData& EntityDataManager::getHotData(EntityHandle handle) {
     assert(index != SIZE_MAX && "Invalid entity handle");
 
     // Route to correct pool based on entity kind
-    if (handle.kind == EntityKind::DroppedItem ||
-        handle.kind == EntityKind::Container ||
-        handle.kind == EntityKind::Harvestable) {
+    if (EntityTraits::usesStaticPool(handle.kind)) {
         return m_staticHotData[index];
     }
     return m_hotData[index];
@@ -2234,9 +2226,7 @@ const EntityHotData& EntityDataManager::getHotData(EntityHandle handle) const {
     assert(index != SIZE_MAX && "Invalid entity handle");
 
     // Route to correct pool based on entity kind
-    if (handle.kind == EntityKind::DroppedItem ||
-        handle.kind == EntityKind::Container ||
-        handle.kind == EntityKind::Harvestable) {
+    if (EntityTraits::usesStaticPool(handle.kind)) {
         return m_staticHotData[index];
     }
     return m_hotData[index];

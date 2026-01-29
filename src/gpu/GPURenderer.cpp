@@ -498,7 +498,7 @@ void GPURenderer::pushCompositeUniforms(SDL_GPURenderPass* pass,
     ubo.ambientB = m_dayNightB;
     ubo.ambientAlpha = m_dayNightAlpha;
 
-    // Push to fragment shader (set 1, binding 0 in fragment)
+    // Push to fragment shader (slot 0 - SDL3 GPU uses slot-based binding, not descriptor sets)
     SDL_PushGPUFragmentUniformData(m_commandBuffer, 0, &ubo, sizeof(CompositeUBO));
 }
 
