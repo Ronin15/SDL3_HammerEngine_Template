@@ -224,7 +224,11 @@ void InputManager::onMouseMove(const SDL_Event& event) {
 #ifdef USE_SDL3_GPU
   // GPU renders at pixel resolution, but SDL mouse events are in window coordinates.
   // Scale by pixel density to convert window coords to pixel coords.
-  float scale = SDL_GetWindowPixelDensity(GameEngine::Instance().getWindow());
+  float scale = 1.0f;
+  SDL_Window* window = GameEngine::Instance().getWindow();
+  if (window) {
+    scale = SDL_GetWindowPixelDensity(window);
+  }
   m_mousePosition->setX(event.motion.x * scale);
   m_mousePosition->setY(event.motion.y * scale);
 #else
