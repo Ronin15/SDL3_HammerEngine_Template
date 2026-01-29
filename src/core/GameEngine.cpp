@@ -1132,6 +1132,9 @@ void GameEngine::render() {
     // Begin GPU frame (acquires command buffer, starts copy pass, maps vertex pools)
     gpuRenderer.beginFrame();
 
+    // Update profiler overlay (creates/updates UIManager components before recording)
+    HammerEngine::FrameProfiler::Instance().renderOverlay(nullptr, nullptr);
+
     // Record vertices for GPU rendering (before scene pass)
     // This is where game states write sprite/particle/primitive vertices
     mp_gameStateManager->recordGPUVertices(gpuRenderer, interpolationAlpha);
