@@ -85,11 +85,20 @@ bool GPUPipeline::create(SDL_GPUDevice* device, const PipelineConfig& config) {
     depthStencil.compare_op = config.depthCompareOp;
     depthStencil.enable_stencil_test = false;
 
+    // Build vertex input state from embedded config arrays
+    SDL_GPUVertexInputState vertexInput{};
+    vertexInput.num_vertex_buffers = config.vertexBufferCount;
+    vertexInput.vertex_buffer_descriptions = config.vertexBufferCount > 0
+        ? config.vertexBuffers.data() : nullptr;
+    vertexInput.num_vertex_attributes = config.vertexAttributeCount;
+    vertexInput.vertex_attributes = config.vertexAttributeCount > 0
+        ? config.vertexAttributes.data() : nullptr;
+
     // Build pipeline create info
     SDL_GPUGraphicsPipelineCreateInfo createInfo{};
     createInfo.vertex_shader = config.vertexShader;
     createInfo.fragment_shader = config.fragmentShader;
-    createInfo.vertex_input_state = config.vertexInput;
+    createInfo.vertex_input_state = vertexInput;
     createInfo.primitive_type = config.primitiveType;
     createInfo.rasterizer_state = rasterizer;
     createInfo.depth_stencil_state = depthStencil;
@@ -124,36 +133,29 @@ PipelineConfig GPUPipeline::createSpriteConfig(SDL_GPUShader* vertShader,
     config.colorFormat = colorFormat;
     config.primitiveType = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
 
-    // Vertex input: position (vec2), texcoord (vec2), color (rgba8)
-    // Note: static storage required - PipelineConfig stores pointers that must persist
-    // until pipeline creation. Thread safety ensured by single-threaded init.
-    static SDL_GPUVertexBufferDescription bufferDesc{};
-    bufferDesc.slot = 0;
-    bufferDesc.pitch = sizeof(float) * 4 + sizeof(uint8_t) * 4;  // 20 bytes
-    bufferDesc.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-    bufferDesc.instance_step_rate = 0;
+    // Vertex buffer: position(vec2) + texcoord(vec2) + color(rgba8) = 20 bytes
+    config.vertexBuffers[0].slot = 0;
+    config.vertexBuffers[0].pitch = sizeof(float) * 4 + sizeof(uint8_t) * 4;
+    config.vertexBuffers[0].input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+    config.vertexBuffers[0].instance_step_rate = 0;
+    config.vertexBufferCount = 1;
 
-    static SDL_GPUVertexAttribute attributes[3]{};
-    // Position
-    attributes[0].location = 0;
-    attributes[0].buffer_slot = 0;
-    attributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
-    attributes[0].offset = 0;
-    // TexCoord
-    attributes[1].location = 1;
-    attributes[1].buffer_slot = 0;
-    attributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
-    attributes[1].offset = sizeof(float) * 2;
-    // Color
-    attributes[2].location = 2;
-    attributes[2].buffer_slot = 0;
-    attributes[2].format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM;
-    attributes[2].offset = sizeof(float) * 4;
+    // Vertex attributes: position, texcoord, color
+    config.vertexAttributes[0].location = 0;
+    config.vertexAttributes[0].buffer_slot = 0;
+    config.vertexAttributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
+    config.vertexAttributes[0].offset = 0;
 
-    config.vertexInput.num_vertex_buffers = 1;
-    config.vertexInput.vertex_buffer_descriptions = &bufferDesc;
-    config.vertexInput.num_vertex_attributes = 3;
-    config.vertexInput.vertex_attributes = attributes;
+    config.vertexAttributes[1].location = 1;
+    config.vertexAttributes[1].buffer_slot = 0;
+    config.vertexAttributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
+    config.vertexAttributes[1].offset = sizeof(float) * 2;
+
+    config.vertexAttributes[2].location = 2;
+    config.vertexAttributes[2].buffer_slot = 0;
+    config.vertexAttributes[2].format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM;
+    config.vertexAttributes[2].offset = sizeof(float) * 4;
+    config.vertexAttributeCount = 3;
 
     if (alpha) {
         config.enableBlend = true;
@@ -180,31 +182,24 @@ PipelineConfig GPUPipeline::createParticleConfig(SDL_GPUShader* vertShader,
     config.colorFormat = colorFormat;
     config.primitiveType = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
 
-    // Vertex input: position (vec2), color (rgba8)
-    // Note: static storage required - PipelineConfig stores pointers that must persist
-    // until pipeline creation. Thread safety ensured by single-threaded init.
-    static SDL_GPUVertexBufferDescription bufferDesc{};
-    bufferDesc.slot = 0;
-    bufferDesc.pitch = sizeof(float) * 2 + sizeof(uint8_t) * 4;  // 12 bytes
-    bufferDesc.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-    bufferDesc.instance_step_rate = 0;
+    // Vertex buffer: position(vec2) + color(rgba8) = 12 bytes
+    config.vertexBuffers[0].slot = 0;
+    config.vertexBuffers[0].pitch = sizeof(float) * 2 + sizeof(uint8_t) * 4;
+    config.vertexBuffers[0].input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+    config.vertexBuffers[0].instance_step_rate = 0;
+    config.vertexBufferCount = 1;
 
-    static SDL_GPUVertexAttribute attributes[2]{};
-    // Position
-    attributes[0].location = 0;
-    attributes[0].buffer_slot = 0;
-    attributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
-    attributes[0].offset = 0;
-    // Color
-    attributes[1].location = 1;
-    attributes[1].buffer_slot = 0;
-    attributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM;
-    attributes[1].offset = sizeof(float) * 2;
+    // Vertex attributes: position, color
+    config.vertexAttributes[0].location = 0;
+    config.vertexAttributes[0].buffer_slot = 0;
+    config.vertexAttributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
+    config.vertexAttributes[0].offset = 0;
 
-    config.vertexInput.num_vertex_buffers = 1;
-    config.vertexInput.vertex_buffer_descriptions = &bufferDesc;
-    config.vertexInput.num_vertex_attributes = 2;
-    config.vertexInput.vertex_attributes = attributes;
+    config.vertexAttributes[1].location = 1;
+    config.vertexAttributes[1].buffer_slot = 0;
+    config.vertexAttributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM;
+    config.vertexAttributes[1].offset = sizeof(float) * 2;
+    config.vertexAttributeCount = 2;
 
     // Standard alpha blending for particles (matches SDL_Renderer path)
     config.enableBlend = true;
@@ -223,31 +218,24 @@ PipelineConfig GPUPipeline::createPrimitiveConfig(SDL_GPUShader* vertShader,
     config.colorFormat = colorFormat;
     config.primitiveType = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
 
-    // Vertex input: position (vec2), color (rgba8)
-    // Note: static storage required - PipelineConfig stores pointers that must persist
-    // until pipeline creation. Thread safety ensured by single-threaded init.
-    static SDL_GPUVertexBufferDescription bufferDesc{};
-    bufferDesc.slot = 0;
-    bufferDesc.pitch = sizeof(float) * 2 + sizeof(uint8_t) * 4;  // 12 bytes
-    bufferDesc.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-    bufferDesc.instance_step_rate = 0;
+    // Vertex buffer: position(vec2) + color(rgba8) = 12 bytes
+    config.vertexBuffers[0].slot = 0;
+    config.vertexBuffers[0].pitch = sizeof(float) * 2 + sizeof(uint8_t) * 4;
+    config.vertexBuffers[0].input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+    config.vertexBuffers[0].instance_step_rate = 0;
+    config.vertexBufferCount = 1;
 
-    static SDL_GPUVertexAttribute attributes[2]{};
-    // Position
-    attributes[0].location = 0;
-    attributes[0].buffer_slot = 0;
-    attributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
-    attributes[0].offset = 0;
-    // Color
-    attributes[1].location = 1;
-    attributes[1].buffer_slot = 0;
-    attributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM;
-    attributes[1].offset = sizeof(float) * 2;
+    // Vertex attributes: position, color
+    config.vertexAttributes[0].location = 0;
+    config.vertexAttributes[0].buffer_slot = 0;
+    config.vertexAttributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
+    config.vertexAttributes[0].offset = 0;
 
-    config.vertexInput.num_vertex_buffers = 1;
-    config.vertexInput.vertex_buffer_descriptions = &bufferDesc;
-    config.vertexInput.num_vertex_attributes = 2;
-    config.vertexInput.vertex_attributes = attributes;
+    config.vertexAttributes[1].location = 1;
+    config.vertexAttributes[1].buffer_slot = 0;
+    config.vertexAttributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM;
+    config.vertexAttributes[1].offset = sizeof(float) * 2;
+    config.vertexAttributeCount = 2;
 
     // Alpha blending
     config.enableBlend = true;
@@ -267,10 +255,8 @@ PipelineConfig GPUPipeline::createCompositeConfig(SDL_GPUShader* vertShader,
     config.primitiveType = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
 
     // No vertex input - fullscreen triangle uses gl_VertexIndex
-    config.vertexInput.num_vertex_buffers = 0;
-    config.vertexInput.vertex_buffer_descriptions = nullptr;
-    config.vertexInput.num_vertex_attributes = 0;
-    config.vertexInput.vertex_attributes = nullptr;
+    config.vertexBufferCount = 0;
+    config.vertexAttributeCount = 0;
 
     // No blending for composite
     config.enableBlend = false;
