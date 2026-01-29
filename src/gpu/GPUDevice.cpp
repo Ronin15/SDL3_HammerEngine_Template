@@ -54,11 +54,24 @@ bool GPUDevice::init(SDL_Window* window) {
 
     m_window = window;
 
+    // Configure swapchain with VSYNC (standard for gaming)
+    // VSYNC: Waits for vertical blank, no tearing, predictable frame pacing
+    bool swapchainConfigured = SDL_SetGPUSwapchainParameters(
+        m_device, window,
+        SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
+        SDL_GPU_PRESENTMODE_VSYNC);
+
+    if (!swapchainConfigured) {
+        GAMEENGINE_WARN(std::format("Failed to configure swapchain VSYNC: {}",
+                                     SDL_GetError()));
+    }
+
     const char* driver = SDL_GetGPUDeviceDriver(m_device);
     SDL_GPUShaderFormat formats = getShaderFormats();
 
     GAMEENGINE_INFO("GPUDevice initialized successfully");
     GAMEENGINE_INFO(std::format("  Driver: {}", driver ? driver : "unknown"));
+    GAMEENGINE_INFO(std::format("  Present mode: {}", swapchainConfigured ? "VSYNC" : "default"));
     GAMEENGINE_INFO(std::format("  Shader formats: SPIRV={}, MSL={}, DXBC={}, DXIL={}",
         (formats & SDL_GPU_SHADERFORMAT_SPIRV) != 0,
         (formats & SDL_GPU_SHADERFORMAT_MSL) != 0,

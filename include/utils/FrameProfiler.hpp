@@ -56,6 +56,15 @@ enum class RenderPhase : uint8_t {
     Entities,         // NPCs, player, etc.
     EndScene,         // Composite to screen
     UI,               // UIManager render
+    // GPU-specific phases (granular breakdown)
+    GPUCmdBuffer,     // Command buffer acquisition
+    GPUSwapchain,     // Swapchain texture acquisition (VSync wait happens here)
+    GPUVertexMap,     // Vertex pool mapping
+    GPUCopyPass,      // Begin copy pass
+    GPUUpload,        // Vertex/texture uploads
+    GPUScenePass,     // Scene render pass (drawing to scene texture)
+    GPUSwapPass,      // Swapchain render pass (composite + UI to swapchain)
+    GPUSubmit,        // Command buffer submission
     COUNT
 };
 

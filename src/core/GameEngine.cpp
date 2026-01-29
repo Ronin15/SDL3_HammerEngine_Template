@@ -1132,33 +1132,45 @@ void GameEngine::render() {
 #ifdef USE_SDL3_GPU
   if (m_gpuRendering) {
     auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
+    auto& profiler = HammerEngine::FrameProfiler::Instance();
 
-    // Begin GPU frame (acquires command buffer, starts copy pass, maps vertex pools)
+    // Begin GPU frame (profiler timing is inside beginFrame for granular breakdown)
     gpuRenderer.beginFrame();
 
     // Update profiler overlay (creates/updates UIManager components before recording)
-    HammerEngine::FrameProfiler::Instance().renderOverlay(nullptr, nullptr);
+    profiler.renderOverlay(nullptr, nullptr);
 
     // Record vertices for GPU rendering (before scene pass)
-    // This is where game states write sprite/particle/primitive vertices
+    profiler.beginRender(HammerEngine::RenderPhase::WorldTiles);
     mp_gameStateManager->recordGPUVertices(gpuRenderer, interpolationAlpha);
+    profiler.endRender(HammerEngine::RenderPhase::WorldTiles);
 
-    // Begin scene render pass (ends copy pass, uploads vertices, clears to dark color)
+    // Begin scene render pass (uploads vertices, clears scene texture)
+    profiler.beginRender(HammerEngine::RenderPhase::GPUUpload);
     SDL_GPURenderPass* scenePass = gpuRenderer.beginScenePass();
+    profiler.endRender(HammerEngine::RenderPhase::GPUUpload);
+
+    // Render scene content
+    profiler.beginRender(HammerEngine::RenderPhase::Entities);
     if (scenePass) {
-      // Issue GPU draw calls for scene content
       mp_gameStateManager->renderGPUScene(gpuRenderer, scenePass, interpolationAlpha);
     }
+    profiler.endRender(HammerEngine::RenderPhase::Entities);
 
-    // Begin swapchain pass for final composite (ends scene pass)
+    // Composite scene to swapchain
+    profiler.beginRender(HammerEngine::RenderPhase::EndScene);
     SDL_GPURenderPass* swapchainPass = gpuRenderer.beginSwapchainPass();
     if (swapchainPass) {
-      // Composite scene texture to swapchain (uses params set by game state)
       gpuRenderer.renderComposite(swapchainPass);
+    }
+    profiler.endRender(HammerEngine::RenderPhase::EndScene);
 
-      // Render UI and overlays to swapchain (no interpolation - UI is screen-space)
+    // Render UI to swapchain
+    profiler.beginRender(HammerEngine::RenderPhase::UI);
+    if (swapchainPass) {
       mp_gameStateManager->renderGPUUI(gpuRenderer, swapchainPass);
     }
+    profiler.endRender(HammerEngine::RenderPhase::UI);
 
     // Note: endFrame() called in present() to separate render/vsync timing
     return;
@@ -1178,10 +1190,10 @@ void GameEngine::render() {
 
 void GameEngine::present() {
   // Present is separate from render for accurate profiling
-  // SDL_RenderPresent blocks on vsync - this is NOT rendering work
+  // NOTE: For GPU path, VSync wait already happened in beginFrame() at acquire time.
+  // This is different from SDL_Renderer where VSync blocks in SDL_RenderPresent.
 #ifdef USE_SDL3_GPU
   if (m_gpuRendering) {
-    // GPU command buffer submission handles vsync
     HammerEngine::GPURenderer::Instance().endFrame();
     return;
   }
@@ -1227,11 +1239,18 @@ void GameEngine::setLogicalPresentationMode(
 }
 
 bool GameEngine::isVSyncEnabled() const noexcept {
+#ifdef USE_SDL3_GPU
+  if (m_gpuRendering) {
+    // GPU path: VSync is handled by swapchain, return requested state
+    return m_vsyncRequested;
+  }
+#endif
+
   if (!mp_renderer) {
     return false;
   }
 
-  // Check current VSync setting using SDL3 API
+  // SDL_Renderer path: Check current VSync setting using SDL3 API
   int vsync = 0;
   if (SDL_GetRenderVSync(mp_renderer.get(), &vsync)) {
     return (vsync > 0); // Any positive value means VSync is enabled
