@@ -90,6 +90,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 - Platforms: Linux, macOS (Apple Silicon optimized, Intel supported), Windows (MinGW)
 - [SDL3 dependencies](https://wiki.libsdl.org/SDL3/README-linux) (ttf, mixer)
 - Boost (for tests), cppcheck & clang-tidy (static analysis), Valgrind (optional, Linux only)
+- GPU rendering (optional): glslangValidator, spirv-cross (for `-DUSE_SDL3_GPU=ON`)
 
 **Platform notes:**  
 See [Platform Notes](docs/README.md#platform-notes) for detailed Windows, Linux, and macOS setup instructions.
