@@ -28,6 +28,8 @@
 
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
+#include <algorithm>
+#include <iterator>
 #include "managers/EventManager.hpp"
 #include <atomic>
 #include <cmath>
@@ -155,9 +157,8 @@ struct SpatialIndex {
                 uint64_t key = makeKey(cx, cy);
                 auto it = cells.find(key);
                 if (it != cells.end()) {
-                    for (size_t idx : it->second) {
-                        outIndices.push_back(idx);
-                    }
+                    std::copy(it->second.begin(), it->second.end(),
+                              std::back_inserter(outIndices));
                 }
             }
         }

@@ -12,6 +12,7 @@
 #include "managers/TextureManager.hpp"
 #include <algorithm>
 #include <format>
+#include <numeric>
 
 #ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
@@ -3874,10 +3875,9 @@ void UIManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderP
     SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
 
     // Draw all primitives in one call (they share the same pipeline)
-    uint32_t totalVertices = 0;
-    for (const auto& cmd : m_gpuPrimitiveCommands) {
-      totalVertices += cmd.vertexCount;
-    }
+    uint32_t totalVertices = std::accumulate(
+        m_gpuPrimitiveCommands.begin(), m_gpuPrimitiveCommands.end(), 0u,
+        [](uint32_t sum, const auto& cmd) { return sum + cmd.vertexCount; });
     if (totalVertices > 0) {
       SDL_DrawGPUPrimitives(pass, totalVertices, 1, 0, 0);
     }
