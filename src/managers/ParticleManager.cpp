@@ -2633,12 +2633,23 @@ void ParticleManager::createParticleForEffect(
   if (!config.useWorldSpace) {
     // Screen-space effect (like weather) - spawn relative to camera position
     const auto &gameEngine = GameEngine::Instance();
+    int logicalWidth = gameEngine.getLogicalWidth();
+    int logicalHeight = gameEngine.getLogicalHeight();
+
+    // Guard against uninitialized GameEngine (default to viewport size or sensible fallback)
+    if (logicalWidth <= 0) {
+      logicalWidth = static_cast<int>(m_viewport.width > 0 ? m_viewport.width : 1920);
+    }
+    if (logicalHeight <= 0) {
+      logicalHeight = static_cast<int>(m_viewport.height > 0 ? m_viewport.height : 1080);
+    }
+
     float const spawnX = m_viewport.x +
-        static_cast<float>(fast_rand() % gameEngine.getLogicalWidth());
+        static_cast<float>(fast_rand() % logicalWidth);
     float spawnY;
     if (config.fullScreenSpawn) {
       // Spawn across full screen height (weather, ambient effects)
-      spawnY = m_viewport.y + static_cast<float>(fast_rand() % gameEngine.getLogicalHeight());
+      spawnY = m_viewport.y + static_cast<float>(fast_rand() % logicalHeight);
     } else {
       // Spawn at configured Y position
       spawnY = m_viewport.y + config.position.getY();
