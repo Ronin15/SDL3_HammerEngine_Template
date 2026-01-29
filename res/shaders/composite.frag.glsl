@@ -9,11 +9,18 @@ layout(set = 2, binding = 0) uniform sampler2D sceneTex;
 layout(set = 3, binding = 0) uniform CompositeUBO {
     vec2 subPixelOffset;
     float zoom;
-    float _padding;
+    float _pad0;
+    vec4 ambientColor;  // RGB = tint color (0-1), A = blend strength
 };
 
 void main() {
     // Apply sub-pixel offset and zoom
     vec2 uv = fragTexCoord / zoom + subPixelOffset;
-    outColor = texture(sceneTex, uv);
+    vec4 sceneColor = texture(sceneTex, uv);
+
+    // Apply day/night ambient lighting tint
+    // Multiply scene color by ambient color, blend based on alpha strength
+    vec3 tinted = mix(sceneColor.rgb, sceneColor.rgb * ambientColor.rgb, ambientColor.a);
+
+    outColor = vec4(tinted, sceneColor.a);
 }
