@@ -121,8 +121,12 @@ bool GameEngine::init(std::string_view title) {
 
 // macOS-specific hints for fullscreen and DPI handling
 #ifdef __APPLE__
-  // Use true exclusive fullscreen (not Spaces) for Game Mode support
-  SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "0");
+  // Use Spaces fullscreen (default "1") to preserve ProMotion adaptive refresh rate
+  // Game Mode is triggered by Info.plist LSApplicationCategoryType + LSSupportsGameMode,
+  // NOT by exclusive vs Spaces fullscreen. Exclusive fullscreen ("0") forces a display
+  // mode change that can lock refresh rate to 60Hz on ProMotion displays.
+  // See: https://github.com/libsdl-org/SDL/issues/8452
+  SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "1");
   // Use OpenGL instead of Metal to test for Metal-specific render target hitches
   SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
 #endif
@@ -221,8 +225,8 @@ bool GameEngine::init(std::string_view title) {
 
   GAMEENGINE_DEBUG("Window creation system online");
 
-  // True exclusive fullscreen is used on all platforms for Game Mode support
-  // (macOS hint SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES = "0" enables this)
+  // macOS Game Mode is triggered by Info.plist (LSApplicationCategoryType=games + LSSupportsGameMode)
+  // Spaces fullscreen (SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES=1) preserves ProMotion adaptive refresh
 
 #ifdef USE_SDL3_GPU
   // Initialize GPU device and renderer
@@ -1408,7 +1412,8 @@ void GameEngine::toggleFullscreen() {
       "Toggling fullscreen mode: {} (windowed size: {}x{})",
       m_isFullscreen ? "ON" : "OFF", m_windowedWidth, m_windowedHeight));
 
-  // Use true exclusive fullscreen on all platforms for Game Mode support
+  // Spaces fullscreen preserves ProMotion adaptive refresh
+  // Game Mode is triggered by Info.plist settings, not fullscreen type
   if (!SDL_SetWindowFullscreen(mp_window.get(), m_isFullscreen)) {
     GAMEENGINE_ERROR(
         std::format("Failed to toggle fullscreen: {}", SDL_GetError()));
@@ -1623,13 +1628,26 @@ void GameEngine::onWindowEvent(const SDL_Event &event) {
   case SDL_EVENT_WINDOW_FOCUS_GAINED:
     if (m_windowOccluded) {
       m_windowOccluded = false;
-      bool vsyncVerified = false;
-      if (m_timestepManager) {
-        vsyncVerified = verifyVSyncState(m_vsyncRequested);
+#ifdef USE_SDL3_GPU
+      if (m_gpuRendering) {
+        // GPU rendering: VSync is handled by swapchain, disable software limiting
+        if (m_timestepManager && m_vsyncRequested) {
+          m_timestepManager->setSoftwareFrameLimiting(false);
+        }
+        GAMEENGINE_DEBUG("Window visible - GPU swapchain handles VSync");
+      } else {
+#endif
+        // SDL_Renderer path: verify VSync state
+        bool vsyncVerified = false;
+        if (m_timestepManager) {
+          vsyncVerified = verifyVSyncState(m_vsyncRequested);
+        }
+        GAMEENGINE_DEBUG(std::format("Window visible - VSync {} (requested: {})",
+                                     vsyncVerified ? "verified" : "not verified",
+                                     m_vsyncRequested ? "enabled" : "disabled"));
+#ifdef USE_SDL3_GPU
       }
-      GAMEENGINE_DEBUG(std::format("Window visible - VSync {} (requested: {})",
-                                   vsyncVerified ? "verified" : "not verified",
-                                   m_vsyncRequested ? "enabled" : "disabled"));
+#endif
     }
     break;
   default:
