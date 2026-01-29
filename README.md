@@ -10,7 +10,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Rendering & Engine Core**
 
-    Fixed timestep game loop with smooth interpolation at any display refresh rate. Adaptive VSync, sprite sheet animations, particle effects with camera-aware culling, and a smooth-following camera system with world bounds clamping.
+    Fixed timestep game loop with smooth interpolation at any display refresh rate. Adaptive VSync, sprite sheet animations, particle effects with camera-aware culling, and pixel-perfect zoomed rendering with smooth sub-pixel scrolling. Optional GPU rendering path (`-DUSE_SDL3_GPU=ON`) for modern graphics with day/night ambient lighting effects.
 
 - **Adaptive Multi-Threading System**
 
@@ -38,7 +38,11 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Comprehensive Testing & Analysis**
 
-    55+ test executables with Boost.Test framework covering unit, integration, and performance testing. Includes AI+Collision integration tests, SIMD correctness validation, and comprehensive thread safety verification with documented TSAN suppressions. Static analysis (cppcheck, clang-tidy), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration for production-ready quality assurance.
+    65+ test executables with Boost.Test framework covering unit, integration, and performance testing. Includes AI+Collision integration tests, GPU rendering tests, SIMD correctness validation, and comprehensive thread safety verification with documented TSAN suppressions. Static analysis (cppcheck, clang-tidy), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration for production-ready quality assurance.
+
+- **Debug Profiling Tools**
+
+    Built-in frame profiler (F3 toggle) with live timing overlay and automatic hitch detection. Zero overhead in Release builds.
 
 - **Cross-Platform Optimizations**
 
@@ -140,7 +144,8 @@ ninja -C build
 - **Controllers:** [Overview](docs/controllers/README.md), [ControllerRegistry](docs/controllers/ControllerRegistry.md), [WeatherController](docs/controllers/WeatherController.md), [DayNightController](docs/controllers/DayNightController.md), [CombatController](docs/controllers/CombatController.md)
 - **Managers:** [BackgroundSimulationManager](docs/managers/BackgroundSimulationManager.md), [CollisionManager](docs/managers/CollisionManager.md), [EntityDataManager](docs/managers/EntityDataManager.md), [FontManager](docs/managers/FontManager.md), [ParticleManager](docs/managers/ParticleManager.md), [PathfinderManager](docs/managers/PathfinderManager.md), [ResourceFactory](docs/managers/ResourceFactory.md), [ResourceTemplateManager](docs/managers/ResourceTemplateManager.md), [SoundManager](docs/managers/SoundManager.md), [TextureManager](docs/managers/TextureManager.md), [WorldManager](docs/managers/WorldManager.md), [WorldResourceManager](docs/managers/WorldResourceManager.md)
 - **UI:** [UIManager Guide](docs/ui/UIManager_Guide.md), [UIConstants Reference](docs/ui/UIConstants.md), [Auto-Sizing](docs/ui/Auto_Sizing_System.md), [DPI-Aware Fonts](docs/ui/DPI_Aware_Font_System.md), [Minimap Implementation](docs/ui/Minimap_Implementation.md)
-- **Utilities:** [SceneRenderer](docs/utils/SceneRenderer.md), [Camera](docs/utils/Camera.md), [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [ResourceHandle System](docs/utils/ResourceHandle_System.md)
+- **GPU Rendering:** [GPU System Overview](docs/gpu/GPURendering.md)
+- **Utilities:** [SceneRenderer](docs/utils/SceneRenderer.md), [WorldRenderPipeline](docs/utils/WorldRenderPipeline.md), [FrameProfiler](docs/utils/FrameProfiler.md), [Camera](docs/utils/Camera.md), [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [ResourceHandle System](docs/utils/ResourceHandle_System.md)
 - **Architecture:** [Interpolation System](docs/architecture/InterpolationSystem.md)
 - **Performance:** [Power Efficiency](docs/performance/PowerEfficiency.md), [EntityDataManager Power Analysis](docs/performance_reports/power_profile_edm_comparison_2026-01-29.md)
 - **Development:** [Claude Code Skills](docs/development/ClaudeSkills.md)
