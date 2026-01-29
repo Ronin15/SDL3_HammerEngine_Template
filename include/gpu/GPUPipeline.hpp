@@ -5,6 +5,7 @@
 #define GPU_PIPELINE_HPP
 
 #include <SDL3/SDL_gpu.h>
+#include <array>
 #include <cstdint>
 
 namespace HammerEngine {
@@ -24,13 +25,17 @@ enum class PipelineType : uint8_t {
 
 /**
  * Configuration for creating a graphics pipeline.
+ * Uses value semantics with embedded arrays for thread-safety.
  */
 struct PipelineConfig {
     SDL_GPUShader* vertexShader{nullptr};
     SDL_GPUShader* fragmentShader{nullptr};
 
-    // Vertex input state
-    SDL_GPUVertexInputState vertexInput{};
+    // Embedded vertex format data (value semantics, no pointers)
+    std::array<SDL_GPUVertexBufferDescription, 1> vertexBuffers{};
+    std::array<SDL_GPUVertexAttribute, 4> vertexAttributes{};
+    uint32_t vertexBufferCount{0};
+    uint32_t vertexAttributeCount{0};
 
     // Primitive type
     SDL_GPUPrimitiveType primitiveType{SDL_GPU_PRIMITIVETYPE_TRIANGLELIST};
