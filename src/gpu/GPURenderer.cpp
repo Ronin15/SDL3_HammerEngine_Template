@@ -422,10 +422,22 @@ void GPURenderer::pushCompositeUniforms(SDL_GPURenderPass* pass,
     ubo.subPixelOffsetX = subPixelX;
     ubo.subPixelOffsetY = subPixelY;
     ubo.zoom = zoom;
-    ubo.padding = 0.0f;
+    ubo._pad0 = 0.0f;
+    // Day/night ambient lighting
+    ubo.ambientR = m_dayNightR;
+    ubo.ambientG = m_dayNightG;
+    ubo.ambientB = m_dayNightB;
+    ubo.ambientAlpha = m_dayNightAlpha;
 
     // Push to fragment shader (set 1, binding 0 in fragment)
     SDL_PushGPUFragmentUniformData(m_commandBuffer, 0, &ubo, sizeof(CompositeUBO));
+}
+
+void GPURenderer::setDayNightParams(float r, float g, float b, float alpha) {
+    m_dayNightR = r;
+    m_dayNightG = g;
+    m_dayNightB = b;
+    m_dayNightAlpha = alpha;
 }
 
 void GPURenderer::setCompositeParams(float zoom, float subPixelX, float subPixelY) {

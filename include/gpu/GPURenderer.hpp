@@ -128,6 +128,16 @@ public:
                                 float subPixelX, float subPixelY, float zoom);
 
     /**
+     * Set day/night ambient lighting parameters.
+     * Called by DayNightController each frame.
+     * @param r Red tint (0-1)
+     * @param g Green tint (0-1)
+     * @param b Blue tint (0-1)
+     * @param alpha Blend strength (0 = no tint, 1 = full tint)
+     */
+    void setDayNightParams(float r, float g, float b, float alpha);
+
+    /**
      * Set composite parameters for the current frame.
      * Call this during recordGPUVertices to configure zoom/scrolling.
      * @param zoom Zoom level (1.0 = no zoom)
@@ -217,6 +227,12 @@ private:
     float m_compositeZoom{1.0f};
     float m_compositeSubPixelX{0.0f};
     float m_compositeSubPixelY{0.0f};
+
+    // Day/night ambient lighting params (0-1 range, set by DayNightController)
+    float m_dayNightR{1.0f};
+    float m_dayNightG{1.0f};
+    float m_dayNightB{1.0f};
+    float m_dayNightAlpha{0.0f};
 
     bool m_initialized{false};
 };

@@ -267,7 +267,12 @@ void GamePlayState::update(float deltaTime) {
     resourceCtrl->update(deltaTime, *m_camera);
   }
 
-  // Update day/night overlay interpolation
+  // Update day/night controller (handles GPU lighting via shader)
+  if (auto* dayNightCtrl = m_controllers.get<DayNightController>()) {
+    dayNightCtrl->update(deltaTime);
+  }
+
+  // Update day/night overlay interpolation (for SDL_Renderer path)
   updateDayNightOverlay(deltaTime);
 
   // Update time status bar only when events fire (event-driven, not per-frame)
@@ -1349,14 +1354,9 @@ void GamePlayState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
 
 void GamePlayState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
                                 SDL_GPURenderPass *swapchainPass) {
-  // Render day/night overlay as a colored quad using primitive pipeline
-  if (m_dayNightOverlayA >= 0.5f && m_camera) {
-    // TODO: Add GPURenderer::drawFilledRect helper method
-    // For now, day/night overlay will be added with the primitive pipeline helper
-    // gpuRenderer.drawFilledRect(swapchainPass, 0.0f, 0.0f, viewport.width, viewport.height, ...);
-  }
+  // Day/night lighting is handled by the composite shader (DayNightController updates GPURenderer)
 
-  // Render UI (this is already implemented)
+  // Render UI
   auto &ui = UIManager::Instance();
   ui.renderGPU(gpuRenderer, swapchainPass);
 }

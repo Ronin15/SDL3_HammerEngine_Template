@@ -40,12 +40,18 @@ struct ViewProjectionUBO {
 
 /**
  * Composite uniform buffer data.
+ * Used for fullscreen composite pass with day/night lighting.
  */
 struct CompositeUBO {
     float subPixelOffsetX;
     float subPixelOffsetY;
     float zoom;
-    float padding;
+    float _pad0;
+    // Day/night ambient lighting (0-1 range)
+    float ambientR;
+    float ambientG;
+    float ambientB;
+    float ambientAlpha;  // Blend strength: 0 = no tint, 1 = full tint
 };
 
 } // namespace HammerEngine
