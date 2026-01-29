@@ -1,7 +1,5 @@
 /* Copyright (c) 2025 Hammer Forged Games
- * All rights reserved.
- * Licensed under the MIT License - see LICENSE file for details
- */
+ * Licensed under the MIT License */
 
 #ifndef GPU_SCENE_RENDERER_HPP
 #define GPU_SCENE_RENDERER_HPP

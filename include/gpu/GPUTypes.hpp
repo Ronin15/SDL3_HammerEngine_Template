@@ -5,6 +5,7 @@
 #define GPU_TYPES_HPP
 
 #include <cstdint>
+#include <cstddef>  // for offsetof
 
 namespace HammerEngine {
 
@@ -53,6 +54,11 @@ struct CompositeUBO {
     float ambientB;
     float ambientAlpha;  // Blend strength: 0 = no tint, 1 = full tint
 };
+
+// Verify CompositeUBO layout matches std140 shader expectations
+static_assert(sizeof(CompositeUBO) == 32, "CompositeUBO must be 32 bytes for std140");
+static_assert(offsetof(CompositeUBO, zoom) == 8, "CompositeUBO::zoom must be at offset 8");
+static_assert(offsetof(CompositeUBO, ambientR) == 16, "CompositeUBO::ambientR must be at offset 16");
 
 } // namespace HammerEngine
 

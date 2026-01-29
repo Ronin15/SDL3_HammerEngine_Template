@@ -5,15 +5,20 @@ SDL3 HammerEngine development guidance.
 ## Build
 
 ```bash
-# Debug/Release
+# Debug/Release (SDL_Renderer path)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
+
+# Debug/Release with SDL3 GPU rendering (compiles SPIR-V/Metal shaders)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DUSE_SDL3_GPU=ON && ninja -C build
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release -DUSE_SDL3_GPU=ON && ninja -C build
 
 # ASAN/TSAN (require -DUSE_MOLD_LINKER=OFF, mutually exclusive)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address -fno-omit-frame-pointer -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF && ninja -C build
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=thread -fno-omit-frame-pointer -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" -DUSE_MOLD_LINKER=OFF && ninja -C build
 
 # TSAN suppressions: export TSAN_OPTIONS="suppressions=$(pwd)/tests/tsan_suppressions.txt"
+# CMake reconfigure (without full rebuild): rm build/CMakeCache.txt && cmake -B build/ ...
 ```
 
 **Output**: `bin/debug/` or `bin/release/` | **Run**: `./bin/debug/SDL3_Template`
