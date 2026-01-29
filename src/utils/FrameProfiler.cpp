@@ -65,6 +65,14 @@ const char* FrameProfiler::getRenderPhaseName(RenderPhase phase)
     case RenderPhase::Entities: return "Entities";
     case RenderPhase::EndScene: return "EndScene";
     case RenderPhase::UI: return "UI";
+    case RenderPhase::GPUCmdBuffer: return "GPUCmdBuffer";
+    case RenderPhase::GPUSwapchain: return "GPUSwapchain";
+    case RenderPhase::GPUVertexMap: return "GPUVertexMap";
+    case RenderPhase::GPUCopyPass: return "GPUCopyPass";
+    case RenderPhase::GPUUpload: return "GPUUpload";
+    case RenderPhase::GPUScenePass: return "GPUScenePass";
+    case RenderPhase::GPUSwapPass: return "GPUSwapPass";
+    case RenderPhase::GPUSubmit: return "GPUSubmit";
     default: return "Unknown";
     }
 }
@@ -98,8 +106,14 @@ void FrameProfiler::endFrame()
         return;  // Skip hitch detection while suppressed
     }
 
-    // Check for hitch
-    if (totalMs > m_thresholdMs) {
+    // Get GPUSwapchain time (VSync wait - expected, not a performance issue)
+    double gpuSwapchainTime = m_renderTimes[static_cast<size_t>(RenderPhase::GPUSwapchain)];
+
+    // Exclude VSync wait from hitch detection - it's expected frame pacing, not a problem
+    double adjustedTotalMs = totalMs - gpuSwapchainTime;
+
+    // Check for hitch (excluding VSync wait)
+    if (adjustedTotalMs > m_thresholdMs) {
         ++m_hitchCount;
 
         // Get all phase times
@@ -130,8 +144,9 @@ void FrameProfiler::endFrame()
         m_lastHitchFrame = m_frameCount;
 
         // Log the hitch with all phases
-        PROFILER_WARN(std::format("[HITCH] Frame {}: {:.1f}ms > {:.1f}ms threshold",
-                                   m_frameCount, totalMs, m_thresholdMs));
+        // Note: VSync wait (GPUSwapchain) is excluded from threshold check
+        PROFILER_WARN(std::format("[HITCH] Frame {}: {:.1f}ms (excl. VSync: {:.1f}ms) > {:.1f}ms threshold",
+                                   m_frameCount, adjustedTotalMs, gpuSwapchainTime, m_thresholdMs));
 
         // Log each phase, marking the cause
         auto logPhase = [&](FramePhase phase, double time, const char* name) {
@@ -170,17 +185,26 @@ void FrameProfiler::endFrame()
             RenderPhase worstRender = findWorstRenderPhase();
             double worstRenderTime = m_renderTimes[static_cast<size_t>(worstRender)];
 
-            if (worstRenderTime > 0.1) {  // Only show if meaningful time
-                PROFILER_WARN(std::format("    {}: {:.1f}ms  <-- WORST RENDER",
-                                           getRenderPhaseName(worstRender), worstRenderTime));
+            PROFILER_WARN(std::format("    {}: {:.1f}ms  <-- WORST RENDER",
+                                       getRenderPhaseName(worstRender), worstRenderTime));
 
-                for (size_t i = 0; i < static_cast<size_t>(RenderPhase::COUNT); ++i) {
-                    if (static_cast<RenderPhase>(i) != worstRender && m_renderTimes[i] > 0.1) {
-                        PROFILER_WARN(std::format("    {}: {:.1f}ms",
-                                                   getRenderPhaseName(static_cast<RenderPhase>(i)),
-                                                   m_renderTimes[i]));
-                    }
+            // Show all render phases to identify unmeasured time
+            double totalMeasured = 0.0;
+            for (size_t i = 0; i < static_cast<size_t>(RenderPhase::COUNT); ++i) {
+                totalMeasured += m_renderTimes[i];
+                if (static_cast<RenderPhase>(i) != worstRender) {
+                    PROFILER_WARN(std::format("    {}: {:.1f}ms",
+                                               getRenderPhaseName(static_cast<RenderPhase>(i)),
+                                               m_renderTimes[i]));
                 }
+            }
+
+            // Show unmeasured time
+            double renderPhaseTime = m_phaseTimes[static_cast<size_t>(FramePhase::Render)];
+            double unmeasured = renderPhaseTime - totalMeasured;
+            if (unmeasured > 0.5) {
+                PROFILER_WARN(std::format("    UNMEASURED: {:.1f}ms  <-- INVESTIGATE",
+                                           unmeasured));
             }
         }
     }
@@ -366,11 +390,17 @@ void FrameProfiler::updateOverlayText()
         m_presentText = std::format("Present: {:.1f}ms", presentTime);
     }
 
-    // Render with cause marker
+    // Find worst render phase
+    RenderPhase worstRender = findWorstRenderPhase();
+    double worstRenderTime = m_renderTimes[static_cast<size_t>(worstRender)];
+
+    // Render with cause marker and breakdown
     if (m_hadRecentHitch && m_lastHitchCause == FramePhase::Render) {
-        m_renderText = std::format("RENDER: {:.1f}ms <-", renderTime);
+        m_renderText = std::format("RENDER: {:.1f}ms [{}: {:.1f}ms] <-",
+                                    renderTime, getRenderPhaseName(worstRender), worstRenderTime);
     } else {
-        m_renderText = std::format("Render: {:.1f}ms", renderTime);
+        m_renderText = std::format("Render: {:.1f}ms [{}: {:.1f}ms]",
+                                    renderTime, getRenderPhaseName(worstRender), worstRenderTime);
     }
 
     // Update with cause marker

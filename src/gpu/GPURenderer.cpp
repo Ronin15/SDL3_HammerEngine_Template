@@ -5,6 +5,7 @@
 #include "gpu/GPUShaderManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "core/Logger.hpp"
+#include "utils/FrameProfiler.hpp"
 #include <cstring>
 #include <format>
 
@@ -202,18 +203,27 @@ void GPURenderer::beginFrame() {
         return;
     }
 
+    auto& profiler = FrameProfiler::Instance();
+
     // Acquire command buffer
+    profiler.beginRender(RenderPhase::GPUCmdBuffer);
     m_commandBuffer = SDL_AcquireGPUCommandBuffer(m_device);
+    profiler.endRender(RenderPhase::GPUCmdBuffer);
+
     if (!m_commandBuffer) {
         GAMEENGINE_ERROR(std::format("Failed to acquire GPU command buffer: {}", SDL_GetError()));
         return;
     }
 
-    // Acquire swapchain early to get authoritative dimensions
-    // Swapchain size is set by SDL3_GPU in response to resize events
+    // Acquire swapchain texture - blocks for VSync/frame pacing
+    // NOTE: For GPU path, VSync wait happens here (at acquire), not at present.
+    // This is different from SDL_Renderer where VSync is at SDL_RenderPresent.
+    // The profiler will show this as part of Render phase, which is expected.
+    profiler.beginRender(RenderPhase::GPUSwapchain);
     if (!SDL_WaitAndAcquireGPUSwapchainTexture(
             m_commandBuffer, m_window, &m_swapchainTexture,
             &m_swapchainWidth, &m_swapchainHeight)) {
+        profiler.endRender(RenderPhase::GPUSwapchain);
         GAMEENGINE_ERROR(std::format("Failed to acquire swapchain texture: {}", SDL_GetError()));
         m_swapchainTexture = nullptr;
         // Cancel the command buffer to avoid resource leak
@@ -221,6 +231,7 @@ void GPURenderer::beginFrame() {
         m_commandBuffer = nullptr;
         return;
     }
+    profiler.endRender(RenderPhase::GPUSwapchain);
 
     if (!m_swapchainTexture) {
         // Window minimized or not visible
@@ -235,15 +246,19 @@ void GPURenderer::beginFrame() {
         updateViewport(m_swapchainWidth, m_swapchainHeight);
     }
 
-    // Begin vertex pool frames
+    // Begin vertex pool frames (maps transfer buffers)
+    profiler.beginRender(RenderPhase::GPUVertexMap);
     m_spriteVertexPool.beginFrame();
     m_entityVertexPool.beginFrame();
     m_particleVertexPool.beginFrame();
     m_primitiveVertexPool.beginFrame();
     m_uiVertexPool.beginFrame();
+    profiler.endRender(RenderPhase::GPUVertexMap);
 
     // Begin copy pass for uploads
+    profiler.beginRender(RenderPhase::GPUCopyPass);
     m_copyPass = SDL_BeginGPUCopyPass(m_commandBuffer);
+    profiler.endRender(RenderPhase::GPUCopyPass);
 }
 
 SDL_GPURenderPass* GPURenderer::beginScenePass() {
@@ -251,9 +266,12 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
         return nullptr;
     }
 
+    auto& profiler = FrameProfiler::Instance();
+
     // End copy pass
     if (m_copyPass) {
         // Process pending texture uploads
+        profiler.beginRender(RenderPhase::GPUUpload);
         TextureManager::Instance().processPendingUploads(m_copyPass);
 
         // End vertex pool frames (unmaps buffers for upload)
@@ -292,6 +310,7 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
 
         SDL_EndGPUCopyPass(m_copyPass);
         m_copyPass = nullptr;
+        profiler.endRender(RenderPhase::GPUUpload);
     }
 
     // Begin scene render pass
@@ -383,8 +402,12 @@ void GPURenderer::endFrame() {
         m_copyPass = nullptr;
     }
 
-    // Submit command buffer
+    // Submit command buffer (measure to detect backpressure)
+    auto& profiler = FrameProfiler::Instance();
+    profiler.beginRender(RenderPhase::GPUSubmit);
     SDL_SubmitGPUCommandBuffer(m_commandBuffer);
+    profiler.endRender(RenderPhase::GPUSubmit);
+
     m_commandBuffer = nullptr;
     m_swapchainTexture = nullptr;
 }
