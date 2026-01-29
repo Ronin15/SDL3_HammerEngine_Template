@@ -48,23 +48,27 @@ bool GPURenderer::init() {
 
     if (!m_nearestSampler.isValid() || !m_linearSampler.isValid()) {
         GAMEENGINE_ERROR("GPURenderer: failed to create samplers");
+        cleanupPartialInit();
         return false;
     }
 
     // Create scene texture
     if (!createSceneTexture()) {
         GAMEENGINE_ERROR("GPURenderer: failed to create scene texture");
+        cleanupPartialInit();
         return false;
     }
 
     // Load shaders and create pipelines
     if (!loadShaders()) {
         GAMEENGINE_ERROR("GPURenderer: failed to load shaders");
+        cleanupPartialInit();
         return false;
     }
 
     if (!createPipelines()) {
         GAMEENGINE_ERROR("GPURenderer: failed to create pipelines");
+        cleanupPartialInit();
         return false;
     }
 
@@ -74,39 +78,46 @@ bool GPURenderer::init() {
     // Use 150k for zoom headroom
     if (!m_spriteVertexPool.init(m_device, sizeof(SpriteVertex), 150000)) {
         GAMEENGINE_ERROR("GPURenderer: failed to init sprite vertex pool");
+        cleanupPartialInit();
         return false;
     }
 
     // Entity vertex pool for player/NPCs with separate textures
     if (!m_entityVertexPool.init(m_device, sizeof(SpriteVertex), 1000)) {
         GAMEENGINE_ERROR("GPURenderer: failed to init entity vertex pool");
+        cleanupPartialInit();
         return false;
     }
 
     if (!m_particleVertexPool.init(m_device, sizeof(ColorVertex), 100000)) {
         GAMEENGINE_ERROR("GPURenderer: failed to init particle vertex pool");
+        cleanupPartialInit();
         return false;
     }
 
     if (!m_primitiveVertexPool.init(m_device, sizeof(ColorVertex), 10000)) {
         GAMEENGINE_ERROR("GPURenderer: failed to init primitive vertex pool");
+        cleanupPartialInit();
         return false;
     }
 
     // Initialize UI vertex pool (for text/icons on swapchain)
     if (!m_uiVertexPool.init(m_device, sizeof(SpriteVertex), 4000)) {
         GAMEENGINE_ERROR("GPURenderer: failed to init UI vertex pool");
+        cleanupPartialInit();
         return false;
     }
 
     // Initialize sprite batches
     if (!m_spriteBatch.init(m_device)) {
         GAMEENGINE_ERROR("GPURenderer: failed to init sprite batch");
+        cleanupPartialInit();
         return false;
     }
 
     if (!m_entityBatch.init(m_device)) {
         GAMEENGINE_ERROR("GPURenderer: failed to init entity batch");
+        cleanupPartialInit();
         return false;
     }
 
@@ -153,6 +164,37 @@ void GPURenderer::shutdown() {
     m_initialized = false;
 
     GAMEENGINE_INFO("GPURenderer shutdown complete");
+}
+
+void GPURenderer::cleanupPartialInit() {
+    // Clean up any resources that may have been created during failed init
+    // Unlike shutdown(), this doesn't check m_initialized since init failed
+
+    m_spriteBatch.shutdown();
+    m_entityBatch.shutdown();
+
+    m_spriteVertexPool.shutdown();
+    m_entityVertexPool.shutdown();
+    m_particleVertexPool.shutdown();
+    m_primitiveVertexPool.shutdown();
+    m_uiVertexPool.shutdown();
+
+    m_spriteOpaquePipeline.release();
+    m_spriteAlphaPipeline.release();
+    m_particlePipeline.release();
+    m_primitivePipeline.release();
+    m_compositePipeline.release();
+    m_uiSpritePipeline.release();
+    m_uiPrimitivePipeline.release();
+
+    m_sceneTexture.reset();
+    m_nearestSampler = GPUSampler();
+    m_linearSampler = GPUSampler();
+
+    GPUShaderManager::Instance().shutdown();
+
+    m_device = nullptr;
+    m_window = nullptr;
 }
 
 void GPURenderer::beginFrame() {
@@ -263,12 +305,11 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
     uint32_t sceneH = m_sceneTexture->getHeight();
 
     // Debug: Log scene texture dimensions (only once or on change)
-    static uint32_t lastSceneW = 0, lastSceneH = 0;
-    if (sceneW != lastSceneW || sceneH != lastSceneH) {
+    if (sceneW != m_lastLoggedSceneW || sceneH != m_lastLoggedSceneH) {
         GAMEENGINE_DEBUG(std::format("Scene pass: texture={}x{}, viewport={}x{}",
                                      sceneW, sceneH, m_viewportWidth, m_viewportHeight));
-        lastSceneW = sceneW;
-        lastSceneH = sceneH;
+        m_lastLoggedSceneW = sceneW;
+        m_lastLoggedSceneH = sceneH;
     }
 
     SDL_GPUViewport viewport{};

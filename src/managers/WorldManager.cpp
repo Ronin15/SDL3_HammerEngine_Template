@@ -2417,17 +2417,16 @@ void HammerEngine::TileRenderer::recordGPUTiles(
   const float baseCameraY = cameraY;
   const float startScreenX = startTileX * scaledTileSize - baseCameraX;
 
-  // Debug: Log tile rendering params on viewport change
-  static float lastViewportW = 0, lastViewportH = 0;
-  if (viewportWidth != lastViewportW || viewportHeight != lastViewportH) {
+  // Debug: Log tile rendering params on viewport change (uses member vars to avoid static)
+  if (viewportWidth != m_lastGPUViewportW || viewportHeight != m_lastGPUViewportH) {
     WORLD_MANAGER_INFO(std::format(
         "GPU tile params: viewport={}x{}, zoom={}, tileSize={}, "
         "scaledTileSize={}, visibleTiles={}x{}, cameraY={}, effectiveH={}, endTileY={}",
         viewportWidth, viewportHeight, zoom, TILE_SIZE,
         scaledTileSize, endTileX - startTileX, endTileY - startTileY,
         cameraY, effectiveViewHeight, endTileY));
-    lastViewportW = viewportWidth;
-    lastViewportH = viewportHeight;
+    m_lastGPUViewportW = viewportWidth;
+    m_lastGPUViewportH = viewportHeight;
   }
 
   // Build biome lookup table for O(1) access (enum value -> coords pointer)
@@ -2479,19 +2478,9 @@ void HammerEngine::TileRenderer::recordGPUTiles(
       &sc.decoration_water_flower       // WATER_FLOWER
   };
 
-  // Sprite data for deferred rendering (reusable buffers, avoids per-frame alloc)
-  struct GPUSprite {
-    float screenX, screenY;         // Destination position
-    float srcX, srcY, srcW, srcH;   // Atlas source rect
-    float dstW, dstH;               // Destination dimensions
-  };
-  struct GPUYSortedSprite : GPUSprite {
-    float sortY;                    // Y value for sorting (bottom of sprite)
-  };
-  static std::vector<GPUSprite> s_gpuDecoBuffer;
-  static std::vector<GPUYSortedSprite> s_gpuObstacleBuffer;
-  s_gpuDecoBuffer.clear();
-  s_gpuObstacleBuffer.clear();
+  // Clear reusable member buffers (avoids per-frame allocations)
+  m_gpuDecoBuffer.clear();
+  m_gpuObstacleBuffer.clear();
 
   // PASS 1: Render biomes, collect decorations + obstacles
   for (int tileY = startTileY; tileY < endTileY; ++tileY) {
@@ -2520,7 +2509,7 @@ void HammerEngine::TileRenderer::recordGPUTiles(
         if (decoCoords && decoCoords->w > 0) {
           const float offsetX = (scaledTileSize - decoCoords->w) * 0.5f;
           const float offsetY = scaledTileSize - decoCoords->h;
-          s_gpuDecoBuffer.push_back({
+          m_gpuDecoBuffer.push_back({
               screenX + offsetX, screenY + offsetY,
               static_cast<float>(decoCoords->x), static_cast<float>(decoCoords->y),
               static_cast<float>(decoCoords->w), static_cast<float>(decoCoords->h),
@@ -2554,7 +2543,7 @@ void HammerEngine::TileRenderer::recordGPUTiles(
               // sortY = bottom of building (tile.buildingSize tiles down)
               const float sortY = screenY + (tile.buildingSize * scaledTileSize);
 
-              s_gpuObstacleBuffer.push_back({
+              m_gpuObstacleBuffer.push_back({
                   {screenX, screenY,
                    static_cast<float>(buildingCoords->x), static_cast<float>(buildingCoords->y),
                    static_cast<float>(buildingCoords->w), static_cast<float>(buildingCoords->h),
@@ -2578,7 +2567,7 @@ void HammerEngine::TileRenderer::recordGPUTiles(
           const float offsetX = (scaledTileSize - spriteW) * 0.5f;
           const float offsetY = scaledTileSize - spriteH;
 
-          s_gpuObstacleBuffer.push_back({
+          m_gpuObstacleBuffer.push_back({
               {screenX + offsetX, screenY + offsetY,
                static_cast<float>(obstacleCoords->x), static_cast<float>(obstacleCoords->y),
                static_cast<float>(obstacleCoords->w), static_cast<float>(obstacleCoords->h),
@@ -2595,22 +2584,22 @@ void HammerEngine::TileRenderer::recordGPUTiles(
   // PASS 2: Render collected decorations, then sorted obstacles
 
   // Decorations (no sorting needed, just deferred to render after all biomes)
-  for (const auto& deco : s_gpuDecoBuffer) {
+  for (const auto& deco : m_gpuDecoBuffer) {
     spriteBatch.draw(
         deco.srcX, deco.srcY, deco.srcW, deco.srcH,
         deco.screenX, deco.screenY, deco.dstW, deco.dstH);
   }
 
   // Obstacles (Y-sorted for correct overlap)
-  if (!s_gpuObstacleBuffer.empty()) {
-    std::sort(s_gpuObstacleBuffer.begin(), s_gpuObstacleBuffer.end(),
+  if (!m_gpuObstacleBuffer.empty()) {
+    std::sort(m_gpuObstacleBuffer.begin(), m_gpuObstacleBuffer.end(),
               [](const GPUYSortedSprite& a, const GPUYSortedSprite& b) {
                 if (a.sortY != b.sortY) return a.sortY < b.sortY;
                 if (a.screenX != b.screenX) return a.screenX < b.screenX;
                 return a.screenY < b.screenY;
               });
 
-    for (const auto& obs : s_gpuObstacleBuffer) {
+    for (const auto& obs : m_gpuObstacleBuffer) {
       spriteBatch.draw(
           obs.srcX, obs.srcY, obs.srcW, obs.srcH,
           obs.screenX, obs.screenY, obs.dstW, obs.dstH);

@@ -40,6 +40,15 @@ struct UIGPUDrawCommand {
     uint32_t vertexOffset{0};
     uint32_t vertexCount{0};
 };
+
+// GPU command buffer capacities (avoids per-frame reallocations)
+constexpr size_t GPU_PRIMITIVE_COMMAND_CAPACITY = 256;
+constexpr size_t GPU_TEXT_COMMAND_CAPACITY = 64;
+constexpr size_t GPU_IMAGE_COMMAND_CAPACITY = 32;
+
+// GPU vertex safety limits
+constexpr uint32_t GPU_PRIMITIVE_VERTEX_LIMIT = 10000;
+constexpr uint32_t GPU_UI_VERTEX_LIMIT = 4000;
 #endif
 
 // UI Component Types

@@ -125,6 +125,8 @@ PipelineConfig GPUPipeline::createSpriteConfig(SDL_GPUShader* vertShader,
     config.primitiveType = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
 
     // Vertex input: position (vec2), texcoord (vec2), color (rgba8)
+    // Note: static storage required - PipelineConfig stores pointers that must persist
+    // until pipeline creation. Thread safety ensured by single-threaded init.
     static SDL_GPUVertexBufferDescription bufferDesc{};
     bufferDesc.slot = 0;
     bufferDesc.pitch = sizeof(float) * 4 + sizeof(uint8_t) * 4;  // 20 bytes
@@ -179,6 +181,8 @@ PipelineConfig GPUPipeline::createParticleConfig(SDL_GPUShader* vertShader,
     config.primitiveType = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
 
     // Vertex input: position (vec2), color (rgba8)
+    // Note: static storage required - PipelineConfig stores pointers that must persist
+    // until pipeline creation. Thread safety ensured by single-threaded init.
     static SDL_GPUVertexBufferDescription bufferDesc{};
     bufferDesc.slot = 0;
     bufferDesc.pitch = sizeof(float) * 2 + sizeof(uint8_t) * 4;  // 12 bytes
@@ -220,6 +224,8 @@ PipelineConfig GPUPipeline::createPrimitiveConfig(SDL_GPUShader* vertShader,
     config.primitiveType = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
 
     // Vertex input: position (vec2), color (rgba8)
+    // Note: static storage required - PipelineConfig stores pointers that must persist
+    // until pipeline creation. Thread safety ensured by single-threaded init.
     static SDL_GPUVertexBufferDescription bufferDesc{};
     bufferDesc.slot = 0;
     bufferDesc.pitch = sizeof(float) * 2 + sizeof(uint8_t) * 4;  // 12 bytes
