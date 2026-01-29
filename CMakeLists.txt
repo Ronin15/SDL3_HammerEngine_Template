@@ -277,10 +277,8 @@ if(USE_SDL3_GPU)
     set(SHADER_SOURCES
         ${CMAKE_SOURCE_DIR}/res/shaders/sprite.vert.glsl
         ${CMAKE_SOURCE_DIR}/res/shaders/sprite.frag.glsl
-        ${CMAKE_SOURCE_DIR}/res/shaders/particle.vert.glsl
-        ${CMAKE_SOURCE_DIR}/res/shaders/particle.frag.glsl
-        ${CMAKE_SOURCE_DIR}/res/shaders/primitive.vert.glsl
-        ${CMAKE_SOURCE_DIR}/res/shaders/primitive.frag.glsl
+        ${CMAKE_SOURCE_DIR}/res/shaders/color.vert.glsl
+        ${CMAKE_SOURCE_DIR}/res/shaders/color.frag.glsl
         ${CMAKE_SOURCE_DIR}/res/shaders/composite.vert.glsl
         ${CMAKE_SOURCE_DIR}/res/shaders/composite.frag.glsl
     )

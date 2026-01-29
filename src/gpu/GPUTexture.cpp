@@ -105,6 +105,12 @@ SDL_GPUColorTargetInfo GPUTexture::asColorTarget(
 }
 
 SDL_GPUTextureSamplerBinding GPUTexture::asSamplerBinding(SDL_GPUSampler* sampler) const {
+    if (!m_texture) {
+        GAMEENGINE_WARN("GPUTexture::asSamplerBinding() called on invalid texture");
+    }
+    if (!sampler) {
+        GAMEENGINE_WARN("GPUTexture::asSamplerBinding() called with null sampler");
+    }
     SDL_GPUTextureSamplerBinding binding{};
     binding.texture = m_texture;
     binding.sampler = sampler;

@@ -73,6 +73,9 @@ void GPUBuffer::release() {
 }
 
 SDL_GPUBufferBinding GPUBuffer::asBinding(uint32_t offset) const {
+    if (!m_buffer) {
+        GAMEENGINE_WARN("GPUBuffer::asBinding() called on invalid buffer");
+    }
     SDL_GPUBufferBinding binding{};
     binding.buffer = m_buffer;
     binding.offset = offset;
@@ -80,6 +83,13 @@ SDL_GPUBufferBinding GPUBuffer::asBinding(uint32_t offset) const {
 }
 
 SDL_GPUBufferRegion GPUBuffer::asRegion(uint32_t offset, uint32_t size) const {
+    if (!m_buffer) {
+        GAMEENGINE_WARN("GPUBuffer::asRegion() called on invalid buffer");
+    }
+    if (offset > m_size) {
+        GAMEENGINE_WARN(std::format("GPUBuffer::asRegion() offset {} exceeds buffer size {}", offset, m_size));
+        offset = m_size;
+    }
     SDL_GPUBufferRegion region{};
     region.buffer = m_buffer;
     region.offset = offset;

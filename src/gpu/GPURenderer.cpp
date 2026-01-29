@@ -216,6 +216,9 @@ void GPURenderer::beginFrame() {
             &m_swapchainWidth, &m_swapchainHeight)) {
         GAMEENGINE_ERROR(std::format("Failed to acquire swapchain texture: {}", SDL_GetError()));
         m_swapchainTexture = nullptr;
+        // Cancel the command buffer to avoid resource leak
+        SDL_CancelGPUCommandBuffer(m_commandBuffer);
+        m_commandBuffer = nullptr;
         return;
     }
 
@@ -531,16 +534,11 @@ bool GPURenderer::loadShaders() {
     ShaderInfo spriteFragInfo{};
     spriteFragInfo.numSamplers = 1;  // Texture sampler
 
-    ShaderInfo particleVertInfo{};
-    particleVertInfo.numUniformBuffers = 1;
+    // Color shaders used by both particle and primitive pipelines
+    ShaderInfo colorVertInfo{};
+    colorVertInfo.numUniformBuffers = 1;
 
-    ShaderInfo particleFragInfo{};
-    // No samplers or uniforms
-
-    ShaderInfo primitiveVertInfo{};
-    primitiveVertInfo.numUniformBuffers = 1;
-
-    ShaderInfo primitiveFragInfo{};
+    ShaderInfo colorFragInfo{};
     // No samplers or uniforms
 
     ShaderInfo compositeVertInfo{};
@@ -557,16 +555,10 @@ bool GPURenderer::loadShaders() {
     if (!shaderMgr.loadShader("res/shaders/sprite.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, spriteFragInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader("res/shaders/particle.vert", SDL_GPU_SHADERSTAGE_VERTEX, particleVertInfo)) {
+    if (!shaderMgr.loadShader("res/shaders/color.vert", SDL_GPU_SHADERSTAGE_VERTEX, colorVertInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader("res/shaders/particle.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, particleFragInfo)) {
-        return false;
-    }
-    if (!shaderMgr.loadShader("res/shaders/primitive.vert", SDL_GPU_SHADERSTAGE_VERTEX, primitiveVertInfo)) {
-        return false;
-    }
-    if (!shaderMgr.loadShader("res/shaders/primitive.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, primitiveFragInfo)) {
+    if (!shaderMgr.loadShader("res/shaders/color.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, colorFragInfo)) {
         return false;
     }
     if (!shaderMgr.loadShader("res/shaders/composite.vert", SDL_GPU_SHADERSTAGE_VERTEX, compositeVertInfo)) {
@@ -613,11 +605,11 @@ bool GPURenderer::createPipelines() {
         }
     }
 
-    // Particle pipeline (renders to scene texture)
+    // Particle pipeline (renders to scene texture, uses color shaders)
     {
         auto config = GPUPipeline::createParticleConfig(
-            shaderMgr.getShader("res/shaders/particle.vert"),
-            shaderMgr.getShader("res/shaders/particle.frag"),
+            shaderMgr.getShader("res/shaders/color.vert"),
+            shaderMgr.getShader("res/shaders/color.frag"),
             sceneFormat
         );
         if (!m_particlePipeline.create(m_device, config)) {
@@ -625,11 +617,11 @@ bool GPURenderer::createPipelines() {
         }
     }
 
-    // Primitive pipeline (renders to scene texture)
+    // Primitive pipeline (renders to scene texture, uses color shaders)
     {
         auto config = GPUPipeline::createPrimitiveConfig(
-            shaderMgr.getShader("res/shaders/primitive.vert"),
-            shaderMgr.getShader("res/shaders/primitive.frag"),
+            shaderMgr.getShader("res/shaders/color.vert"),
+            shaderMgr.getShader("res/shaders/color.frag"),
             sceneFormat
         );
         if (!m_primitivePipeline.create(m_device, config)) {
@@ -662,11 +654,11 @@ bool GPURenderer::createPipelines() {
         }
     }
 
-    // UI primitive pipeline (renders to swapchain for UI backgrounds)
+    // UI primitive pipeline (renders to swapchain for UI backgrounds, uses color shaders)
     {
         auto config = GPUPipeline::createPrimitiveConfig(
-            shaderMgr.getShader("res/shaders/primitive.vert"),
-            shaderMgr.getShader("res/shaders/primitive.frag"),
+            shaderMgr.getShader("res/shaders/color.vert"),
+            shaderMgr.getShader("res/shaders/color.frag"),
             swapchainFormat
         );
         if (!m_uiPrimitivePipeline.create(m_device, config)) {

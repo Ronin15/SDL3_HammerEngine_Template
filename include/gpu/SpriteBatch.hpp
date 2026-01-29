@@ -47,6 +47,10 @@ public:
     SpriteBatch(const SpriteBatch&) = delete;
     SpriteBatch& operator=(const SpriteBatch&) = delete;
 
+    // Movable
+    SpriteBatch(SpriteBatch&&) = default;
+    SpriteBatch& operator=(SpriteBatch&&) = default;
+
     /**
      * Initialize the sprite batch.
      * @param device GPU device
