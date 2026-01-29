@@ -157,11 +157,11 @@ run_category() {
         run_test "${test}"
         local result=$?
         if [[ $result -eq 0 ]]; then
-            ((passed++))
+            passed=$((passed + 1))
         elif [[ $result -eq 2 ]]; then
-            ((skipped++))
+            skipped=$((skipped + 1))
         else
-            ((failed++))
+            failed=$((failed + 1))
         fi
     done
 
@@ -185,19 +185,19 @@ total_failed=0
 # Run unit tests (always, no GPU required)
 if [[ "${INTEGRATION_ONLY}" != "true" && "${SYSTEM_ONLY}" != "true" ]]; then
     run_category "Unit Tests" "${UNIT_TESTS[@]}"
-    ((total_failed += $?))
+    total_failed=$((total_failed + $?))
 fi
 
 # Run integration tests (require GPU)
 if [[ "${UNIT_ONLY}" != "true" && "${SYSTEM_ONLY}" != "true" && "${SKIP_GPU}" != "true" ]]; then
     run_category "Integration Tests" "${INTEGRATION_TESTS[@]}"
-    ((total_failed += $?))
+    total_failed=$((total_failed + $?))
 fi
 
 # Run system tests (require GPU)
 if [[ "${UNIT_ONLY}" != "true" && "${INTEGRATION_ONLY}" != "true" && "${SKIP_GPU}" != "true" ]]; then
     run_category "System Tests" "${SYSTEM_TESTS[@]}"
-    ((total_failed += $?))
+    total_failed=$((total_failed + $?))
 fi
 
 # Summary
