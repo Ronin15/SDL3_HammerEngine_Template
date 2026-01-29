@@ -329,3 +329,86 @@ target_include_directories(PowerProfile PRIVATE ${CMAKE_SOURCE_DIR}/include)
 set_target_properties(PowerProfile PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
 )
+
+# --- GPU Tests (conditional on USE_SDL3_GPU) ---
+if(USE_SDL3_GPU)
+    message(STATUS "Building GPU tests (SDL3_GPU enabled)")
+
+    # GPU test executables
+    set(GPU_UNIT_TESTS
+        gpu_types_tests
+        gpu_pipeline_config_tests
+    )
+
+    set(GPU_INTEGRATION_TESTS
+        gpu_device_tests
+        gpu_shader_manager_tests
+        gpu_resource_tests
+        gpu_vertex_pool_tests
+        sprite_batch_tests
+    )
+
+    set(GPU_SYSTEM_TESTS
+        gpu_renderer_tests
+    )
+
+    # Source file mapping for GPU unit tests (no GPU required)
+    foreach(test_name ${GPU_UNIT_TESTS})
+        if(${test_name} STREQUAL "gpu_types_tests")
+            set(test_source "gpu/GPUTypesTests.cpp")
+        elseif(${test_name} STREQUAL "gpu_pipeline_config_tests")
+            set(test_source "gpu/GPUPipelineConfigTests.cpp")
+        endif()
+
+        add_executable(${test_name} ${test_source})
+        target_link_libraries(${test_name} PRIVATE HammerEngineLib Boost::unit_test_framework)
+        target_include_directories(${test_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gpu)
+        target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
+        add_test(NAME ${test_name} COMMAND ${test_name})
+        set_tests_properties(${test_name} PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "GPU;Unit")
+    endforeach()
+
+    # Source file mapping for GPU integration tests (require GPU)
+    foreach(test_name ${GPU_INTEGRATION_TESTS})
+        if(${test_name} STREQUAL "gpu_device_tests")
+            set(test_source "gpu/GPUDeviceTests.cpp")
+        elseif(${test_name} STREQUAL "gpu_shader_manager_tests")
+            set(test_source "gpu/GPUShaderManagerTests.cpp")
+        elseif(${test_name} STREQUAL "gpu_resource_tests")
+            set(test_source "gpu/GPUResourceTests.cpp")
+        elseif(${test_name} STREQUAL "gpu_vertex_pool_tests")
+            set(test_source "gpu/GPUVertexPoolTests.cpp")
+        elseif(${test_name} STREQUAL "sprite_batch_tests")
+            set(test_source "gpu/SpriteBatchTests.cpp")
+        endif()
+
+        add_executable(${test_name} ${test_source})
+        target_link_libraries(${test_name} PRIVATE HammerEngineLib Boost::unit_test_framework)
+        target_include_directories(${test_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gpu)
+        target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
+        add_test(NAME ${test_name} COMMAND ${test_name})
+        set_tests_properties(${test_name} PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "GPU;Integration")
+    endforeach()
+
+    # Source file mapping for GPU system tests (full frame flow)
+    foreach(test_name ${GPU_SYSTEM_TESTS})
+        if(${test_name} STREQUAL "gpu_renderer_tests")
+            set(test_source "gpu/GPURendererTests.cpp")
+        endif()
+
+        add_executable(${test_name} ${test_source})
+        target_link_libraries(${test_name} PRIVATE HammerEngineLib Boost::unit_test_framework)
+        target_include_directories(${test_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gpu)
+        target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
+        add_test(NAME ${test_name} COMMAND ${test_name})
+        set_tests_properties(${test_name} PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "GPU;System")
+    endforeach()
+else()
+    message(STATUS "Skipping GPU tests (USE_SDL3_GPU not enabled)")
+endif()
