@@ -2532,6 +2532,43 @@ void HammerEngine::TileRenderer::recordGPUTiles(
       // Collect obstacle for Y-sorting
       if (tile.obstacleType != ObstacleType::NONE &&
           tile.obstacleType != ObstacleType::WATER) {
+
+        // Handle buildings specially (match SDL_Renderer behavior)
+        if (tile.obstacleType == ObstacleType::BUILDING) {
+          if (tile.isTopLeftOfBuilding) {
+            // Get building coords by size
+            const AtlasCoords* buildingCoords = nullptr;
+            switch (tile.buildingSize) {
+              case 0:
+              case 1: buildingCoords = &sc.building_hut; break;
+              case 2: buildingCoords = &sc.building_house; break;
+              case 3: buildingCoords = &sc.building_large; break;
+              case 4: buildingCoords = &sc.building_cityhall; break;
+              default: buildingCoords = &sc.building_hut; break;
+            }
+
+            if (buildingCoords && buildingCoords->w > 0) {
+              const float spriteW = static_cast<float>(buildingCoords->w);
+              const float spriteH = static_cast<float>(buildingCoords->h);
+              // Buildings render at tile position WITHOUT offsets (match SDL_Renderer)
+              // sortY = bottom of building (tile.buildingSize tiles down)
+              const float sortY = screenY + (tile.buildingSize * scaledTileSize);
+
+              s_gpuObstacleBuffer.push_back({
+                  {screenX, screenY,
+                   static_cast<float>(buildingCoords->x), static_cast<float>(buildingCoords->y),
+                   static_cast<float>(buildingCoords->w), static_cast<float>(buildingCoords->h),
+                   spriteW, spriteH},
+                  sortY
+              });
+            }
+          }
+          // Skip to next tile (don't render non-top-left building tiles)
+          screenX += scaledTileSize;
+          continue;
+        }
+
+        // Regular obstacles
         const auto obstacleIdx = static_cast<int>(tile.obstacleType);
         const AtlasCoords* obstacleCoords = obstacleLUT[obstacleIdx];
 
