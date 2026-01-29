@@ -175,6 +175,7 @@ private:
     bool loadShaders();
     bool createPipelines();
     bool createSceneTexture();
+    void cleanupPartialInit();  // Clean up resources on init failure
 
     // Device reference
     SDL_GPUDevice* m_device{nullptr};
@@ -233,6 +234,10 @@ private:
     float m_dayNightG{1.0f};
     float m_dayNightB{1.0f};
     float m_dayNightAlpha{0.0f};
+
+    // Debug tracking for scene texture dimension changes (avoids static variables)
+    uint32_t m_lastLoggedSceneW{0};
+    uint32_t m_lastLoggedSceneH{0};
 
     bool m_initialized{false};
 };

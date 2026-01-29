@@ -67,6 +67,13 @@ bool UIManager::init() {
   UI_INFO(std::format("UI scale set to {} for resolution {}x{}",
                       m_globalScale, m_currentLogicalWidth, m_currentLogicalHeight));
 
+#ifdef USE_SDL3_GPU
+  // Reserve GPU command buffers to avoid per-frame reallocations
+  m_gpuPrimitiveCommands.reserve(GPU_PRIMITIVE_COMMAND_CAPACITY);
+  m_gpuTextCommands.reserve(GPU_TEXT_COMMAND_CAPACITY);
+  m_gpuImageCommands.reserve(GPU_IMAGE_COMMAND_CAPACITY);
+#endif
+
   // Note: UIManager::onWindowResize() is called directly by InputManager when window resizes
 
   return true;
@@ -3330,7 +3337,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
 
   // Helper to add a filled rectangle
   auto addFilledRect = [&](const UIRect& rect, const SDL_Color& color) {
-    if (primOffset + 6 > 10000) return;  // Safety limit
+    if (primOffset + 6 > GPU_PRIMITIVE_VERTEX_LIMIT) return;  // Safety limit
 
     float x = static_cast<float>(rect.x);
     float y = static_cast<float>(rect.y);
@@ -3381,7 +3388,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
       return;
     }
 
-    if (uiOffset + 4 > 4000) return;  // Safety limit
+    if (uiOffset + 4 > GPU_UI_VERTEX_LIMIT) return;  // Safety limit
 
     // Calculate position based on alignment
     float dstX = static_cast<float>(x);

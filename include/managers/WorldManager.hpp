@@ -491,6 +491,22 @@ private:
     // Helper to get atlas coords for a tile
     const AtlasCoords& getBiomeAtlasCoords(Biome biome, Season season) const;
     const AtlasCoords& getObstacleAtlasCoords(ObstacleType obstacle, Season season) const;
+
+    // GPU rendering buffers (member variables to avoid static in threaded code)
+    struct GPUSprite {
+        float screenX, screenY;         // Destination position
+        float srcX, srcY, srcW, srcH;   // Atlas source rect
+        float dstW, dstH;               // Destination dimensions
+    };
+    struct GPUYSortedSprite : GPUSprite {
+        float sortY;                    // Y value for sorting (bottom of sprite)
+    };
+    std::vector<GPUSprite> m_gpuDecoBuffer;
+    std::vector<GPUYSortedSprite> m_gpuObstacleBuffer;
+
+    // Debug tracking for GPU viewport changes (avoids static variables)
+    float m_lastGPUViewportW{0.0f};
+    float m_lastGPUViewportH{0.0f};
 #endif
 
     // Get atlas pointer from TextureManager and pre-load source rect coords from JSON
