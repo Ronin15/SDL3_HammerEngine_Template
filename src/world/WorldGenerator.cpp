@@ -834,14 +834,13 @@ void WorldGenerator::generateBuildings(WorldData& world, std::default_random_eng
 
   // Helper to check distance from existing villages
   auto isFarEnoughFromVillages = [&](int x, int y) -> bool {
-    for (const auto& center : villageCenters) {
-      int dx = x - center.first;
-      int dy = y - center.second;
-      if (dx * dx + dy * dy < BldgCfg::VILLAGE_MIN_DISTANCE * BldgCfg::VILLAGE_MIN_DISTANCE) {
-        return false;
-      }
-    }
-    return true;
+    const int minDistSq = BldgCfg::VILLAGE_MIN_DISTANCE * BldgCfg::VILLAGE_MIN_DISTANCE;
+    return std::none_of(villageCenters.begin(), villageCenters.end(),
+        [x, y, minDistSq](const auto& center) {
+            int dx = x - center.first;
+            int dy = y - center.second;
+            return dx * dx + dy * dy < minDistSq;
+        });
   };
 
   // Find village center locations
