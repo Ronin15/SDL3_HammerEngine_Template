@@ -56,7 +56,9 @@ See `tests/TESTING.md` for comprehensive documentation.
 
 **Controllers**: State-scoped helpers via ControllerRegistry. Dir: `controllers/{combat,world,render}/`
 
-**Utils**: Camera (world↔screen) | Vector2D | SIMDMath (SSE2/NEON) | JsonReader | BinarySerializer | UniqueID
+**Utils**: Camera (world↔screen) | Vector2D | SIMDMath (SSE2/NEON) | JsonReader | BinarySerializer | UniqueID | WorldRenderPipeline (SDL_Renderer facade) | FrameProfiler (F3 debug overlay)
+
+**GPU Rendering** (USE_SDL3_GPU): GPUDevice (singleton) | GPURenderer (frame orchestration) | GPUShaderManager (SPIR-V/Metal) | SpriteBatch (25K sprites) | GPUVertexPool (triple-buffered) | GPUSceneRenderer (scene facade). Shaders: `res/shaders/`
 
 **Structure**: `src/{core,managers,controllers,gameStates,entities,events,ai,collisions,utils,world}` | `include/` mirrors src | `tests/` | `res/`
 
@@ -144,6 +146,12 @@ Modes: TOP_ALIGNED, BOTTOM_ALIGNED, LEFT/RIGHT_ALIGNED, BOTTOM_RIGHT, CENTERED_H
 
 **One Present() per frame** via `GameEngine::render()` → `GameStateManager::render()` → `GameState::render()`. NEVER call SDL_RenderClear/Present in GameStates.
 
+**SDL_Renderer Path**: WorldRenderPipeline (4-phase: prepareChunks→beginScene→renderWorld→endScene) wraps SceneRenderer for pixel-perfect zoom and sub-pixel scrolling.
+
+**GPU Path**: Scene texture → Composite pass (day/night tinting, sub-pixel offset, zoom) → UI pass. GameStates implement `renderGPUScene()` and `renderGPUUI()`.
+
+**DayNightController**: Requires `update(dt)` each frame for lighting interpolation (30s transitions). GPU path updates automatically via `GPURenderer::setDayNightParams()`.
+
 **Loading**: Use `LoadingState` with async ThreadSystem ops, not blocking manual rendering.
 
 **Deferred transitions**: Set flag in `enter()`, transition in `update()` to avoid timing issues.
@@ -167,6 +175,10 @@ m_controllers.get<WeatherController>()->getCurrentWeather();
 **Lazy String Caching**: Cache enum→string conversions, recompute only on change: `if (m_phase != m_lastPhase) { m_str = getPhaseString(); m_lastPhase = m_phase; }`
 
 **Layout Caching**: Compute static positions (LogoState) in `enter()`, use cached values in `render()`.
+
+## Debug Tools
+
+**FrameProfiler** (F3): Three-tier timing (Frame→Manager→Render phases). RAII timers: `ScopedPhaseTimer`, `ScopedManagerTimer`, `ScopedRenderTimer`. Hitch detection (>20ms). No-op in Release builds.
 
 ## Workflow
 
