@@ -10,6 +10,9 @@ AIManager.cpp:bugprone-infinite-loop:false positive - loop variable incremented 
 # clang-tidy doesn't recognize for-statement increments, only loop body increments
 HierarchicalSpatialHash.cpp:bugprone-infinite-loop:false positive - increment in for statement
 
+# False positive: SIMD loop increments i += 4 in for-loop statement (line 2175)
+WorldManager.cpp:bugprone-infinite-loop:false positive - SIMD loop increment in for statement
+
 # Intentional empty catches - fallback to default values when singletons unavailable
 PathfindingGrid.cpp:bugprone-empty-catch:intentional fallback to default threshold
 Camera.cpp:bugprone-empty-catch:intentional fallback to keep current bounds
