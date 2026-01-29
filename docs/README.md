@@ -227,9 +227,13 @@ For complete integration examples, see the [JSON Resource Loading Guide](utils/J
   - `mingw-w64-x86_64-boost` (for testing)
   - `mingw-w64-x86_64-harfbuzz` (SDL3 req)
   - `mingw-w64-x86_64-freetype` (SDL3 req)
+  - `mingw-w64-x86_64-glslang` (GPU rendering, optional)
+  - `mingw-w64-x86_64-spirv-cross` (GPU rendering, optional)
 - Install with:
   ```
   pacman -S mingw-w64-x86_64-boost mingw-w64-x86_64-harfbuzz mingw-w64-x86_64-freetype
+  # For GPU rendering (-DUSE_SDL3_GPU=ON):
+  pacman -S mingw-w64-x86_64-glslang mingw-w64-x86_64-spirv-cross
   ```
 
 ### Linux
@@ -237,6 +241,8 @@ For complete integration examples, see the [JSON Resource Loading Guide](utils/J
 - Install Boost for tests, Valgrind for memory/thread testing, and cppcheck clang-tidy for static analysis. Freetype is optional for SDL3_TTF:
   ```
   sudo apt-get install libboost-all-dev valgrind cppcheck clang-tidy mold libfreetype-dev
+  # For GPU rendering (-DUSE_SDL3_GPU=ON):
+  sudo apt-get install glslang-tools spirv-cross
   ```
 - Example tested environment:
   - Ubuntu 24.04.2 LTS
@@ -258,6 +264,9 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 # Release build (production)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
 
+# GPU rendering (compiles SPIR-V/Metal shaders)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DUSE_SDL3_GPU=ON && ninja -C build
+
 # Profile build (Valgrind-compatible optimized)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Profile && ninja -C build
 ```
@@ -272,6 +281,8 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Profile && ninja -C build
 - Use Homebrew for SDL3 dependencies:
   ```
   brew install freetype harfbuzz boost cppcheck
+  # For GPU rendering (-DUSE_SDL3_GPU=ON):
+  brew install glslang spirv-cross
   ```
 - Note: CMake will use SDL3 libraries downloaded via FetchContent, not Homebrew, for the build. Homebrew SDL3 libs can conflict.
 - Xcode command line tools are required to compile.
