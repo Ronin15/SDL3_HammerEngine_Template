@@ -64,6 +64,55 @@ void GPUVertexPool::shutdown() {
     m_mappedPtr = nullptr;
 }
 
+GPUVertexPool::GPUVertexPool(GPUVertexPool&& other) noexcept
+    : m_device(other.m_device)
+    , m_transferBuffers(std::move(other.m_transferBuffers))
+    , m_gpuBuffer(std::move(other.m_gpuBuffer))
+    , m_frameIndex(other.m_frameIndex)
+    , m_vertexSize(other.m_vertexSize)
+    , m_maxVertices(other.m_maxVertices)
+    , m_currentVertexCount(other.m_currentVertexCount)
+    , m_pendingVertexCount(other.m_pendingVertexCount)
+    , m_mappedPtr(other.m_mappedPtr)
+{
+    // Clear source state to prevent double-cleanup
+    other.m_device = nullptr;
+    other.m_frameIndex = 0;
+    other.m_vertexSize = 0;
+    other.m_maxVertices = 0;
+    other.m_currentVertexCount = 0;
+    other.m_pendingVertexCount = 0;
+    other.m_mappedPtr = nullptr;
+}
+
+GPUVertexPool& GPUVertexPool::operator=(GPUVertexPool&& other) noexcept {
+    if (this != &other) {
+        // Release current resources
+        shutdown();
+
+        // Move from other
+        m_device = other.m_device;
+        m_transferBuffers = std::move(other.m_transferBuffers);
+        m_gpuBuffer = std::move(other.m_gpuBuffer);
+        m_frameIndex = other.m_frameIndex;
+        m_vertexSize = other.m_vertexSize;
+        m_maxVertices = other.m_maxVertices;
+        m_currentVertexCount = other.m_currentVertexCount;
+        m_pendingVertexCount = other.m_pendingVertexCount;
+        m_mappedPtr = other.m_mappedPtr;
+
+        // Clear source state
+        other.m_device = nullptr;
+        other.m_frameIndex = 0;
+        other.m_vertexSize = 0;
+        other.m_maxVertices = 0;
+        other.m_currentVertexCount = 0;
+        other.m_pendingVertexCount = 0;
+        other.m_mappedPtr = nullptr;
+    }
+    return *this;
+}
+
 void* GPUVertexPool::beginFrame() {
     if (!m_device) {
         GAMEENGINE_ERROR("GPUVertexPool::beginFrame: not initialized");

@@ -29,9 +29,9 @@ public:
     GPUVertexPool() = default;
     ~GPUVertexPool() = default;
 
-    // Move-only
-    GPUVertexPool(GPUVertexPool&&) = default;
-    GPUVertexPool& operator=(GPUVertexPool&&) = default;
+    // Move-only (explicit to properly clear source state)
+    GPUVertexPool(GPUVertexPool&& other) noexcept;
+    GPUVertexPool& operator=(GPUVertexPool&& other) noexcept;
     GPUVertexPool(const GPUVertexPool&) = delete;
     GPUVertexPool& operator=(const GPUVertexPool&) = delete;
 

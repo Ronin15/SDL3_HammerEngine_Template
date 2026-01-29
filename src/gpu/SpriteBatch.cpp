@@ -95,6 +95,65 @@ void SpriteBatch::shutdown() {
     m_initialized = false;
 }
 
+SpriteBatch::SpriteBatch(SpriteBatch&& other) noexcept
+    : m_device(other.m_device)
+    , m_texture(other.m_texture)
+    , m_sampler(other.m_sampler)
+    , m_indexBuffer(std::move(other.m_indexBuffer))
+    , m_writePtr(other.m_writePtr)
+    , m_maxVertices(other.m_maxVertices)
+    , m_textureWidth(other.m_textureWidth)
+    , m_textureHeight(other.m_textureHeight)
+    , m_spriteCount(other.m_spriteCount)
+    , m_vertexCount(other.m_vertexCount)
+    , m_recording(other.m_recording)
+    , m_initialized(other.m_initialized)
+{
+    // Clear source state to prevent double-cleanup
+    other.m_device = nullptr;
+    other.m_texture = nullptr;
+    other.m_sampler = nullptr;
+    other.m_writePtr = nullptr;
+    other.m_maxVertices = 0;
+    other.m_spriteCount = 0;
+    other.m_vertexCount = 0;
+    other.m_recording = false;
+    other.m_initialized = false;
+}
+
+SpriteBatch& SpriteBatch::operator=(SpriteBatch&& other) noexcept {
+    if (this != &other) {
+        // Release current resources
+        shutdown();
+
+        // Move from other
+        m_device = other.m_device;
+        m_texture = other.m_texture;
+        m_sampler = other.m_sampler;
+        m_indexBuffer = std::move(other.m_indexBuffer);
+        m_writePtr = other.m_writePtr;
+        m_maxVertices = other.m_maxVertices;
+        m_textureWidth = other.m_textureWidth;
+        m_textureHeight = other.m_textureHeight;
+        m_spriteCount = other.m_spriteCount;
+        m_vertexCount = other.m_vertexCount;
+        m_recording = other.m_recording;
+        m_initialized = other.m_initialized;
+
+        // Clear source state
+        other.m_device = nullptr;
+        other.m_texture = nullptr;
+        other.m_sampler = nullptr;
+        other.m_writePtr = nullptr;
+        other.m_maxVertices = 0;
+        other.m_spriteCount = 0;
+        other.m_vertexCount = 0;
+        other.m_recording = false;
+        other.m_initialized = false;
+    }
+    return *this;
+}
+
 void SpriteBatch::begin(SpriteVertex* writePtr, size_t maxVertices,
                         SDL_GPUTexture* texture, SDL_GPUSampler* sampler,
                         float textureWidth, float textureHeight) {

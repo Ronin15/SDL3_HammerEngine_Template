@@ -47,9 +47,9 @@ public:
     SpriteBatch(const SpriteBatch&) = delete;
     SpriteBatch& operator=(const SpriteBatch&) = delete;
 
-    // Movable
-    SpriteBatch(SpriteBatch&&) = default;
-    SpriteBatch& operator=(SpriteBatch&&) = default;
+    // Movable (explicit to properly clear source state)
+    SpriteBatch(SpriteBatch&& other) noexcept;
+    SpriteBatch& operator=(SpriteBatch&& other) noexcept;
 
     /**
      * Initialize the sprite batch.
