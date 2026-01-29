@@ -1116,8 +1116,8 @@ void GamePlayState::initializeCombatHUD() {
   constexpr int labelWidth = 30;
   constexpr int barWidth = 150;
   constexpr int barHeight = 20;
-  constexpr int rowSpacing = 25;
-  constexpr int labelBarGap = 5;
+  constexpr int rowSpacing = 35;
+  constexpr int labelBarGap = 15;
 
   // Row positions
   int healthRowY = hudMarginTop;

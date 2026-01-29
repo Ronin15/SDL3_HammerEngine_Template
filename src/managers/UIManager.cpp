@@ -3414,11 +3414,17 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
 
     // Draw background rectangle if enabled (added to primitive commands, renders before text)
     if (useBackground && bgColor.a > 0) {
+      // Scale-compensate padding: text doesn't scale but UI gaps do, so use less
+      // padding when scale < 1.0 to prevent background from extending into adjacent elements
+      int effectivePadding = bgPadding;
+      if (m_globalScale < 1.0f) {
+        effectivePadding = static_cast<int>(bgPadding * m_globalScale);
+      }
       UIRect bgRect;
-      bgRect.x = static_cast<int>(dstX) - bgPadding;
-      bgRect.y = static_cast<int>(dstY) - bgPadding;
-      bgRect.width = static_cast<int>(dstW) + (bgPadding * 2);
-      bgRect.height = static_cast<int>(dstH) + (bgPadding * 2);
+      bgRect.x = static_cast<int>(dstX) - effectivePadding;
+      bgRect.y = static_cast<int>(dstY) - effectivePadding;
+      bgRect.width = static_cast<int>(dstW) + (effectivePadding * 2);
+      bgRect.height = static_cast<int>(dstH) + (effectivePadding * 2);
       addFilledRect(bgRect, bgColor);
     }
 
