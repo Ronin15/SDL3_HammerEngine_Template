@@ -56,7 +56,7 @@ public:
 
     /**
      * Get the test window (creates if needed).
-     * Window is hidden and minimal size (1x1) for testing.
+     * Window is hidden and minimal size for testing.
      */
     static SDL_Window* getTestWindow() {
         if (!s_testWindow && s_sdlInitialized) {
@@ -70,6 +70,28 @@ public:
             }
         }
         return s_testWindow;
+    }
+
+    /**
+     * Show the test window for frame cycle tests that need a visible swapchain.
+     * Call this before tests that require beginFrame() to fully execute.
+     */
+    static void showTestWindow() {
+        if (s_testWindow) {
+            SDL_ShowWindow(s_testWindow);
+            // Process events to ensure window is visible
+            SDL_Event event;
+            while (SDL_PollEvent(&event)) {}
+        }
+    }
+
+    /**
+     * Hide the test window after frame cycle tests.
+     */
+    static void hideTestWindow() {
+        if (s_testWindow) {
+            SDL_HideWindow(s_testWindow);
+        }
     }
 
     /**

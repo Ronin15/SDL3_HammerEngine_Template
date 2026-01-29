@@ -234,7 +234,9 @@ void GPURenderer::beginFrame() {
     profiler.endRender(RenderPhase::GPUSwapchain);
 
     if (!m_swapchainTexture) {
-        // Window minimized or not visible
+        // Window minimized or not visible - cancel command buffer and skip frame
+        SDL_CancelGPUCommandBuffer(m_commandBuffer);
+        m_commandBuffer = nullptr;
         return;
     }
 
