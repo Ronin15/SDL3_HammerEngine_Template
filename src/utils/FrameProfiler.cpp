@@ -230,12 +230,8 @@ void FrameProfiler::endRender(RenderPhase phase)
         std::chrono::duration<double, std::milli>(now - start).count();
 }
 
-void FrameProfiler::renderOverlay(SDL_Renderer* renderer, FontManager* /*fontMgr*/)
+void FrameProfiler::renderOverlay(SDL_Renderer* /*renderer*/, FontManager* /*fontMgr*/)
 {
-    if (!renderer) {
-        return;
-    }
-
     auto& uiMgr = UIManager::Instance();
 
     // Handle overlay visibility state changes
