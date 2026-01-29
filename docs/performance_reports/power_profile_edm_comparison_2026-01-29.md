@@ -1,6 +1,6 @@
 # Power Profile Analysis: EntityDataManager Architecture Evolution
 
-**Last Updated**: 2026-01-24
+**Last Updated**: 2026-01-29
 **Test Scenario**: 200 entities, 10-minute idle baseline, EventDemoState
 **Hardware**: M3 Pro MacBook (70Wh battery, 11 CPUs)
 
@@ -8,13 +8,37 @@
 
 ## Summary Comparison
 
-| Metric | Jan 8 (Baseline) | Jan 11 (Full EDM) | Jan 24 (+ Races/Classes/Resources) |
-|--------|------------------|-------------------|-------------------------------------|
-| **Avg Power** | 0.79 W | 0.61 W | 0.87 W |
-| **Idle Residency** | 84.46% | 85.97% | 85.75% |
-| **Avg CPU Frequency** | 1467 MHz | 1370 MHz | 1285 MHz |
-| **Peak Power** | 8.18 W | 6.89 W | 27.88 W (init) |
-| **Continuous Play** | ~17 hrs | ~22 hrs | ~16 hrs |
+| Metric | Jan 11 (Full EDM) | Jan 24 (+ Resources) | Jan 29 (SDL3 GPU) |
+|--------|-------------------|----------------------|-------------------|
+| **Avg Power** | 0.61 W | 0.87 W | **0.69 W** |
+| **Idle Residency** | 85.97% | 85.75% | **86.65%** |
+| **Avg CPU Frequency** | 1370 MHz | 1285 MHz | 1292 MHz |
+| **Peak Power** | 6.89 W | 27.88 W (init) | 27.44 W (init) |
+| **Battery Life (Avg)** | 114.3 hrs | 80.4 hrs | **101.8 hrs** |
+
+---
+
+## Jan 29 Highlights: SDL3 GPU Rendering Update
+
+The Jan 29 profile introduced SDL3 GPU rendering (replacing SDL_Renderer):
+
+### SDL3 GPU vs SDL_Renderer (Same EDM Workload)
+
+| Metric | Jan 24 (SDL_Renderer) | Jan 29 (SDL3 GPU) | Change |
+|--------|----------------------|-------------------|--------|
+| **Avg Power** | 0.87 W | 0.69 W | **-21%** |
+| **Idle Residency** | 85.75% | 86.65% | **+0.9%** |
+| **Active %** | 14.25% | 13.35% | **-0.9%** |
+| **Battery Life** | 80.4 hrs | 101.8 hrs | **+27%** |
+
+**Key Findings:**
+- **21% power reduction** with GPU-accelerated rendering
+- **Best idle residency** of all measured runs (86.65%)
+- **27% better battery life** at average load
+- Peak power (27.44W) is startup-only (shader compilation, texture uploads)
+- Race-to-idle validated at 86%+ idle residency
+
+The GPU rendering path is more efficient than SDL_Renderer for the same entity/AI/collision workload. The GPU handles draw calls more efficiently, letting the CPU idle more between frames.
 
 ---
 
@@ -242,6 +266,7 @@ The 21% lower CPU frequency at identical workload indicates:
 - `power_realapp_gameplay_20260108_070830.plist` - Baseline (pre-full EDM)
 - `power_realapp_gameplay_20260111_081706.plist` - Full EDM integration
 - `power_realapp_gameplay_20260124_135336.plist` - EDM + ChunkRendering + 28K resources
+- `power_realapp_gameplay_20260129_093547.plist` - SDL3 GPU rendering update
 
 **Dec 2025 Profiles:**
 - `power_realapp_gameplay_20251227_191851.plist` - Old architecture
