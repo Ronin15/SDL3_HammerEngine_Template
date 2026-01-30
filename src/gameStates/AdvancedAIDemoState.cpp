@@ -153,6 +153,11 @@ void AdvancedAIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_RIGHTBRACKET) && m_camera) {
     m_camera->zoomOut(); // ] key = zoom out (objects smaller)
   }
+
+  // Combat - F key to attack (SPACE is used for AI pause)
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_F) && m_player) {
+    m_controllers.get<CombatController>()->tryAttack();
+  }
 }
 
 bool AdvancedAIDemoState::enter() {
@@ -266,18 +271,16 @@ bool AdvancedAIDemoState::enter() {
                                 UIConstants::TITLE_TOP_OFFSET, -1,
                                 UIConstants::DEFAULT_TITLE_HEIGHT});
 
+    // Create centered instruction labels
     ui.createLabel(
         "advanced_ai_instructions_line1",
-        {UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_FIRST_LINE_Y,
-         gameEngine.getLogicalWidth() - 2 * UIConstants::INFO_LABEL_MARGIN_X,
+        {0, UIConstants::INFO_FIRST_LINE_Y, gameEngine.getLogicalWidth(),
          UIConstants::INFO_LABEL_HEIGHT},
-        "Advanced AI Demo: [B] Exit | [SPACE] Pause/Resume | [1] Idle | [2] "
-        "Flee | [3] Follow");
-    // Set auto-repositioning: top-aligned, full width minus margins
+        "[B] Exit | [SPACE] Pause/Resume | [1] Idle | [2] Flee | [3] Follow");
+    ui.setLabelAlignment("advanced_ai_instructions_line1", UIAlignment::CENTER_CENTER);
     ui.setComponentPositioning(
         "advanced_ai_instructions_line1",
-        {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X,
-         UIConstants::INFO_FIRST_LINE_Y, -2 * UIConstants::INFO_LABEL_MARGIN_X,
+        {UIPositionMode::CENTERED_H, 0, UIConstants::INFO_FIRST_LINE_Y, -1,
          UIConstants::INFO_LABEL_HEIGHT});
 
     const int line2Y = UIConstants::INFO_FIRST_LINE_Y +
@@ -285,30 +288,27 @@ bool AdvancedAIDemoState::enter() {
                        UIConstants::INFO_LINE_SPACING;
     ui.createLabel(
         "advanced_ai_instructions_line2",
-        {UIConstants::INFO_LABEL_MARGIN_X, line2Y,
-         gameEngine.getLogicalWidth() - 2 * UIConstants::INFO_LABEL_MARGIN_X,
-         UIConstants::INFO_LABEL_HEIGHT},
-        "Combat & Social: [4] Guard | [5] Attack");
-    // Set auto-repositioning: top-aligned, full width minus margins
+        {0, line2Y, gameEngine.getLogicalWidth(), UIConstants::INFO_LABEL_HEIGHT},
+        "[F] Player Attack | [4] Guard | [5] Attack NPCs");
+    ui.setLabelAlignment("advanced_ai_instructions_line2", UIAlignment::CENTER_CENTER);
     ui.setComponentPositioning("advanced_ai_instructions_line2",
-                               {UIPositionMode::TOP_ALIGNED,
-                                UIConstants::INFO_LABEL_MARGIN_X, line2Y,
-                                -2 * UIConstants::INFO_LABEL_MARGIN_X,
+                               {UIPositionMode::CENTERED_H, 0, line2Y, -1,
                                 UIConstants::INFO_LABEL_HEIGHT});
 
     const int statusY = line2Y + UIConstants::INFO_LABEL_HEIGHT +
                         UIConstants::INFO_LINE_SPACING +
                         UIConstants::INFO_STATUS_SPACING;
     ui.createLabel("advanced_ai_status",
-                   {UIConstants::INFO_LABEL_MARGIN_X, statusY, 400,
+                   {0, statusY, gameEngine.getLogicalWidth(),
                     UIConstants::INFO_LABEL_HEIGHT},
                    "FPS: -- | NPCs: -- | AI: RUNNING | Combat: ON");
-    // Set auto-repositioning: top-aligned with calculated position (fixes
-    // fullscreen transition)
+    ui.setLabelAlignment("advanced_ai_status", UIAlignment::CENTER_CENTER);
     ui.setComponentPositioning("advanced_ai_status",
-                               {UIPositionMode::TOP_ALIGNED,
-                                UIConstants::INFO_LABEL_MARGIN_X, statusY, 400,
+                               {UIPositionMode::CENTERED_H, 0, statusY, -1,
                                 UIConstants::INFO_LABEL_HEIGHT});
+
+    // Initialize combat HUD (health/stamina bars, target frame)
+    initializeCombatHUD();
 
     // Log status
     GAMESTATE_INFO(std::format("Created {} NPCs with advanced AI behaviors",
@@ -510,6 +510,9 @@ void AdvancedAIDemoState::update(float deltaTime) {
     // Update controllers (CombatController handles cooldowns, stamina regen)
     m_controllers.updateAll(deltaTime);
 
+    // Update combat HUD (health/stamina bars, target frame)
+    updateCombatHUD();
+
     // Update UI (moved from render path for consistent frame timing)
     if (!ui.isShutdown()) {
       ui.update(deltaTime);
@@ -630,7 +633,8 @@ void AdvancedAIDemoState::setupAdvancedAIBehaviors() {
   // Register Attack behavior
   if (!aiMgr.hasBehavior("Attack")) {
     auto attackBehavior = std::make_unique<AttackBehavior>(
-        80.0f, 1.0f, 63.75f); // range, cooldown, speed
+        80.0f, 25.0f, 1.5f); // range, damage, attackSpeed
+    attackBehavior->setMovementSpeed(80.0f); // Match Follow behavior speed
     aiMgr.registerBehavior("Attack", std::move(attackBehavior));
     GAMESTATE_INFO("AdvancedAIDemoState: Registered Attack behavior");
   }
@@ -680,8 +684,8 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
           continue;
         }
 
-        // Override to Follow behavior for this demo (Guard's default is Patrol)
-        aiMgr.assignBehavior(handle, "Follow");
+        // Default to Idle behavior (user can switch with number keys)
+        aiMgr.assignBehavior(handle, "Idle");
 
       } catch (const std::exception &e) {
         GAMESTATE_ERROR(
@@ -750,6 +754,172 @@ void AdvancedAIDemoState::updateCamera(float deltaTime) {
 
     // Update camera position and following logic
     m_camera->update(deltaTime);
+  }
+}
+
+void AdvancedAIDemoState::initializeCombatHUD() {
+  auto &ui = UIManager::Instance();
+
+  // Combat HUD layout constants (matches GamePlayState)
+  constexpr int hudMarginLeft = 20;
+  constexpr int hudMarginTop = 140; // Below instructions/status area
+  constexpr int labelWidth = 30;
+  constexpr int barWidth = 150;
+  constexpr int barHeight = 20;
+  constexpr int rowSpacing = 35;
+  constexpr int labelBarGap = 15;
+
+  // Row positions
+  int healthRowY = hudMarginTop;
+  int staminaRowY = hudMarginTop + rowSpacing;
+  int targetRowY = hudMarginTop + rowSpacing * 2 + 10; // Extra spacing before target
+
+  // --- Player Health Bar ---
+  ui.createLabel("hud_health_label",
+                 {hudMarginLeft, healthRowY, labelWidth, barHeight}, "HP");
+  UIPositioning healthLabelPos;
+  healthLabelPos.mode = UIPositionMode::TOP_ALIGNED;
+  healthLabelPos.offsetX = hudMarginLeft;
+  healthLabelPos.offsetY = healthRowY;
+  healthLabelPos.fixedWidth = labelWidth;
+  healthLabelPos.fixedHeight = barHeight;
+  ui.setComponentPositioning("hud_health_label", healthLabelPos);
+
+  ui.createProgressBar("hud_health_bar",
+                       {hudMarginLeft + labelWidth + labelBarGap, healthRowY,
+                        barWidth, barHeight},
+                       0.0f, 100.0f);
+  UIPositioning healthBarPos;
+  healthBarPos.mode = UIPositionMode::TOP_ALIGNED;
+  healthBarPos.offsetX = hudMarginLeft + labelWidth + labelBarGap;
+  healthBarPos.offsetY = healthRowY;
+  healthBarPos.fixedWidth = barWidth;
+  healthBarPos.fixedHeight = barHeight;
+  ui.setComponentPositioning("hud_health_bar", healthBarPos);
+
+  // Set green fill color for health bar
+  UIStyle healthStyle;
+  healthStyle.backgroundColor = {40, 40, 40, 255};
+  healthStyle.borderColor = {180, 180, 180, 255};
+  healthStyle.hoverColor = {50, 200, 50, 255}; // Green fill
+  healthStyle.borderWidth = 1;
+  ui.setStyle("hud_health_bar", healthStyle);
+
+  // --- Player Stamina Bar ---
+  ui.createLabel("hud_stamina_label",
+                 {hudMarginLeft, staminaRowY, labelWidth, barHeight}, "SP");
+  UIPositioning staminaLabelPos;
+  staminaLabelPos.mode = UIPositionMode::TOP_ALIGNED;
+  staminaLabelPos.offsetX = hudMarginLeft;
+  staminaLabelPos.offsetY = staminaRowY;
+  staminaLabelPos.fixedWidth = labelWidth;
+  staminaLabelPos.fixedHeight = barHeight;
+  ui.setComponentPositioning("hud_stamina_label", staminaLabelPos);
+
+  ui.createProgressBar("hud_stamina_bar",
+                       {hudMarginLeft + labelWidth + labelBarGap, staminaRowY,
+                        barWidth, barHeight},
+                       0.0f, 100.0f);
+  UIPositioning staminaBarPos;
+  staminaBarPos.mode = UIPositionMode::TOP_ALIGNED;
+  staminaBarPos.offsetX = hudMarginLeft + labelWidth + labelBarGap;
+  staminaBarPos.offsetY = staminaRowY;
+  staminaBarPos.fixedWidth = barWidth;
+  staminaBarPos.fixedHeight = barHeight;
+  ui.setComponentPositioning("hud_stamina_bar", staminaBarPos);
+
+  // Set yellow fill color for stamina bar
+  UIStyle staminaStyle;
+  staminaStyle.backgroundColor = {40, 40, 40, 255};
+  staminaStyle.borderColor = {180, 180, 180, 255};
+  staminaStyle.hoverColor = {255, 200, 50, 255}; // Yellow fill
+  staminaStyle.borderWidth = 1;
+  ui.setStyle("hud_stamina_bar", staminaStyle);
+
+  // --- Target Frame (NPC health when attacked) ---
+  constexpr int targetPanelWidth = 190;
+  constexpr int targetPanelHeight = 50;
+
+  ui.createPanel("hud_target_panel",
+                 {hudMarginLeft, targetRowY, targetPanelWidth, targetPanelHeight});
+  UIPositioning targetPanelPos;
+  targetPanelPos.mode = UIPositionMode::TOP_ALIGNED;
+  targetPanelPos.offsetX = hudMarginLeft;
+  targetPanelPos.offsetY = targetRowY;
+  targetPanelPos.fixedWidth = targetPanelWidth;
+  targetPanelPos.fixedHeight = targetPanelHeight;
+  ui.setComponentPositioning("hud_target_panel", targetPanelPos);
+  ui.setComponentVisible("hud_target_panel", false);
+
+  ui.createLabel("hud_target_name",
+                 {hudMarginLeft + 5, targetRowY + 5, targetPanelWidth - 10, 18}, "");
+  UIPositioning targetNamePos;
+  targetNamePos.mode = UIPositionMode::TOP_ALIGNED;
+  targetNamePos.offsetX = hudMarginLeft + 5;
+  targetNamePos.offsetY = targetRowY + 5;
+  targetNamePos.fixedWidth = targetPanelWidth - 10;
+  targetNamePos.fixedHeight = 18;
+  ui.setComponentPositioning("hud_target_name", targetNamePos);
+  ui.setComponentVisible("hud_target_name", false);
+
+  ui.createProgressBar("hud_target_health",
+                       {hudMarginLeft + 5, targetRowY + 26, targetPanelWidth - 10, 18},
+                       0.0f, 100.0f);
+  UIPositioning targetHealthPos;
+  targetHealthPos.mode = UIPositionMode::TOP_ALIGNED;
+  targetHealthPos.offsetX = hudMarginLeft + 5;
+  targetHealthPos.offsetY = targetRowY + 26;
+  targetHealthPos.fixedWidth = targetPanelWidth - 10;
+  targetHealthPos.fixedHeight = 18;
+  ui.setComponentPositioning("hud_target_health", targetHealthPos);
+  ui.setComponentVisible("hud_target_health", false);
+
+  // Set red fill color for target health bar
+  UIStyle targetHealthStyle;
+  targetHealthStyle.backgroundColor = {40, 40, 40, 255};
+  targetHealthStyle.borderColor = {180, 180, 180, 255};
+  targetHealthStyle.hoverColor = {200, 50, 50, 255}; // Red fill
+  targetHealthStyle.borderWidth = 1;
+  ui.setStyle("hud_target_health", targetHealthStyle);
+
+  // Initialize bars with player stats
+  if (m_player) {
+    ui.setValue("hud_health_bar", m_player->getHealth());
+    ui.setValue("hud_stamina_bar", m_player->getStamina());
+  }
+
+  GAMESTATE_INFO("Combat HUD initialized");
+}
+
+void AdvancedAIDemoState::updateCombatHUD() {
+  if (!m_player) {
+    return;
+  }
+
+  auto &ui = UIManager::Instance();
+  auto &combatCtrl = *m_controllers.get<CombatController>();
+
+  // Update player health and stamina bars
+  ui.setValue("hud_health_bar", m_player->getHealth());
+  ui.setValue("hud_stamina_bar", m_player->getStamina());
+
+  // Update target frame visibility and content
+  if (combatCtrl.hasActiveTarget()) {
+    EntityHandle targetHandle = combatCtrl.getTargetedHandle();
+    auto &edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(targetHandle);
+    if (idx != SIZE_MAX) {
+      const auto &charData = edm.getCharacterDataByIndex(idx);
+      ui.setComponentVisible("hud_target_panel", true);
+      ui.setComponentVisible("hud_target_name", true);
+      ui.setComponentVisible("hud_target_health", true);
+      ui.setText("hud_target_name", "Target");
+      ui.setValue("hud_target_health", charData.health);
+    }
+  } else {
+    ui.setComponentVisible("hud_target_panel", false);
+    ui.setComponentVisible("hud_target_name", false);
+    ui.setComponentVisible("hud_target_health", false);
   }
 }
 

@@ -79,6 +79,9 @@ public:
   void setFieldOfView(float angleDegrees);
   void setLineOfSightRequired(bool required);
 
+  // Combat engagement
+  void setAttackEngageRange(float range);
+
   // Communication and coordination
   void setCanCallForHelp(bool canCall);
   void setHelpCallRadius(float radius);
@@ -131,6 +134,9 @@ private:
   float m_threatDetectionRange{250.0f};
   float m_fieldOfView{120.0f}; // Degrees
   bool m_lineOfSightRequired{true};
+
+  // Combat engagement
+  float m_attackEngageRange{80.0f}; // Range at which guard transitions to Attack
 
   // Communication
   bool m_canCallForHelp{true};

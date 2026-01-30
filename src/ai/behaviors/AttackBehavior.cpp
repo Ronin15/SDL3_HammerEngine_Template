@@ -266,7 +266,7 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
   updateStateTimer(data);
 
   // Check for retreat conditions
-  if (shouldRetreat(data) &&
+  if (shouldRetreat(ctx.edmIndex, data) &&
       attack.currentState != static_cast<uint8_t>(AttackState::RETREATING)) {
     changeState(data, AttackState::RETREATING);
   }
@@ -594,6 +594,7 @@ void AttackBehavior::changeState(BehaviorData &data, AttackState newState) {
     switch (newState) {
     case AttackState::ATTACKING:
       attack.recoveryTimer = 0.0f;
+      attack.canAttack = false; // Prevent re-attacking during attack cycle
       break;
     case AttackState::RECOVERING:
       attack.recoveryTimer = 0.0f;
@@ -652,6 +653,7 @@ void AttackBehavior::updateStateTimer(BehaviorData &data) {
 
   case AttackState::COOLDOWN:
     if (timeInState > m_attackCooldown) {
+      data.state.attack.canAttack = true; // Reset attack capability after cooldown
       changeState(data, attack.hasTarget ? AttackState::APPROACHING
                                          : AttackState::SEEKING);
     }
@@ -662,9 +664,15 @@ void AttackBehavior::updateStateTimer(BehaviorData &data) {
   }
 }
 
-bool AttackBehavior::shouldRetreat(const BehaviorData &data) const {
-  const auto &attack = data.state.attack;
-  float const healthRatio = attack.currentHealth / attack.maxHealth;
+bool AttackBehavior::shouldRetreat(size_t edmIndex,
+                                   const BehaviorData &data) const {
+  // Read health from CharacterData (live EDM data) instead of stale BehaviorData copy
+  if (edmIndex == SIZE_MAX) {
+    return false;
+  }
+  auto &edm = EntityDataManager::Instance();
+  const auto &charData = edm.getCharacterDataByIndex(edmIndex);
+  float const healthRatio = charData.health / charData.maxHealth;
   return healthRatio <= m_retreatThreshold && m_aggression < 0.8f;
 }
 
@@ -997,7 +1005,8 @@ void AttackBehavior::updateBerserkerAttack(size_t edmIndex, BehaviorData &data,
 
 void AttackBehavior::updateSeeking(BehaviorData &data) {
   const auto &attack = data.state.attack;
-  if (attack.hasTarget && attack.targetDistance <= m_attackRange * 1.5f) {
+  // If we have a target, always transition to approaching (chase them)
+  if (attack.hasTarget) {
     changeState(data, AttackState::APPROACHING);
   }
 }
@@ -1060,7 +1069,8 @@ void AttackBehavior::updateRetreating(size_t edmIndex, BehaviorData &data,
   edm.getHotDataByIndex(edmIndex).transform.velocity = retreatVelocity;
 
   // Stop retreating if far enough or health recovered
-  if (attack.targetDistance > m_attackRange * 2.0f || !shouldRetreat(data)) {
+  if (attack.targetDistance > m_attackRange * 2.0f ||
+      !shouldRetreat(edmIndex, data)) {
     attack.isRetreating = false;
     changeState(data, AttackState::SEEKING);
   }

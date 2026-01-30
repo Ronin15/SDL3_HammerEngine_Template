@@ -4,6 +4,7 @@
  */
 
 #include "ai/behaviors/GuardBehavior.hpp"
+#include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
@@ -401,6 +402,10 @@ void GuardBehavior::setLineOfSightRequired(bool required) {
   m_lineOfSightRequired = required;
 }
 
+void GuardBehavior::setAttackEngageRange(float range) {
+  m_attackEngageRange = std::max(0.0f, range);
+}
+
 void GuardBehavior::setCanCallForHelp(bool canCall) {
   m_canCallForHelp = canCall;
 }
@@ -598,8 +603,24 @@ void GuardBehavior::handleThreatDetection(BehaviorContext &ctx,
       callForHelp(threatPos);
       guard.helpCalled = true;
     }
-    // Move towards threat at alert speed
-    moveToPositionDirect(ctx, threatPos, m_alertSpeed, 2);
+
+    // Check if close enough to engage in combat
+    {
+      float distance = (ctx.transform.position - threatPos).length();
+      if (distance <= m_attackEngageRange) {
+        // Transition to Attack behavior for combat engagement
+        auto &aiMgr = AIManager::Instance();
+        auto &edm = EntityDataManager::Instance();
+        EntityHandle handle = edm.getHandle(ctx.edmIndex);
+        if (handle.isValid() && aiMgr.hasBehavior("Attack")) {
+          aiMgr.assignBehavior(handle, "Attack");
+          AI_INFO("Guard transitioned to Attack behavior - engaging threat");
+        }
+      } else {
+        // Move towards threat at alert speed
+        moveToPositionDirect(ctx, threatPos, m_alertSpeed, 2);
+      }
+    }
     break;
 
   case 4: // ALARM
