@@ -3,6 +3,7 @@
 
 #include "gpu/GPUShaderManager.hpp"
 #include "core/Logger.hpp"
+#include "utils/ResourcePath.hpp"
 #include <format>
 #include <fstream>
 #include <vector>
@@ -60,7 +61,7 @@ SDL_GPUShader* GPUShaderManager::loadShader(const std::string& basePath,
         return nullptr;
     }
 
-    // Check cache
+    // Check cache using base path as key
     auto it = m_shaders.find(basePath);
     if (it != m_shaders.end()) {
         return it->second;
@@ -68,11 +69,13 @@ SDL_GPUShader* GPUShaderManager::loadShader(const std::string& basePath,
 
     SDL_GPUShader* shader = nullptr;
 
+    // Build full path with extension, then resolve for bundle compatibility
+    // ResourcePath::resolve() checks if file exists, so we must include the extension
     if (m_useSPIRV) {
-        std::string path = basePath + ".spv";
+        std::string path = ResourcePath::resolve(basePath + ".spv");
         shader = loadSPIRV(path, stage, info);
     } else {
-        std::string path = basePath + ".metal";
+        std::string path = ResourcePath::resolve(basePath + ".metal");
         std::string entryPoint = (stage == SDL_GPU_SHADERSTAGE_VERTEX) ? "vertexMain" : "fragmentMain";
         shader = loadMSL(path, stage, info, entryPoint);
     }
