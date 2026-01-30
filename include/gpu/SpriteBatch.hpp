@@ -33,8 +33,8 @@ namespace HammerEngine {
  */
 class SpriteBatch {
 public:
-    // 4K @ 32px = 120x68 tiles = 8160 per layer, 2 layers + padding = ~20k sprites
-    static constexpr size_t MAX_SPRITES = 25000;
+    // 4K @ 32px = 120x68 tiles = 8160 per layer, 2 layers + NPCs + effects = ~40k sprites
+    static constexpr size_t MAX_SPRITES = 50000;
     static constexpr size_t VERTICES_PER_SPRITE = 4;
     static constexpr size_t INDICES_PER_SPRITE = 6;
     static constexpr size_t MAX_VERTICES = MAX_SPRITES * VERTICES_PER_SPRITE;
