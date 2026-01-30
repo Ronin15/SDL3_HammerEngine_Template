@@ -8,9 +8,12 @@
 
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
+#ifdef USE_SDL3_GPU
+#include <SDL3/SDL_gpu.h>
+#endif
+#include <array>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -22,6 +25,31 @@
 class FontManager;
 class InputManager;
 class TextureManager;
+struct SDL_GPURenderPass;
+
+namespace HammerEngine {
+class GPURenderer;
+}
+
+#ifdef USE_SDL3_GPU
+// GPU draw command for batching UI rendering
+struct UIGPUDrawCommand {
+    enum class Type { Rect, Text, Image };
+    Type type{Type::Rect};
+    SDL_GPUTexture* texture{nullptr};  // For text/image
+    uint32_t vertexOffset{0};
+    uint32_t vertexCount{0};
+};
+
+// GPU command buffer capacities (avoids per-frame reallocations)
+constexpr size_t GPU_PRIMITIVE_COMMAND_CAPACITY = 256;
+constexpr size_t GPU_TEXT_COMMAND_CAPACITY = 64;
+constexpr size_t GPU_IMAGE_COMMAND_CAPACITY = 32;
+
+// GPU vertex safety limits
+constexpr uint32_t GPU_PRIMITIVE_VERTEX_LIMIT = 10000;
+constexpr uint32_t GPU_UI_VERTEX_LIMIT = 4000;
+#endif
 
 // UI Component Types
 enum class UIComponentType {
@@ -166,6 +194,7 @@ struct UIComponent {
   // Component-specific data
   std::string m_text{};
   std::function<std::string()> m_textBinding{}; // For data-bound text
+  bool m_bindingDirty{true}; // Skip binding callbacks when false (perf optimization)
   std::string m_textureID{};
   float m_value{0.0f};
   float m_minValue{0.0f};
@@ -262,6 +291,12 @@ public:
   void clean();
   bool isShutdown() const { return m_isShutdown; }
 
+#ifdef USE_SDL3_GPU
+  // GPU rendering methods
+  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer);
+  void renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass);
+#endif
+
   // Window resize notification (called by InputManager on SDL_EVENT_WINDOW_RESIZED)
   void onWindowResize(int newLogicalWidth, int newLogicalHeight);
 
@@ -323,6 +358,8 @@ public:
   void bindText(const std::string &id, std::function<std::string()> binding);
   void bindList(const std::string &id,
                 std::function<void(std::vector<std::string>&, std::vector<std::pair<std::string, int>>&)> binding);
+  void markBindingDirty(const std::string &id);
+  void markAllBindingsDirty();
 
   // Component property getters
   std::string getText(const std::string &id) const;
@@ -380,7 +417,6 @@ public:
   void addEventLogEntry(const std::string &logID, const std::string &entry);
   void clearEventLog(const std::string &logID);
   void setEventLogMaxEntries(const std::string &logID, int maxEntries);
-  void setupDemoEventLog(const std::string &logID);
   void enableEventLogAutoUpdate(const std::string &logID,
                                 float interval = UIConstants::DEFAULT_EVENT_LOG_UPDATE_INTERVAL);
   void disableEventLogAutoUpdate(const std::string &logID);
@@ -472,6 +508,32 @@ public:
   void createCenteredButton(const std::string &id, int offsetY,
                            int width, int height, const std::string &text);
 
+  /**
+   * @brief Creates a panel positioned at bottom-right corner
+   * @param id Panel component ID
+   * @param width Panel width
+   * @param height Panel height
+   * @param offsetX Offset from right edge (default: BOTTOM_RIGHT_OFFSET_X)
+   * @param offsetY Offset from bottom edge (default: BOTTOM_RIGHT_OFFSET_Y)
+   */
+  void createPanelAtBottomRight(const std::string &id, int width, int height,
+                                int offsetX = UIConstants::BOTTOM_RIGHT_OFFSET_X,
+                                int offsetY = UIConstants::BOTTOM_RIGHT_OFFSET_Y);
+
+  /**
+   * @brief Creates a label positioned at bottom-right corner
+   * @param id Label component ID
+   * @param text Initial label text
+   * @param width Label width
+   * @param height Label height
+   * @param offsetX Offset from right edge (default: BOTTOM_RIGHT_OFFSET_X)
+   * @param offsetY Offset from bottom edge (default: BOTTOM_RIGHT_OFFSET_Y)
+   */
+  void createLabelAtBottomRight(const std::string &id, const std::string &text,
+                                int width, int height,
+                                int offsetX = UIConstants::BOTTOM_RIGHT_OFFSET_X,
+                                int offsetY = UIConstants::BOTTOM_RIGHT_OFFSET_Y);
+
   // Utility methods
   void setGlobalFont(const std::string &fontID);
   void setGlobalScale(float scale);
@@ -532,9 +594,6 @@ private:
   int m_currentLogicalWidth{0};
   int m_currentLogicalHeight{0};
 
-  // Thread safety
-  mutable std::recursive_mutex m_componentsMutex;
-
   // Input state
   Vector2D m_lastMousePosition{};
   bool m_mousePressed{false};
@@ -544,7 +603,7 @@ private:
   mutable std::vector<std::shared_ptr<UIComponent>> m_sortedComponentsCache{};
   mutable bool m_sortedComponentsDirty{true};
 
-  // Performance optimization: Value caches to avoid mutex lock + hash lookup when values unchanged
+  // Performance optimization: Value caches to avoid hash lookup when values unchanged
   std::unordered_map<std::string, float> m_valueCache{};
   std::unordered_map<std::string, std::string> m_textCache{};
 
@@ -619,6 +678,13 @@ private:
 
   // PERFORMANCE: Track active bindings to skip iteration when none exist
   size_t m_activeBindingCount{0};
+
+#ifdef USE_SDL3_GPU
+  // GPU rendering state
+  std::vector<UIGPUDrawCommand> m_gpuPrimitiveCommands{};  // Filled rects (backgrounds, borders)
+  std::vector<UIGPUDrawCommand> m_gpuTextCommands{};      // Text rendering
+  std::vector<UIGPUDrawCommand> m_gpuImageCommands{};     // Images/textures
+#endif
 
   // Delete copy constructor and assignment operator
   UIManager(const UIManager &) = delete;

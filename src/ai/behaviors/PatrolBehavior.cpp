@@ -166,7 +166,7 @@ void PatrolBehavior::executeLogic(BehaviorContext &ctx) {
     } else {
       // Check if we're targeting a different waypoint than when path was
       // computed
-      auto &edm = EntityDataManager::Instance();
+      const auto &edm = EntityDataManager::Instance();
       Vector2D pathGoal = edm.getPathGoal(ctx.edmIndex);
       float const waypointChangeSquared =
           (targetWaypoint - pathGoal).lengthSquared();
@@ -390,7 +390,7 @@ bool PatrolBehavior::isAtWaypoint(const Vector2D &position,
   return distanceSquared < (dynamicRadius * dynamicRadius);
 }
 
-void PatrolBehavior::resetEntityPosition(EntityPtr entity) {
+void PatrolBehavior::resetEntityPosition(const EntityPtr& entity) {
   if (!entity)
     return;
 

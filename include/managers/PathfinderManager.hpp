@@ -23,14 +23,23 @@
  * ===================================================
  * Grid rebuilds happen ONLY via event system (no synchronous fallbacks):
  *
- * 1. WorldLoadedEvent → PathfinderManager::onWorldLoaded() → rebuildGrid() (async on ThreadSystem)
+ * 1. StaticCollidersReadyEvent → PathfinderManager::onStaticCollidersReady() → rebuildGrid() (async)
  * 2. CollisionObstacleChanged → PathfinderManager::onCollisionObstacleChanged() → rebuildGrid() (async)
  * 3. TileChanged → PathfinderManager::onTileChanged() → rebuildGrid() (async)
  *
+ * Event Flow for World Loading:
+ * - WorldManager fires WorldLoadedEvent after world data is ready
+ * - CollisionManager receives WorldLoadedEvent, creates static collision bodies
+ * - CollisionManager fires StaticCollidersReadyEvent when bodies are complete
+ * - PathfinderManager receives StaticCollidersReadyEvent, builds navigation grid
+ *
+ * This ordering ensures PathfinderManager can query CollisionManager for obstacle
+ * data during grid construction without race conditions.
+ *
  * Integration Requirements:
  * - GameEngine MUST call EventManager::update() each frame to process events
- * - WorldManager MUST fire WorldLoadedEvent after loading worlds
- * - CollisionManager MUST fire CollisionObstacleChanged when obstacles change
+ * - CollisionManager MUST fire StaticCollidersReadyEvent after rebuilding static bodies
+ * - CollisionManager MUST fire CollisionObstacleChanged when individual obstacles change
  *
  * Entity Behavior When Grid Not Ready:
  * - PathfindingResult::NO_PATH_FOUND returned if grid doesn't exist
@@ -290,7 +299,7 @@ public:
      * @param nodeRadius Radius for reaching path nodes
      * @return true if successfully following path, false if path complete
      */
-    bool followPathStep(EntityPtr entity, const Vector2D& currentPos,
+    bool followPathStep(const EntityPtr& entity, const Vector2D& currentPos,
                        std::vector<Vector2D>& path, size_t& pathIndex,
                        float speed, float nodeRadius = 64.0f) const;
 
@@ -495,7 +504,7 @@ private:
 
     // Event handlers
     void onCollisionObstacleChanged(const Vector2D& position, float radius, const std::string& description);
-    void onWorldLoaded(int worldWidth, int worldHeight);
+    void onStaticCollidersReady();  // Called when CollisionManager finishes building static bodies
     void onWorldUnloaded();
     void onTileChanged(int x, int y);
 };

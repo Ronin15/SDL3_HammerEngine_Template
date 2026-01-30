@@ -303,71 +303,61 @@ void AIManager::update(float deltaTime) {
       if (cachedPlayerValid) {
         size_t playerIdx = edm.getIndex(m_playerHandle);
         if (playerIdx != SIZE_MAX) {
-          auto &playerTransform = edm.getTransformByIndex(playerIdx);
+          const auto &playerTransform = edm.getTransformByIndex(playerIdx);
           cachedPlayerPosition = playerTransform.position;
           cachedPlayerVelocity = playerTransform.velocity;
         }
       }
     }
 
-    // Determine threading strategy based on threshold and WorkerBudget
-    bool useThreading =
-        (entityCount >= m_threadingThreshold.load(std::memory_order_acquire) &&
-         m_useThreading.load(std::memory_order_acquire) &&
-         HammerEngine::ThreadSystem::Exists());
+    // Determine threading strategy using adaptive threshold from WorkerBudget
+    // WorkerBudget is the AUTHORITATIVE source - no manager overrides
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto decision = budgetMgr.shouldUseThreading(
+        HammerEngine::SystemType::AI, entityCount);
+    bool useThreading = decision.shouldThread;
 
+    // Track what actually happened (not just what was planned)
+    bool actualWasThreaded = false;
+    size_t actualBatchCount = 1;
+
+#ifndef NDEBUG
     // Track threading decision for interval logging (local vars, no storage
-    // overhead)
+    // overhead) - only needed for debug logging
     size_t logBatchCount = 1;
     bool logWasThreaded = false;
+#endif
 
     if (useThreading) {
       auto &threadSystem = HammerEngine::ThreadSystem::Instance();
 
-      // Check queue pressure before submitting tasks
-      size_t queueSize = threadSystem.getQueueSize();
-      size_t queueCapacity = threadSystem.getQueueCapacity();
-      if (queueCapacity == 0) {
-        // Defensive: treat as high pressure if capacity unknown
-        queueCapacity = 1;
-      }
-      size_t pressureThreshold = static_cast<size_t>(
-          queueCapacity * HammerEngine::QUEUE_PRESSURE_CRITICAL);
+      // Get optimal worker count - WorkerBudget handles queue pressure internally
+      // (returns 1 worker under critical pressure, triggering single-batch path)
+      size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+          HammerEngine::SystemType::AI, entityCount);
 
-      if (queueSize > pressureThreshold) {
-        // Graceful degradation: fallback to single-threaded processing
-        AI_DEBUG(std::format(
-            "Queue pressure detected ({}/{}), using single-threaded processing",
-            queueSize, queueCapacity));
+      // Get adaptive batch strategy (maximizes parallelism, fine-tunes based
+      // on timing). WorkerBudget determines everything dynamically.
+      auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+          HammerEngine::SystemType::AI, entityCount, optimalWorkerCount);
 
-        processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
-                     worldWidth, worldHeight, cachedPlayerHandle,
-                     cachedPlayerPosition, cachedPlayerVelocity,
-                     cachedPlayerValid);
-      } else {
-        // Use centralized WorkerBudgetManager for smart worker allocation
-        auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-
-        // Get optimal workers (WorkerBudget determines everything dynamically)
-        size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-            HammerEngine::SystemType::AI, entityCount);
-
-        // Get adaptive batch strategy (maximizes parallelism, fine-tunes based
-        // on timing)
-        auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-            HammerEngine::SystemType::AI, entityCount, optimalWorkerCount);
-
+#ifndef NDEBUG
         // Track for interval logging at end of function
         logBatchCount = batchCount;
         logWasThreaded = (batchCount > 1);
+#endif
 
         // Single batch optimization: avoid thread overhead
         if (batchCount <= 1) {
+          actualWasThreaded = false;
+          actualBatchCount = 1;
           processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
                        worldWidth, worldHeight, cachedPlayerHandle,
                        cachedPlayerPosition, cachedPlayerVelocity,
                        cachedPlayerValid);
         } else {
+          actualWasThreaded = true;
+          actualBatchCount = batchCount;
           size_t entitiesPerBatch = entityCount / batchCount;
           size_t remainingEntities = entityCount % batchCount;
 
@@ -410,10 +400,10 @@ void AIManager::update(float deltaTime) {
 
           // Batches execute in parallel via ThreadSystem
         }
-      }
-
     } else {
       // Single-threaded processing (threading disabled in config)
+      actualWasThreaded = false;
+      actualBatchCount = 1;
       processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth,
                    worldHeight, cachedPlayerHandle, cachedPlayerPosition,
                    cachedPlayerVelocity, cachedPlayerValid);
@@ -437,15 +427,15 @@ void AIManager::update(float deltaTime) {
     double totalUpdateTime =
         std::chrono::duration<double, std::milli>(endTime - startTime).count();
 
-    // Report batch completion for adaptive tuning (only if threading was used)
-    if (logWasThreaded) {
-      HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
-          HammerEngine::SystemType::AI, entityCount, logBatchCount,
-          totalUpdateTime);
+    // Report results for unified adaptive tuning - report what actually happened
+    if (entityCount > 0) {
+      budgetMgr.reportExecution(HammerEngine::SystemType::AI,
+                                entityCount, actualWasThreaded, actualBatchCount,
+                                totalUpdateTime);
     }
 
     // Periodic frame tracking (balanced frequency)
-    if (currentFrame % 300 == 0) {
+    if (currentFrame % 1800 == 0) {  // ~30 seconds at 60fps
       m_lastCleanupFrame.store(currentFrame, std::memory_order_relaxed);
     }
 
@@ -453,7 +443,8 @@ void AIManager::update(float deltaTime) {
     // Interval stats logging - zero overhead in release (entire block compiles
     // out)
     static thread_local uint64_t logFrameCounter = 0;
-    if (++logFrameCounter % 300 == 0 && entityCount > 0) {
+    if (++logFrameCounter % 1800 == 0 && entityCount > 0) {  // ~30 seconds at 60fps
+      // Only calculate expensive stats when actually logging
       double entitiesPerSecond =
           totalUpdateTime > 0 ? (entityCount * 1000.0 / totalUpdateTime) : 0.0;
       const auto crowdStats = AIInternal::GetCrowdStats();
@@ -805,16 +796,6 @@ void AIManager::resetBehaviors() {
 void AIManager::enableThreading(bool enable) {
   m_useThreading.store(enable, std::memory_order_release);
   AI_INFO(std::format("Threading {}", enable ? "enabled" : "disabled"));
-}
-
-void AIManager::setThreadingThreshold(size_t threshold) {
-  threshold = std::max(static_cast<size_t>(1), threshold);
-  m_threadingThreshold.store(threshold, std::memory_order_release);
-  AI_INFO(std::format("AI threading threshold set to {} entities", threshold));
-}
-
-size_t AIManager::getThreadingThreshold() const {
-  return m_threadingThreshold.load(std::memory_order_acquire);
 }
 #endif
 

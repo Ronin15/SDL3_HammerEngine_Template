@@ -12,6 +12,12 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "utils/WorldRenderPipeline.hpp"
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#endif
+
 #include <format>
 
 void LoadingState::configure(
@@ -25,6 +31,8 @@ void LoadingState::configure(
   m_loadComplete.store(false, std::memory_order_release);
   m_loadFailed.store(false, std::memory_order_release);
   m_waitingForPathfinding.store(false, std::memory_order_release);
+  m_waitingForPrewarm.store(false, std::memory_order_release);
+  m_prewarmComplete.store(false, std::memory_order_release);
   setStatusText("Initializing...");
 
   // Clear any previous error
@@ -58,6 +66,12 @@ bool LoadingState::enter() {
 }
 
 void LoadingState::update([[maybe_unused]] float deltaTime) {
+  // Update UI state (progress bar and status text)
+  auto &ui = UIManager::Instance();
+  float currentProgress = m_progress.load(std::memory_order_acquire);
+  ui.updateProgressBar("loading_progress", currentProgress);
+  ui.setText("loading_status", getStatusText());
+
   // Fast path: Check with relaxed ordering first (no memory barrier)
   if (m_loadComplete.load(std::memory_order_relaxed)) {
     // Slow path: Verify with acquire barrier only when likely true
@@ -78,7 +92,34 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
         return;
       }
 
-      // Both world and pathfinding grid are ready - proceed with transition
+#ifdef USE_SDL3_GPU
+      // GPU mode: Skip chunk prewarming - we render from vertex data each frame
+      // Mark prewarm as complete to proceed with transition
+      if (!m_prewarmComplete.load(std::memory_order_acquire)) {
+        setStatusText("Finalizing world...");
+        GAMESTATE_INFO("Pathfinding ready - GPU mode skips chunk prewarming");
+        m_waitingForPrewarm.store(true, std::memory_order_release);
+        m_prewarmComplete.store(true, std::memory_order_release);
+      }
+#else
+      // SDL_Renderer mode: Pre-warm chunk textures
+      // Check if we need to pre-warm chunks
+      if (!m_waitingForPrewarm.load(std::memory_order_acquire)) {
+        // Pathfinding ready - now pre-warm visible chunks
+        m_waitingForPrewarm.store(true, std::memory_order_release);
+        setStatusText("Pre-warming visible chunks...");
+        GAMESTATE_INFO("Pathfinding ready - starting chunk pre-warm");
+        return; // Wait for render() to do the prewarm
+      }
+
+      // Check if pre-warm is complete
+      if (!m_prewarmComplete.load(std::memory_order_acquire)) {
+        // Pre-warm in progress (done in render())
+        return;
+      }
+#endif
+
+      // All ready - proceed with transition
       if (m_loadFailed.load(std::memory_order_acquire)) {
         std::string errorMsg = "World loading failed - transitioning anyway";
         GAMESTATE_ERROR(errorMsg);
@@ -113,22 +154,59 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
   }
 }
 
-void LoadingState::render(SDL_Renderer *renderer,
-                          [[maybe_unused]] float interpolationAlpha) {
+void LoadingState::render(SDL_Renderer *renderer, float interpolationAlpha) {
+#ifdef USE_SDL3_GPU
+  // GPU mode uses recordGPUVertices() and renderGPUUI() instead
+  (void)renderer;
+  (void)interpolationAlpha;
+#else
   // All rendering happens through GameEngine::render() -> this method
   // No manual SDL_RenderClear() or SDL_RenderPresent() calls needed!
 
   auto &ui = UIManager::Instance();
 
-  // Update progress bar
-  float currentProgress = m_progress.load(std::memory_order_acquire);
-  ui.updateProgressBar("loading_progress", currentProgress);
+  // Pre-warm chunks if requested (runs once when pathfinding is ready)
+  if (m_waitingForPrewarm.load(std::memory_order_acquire) &&
+      !m_prewarmComplete.load(std::memory_order_acquire)) {
 
-  // Update status text
-  ui.setText("loading_status", getStatusText());
+    auto &worldMgr = WorldManager::Instance();
+    auto &gameEngine = GameEngine::Instance();
 
+    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+      // Get spawn position (center of world or configured spawn)
+      float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
+      float spawnX = 0.0f, spawnY = 0.0f;
+
+      if (worldMgr.getWorldBounds(minX, minY, maxX, maxY)) {
+        spawnX = (minX + maxX) / 2.0f;
+        spawnY = (minY + maxY) / 2.0f;
+      }
+
+      // Get viewport dimensions
+      float viewWidth = static_cast<float>(gameEngine.getLogicalWidth());
+      float viewHeight = static_cast<float>(gameEngine.getLogicalHeight());
+
+      // Pre-warm visible chunks around spawn point
+      GAMESTATE_INFO(std::format(
+          "Pre-warming chunks at spawn ({:.0f}, {:.0f}) with view {}x{}",
+          spawnX, spawnY, viewWidth, viewHeight));
+
+      // Calculate camera offset (top-left corner) from center
+      float cameraX = spawnX - viewWidth / 2.0f;
+      float cameraY = spawnY - viewHeight / 2.0f;
+
+      // Pre-warm all visible chunks
+      worldMgr.prewarmChunks(renderer, cameraX, cameraY, viewWidth, viewHeight);
+
+      GAMESTATE_INFO("Chunk pre-warm complete");
+      m_prewarmComplete.store(true, std::memory_order_release);
+    }
+  }
+
+  // UI state already updated in update()
   // Actually render the UI to the screen!
   ui.render(renderer);
+#endif
 }
 
 void LoadingState::handleInput() {
@@ -292,3 +370,21 @@ void LoadingState::cleanupUI() {
 
   GAMESTATE_INFO("Loading screen UI cleaned up");
 }
+
+#ifdef USE_SDL3_GPU
+void LoadingState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
+                                     float interpolationAlpha) {
+  (void)interpolationAlpha; // Loading UI doesn't need interpolation
+
+  // Record UI vertices for GPU rendering
+  auto &ui = UIManager::Instance();
+  ui.recordGPUVertices(gpuRenderer);
+}
+
+void LoadingState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
+                               SDL_GPURenderPass *swapchainPass) {
+  // Render UI to swapchain
+  auto &ui = UIManager::Instance();
+  ui.renderGPU(gpuRenderer, swapchainPass);
+}
+#endif

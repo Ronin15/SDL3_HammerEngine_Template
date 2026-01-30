@@ -40,12 +40,14 @@ using EntityID = HammerEngine::UniqueID::IDType;
  * Unified struct used by NPC and Player for named animations
  */
 struct AnimationConfig {
-    int row;           // Sprite sheet row (0-based, converted to 1-based in playAnimation)
+    int row;           // Sprite sheet row (0-based)
     int frameCount;    // Number of frames in animation
     int speed;         // Milliseconds per frame
-    bool loop;         // Whether animation loops or plays once
+    bool loop{true};   // Whether animation loops (default true, Player uses false for attacks)
 
     AnimationConfig() : row(0), frameCount(1), speed(100), loop(true) {}
+    AnimationConfig(int r, int fc, int s)
+        : row(r), frameCount(fc), speed(s), loop(true) {}
     AnimationConfig(int r, int fc, int s, bool l)
         : row(r), frameCount(fc), speed(s), loop(l) {}
 };

@@ -10,6 +10,9 @@ AIManager.cpp:bugprone-infinite-loop:false positive - loop variable incremented 
 # clang-tidy doesn't recognize for-statement increments, only loop body increments
 HierarchicalSpatialHash.cpp:bugprone-infinite-loop:false positive - increment in for statement
 
+# False positive: SIMD loop increments i += 4 in for-loop statement (line 2175)
+WorldManager.cpp:bugprone-infinite-loop:false positive - SIMD loop increment in for statement
+
 # Intentional empty catches - fallback to default values when singletons unavailable
 PathfindingGrid.cpp:bugprone-empty-catch:intentional fallback to default threshold
 Camera.cpp:bugprone-empty-catch:intentional fallback to keep current bounds
@@ -76,3 +79,6 @@ TextureManager.cpp:misc-unused-parameters:p_renderer IS used in SDL_CreateTextur
 WorldGenerator.cpp:misc-unused-parameters:seed IS used in std::default_random_engine constructor
 WorldGenerator.cpp:misc-unused-parameters:config IS used for config.seed in rng initialization
 EntityDataManager.cpp:misc-unused-parameters:kind IS used in m_kindIndices[static_cast<size_t>(kind)]
+
+# Dead store false positive - initial biome_default IS used when default switch case is taken
+WorldManager.cpp:clang-analyzer-deadcode.DeadStores:false positive - biome_default used in default case

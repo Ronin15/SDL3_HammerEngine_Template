@@ -327,12 +327,13 @@ void WanderBehavior::handleMovement(BehaviorContext &ctx, BehaviorData &data) {
     ctx.transform.velocity = wander.currentDirection * m_speed;
   }
 
-  // Stall detection
-  float speed = ctx.transform.velocity.length();
+  // Stall detection (use lengthSquared to avoid sqrt)
+  float speedSq = ctx.transform.velocity.lengthSquared();
   const float stallSpeed = std::max(m_config.stallSpeed, m_speed * 0.5f);
+  const float stallSpeedSq = stallSpeed * stallSpeed;
   const float stallSeconds = m_config.stallTimeout;
 
-  if (speed < stallSpeed) {
+  if (speedSq < stallSpeedSq) {
     if (wander.stallTimer >= stallSeconds) {
       pathData.clear();
       chooseNewDirection(ctx, data);
@@ -352,18 +353,27 @@ void WanderBehavior::handleMovement(BehaviorContext &ctx, BehaviorData &data) {
   }
 
   // Micro-jitter to break small jams
-  if (speed < (m_speed * 1.5f) && speed >= stallSpeed) {
+  const float jitterThresholdSq = (m_speed * 1.5f) * (m_speed * 1.5f);
+  if (speedSq < jitterThresholdSq && speedSq >= stallSpeedSq) {
     float jitter =
         (s_angleDistribution(getSharedRNG()) - static_cast<float>(M_PI)) * 0.1f;
     Vector2D dir = wander.currentDirection;
     float c = std::cos(jitter), s = std::sin(jitter);
     Vector2D rotated(dir.getX() * c - dir.getY() * s,
                      dir.getX() * s + dir.getY() * c);
-    if (rotated.length() > 0.001f) {
+    if (rotated.lengthSquared() > 0.000001f) {
       rotated.normalize();
       wander.currentDirection = rotated;
       ctx.transform.velocity = wander.currentDirection * m_speed;
     }
+  }
+
+  // Apply crowd-based soft slowdown (replaces hard NPC-vs-NPC collision)
+  // NPCs slow down when near other NPCs instead of physically pushing
+  int nearbyCount = data.cachedNearbyCount;
+  if (nearbyCount > 5) {
+    float slowdownMultiplier = (nearbyCount > 10) ? 0.5f : 0.7f;
+    ctx.transform.velocity = ctx.transform.velocity * slowdownMultiplier;
   }
 
   wander.previousVelocity = ctx.transform.velocity;

@@ -443,7 +443,11 @@ std::vector<std::string> FontManager::wrapTextToLines(const std::string& text,
     std::string word;
     
     while (words >> word) {
-      std::string testLine = workingLine.empty() ? word : workingLine + " " + word;
+      std::string testLine = workingLine;
+      if (!testLine.empty()) {
+        testLine += " ";
+      }
+      testLine += word;
       int testWidth = 0;
       
       if (TTF_GetStringSize(fontIt->second.get(), testLine.c_str(), 0, &testWidth, nullptr)) {
@@ -573,6 +577,9 @@ bool FontManager::reloadFontsForDisplay(const std::string& fontPath, int windowW
   // Clear existing fonts and caches without shutting down the manager
   m_fontMap.clear();
   m_textCache.clear();
+#ifdef USE_SDL3_GPU
+  m_gpuTextCache.clear();
+#endif
   m_fontsLoaded.store(false, std::memory_order_release);
 
   // Reset display tracking
@@ -691,7 +698,12 @@ void FontManager::clean() {
   // No need to manually close fonts as the unique_ptr will handle it
   m_fontMap.clear();
   m_textCache.clear();
-  
+
+#ifdef USE_SDL3_GPU
+  // Clear GPU text cache (must be done before GPU device shutdown)
+  m_gpuTextCache.clear();
+#endif
+
   // Clear display tracking
   m_lastWindowWidth = 0;
   m_lastWindowHeight = 0;
@@ -700,3 +712,212 @@ void FontManager::clean() {
   FONT_INFO(std::format("{} fonts freed", fontsFreed));
   FONT_INFO("FontManager resources cleaned - TTF will be cleaned by SDL_Quit()");
 }
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPUDevice.hpp"
+#include "gpu/GPUTransferBuffer.hpp"
+#include "gpu/GPUTypes.hpp"
+#include <cstring>
+
+const GPUTextData* FontManager::renderTextGPU(const std::string& text, const std::string& fontID,
+                                               SDL_Color color) {
+  if (m_isShutdown || text.empty()) {
+    return nullptr;
+  }
+
+  // Check GPU cache first
+  TextCacheKey key = {text, fontID, color};
+  auto cacheIt = m_gpuTextCache.find(key);
+  if (cacheIt != m_gpuTextCache.end()) {
+    return cacheIt->second.get();
+  }
+
+  auto fontIt = m_fontMap.find(fontID);
+  if (fontIt == m_fontMap.end()) {
+    FONT_ERROR(std::format("Font '{}' not found for GPU rendering", fontID));
+    return nullptr;
+  }
+
+  // Render text to surface
+  SDL_Surface* surface = TTF_RenderText_Blended(fontIt->second.get(), text.c_str(), 0, color);
+  if (!surface) {
+    FONT_ERROR(std::format("Failed to render text surface for GPU: {}", SDL_GetError()));
+    return nullptr;
+  }
+
+  // Convert to ABGR8888 for GPU upload (maps to R8G8B8A8_UNORM byte order on little-endian)
+  SDL_Surface* converted = nullptr;
+  if (surface->format != SDL_PIXELFORMAT_ABGR8888) {
+    converted = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_ABGR8888);
+    SDL_DestroySurface(surface);
+    if (!converted) {
+      FONT_ERROR(std::format("Failed to convert text surface: {}", SDL_GetError()));
+      return nullptr;
+    }
+    surface = converted;
+  }
+
+  // Premultiply alpha for proper blending
+  SDL_PremultiplyAlpha(surface->w, surface->h,
+                        SDL_PIXELFORMAT_ABGR8888, surface->pixels, surface->pitch,
+                        SDL_PIXELFORMAT_ABGR8888, surface->pixels, surface->pitch,
+                        false);
+
+  // Create GPU texture data
+  auto gpuData = std::make_unique<GPUTextData>();
+  gpuData->width = surface->w;
+  gpuData->height = surface->h;
+
+  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+  SDL_GPUDevice* device = gpuDevice.get();
+
+  // Create GPU texture
+  gpuData->texture = std::make_unique<HammerEngine::GPUTexture>(
+      device,
+      static_cast<uint32_t>(surface->w),
+      static_cast<uint32_t>(surface->h),
+      SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+      SDL_GPU_TEXTUREUSAGE_SAMPLER
+  );
+
+  if (!gpuData->texture->isValid()) {
+    FONT_ERROR("Failed to create GPU texture for text");
+    SDL_DestroySurface(surface);
+    return nullptr;
+  }
+
+  // Upload texture data immediately using a transfer buffer
+  uint32_t dataSize = static_cast<uint32_t>(surface->pitch * surface->h);
+  HammerEngine::GPUTransferBuffer transferBuf(device, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, dataSize);
+
+  if (!transferBuf.isValid()) {
+    FONT_ERROR("Failed to create transfer buffer for text upload");
+    SDL_DestroySurface(surface);
+    return nullptr;
+  }
+
+  // Copy pixel data to transfer buffer
+  void* mapped = transferBuf.map(false);
+  if (mapped) {
+    std::memcpy(mapped, surface->pixels, dataSize);
+    transferBuf.unmap();
+  }
+
+  // Upload using a one-time command buffer
+  SDL_GPUCommandBuffer* cmdBuf = SDL_AcquireGPUCommandBuffer(device);
+  if (cmdBuf) {
+    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmdBuf);
+    if (copyPass) {
+      SDL_GPUTextureTransferInfo src{};
+      src.transfer_buffer = transferBuf.get();
+      src.offset = 0;
+      src.pixels_per_row = static_cast<uint32_t>(surface->w);
+      src.rows_per_layer = static_cast<uint32_t>(surface->h);
+
+      SDL_GPUTextureRegion dst{};
+      dst.texture = gpuData->texture->get();
+      dst.w = static_cast<uint32_t>(surface->w);
+      dst.h = static_cast<uint32_t>(surface->h);
+      dst.d = 1;
+
+      SDL_UploadToGPUTexture(copyPass, &src, &dst, false);
+      SDL_EndGPUCopyPass(copyPass);
+    }
+    SDL_SubmitGPUCommandBuffer(cmdBuf);
+  }
+
+  SDL_DestroySurface(surface);
+
+  // Cache and return
+  GPUTextData* result = gpuData.get();
+  m_gpuTextCache[key] = std::move(gpuData);
+  return result;
+}
+
+void FontManager::drawTextGPU(const std::string& text, const std::string& fontID,
+                               int x, int y, SDL_Color color,
+                               HammerEngine::GPURenderer& gpuRenderer,
+                               SDL_GPURenderPass* pass) {
+  if (!pass || text.empty()) {
+    return;
+  }
+
+  const GPUTextData* textData = renderTextGPU(text, fontID, color);
+  if (!textData || !textData->texture || !textData->texture->isValid()) {
+    return;
+  }
+
+  // Calculate centered position
+  float dstX = static_cast<float>(x - textData->width / 2);
+  float dstY = static_cast<float>(y - textData->height / 2);
+  float dstW = static_cast<float>(textData->width);
+  float dstH = static_cast<float>(textData->height);
+
+  // Create orthographic projection for screen-space rendering
+  float orthoMatrix[16];
+  HammerEngine::GPURenderer::createOrthoMatrix(
+      0.0f, static_cast<float>(gpuRenderer.getViewportWidth()),
+      static_cast<float>(gpuRenderer.getViewportHeight()), 0.0f,
+      orthoMatrix);
+
+  // Bind UI sprite pipeline (for swapchain rendering)
+  SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUISpritePipeline());
+
+  // Push view-projection
+  gpuRenderer.pushViewProjection(pass, orthoMatrix);
+
+  // Create quad vertices
+  HammerEngine::SpriteVertex vertices[4];
+  // Top-left
+  vertices[0] = {dstX, dstY, 0.0f, 0.0f, 255, 255, 255, 255};
+  // Top-right
+  vertices[1] = {dstX + dstW, dstY, 1.0f, 0.0f, 255, 255, 255, 255};
+  // Bottom-right
+  vertices[2] = {dstX + dstW, dstY + dstH, 1.0f, 1.0f, 255, 255, 255, 255};
+  // Bottom-left
+  vertices[3] = {dstX, dstY + dstH, 0.0f, 1.0f, 255, 255, 255, 255};
+
+  // Use the sprite batch's index buffer for the quad
+  auto& batch = gpuRenderer.getSpriteBatch();
+
+  // Bind texture
+  SDL_GPUTextureSamplerBinding texSampler{};
+  texSampler.texture = textData->texture->get();
+  texSampler.sampler = gpuRenderer.getLinearSampler();
+  SDL_BindGPUFragmentSamplers(pass, 0, &texSampler, 1);
+
+  // Upload vertices using a small transfer buffer
+  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+  HammerEngine::GPUTransferBuffer vertexTransfer(
+      gpuDevice.get(), SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, sizeof(vertices));
+
+  if (vertexTransfer.isValid()) {
+    void* mapped = vertexTransfer.map(false);
+    if (mapped) {
+      std::memcpy(mapped, vertices, sizeof(vertices));
+      vertexTransfer.unmap();
+    }
+  }
+
+  // For text, we use immediate drawing with the sprite batch index buffer
+  // Bind the vertex buffer from sprite pool (it has our vertices)
+  SDL_GPUBufferBinding vertexBinding{};
+  vertexBinding.buffer = gpuRenderer.getSpriteVertexPool().getGPUBuffer();
+  vertexBinding.offset = 0;
+  SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
+
+  // Bind the index buffer
+  SDL_GPUBufferBinding indexBinding{};
+  indexBinding.buffer = batch.getIndexBuffer();
+  indexBinding.offset = 0;
+  SDL_BindGPUIndexBuffer(pass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+
+  // Draw the quad (6 indices for 4 vertices)
+  SDL_DrawGPUIndexedPrimitives(pass, 6, 1, 0, 0, 0);
+}
+
+void FontManager::clearGPUTextCache() {
+  m_gpuTextCache.clear();
+  FONT_DEBUG("GPU text cache cleared");
+}
+#endif

@@ -22,7 +22,6 @@
 #include <boost/test/unit_test.hpp>
 
 #include "core/ThreadSystem.hpp"
-#include "entities/Entity.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
@@ -34,33 +33,27 @@
 #include <thread>
 #include <vector>
 
-// Test entity that registers with EDM
-class AITestEntity : public Entity {
+// Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
+class AITestNPC {
 public:
-    AITestEntity(const Vector2D& pos = Vector2D(0, 0)) {
-        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
+    explicit AITestNPC(const Vector2D& pos = Vector2D(0, 0)) {
+        auto& edm = EntityDataManager::Instance();
+        m_handle = edm.createNPCWithRaceClass(pos, "Human", "Guard");
         m_initialPosition = pos;
-        setTextureID("test_texture");
-        setWidth(32);
-        setHeight(32);
     }
 
-    static std::shared_ptr<AITestEntity> create(const Vector2D& pos = Vector2D(0, 0)) {
-        return std::make_shared<AITestEntity>(pos);
+    static std::shared_ptr<AITestNPC> create(const Vector2D& pos = Vector2D(0, 0)) {
+        return std::make_shared<AITestNPC>(pos);
     }
 
-    void update(float) override {}
-    void render(SDL_Renderer*, float, float, float) override {}
-    void clean() override {}
-    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
+    [[nodiscard]] EntityHandle getHandle() const { return m_handle; }
 
     // Check if position changed in EDM (AIManager writes directly to EDM)
-    bool hasPositionChanged() const {
-        auto handle = getHandle();
-        if (!handle.isValid()) return false;
+    [[nodiscard]] bool hasPositionChanged() const {
+        if (!m_handle.isValid()) return false;
 
         auto& edm = EntityDataManager::Instance();
-        size_t index = edm.getIndex(handle);
+        size_t index = edm.getIndex(m_handle);
         if (index == SIZE_MAX) return false;
 
         auto& transform = edm.getTransformByIndex(index);
@@ -69,10 +62,9 @@ public:
     }
 
     void resetInitialPosition() {
-        auto handle = getHandle();
-        if (handle.isValid()) {
+        if (m_handle.isValid()) {
             auto& edm = EntityDataManager::Instance();
-            size_t index = edm.getIndex(handle);
+            size_t index = edm.getIndex(m_handle);
             if (index != SIZE_MAX) {
                 m_initialPosition = edm.getTransformByIndex(index).position;
             }
@@ -80,6 +72,7 @@ public:
     }
 
 private:
+    EntityHandle m_handle;
     Vector2D m_initialPosition;
 };
 
@@ -145,7 +138,7 @@ BOOST_FIXTURE_TEST_SUITE(SparseBehaviorVectorTests, AIManagerEDMFixture)
 
 BOOST_AUTO_TEST_CASE(TestBehaviorAssignmentCreatesEdmIndexMapping) {
     // Create entity and get its EDM index
-    auto entity = AITestEntity::create(Vector2D(100.0f, 100.0f));
+    auto entity = AITestNPC::create(Vector2D(100.0f, 100.0f));
     EntityHandle handle = entity->getHandle();
     BOOST_REQUIRE(handle.isValid());
 
@@ -161,11 +154,11 @@ BOOST_AUTO_TEST_CASE(TestBehaviorAssignmentCreatesEdmIndexMapping) {
 
 BOOST_AUTO_TEST_CASE(TestSparseBehaviorVectorHandlesGaps) {
     // Create entities at different positions (will get different EDM indices)
-    std::vector<std::shared_ptr<AITestEntity>> entities;
+    std::vector<std::shared_ptr<AITestNPC>> entities;
     std::vector<EntityHandle> handles;
 
     for (int i = 0; i < 10; ++i) {
-        auto entity = AITestEntity::create(Vector2D(i * 100.0f, 0.0f));
+        auto entity = AITestNPC::create(Vector2D(i * 100.0f, 0.0f));
         entities.push_back(entity);
         handles.push_back(entity->getHandle());
     }
@@ -183,7 +176,7 @@ BOOST_AUTO_TEST_CASE(TestSparseBehaviorVectorHandlesGaps) {
 }
 
 BOOST_AUTO_TEST_CASE(TestBehaviorUnassignmentClearsSparseBehavior) {
-    auto entity = AITestEntity::create(Vector2D(100.0f, 100.0f));
+    auto entity = AITestNPC::create(Vector2D(100.0f, 100.0f));
     EntityHandle handle = entity->getHandle();
 
     // Assign then unassign
@@ -195,7 +188,7 @@ BOOST_AUTO_TEST_CASE(TestBehaviorUnassignmentClearsSparseBehavior) {
 }
 
 BOOST_AUTO_TEST_CASE(TestBehaviorReassignmentUpdatesSparseBehavior) {
-    auto entity = AITestEntity::create(Vector2D(100.0f, 100.0f));
+    auto entity = AITestNPC::create(Vector2D(100.0f, 100.0f));
     EntityHandle handle = entity->getHandle();
 
     // Assign, unassign, then reassign
@@ -216,7 +209,7 @@ BOOST_FIXTURE_TEST_SUITE(BatchProcessingEDMTests, AIManagerEDMFixture)
 
 BOOST_AUTO_TEST_CASE(TestBatchProcessingWritesToEDMTransform) {
     // Create entity and assign behavior
-    auto entity = AITestEntity::create(Vector2D(500.0f, 500.0f));
+    auto entity = AITestNPC::create(Vector2D(500.0f, 500.0f));
     EntityHandle handle = entity->getHandle();
     AIManager::Instance().assignBehavior(handle, "EDMTestBehavior");
 
@@ -239,12 +232,12 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessingWritesToEDMTransform) {
 
 BOOST_AUTO_TEST_CASE(TestMultipleEntitiesProcessedViaBatch) {
     const size_t ENTITY_COUNT = 50;
-    std::vector<std::shared_ptr<AITestEntity>> entities;
+    std::vector<std::shared_ptr<AITestNPC>> entities;
     std::vector<EntityHandle> handles;
 
     // Create and assign behaviors to many entities
     for (size_t i = 0; i < ENTITY_COUNT; ++i) {
-        auto entity = AITestEntity::create(Vector2D(100.0f + i * 50.0f, 100.0f));
+        auto entity = AITestNPC::create(Vector2D(100.0f + i * 50.0f, 100.0f));
         AIManager::Instance().assignBehavior(entity->getHandle(), "EDMTestBehavior");
         entities.push_back(entity);
         handles.push_back(entity->getHandle());
@@ -279,9 +272,9 @@ BOOST_FIXTURE_TEST_SUITE(StateTransitionTests, AIManagerEDMFixture)
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsAIData) {
     // Create entities with behaviors
-    std::vector<std::shared_ptr<AITestEntity>> entities;
+    std::vector<std::shared_ptr<AITestNPC>> entities;
     for (int i = 0; i < 10; ++i) {
-        auto entity = AITestEntity::create(Vector2D(i * 100.0f, 0.0f));
+        auto entity = AITestNPC::create(Vector2D(i * 100.0f, 0.0f));
         AIManager::Instance().assignBehavior(entity->getHandle(), "EDMTestBehavior");
         entities.push_back(entity);
     }
@@ -302,9 +295,9 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsAIData) {
 
 BOOST_AUTO_TEST_CASE(TestStateTransitionWhileBatchProcessing) {
     // Create many entities to ensure batch processing is used
-    std::vector<std::shared_ptr<AITestEntity>> entities;
+    std::vector<std::shared_ptr<AITestNPC>> entities;
     for (int i = 0; i < 100; ++i) {
-        auto entity = AITestEntity::create(Vector2D(i * 50.0f, 100.0f));
+        auto entity = AITestNPC::create(Vector2D(i * 50.0f, 100.0f));
         AIManager::Instance().assignBehavior(entity->getHandle(), "EDMTestBehavior");
         entities.push_back(entity);
     }
@@ -327,7 +320,7 @@ BOOST_AUTO_TEST_CASE(TestStateTransitionWhileBatchProcessing) {
 
 BOOST_AUTO_TEST_CASE(TestAIManagerReinitAfterStateTransition) {
     // Create entity and assign behavior
-    auto entity1 = AITestEntity::create(Vector2D(100.0f, 100.0f));
+    auto entity1 = AITestNPC::create(Vector2D(100.0f, 100.0f));
     AIManager::Instance().assignBehavior(entity1->getHandle(), "EDMTestBehavior");
     BOOST_CHECK(AIManager::Instance().hasBehavior(entity1->getHandle()));
 
@@ -336,7 +329,7 @@ BOOST_AUTO_TEST_CASE(TestAIManagerReinitAfterStateTransition) {
     EntityDataManager::Instance().prepareForStateTransition();
 
     // Create new entity after transition
-    auto entity2 = AITestEntity::create(Vector2D(200.0f, 200.0f));
+    auto entity2 = AITestNPC::create(Vector2D(200.0f, 200.0f));
     AIManager::Instance().assignBehavior(entity2->getHandle(), "EDMTestBehavior");
 
     // New entity should have behavior
@@ -352,7 +345,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(EDMIndexCachingTests, AIManagerEDMFixture)
 
 BOOST_AUTO_TEST_CASE(TestEdmIndexCachedOnBehaviorAssignment) {
-    auto entity = AITestEntity::create(Vector2D(100.0f, 100.0f));
+    auto entity = AITestNPC::create(Vector2D(100.0f, 100.0f));
     EntityHandle handle = entity->getHandle();
 
     size_t expectedIndex = EntityDataManager::Instance().getIndex(handle);
@@ -367,9 +360,9 @@ BOOST_AUTO_TEST_CASE(TestEdmIndexCachedOnBehaviorAssignment) {
 
 BOOST_AUTO_TEST_CASE(TestEntityDestructionDoesNotAffectOtherEntities) {
     // Create multiple entities
-    auto entity1 = AITestEntity::create(Vector2D(100.0f, 100.0f));
-    auto entity2 = AITestEntity::create(Vector2D(200.0f, 200.0f));
-    auto entity3 = AITestEntity::create(Vector2D(300.0f, 300.0f));
+    auto entity1 = AITestNPC::create(Vector2D(100.0f, 100.0f));
+    auto entity2 = AITestNPC::create(Vector2D(200.0f, 200.0f));
+    auto entity3 = AITestNPC::create(Vector2D(300.0f, 300.0f));
 
     EntityHandle handle1 = entity1->getHandle();
     EntityHandle handle2 = entity2->getHandle();
@@ -398,8 +391,8 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(BehaviorCloningTests, AIManagerEDMFixture)
 
 BOOST_AUTO_TEST_CASE(TestEachEntityGetsSeparateBehaviorInstance) {
-    auto entity1 = AITestEntity::create(Vector2D(100.0f, 100.0f));
-    auto entity2 = AITestEntity::create(Vector2D(200.0f, 200.0f));
+    auto entity1 = AITestNPC::create(Vector2D(100.0f, 100.0f));
+    auto entity2 = AITestNPC::create(Vector2D(200.0f, 200.0f));
 
     AIManager::Instance().assignBehavior(entity1->getHandle(), "EDMTestBehavior");
     AIManager::Instance().assignBehavior(entity2->getHandle(), "EDMTestBehavior");

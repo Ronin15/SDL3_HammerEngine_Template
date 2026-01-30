@@ -9,11 +9,15 @@
 #include "core/GameEngine.hpp"
 #include "events/CameraEvent.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/WorldManager.hpp"
 #include <algorithm>
 #include <cmath>
 #include <random>
 #include <format>
-#include "managers/WorldManager.hpp"
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#endif
 
 namespace HammerEngine {
 
@@ -64,7 +68,6 @@ Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
 
 void Camera::update(float deltaTime) {
     // Store previous position BEFORE updating for render interpolation
-    // This enables smooth camera at any refresh rate with fixed 60Hz updates
     m_previousPosition = m_position;
 
     // Update camera shake first (no-ops if inactive)
@@ -88,12 +91,28 @@ void Camera::update(float deltaTime) {
                 syncWorldBounds();
             }
         }
-        Vector2D const targetPos = getTargetPosition();  // Target's UNCLAMPED position
 
-        // Set m_position to unclamped target for smooth interpolation
-        // The offset clamping happens in computeOffsetFromCenter(), NOT here
-        // This ensures entity renders at correct position when camera hits world bounds
-        m_position = targetPos;
+        // SNAP directly to target's position - no smoothing.
+        // This ensures camera and target use identical interpolation paths during render,
+        // eliminating diagonal movement jitter. Both will interpolate from the same
+        // previous/current position values.
+        if (auto targetPtr = m_target.lock()) {
+            m_position = targetPtr->getPosition();
+            m_previousPosition = targetPtr->getPreviousPosition();
+        } else if (m_positionGetter) {
+            // Function-based target: use smoothing since we can't access previous position
+            Vector2D const targetPos = m_positionGetter();
+            float const t = std::clamp(
+                1.0f - std::pow(m_config.smoothingFactor,
+                               deltaTime * 60.0f * m_config.followSpeed),
+                0.0f, 1.0f);
+            m_position = m_position + (targetPos - m_position) * t;
+        }
+
+        // Clamp camera to world bounds after following target
+        if (m_config.clampToWorldBounds) {
+            clampToWorldBounds();
+        }
     } else {
         // Non-Follow modes: clamp camera position
         if (m_config.clampToWorldBounds) {
@@ -122,8 +141,6 @@ void Camera::setViewport(float width, float height) {
     if (width > 0.0f && height > 0.0f) {
         m_viewport.width = width;
         m_viewport.height = height;
-        CAMERA_DEBUG(std::format("Viewport updated to: {}x{}",
-                                 static_cast<int>(width), static_cast<int>(height)));
     } else {
         CAMERA_WARN(std::format("Invalid viewport dimensions: {}x{}", width, height));
     }
@@ -132,8 +149,6 @@ void Camera::setViewport(float width, float height) {
 void Camera::setViewport(const Viewport& viewport) {
     if (viewport.isValid()) {
         m_viewport = viewport;
-        CAMERA_DEBUG(std::format("Viewport updated to: {}x{}",
-                                 static_cast<int>(viewport.width), static_cast<int>(viewport.height)));
     } else {
         CAMERA_WARN("Invalid viewport provided");
     }
@@ -180,7 +195,7 @@ void Camera::setMode(Mode mode) {
     }
 }
 
-void Camera::setTarget(std::weak_ptr<Entity> target) {
+void Camera::setTarget(const std::weak_ptr<Entity>& target) {
     std::weak_ptr<Entity> oldTarget = m_target;
     m_target = target;
     m_positionGetter = nullptr; // Clear function-based target
@@ -203,10 +218,10 @@ void Camera::setTarget(std::weak_ptr<Entity> target) {
 }
 
 void Camera::setTargetPositionGetter(std::function<Vector2D()> positionGetter) {
-    m_positionGetter = positionGetter;
+    m_positionGetter = std::move(positionGetter);
     m_target.reset(); // Clear entity-based target
-    
-    if (positionGetter) {
+
+    if (m_positionGetter) {
         CAMERA_INFO("Camera target set to position getter function");
         // If in follow mode, update target position immediately
         if (m_mode == Mode::Follow) {
@@ -288,15 +303,31 @@ void Camera::computeOffsetFromCenter(float centerX, float centerY,
 }
 
 Vector2D Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) const {
-    // Interpolate between previous and current position for smooth rendering
-    Vector2D center(
-        m_previousPosition.getX() + (m_position.getX() - m_previousPosition.getX()) * interpolationAlpha,
-        m_previousPosition.getY() + (m_position.getY() - m_previousPosition.getY()) * interpolationAlpha);
+    Vector2D center;
 
-    // Compute screen offset from the interpolated center position
+    // In Follow mode with entity target, query position at RENDER TIME
+    // This ensures we use post-collision position (collision runs after camera update)
+    if (m_mode == Mode::Follow) {
+        if (auto targetPtr = m_target.lock()) {
+            // Get target's current interpolated position - includes collision corrections
+            center = targetPtr->getInterpolatedPosition(interpolationAlpha);
+        } else {
+            // No valid target - use camera's own interpolation
+            center = Vector2D(
+                m_previousPosition.getX() + (m_position.getX() - m_previousPosition.getX()) * interpolationAlpha,
+                m_previousPosition.getY() + (m_position.getY() - m_previousPosition.getY()) * interpolationAlpha);
+        }
+    } else {
+        // Non-Follow modes: use camera's own interpolation
+        center = Vector2D(
+            m_previousPosition.getX() + (m_position.getX() - m_previousPosition.getX()) * interpolationAlpha,
+            m_previousPosition.getY() + (m_position.getY() - m_previousPosition.getY()) * interpolationAlpha);
+    }
+
+    // Compute screen offset from the center position
     computeOffsetFromCenter(center.getX(), center.getY(), offsetX, offsetY);
 
-    // Return the center position we used - caller should render followed entity here
+    // Return the center position we used
     return center;
 }
 
@@ -319,18 +350,10 @@ bool Camera::isRectVisible(float x, float y, float width, float height) const {
 }
 
 void Camera::worldToScreen(float worldX, float worldY, float& screenX, float& screenY) const {
-    // For coordinate transforms, use raw camera position without world bounds clamping
-    // World bounds clamping is for rendering, not for abstract coordinate math
-    float const worldViewWidth = m_viewport.width / m_zoom;
-    float const worldViewHeight = m_viewport.height / m_zoom;
-
-    // Use current camera position
-    float const camX = m_position.getX();
-    float const camY = m_position.getY();
-
-    // Camera offset: centers camera on its position
-    float offsetX = std::floor(camX - (worldViewWidth * 0.5f));
-    float offsetY = std::floor(camY - (worldViewHeight * 0.5f));
+    // Use the same offset calculation as rendering (computeOffsetFromCenter)
+    // This ensures world-to-screen conversion matches what's actually displayed
+    float offsetX, offsetY;
+    computeOffsetFromCenter(m_position.getX(), m_position.getY(), offsetX, offsetY);
 
     // Transform world position to screen position
     screenX = worldX - offsetX;
@@ -343,17 +366,10 @@ void Camera::screenToWorld(float screenX, float screenY, float& worldX, float& w
     float const logicalX = screenX / m_zoom;
     float const logicalY = screenY / m_zoom;
 
-    // For coordinate transforms, use raw camera position without world bounds clamping
-    float const worldViewWidth = m_viewport.width / m_zoom;
-    float const worldViewHeight = m_viewport.height / m_zoom;
-
-    // Use current camera position
-    float const camX = m_position.getX();
-    float const camY = m_position.getY();
-
-    // Camera offset: centers camera on its position
-    float offsetX = std::floor(camX - (worldViewWidth * 0.5f));
-    float offsetY = std::floor(camY - (worldViewHeight * 0.5f));
+    // Use the same offset calculation as rendering (computeOffsetFromCenter)
+    // This ensures screen-to-world conversion matches what's actually displayed
+    float offsetX, offsetY;
+    computeOffsetFromCenter(m_position.getX(), m_position.getY(), offsetX, offsetY);
 
     // Inverse of worldToScreen: worldPos = screenPos + cameraOffset
     worldX = logicalX + offsetX;
@@ -495,7 +511,7 @@ void Camera::fireModeChangedEvent(Mode oldMode, Mode newMode) {
     }
 }
 
-void Camera::fireTargetChangedEvent(std::weak_ptr<Entity> oldTarget, std::weak_ptr<Entity> newTarget) {
+void Camera::fireTargetChangedEvent(const std::weak_ptr<Entity>& oldTarget, const std::weak_ptr<Entity>& newTarget) {
     try {
         const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerCameraTargetChanged(newTarget, oldTarget,
@@ -594,18 +610,25 @@ bool Camera::setZoomLevel(int levelIndex) {
 }
 
 void Camera::syncViewportWithEngine() {
-    // Get current logical dimensions from GameEngine (authoritative source)
+    float viewportWidth = 0.0f;
+    float viewportHeight = 0.0f;
+
+#ifdef USE_SDL3_GPU
+    // In GPU mode, use GPURenderer viewport (actual window size)
+    const auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
+    viewportWidth = static_cast<float>(gpuRenderer.getViewportWidth());
+    viewportHeight = static_cast<float>(gpuRenderer.getViewportHeight());
+#else
+    // In SDL_Renderer mode, use GameEngine logical size
     const GameEngine& gameEngine = GameEngine::Instance();
-    float const logicalWidth = static_cast<float>(gameEngine.getLogicalWidth());
-    float const logicalHeight = static_cast<float>(gameEngine.getLogicalHeight());
+    viewportWidth = static_cast<float>(gameEngine.getLogicalWidth());
+    viewportHeight = static_cast<float>(gameEngine.getLogicalHeight());
+#endif
 
-    // Only update if dimensions actually changed (avoid unnecessary updates)
-    if (m_viewport.width != logicalWidth || m_viewport.height != logicalHeight) {
-        CAMERA_INFO(std::format("Syncing camera viewport: {}x{} -> {}x{}",
-                                static_cast<int>(m_viewport.width), static_cast<int>(m_viewport.height),
-                                static_cast<int>(logicalWidth), static_cast<int>(logicalHeight)));
-
-        setViewport(logicalWidth, logicalHeight);
+    // Only update if dimensions actually changed and valid
+    if (viewportWidth > 0.0f && viewportHeight > 0.0f &&
+        (m_viewport.width != viewportWidth || m_viewport.height != viewportHeight)) {
+        setViewport(viewportWidth, viewportHeight);
     }
 }
 

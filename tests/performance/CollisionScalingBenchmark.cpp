@@ -26,9 +26,11 @@
 
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "entities/Entity.hpp"  // For AnimationConfig
 #include "managers/BackgroundSimulationManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
+#include "core/Logger.hpp"  // For benchmark mode
 #include "world/WorldData.hpp"
 
 namespace {
@@ -43,6 +45,8 @@ public:
             EntityDataManager::Instance().init();
             CollisionManager::Instance().init();
             BackgroundSimulationManager::Instance().init();
+            // Enable benchmark mode to suppress verbose logging during benchmarks
+            HAMMER_ENABLE_BENCHMARK_MODE();
             s_initialized = true;
         }
         m_rng.seed(42); // Fixed seed for reproducibility
@@ -76,7 +80,7 @@ public:
                 pos = Vector2D(posDist(m_rng) + spread, posDist(m_rng) + spread);
             }
 
-            EntityHandle handle = edm.registerNPC(id, pos, 16.0f, 16.0f);
+            EntityHandle handle = edm.createNPCWithRaceClass( pos, "Human", "Guard");
             size_t idx = edm.getIndex(handle);
             if (idx != SIZE_MAX) {
                 auto& hot = edm.getHotDataByIndex(idx);
@@ -503,77 +507,8 @@ BOOST_AUTO_TEST_CASE(TriggerDetectionScaling)
     std::cout << std::endl;
 }
 
-// ---------------------------------------------------------------------------
-// Hill-Climb Convergence Test
-// ---------------------------------------------------------------------------
-BOOST_AUTO_TEST_CASE(HillClimbConvergence)
-{
-    std::cout << "--- WorkerBudget Hill-Climb Convergence (Collision) ---\n";
-    std::cout << "Testing that throughput improves as hill-climb converges\n\n";
-
-    constexpr size_t ENTITY_COUNT = 5000;  // Sufficient to trigger threading
-    constexpr float WORLD_SIZE = 10000.0f;
-    constexpr int MEASURE_INTERVAL = 50;   // Measure every N frames
-    constexpr int TOTAL_FRAMES = 300;      // Total frames to run
-
-    prepareForTest();
-    createMovables(ENTITY_COUNT, WORLD_SIZE);
-    setupWorld(WORLD_SIZE);
-
-    auto& cm = CollisionManager::Instance();
-
-    std::cout << std::setw(10) << "Frames"
-              << std::setw(14) << "Avg Time (ms)"
-              << std::setw(18) << "Throughput (/ms)"
-              << std::setw(12) << "Status\n";
-
-    double firstThroughput = 0.0;
-    double lastThroughput = 0.0;
-
-    for (int interval = 0; interval < TOTAL_FRAMES / MEASURE_INTERVAL; ++interval) {
-        auto start = std::chrono::high_resolution_clock::now();
-
-        for (int i = 0; i < MEASURE_INTERVAL; ++i) {
-            cm.update(0.016f);
-        }
-
-        auto end = std::chrono::high_resolution_clock::now();
-        double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
-        double avgMs = totalMs / MEASURE_INTERVAL;
-        double throughput = ENTITY_COUNT / avgMs;  // entities per ms
-
-        if (interval == 0) {
-            firstThroughput = throughput;
-        }
-        lastThroughput = throughput;
-
-        int frameCount = (interval + 1) * MEASURE_INTERVAL;
-        const char* status = (interval < 2) ? "Converging" : "Stable";
-
-        std::cout << std::setw(10) << frameCount
-                  << std::setw(14) << std::fixed << std::setprecision(3) << avgMs
-                  << std::setw(18) << std::fixed << std::setprecision(0) << throughput
-                  << std::setw(12) << status << "\n";
-    }
-
-    // Verify improvement
-    double improvement = (lastThroughput - firstThroughput) / firstThroughput * 100.0;
-    std::cout << "\nHILL-CLIMB RESULT:\n";
-    std::cout << "  Initial throughput: " << std::fixed << std::setprecision(0) << firstThroughput << " entities/ms\n";
-    std::cout << "  Final throughput:   " << std::fixed << std::setprecision(0) << lastThroughput << " entities/ms\n";
-    std::cout << "  Improvement: " << std::fixed << std::setprecision(1) << improvement << "%\n";
-
-    if (improvement >= 0.0) {
-        std::cout << "  Status: PASS (throughput stable or improved)\n";
-    } else if (improvement > -5.0) {
-        std::cout << "  Status: PASS (within noise tolerance)\n";
-    } else {
-        std::cout << "  Status: WARNING (throughput degraded significantly)\n";
-    }
-
-    cleanup();
-    std::cout << std::endl;
-}
+// NOTE: Adaptive threading tests moved to AdaptiveThreadingAnalysis.cpp
+// This benchmark focuses on collision algorithm performance (SAP, spatial hash, triggers)
 
 // ---------------------------------------------------------------------------
 // Summary
@@ -585,7 +520,7 @@ BOOST_AUTO_TEST_CASE(PrintSummary)
     std::cout << "  MS Hash: O(n) scaling - spatial hash queries nearby statics only\n";
     std::cout << "  Trigger Detection: Adaptive - spatial (<50) or sweep (>=50)\n";
     std::cout << "  Combined: Sub-quadratic scaling achieved\n";
-    std::cout << "  Hill-climb convergence: ~100 frames for optimal batch sizing\n";
+    std::cout << "\n  NOTE: Adaptive threading tests in AdaptiveThreadingAnalysis.cpp\n";
     std::cout << std::endl;
 }
 

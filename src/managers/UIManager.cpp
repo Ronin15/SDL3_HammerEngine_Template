@@ -12,6 +12,14 @@
 #include "managers/TextureManager.hpp"
 #include <algorithm>
 #include <format>
+#include <numeric>
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#include "gpu/GPUVertexPool.hpp"
+#include "gpu/GPUTypes.hpp"
+#include "gpu/SpriteBatch.hpp"
+#endif
 
 bool UIManager::init() {
   if (m_isShutdown) {
@@ -60,6 +68,13 @@ bool UIManager::init() {
   UI_INFO(std::format("UI scale set to {} for resolution {}x{}",
                       m_globalScale, m_currentLogicalWidth, m_currentLogicalHeight));
 
+#ifdef USE_SDL3_GPU
+  // Reserve GPU command buffers to avoid per-frame reallocations
+  m_gpuPrimitiveCommands.reserve(GPU_PRIMITIVE_COMMAND_CAPACITY);
+  m_gpuTextCommands.reserve(GPU_TEXT_COMMAND_CAPACITY);
+  m_gpuImageCommands.reserve(GPU_IMAGE_COMMAND_CAPACITY);
+#endif
+
   // Note: UIManager::onWindowResize() is called directly by InputManager when window resizes
 
   return true;
@@ -70,16 +85,15 @@ void UIManager::update(float deltaTime) {
     return;
   }
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   // Note: Window resize is now event-driven via onWindowResize(), not polled every frame
 
   // PERFORMANCE: Only iterate components if there are active bindings
   // This skips the O(n) loop entirely when no bindings exist
   if (m_activeBindingCount > 0) {
-    // Process data bindings - ONLY for visible components to avoid unnecessary work
-    for (auto const& [id, component] : m_components) {
-        if (component && component->m_visible) {
+    // Process data bindings - ONLY for visible AND dirty components
+    for (auto &[id, component] : m_components) {
+        if (component && component->m_visible && component->m_bindingDirty) {
             // Handle text bindings
             if (component->m_textBinding) {
                 setText(id, component->m_textBinding());
@@ -97,6 +111,8 @@ void UIManager::update(float deltaTime) {
                     component->m_listItemsDirty = true;
                 }
             }
+            // Reset dirty flag after processing bindings
+            component->m_bindingDirty = false;
         }
     }
   }
@@ -144,7 +160,6 @@ void UIManager::render(SDL_Renderer *renderer) {
     return;
   }
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   // Early exit if no components to render
   if (m_components.empty()) {
@@ -227,7 +242,6 @@ void UIManager::createButton(const std::string &id, const UIRect &bounds,
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
   invalidateComponentCache();
 }
@@ -243,7 +257,6 @@ void UIManager::createButtonDanger(const std::string &id, const UIRect &bounds,
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_DANGER);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
   invalidateComponentCache();
 }
@@ -259,7 +272,6 @@ void UIManager::createButtonSuccess(const std::string &id, const UIRect &bounds,
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_SUCCESS);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
   invalidateComponentCache();
 }
@@ -275,7 +287,6 @@ void UIManager::createButtonWarning(const std::string &id, const UIRect &bounds,
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_WARNING);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
   invalidateComponentCache();
 }
@@ -291,7 +302,6 @@ void UIManager::createLabel(const std::string &id, const UIRect &bounds,
   component->m_style = m_currentTheme.getStyle(UIComponentType::LABEL);
   component->m_zOrder = UIConstants::ZORDER_LABEL; // Text on top
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
 
   // Apply auto-sizing after creation
@@ -412,7 +422,6 @@ void UIManager::createList(const std::string &id, const UIRect &bounds) {
   component->m_style = m_currentTheme.getStyle(UIComponentType::LIST);
   component->m_zOrder = UIConstants::ZORDER_LIST; // UI elements
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
 
   // Enable auto-sizing for dynamic content-based sizing
@@ -443,7 +452,6 @@ void UIManager::createEventLog(const std::string &id, const UIRect &bounds,
       UIComponentType::EVENT_LOG); // Use event log styling
   component->m_zOrder = UIConstants::ZORDER_EVENT_LOG;           // UI elements
 
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
   invalidateComponentCache();
 }
@@ -490,7 +498,6 @@ void UIManager::refreshAllComponentThemes() const {
 
 // Component manipulation
 void UIManager::removeComponent(const std::string &id) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   // BUGFIX: Decrement binding count if component has active bindings
   // This prevents m_activeBindingCount from drifting when bound components are removed
@@ -636,7 +643,7 @@ void UIManager::bindText(const std::string &id,
     } else if (component->m_textBinding && !binding) {
       --m_activeBindingCount;
     }
-    component->m_textBinding = binding;
+    component->m_textBinding = std::move(binding);
   }
 }
 
@@ -651,7 +658,22 @@ void UIManager::bindList(
     } else if (component->m_listBinding && !binding) {
       --m_activeBindingCount;
     }
-    component->m_listBinding = binding;
+    component->m_listBinding = std::move(binding);
+  }
+}
+
+void UIManager::markBindingDirty(const std::string &id) {
+  auto component = getComponent(id);
+  if (component) {
+    component->m_bindingDirty = true;
+  }
+}
+
+void UIManager::markAllBindingsDirty() {
+  for (auto &[id, component] : m_components) {
+    if (component) {
+      component->m_bindingDirty = true;
+    }
   }
 }
 
@@ -731,7 +753,7 @@ void UIManager::setOnClick(const std::string &id,
                            std::function<void()> callback) {
   auto component = getComponent(id);
   if (component) {
-    component->m_onClick = callback;
+    component->m_onClick = std::move(callback);
   }
 }
 
@@ -739,7 +761,7 @@ void UIManager::setOnValueChanged(const std::string &id,
                                   std::function<void(float)> callback) {
   auto component = getComponent(id);
   if (component) {
-    component->m_onValueChanged = callback;
+    component->m_onValueChanged = std::move(callback);
   }
 }
 
@@ -747,7 +769,7 @@ void UIManager::setOnTextChanged(
     const std::string &id, std::function<void(const std::string &)> callback) {
   auto component = getComponent(id);
   if (component) {
-    component->m_onTextChanged = callback;
+    component->m_onTextChanged = std::move(callback);
   }
 }
 
@@ -755,7 +777,7 @@ void UIManager::setOnHover(const std::string &id,
                            std::function<void()> callback) {
   auto component = getComponent(id);
   if (component) {
-    component->m_onHover = callback;
+    component->m_onHover = std::move(callback);
   }
 }
 
@@ -763,7 +785,7 @@ void UIManager::setOnFocus(const std::string &id,
                            std::function<void()> callback) {
   auto component = getComponent(id);
   if (component) {
-    component->m_onFocus = callback;
+    component->m_onFocus = std::move(callback);
   }
 }
 
@@ -867,7 +889,6 @@ void UIManager::setProgressBarRange(const std::string &id, float minVal,
 // List specific methods
 void UIManager::addListItem(const std::string &listID,
                             const std::string &item) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   auto component = getComponent(listID);
   if (component && component->m_type == UIComponentType::LIST) {
@@ -879,7 +900,6 @@ void UIManager::addListItem(const std::string &listID,
 }
 
 void UIManager::removeListItem(const std::string &listID, int index) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   auto component = getComponent(listID);
   if (component && component->m_type == UIComponentType::LIST && index >= 0 &&
@@ -947,7 +967,6 @@ void UIManager::setListMaxItems(const std::string &listID, int maxItems) {
 
 void UIManager::addListItemWithAutoScroll(const std::string &listID,
                                           const std::string &item) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   auto component = getComponent(listID);
   if (component && component->m_type == UIComponentType::LIST) {
@@ -983,7 +1002,6 @@ void UIManager::addListItemWithAutoScroll(const std::string &listID,
 }
 
 void UIManager::clearListItems(const std::string &listID) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   auto component = getComponent(listID);
   if (component && component->m_type == UIComponentType::LIST) {
@@ -995,7 +1013,6 @@ void UIManager::clearListItems(const std::string &listID) {
 
 void UIManager::addEventLogEntry(const std::string &logID,
                                  const std::string &entry) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   auto component = getComponent(logID);
   if (component && component->m_type == UIComponentType::EVENT_LOG) {
@@ -1021,7 +1038,6 @@ void UIManager::addEventLogEntry(const std::string &logID,
 }
 
 void UIManager::clearEventLog(const std::string &logID) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   auto component = getComponent(logID);
   if (component && component->m_type == UIComponentType::EVENT_LOG) {
@@ -1035,7 +1051,6 @@ void UIManager::clearEventLog(const std::string &logID) {
 
 void UIManager::setEventLogMaxEntries(const std::string &logID,
                                       int maxEntries) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   auto component = getComponent(logID);
   if (component && component->m_type == UIComponentType::EVENT_LOG) {
@@ -1088,13 +1103,6 @@ void UIManager::setLabelAlignment(const std::string &labelID,
   }
 }
 
-void UIManager::setupDemoEventLog(const std::string &logID) {
-  addEventLogEntry(logID, "Event log initialized");
-  addEventLogEntry(logID, "Demo components created");
-
-  // Enable auto-updates for this event log
-  enableEventLogAutoUpdate(logID, 2.0f); // 2 second interval
-}
 
 void UIManager::enableEventLogAutoUpdate(const std::string &logID,
                                          float interval) {
@@ -1117,25 +1125,17 @@ void UIManager::disableEventLogAutoUpdate(const std::string &logID) {
 }
 
 void UIManager::updateEventLogs(float deltaTime) {
+  // Update timers only - no sample message auto-generation
+  // States can query timer state via getEventLogState() if needed
   for (auto &[logID, state] : m_eventLogStates) {
     if (!state.m_autoUpdate)
       continue;
 
     state.m_timer += deltaTime;
 
-    // Add a new log entry based on the interval
+    // Reset timer when interval exceeded - let state handle actual content
     if (state.m_timer >= state.m_updateInterval) {
       state.m_timer = 0.0f;
-
-      std::vector<std::string> sampleMessages = {
-          "System initialized successfully", "User interface components loaded",
-          "Database connection established", "Configuration files validated",
-          "Network module started",          "Audio system ready",
-          "Graphics renderer initialized",   "Input handlers registered",
-          "Memory pools allocated",          "Security protocols activated"};
-
-      addEventLogEntry(
-          logID, sampleMessages[state.m_messageIndex % sampleMessages.size()]);
       state.m_messageIndex++;
     }
   }
@@ -1176,7 +1176,7 @@ void UIManager::animateMove(const std::string &id, const UIRect &targetBounds,
   animation->m_active = true;
   animation->m_startBounds = component->m_bounds;
   animation->m_targetBounds = targetBounds;
-  animation->m_onComplete = onComplete;
+  animation->m_onComplete = std::move(onComplete);
 
   // Remove any existing animation for this component
   stopAnimation(id);
@@ -1199,7 +1199,7 @@ void UIManager::animateColor(const std::string &id,
   animation->m_active = true;
   animation->m_startColor = component->m_style.backgroundColor;
   animation->m_targetColor = targetColor;
-  animation->m_onComplete = onComplete;
+  animation->m_onComplete = std::move(onComplete);
 
   // Remove any existing animation for this component
   stopAnimation(id);
@@ -1613,6 +1613,13 @@ void UIManager::createOverlay(int windowWidth, int windowHeight) {
   // Create semi-transparent overlay panel using current theme's panel style
   createPanel("__overlay", {0, 0, windowWidth, windowHeight});
 
+  // Set overlay z-order to render behind dialogs and other components
+  auto overlay = getComponent("__overlay");
+  if (overlay) {
+    overlay->m_zOrder = UIConstants::ZORDER_OVERLAY;
+    invalidateComponentCache();
+  }
+
   // Set positioning to always fill window on resize (fixedWidth/Height = -1 means full window dimensions)
   // This ensures overlay properly resizes during fullscreen toggles and window resize events
   setComponentPositioning("__overlay", {UIPositionMode::TOP_ALIGNED, 0, 0, -1, -1});
@@ -1626,7 +1633,6 @@ void UIManager::removeOverlay() {
 }
 
 void UIManager::removeComponentsWithPrefix(const std::string &prefix) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   // Collect components to remove (can't modify map while iterating)
   std::vector<std::string> componentsToRemove;
@@ -1768,14 +1774,12 @@ float UIManager::calculateOptimalScale(int width, int height) const {
 
 // Private helper methods
 std::shared_ptr<UIComponent> UIManager::getComponent(const std::string &id) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   auto it = m_components.find(id);
   return (it != m_components.end()) ? it->second : nullptr;
 }
 
 std::shared_ptr<const UIComponent>
 UIManager::getComponent(const std::string &id) const {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   auto it = m_components.find(id);
   return (it != m_components.end()) ? it->second : nullptr;
 }
@@ -3152,9 +3156,26 @@ void UIManager::createCenteredButton(const std::string &id, int offsetY,
                                height});
 }
 
+void UIManager::createPanelAtBottomRight(const std::string &id, int width, int height,
+                                         int offsetX, int offsetY) {
+  // Calculate initial bounds in baseline coordinates
+  int const x = UIConstants::BASELINE_WIDTH - width - offsetX;
+  int const y = UIConstants::BASELINE_HEIGHT - height - offsetY;
+  createPanel(id, UIRect{x, y, width, height});
+  setComponentPositioning(id, {UIPositionMode::BOTTOM_RIGHT, offsetX, offsetY, width, height});
+}
+
+void UIManager::createLabelAtBottomRight(const std::string &id, const std::string &text,
+                                         int width, int height, int offsetX, int offsetY) {
+  // Calculate initial bounds in baseline coordinates
+  int const x = UIConstants::BASELINE_WIDTH - width - offsetX;
+  int const y = UIConstants::BASELINE_HEIGHT - height - offsetY;
+  createLabel(id, UIRect{x, y, width, height}, text);
+  setComponentPositioning(id, {UIPositionMode::BOTTOM_RIGHT, offsetX, offsetY, width, height});
+}
+
 // Auto-repositioning system implementation
 void UIManager::onWindowResize(int newLogicalWidth, int newLogicalHeight) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   UI_DEBUG(std::format("Window resized: {}x{} - auto-repositioning UI components",
                        newLogicalWidth, newLogicalHeight));
@@ -3170,7 +3191,7 @@ void UIManager::onWindowResize(int newLogicalWidth, int newLogicalHeight) {
 }
 
 void UIManager::repositionAllComponents(int width, int height) {
-  // Note: Called from onWindowResize() which already holds m_componentsMutex
+  // No lock needed - UI is single-threaded (main thread only)
   for (auto &[id, component] : m_components) {
     if (component) {
       applyPositioning(component, width, height);
@@ -3285,7 +3306,6 @@ void UIManager::applyPositioning(std::shared_ptr<UIComponent> component,
 
 void UIManager::setComponentPositioning(const std::string &id,
                                         const UIPositioning &positioning) {
-  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   auto component = getComponent(id);
   if (component) {
     component->m_positioning = positioning;
@@ -3293,3 +3313,602 @@ void UIManager::setComponentPositioning(const std::string &id,
     applyPositioning(component, m_currentLogicalWidth, m_currentLogicalHeight);
   }
 }
+
+#ifdef USE_SDL3_GPU
+void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
+  if (m_components.empty()) {
+    return;
+  }
+
+  m_gpuPrimitiveCommands.clear();
+  m_gpuTextCommands.clear();
+
+  auto& primPool = gpuRenderer.getPrimitiveVertexPool();
+  auto& uiPool = gpuRenderer.getUIVertexPool();
+
+  auto* primBase = static_cast<HammerEngine::ColorVertex*>(primPool.getMappedPtr());
+  auto* uiBase = static_cast<HammerEngine::SpriteVertex*>(uiPool.getMappedPtr());
+
+  if (!primBase || !uiBase) {
+    return;
+  }
+
+  uint32_t primOffset = 0;
+  uint32_t uiOffset = 0;
+
+  // Helper to add a filled rectangle
+  auto addFilledRect = [&](const UIRect& rect, const SDL_Color& color) {
+    if (primOffset + 6 > GPU_PRIMITIVE_VERTEX_LIMIT) return;  // Safety limit
+
+    float x = static_cast<float>(rect.x);
+    float y = static_cast<float>(rect.y);
+    float w = static_cast<float>(rect.width);
+    float h = static_cast<float>(rect.height);
+
+    HammerEngine::ColorVertex* v = primBase + primOffset;
+    // Triangle 1
+    v[0] = {x, y, color.r, color.g, color.b, color.a};
+    v[1] = {x + w, y, color.r, color.g, color.b, color.a};
+    v[2] = {x + w, y + h, color.r, color.g, color.b, color.a};
+    // Triangle 2
+    v[3] = {x, y, color.r, color.g, color.b, color.a};
+    v[4] = {x + w, y + h, color.r, color.g, color.b, color.a};
+    v[5] = {x, y + h, color.r, color.g, color.b, color.a};
+
+    UIGPUDrawCommand cmd;
+    cmd.type = UIGPUDrawCommand::Type::Rect;
+    cmd.vertexOffset = primOffset;
+    cmd.vertexCount = 6;
+    m_gpuPrimitiveCommands.push_back(cmd);
+    primOffset += 6;
+  };
+
+  // Helper to add border (4 thin rectangles)
+  auto addBorder = [&](const UIRect& rect, const SDL_Color& color, int width) {
+    if (width <= 0) return;
+    // Top
+    addFilledRect({rect.x, rect.y, rect.width, width}, color);
+    // Bottom
+    addFilledRect({rect.x, rect.y + rect.height - width, rect.width, width}, color);
+    // Left
+    addFilledRect({rect.x, rect.y + width, width, rect.height - 2 * width}, color);
+    // Right
+    addFilledRect({rect.x + rect.width - width, rect.y + width, width, rect.height - 2 * width}, color);
+  };
+
+  // Helper to add text with optional background
+  auto& fontMgr = FontManager::Instance();
+  auto addText = [&](const std::string& text, const std::string& fontID,
+                     int x, int y, const SDL_Color& color, int alignment,
+                     bool useBackground = false, const SDL_Color& bgColor = {0,0,0,0},
+                     int bgPadding = 0) {
+    if (text.empty()) return;
+
+    const GPUTextData* textData = fontMgr.renderTextGPU(text, fontID, color);
+    if (!textData || !textData->texture || !textData->texture->isValid()) {
+      return;
+    }
+
+    if (uiOffset + 4 > GPU_UI_VERTEX_LIMIT) return;  // Safety limit
+
+    // Calculate position based on alignment
+    float dstX = static_cast<float>(x);
+    float dstY = static_cast<float>(y);
+    float dstW = static_cast<float>(textData->width);
+    float dstH = static_cast<float>(textData->height);
+
+    switch (alignment) {
+      case 1: // Left (vertically centered)
+        dstY -= dstH / 2;
+        break;
+      case 2: // Right (vertically centered)
+        dstX -= dstW;
+        dstY -= dstH / 2;
+        break;
+      case 3: // Top-left
+        // x and y stay as-is (top-left corner)
+        break;
+      case 4: // Top-center
+        dstX -= dstW / 2;
+        break;
+      case 5: // Top-right
+        dstX -= dstW;
+        break;
+      default: // Center (0)
+        dstX -= dstW / 2;
+        dstY -= dstH / 2;
+        break;
+    }
+
+    // Draw background rectangle if enabled (added to primitive commands, renders before text)
+    if (useBackground && bgColor.a > 0) {
+      // Scale-compensate padding: text doesn't scale but UI gaps do, so use less
+      // padding when scale < 1.0 to prevent background from extending into adjacent elements
+      int effectivePadding = bgPadding;
+      if (m_globalScale < 1.0f) {
+        effectivePadding = static_cast<int>(bgPadding * m_globalScale);
+      }
+      UIRect bgRect;
+      bgRect.x = static_cast<int>(dstX) - effectivePadding;
+      bgRect.y = static_cast<int>(dstY) - effectivePadding;
+      bgRect.width = static_cast<int>(dstW) + (effectivePadding * 2);
+      bgRect.height = static_cast<int>(dstH) + (effectivePadding * 2);
+      addFilledRect(bgRect, bgColor);
+    }
+
+    HammerEngine::SpriteVertex* v = uiBase + uiOffset;
+    v[0] = {dstX, dstY, 0.0f, 0.0f, color.r, color.g, color.b, color.a};
+    v[1] = {dstX + dstW, dstY, 1.0f, 0.0f, color.r, color.g, color.b, color.a};
+    v[2] = {dstX + dstW, dstY + dstH, 1.0f, 1.0f, color.r, color.g, color.b, color.a};
+    v[3] = {dstX, dstY + dstH, 0.0f, 1.0f, color.r, color.g, color.b, color.a};
+
+    UIGPUDrawCommand cmd;
+    cmd.type = UIGPUDrawCommand::Type::Text;
+    cmd.texture = textData->texture->get();
+    cmd.vertexOffset = uiOffset;
+    cmd.vertexCount = 4;
+    m_gpuTextCommands.push_back(cmd);
+    uiOffset += 4;
+  };
+
+  // Render components in z-order
+  const auto& sortedComponents = getSortedComponents();
+  for (const auto& component : sortedComponents) {
+    if (!component || !component->m_visible) continue;
+
+    SDL_Color bgColor = component->m_style.backgroundColor;
+
+    // Determine background color based on state
+    switch (component->m_state) {
+      case UIState::HOVERED:
+        bgColor = component->m_style.hoverColor;
+        break;
+      case UIState::PRESSED:
+        bgColor = component->m_style.pressedColor;
+        break;
+      case UIState::DISABLED:
+        bgColor = component->m_style.disabledColor;
+        break;
+      default:
+        break;
+    }
+
+    // Render based on component type
+    switch (component->m_type) {
+      case UIComponentType::BUTTON:
+      case UIComponentType::BUTTON_DANGER:
+      case UIComponentType::BUTTON_SUCCESS:
+      case UIComponentType::BUTTON_WARNING:
+      case UIComponentType::PANEL:
+      case UIComponentType::DIALOG:
+        // Draw background
+        addFilledRect(component->m_bounds, bgColor);
+        // Draw border
+        if (component->m_style.borderWidth > 0) {
+          addBorder(component->m_bounds, component->m_style.borderColor,
+                    component->m_style.borderWidth);
+        }
+        // Draw text for buttons
+        if (!component->m_text.empty() &&
+            (component->m_type == UIComponentType::BUTTON ||
+             component->m_type == UIComponentType::BUTTON_DANGER ||
+             component->m_type == UIComponentType::BUTTON_SUCCESS ||
+             component->m_type == UIComponentType::BUTTON_WARNING)) {
+          int textX = component->m_bounds.x + component->m_bounds.width / 2;
+          int textY = component->m_bounds.y + component->m_bounds.height / 2;
+          addText(component->m_text, component->m_style.fontID,
+                  textX, textY, component->m_style.textColor, 0);
+        }
+        break;
+
+      case UIComponentType::LABEL:
+      case UIComponentType::TITLE:
+        if (!component->m_text.empty()) {
+          int textX, textY, alignment;
+          int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+
+          switch (component->m_style.textAlign) {
+            case UIAlignment::CENTER_CENTER:
+              textX = component->m_bounds.x + component->m_bounds.width / 2;
+              textY = component->m_bounds.y + component->m_bounds.height / 2;
+              alignment = 0; // center
+              break;
+            case UIAlignment::CENTER_RIGHT:
+              textX = component->m_bounds.x + component->m_bounds.width - scaledPadding;
+              textY = component->m_bounds.y + component->m_bounds.height / 2;
+              alignment = 2; // right
+              break;
+            case UIAlignment::CENTER_LEFT:
+              textX = component->m_bounds.x + scaledPadding;
+              textY = component->m_bounds.y + component->m_bounds.height / 2;
+              alignment = 1; // left
+              break;
+            case UIAlignment::TOP_CENTER:
+              textX = component->m_bounds.x + component->m_bounds.width / 2;
+              textY = component->m_bounds.y + scaledPadding;
+              alignment = 4; // top-center
+              break;
+            case UIAlignment::TOP_LEFT:
+              textX = component->m_bounds.x + scaledPadding;
+              textY = component->m_bounds.y + scaledPadding;
+              alignment = 3; // top-left
+              break;
+            case UIAlignment::TOP_RIGHT:
+              textX = component->m_bounds.x + component->m_bounds.width - scaledPadding;
+              textY = component->m_bounds.y + scaledPadding;
+              alignment = 5; // top-right
+              break;
+            default:
+              // CENTER_LEFT is default
+              textX = component->m_bounds.x + scaledPadding;
+              textY = component->m_bounds.y + component->m_bounds.height / 2;
+              alignment = 1; // left
+              break;
+          }
+
+          // Only use text backgrounds for components with transparent backgrounds
+          bool needsBackground = component->m_style.useTextBackground &&
+                                 component->m_style.backgroundColor.a == 0;
+          int scaledTextBgPadding = static_cast<int>(component->m_style.textBackgroundPadding * m_globalScale);
+
+          addText(component->m_text, component->m_style.fontID,
+                  textX, textY, component->m_style.textColor, alignment,
+                  needsBackground, component->m_style.textBackgroundColor,
+                  scaledTextBgPadding);
+        }
+        break;
+
+      case UIComponentType::PROGRESS_BAR:
+        // Draw background
+        addFilledRect(component->m_bounds, component->m_style.backgroundColor);
+        // Draw border
+        if (component->m_style.borderWidth > 0) {
+          addBorder(component->m_bounds, component->m_style.borderColor,
+                    component->m_style.borderWidth);
+        }
+        // Draw fill
+        {
+          float progress = (component->m_value - component->m_minValue) /
+                           (component->m_maxValue - component->m_minValue);
+          progress = std::clamp(progress, 0.0f, 1.0f);
+          int fillWidth = static_cast<int>(component->m_bounds.width * progress);
+          if (fillWidth > 0) {
+            UIRect fillRect = {component->m_bounds.x, component->m_bounds.y,
+                               fillWidth, component->m_bounds.height};
+            addFilledRect(fillRect, component->m_style.hoverColor);
+          }
+        }
+        break;
+
+      case UIComponentType::CHECKBOX:
+        {
+          // Scale checkbox size and padding for resolution-aware sizing
+          int scaledCheckboxSize = static_cast<int>(UIConstants::CHECKBOX_SIZE * m_globalScale);
+          int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+
+          // Draw checkbox box
+          UIRect boxBounds;
+          boxBounds.x = component->m_bounds.x;
+          boxBounds.y = component->m_bounds.y +
+                        (component->m_bounds.height - scaledCheckboxSize) / 2;
+          boxBounds.width = scaledCheckboxSize;
+          boxBounds.height = scaledCheckboxSize;
+
+          SDL_Color boxColor = component->m_style.backgroundColor;
+          if (component->m_state == UIState::HOVERED) {
+            boxColor = component->m_style.hoverColor;
+          }
+          addFilledRect(boxBounds, boxColor);
+
+          // Draw border around checkbox box
+          addBorder(boxBounds, component->m_style.borderColor, 1);
+
+          // Draw checkmark if checked
+          if (component->m_checked) {
+            int checkX = boxBounds.x + boxBounds.width / 2;
+            int checkY = boxBounds.y + boxBounds.height / 2;
+            addText("X", component->m_style.fontID, checkX, checkY,
+                    component->m_style.textColor, 0);  // Center
+          }
+
+          // Draw label text
+          if (!component->m_text.empty()) {
+            int textX = boxBounds.x + boxBounds.width + scaledPadding;
+            int textY = component->m_bounds.y + component->m_bounds.height / 2;
+            addText(component->m_text, component->m_style.fontID, textX, textY,
+                    component->m_style.textColor, 1);  // Left aligned
+          }
+        }
+        break;
+
+      case UIComponentType::SLIDER:
+        {
+          // Draw track
+          UIRect trackRect = {
+              component->m_bounds.x,
+              component->m_bounds.y + component->m_bounds.height / 2 - UIConstants::SLIDER_TRACK_OFFSET,
+              component->m_bounds.width,
+              UIConstants::SLIDER_TRACK_HEIGHT
+          };
+          addFilledRect(trackRect, component->m_style.backgroundColor);
+          addBorder(trackRect, component->m_style.borderColor, UIConstants::BORDER_WIDTH_NORMAL);
+
+          // Calculate handle position
+          float progress = (component->m_value - component->m_minValue) /
+                           (component->m_maxValue - component->m_minValue);
+          progress = std::clamp(progress, 0.0f, 1.0f);
+
+          int handleX = component->m_bounds.x +
+                        static_cast<int>((component->m_bounds.width - UIConstants::SLIDER_HANDLE_WIDTH) * progress);
+          UIRect handleRect = {
+              handleX,
+              component->m_bounds.y,
+              UIConstants::SLIDER_HANDLE_WIDTH,
+              component->m_bounds.height
+          };
+
+          SDL_Color handleColor = component->m_style.hoverColor;
+          if (component->m_state == UIState::PRESSED) {
+            handleColor = component->m_style.pressedColor;
+          }
+
+          addFilledRect(handleRect, handleColor);
+          addBorder(handleRect, component->m_style.borderColor, 1);
+        }
+        break;
+
+      case UIComponentType::INPUT_FIELD:
+        {
+          SDL_Color inputBgColor = component->m_style.backgroundColor;
+          if (component->m_state == UIState::FOCUSED) {
+            inputBgColor = component->m_style.hoverColor;
+          }
+
+          // Draw background
+          addFilledRect(component->m_bounds, inputBgColor);
+
+          // Draw border (blue if focused)
+          SDL_Color borderColor = component->m_style.borderColor;
+          if (component->m_state == UIState::FOCUSED) {
+            borderColor = {100, 150, 255, 255};  // Blue focus border
+          }
+          addBorder(component->m_bounds, borderColor, component->m_style.borderWidth);
+
+          // Scale padding
+          int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+
+          // Draw text or placeholder
+          std::string displayText =
+              component->m_text.empty() ? component->m_placeholder : component->m_text;
+          if (!displayText.empty()) {
+            SDL_Color textColor = component->m_text.empty()
+                                      ? SDL_Color{128, 128, 128, 255}  // Placeholder gray
+                                      : component->m_style.textColor;
+
+            int textX = component->m_bounds.x + scaledPadding;
+            int textY = component->m_bounds.y + component->m_bounds.height / 2;
+            addText(displayText, component->m_style.fontID, textX, textY, textColor, 1);  // Left aligned
+          }
+        }
+        break;
+
+      case UIComponentType::LIST:
+        {
+          // Draw background
+          addFilledRect(component->m_bounds, component->m_style.backgroundColor);
+
+          // Draw border
+          if (component->m_style.borderWidth > 0) {
+            addBorder(component->m_bounds, component->m_style.borderColor,
+                      component->m_style.borderWidth);
+          }
+
+          // Scale padding and item height
+          int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+          int scaledItemHeight = static_cast<int>(component->m_style.listItemHeight * m_globalScale);
+
+          // Draw list items
+          int itemY = component->m_bounds.y + scaledPadding;
+          int itemHeight = scaledItemHeight;
+
+          for (size_t i = 0; i < component->m_listItems.size(); ++i) {
+            UIRect itemBounds = {
+                component->m_bounds.x,
+                itemY,
+                component->m_bounds.width,
+                itemHeight
+            };
+
+            // Highlight selected item
+            if (static_cast<int>(i) == component->m_selectedIndex) {
+              addFilledRect(itemBounds, component->m_style.hoverColor);
+            }
+
+            // Draw item text
+            int textX = component->m_bounds.x + scaledPadding * 2;
+            int textY = itemY + itemHeight / 2;
+            addText(component->m_listItems[i], component->m_style.fontID,
+                    textX, textY, component->m_style.textColor, 1);  // Left aligned
+
+            itemY += itemHeight;
+
+            // Don't overflow bounds
+            if (itemY + itemHeight > component->m_bounds.y + component->m_bounds.height) {
+              break;
+            }
+          }
+        }
+        break;
+
+      case UIComponentType::EVENT_LOG:
+        {
+          // Draw background
+          addFilledRect(component->m_bounds, component->m_style.backgroundColor);
+
+          // Draw border
+          if (component->m_style.borderWidth > 0) {
+            addBorder(component->m_bounds, component->m_style.borderColor,
+                      component->m_style.borderWidth);
+          }
+
+          // Scale padding and item height
+          int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+          int scaledItemHeight = static_cast<int>(component->m_style.listItemHeight * m_globalScale);
+
+          // Event logs scroll from bottom to top (newest entries at bottom)
+          int itemHeight = scaledItemHeight;
+          int availableHeight = component->m_bounds.height - (2 * scaledPadding);
+          int maxVisibleItems = availableHeight / itemHeight;
+
+          // Calculate start index for bottom-aligned rendering
+          int startIndex = 0;
+          if (static_cast<int>(component->m_listItems.size()) > maxVisibleItems) {
+            startIndex = static_cast<int>(component->m_listItems.size()) - maxVisibleItems;
+          }
+
+          // Draw visible items from startIndex
+          int itemY = component->m_bounds.y + scaledPadding;
+          for (size_t i = static_cast<size_t>(startIndex); i < component->m_listItems.size(); ++i) {
+            int textX = component->m_bounds.x + scaledPadding * 2;
+            int textY = itemY + itemHeight / 2;
+            addText(component->m_listItems[i], component->m_style.fontID,
+                    textX, textY, component->m_style.textColor, 1);  // Left aligned
+
+            itemY += itemHeight;
+
+            // Don't overflow bounds
+            if (itemY + itemHeight > component->m_bounds.y + component->m_bounds.height) {
+              break;
+            }
+          }
+        }
+        break;
+
+      case UIComponentType::IMAGE:
+        // Images require TextureManager GPU integration - placeholder for now
+        // The TextureManager would need to provide GPUTexture* for the texture ID
+        break;
+
+      case UIComponentType::TOOLTIP:
+        // Tooltips are rendered separately (after all components)
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  // Render tooltip if visible (m_hoveredTooltip stores the component ID)
+  if (m_tooltipsEnabled && !m_hoveredTooltip.empty() && m_tooltipTimer >= m_tooltipDelay) {
+    auto tooltipComponent = getComponent(m_hoveredTooltip);
+    if (tooltipComponent && !tooltipComponent->m_text.empty() &&
+        tooltipComponent->m_type != UIComponentType::TITLE &&
+        tooltipComponent->m_text.find('\n') == std::string::npos) {
+
+      // Scale padding for resolution-aware sizing
+      int scaledPaddingWidth = static_cast<int>(UIConstants::TOOLTIP_PADDING_WIDTH * m_globalScale);
+      int scaledPaddingHeight = static_cast<int>(UIConstants::TOOLTIP_PADDING_HEIGHT * m_globalScale);
+      int scaledMouseOffset = static_cast<int>(UIConstants::TOOLTIP_MOUSE_OFFSET * m_globalScale);
+
+      // Get tooltip text dimensions for background sizing
+      const GPUTextData* tooltipTextData = fontMgr.renderTextGPU(
+          tooltipComponent->m_text, tooltipComponent->m_style.fontID,
+          tooltipComponent->m_style.textColor);
+
+      if (tooltipTextData && tooltipTextData->texture && tooltipTextData->texture->isValid()) {
+        int tooltipWidth = tooltipTextData->width + scaledPaddingWidth;
+        int tooltipHeight = tooltipTextData->height + scaledPaddingHeight;
+
+        // Position tooltip near mouse using m_lastMousePosition (updated in handleInput)
+        int tooltipX = static_cast<int>(m_lastMousePosition.getX()) + scaledMouseOffset;
+        int tooltipY = static_cast<int>(m_lastMousePosition.getY()) - tooltipHeight - scaledMouseOffset;
+
+        // Clamp tooltip to screen bounds
+        if (tooltipX + tooltipWidth > m_currentLogicalWidth) {
+          tooltipX = m_currentLogicalWidth - tooltipWidth;
+        }
+        if (tooltipY < 0) {
+          tooltipY = static_cast<int>(m_lastMousePosition.getY()) + scaledMouseOffset * 2;
+        }
+
+        UIRect tooltipBounds = {tooltipX, tooltipY, tooltipWidth, tooltipHeight};
+
+        // Draw tooltip background
+        SDL_Color tooltipBg = {50, 50, 50, 230};
+        addFilledRect(tooltipBounds, tooltipBg);
+
+        // Draw tooltip border
+        SDL_Color tooltipBorder = {100, 100, 100, 255};  // Default border color
+        addBorder(tooltipBounds, tooltipBorder, 1);
+
+        // Draw tooltip text (centered in the tooltip box)
+        int textX = tooltipX + tooltipWidth / 2;
+        int textY = tooltipY + tooltipHeight / 2;
+        addText(tooltipComponent->m_text, tooltipComponent->m_style.fontID,
+                textX, textY, tooltipComponent->m_style.textColor, 0);
+      }
+    }
+  }
+
+  primPool.setWrittenVertexCount(primOffset);
+  uiPool.setWrittenVertexCount(uiOffset);
+}
+
+void UIManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass) {
+  if (!pass) return;
+
+  // Create orthographic projection for screen-space rendering
+  float orthoMatrix[16];
+  HammerEngine::GPURenderer::createOrthoMatrix(
+      0.0f, static_cast<float>(gpuRenderer.getViewportWidth()),
+      static_cast<float>(gpuRenderer.getViewportHeight()), 0.0f,
+      orthoMatrix);
+
+  // Render primitives (filled rectangles)
+  if (!m_gpuPrimitiveCommands.empty()) {
+    SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUIPrimitivePipeline());
+    gpuRenderer.pushViewProjection(pass, orthoMatrix);
+
+    SDL_GPUBufferBinding vertexBinding{};
+    vertexBinding.buffer = gpuRenderer.getPrimitiveVertexPool().getGPUBuffer();
+    vertexBinding.offset = 0;
+    SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
+
+    // Draw all primitives in one call (they share the same pipeline)
+    uint32_t totalVertices = std::accumulate(
+        m_gpuPrimitiveCommands.begin(), m_gpuPrimitiveCommands.end(), 0u,
+        [](uint32_t sum, const auto& cmd) { return sum + cmd.vertexCount; });
+    if (totalVertices > 0) {
+      SDL_DrawGPUPrimitives(pass, totalVertices, 1, 0, 0);
+    }
+  }
+
+  // Render text (each text has a different texture)
+  if (!m_gpuTextCommands.empty()) {
+    SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUISpritePipeline());
+    gpuRenderer.pushViewProjection(pass, orthoMatrix);
+
+    SDL_GPUBufferBinding vertexBinding{};
+    vertexBinding.buffer = gpuRenderer.getUIVertexPool().getGPUBuffer();
+    vertexBinding.offset = 0;
+    SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
+
+    // Bind index buffer
+    auto& batch = gpuRenderer.getSpriteBatch();
+    SDL_GPUBufferBinding indexBinding{};
+    indexBinding.buffer = batch.getIndexBuffer();
+    indexBinding.offset = 0;
+    SDL_BindGPUIndexBuffer(pass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+
+    for (const auto& cmd : m_gpuTextCommands) {
+      SDL_GPUTextureSamplerBinding texSampler{};
+      texSampler.texture = cmd.texture;
+      texSampler.sampler = gpuRenderer.getLinearSampler();
+      SDL_BindGPUFragmentSamplers(pass, 0, &texSampler, 1);
+
+      uint32_t firstIndex = (cmd.vertexOffset / 4) * 6;
+      SDL_DrawGPUIndexedPrimitives(pass, 6, 1, firstIndex, 0, 0);
+    }
+  }
+}
+#endif

@@ -171,6 +171,122 @@ All public methods are thread-safe via internal locking. For best performance, b
 - Clean up unused worlds to free memory.
 - Cache ResourceHandles in your game objects rather than looking them up repeatedly.
 
+## Resource System Architecture
+
+The resource system uses a three-tier architecture:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      ResourceFactory                             │
+│  - Creates Resource instances from JSON                         │
+│  - Registry of type → creator functions                         │
+│  - Extensible for custom resource types                         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   ResourceTemplateManager                        │
+│  - Stores Resource templates (immutable definitions)            │
+│  - Loads from JSON files                                        │
+│  - Returns ResourceHandle for efficient lookups                 │
+│  - Single source of truth for "what resources exist"            │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    WorldResourceManager                          │
+│  - Tracks resource quantities per world                         │
+│  - Uses ResourceHandle (not strings) for efficiency             │
+│  - Manages runtime resource state (inventories, world drops)    │
+│  - Thread-safe add/remove/transfer operations                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Resource Flow Example
+
+```cpp
+// 1. FACTORY: Define resource types (startup)
+ResourceFactory::registerCreator("ore", createOreFromJson);
+
+// 2. TEMPLATE MANAGER: Load resource definitions (game load)
+auto& rtm = ResourceTemplateManager::Instance();
+rtm.loadFromFile("res/data/resources.json");
+
+// 3. Get handle for efficient runtime use
+ResourceHandle ironHandle = rtm.getHandleByName("iron_ore");
+
+// 4. WORLD RESOURCE MANAGER: Track quantities (runtime)
+auto& wrm = WorldResourceManager::Instance();
+wrm.createWorld("main_world");
+wrm.addResource("main_world", ironHandle, 50);
+
+// 5. Query quantities
+int ironCount = wrm.getResourceQuantity("main_world", ironHandle);
+```
+
+### ResourceHandle-Based API
+
+WorldResourceManager uses `ResourceHandle` instead of string names for all operations:
+
+```cpp
+// WRONG: String-based lookups (slow, error-prone)
+wrm.addResource("main_world", "iron_ore", 10);  // NOT SUPPORTED
+
+// CORRECT: Handle-based operations (fast, type-safe)
+ResourceHandle handle = rtm.getHandleByName("iron_ore");
+wrm.addResource("main_world", handle, 10);
+```
+
+**Why Handles?**
+- **O(1) lookup**: Handle is an index, not a string hash
+- **Type safety**: Invalid handles are detected at runtime
+- **Memory efficient**: 4-byte handle vs variable-length string
+- **Cache friendly**: Handle comparisons are integer comparisons
+
+### Caching Handles in Game Objects
+
+For frequently-used resources, cache handles in your game objects:
+
+```cpp
+class Player {
+private:
+    ResourceHandle m_goldHandle;     // Cached at creation
+    ResourceHandle m_healthPotHandle;
+
+public:
+    void init() {
+        auto& rtm = ResourceTemplateManager::Instance();
+        m_goldHandle = rtm.getHandleByName("gold");
+        m_healthPotHandle = rtm.getHandleByName("health_potion");
+    }
+
+    void addGold(int amount) {
+        auto& wrm = WorldResourceManager::Instance();
+        wrm.addResource("player_inventory", m_goldHandle, amount);
+    }
+};
+```
+
+### Querying World Resources
+
+```cpp
+auto& wrm = WorldResourceManager::Instance();
+
+// Get all resources in a world
+auto worldResources = wrm.getWorldResources("main_world");
+for (const auto& [handle, quantity] : worldResources) {
+    const Resource* res = rtm.getResource(handle);
+    std::cout << res->getName() << ": " << quantity << "\n";
+}
+
+// Get totals across all worlds
+auto totals = wrm.getAllResourceTotals();
+
+// Check if player has enough
+bool canBuy = wrm.hasResource("player_inventory", goldHandle, 100);
+```
+
 ## See Also
 - `ResourceTemplateManager` (for resource templates)
+- `ResourceFactory` (for creating resources from JSON)
 - `Resource` (resource base class)

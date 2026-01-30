@@ -12,6 +12,7 @@
 #include "events/SceneChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "entities/Player.hpp"
+#include "entities/EntityHandle.hpp"
 #include "managers/EntityDataManager.hpp"
 #include <functional>
 #include <memory>
@@ -785,11 +786,14 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventBasics, EventTypesFixture) {
     // Create a resource handle
     HammerEngine::ResourceHandle woodHandle(1, 1);
 
+    // Get player's EntityHandle
+    EntityHandle playerHandle = player->getHandle();
+
     // Create the event
-    ResourceChangeEvent event(player, woodHandle, 100, 150, "crafted");
+    ResourceChangeEvent event(playerHandle, woodHandle, 100, 150, "crafted");
 
     // Check event properties
-    BOOST_CHECK(event.getOwner().lock() == player);
+    BOOST_CHECK(event.getOwnerHandle() == playerHandle);
     BOOST_CHECK(event.getResourceHandle() == woodHandle);
     BOOST_CHECK_EQUAL(event.getOldQuantity(), 100);
     BOOST_CHECK_EQUAL(event.getNewQuantity(), 150);
@@ -800,12 +804,13 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventBasics, EventTypesFixture) {
     BOOST_CHECK(event.isIncrease());
     BOOST_CHECK(!event.isDecrease());
 
-    // Test reset
+    // Test reset - clears all data for event pool recycling
     event.reset();
-    // Reset is a no-op for this event, but let's check it doesn't crash
-    // and values remain
-    BOOST_CHECK(event.getOwner().lock() == player);
-    BOOST_CHECK_EQUAL(event.getNewQuantity(), 150);
+    BOOST_CHECK(event.getOwnerHandle() == EntityHandle{});
+    BOOST_CHECK_EQUAL(event.getNewQuantity(), 0);
+    BOOST_CHECK_EQUAL(event.getOldQuantity(), 0);
+    BOOST_CHECK_EQUAL(event.getQuantityChange(), 0);
+    BOOST_CHECK(event.getChangeReason().empty());
 }
 
 // Test WorldEvent types
@@ -896,12 +901,10 @@ BOOST_FIXTURE_TEST_CASE(CollisionEventBasics, EventTypesFixture) {
     BOOST_CHECK_EQUAL(event.getInfo().a, 1);
     BOOST_CHECK_EQUAL(event.getInfo().b, 2);
 
-    // Test reset
+    // Test reset - clears all data for event pool recycling
     event.reset();
-    // In the new implementation, reset() on CollisionEvent does not clear the info.
-    // It only resets the cooldown and consumed status. So we check if the info remains.
-    BOOST_CHECK_EQUAL(event.getInfo().a, 1);
-    BOOST_CHECK_EQUAL(event.getInfo().b, 2);
+    BOOST_CHECK_EQUAL(event.getInfo().a, 0);
+    BOOST_CHECK_EQUAL(event.getInfo().b, 0);
 }
 
 // Test WorldTriggerEvent
@@ -977,7 +980,7 @@ BOOST_FIXTURE_TEST_CASE(AllEventTypesReturnCorrectTypeId, EventTypesFixture) {
   // ResourceChange
   auto player = std::make_shared<Player>();
   HammerEngine::ResourceHandle goldHandle(2, 1);
-  ResourceChangeEvent resourceEvent(player, goldHandle, 0, 10, "looted");
+  ResourceChangeEvent resourceEvent(player->getHandle(), goldHandle, 0, 10, "looted");
   BOOST_CHECK(resourceEvent.getTypeId() == EventTypeId::ResourceChange);
 
   // World

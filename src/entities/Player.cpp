@@ -20,6 +20,7 @@
 #include "managers/WorldManager.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <format>
 
 Player::Player() : Entity() {
@@ -73,46 +74,59 @@ void Player::loadDimensionsFromTexture() {
   // Cache TextureManager reference for better performance
   const TextureManager &texMgr = TextureManager::Instance();
 
-  // Get the texture from TextureManager
-  if (texMgr.isTextureInMap(m_textureID)) {
+  float width = 0.0f;
+  float height = 0.0f;
+  bool gotDimensions = false;
+
+#ifdef USE_SDL3_GPU
+  // Try GPU texture first (used in GPU rendering mode)
+  if (auto* gpuData = texMgr.getGPUTextureData(m_textureID); gpuData) {
+    width = gpuData->width;
+    height = gpuData->height;
+    gotDimensions = (width > 0 && height > 0);
+    if (gotDimensions) {
+      PLAYER_DEBUG(std::format("Got dimensions from GPU texture: {}x{}", width, height));
+    }
+  }
+#endif
+
+  // Fall back to SDL_Renderer texture if GPU texture not available
+  if (!gotDimensions && texMgr.isTextureInMap(m_textureID)) {
     auto texture = texMgr.getTexture(m_textureID);
     if (texture != nullptr) {
-      float width = 0.0f;
-      float height = 0.0f;
-      // Query the texture to get its width and height
-      // SDL3 uses SDL_GetTextureSize which returns float dimensions and returns
-      // a bool
       if (SDL_GetTextureSize(texture.get(), &width, &height)) {
-        PLAYER_DEBUG(
-            std::format("Original texture dimensions: {}x{}", width, height));
-
-        // Store original dimensions for full sprite sheet
-        m_width = static_cast<int>(width);
-        m_height = static_cast<int>(height);
-
-        // Calculate frame dimensions based on sprite sheet layout
-        m_frameWidth = m_width / m_numFrames;           // Width per frame
-        int frameHeight = m_height / m_spriteSheetRows; // Height per row
-
-        // Update height to be the height of a single frame
-        m_height = frameHeight;
-
-        // Sync new dimensions to collision body if already registered
-        Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
-        CollisionManager::Instance().updateCollisionBodySize(getID(),
-                                                             newHalfSize);
-
-        PLAYER_DEBUG(
-            std::format("Loaded texture dimensions: {}x{}", m_width, height));
-        PLAYER_DEBUG(
-            std::format("Frame dimensions: {}x{}", m_frameWidth, frameHeight));
-        PLAYER_DEBUG(std::format("Sprite layout: {} columns x {} rows",
-                                 m_numFrames, m_spriteSheetRows));
-      } else {
-        PLAYER_ERROR(std::format("Failed to query texture dimensions: {}",
-                                 SDL_GetError()));
+        gotDimensions = true;
+        PLAYER_DEBUG(std::format("Got dimensions from SDL texture: {}x{}", width, height));
       }
     }
+  }
+
+  if (gotDimensions) {
+    PLAYER_DEBUG(
+        std::format("Original texture dimensions: {}x{}", width, height));
+
+    // Store original dimensions for full sprite sheet
+    m_width = static_cast<int>(width);
+    m_height = static_cast<int>(height);
+
+    // Calculate frame dimensions based on sprite sheet layout
+    m_frameWidth = m_width / m_numFrames;           // Width per frame
+    int frameHeight = m_height / m_spriteSheetRows; // Height per row
+
+    // Update height to be the height of a single frame
+    m_height = frameHeight;
+
+    // Sync new dimensions to collision body if already registered
+    Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
+    CollisionManager::Instance().updateCollisionBodySize(getID(),
+                                                         newHalfSize);
+
+    PLAYER_DEBUG(
+        std::format("Loaded texture dimensions: {}x{}", m_width, height));
+    PLAYER_DEBUG(
+        std::format("Frame dimensions: {}x{}", m_frameWidth, frameHeight));
+    PLAYER_DEBUG(std::format("Sprite layout: {} columns x {} rows",
+                             m_numFrames, m_spriteSheetRows));
   } else {
     PLAYER_ERROR(
         std::format("Texture '{}' not found in TextureManager", m_textureID));
@@ -207,8 +221,8 @@ void Player::update(float deltaTime) {
     }
   }
 
-  // Write position to EntityDataManager (single source of truth)
-  setPosition(newPos);
+  // Write position using movement method (preserves previousPosition for interpolation)
+  updatePositionFromMovement(newPos);
 
   // Update collision body with new position and velocity
   auto &cm = CollisionManager::Instance();
@@ -241,7 +255,7 @@ void Player::renderAtPosition(SDL_Renderer *renderer, const Vector2D &interpPos,
   }
 
   // Convert world coords to screen coords using passed camera offset
-  // Using floating-point for smooth sub-pixel rendering (no pixel-snapping)
+  // Sub-pixel rendering for smooth motion (matches particle rendering)
   float renderX = interpPos.getX() - cameraX - (m_frameWidth / 2.0f);
   float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
 
@@ -258,25 +272,118 @@ void Player::renderAtPosition(SDL_Renderer *renderer, const Vector2D &interpPos,
                            &center, m_flip);
 }
 
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#include "gpu/GPUTypes.hpp"
+
+void Player::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                               float cameraX, float cameraY,
+                               float interpolationAlpha) {
+  // Get GPU texture for player
+  auto* gpuTextureData = TextureManager::Instance().getGPUTextureData(m_textureID);
+  if (!gpuTextureData || !gpuTextureData->texture) {
+    return;
+  }
+
+  // Get entity batch and vertex pool
+  auto& entityBatch = gpuRenderer.getEntityBatch();
+  auto& vertexPool = gpuRenderer.getEntityVertexPool();
+
+  auto* writePtr = static_cast<HammerEngine::SpriteVertex*>(vertexPool.getMappedPtr());
+  if (!writePtr) {
+    return;
+  }
+
+  // Get texture dimensions
+  float texWidth = gpuTextureData->width;
+  float texHeight = gpuTextureData->height;
+
+  entityBatch.begin(writePtr, vertexPool.getMaxVertices(),
+                    gpuTextureData->texture->get(), gpuRenderer.getNearestSampler(),
+                    texWidth, texHeight);
+
+  // Get interpolated position
+  Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
+
+  // Convert world coords to screen coords
+  float renderX = interpPos.getX() - cameraX - (m_frameWidth / 2.0f);
+  float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
+
+  // Source rect from sprite sheet
+  float srcX = static_cast<float>(m_frameWidth * m_currentFrame);
+  float srcY = static_cast<float>(m_height * (m_currentRow - 1));
+  float srcW = static_cast<float>(m_frameWidth);
+  float srcH = static_cast<float>(m_height);
+
+  // Calculate UV coordinates
+  float u0 = srcX / texWidth;
+  float v0 = srcY / texHeight;
+  float u1 = (srcX + srcW) / texWidth;
+  float v1 = (srcY + srcH) / texHeight;
+
+  // Handle horizontal flip by swapping U coordinates
+  if (m_flip == SDL_FLIP_HORIZONTAL) {
+    std::swap(u0, u1);
+  }
+
+  // Draw the sprite using UV coordinates
+  entityBatch.drawUV(u0, v0, u1, v1,
+                     renderX, renderY,
+                     static_cast<float>(m_frameWidth), static_cast<float>(m_height),
+                     255, 255, 255, 255);
+
+  entityBatch.end();
+}
+
+void Player::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
+                       SDL_GPURenderPass* scenePass) {
+  auto& entityBatch = gpuRenderer.getEntityBatch();
+  auto& vertexPool = gpuRenderer.getEntityVertexPool();
+
+  if (!entityBatch.hasSprites()) {
+    return;
+  }
+
+  // Get scene texture for ortho matrix dimensions
+  auto* sceneTexture = gpuRenderer.getSceneTexture();
+  if (!sceneTexture) {
+    return;
+  }
+
+  // Create orthographic projection
+  float orthoMatrix[16];
+  HammerEngine::GPURenderer::createOrthoMatrix(
+      0.0f, static_cast<float>(sceneTexture->getWidth()),
+      static_cast<float>(sceneTexture->getHeight()), 0.0f,
+      orthoMatrix);
+
+  // Push view-projection matrix
+  gpuRenderer.pushViewProjection(scenePass, orthoMatrix);
+
+  // Render using the sprite alpha pipeline (supports transparency)
+  entityBatch.render(scenePass, gpuRenderer.getSpriteAlphaPipeline(),
+                     vertexPool.getGPUBuffer());
+}
+#endif
+
 void Player::clean() {
   // Clean up any resources
   PLAYER_DEBUG("Cleaning up player resources");
 
-  // Clean up inventory
-  if (m_inventory) {
-    m_inventory->clearInventory();
+  // Destroy EDM inventory
+  auto &edm = EntityDataManager::Instance();
+  if (edm.isInitialized() && m_inventoryIndex != INVALID_INVENTORY_INDEX) {
+    edm.destroyInventory(m_inventoryIndex);
+    m_inventoryIndex = INVALID_INVENTORY_INDEX;
   }
 
   // Clear equipped items
   m_equippedItems.clear();
 
-  // Unregister from EntityDataManager (Phase 1 parallel storage)
-  auto &edm = EntityDataManager::Instance();
+  // Unregister from EntityDataManager
   if (edm.isInitialized()) {
     edm.unregisterEntity(getID());
   }
-  // EDM-CENTRIC: No collision body in m_storage to remove
-  // Entity removal from EDM handles all cleanup
 }
 
 void Player::ensurePhysicsBodyRegistered() {
@@ -312,15 +419,14 @@ void Player::setPosition(const Vector2D &position) {
 }
 
 void Player::initializeInventory() {
-  // Create inventory with 50 slots (can be made configurable)
-  m_inventory = std::make_unique<InventoryComponent>(this, 50);
+  // Create EDM inventory with 50 slots
+  auto &edm = EntityDataManager::Instance();
+  m_inventoryIndex = edm.createInventory(50, true);  // 50 slots, world-tracked
 
-  // Set up resource change callback
-  m_inventory->setResourceChangeCallback(
-      [this](HammerEngine::ResourceHandle resourceHandle, int oldQuantity,
-             int newQuantity) {
-        onResourceChanged(resourceHandle, oldQuantity, newQuantity);
-      });
+  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
+    PLAYER_ERROR("Failed to create player inventory");
+    return;
+  }
 
   // Initialize equipment slots with invalid handles
   m_equippedItems["weapon"] = HammerEngine::ResourceHandle{};
@@ -336,20 +442,16 @@ void Player::initializeInventory() {
   const auto &templateManager = ResourceTemplateManager::Instance();
 
   auto goldResource = templateManager.getResourceByName("gold");
-  if (goldResource && m_inventory) {
-    m_inventory->addResource(goldResource->getHandle(), 100);
+  if (goldResource) {
+    edm.addToInventory(m_inventoryIndex, goldResource->getHandle(), 100);
   }
 
-  auto healthPotionResource =
-      templateManager.getResourceByName("health_potion");
-  if (healthPotionResource && m_inventory) {
-    m_inventory->addResource(healthPotionResource->getHandle(), 3);
+  auto healthPotionResource = templateManager.getResourceByName("health_potion");
+  if (healthPotionResource) {
+    edm.addToInventory(m_inventoryIndex, healthPotionResource->getHandle(), 3);
   }
-  // Note: mana_potion doesn't exist in default resources
 
-  PLAYER_DEBUG_IF(m_inventory,
-                  std::format("Player inventory initialized with {} slots",
-                              m_inventory->getMaxSlots()));
+  PLAYER_DEBUG(std::format("Player EDM inventory initialized with index {}", m_inventoryIndex));
 }
 
 void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
@@ -357,7 +459,7 @@ void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
   [[maybe_unused]] const std::string resourceId = resourceHandle.toString();
   // Use EventManager hub to trigger a ResourceChange (no registration needed)
   EventManager::Instance().triggerResourceChange(
-      shared_this(), resourceHandle, oldQuantity, newQuantity, "player_action",
+      getHandle(), resourceHandle, oldQuantity, newQuantity, "player_action",
       EventManager::DispatchMode::Deferred);
 
   PLAYER_DEBUG(std::format(
@@ -365,12 +467,52 @@ void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
       resourceId, oldQuantity, newQuantity));
 }
 
-// Resource management methods - removed, use getInventory() directly with
-// ResourceHandle
+// Resource management - delegates to EntityDataManager
+bool Player::addToInventory(HammerEngine::ResourceHandle handle, int quantity) {
+  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
+    PLAYER_WARN("Player::addToInventory - Inventory not initialized");
+    return false;
+  }
+  int oldQty = EntityDataManager::Instance().getInventoryQuantity(m_inventoryIndex, handle);
+  bool result = EntityDataManager::Instance().addToInventory(m_inventoryIndex, handle, quantity);
+  if (result) {
+    int newQty = EntityDataManager::Instance().getInventoryQuantity(m_inventoryIndex, handle);
+    onResourceChanged(handle, oldQty, newQty);
+  }
+  return result;
+}
+
+bool Player::removeFromInventory(HammerEngine::ResourceHandle handle, int quantity) {
+  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
+    PLAYER_WARN("Player::removeFromInventory - Inventory not initialized");
+    return false;
+  }
+  int oldQty = EntityDataManager::Instance().getInventoryQuantity(m_inventoryIndex, handle);
+  bool result = EntityDataManager::Instance().removeFromInventory(m_inventoryIndex, handle, quantity);
+  if (result) {
+    int newQty = EntityDataManager::Instance().getInventoryQuantity(m_inventoryIndex, handle);
+    onResourceChanged(handle, oldQty, newQty);
+  }
+  return result;
+}
+
+int Player::getInventoryQuantity(HammerEngine::ResourceHandle handle) const {
+  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
+    return 0;
+  }
+  return EntityDataManager::Instance().getInventoryQuantity(m_inventoryIndex, handle);
+}
+
+bool Player::hasInInventory(HammerEngine::ResourceHandle handle, int quantity) const {
+  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
+    return false;
+  }
+  return EntityDataManager::Instance().hasInInventory(m_inventoryIndex, handle, quantity);
+}
 
 // Equipment management
 bool Player::equipItem(HammerEngine::ResourceHandle itemHandle) {
-  if (!m_inventory) {
+  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
     PLAYER_WARN("Player::equipItem - Inventory not initialized");
     return false;
   }
@@ -380,7 +522,8 @@ bool Player::equipItem(HammerEngine::ResourceHandle itemHandle) {
     return false;
   }
 
-  if (!m_inventory->hasResource(itemHandle, 1)) {
+  auto &edm = EntityDataManager::Instance();
+  if (!edm.hasInInventory(m_inventoryIndex, itemHandle, 1)) {
     PLAYER_WARN("Player::equipItem - Item not available (handle: " +
                 itemHandle.toString() + ")");
     return false;
@@ -412,7 +555,7 @@ bool Player::equipItem(HammerEngine::ResourceHandle itemHandle) {
   }
 
   // Remove item from inventory and equip it
-  if (m_inventory->removeResource(itemHandle, 1)) {
+  if (edm.removeFromInventory(m_inventoryIndex, itemHandle, 1)) {
     m_equippedItems[slotName] = itemHandle;
     PLAYER_DEBUG(std::format("Equipped item (handle: {}) in slot: {}",
                              itemHandle.toString(), slotName));
@@ -438,7 +581,8 @@ bool Player::unequipItem(const std::string &slotName) {
   HammerEngine::ResourceHandle itemHandle = it->second;
 
   // Try to add back to inventory
-  if (m_inventory->addResource(itemHandle, 1)) {
+  auto &edm = EntityDataManager::Instance();
+  if (edm.addToInventory(m_inventoryIndex, itemHandle, 1)) {
     it->second = HammerEngine::ResourceHandle{}; // Set to invalid handle
     PLAYER_DEBUG(std::format("Unequipped item (handle: {}) from slot: {}",
                              itemHandle.toString(), slotName));
@@ -478,7 +622,7 @@ bool Player::craftItem(const std::string &recipeId) {
 }
 
 bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
-  if (!m_inventory) {
+  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
     PLAYER_WARN("Player::consumeItem - Inventory not initialized");
     return false;
   }
@@ -488,7 +632,8 @@ bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
     return false;
   }
 
-  if (!m_inventory->hasResource(itemHandle, 1)) {
+  auto &edm = EntityDataManager::Instance();
+  if (!edm.hasInInventory(m_inventoryIndex, itemHandle, 1)) {
     PLAYER_WARN("Player::consumeItem - Item not available (handle: " +
                 itemHandle.toString() + ")");
     return false;
@@ -503,7 +648,7 @@ bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
   }
 
   // Remove the item and apply its effects
-  if (m_inventory->removeResource(itemHandle, 1)) {
+  if (edm.removeFromInventory(m_inventoryIndex, itemHandle, 1)) {
     PLAYER_DEBUG(
         std::format("Consumed item (handle: {})", itemHandle.toString()));
     // Here you would apply the item's effects (healing, buffs, etc.)

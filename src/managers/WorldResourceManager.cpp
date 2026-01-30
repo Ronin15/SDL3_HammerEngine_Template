@@ -6,1021 +6,864 @@
 #include "managers/WorldResourceManager.hpp"
 #include "core/Logger.hpp"
 #include "events/WorldEvent.hpp"
-#include "managers/EventManager.hpp"
-#include "managers/ResourceTemplateManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include <algorithm>
-#include <cassert>
 #include <format>
+#include <limits>
 
-WorldResourceManager &WorldResourceManager::Instance() {
-  static WorldResourceManager instance;
-  return instance;
+WorldResourceManager& WorldResourceManager::Instance() {
+    static WorldResourceManager instance;
+    return instance;
 }
 
 WorldResourceManager::~WorldResourceManager() {
-  // Only clean up if not already shut down
-  if (!m_isShutdown) {
-    clean();
-  }
+    if (m_initialized.load(std::memory_order_acquire)) {
+        clean();
+    }
 }
 
 bool WorldResourceManager::init() {
-  if (m_initialized.load(std::memory_order_acquire)) {
-    return true; // Already initialized
-  }
+    if (m_initialized.load(std::memory_order_acquire)) {
+        return true;
+    }
 
-  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
+    std::unique_lock lock(m_registryMutex);
 
-  if (m_initialized.load(std::memory_order_acquire)) {
-    return true; // Double-check after acquiring lock
-  }
+    if (m_initialized.load(std::memory_order_acquire)) {
+        return true;
+    }
 
-  try {
-    // Clear any existing data
-    m_worldResources.clear();
+    // Clear any existing registry data
+    m_inventoryRegistry.clear();
+    m_harvestableRegistry.clear();
+    m_inventoryToWorld.clear();
+    m_harvestableToWorld.clear();
 
-    // Create a default world for single-world scenarios
-    m_worldResources["default"] =
-        std::unordered_map<HammerEngine::ResourceHandle, Quantity>();
+    // Clear spatial data
+    m_itemSpatialIndices.clear();
+    m_harvestableSpatialIndices.clear();
+    m_itemToWorld.clear();
+    m_harvestableSpatialToWorld.clear();
+    m_activeWorld.clear();
 
-    // Register event handlers for world events
-    registerEventHandlers();
+    // Create default world for single-world scenarios
+    m_inventoryRegistry["default"] = {};
+    m_harvestableRegistry["default"] = {};
+    m_itemSpatialIndices["default"] = SpatialIndex();
+    m_harvestableSpatialIndices["default"] = SpatialIndex();
+
+    m_stats.reset();
+    m_stats.worldsTracked = 1;
 
     m_initialized.store(true, std::memory_order_release);
-    m_isShutdown = false; // Explicitly mark as not shut down
-    m_stats.reset();
-    m_stats.worldsTracked = 1; // Default world
 
-    WORLD_RESOURCE_INFO("WorldResourceManager initialized with default world");
+    WORLD_RESOURCE_INFO("WorldResourceManager initialized (registry-over-EDM mode)");
     return true;
-  } catch (const std::exception &ex) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager::init - Exception: " +
-                         std::string(ex.what()));
-    return false;
-  }
 }
 
 void WorldResourceManager::clean() {
-  if (!m_initialized.load(std::memory_order_acquire) || m_isShutdown) {
-    return; // Already shut down or not initialized
-  }
-
-  // Unregister event handlers before cleanup
-  unregisterEventHandlers();
-
-  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
-  std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-
-  // Clear all data structures
-  m_worldResources.clear();
-  m_resourceCache.clear();
-  m_aggregateCache = ResourceAggregateCache{}; // Reset aggregate cache
-
-  m_initialized.store(false, std::memory_order_release);
-  m_isShutdown = true;
-  m_stats.reset();
-
-  WORLD_RESOURCE_INFO("WorldResourceManager cleaned up");
-}
-
-bool WorldResourceManager::configure(const WorldResourceManagerConfig &config) {
-  if (!config.isValid()) {
-    WORLD_RESOURCE_ERROR(
-        "WorldResourceManager::configure - Invalid configuration");
-    return false;
-  }
-
-  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
-  std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-
-  // Store old config for comparison
-  auto oldConfig = m_config;
-  m_config = config;
-
-  // If cache size changed, we need to resize existing caches
-  if (oldConfig.perWorldCacheSize != config.perWorldCacheSize) {
-    for (auto &[worldId, worldCache] : m_resourceCache) {
-      if (worldCache.size() > config.perWorldCacheSize) {
-        // Trim cache to new size, keeping most recently accessed entries
-        std::sort(worldCache.begin(), worldCache.end(),
-                  [](const ResourceCache &a, const ResourceCache &b) {
-                    return a.lastAccess > b.lastAccess; // Most recent first
-                  });
-        worldCache.resize(config.perWorldCacheSize);
-        m_stats.cacheEvictions +=
-            (worldCache.size() - config.perWorldCacheSize);
-      }
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        return;
     }
-  }
 
-  // If cache expiry time changed, invalidate aggregate cache
-  if (oldConfig.cacheExpiryTime != config.cacheExpiryTime) {
-    m_aggregateCache.valid = false;
-  }
+    // Unsubscribe from events first (before lock to avoid potential deadlock with EventManager)
+    auto& em = EventManager::Instance();
+    for (const auto& token : m_eventHandlerTokens) {
+        em.removeHandler(token);
+    }
+    m_eventHandlerTokens.clear();
 
-  WORLD_RESOURCE_INFO(std::format(
-      "WorldResourceManager configuration updated - CacheSize: {}, ExpiryTime: {}ms",
-      config.perWorldCacheSize, config.cacheExpiryTime.count()));
-  return true;
+    std::unique_lock lock(m_registryMutex);
+
+    m_inventoryRegistry.clear();
+    m_harvestableRegistry.clear();
+    m_inventoryToWorld.clear();
+    m_harvestableToWorld.clear();
+
+    // Clear spatial data
+    m_itemSpatialIndices.clear();
+    m_harvestableSpatialIndices.clear();
+    m_itemToWorld.clear();
+    m_harvestableSpatialToWorld.clear();
+    m_activeWorld.clear();
+
+    m_stats.reset();
+    m_initialized.store(false, std::memory_order_release);
+
+    WORLD_RESOURCE_INFO("WorldResourceManager cleaned up");
 }
 
-WorldResourceManagerConfig WorldResourceManager::getConfig() const {
-  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
-  return m_config;
+void WorldResourceManager::prepareForStateTransition() {
+    // Clear fast-path counters to stop queries immediately
+    m_activeWorldItemCount.store(0, std::memory_order_release);
+    m_activeWorldHarvestableCount.store(0, std::memory_order_release);
+
+    // Acquire exclusive lock to wait for any in-flight queries to complete
+    std::unique_lock lock(m_registryMutex);
+
+    WORLD_RESOURCE_DEBUG("Prepared for state transition");
 }
 
-bool WorldResourceManager::createWorld(const WorldId &worldId) {
-  if (!isValidWorldId(worldId)) {
-    WORLD_RESOURCE_ERROR(std::format(
-        "WorldResourceManager::createWorld - Invalid world ID: {}", worldId));
-    return false;
-  }
+// ============================================================================
+// WORLD MANAGEMENT
+// ============================================================================
 
-  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
+bool WorldResourceManager::createWorld(const WorldId& worldId) {
+    if (worldId.empty()) {
+        WORLD_RESOURCE_ERROR("createWorld: Empty world ID");
+        return false;
+    }
 
-  if (m_worldResources.find(worldId) != m_worldResources.end()) {
-    WORLD_RESOURCE_WARN(std::format(
-        "WorldResourceManager::createWorld - World already exists: {}", worldId));
-    return false;
-  }
+    std::unique_lock lock(m_registryMutex);
 
-  try {
-    m_worldResources[worldId] =
-        std::unordered_map<HammerEngine::ResourceHandle, Quantity>();
+    if (m_inventoryRegistry.find(worldId) != m_inventoryRegistry.end()) {
+        WORLD_RESOURCE_WARN(std::format("createWorld: World already exists: {}", worldId));
+        return false;
+    }
+
+    m_inventoryRegistry[worldId] = {};
+    m_harvestableRegistry[worldId] = {};
     m_stats.worldsTracked.fetch_add(1, std::memory_order_relaxed);
-
-    // Check for performance warning
-    if (m_stats.worldsTracked.load() > m_config.maxWorldsBeforeWarning) {
-      WORLD_RESOURCE_WARN(std::format(
-          "WorldResourceManager::createWorld - High world count ({}) may impact performance",
-          m_stats.worldsTracked.load()));
-    }
 
     WORLD_RESOURCE_INFO(std::format("Created world: {}", worldId));
     return true;
-  } catch (const std::exception &ex) {
-    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager::createWorld - Exception: {}",
-                                     ex.what()));
-    return false;
-  }
 }
 
-bool WorldResourceManager::removeWorld(const WorldId &worldId) {
-  if (!isValidWorldId(worldId)) {
-    WORLD_RESOURCE_ERROR(
-        std::format("WorldResourceManager::removeWorld - Invalid world ID: {}", worldId));
-    return false;
-  }
+bool WorldResourceManager::removeWorld(const WorldId& worldId) {
+    if (worldId.empty()) {
+        WORLD_RESOURCE_ERROR("removeWorld: Empty world ID");
+        return false;
+    }
 
-  if (worldId == "default") {
-    WORLD_RESOURCE_WARN(
-        "WorldResourceManager::removeWorld - Cannot remove default world");
-    return false;
-  }
+    if (worldId == "default") {
+        WORLD_RESOURCE_WARN("removeWorld: Cannot remove default world");
+        return false;
+    }
 
-  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
+    std::unique_lock lock(m_registryMutex);
 
-  auto it = m_worldResources.find(worldId);
-  if (it == m_worldResources.end()) {
-    WORLD_RESOURCE_WARN(
-        std::format("WorldResourceManager::removeWorld - World not found: {}", worldId));
-    return false;
-  }
+    auto invIt = m_inventoryRegistry.find(worldId);
+    auto harvIt = m_harvestableRegistry.find(worldId);
 
-  try {
-    m_worldResources.erase(it);
+    if (invIt == m_inventoryRegistry.end()) {
+        WORLD_RESOURCE_WARN(std::format("removeWorld: World not found: {}", worldId));
+        return false;
+    }
+
+    // Remove reverse lookups for this world's inventories
+    for (uint32_t invIdx : invIt->second) {
+        m_inventoryToWorld.erase(invIdx);
+    }
+
+    // Remove reverse lookups for this world's harvestables
+    if (harvIt != m_harvestableRegistry.end()) {
+        for (size_t harvIdx : harvIt->second) {
+            m_harvestableToWorld.erase(harvIdx);
+        }
+        m_harvestableRegistry.erase(harvIt);
+    }
+
+    m_inventoryRegistry.erase(invIt);
     m_stats.worldsTracked.fetch_sub(1, std::memory_order_relaxed);
 
     WORLD_RESOURCE_INFO(std::format("Removed world: {}", worldId));
     return true;
-  } catch (const std::exception &ex) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager::removeWorld - Exception: " +
-                         std::string(ex.what()));
-    return false;
-  }
 }
 
-bool WorldResourceManager::hasWorld(const WorldId &worldId) const {
-  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
-  return m_worldResources.find(worldId) != m_worldResources.end();
+bool WorldResourceManager::hasWorld(const WorldId& worldId) const {
+    std::shared_lock lock(m_registryMutex);
+    return m_inventoryRegistry.find(worldId) != m_inventoryRegistry.end();
 }
 
-std::vector<WorldResourceManager::WorldId>
-WorldResourceManager::getWorldIds() const {
-  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
-  std::vector<WorldId> worldIds;
-  worldIds.reserve(m_worldResources.size());
+std::vector<WorldResourceManager::WorldId> WorldResourceManager::getWorldIds() const {
+    std::shared_lock lock(m_registryMutex);
 
-  for (const auto &[worldId, resources] : m_worldResources) {
-    worldIds.push_back(worldId);
-  }
+    std::vector<WorldId> ids;
+    ids.reserve(m_inventoryRegistry.size());
 
-  return worldIds;
-}
-
-ResourceTransactionResult WorldResourceManager::addResource(
-    const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
-    Quantity quantity) {
-  // Validate parameters individually to return appropriate error codes
-  if (!isValidWorldId(worldId)) {
-    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid world ID: {}", worldId));
-    return ResourceTransactionResult::InvalidWorldId;
-  }
-
-  if (!isValidResourceHandle(resourceHandle)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid resource handle: " +
-                         resourceHandle.toString());
-    return ResourceTransactionResult::InvalidResourceHandle;
-  }
-
-  if (!isValidQuantity(quantity)) {
-    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid quantity: {}", quantity));
-    return ResourceTransactionResult::InvalidQuantity;
-  }
-
-  if (quantity < 0) {
-    WORLD_RESOURCE_WARN(std::format(
-        "WorldResourceManager::addResource - Invalid quantity: {}", quantity));
-    return ResourceTransactionResult::InvalidQuantity;
-  }
-
-  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
-
-  if (m_worldResources.find(worldId) == m_worldResources.end()) {
-    return ResourceTransactionResult::InvalidWorldId;
-  }
-
-  try {
-    auto &worldResources = m_worldResources.at(worldId);
-
-    // Check for overflow (only if quantity > 0)
-    if (quantity > 0) {
-      Quantity currentQuantity = worldResources[resourceHandle];
-      if (currentQuantity > std::numeric_limits<Quantity>::max() - quantity) {
-        WORLD_RESOURCE_ERROR(
-            "WorldResourceManager::addResource - Quantity overflow");
-        return ResourceTransactionResult::SystemError;
-      }
-      Quantity newQuantity = currentQuantity + quantity;
-      worldResources[resourceHandle] = newQuantity;
-
-      // Fire resource change event
-      fireResourceChangeEvent(worldId, resourceHandle, currentQuantity,
-                              newQuantity, "added");
-
-      // Invalidate caches when resources change
-      invalidateAggregateCache();
-      updateResourceCache(worldId, resourceHandle, newQuantity);
-    }
-    // If quantity is 0, we do nothing but still consider it successful
-
-    updateStats(true, quantity);
-
-    WORLD_RESOURCE_DEBUG(std::format("Added {} {} to world {}",
-                         quantity, resourceHandle.toString(), worldId));
-    return ResourceTransactionResult::Success;
-  } catch (const std::exception &ex) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager::addResource - Exception: " +
-                         std::string(ex.what()));
-    return ResourceTransactionResult::SystemError;
-  }
-}
-
-ResourceTransactionResult WorldResourceManager::removeResource(
-    const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
-    Quantity quantity) {
-  // Validate parameters individually to return appropriate error codes
-  if (!isValidWorldId(worldId)) {
-    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid world ID: {}", worldId));
-    return ResourceTransactionResult::InvalidWorldId;
-  }
-
-  if (!isValidResourceHandle(resourceHandle)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid resource handle: " +
-                         resourceHandle.toString());
-    return ResourceTransactionResult::InvalidResourceHandle;
-  }
-
-  if (!isValidQuantity(quantity)) {
-    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid quantity: {}", quantity));
-    return ResourceTransactionResult::InvalidQuantity;
-  }
-
-  if (quantity < 0) {
-    WORLD_RESOURCE_WARN(std::format(
-        "WorldResourceManager::removeResource - Invalid quantity: {}", quantity));
-    return ResourceTransactionResult::InvalidQuantity;
-  }
-
-  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
-
-  if (m_worldResources.find(worldId) == m_worldResources.end()) {
-    return ResourceTransactionResult::InvalidWorldId;
-  }
-
-  try {
-    auto &worldResources = m_worldResources.at(worldId);
-    Quantity currentQuantity = worldResources[resourceHandle];
-
-    // If quantity is 0, we do nothing but still consider it successful
-    if (quantity == 0) {
-      WORLD_RESOURCE_DEBUG(std::format("Removed {} {} from world {}",
-                           quantity, resourceHandle.toString(), worldId));
-      return ResourceTransactionResult::Success;
+    for (const auto& [worldId, _] : m_inventoryRegistry) {
+        ids.push_back(worldId);
     }
 
-    if (currentQuantity < quantity) {
-      WORLD_RESOURCE_WARN(std::string("WorldResourceManager::removeResource - "
-                                      "Insufficient resources. ") +
-                          std::format("Current: {}", currentQuantity) +
-                          std::format(", Requested: {}", quantity));
-      return ResourceTransactionResult::InsufficientResources;
-    }
-
-    Quantity newQuantity = currentQuantity - quantity;
-    worldResources[resourceHandle] = newQuantity;
-
-    // Fire resource change event
-    fireResourceChangeEvent(worldId, resourceHandle, currentQuantity,
-                            newQuantity, "removed");
-
-    updateStats(false, quantity);
-
-    // Invalidate caches when resources change
-    invalidateAggregateCache();
-    updateResourceCache(worldId, resourceHandle, newQuantity);
-
-    WORLD_RESOURCE_DEBUG(std::format("Removed {} {} from world {}",
-                         quantity, resourceHandle.toString(), worldId));
-    return ResourceTransactionResult::Success;
-  } catch (const std::exception &ex) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager::removeResource - Exception: " +
-                         std::string(ex.what()));
-    return ResourceTransactionResult::SystemError;
-  }
+    return ids;
 }
 
-ResourceTransactionResult WorldResourceManager::setResource(
-    const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
-    Quantity quantity) {
-  // Validate parameters individually to return appropriate error codes
-  if (!isValidWorldId(worldId)) {
-    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid world ID: {}", worldId));
-    return ResourceTransactionResult::InvalidWorldId;
-  }
+// ============================================================================
+// REGISTRATION
+// ============================================================================
 
-  if (!isValidResourceHandle(resourceHandle)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid resource handle: " +
-                         resourceHandle.toString());
-    return ResourceTransactionResult::InvalidResourceHandle;
-  }
-
-  if (!isValidQuantity(quantity)) {
-    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid quantity: {}", quantity));
-    return ResourceTransactionResult::InvalidQuantity;
-  }
-
-  if (quantity < 0) {
-    WORLD_RESOURCE_WARN(std::format(
-        "WorldResourceManager::setResource - Invalid quantity: {}", quantity));
-    return ResourceTransactionResult::InvalidQuantity;
-  }
-
-  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
-
-  if (m_worldResources.find(worldId) == m_worldResources.end()) {
-    return ResourceTransactionResult::InvalidWorldId;
-  }
-
-  try {
-    auto &worldResources = m_worldResources.at(worldId);
-    Quantity oldQuantity = worldResources[resourceHandle];
-    worldResources[resourceHandle] = quantity;
-
-    // Update stats based on the net change
-    Quantity netChange = quantity - oldQuantity;
-    if (netChange != 0) {
-      updateStats(netChange > 0, std::abs(netChange));
-
-      // Invalidate caches when resources change
-      invalidateAggregateCache();
-      updateResourceCache(worldId, resourceHandle, quantity);
+void WorldResourceManager::registerInventory(uint32_t inventoryIndex, const WorldId& worldId) {
+    if (inventoryIndex == INVALID_INVENTORY_INDEX) {
+        WORLD_RESOURCE_ERROR("registerInventory: Invalid inventory index");
+        return;
     }
 
-    WORLD_RESOURCE_DEBUG(std::format("Set {} to {} in world {}",
-                                     resourceHandle.toString(), quantity, worldId));
-    return ResourceTransactionResult::Success;
-  } catch (const std::exception &ex) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager::setResource - Exception: " +
-                         std::string(ex.what()));
-    return ResourceTransactionResult::SystemError;
-  }
+    std::unique_lock lock(m_registryMutex);
+
+    // Check if already registered to another world
+    auto existingIt = m_inventoryToWorld.find(inventoryIndex);
+    if (existingIt != m_inventoryToWorld.end()) {
+        if (existingIt->second == worldId) {
+            return;  // Already registered to this world
+        }
+        // Unregister from old world first
+        auto& oldSet = m_inventoryRegistry[existingIt->second];
+        oldSet.erase(inventoryIndex);
+        m_stats.inventoriesRegistered.fetch_sub(1, std::memory_order_relaxed);
+    }
+
+    // Ensure world exists
+    auto worldIt = m_inventoryRegistry.find(worldId);
+    if (worldIt == m_inventoryRegistry.end()) {
+        WORLD_RESOURCE_WARN(std::format("registerInventory: World not found: {}, creating", worldId));
+        m_inventoryRegistry[worldId] = {};
+        m_harvestableRegistry[worldId] = {};
+        m_stats.worldsTracked.fetch_add(1, std::memory_order_relaxed);
+        worldIt = m_inventoryRegistry.find(worldId);
+    }
+
+    worldIt->second.insert(inventoryIndex);
+    m_inventoryToWorld[inventoryIndex] = worldId;
+    m_stats.inventoriesRegistered.fetch_add(1, std::memory_order_relaxed);
+
+    WORLD_RESOURCE_DEBUG(std::format("Registered inventory {} to world {}", inventoryIndex, worldId));
 }
 
-WorldResourceManager::Quantity WorldResourceManager::getResourceQuantity(
-    const WorldId &worldId,
-    const HammerEngine::ResourceHandle &resourceHandle) const {
-  // Try cache first for performance
-  Quantity cachedQuantity = getCachedResourceQuantity(worldId, resourceHandle);
-  if (cachedQuantity >= 0) {
-    return cachedQuantity;
-  }
+void WorldResourceManager::unregisterInventory(uint32_t inventoryIndex) {
+    std::unique_lock lock(m_registryMutex);
 
-  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+    auto it = m_inventoryToWorld.find(inventoryIndex);
+    if (it == m_inventoryToWorld.end()) {
+        return;  // Not registered
+    }
 
-  auto worldIt = m_worldResources.find(worldId);
-  if (worldIt == m_worldResources.end()) {
-    updateResourceCache(worldId, resourceHandle, 0);
-    return 0;
-  }
+    const WorldId& worldId = it->second;
+    auto worldIt = m_inventoryRegistry.find(worldId);
+    if (worldIt != m_inventoryRegistry.end()) {
+        worldIt->second.erase(inventoryIndex);
+    }
 
-  auto resourceIt = worldIt->second.find(resourceHandle);
-  Quantity quantity =
-      (resourceIt != worldIt->second.end()) ? resourceIt->second : 0;
+    m_inventoryToWorld.erase(it);
+    m_stats.inventoriesRegistered.fetch_sub(1, std::memory_order_relaxed);
 
-  // Update cache for future access
-  updateResourceCache(worldId, resourceHandle, quantity);
+    WORLD_RESOURCE_DEBUG(std::format("Unregistered inventory {}", inventoryIndex));
+}
 
-  return quantity;
+void WorldResourceManager::registerHarvestable(size_t edmIndex, const WorldId& worldId) {
+    std::unique_lock lock(m_registryMutex);
+
+    // Check if already registered to another world
+    auto existingIt = m_harvestableToWorld.find(edmIndex);
+    if (existingIt != m_harvestableToWorld.end()) {
+        if (existingIt->second == worldId) {
+            return;  // Already registered to this world
+        }
+        // Unregister from old world first
+        auto& oldSet = m_harvestableRegistry[existingIt->second];
+        oldSet.erase(edmIndex);
+        m_stats.harvestablesRegistered.fetch_sub(1, std::memory_order_relaxed);
+    }
+
+    // Ensure world exists
+    auto worldIt = m_harvestableRegistry.find(worldId);
+    if (worldIt == m_harvestableRegistry.end()) {
+        WORLD_RESOURCE_WARN(std::format("registerHarvestable: World not found: {}, creating", worldId));
+        m_inventoryRegistry[worldId] = {};
+        m_harvestableRegistry[worldId] = {};
+        m_stats.worldsTracked.fetch_add(1, std::memory_order_relaxed);
+        worldIt = m_harvestableRegistry.find(worldId);
+    }
+
+    worldIt->second.insert(edmIndex);
+    m_harvestableToWorld[edmIndex] = worldId;
+    m_stats.harvestablesRegistered.fetch_add(1, std::memory_order_relaxed);
+
+    WORLD_RESOURCE_DEBUG(std::format("Registered harvestable {} to world {}", edmIndex, worldId));
+}
+
+void WorldResourceManager::unregisterHarvestable(size_t edmIndex) {
+    std::unique_lock lock(m_registryMutex);
+
+    auto it = m_harvestableToWorld.find(edmIndex);
+    if (it == m_harvestableToWorld.end()) {
+        return;  // Not registered
+    }
+
+    const WorldId& worldId = it->second;
+    auto worldIt = m_harvestableRegistry.find(worldId);
+    if (worldIt != m_harvestableRegistry.end()) {
+        worldIt->second.erase(edmIndex);
+    }
+
+    m_harvestableToWorld.erase(it);
+    m_stats.harvestablesRegistered.fetch_sub(1, std::memory_order_relaxed);
+
+    WORLD_RESOURCE_DEBUG(std::format("Unregistered harvestable {}", edmIndex));
+}
+
+// ============================================================================
+// QUERY-ONLY RESOURCE ACCESS (reads EDM directly)
+// ============================================================================
+
+WorldResourceManager::Quantity WorldResourceManager::queryInventoryTotal(
+    const WorldId& worldId,
+    HammerEngine::ResourceHandle handle) const {
+
+    m_stats.queryCount.fetch_add(1, std::memory_order_relaxed);
+
+    std::shared_lock lock(m_registryMutex);
+
+    auto worldIt = m_inventoryRegistry.find(worldId);
+    if (worldIt == m_inventoryRegistry.end()) {
+        return 0;
+    }
+
+    const auto& edm = EntityDataManager::Instance();
+    Quantity total = 0;
+
+    for (uint32_t invIdx : worldIt->second) {
+        total += edm.getInventoryQuantity(invIdx, handle);
+    }
+
+    return total;
+}
+
+WorldResourceManager::Quantity WorldResourceManager::queryHarvestableTotal(
+    const WorldId& worldId,
+    HammerEngine::ResourceHandle handle) const {
+
+    m_stats.queryCount.fetch_add(1, std::memory_order_relaxed);
+
+    std::shared_lock lock(m_registryMutex);
+
+    auto worldIt = m_harvestableRegistry.find(worldId);
+    if (worldIt == m_harvestableRegistry.end()) {
+        return 0;
+    }
+
+    auto& edm = EntityDataManager::Instance();
+    Quantity total = 0;
+
+    for (size_t edmIdx : worldIt->second) {
+        // Get hot data and verify it's still a harvestable
+        // Note: Registry should be kept clean via unregisterHarvestable on entity destruction
+        const auto& hot = edm.getStaticHotDataByIndex(edmIdx);
+        if (hot.kind != EntityKind::Harvestable) {
+            continue;  // Entity was destroyed or changed type
+        }
+
+        const auto& harvData = edm.getHarvestableData(hot.typeLocalIndex);
+
+        // Only count non-depleted harvestables with matching resource
+        if (!harvData.isDepleted && harvData.yieldResource == handle) {
+            total += harvData.yieldMax;  // Potential yield
+        }
+    }
+
+    return total;
+}
+
+WorldResourceManager::Quantity WorldResourceManager::queryWorldTotal(
+    const WorldId& worldId,
+    HammerEngine::ResourceHandle handle) const {
+
+    return queryInventoryTotal(worldId, handle) + queryHarvestableTotal(worldId, handle);
 }
 
 bool WorldResourceManager::hasResource(
-    const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
+    const WorldId& worldId,
+    HammerEngine::ResourceHandle handle,
     Quantity minimumQuantity) const {
-  return getResourceQuantity(worldId, resourceHandle) >= minimumQuantity;
-}
 
-WorldResourceManager::Quantity WorldResourceManager::getTotalResourceQuantity(
-    const HammerEngine::ResourceHandle &resourceHandle) const {
-  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
-
-  Quantity total = 0;
-  for (const auto &[worldId, worldResources] : m_worldResources) {
-    auto resourceIt = worldResources.find(resourceHandle);
-    if (resourceIt != worldResources.end()) {
-      total += resourceIt->second;
-    }
-  }
-
-  return total;
+    return queryWorldTotal(worldId, handle) >= minimumQuantity;
 }
 
 std::unordered_map<HammerEngine::ResourceHandle, WorldResourceManager::Quantity>
-WorldResourceManager::getWorldResources(const WorldId &worldId) const {
-  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
-
-  auto worldIt = m_worldResources.find(worldId);
-  if (worldIt != m_worldResources.end()) {
-    return worldIt->second; // Copy the map
-  }
-
-  return {}; // Return empty map if world not found
-}
-
-std::unordered_map<HammerEngine::ResourceHandle, WorldResourceManager::Quantity>
-WorldResourceManager::getAllResourceTotals() const {
-  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
-
-  // Try to use aggregate cache for performance
-  updateAggregateCache();
-
-  {
-    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-    if (m_aggregateCache.valid) {
-      return m_aggregateCache.totals; // Return cached copy
-    }
-  }
-
-  // Fallback to direct calculation if cache invalid
-  std::unordered_map<HammerEngine::ResourceHandle, Quantity> totals;
-
-  for (const auto &[worldId, worldResources] : m_worldResources) {
-    for (const auto &[resourceHandle, quantity] : worldResources) {
-      totals[resourceHandle] += quantity;
-    }
-  }
-
-  return totals;
-}
-
-bool WorldResourceManager::transferResource(
-    const WorldId &fromWorldId, const WorldId &toWorldId,
-    const HammerEngine::ResourceHandle &resourceHandle, Quantity quantity) {
-  if (!validateParameters(fromWorldId, resourceHandle, quantity) ||
-      !isValidWorldId(toWorldId)) {
-    return false;
-  }
-
-  if (quantity <= 0) {
-    WORLD_RESOURCE_WARN(std::format(
-        "WorldResourceManager::transferResource - Invalid quantity: {}", quantity));
-    return false;
-  }
-
-  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
-
-  if (m_worldResources.find(fromWorldId) == m_worldResources.end() ||
-      m_worldResources.find(toWorldId) == m_worldResources.end()) {
-    return false;
-  }
-
-  try {
-    auto &fromResources = m_worldResources.at(fromWorldId);
-    auto &toResources = m_worldResources.at(toWorldId);
-
-    Quantity fromQuantity = fromResources[resourceHandle];
-    if (fromQuantity < quantity) {
-      WORLD_RESOURCE_WARN(
-          "WorldResourceManager::transferResource - Insufficient resources");
-      return false;
-    }
-
-    // Check for overflow in destination
-    Quantity toQuantity = toResources[resourceHandle];
-    if (toQuantity > std::numeric_limits<Quantity>::max() - quantity) {
-      WORLD_RESOURCE_ERROR(
-          "WorldResourceManager::transferResource - Quantity overflow");
-      return false;
-    }
-
-    fromResources[resourceHandle] = fromQuantity - quantity;
-    toResources[resourceHandle] = toQuantity + quantity;
-
-    m_stats.totalTransactions.fetch_add(1, std::memory_order_relaxed);
-
-    // Invalidate caches when resources change
-    invalidateAggregateCache();
-    updateResourceCache(fromWorldId, resourceHandle, fromQuantity - quantity);
-    updateResourceCache(toWorldId, resourceHandle, toQuantity + quantity);
-
-    WORLD_RESOURCE_DEBUG(std::format("Transferred {} {} from {} to {}",
-                         quantity, resourceHandle.toString(), fromWorldId, toWorldId));
-    return true;
-  } catch (const std::exception &ex) {
-    WORLD_RESOURCE_ERROR(
-        "WorldResourceManager::transferResource - Exception: " +
-        std::string(ex.what()));
-    return false;
-  }
-}
-
-bool WorldResourceManager::transferAllResources(const WorldId &fromWorldId,
-                                                const WorldId &toWorldId) {
-  if (!isValidWorldId(fromWorldId) || !isValidWorldId(toWorldId)) {
-    return false;
-  }
-
-  if (fromWorldId == toWorldId) {
-    WORLD_RESOURCE_WARN("WorldResourceManager::transferAllResources - Source "
-                        "and destination are the same");
-    return false;
-  }
-
-  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
-
-  if (m_worldResources.find(fromWorldId) == m_worldResources.end() ||
-      m_worldResources.find(toWorldId) == m_worldResources.end()) {
-    return false;
-  }
-
-  try {
-    auto &fromResources = m_worldResources.at(fromWorldId);
-    auto &toResources = m_worldResources.at(toWorldId);
-
-    for (const auto &[resourceHandle, quantity] : fromResources) {
-      if (quantity > 0) {
-        toResources[resourceHandle] += quantity;
-      }
-    }
-
-    fromResources.clear();
-    m_stats.totalTransactions.fetch_add(1, std::memory_order_relaxed);
-
-    // Invalidate all caches when doing bulk transfer
-    invalidateAggregateCache();
-
-    WORLD_RESOURCE_INFO(std::format("Transferred all resources from {} to {}",
-                                    fromWorldId, toWorldId));
-    return true;
-  } catch (const std::exception &ex) {
-    WORLD_RESOURCE_ERROR(
-        "WorldResourceManager::transferAllResources - Exception: " +
-        std::string(ex.what()));
-    return false;
-  }
-}
-
-WorldResourceStats WorldResourceManager::getStats() const { return m_stats; }
-
-size_t WorldResourceManager::getMemoryUsage() const {
-  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
-
-  size_t totalSize = 0;
-
-  // Account for m_worldResources map and nested maps
-  for (const auto &[worldId, worldResources] : m_worldResources) {
-    totalSize += worldId.size(); // Size of world ID string
-    totalSize += sizeof(std::unordered_map<HammerEngine::ResourceHandle,
-                                           Quantity>); // World resources map
-
-    for (const auto &[resourceHandle, quantity] : worldResources) {
-      totalSize += sizeof(resourceHandle); // Size of actual resource handle
-      totalSize += sizeof(quantity);       // Size of actual quantity value
-      // Each resource entry also has overhead from hash table bucket
-      totalSize += sizeof(std::pair<HammerEngine::ResourceHandle, Quantity>);
-    }
-  }
-
-  return totalSize;
-}
-
-bool WorldResourceManager::isValidWorldId(const WorldId &worldId) const {
-  return !worldId.empty() && worldId.length() <= 64 && // Reasonable limit
-         std::all_of(worldId.begin(), worldId.end(), [](char c) {
-           return std::isalnum(c) || c == '_' || c == '-';
-         });
-}
-
-bool WorldResourceManager::isValidResourceHandle(
-    const HammerEngine::ResourceHandle &resourceHandle) const {
-  // First check if the handle itself is valid
-  if (!resourceHandle.isValid()) {
-    return false;
-  }
-
-  // Then check if the template exists in the ResourceTemplateManager
-  return ResourceTemplateManager::Instance().getResourceTemplate(
-             resourceHandle) != nullptr;
-}
-
-bool WorldResourceManager::isValidQuantity(Quantity quantity) const {
-  return quantity >= 0 && quantity <= std::numeric_limits<Quantity>::max();
-}
-
-void WorldResourceManager::updateStats(bool isAdd, Quantity quantity) {
-  (void)quantity; // Avoid unused parameter warning
-  m_stats.totalTransactions.fetch_add(1, std::memory_order_relaxed);
-
-  if (isAdd) {
-    m_stats.addOperations.fetch_add(1, std::memory_order_relaxed);
-  } else {
-    m_stats.removeOperations.fetch_add(1, std::memory_order_relaxed);
-  }
-
-  // Note: We don't update totalResourcesTracked here as it would double-count
-  // This stat should represent unique resource types, not quantities
-}
-
-bool WorldResourceManager::validateParameters(
-    const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
-    Quantity quantity) const {
-  if (!isValidWorldId(worldId)) {
-    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid world ID: {}", worldId));
-    return false;
-  }
-
-  if (!isValidResourceHandle(resourceHandle)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid resource handle: " +
-                         resourceHandle.toString());
-    return false;
-  }
-
-  if (!isValidQuantity(quantity)) {
-    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid quantity: {}", quantity));
-    return false;
-  }
-
-  return true;
-}
-
-// Cache management methods
-void WorldResourceManager::updateResourceCache(
-    const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
-    Quantity quantity) const {
-  std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-
-  auto &worldCache = m_resourceCache[worldId];
-  auto now = std::chrono::steady_clock::now();
-
-  // Look for existing cache entry
-  auto cacheIt = std::find_if(worldCache.begin(), worldCache.end(),
-                              [resourceHandle](const ResourceCache &cache) {
-                                return cache.resourceHandle == resourceHandle;
-                              });
-
-  if (cacheIt != worldCache.end()) {
-    cacheIt->quantity = quantity;
-    cacheIt->lastAccess = now;
-    cacheIt->dirty = false;
-    return;
-  }
-
-  // Add new cache entry
-  if (worldCache.size() >= m_config.perWorldCacheSize) {
-    // Remove oldest entry (LRU)
-    auto oldest =
-        std::min_element(worldCache.begin(), worldCache.end(),
-                         [](const ResourceCache &a, const ResourceCache &b) {
-                           return a.lastAccess < b.lastAccess;
-                         });
-    if (oldest != worldCache.end()) {
-      worldCache.erase(oldest);
-      if (m_config.enablePerformanceMonitoring) {
-        m_stats.cacheEvictions++;
-      }
-    }
-  }
-
-  worldCache.push_back({resourceHandle, quantity, now, false});
-}
-
-WorldResourceManager::Quantity WorldResourceManager::getCachedResourceQuantity(
-    const WorldId &worldId,
-    const HammerEngine::ResourceHandle &resourceHandle) const {
-  std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-
-  auto worldIt = m_resourceCache.find(worldId);
-  if (worldIt == m_resourceCache.end()) {
-    if (m_config.enablePerformanceMonitoring) {
-      m_stats.cacheMisses++;
-    }
-    return -1; // Cache miss
-  }
-
-  auto now = std::chrono::steady_clock::now();
-  auto cacheIt = std::find_if(worldIt->second.begin(), worldIt->second.end(),
-                              [resourceHandle](const ResourceCache &cache) {
-                                return cache.resourceHandle == resourceHandle &&
-                                       !cache.dirty;
-                              });
-
-  if (cacheIt != worldIt->second.end()) {
-    cacheIt->lastAccess = now; // Update access time
-    if (m_config.enablePerformanceMonitoring) {
-      m_stats.cacheHits++;
-    }
-    return cacheIt->quantity;
-  }
-
-  if (m_config.enablePerformanceMonitoring) {
-    m_stats.cacheMisses++;
-  }
-  return -1; // Cache miss
-}
-
-void WorldResourceManager::invalidateAggregateCache() const {
-  std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-  m_aggregateCache.valid = false;
-
-  // Mark all resource caches as dirty
-  for (auto &[worldId, worldCache] : m_resourceCache) {
-    for (auto &cache : worldCache) {
-      cache.dirty = true;
-    }
-  }
-}
-
-void WorldResourceManager::updateAggregateCache() const {
-  std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-
-  auto now = std::chrono::steady_clock::now();
-  if (m_aggregateCache.valid &&
-      (now - m_aggregateCache.lastUpdate) < m_config.cacheExpiryTime) {
-    return; // Cache still valid
-  }
-
-  // Rebuild aggregate cache
-  m_aggregateCache.totals.clear();
-
-  // Note: This requires the resource mutex to be held by caller
-  for (const auto &[worldId, worldResources] : m_worldResources) {
-    for (const auto &[resourceHandle, quantity] : worldResources) {
-      m_aggregateCache.totals[resourceHandle] += quantity;
-    }
-  }
-
-  m_aggregateCache.lastUpdate = now;
-  m_aggregateCache.valid = true;
-
-  if (m_config.enablePerformanceMonitoring) {
-    m_stats.aggregateCacheRebuilds++;
-  }
-}
-
-// Cache monitoring methods
-size_t WorldResourceManager::getCacheSize(const WorldId &worldId) const {
-  std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-
-  auto it = m_resourceCache.find(worldId);
-  return it != m_resourceCache.end() ? it->second.size() : 0;
-}
-
-size_t WorldResourceManager::getTotalCacheSize() const {
-  std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-
-  size_t total = 0;
-  for (const auto &[worldId, cache] : m_resourceCache) {
-    total += cache.size();
-  }
-  return total;
-}
-
-std::unordered_map<WorldResourceManager::WorldId, size_t>
-WorldResourceManager::getAllCacheSizes() const {
-  std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-
-  std::unordered_map<WorldId, size_t> sizes;
-  for (const auto &[worldId, cache] : m_resourceCache) {
-    sizes[worldId] = cache.size();
-  }
-  return sizes;
-}
-
-void WorldResourceManager::logCacheStatus() const {
-  auto stats = getStats();
-  auto config = getConfig();
-
-  WORLD_RESOURCE_INFO("=== WorldResourceManager Cache Status ===");
-  WORLD_RESOURCE_INFO("Configuration:");
-  WORLD_RESOURCE_INFO(std::format("  Per-world cache size: {}", config.perWorldCacheSize));
-  WORLD_RESOURCE_INFO(std::format("  Cache expiry time: {}ms", config.cacheExpiryTime.count()));
-  WORLD_RESOURCE_INFO(std::format("  Performance monitoring: {}",
-      config.enablePerformanceMonitoring ? "enabled" : "disabled"));
-
-#ifdef DEBUG
-  if (config.enablePerformanceMonitoring) {
-    WORLD_RESOURCE_INFO("Performance Stats:");
-    WORLD_RESOURCE_INFO(std::format("  Cache hit ratio: {}%",
-                        stats.getCacheHitRatio() * 100.0));
-    WORLD_RESOURCE_INFO(std::format("  Cache hits: {}",
-                        stats.cacheHits.load()));
-    WORLD_RESOURCE_INFO(std::format("  Cache misses: {}",
-                        stats.cacheMisses.load()));
-    WORLD_RESOURCE_INFO(std::format("  Cache evictions: {}",
-                        stats.cacheEvictions.load()));
-    WORLD_RESOURCE_INFO(std::format("  Aggregate cache rebuilds: {}",
-                        stats.aggregateCacheRebuilds.load()));
-  }
-#endif
-
-  WORLD_RESOURCE_INFO("Current Usage:");
-  WORLD_RESOURCE_INFO(std::format("  Total cache entries: {}",
-                      getTotalCacheSize()));
-  WORLD_RESOURCE_INFO(std::format("  Worlds tracked: {}",
-                      stats.worldsTracked.load()));
-  WORLD_RESOURCE_INFO(std::format("  Memory usage: {} bytes", getMemoryUsage()));
-
-  // Warn if performance is sub-optimal
-  if (stats.worldsTracked.load() > config.maxWorldsBeforeWarning) {
-    WORLD_RESOURCE_WARN(std::format("High world count ({}) may impact performance. "
-                        "Consider optimizing world lifecycle management.",
-                        stats.worldsTracked.load()));
-  }
-
-  if (config.enablePerformanceMonitoring && stats.getCacheHitRatio() < 0.7) {
-    WORLD_RESOURCE_WARN(std::format("Low cache hit ratio ({}%). "
-                        "Consider increasing per-world cache size.",
-                        stats.getCacheHitRatio() * 100.0));
-  }
-}
-
-bool WorldResourceManager::isPerformanceOptimal() const {
-  auto stats = getStats();
-  auto config = getConfig();
-
-  // Check multiple performance indicators
-  bool worldCountOk =
-      stats.worldsTracked.load() <= config.maxWorldsBeforeWarning;
-  bool cacheRatioOk =
-      !config.enablePerformanceMonitoring || stats.getCacheHitRatio() >= 0.7;
-  bool memoryUsageOk =
-      getMemoryUsage() < (100 * 1024 * 1024); // Less than 100MB
-
-  return worldCountOk && cacheRatioOk && memoryUsageOk;
-}
-
-void WorldResourceManager::registerEventHandlers() {
-  try {
-    EventManager &eventMgr = EventManager::Instance();
-
-    // Register handler for world events (world loaded/unloaded)
-    eventMgr.registerHandler(EventTypeId::World, [this](const EventData &data) {
-      if (data.isActive() && data.event) {
-        // Handle world-related events from WorldManager
-        auto worldEvent = std::dynamic_pointer_cast<WorldEvent>(data.event);
-        if (worldEvent) {
-          handleWorldEvent(worldEvent);
+WorldResourceManager::getWorldResources(const WorldId& worldId) const {
+
+    m_stats.queryCount.fetch_add(1, std::memory_order_relaxed);
+
+    std::unordered_map<HammerEngine::ResourceHandle, Quantity> totals;
+
+    std::shared_lock lock(m_registryMutex);
+    auto& edm = EntityDataManager::Instance();
+
+    // Sum from inventories
+    auto invIt = m_inventoryRegistry.find(worldId);
+    if (invIt != m_inventoryRegistry.end()) {
+        for (uint32_t invIdx : invIt->second) {
+            auto invResources = edm.getInventoryResources(invIdx);
+            for (const auto& [handle, qty] : invResources) {
+                totals[handle] += qty;
+            }
         }
-      }
-    });
+    }
 
-    WORLD_RESOURCE_DEBUG("WorldResourceManager event handlers registered");
-  } catch (const std::exception &ex) {
-    WORLD_RESOURCE_ERROR("Failed to register event handlers: " +
-                         std::string(ex.what()));
-  }
-}
+    // Sum from harvestables
+    auto harvIt = m_harvestableRegistry.find(worldId);
+    if (harvIt != m_harvestableRegistry.end()) {
+        for (size_t edmIdx : harvIt->second) {
+            // Registry is kept clean via unregisterHarvestable on entity destruction
+            const auto& hot = edm.getStaticHotDataByIndex(edmIdx);
+            if (hot.kind != EntityKind::Harvestable) {
+                continue;  // Entity was destroyed or changed type
+            }
 
-void WorldResourceManager::unregisterEventHandlers() {
-  try {
-    // EventManager handles cleanup automatically during shutdown
-    WORLD_RESOURCE_DEBUG("WorldResourceManager event handlers unregistered");
-  } catch (const std::exception &ex) {
-    WORLD_RESOURCE_ERROR("Failed to unregister event handlers: " +
-                         std::string(ex.what()));
-  }
-}
-
-void WorldResourceManager::handleWorldEvent(
-    std::shared_ptr<WorldEvent> worldEvent) {
-  try {
-    switch (worldEvent->getEventType()) {
-    case WorldEventType::WorldLoaded: {
-      auto loadedEvent =
-          std::dynamic_pointer_cast<WorldLoadedEvent>(worldEvent);
-      if (loadedEvent) {
-        const std::string &worldId = loadedEvent->getWorldId();
-        WORLD_RESOURCE_INFO(std::format("Received WorldLoadedEvent for: {}", worldId));
-
-        // Check if world exists in resource tracking
-        bool worldExists = false;
-        {
-          std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
-          worldExists =
-              m_worldResources.find(worldId) != m_worldResources.end();
+            const auto& harvData = edm.getHarvestableData(hot.typeLocalIndex);
+            if (!harvData.isDepleted && harvData.yieldResource.isValid()) {
+                totals[harvData.yieldResource] += harvData.yieldMax;
+            }
         }
-
-        if (!worldExists) {
-          // Only create resource tracking for worlds that actually exist
-          // Verify the world actually exists in the WorldManager before
-          // creating tracking NOTE: Removed auto-creation to prevent spurious
-          // world creation from events
-          WORLD_RESOURCE_WARN(std::format(
-              "Received WorldLoadedEvent for non-existent world: {} - skipping resource tracking creation",
-              worldId));
-        } else {
-          WORLD_RESOURCE_INFO(std::format("World already tracked: {}", worldId));
-        }
-      }
-      break;
     }
 
-    case WorldEventType::WorldUnloaded: {
-      auto unloadedEvent =
-          std::dynamic_pointer_cast<WorldUnloadedEvent>(worldEvent);
-      WORLD_RESOURCE_INFO_IF(unloadedEvent,
-          std::format("Received WorldUnloadedEvent for: {}", unloadedEvent ? unloadedEvent->getWorldId() : ""));
-
-      // Optional: Remove world resources when unloaded
-      // For now, keep the data in case world is reloaded
-      // removeWorld(worldId);
-      break;
-    }
-
-    case WorldEventType::TileChanged: {
-      auto tileEvent = std::dynamic_pointer_cast<TileChangedEvent>(worldEvent);
-      // Handle tile changes - could affect resource distributions
-      WORLD_RESOURCE_DEBUG_IF(tileEvent,
-          std::format("Tile changed at ({}, {}) - {}",
-                      tileEvent ? tileEvent->getX() : 0,
-                      tileEvent ? tileEvent->getY() : 0,
-                      tileEvent ? tileEvent->getChangeType() : ""));
-      break;
-    }
-
-    default:
-      // Handle other world event types as needed
-      WORLD_RESOURCE_DEBUG(std::format("Received world event: {}", worldEvent->getName()));
-      break;
-    }
-  } catch (const std::exception &ex) {
-    WORLD_RESOURCE_ERROR("Error handling world event: " +
-                         std::string(ex.what()));
-  }
+    return totals;
 }
 
-void WorldResourceManager::fireResourceChangeEvent(
-    const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
-    Quantity oldQuantity, Quantity newQuantity, const std::string &reason) {
-  try {
-    // Only fire events for actual changes
-    if (oldQuantity == newQuantity) {
-      return;
+// ============================================================================
+// STATISTICS
+// ============================================================================
+
+WorldResourceStats WorldResourceManager::getStats() const {
+    return m_stats;
+}
+
+size_t WorldResourceManager::getInventoryCount(const WorldId& worldId) const {
+    std::shared_lock lock(m_registryMutex);
+
+    auto it = m_inventoryRegistry.find(worldId);
+    return (it != m_inventoryRegistry.end()) ? it->second.size() : 0;
+}
+
+size_t WorldResourceManager::getHarvestableCount(const WorldId& worldId) const {
+    std::shared_lock lock(m_registryMutex);
+
+    auto it = m_harvestableRegistry.find(worldId);
+    return (it != m_harvestableRegistry.end()) ? it->second.size() : 0;
+}
+
+// ============================================================================
+// DROPPED ITEM SPATIAL REGISTRATION
+// ============================================================================
+
+void WorldResourceManager::registerDroppedItem(size_t edmIndex, const Vector2D& position, const WorldId& worldId) {
+    std::unique_lock lock(m_registryMutex);
+
+    // Check if already registered to another world
+    auto existingIt = m_itemToWorld.find(edmIndex);
+    if (existingIt != m_itemToWorld.end()) {
+        if (existingIt->second == worldId) {
+            return;  // Already registered to this world
+        }
+        // Unregister from old world first
+        auto& oldIndex = m_itemSpatialIndices[existingIt->second];
+        oldIndex.remove(edmIndex);
+        // Update counter if unregistering from active world
+        if (existingIt->second == m_activeWorld) {
+            m_activeWorldItemCount.fetch_sub(1, std::memory_order_relaxed);
+        }
     }
 
-    // Trigger ResourceChange via EventManager hub (no registration needed)
-    const EventManager &eventMgr = EventManager::Instance();
-    eventMgr.triggerResourceChange(
-        nullptr, // world-level (no specific owner)
-        resourceHandle, static_cast<int>(oldQuantity),
-        static_cast<int>(newQuantity), std::format("{}_world_", reason) + worldId,
-        EventManager::DispatchMode::Deferred);
+    // Ensure world spatial index exists
+    auto& spatialIndex = m_itemSpatialIndices[worldId];
+    spatialIndex.insert(edmIndex, position);
+    m_itemToWorld[edmIndex] = worldId;
 
-    WORLD_RESOURCE_DEBUG(std::format("ResourceChangeEvent fired for {} in world {}: {} -> {}",
-                         resourceHandle.toString(), worldId,
-                         oldQuantity, newQuantity));
-  } catch (const std::exception &ex) {
-    WORLD_RESOURCE_ERROR(std::format("Failed to fire ResourceChangeEvent: {}",
-                                     ex.what()));
-  }
+    // Update counter if registering to active world
+    if (worldId == m_activeWorld) {
+        m_activeWorldItemCount.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    WORLD_RESOURCE_DEBUG(std::format("Registered dropped item {} at ({:.1f}, {:.1f}) to world {}",
+                                      edmIndex, position.getX(), position.getY(), worldId));
+}
+
+void WorldResourceManager::unregisterDroppedItem(size_t edmIndex) {
+    std::unique_lock lock(m_registryMutex);
+
+    auto it = m_itemToWorld.find(edmIndex);
+    if (it == m_itemToWorld.end()) {
+        return;  // Not registered
+    }
+
+    // Update counter if unregistering from active world
+    if (it->second == m_activeWorld) {
+        m_activeWorldItemCount.fetch_sub(1, std::memory_order_relaxed);
+    }
+
+    auto& spatialIndex = m_itemSpatialIndices[it->second];
+    spatialIndex.remove(edmIndex);
+    m_itemToWorld.erase(it);
+
+    WORLD_RESOURCE_DEBUG(std::format("Unregistered dropped item {}", edmIndex));
+}
+
+void WorldResourceManager::registerHarvestableSpatial(size_t edmIndex, const Vector2D& position, const WorldId& worldId) {
+    std::unique_lock lock(m_registryMutex);
+
+    // Check if already registered
+    auto existingIt = m_harvestableSpatialToWorld.find(edmIndex);
+    if (existingIt != m_harvestableSpatialToWorld.end()) {
+        if (existingIt->second == worldId) {
+            return;  // Already registered
+        }
+        // Unregister from old world
+        auto& oldIndex = m_harvestableSpatialIndices[existingIt->second];
+        oldIndex.remove(edmIndex);
+        // Update counter if unregistering from active world
+        if (existingIt->second == m_activeWorld) {
+            m_activeWorldHarvestableCount.fetch_sub(1, std::memory_order_relaxed);
+        }
+    }
+
+    // Add to spatial index
+    auto& spatialIndex = m_harvestableSpatialIndices[worldId];
+    spatialIndex.insert(edmIndex, position);
+    m_harvestableSpatialToWorld[edmIndex] = worldId;
+
+    // Update counter if registering to active world
+    if (worldId == m_activeWorld) {
+        m_activeWorldHarvestableCount.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    WORLD_RESOURCE_DEBUG(std::format("Registered harvestable spatial {} at ({:.1f}, {:.1f}) to world {}",
+                                      edmIndex, position.getX(), position.getY(), worldId));
+}
+
+void WorldResourceManager::unregisterHarvestableSpatial(size_t edmIndex) {
+    std::unique_lock lock(m_registryMutex);
+
+    auto it = m_harvestableSpatialToWorld.find(edmIndex);
+    if (it == m_harvestableSpatialToWorld.end()) {
+        return;  // Not registered
+    }
+
+    // Update counter if unregistering from active world
+    if (it->second == m_activeWorld) {
+        m_activeWorldHarvestableCount.fetch_sub(1, std::memory_order_relaxed);
+    }
+
+    auto& spatialIndex = m_harvestableSpatialIndices[it->second];
+    spatialIndex.remove(edmIndex);
+    m_harvestableSpatialToWorld.erase(it);
+
+    WORLD_RESOURCE_DEBUG(std::format("Unregistered harvestable spatial {}", edmIndex));
+}
+
+// ============================================================================
+// CONTAINER SPATIAL REGISTRATION
+// ============================================================================
+
+void WorldResourceManager::registerContainerSpatial(size_t edmIndex, const Vector2D& position, const WorldId& worldId) {
+    std::unique_lock lock(m_registryMutex);
+
+    // Check if already registered
+    auto existingIt = m_containerToWorld.find(edmIndex);
+    if (existingIt != m_containerToWorld.end()) {
+        if (existingIt->second == worldId) {
+            return;  // Already registered
+        }
+        // Unregister from old world
+        auto& oldIndex = m_containerSpatialIndices[existingIt->second];
+        oldIndex.remove(edmIndex);
+    }
+
+    // Add to spatial index
+    auto& spatialIndex = m_containerSpatialIndices[worldId];
+    spatialIndex.insert(edmIndex, position);
+    m_containerToWorld[edmIndex] = worldId;
+
+    WORLD_RESOURCE_DEBUG(std::format("Registered container spatial {} at ({:.1f}, {:.1f}) to world {}",
+                                      edmIndex, position.getX(), position.getY(), worldId));
+}
+
+void WorldResourceManager::unregisterContainerSpatial(size_t edmIndex) {
+    std::unique_lock lock(m_registryMutex);
+
+    auto it = m_containerToWorld.find(edmIndex);
+    if (it == m_containerToWorld.end()) {
+        return;  // Not registered
+    }
+
+    auto& spatialIndex = m_containerSpatialIndices[it->second];
+    spatialIndex.remove(edmIndex);
+    m_containerToWorld.erase(it);
+
+    WORLD_RESOURCE_DEBUG(std::format("Unregistered container spatial {}", edmIndex));
+}
+
+size_t WorldResourceManager::queryContainersInRadius(const Vector2D& center, float radius,
+                                                      std::vector<size_t>& outIndices) const {
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        outIndices.clear();
+        return 0;
+    }
+
+    std::shared_lock lock(m_registryMutex);
+
+    if (m_activeWorld.empty()) {
+        outIndices.clear();
+        return 0;
+    }
+
+    auto it = m_containerSpatialIndices.find(m_activeWorld);
+    if (it == m_containerSpatialIndices.end()) {
+        outIndices.clear();
+        return 0;
+    }
+
+    outIndices.clear();
+    it->second.queryRadius(center, radius, outIndices);
+    return outIndices.size();
+}
+
+// ============================================================================
+// SPATIAL QUERIES
+// ============================================================================
+
+size_t WorldResourceManager::queryDroppedItemsInRadius(const Vector2D& center, float radius,
+                                                        std::vector<size_t>& outIndices) const {
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        outIndices.clear();
+        return 0;
+    }
+
+    // Fast path: skip lock acquisition if no items in active world
+    if (m_activeWorldItemCount.load(std::memory_order_relaxed) == 0) {
+        return 0;
+    }
+
+    std::shared_lock lock(m_registryMutex);
+
+    if (m_activeWorld.empty()) {
+        return 0;
+    }
+
+    auto it = m_itemSpatialIndices.find(m_activeWorld);
+    if (it == m_itemSpatialIndices.end()) {
+        return 0;
+    }
+
+    outIndices.clear();
+    it->second.queryRadius(center, radius, outIndices);
+
+    // Precise distance filtering using EDM positions
+    const auto& edm = EntityDataManager::Instance();
+    float radiusSq = radius * radius;
+
+    auto newEnd = std::remove_if(outIndices.begin(), outIndices.end(),
+        [&](size_t idx) {
+            const auto& hot = edm.getStaticHotDataByIndex(idx);
+            if (!hot.isAlive()) {
+                return true;  // Remove stale entries
+            }
+            const auto& pos = hot.transform.position;
+            float dx = pos.getX() - center.getX();
+            float dy = pos.getY() - center.getY();
+            return (dx * dx + dy * dy) > radiusSq;
+        });
+
+    outIndices.erase(newEnd, outIndices.end());
+    return outIndices.size();
+}
+
+size_t WorldResourceManager::queryHarvestablesInRadius(const Vector2D& center, float radius,
+                                                        std::vector<size_t>& outIndices) const {
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        outIndices.clear();
+        return 0;
+    }
+
+    // Fast path: skip lock acquisition if no harvestables in active world
+    if (m_activeWorldHarvestableCount.load(std::memory_order_relaxed) == 0) {
+        return 0;
+    }
+
+    std::shared_lock lock(m_registryMutex);
+
+    if (m_activeWorld.empty()) {
+        return 0;
+    }
+
+    auto it = m_harvestableSpatialIndices.find(m_activeWorld);
+    if (it == m_harvestableSpatialIndices.end()) {
+        return 0;
+    }
+
+    outIndices.clear();
+    it->second.queryRadius(center, radius, outIndices);
+
+    // Precise distance filtering using EDM positions
+    const auto& edm = EntityDataManager::Instance();
+    float radiusSq = radius * radius;
+
+    auto newEnd = std::remove_if(outIndices.begin(), outIndices.end(),
+        [&](size_t idx) {
+            const auto& hot = edm.getStaticHotDataByIndex(idx);
+            if (!hot.isAlive()) {
+                return true;  // Remove stale entries
+            }
+            const auto& pos = hot.transform.position;
+            float dx = pos.getX() - center.getX();
+            float dy = pos.getY() - center.getY();
+            return (dx * dx + dy * dy) > radiusSq;
+        });
+
+    outIndices.erase(newEnd, outIndices.end());
+    return outIndices.size();
+}
+
+bool WorldResourceManager::findClosestDroppedItem(const Vector2D& center, float radius, size_t& outIndex) const {
+    std::vector<size_t> candidates;
+    candidates.reserve(16);  // Reasonable initial capacity
+
+    if (queryDroppedItemsInRadius(center, radius, candidates) == 0) {
+        return false;
+    }
+
+    const auto& edm = EntityDataManager::Instance();
+    float closestDistSq = std::numeric_limits<float>::max();
+    size_t closestIdx = 0;
+    bool found = false;
+
+    for (size_t idx : candidates) {
+        const auto& hot = edm.getStaticHotDataByIndex(idx);
+        const auto& pos = hot.transform.position;
+        float dx = pos.getX() - center.getX();
+        float dy = pos.getY() - center.getY();
+        float distSq = dx * dx + dy * dy;
+
+        if (distSq < closestDistSq) {
+            closestDistSq = distSq;
+            closestIdx = idx;
+            found = true;
+        }
+    }
+
+    if (found) {
+        outIndex = closestIdx;
+    }
+    return found;
+}
+
+// ============================================================================
+// ACTIVE WORLD TRACKING
+// ============================================================================
+
+void WorldResourceManager::setActiveWorld(const WorldId& worldId) {
+    std::unique_lock lock(m_registryMutex);
+    m_activeWorld = worldId;
+    recalculateActiveWorldCounts();
+    WORLD_RESOURCE_INFO(std::format("Active world set to: {}", worldId.empty() ? "(none)" : worldId));
+}
+
+void WorldResourceManager::recalculateActiveWorldCounts() {
+    // Called under lock - recalculate counts for the active world
+    if (m_activeWorld.empty()) {
+        m_activeWorldItemCount.store(0, std::memory_order_relaxed);
+        m_activeWorldHarvestableCount.store(0, std::memory_order_relaxed);
+        return;
+    }
+
+    // Count items in active world
+    auto itemIt = m_itemSpatialIndices.find(m_activeWorld);
+    size_t itemCount = (itemIt != m_itemSpatialIndices.end()) ? itemIt->second.size() : 0;
+    m_activeWorldItemCount.store(itemCount, std::memory_order_relaxed);
+
+    // Count harvestables in active world
+    auto harvIt = m_harvestableSpatialIndices.find(m_activeWorld);
+    size_t harvCount = (harvIt != m_harvestableSpatialIndices.end()) ? harvIt->second.size() : 0;
+    m_activeWorldHarvestableCount.store(harvCount, std::memory_order_relaxed);
+}
+
+void WorldResourceManager::clearSpatialDataForWorld(const WorldId& worldId) {
+    std::unique_lock lock(m_registryMutex);
+
+    // Reset counters if clearing active world
+    if (worldId == m_activeWorld) {
+        m_activeWorldItemCount.store(0, std::memory_order_relaxed);
+        m_activeWorldHarvestableCount.store(0, std::memory_order_relaxed);
+    }
+
+    // Clear item spatial index
+    auto itemIt = m_itemSpatialIndices.find(worldId);
+    if (itemIt != m_itemSpatialIndices.end()) {
+        // Remove reverse lookups for items in this world
+        for (const auto& [edmIdx, cellKey] : itemIt->second.entityToCell) {
+            (void)cellKey;  // Unused
+            m_itemToWorld.erase(edmIdx);
+        }
+        itemIt->second.clear();
+    }
+
+    // Clear harvestable spatial index
+    auto harvIt = m_harvestableSpatialIndices.find(worldId);
+    if (harvIt != m_harvestableSpatialIndices.end()) {
+        // Remove reverse lookups
+        for (const auto& [edmIdx, cellKey] : harvIt->second.entityToCell) {
+            (void)cellKey;  // Unused
+            m_harvestableSpatialToWorld.erase(edmIdx);
+        }
+        harvIt->second.clear();
+    }
+
+    WORLD_RESOURCE_INFO(std::format("Cleared spatial data for world: {}", worldId));
+}
+
+void WorldResourceManager::subscribeWorldEvents() {
+    auto& em = EventManager::Instance();
+
+    // Subscribe to World events (WorldLoaded, WorldUnloaded)
+    auto token = em.registerHandlerWithToken(EventTypeId::World,
+        [this](const EventData& data) {
+            if (!data.event) {
+                return;
+            }
+
+            // Try WorldLoadedEvent first
+            if (auto loadedEvent = std::dynamic_pointer_cast<WorldLoadedEvent>(data.event)) {
+                onWorldLoaded(loadedEvent->getWorldId());
+                return;
+            }
+
+            // Try WorldUnloadedEvent
+            if (auto unloadedEvent = std::dynamic_pointer_cast<WorldUnloadedEvent>(data.event)) {
+                onWorldUnloaded(unloadedEvent->getWorldId());
+                return;
+            }
+
+            // Other WorldEvent types are ignored
+        });
+
+    m_eventHandlerTokens.push_back(token);
+    WORLD_RESOURCE_INFO("Subscribed to world events");
+}
+
+void WorldResourceManager::onWorldLoaded(const std::string& worldId) {
+    // Single lock acquisition - setActiveWorld() also uses m_registryMutex internally,
+    // and std::shared_mutex is not recursive, so inline its logic here
+    std::unique_lock lock(m_registryMutex);
+
+    // Set active world (inlined from setActiveWorld to avoid deadlock)
+    m_activeWorld = worldId;
+    recalculateActiveWorldCounts();
+
+    // Ensure spatial indices exist for this world (try_emplace avoids double lookup)
+    m_itemSpatialIndices.try_emplace(worldId);
+    m_harvestableSpatialIndices.try_emplace(worldId);
+
+    WORLD_RESOURCE_INFO(std::format("World loaded: {}", worldId));
+}
+
+void WorldResourceManager::onWorldUnloaded(const std::string& worldId) {
+    clearSpatialDataForWorld(worldId);
+
+    // If this was the active world, clear it
+    {
+        std::unique_lock lock(m_registryMutex);
+        if (m_activeWorld == worldId) {
+            m_activeWorld.clear();
+        }
+    }
+
+    WORLD_RESOURCE_INFO(std::format("World unloaded: {}", worldId));
 }

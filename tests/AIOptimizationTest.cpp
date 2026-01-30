@@ -19,49 +19,26 @@
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "ai/AIBehavior.hpp"
-#include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "utils/Vector2D.hpp"
 
-// Simple test entity for optimization tests
-// NOTE: Does NOT call setPosition() in constructor - position is set via registerEntity
-// which registers with EDM first, then sets position through the valid handle.
-class OptimizationTestEntity : public Entity {
+// Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
+class OptimizationTestNPC {
 public:
-    OptimizationTestEntity() {
-        setTextureID("test");
-        setWidth(32);
-        setHeight(32);
-        // Don't call setPosition() here - m_handle is not set yet!
+    explicit OptimizationTestNPC(const Vector2D& pos = Vector2D(0, 0)) {
+        auto& edm = EntityDataManager::Instance();
+        m_handle = edm.createNPCWithRaceClass(pos, "Human", "Guard");
     }
 
-    // Factory method for proper shared_ptr initialization
-    static std::shared_ptr<OptimizationTestEntity> create([[maybe_unused]] const Vector2D& pos) {
-        // pos parameter kept for API compatibility but not used in constructor
-        return std::make_shared<OptimizationTestEntity>();
+    static std::shared_ptr<OptimizationTestNPC> create(const Vector2D& pos = Vector2D(0, 0)) {
+        return std::make_shared<OptimizationTestNPC>(pos);
     }
 
-    void update(float deltaTime) override {
-        (void)deltaTime; // Suppress unused parameter warning
-    }
+    [[nodiscard]] EntityHandle getHandle() const { return m_handle; }
 
-    void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override {
-        (void)renderer;
-        (void)cameraX;
-        (void)cameraY;
-        (void)interpolationAlpha;
-    }
-
-    void clean() override {
-        // Safe cleanup - we're not calling shared_from_this() here
-    }
-    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
-
-    // Public wrapper for protected registerWithDataManager
-    void registerEntity(const Vector2D& pos, float halfW, float halfH) {
-        registerWithDataManager(pos, halfW, halfH, EntityKind::NPC);
-    }
+private:
+    EntityHandle m_handle;
 };
 
 class NoOpBehavior final : public AIBehavior {
@@ -115,15 +92,13 @@ BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
     auto wanderBehavior = std::make_shared<WanderBehavior>(2.0f, 1000.0f, 200.0f);
     AIManager::Instance().registerBehavior("TestWander", wanderBehavior);
 
-    // Create test entities and register them for managed updates
+    // Create test NPCs (already registered via createDataDrivenNPC)
     std::vector<EntityHandle> handles;
-    std::vector<EntityPtr> entities;
+    std::vector<std::shared_ptr<OptimizationTestNPC>> entities;
     for (int i = 0; i < 10; ++i) {
         Vector2D pos(i * 100.0f, i * 100.0f);
-        auto entity = OptimizationTestEntity::create(pos);
+        auto entity = OptimizationTestNPC::create(pos);
         entities.push_back(entity);
-        // Register entity with EntityDataManager
-        entity->registerEntity(pos, 16.0f, 16.0f);
         EntityHandle handle = entity->getHandle();
         handles.push_back(handle);
         AIManager::Instance().registerEntity(handle, "TestWander");
@@ -154,15 +129,13 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
     auto wanderBehavior = std::make_shared<WanderBehavior>(2.0f, 1000.0f, 200.0f);
     AIManager::Instance().registerBehavior("BatchWander", wanderBehavior);
 
-    // Create test entities and register them for managed updates
+    // Create test NPCs (already registered via createDataDrivenNPC)
     std::vector<EntityHandle> handles;
-    std::vector<EntityPtr> entityPtrs;
+    std::vector<std::shared_ptr<OptimizationTestNPC>> entityPtrs;
     for (int i = 0; i < 100; ++i) {
         Vector2D pos(i * 10.0f, i * 10.0f);
-        auto entity = OptimizationTestEntity::create(pos);
+        auto entity = OptimizationTestNPC::create(pos);
         entityPtrs.push_back(entity);
-        // Register entity with EntityDataManager
-        entity->registerEntity(pos, 16.0f, 16.0f);
         EntityHandle handle = entity->getHandle();
         handles.push_back(handle);
         AIManager::Instance().registerEntity(handle, "BatchWander");
@@ -216,11 +189,9 @@ BOOST_AUTO_TEST_CASE(TestEarlyExitConditions)
     auto wanderBehavior = std::make_shared<WanderBehavior>(2.0f, 1000.0f, 200.0f);
     AIManager::Instance().registerBehavior("LazyWander", wanderBehavior);
 
-    // Create test entity and register for managed updates
+    // Create test NPC (already registered via createDataDrivenNPC)
     Vector2D pos(100.0f, 100.0f);
-    auto entity = OptimizationTestEntity::create(pos);
-    // Register entity with EntityDataManager
-    entity->registerEntity(pos, 16.0f, 16.0f);
+    auto entity = OptimizationTestNPC::create(pos);
     EntityHandle handle = entity->getHandle();
     AIManager::Instance().registerEntity(handle, "LazyWander");
 
@@ -247,11 +218,9 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
     auto wanderBehavior = std::make_shared<WanderBehavior>(2.0f, 1000.0f, 200.0f);
     AIManager::Instance().registerBehavior("MsgWander", wanderBehavior);
 
-    // Create test entity and register with consolidated method
+    // Create test NPC (already registered via createDataDrivenNPC)
     Vector2D pos(100.0f, 100.0f);
-    auto entity = OptimizationTestEntity::create(pos);
-    // Register entity with EntityDataManager
-    entity->registerEntity(pos, 16.0f, 16.0f);
+    auto entity = OptimizationTestNPC::create(pos);
     EntityHandle handle = entity->getHandle();
     AIManager::Instance().registerEntity(handle, "MsgWander");
 
@@ -292,13 +261,12 @@ BOOST_AUTO_TEST_CASE(TestSIMDMovementIntegrationClamp)
     AIManager::Instance().registerBehavior("NoOp", noopBehavior);
 
     std::vector<EntityHandle> handles;
-    std::vector<EntityPtr> entities;
+    std::vector<std::shared_ptr<OptimizationTestNPC>> entities;
     auto& edm = EntityDataManager::Instance();
 
     auto createEntity = [&](const Vector2D& pos) {
-        auto entity = OptimizationTestEntity::create(pos);
+        auto entity = OptimizationTestNPC::create(pos);
         entities.push_back(entity);
-        entity->registerEntity(pos, 16.0f, 16.0f);
         EntityHandle handle = entity->getHandle();
         handles.push_back(handle);
         AIManager::Instance().registerEntity(handle, "NoOp");
@@ -490,16 +458,14 @@ BOOST_AUTO_TEST_CASE(TestDistanceCalculationCorrectness)
     std::vector<size_t> testCounts = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 17, 23};
 
     for (size_t count : testCounts) {
-        // Create entities at known positions
-        std::vector<std::shared_ptr<OptimizationTestEntity>> entities;
+        // Create entities at known positions (already registered via createDataDrivenNPC)
+        std::vector<std::shared_ptr<OptimizationTestNPC>> entities;
         std::vector<EntityHandle> handles;
         for (size_t i = 0; i < count; ++i) {
             // Place entities at (100 * i, 100 * i) for predictable distances
             Vector2D pos(100.0f * static_cast<float>(i), 100.0f * static_cast<float>(i));
-            auto entity = OptimizationTestEntity::create(pos);
+            auto entity = OptimizationTestNPC::create(pos);
             entities.push_back(entity);
-            // Register entity with EntityDataManager
-            entity->registerEntity(pos, 16.0f, 16.0f);
             EntityHandle handle = entity->getHandle();
             handles.push_back(handle);
             AIManager::Instance().registerEntity(handle, "DistanceTestWander");
@@ -516,7 +482,8 @@ BOOST_AUTO_TEST_CASE(TestDistanceCalculationCorrectness)
 
         // Verify all entities received valid processing (no teleportation to (0,0))
         for (size_t i = 0; i < entities.size(); ++i) {
-            auto pos = entities[i]->getPosition();
+            size_t edmIndex = edm.getIndex(entities[i]->getHandle());
+            auto pos = edm.getTransformByIndex(edmIndex).position;
             // Entities should be near their starting positions (WanderBehavior may move them slightly)
             // But they should NEVER teleport to (0,0) unless they started there
             if (i > 0) {

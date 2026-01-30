@@ -6,7 +6,7 @@
 #ifndef RESOURCE_CHANGE_EVENT_HPP
 #define RESOURCE_CHANGE_EVENT_HPP
 
-#include "entities/Entity.hpp"
+#include "entities/EntityHandle.hpp"
 #include "events/Event.hpp"
 #include "utils/ResourceHandle.hpp"
 #include <string>
@@ -23,14 +23,14 @@ class ResourceChangeEvent : public Event {
 public:
   /**
    * @brief Constructs a resource change event
-   * @param owner Entity that owns the inventory where the change occurred
+   * @param ownerHandle Handle of entity that owns the inventory
    * @param resourceHandle Handle of the resource that changed
    * @param oldQuantity Previous quantity of the resource
    * @param newQuantity New quantity of the resource
    * @param changeReason Optional reason for the change (e.g., "crafted",
    * "consumed", "traded")
    */
-  ResourceChangeEvent(EntityPtr owner,
+  ResourceChangeEvent(EntityHandle ownerHandle,
                       HammerEngine::ResourceHandle resourceHandle,
                       int oldQuantity, int newQuantity,
                       const std::string &changeReason = "");
@@ -40,7 +40,14 @@ public:
   // Event interface implementation
   void update() override {}
   void execute() override {}
-  void reset() override {}
+  void reset() override {
+    Event::resetCooldown();
+    m_ownerHandle = EntityHandle{};
+    m_resourceHandle = HammerEngine::ResourceHandle{};
+    m_oldQuantity = 0;
+    m_newQuantity = 0;
+    m_changeReason.clear();
+  }
   void clean() override {}
   std::string getName() const override { return "ResourceChange"; }
   bool checkConditions() override { return true; }
@@ -50,7 +57,7 @@ public:
   static const std::string EVENT_TYPE;
 
   // Resource change data
-  EntityWeakPtr getOwner() const { return m_owner; }
+  EntityHandle getOwnerHandle() const { return m_ownerHandle; }
   HammerEngine::ResourceHandle getResourceHandle() const {
     return m_resourceHandle;
   }
@@ -70,7 +77,7 @@ public:
   }
 
 private:
-  EntityWeakPtr m_owner; // Entity that owns the inventory
+  EntityHandle m_ownerHandle; // Handle of entity that owns the inventory
   HammerEngine::ResourceHandle
       m_resourceHandle;       // Handle of the resource that changed
   int m_oldQuantity;          // Previous quantity

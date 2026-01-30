@@ -34,6 +34,11 @@
 #include <unordered_map>
 #include <vector>
 
+// Forward declarations for GPU rendering
+namespace HammerEngine {
+class GPURenderer;
+}
+
 // Lightweight aligned allocator to support SIMD-friendly vector storage
 template <typename T, std::size_t Alignment> struct AlignedAllocator {
   using value_type = T;
@@ -407,6 +412,25 @@ public:
   void renderForeground(SDL_Renderer *renderer, float cameraX = 0.0f,
                         float cameraY = 0.0f, float interpolationAlpha = 1.0f);
 
+#ifdef USE_SDL3_GPU
+  /**
+   * @brief Records particle vertices to GPU vertex pool for GPU rendering
+   * @param gpuRenderer GPU renderer instance
+   * @param cameraX Camera X offset for world-space rendering
+   * @param cameraY Camera Y offset for world-space rendering
+   * @param interpolationAlpha Interpolation factor (0.0-1.0) for smooth rendering
+   */
+  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer, float cameraX,
+                         float cameraY, float interpolationAlpha);
+
+  /**
+   * @brief Renders particles using GPU pipeline
+   * @param gpuRenderer GPU renderer instance
+   * @param scenePass Active scene render pass
+   */
+  void renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* scenePass);
+#endif
+
   /**
    * @brief Checks if ParticleManager has been shut down
    * @return true if manager is shut down, false otherwise
@@ -611,8 +635,6 @@ public:
 #ifndef NDEBUG
   // Threading configuration (benchmarking only - compiles out in release)
   void enableThreading(bool enable);
-  void setThreadingThreshold(size_t threshold);
-  size_t getThreadingThreshold() const;
 #endif
 
   /**
@@ -917,7 +939,7 @@ private:
   std::atomic<bool> m_globallyVisible{true};
   std::atomic<bool> m_useThreading{true};
   std::atomic<bool> m_useWorkerBudget{true};
-  std::atomic<size_t> m_threadingThreshold{2000};  // Optimal threshold from benchmark
+  // Threading threshold now managed by WorkerBudget adaptive system
 
 
   std::atomic<size_t> m_activeCount{0};

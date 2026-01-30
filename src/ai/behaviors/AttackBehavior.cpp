@@ -4,7 +4,6 @@
  */
 
 #include "ai/behaviors/AttackBehavior.hpp"
-#include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include <algorithm>
@@ -152,10 +151,6 @@ void AttackBehavior::init(EntityHandle handle) {
   attack.flanking = false;
 
   data.setInitialized(true);
-
-  // NOTE: EntityPtr cache is populated by AIManager when behavior is assigned
-  // The cache is needed for animation state notifications - will be removed
-  // later
 }
 
 void AttackBehavior::updateTimers(BehaviorData &data, float deltaTime) {
@@ -213,30 +208,30 @@ void AttackBehavior::updateTargetTracking(const Vector2D &entityPos,
   }
 }
 
-void AttackBehavior::dispatchModeUpdate(EntityPtr entity, BehaviorData &data,
+void AttackBehavior::dispatchModeUpdate(size_t edmIndex, BehaviorData &data,
                                         float deltaTime,
                                         const Vector2D &targetPos) {
   switch (m_attackMode) {
   case AttackMode::MELEE_ATTACK:
-    updateMeleeAttack(entity, data, deltaTime, targetPos);
+    updateMeleeAttack(edmIndex, data, deltaTime, targetPos);
     break;
   case AttackMode::RANGED_ATTACK:
-    updateRangedAttack(entity, data, deltaTime, targetPos);
+    updateRangedAttack(edmIndex, data, deltaTime, targetPos);
     break;
   case AttackMode::CHARGE_ATTACK:
-    updateChargeAttack(entity, data, deltaTime, targetPos);
+    updateChargeAttack(edmIndex, data, deltaTime, targetPos);
     break;
   case AttackMode::AMBUSH_ATTACK:
-    updateAmbushAttack(entity, data, deltaTime, targetPos);
+    updateAmbushAttack(edmIndex, data, deltaTime, targetPos);
     break;
   case AttackMode::COORDINATED_ATTACK:
-    updateCoordinatedAttack(entity, data, deltaTime, targetPos);
+    updateCoordinatedAttack(edmIndex, data, deltaTime, targetPos);
     break;
   case AttackMode::HIT_AND_RUN:
-    updateHitAndRun(entity, data, deltaTime, targetPos);
+    updateHitAndRun(edmIndex, data, deltaTime, targetPos);
     break;
   case AttackMode::BERSERKER_ATTACK:
-    updateBerserkerAttack(entity, data, deltaTime, targetPos);
+    updateBerserkerAttack(edmIndex, data, deltaTime, targetPos);
     break;
   }
 }
@@ -251,14 +246,6 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
   }
   auto &data = *ctx.behaviorData;
   auto &attack = data.state.attack;
-
-  // Get cached EntityPtr for helper methods that still use it (attack
-  // execution, movement)
-  // TODO: Planned refactor to remove EntityPtr dependency
-  auto it = m_entityPtrCache.find(ctx.entityId);
-  if (it == m_entityPtrCache.end())
-    return;
-  EntityPtr entity = it->second;
 
   // Use cached player info from context (lock-free, cached once per frame)
   Vector2D targetPos = ctx.playerPosition;
@@ -286,13 +273,14 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
 
   // Execute behavior based on attack mode
   if (hasTarget) {
-    dispatchModeUpdate(entity, data, ctx.deltaTime, targetPos);
+    dispatchModeUpdate(ctx.edmIndex, data, ctx.deltaTime, targetPos);
   }
 
   // Notify animation state change if state changed
   if (attack.currentState != previousState) {
-    notifyAnimationStateChange(entity,
-                               static_cast<AttackState>(attack.currentState));
+    notifyAnimationStateChange(ctx.edmIndex,
+                               static_cast<AttackState>(attack.currentState),
+                               targetPos);
   }
 }
 
@@ -304,11 +292,8 @@ void AttackBehavior::clean(EntityHandle handle) {
       edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
       edm.clearBehaviorData(idx);
     }
-    m_entityPtrCache.erase(handle.getId());
-  } else {
-    // Bulk cleanup handled by EDM::prepareForStateTransition()
-    m_entityPtrCache.clear();
   }
+  // Bulk cleanup handled by EDM::prepareForStateTransition()
 }
 
 void AttackBehavior::onMessage(EntityHandle handle,
@@ -623,37 +608,31 @@ void AttackBehavior::changeState(BehaviorData &data, AttackState newState) {
   }
 }
 
-void AttackBehavior::notifyAnimationStateChange(EntityPtr entity,
-                                                AttackState newState) {
-  // Try to cast to NPC to notify animation state change
-  auto npc = std::dynamic_pointer_cast<NPC>(entity);
-  if (!npc) {
-    return; // Not an NPC (could be Player or other entity type)
+void AttackBehavior::notifyAnimationStateChange(size_t edmIndex,
+                                                AttackState newState,
+                                                const Vector2D& targetPos) {
+  // Data-driven NPCs: Animation handled by NPCRenderController via velocity
+  // Apply velocity burst for lunge effect on attack states
+  if (edmIndex == SIZE_MAX) {
+    return;
   }
 
-  // Map AttackBehavior states to NPC animation states
-  switch (newState) {
-  case AttackState::ATTACKING:
-    npc->setAnimationState("Attacking");
-    break;
-  case AttackState::RECOVERING:
-    npc->setAnimationState("Recovering");
-    break;
-  case AttackState::COOLDOWN:
-    npc->setAnimationState("Idle");
-    break;
-  case AttackState::SEEKING:
-  case AttackState::APPROACHING:
-  case AttackState::POSITIONING:
-  case AttackState::RETREATING:
-  default:
-    npc->setAnimationState("Walking");
-    break;
+  // Lunge toward target when attacking (2x movement speed burst)
+  if (newState == AttackState::ATTACKING) {
+    auto& edm = EntityDataManager::Instance();
+    // targetPos passed as parameter - avoids re-fetching from AIManager (thread-safe)
+    Vector2D entityPos = edm.getHotDataByIndex(edmIndex).transform.position;
+    Vector2D direction = (targetPos - entityPos);
+    float dist = direction.length();
+    if (dist > 1.0f) {
+      direction = direction * (1.0f / dist);  // Normalize
+      edm.getHotDataByIndex(edmIndex).transform.velocity = direction * (m_movementSpeed * CHARGE_SPEED_MULTIPLIER);
+    }
   }
 }
 
 void AttackBehavior::updateStateTimer(BehaviorData &data) {
-  auto &attack = data.state.attack;
+  const auto &attack = data.state.attack;
   float const timeInState = attack.stateChangeTimer;
 
   // Handle state transitions based on timing
@@ -698,13 +677,14 @@ bool AttackBehavior::shouldCharge(float distance,
          distance <= m_attackRange;
 }
 
-void AttackBehavior::executeAttack(EntityPtr entity, const Vector2D &targetPos,
+void AttackBehavior::executeAttack(size_t edmIndex, const Vector2D &targetPos,
                                    BehaviorData &data) {
-  if (!entity)
+  if (edmIndex == SIZE_MAX)
     return;
 
+  auto &edm = EntityDataManager::Instance();
   auto &attack = data.state.attack;
-  Vector2D entityPos = entity->getPosition();
+  Vector2D entityPos = edm.getHotDataByIndex(edmIndex).transform.position;
 
   // Calculate damage
   float const damage = calculateDamage(data);
@@ -737,14 +717,15 @@ void AttackBehavior::executeAttack(EntityPtr entity, const Vector2D &targetPos,
   }
 }
 
-void AttackBehavior::executeSpecialAttack(EntityPtr entity,
+void AttackBehavior::executeSpecialAttack(size_t edmIndex,
                                           const Vector2D &targetPos,
                                           BehaviorData &data) {
-  if (!entity)
+  if (edmIndex == SIZE_MAX)
     return;
 
+  auto &edm = EntityDataManager::Instance();
   auto &attack = data.state.attack;
-  Vector2D entityPos = entity->getPosition();
+  Vector2D entityPos = edm.getHotDataByIndex(edmIndex).transform.position;
 
   // Enhanced attack with special effects
   float const specialDamage = calculateDamage(data) * SPECIAL_ATTACK_MULTIPLIER;
@@ -758,19 +739,20 @@ void AttackBehavior::executeSpecialAttack(EntityPtr entity,
   attack.specialAttackReady = false;
 }
 
-void AttackBehavior::executeComboAttack(EntityPtr entity,
+void AttackBehavior::executeComboAttack(size_t edmIndex,
                                         const Vector2D &targetPos,
                                         BehaviorData &data) {
   auto &attack = data.state.attack;
   if (!m_comboAttacks || attack.currentCombo == 0) {
-    executeAttack(entity, targetPos, data);
+    executeAttack(edmIndex, targetPos, data);
     return;
   }
 
-  if (!entity)
+  if (edmIndex == SIZE_MAX)
     return;
 
-  Vector2D entityPos = entity->getPosition();
+  auto &edm = EntityDataManager::Instance();
+  Vector2D entityPos = edm.getHotDataByIndex(edmIndex).transform.position;
 
   // Combo finisher
   if (attack.currentCombo >= m_maxCombo) {
@@ -785,7 +767,7 @@ void AttackBehavior::executeComboAttack(EntityPtr entity,
     attack.currentCombo = 0;
     attack.comboTimer = 0.0f;
   } else {
-    executeAttack(entity, targetPos, data);
+    executeAttack(edmIndex, targetPos, data);
   }
 }
 
@@ -825,7 +807,7 @@ void AttackBehavior::applyAreaOfEffectDamage(const Vector2D & /*entityPos*/,
   // radius and apply damage to them
 }
 
-void AttackBehavior::updateMeleeAttack(EntityPtr entity, BehaviorData &data,
+void AttackBehavior::updateMeleeAttack(size_t edmIndex, BehaviorData &data,
                                        float deltaTime,
                                        const Vector2D &targetPos) {
   AttackState currentState =
@@ -835,19 +817,19 @@ void AttackBehavior::updateMeleeAttack(EntityPtr entity, BehaviorData &data,
     updateSeeking(data);
     break;
   case AttackState::APPROACHING:
-    updateApproaching(entity, data, deltaTime, targetPos);
+    updateApproaching(edmIndex, data, deltaTime, targetPos);
     break;
   case AttackState::POSITIONING:
-    updatePositioning(entity, data, deltaTime, targetPos);
+    updatePositioning(edmIndex, data, deltaTime, targetPos);
     break;
   case AttackState::ATTACKING:
-    updateAttacking(entity, data, targetPos);
+    updateAttacking(edmIndex, data, targetPos);
     break;
   case AttackState::RECOVERING:
     updateRecovering(data);
     break;
   case AttackState::RETREATING:
-    updateRetreating(entity, data, targetPos);
+    updateRetreating(edmIndex, data, targetPos);
     break;
   case AttackState::COOLDOWN:
     updateCooldown(data);
@@ -855,11 +837,12 @@ void AttackBehavior::updateMeleeAttack(EntityPtr entity, BehaviorData &data,
   }
 }
 
-void AttackBehavior::updateRangedAttack(EntityPtr entity, BehaviorData &data,
+void AttackBehavior::updateRangedAttack(size_t edmIndex, BehaviorData &data,
                                         float deltaTime,
                                         const Vector2D &targetPos) {
-  auto &attack = data.state.attack;
-  Vector2D entityPos = entity->getPosition();
+  auto &edm = EntityDataManager::Instance();
+  const auto &attack = data.state.attack;
+  Vector2D entityPos = edm.getHotDataByIndex(edmIndex).transform.position;
   float const distance = attack.targetDistance;
 
   // Ranged attackers need to maintain distance - back off if too close
@@ -878,7 +861,7 @@ void AttackBehavior::updateRangedAttack(EntityPtr entity, BehaviorData &data,
     if (distance <= m_optimalRange) {
       changeState(data, AttackState::POSITIONING);
     } else {
-      moveToPosition(entity, targetPos, m_movementSpeed, deltaTime);
+      moveToPosition(edmIndex, targetPos, m_movementSpeed, deltaTime);
     }
     break;
 
@@ -888,7 +871,7 @@ void AttackBehavior::updateRangedAttack(EntityPtr entity, BehaviorData &data,
       Vector2D const awayFromTarget = (entityPos - targetPos).normalized();
       Vector2D const retreatPos =
           entityPos + awayFromTarget * (m_optimalRange * 0.5f);
-      moveToPosition(entity, retreatPos, m_movementSpeed * 1.2f, deltaTime);
+      moveToPosition(edmIndex, retreatPos, m_movementSpeed * 1.2f, deltaTime);
     } else if (inOptimalRange && attack.canAttack) {
       changeState(data, AttackState::ATTACKING);
     } else if (distance > m_optimalRange * 1.3f) {
@@ -901,12 +884,12 @@ void AttackBehavior::updateRangedAttack(EntityPtr entity, BehaviorData &data,
       float const strafeDir = (attack.strafeDirectionInt > 0) ? 1.0f : -1.0f;
       Vector2D const strafePos =
           entityPos + perpendicular * (40.0f * strafeDir);
-      moveToPosition(entity, strafePos, m_movementSpeed * 0.6f, deltaTime);
+      moveToPosition(edmIndex, strafePos, m_movementSpeed * 0.6f, deltaTime);
     }
     break;
 
   case AttackState::ATTACKING:
-    updateAttacking(entity, data, targetPos);
+    updateAttacking(edmIndex, data, targetPos);
     break;
 
   case AttackState::RECOVERING:
@@ -925,7 +908,7 @@ void AttackBehavior::updateRangedAttack(EntityPtr entity, BehaviorData &data,
     } else {
       Vector2D const awayFromTarget = (entityPos - targetPos).normalized();
       Vector2D const retreatPos = entityPos + awayFromTarget * (m_minimumRange);
-      moveToPosition(entity, retreatPos, m_movementSpeed, deltaTime);
+      moveToPosition(edmIndex, retreatPos, m_movementSpeed, deltaTime);
     }
     break;
 
@@ -935,7 +918,7 @@ void AttackBehavior::updateRangedAttack(EntityPtr entity, BehaviorData &data,
   }
 }
 
-void AttackBehavior::updateChargeAttack(EntityPtr entity, BehaviorData &data,
+void AttackBehavior::updateChargeAttack(size_t edmIndex, BehaviorData &data,
                                         float deltaTime,
                                         const Vector2D &targetPos) {
   auto &attack = data.state.attack;
@@ -946,61 +929,61 @@ void AttackBehavior::updateChargeAttack(EntityPtr entity, BehaviorData &data,
 
   if (attack.isCharging) {
     // Charge towards target at high speed
-    moveToPosition(entity, targetPos, m_movementSpeed * CHARGE_SPEED_MULTIPLIER,
+    moveToPosition(edmIndex, targetPos, m_movementSpeed * CHARGE_SPEED_MULTIPLIER,
                    deltaTime);
 
     // Check if charge is complete or target reached
     if (attack.targetDistance <= m_minimumRange) {
-      executeAttack(entity, targetPos, data);
+      executeAttack(edmIndex, targetPos, data);
       attack.isCharging = false;
       changeState(data, AttackState::RECOVERING);
     }
   } else {
-    updateMeleeAttack(entity, data, deltaTime, targetPos);
+    updateMeleeAttack(edmIndex, data, deltaTime, targetPos);
   }
 }
 
-void AttackBehavior::updateAmbushAttack(EntityPtr entity, BehaviorData &data,
+void AttackBehavior::updateAmbushAttack(size_t edmIndex, BehaviorData &data,
                                         float deltaTime,
                                         const Vector2D &targetPos) {
-  auto &attack = data.state.attack;
+  const auto &attack = data.state.attack;
   // Wait for optimal moment to strike
   if (attack.currentState == static_cast<uint8_t>(AttackState::POSITIONING) &&
       attack.targetDistance <= m_optimalRange) {
     // Ambush when target is close
-    executeAttack(entity, targetPos, data);
+    executeAttack(edmIndex, targetPos, data);
     changeState(data, AttackState::RECOVERING);
   } else {
-    updateMeleeAttack(entity, data, deltaTime, targetPos);
+    updateMeleeAttack(edmIndex, data, deltaTime, targetPos);
   }
 }
 
-void AttackBehavior::updateCoordinatedAttack(EntityPtr entity,
+void AttackBehavior::updateCoordinatedAttack(size_t edmIndex,
                                              BehaviorData &data,
                                              float deltaTime,
                                              const Vector2D &targetPos) {
   if (m_teamwork) {
     coordinateWithTeam(data);
   }
-  updateMeleeAttack(entity, data, deltaTime, targetPos);
+  updateMeleeAttack(edmIndex, data, deltaTime, targetPos);
 }
 
-void AttackBehavior::updateHitAndRun(EntityPtr entity, BehaviorData &data,
+void AttackBehavior::updateHitAndRun(size_t edmIndex, BehaviorData &data,
                                      float deltaTime,
                                      const Vector2D &targetPos) {
-  auto &attack = data.state.attack;
+  const auto &attack = data.state.attack;
   // After attacking, immediately retreat
   if (attack.currentState == static_cast<uint8_t>(AttackState::RECOVERING)) {
     changeState(data, AttackState::RETREATING);
   }
 
-  updateMeleeAttack(entity, data, deltaTime, targetPos);
+  updateMeleeAttack(edmIndex, data, deltaTime, targetPos);
 }
 
-void AttackBehavior::updateBerserkerAttack(EntityPtr entity, BehaviorData &data,
+void AttackBehavior::updateBerserkerAttack(size_t edmIndex, BehaviorData &data,
                                            float deltaTime,
                                            const Vector2D &targetPos) {
-  auto &attack = data.state.attack;
+  const auto &attack = data.state.attack;
   // Aggressive continuous attacks with reduced cooldown
   if (attack.currentState == static_cast<uint8_t>(AttackState::COOLDOWN)) {
     float const timeInState = attack.stateChangeTimer;
@@ -1009,50 +992,51 @@ void AttackBehavior::updateBerserkerAttack(EntityPtr entity, BehaviorData &data,
     }
   }
 
-  updateMeleeAttack(entity, data, deltaTime, targetPos);
+  updateMeleeAttack(edmIndex, data, deltaTime, targetPos);
 }
 
 void AttackBehavior::updateSeeking(BehaviorData &data) {
-  auto &attack = data.state.attack;
+  const auto &attack = data.state.attack;
   if (attack.hasTarget && attack.targetDistance <= m_attackRange * 1.5f) {
     changeState(data, AttackState::APPROACHING);
   }
 }
 
-void AttackBehavior::updateApproaching(EntityPtr entity, BehaviorData &data,
+void AttackBehavior::updateApproaching(size_t edmIndex, BehaviorData &data,
                                        float deltaTime,
                                        const Vector2D &targetPos) {
   if (data.state.attack.targetDistance <= m_optimalRange) {
     changeState(data, AttackState::POSITIONING);
   } else {
-    moveToPosition(entity, targetPos, m_movementSpeed, deltaTime);
+    moveToPosition(edmIndex, targetPos, m_movementSpeed, deltaTime);
   }
 }
 
-void AttackBehavior::updatePositioning(EntityPtr entity, BehaviorData &data,
+void AttackBehavior::updatePositioning(size_t edmIndex, BehaviorData &data,
                                        float deltaTime,
                                        const Vector2D &targetPos) {
-  Vector2D currentPos = entity->getPosition();
+  auto &edm = EntityDataManager::Instance();
+  Vector2D currentPos = edm.getHotDataByIndex(edmIndex).transform.position;
   Vector2D optimalPos =
       calculateOptimalAttackPosition(currentPos, targetPos, data);
 
   if ((currentPos - optimalPos).length() > 15.0f) {
-    moveToPosition(entity, optimalPos, m_movementSpeed, deltaTime);
+    moveToPosition(edmIndex, optimalPos, m_movementSpeed, deltaTime);
   } else if (data.state.attack.canAttack) {
     changeState(data, AttackState::ATTACKING);
   }
 }
 
-void AttackBehavior::updateAttacking(EntityPtr entity, BehaviorData &data,
+void AttackBehavior::updateAttacking(size_t edmIndex, BehaviorData &data,
                                      const Vector2D &targetPos) {
   // Execute the attack
   if (m_specialRoll(m_rng) < m_specialAttackChance &&
       data.state.attack.specialAttackReady) {
-    executeSpecialAttack(entity, targetPos, data);
+    executeSpecialAttack(edmIndex, targetPos, data);
   } else if (m_comboAttacks) {
-    executeComboAttack(entity, targetPos, data);
+    executeComboAttack(edmIndex, targetPos, data);
   } else {
-    executeAttack(entity, targetPos, data);
+    executeAttack(edmIndex, targetPos, data);
   }
 
   changeState(data, AttackState::RECOVERING);
@@ -1063,16 +1047,17 @@ void AttackBehavior::updateRecovering(BehaviorData & /*data*/) {
   // State transition handled by updateStateTimer
 }
 
-void AttackBehavior::updateRetreating(EntityPtr entity, BehaviorData &data,
+void AttackBehavior::updateRetreating(size_t edmIndex, BehaviorData &data,
                                       const Vector2D &targetPos) {
+  auto &edm = EntityDataManager::Instance();
   auto &attack = data.state.attack;
   // Move away from target
-  Vector2D entityPos = entity->getPosition();
+  Vector2D entityPos = edm.getHotDataByIndex(edmIndex).transform.position;
   Vector2D retreatDir = normalizeDirection(entityPos - targetPos);
 
   Vector2D retreatVelocity =
       retreatDir * (m_movementSpeed * RETREAT_SPEED_MULTIPLIER);
-  entity->setVelocity(retreatVelocity);
+  edm.getHotDataByIndex(edmIndex).transform.velocity = retreatVelocity;
 
   // Stop retreating if far enough or health recovered
   if (attack.targetDistance > m_attackRange * 2.0f || !shouldRetreat(data)) {
@@ -1086,30 +1071,31 @@ void AttackBehavior::updateCooldown(BehaviorData & /*data*/) {
   // State transition handled by updateStateTimer
 }
 
-void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
+void AttackBehavior::moveToPosition(size_t edmIndex, const Vector2D &targetPos,
                                     float speed, float /*deltaTime*/) {
-  if (!entity || speed <= 0.0f)
+  if (edmIndex == SIZE_MAX || speed <= 0.0f)
     return;
 
-  // Direct velocity-based movement for EntityPtr version
-  // This is legacy - the hot path uses BehaviorContext::transform.velocity
-  Vector2D direction = targetPos - entity->getPosition();
+  auto &edm = EntityDataManager::Instance();
+  Vector2D entityPos = edm.getHotDataByIndex(edmIndex).transform.position;
+  Vector2D direction = targetPos - entityPos;
   float distance = direction.length();
   if (distance > 5.0f) {
     direction = direction * (1.0f / distance);
-    entity->setVelocity(direction * speed);
+    edm.getHotDataByIndex(edmIndex).transform.velocity = direction * speed;
   } else {
-    entity->setVelocity(Vector2D(0, 0));
+    edm.getHotDataByIndex(edmIndex).transform.velocity = Vector2D(0, 0);
   }
 }
 
-void AttackBehavior::maintainDistance(EntityPtr entity,
+void AttackBehavior::maintainDistance(size_t edmIndex,
                                       const Vector2D &targetPos,
                                       float desiredDistance, float deltaTime) {
-  if (!entity)
+  if (edmIndex == SIZE_MAX)
     return;
 
-  Vector2D entityPos = entity->getPosition();
+  auto &edm = EntityDataManager::Instance();
+  Vector2D entityPos = edm.getHotDataByIndex(edmIndex).transform.position;
 
   // PERFORMANCE: Use squared distance for comparison
   float const currentDistanceSquared = (entityPos - targetPos).lengthSquared();
@@ -1120,36 +1106,38 @@ void AttackBehavior::maintainDistance(EntityPtr entity,
   if (difference > toleranceSquared) {
     Vector2D direction = normalizeDirection(entityPos - targetPos);
     Vector2D const desiredPos = targetPos + direction * desiredDistance;
-    moveToPosition(entity, desiredPos, m_movementSpeed, deltaTime);
+    moveToPosition(edmIndex, desiredPos, m_movementSpeed, deltaTime);
   }
 }
 
-void AttackBehavior::circleStrafe(EntityPtr entity, const Vector2D &targetPos,
+void AttackBehavior::circleStrafe(size_t edmIndex, const Vector2D &targetPos,
                                   BehaviorData &data, float deltaTime) {
-  if (!entity || !m_circleStrafe)
+  if (edmIndex == SIZE_MAX || !m_circleStrafe)
     return;
 
+  auto &edm = EntityDataManager::Instance();
   auto &attack = data.state.attack;
   if (attack.strafeTimer >= STRAFE_INTERVAL) {
     attack.strafeDirectionInt *= -1; // Change direction
     attack.strafeTimer = 0.0f;
   }
 
-  Vector2D entityPos = entity->getPosition();
+  Vector2D entityPos = edm.getHotDataByIndex(edmIndex).transform.position;
   Vector2D strafePos = calculateStrafePosition(entityPos, targetPos, data);
-  moveToPosition(entity, strafePos, m_movementSpeed, deltaTime);
+  moveToPosition(edmIndex, strafePos, m_movementSpeed, deltaTime);
 }
 
-void AttackBehavior::performFlankingManeuver(EntityPtr entity,
+void AttackBehavior::performFlankingManeuver(size_t edmIndex,
                                              const Vector2D &targetPos,
                                              BehaviorData &data,
                                              float deltaTime) {
-  if (!entity || !m_flankingEnabled)
+  if (edmIndex == SIZE_MAX || !m_flankingEnabled)
     return;
 
-  Vector2D entityPos = entity->getPosition();
+  auto &edm = EntityDataManager::Instance();
+  Vector2D entityPos = edm.getHotDataByIndex(edmIndex).transform.position;
   Vector2D flankPos = calculateFlankingPosition(entityPos, targetPos);
-  moveToPosition(entity, flankPos, m_movementSpeed, deltaTime);
+  moveToPosition(edmIndex, flankPos, m_movementSpeed, deltaTime);
   data.state.attack.flanking = true;
 }
 

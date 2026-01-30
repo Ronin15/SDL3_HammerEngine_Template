@@ -12,11 +12,6 @@
 #include <chrono>
 #include <format>
 
-// Logger macros for BackgroundSimulationManager
-#define BGSIM_DEBUG(msg) HAMMER_DEBUG("BackgroundSim", msg)
-#define BGSIM_INFO(msg) HAMMER_INFO("BackgroundSim", msg)
-#define BGSIM_WARNING(msg) HAMMER_WARN("BackgroundSim", msg)
-#define BGSIM_ERROR(msg) HAMMER_ERROR("BackgroundSim", msg)
 
 // ============================================================================
 // LIFECYCLE
@@ -24,7 +19,7 @@
 
 bool BackgroundSimulationManager::init() {
     if (m_initialized.load(std::memory_order_acquire)) {
-        BGSIM_WARNING("BackgroundSimulationManager already initialized");
+        BGSIM_WARN("BackgroundSimulationManager already initialized");
         return true;
     }
 
@@ -160,10 +155,11 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
         HammerEngine::SystemType::AI, entityCount, optimalWorkerCount);
 
-    // Decide threading strategy
-    bool useThreading = entityCount >= MIN_ENTITIES_FOR_THREADING &&
-                        batchCount > 1 &&
-                        batchSize >= MIN_BATCH_SIZE;
+    // Decide threading strategy using adaptive threshold from WorkerBudget
+    // WorkerBudget is the AUTHORITATIVE source - no manager overrides
+    auto decision = budgetMgr.shouldUseThreading(
+        HammerEngine::SystemType::AI, entityCount);
+    bool useThreading = decision.shouldThread;
 
     if (useThreading) {
         processMultiThreaded(fixedDeltaTime, m_backgroundIndices, batchCount, batchSize);
@@ -181,6 +177,13 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     m_perf.lastEntitiesProcessed = entityCount;
     m_perf.lastUpdateMs = elapsedMs;
     m_perf.updateAverage(elapsedMs);
+
+    // Report results for unified adaptive tuning (uses AI system type)
+    if (entityCount > 0) {
+        budgetMgr.reportExecution(HammerEngine::SystemType::AI,
+                                  entityCount, useThreading,
+                                  batchCount, elapsedMs);
+    }
 
 #ifndef NDEBUG
     // Rolling log every 60 seconds (600 updates at 10Hz)

@@ -13,7 +13,6 @@
 #include "managers/WorldManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
-#include "entities/NPC.hpp"
 #include "utils/Vector2D.hpp"
 #include "world/WorldData.hpp"
 #include <chrono>

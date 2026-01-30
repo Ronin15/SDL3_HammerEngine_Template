@@ -1,0 +1,37 @@
+{
+    "roles": [
+        {
+            "id": "Pup",
+            "name": "Pup",
+            "healthMult": 0.5,
+            "staminaMult": 1.2,
+            "moveSpeedMult": 1.1,
+            "attackDamageMult": 0.3,
+            "suggestedBehavior": "Follow",
+            "basePriority": 2,
+            "defaultFaction": 2
+        },
+        {
+            "id": "Adult",
+            "name": "Adult",
+            "healthMult": 1.0,
+            "staminaMult": 1.0,
+            "moveSpeedMult": 1.0,
+            "attackDamageMult": 1.0,
+            "suggestedBehavior": "Wander",
+            "basePriority": 4,
+            "defaultFaction": 2
+        },
+        {
+            "id": "Alpha",
+            "name": "Alpha",
+            "healthMult": 1.5,
+            "staminaMult": 1.3,
+            "moveSpeedMult": 1.1,
+            "attackDamageMult": 1.5,
+            "suggestedBehavior": "Guard",
+            "basePriority": 7,
+            "defaultFaction": 2
+        }
+    ]
+}

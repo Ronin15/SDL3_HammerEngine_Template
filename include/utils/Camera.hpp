@@ -51,7 +51,7 @@ public:
         bool clampToWorldBounds{true};  // Whether to clamp camera to world bounds
 
         // Zoom configuration
-        std::vector<float> zoomLevels{1.0f, 1.5f, 2.0f};  // Discrete zoom levels
+        std::vector<float> zoomLevels{1.0f, 2.0f, 3.0f};  // Integer zoom levels (pixel-perfect)
         int defaultZoomLevel{0};                           // Starting zoom level index
 
         // Validation
@@ -94,9 +94,9 @@ public:
      * @brief Viewport structure for rendering calculations
      */
     struct Viewport {
-        float width{1920.0f};
-        float height{1080.0f};
-        
+        float width{0.0f};   // Must be set via constructor or setViewport()
+        float height{0.0f};  // Must be set via constructor or setViewport()
+
         bool isValid() const {
             return width > 0.0f && height > 0.0f;
         }
@@ -231,7 +231,7 @@ public:
      * @brief Sets the target entity for following mode
      * @param target Weak pointer to target entity
      */
-    void setTarget(std::weak_ptr<Entity> target);
+    void setTarget(const std::weak_ptr<Entity>& target);
     
     /**
      * @brief Sets target using a function that returns position
@@ -295,6 +295,10 @@ public:
      *
      * In Free/Fixed modes, uses camera's own interpolation and returns the
      * camera's interpolated center position.
+     *
+     * NOTE: This method stores m_previousPosition for next frame's interpolation.
+     * Called once per visual frame from render(), ensuring correct interpolation
+     * even when update() runs multiple times per frame (fixed timestep catchup).
      *
      * @param offsetX Output: camera X offset (top-left of view)
      * @param offsetY Output: camera Y offset (top-left of view)
@@ -428,11 +432,11 @@ public:
     void syncViewportWithEngine();
 
 private:
-    // Core camera state
-    Vector2D m_position{960.0f, 540.0f};    // Current camera position (center of 1920x1080)
-    Vector2D m_targetPosition{960.0f, 540.0f}; // Target position for interpolation
-    Viewport m_viewport{1920.0f, 1080.0f};    // Camera viewport size
-    Bounds m_worldBounds{0.0f, 0.0f, 1920.0f, 1080.0f}; // World boundaries
+    // Core camera state (initialized via constructor)
+    Vector2D m_position{0.0f, 0.0f};        // Current camera position
+    Vector2D m_targetPosition{0.0f, 0.0f};  // Target position for interpolation
+    Viewport m_viewport{};                   // Camera viewport size (set via constructor)
+    Bounds m_worldBounds{};                  // World boundaries (auto-synced from WorldManager)
     Config m_config{};                       // Camera configuration
     Mode m_mode{Mode::Free};                // Current camera mode
     
@@ -476,7 +480,7 @@ private:
     // Event firing helpers
     void firePositionChangedEvent(const Vector2D& oldPosition, const Vector2D& newPosition);
     void fireModeChangedEvent(Mode oldMode, Mode newMode);
-    void fireTargetChangedEvent(std::weak_ptr<Entity> oldTarget, std::weak_ptr<Entity> newTarget);
+    void fireTargetChangedEvent(const std::weak_ptr<Entity>& oldTarget, const std::weak_ptr<Entity>& newTarget);
     void fireShakeStartedEvent(float duration, float intensity);
     void fireShakeEndedEvent();
     void fireZoomChangedEvent(float oldZoom, float newZoom);

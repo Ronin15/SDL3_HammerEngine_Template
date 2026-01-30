@@ -87,6 +87,14 @@ constexpr bool hasAI(EntityKind kind) noexcept {
     return kind == EntityKind::NPC;
 }
 
+/// Returns true if this entity kind uses the static pool in EntityDataManager
+/// Static pool entities: Resources that don't move and use immediate (not deferred) destruction
+constexpr bool usesStaticPool(EntityKind kind) noexcept {
+    return kind == EntityKind::DroppedItem ||
+           kind == EntityKind::Container ||
+           kind == EntityKind::Harvestable;
+}
+
 /// Returns true if this entity kind should be rendered
 constexpr bool isRenderable(EntityKind kind) noexcept {
     return kind != EntityKind::Trigger;  // Only triggers are invisible

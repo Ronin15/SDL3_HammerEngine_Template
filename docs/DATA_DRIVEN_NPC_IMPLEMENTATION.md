@@ -43,17 +43,21 @@ struct AnimationConfig {
     int row;           // Sprite sheet row (0-based)
     int frameCount;    // Number of frames in animation
     int speed;         // Milliseconds per frame
-    bool loop;         // Whether animation loops
+    bool loop{true};   // Whether animation loops (default true, Player uses false for attacks)
 };
 ```
 
-**Current NPC usage:**
+**NPC usage (data-driven from JSON):**
+- NPCs always loop animations (loop defaults to true)
+- Config loaded from `npc_types.json` - no loop field needed
+
+**Player usage:**
 ```cpp
-m_animationMap["idle"] = AnimationConfig{0, 2, 150, true};     // Row 0, 2 frames
-m_animationMap["walking"] = AnimationConfig{1, 4, 100, true};  // Row 1, 4 frames
+m_animationMap["idle"] = AnimationConfig{0, 2, 150};           // Row 0, 2 frames (loops)
+m_animationMap["attacking"] = AnimationConfig{0, 2, 80, false}; // Play once
 ```
 
-**Data-driven usage:** Pass AnimationConfig at spawn time → values extracted into NPCRenderData.
+**Data-driven usage:** NPC types defined in `npc_types.json` → values extracted into NPCRenderData.
 
 **Note:** NPC/Entity `playAnimation()` adds +1 to `row` for `TextureManager`'s 1-based rows.  
 `NPCRenderController` renders via SDL directly, so keep rows 0-based.
@@ -1207,3 +1211,42 @@ If issues arise, revert in this order:
 3. Remove NPCRenderController from GameStates
 4. Delete NPCRenderController files
 5. Remove NPCRenderData from EntityDataManager
+
+---
+
+## Removed Features
+
+The following NPC class features were intentionally removed in this implementation:
+
+- **Inventory System**: NPC inventory, trading, and shop functionality removed. Can be re-added as data-driven InventoryData component in EntityDataManager if needed.
+
+- **Loot Drops**: NPC loot drop system removed. Can be re-added as data-driven LootData component in EntityDataManager if needed.
+
+- **Extended Animation States**: Only Idle/Moving animations implemented. Attacking, Hurt, Recovering, Dying states can be added by extending NPCRenderData with:
+  ```cpp
+  struct NPCRenderData {
+      // ... existing fields ...
+      uint8_t animationState;   // Idle=0, Moving=1, Attacking=2, Hurt=3, Dying=4
+      float stateTimer;         // Time in current state
+      float stateDuration;      // Auto-transition duration (0=indefinite)
+      uint8_t attackRow, hurtRow, dyingRow;
+      uint8_t numAttackFrames, numHurtFrames, numDyingFrames;
+  };
+  ```
+
+- **NPC State Machine**: The state machine pattern (NPCIdleState, NPCWalkingState, etc.) was removed. Animation is now purely velocity-based. To add state-dependent behavior, use AIBehavior implementations instead.
+
+### Retrieving Removed Code
+
+The removed NPC class and state files are preserved in git history:
+
+```bash
+# View the deleted NPC class
+git show HEAD~1:include/entities/NPC.hpp
+
+# View deleted state files
+git show HEAD~1:include/entities/npcStates/NPCIdleState.hpp
+
+# Restore a specific file if needed
+git checkout HEAD~1 -- include/entities/NPC.hpp
+```

@@ -11,6 +11,10 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#endif
+
 #include <thread>
 #include <chrono>
 
@@ -97,15 +101,16 @@ bool MainMenuState::enter() {
 }
 
 void MainMenuState::update([[maybe_unused]] float deltaTime) {
-  // UI updates handled in render() for thread safety
+  // Process UI input (click detection, hover states, callbacks)
+  auto& ui = UIManager::Instance();
+  if (!ui.isShutdown()) {
+    ui.update(0.0f);
+  }
 }
 
 void MainMenuState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
-  // Update and render UI components through UIManager using cached renderer for cleaner API
+  // Render UI components (input handled in update())
   auto& ui = UIManager::Instance();
-  if (!ui.isShutdown()) {
-      ui.update(0.0); // UI updates are not time-dependent in this state
-  }
   ui.render(renderer);
 }
 
@@ -158,4 +163,25 @@ void MainMenuState::handleInput() {
 std::string MainMenuState::getName() const {
   return "MainMenuState";
 }
+
+#ifdef USE_SDL3_GPU
+void MainMenuState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                                       [[maybe_unused]] float interpolationAlpha) {
+  // MainMenuState uses UIManager for all rendering
+  // UIManager records its vertices (buttons, panels, text)
+  auto& ui = UIManager::Instance();
+  if (!ui.isShutdown()) {
+    ui.recordGPUVertices(gpuRenderer);
+  }
+}
+
+void MainMenuState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+                                 SDL_GPURenderPass* swapchainPass) {
+  // Render UIManager components to swapchain
+  auto& ui = UIManager::Instance();
+  if (!ui.isShutdown()) {
+    ui.renderGPU(gpuRenderer, swapchainPass);
+  }
+}
+#endif
 

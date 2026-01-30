@@ -8,19 +8,20 @@
 
 /**
  * @file DayNightController.hpp
- * @brief Controller that tracks time periods and dispatches TimePeriodChangedEvent
+ * @brief Controller that tracks time periods and manages GPU lighting
  *
  * Subscribes to HourChangedEvent and dispatches TimePeriodChangedEvent when the
- * time period changes (Morning/Day/Evening/Night). Does NOT render - rendering
- * is handled by subscribers to the TimePeriodChangedEvent.
+ * time period changes (Morning/Day/Evening/Night). Manages GPU lighting by
+ * interpolating ambient colors and updating GPURenderer each frame.
  *
  * Ownership: GameState owns the controller instance (not a singleton).
  *
  * Event flow:
  *   GameTimeManager::dispatchTimeEvents() -> HourChangedEvent (Deferred)
  *     -> DayNightController detects period change
- *     -> Dispatches TimePeriodChangedEvent with visual config
- *     -> GamePlayState (or other subscribers) handle rendering
+ *     -> Sets target lighting values, dispatches TimePeriodChangedEvent
+ *     -> update() interpolates current toward target each frame
+ *     -> GPURenderer composite shader applies lighting
  */
 
 #include "controllers/ControllerBase.hpp"
@@ -42,6 +43,13 @@ public:
      * @note Called by ControllerRegistry::subscribeAll()
      */
     void subscribe() override;
+
+    /**
+     * @brief Update lighting interpolation and GPU state
+     * @param deltaTime Time since last frame in seconds
+     * @note Call this each frame from the owning game state's update()
+     */
+    void update(float deltaTime);
 
     /**
      * @brief Get controller name for debugging
@@ -93,9 +101,27 @@ private:
      */
     static TimePeriod hourToTimePeriod(float hour);
 
+    /**
+     * @brief Update GPU renderer with current lighting values
+     */
+    void updateGPULighting();
+
     // Current state
     TimePeriod m_currentPeriod{TimePeriod::Day};
     TimePeriod m_previousPeriod{TimePeriod::Day};
+
+    // Lighting interpolation state (0-255 range, matching TimePeriodVisuals)
+    float m_currentR{255.0f};
+    float m_currentG{255.0f};
+    float m_currentB{255.0f};
+    float m_currentA{0.0f};
+    float m_targetR{255.0f};
+    float m_targetG{255.0f};
+    float m_targetB{255.0f};
+    float m_targetA{0.0f};
+
+    // Transition timing
+    static constexpr float TRANSITION_DURATION{30.0f};  // seconds for full transition
 };
 
 #endif // DAY_NIGHT_CONTROLLER_HPP

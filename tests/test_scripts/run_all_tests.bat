@@ -103,6 +103,7 @@ for %%T in (
     run_ai_manager_edm_integration_tests.bat
     run_collision_manager_edm_integration_tests.bat
     run_pathfinder_manager_edm_integration_tests.bat
+    run_gpu_tests.bat
 ) do (
     echo.
     echo Running test: %%T
@@ -150,6 +151,8 @@ for %%T in (
     run_pathfinder_benchmark.bat
     run_simd_benchmark.bat
     run_integrated_benchmark.bat
+    run_background_simulation_manager_benchmark.bat
+    run_adaptive_threading_analysis.bat
 ) do (
     echo.
     echo Running benchmark: %%T

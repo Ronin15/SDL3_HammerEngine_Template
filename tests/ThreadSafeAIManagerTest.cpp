@@ -18,52 +18,33 @@
 #include <vector>
 
 #include "core/ThreadSystem.hpp"
-#include "entities/Entity.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/EntityDataManager.hpp"
 
-// Simple test entity - EDM Migration: checks EDM data for updates
-class TestEntity : public Entity {
+// Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
+class TestNPC {
 public:
-  TestEntity(const Vector2D &pos = Vector2D(0, 0)) {
-    // Register with EntityDataManager first (required before setPosition)
-    registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
+  explicit TestNPC(const Vector2D &pos = Vector2D(0, 0)) {
+    auto& edm = EntityDataManager::Instance();
+    m_handle = edm.createNPCWithRaceClass(pos, "Human", "Guard");
     m_initialPosition = pos;
-    setTextureID("test_texture");
-    setWidth(32);
-    setHeight(32);
   }
 
-  static std::shared_ptr<TestEntity> create(const Vector2D &pos = Vector2D(0,
-                                                                           0)) {
-    return std::make_shared<TestEntity>(pos);
+  static std::shared_ptr<TestNPC> create(const Vector2D &pos = Vector2D(0, 0)) {
+    return std::make_shared<TestNPC>(pos);
   }
 
-  void update(float deltaTime) override {
-    (void)deltaTime; // Entity::update() not used by AIManager anymore
-  }
+  [[nodiscard]] EntityHandle getHandle() const { return m_handle; }
 
-  void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override { (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha; }
-  void clean() override {}
-  [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
-
-  void updatePosition(const Vector2D &velocity) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    Vector2D pos = getPosition();
-    pos += velocity;
-    setPosition(pos);
-  }
-
-  // EDM Migration: Check if position changed in EDM (AIManager writes directly to EDM)
+  // Check if position changed in EDM (AIManager writes directly to EDM)
   int getUpdateCount() const {
-    auto handle = getHandle();
-    if (!handle.isValid()) return 0;
+    if (!m_handle.isValid()) return 0;
 
     auto& edm = EntityDataManager::Instance();
-    size_t index = edm.getIndex(handle);
+    size_t index = edm.getIndex(m_handle);
     if (index == SIZE_MAX) return 0;
 
     auto& transform = edm.getTransformByIndex(index);
@@ -78,10 +59,9 @@ public:
   }
 
   void resetUpdateCount() {
-    auto handle = getHandle();
-    if (handle.isValid()) {
+    if (m_handle.isValid()) {
       auto& edm = EntityDataManager::Instance();
-      size_t index = edm.getIndex(handle);
+      size_t index = edm.getIndex(m_handle);
       if (index != SIZE_MAX) {
         m_initialPosition = edm.getTransformByIndex(index).position;
       }
@@ -89,7 +69,7 @@ public:
   }
 
 private:
-  std::mutex m_mutex;
+  EntityHandle m_handle;
   Vector2D m_initialPosition;
 };
 
@@ -179,7 +159,7 @@ public: // Make these public for test access
   std::string m_lastMessage;
 
   // Performance optimization: cache entity cast and movement index
-  mutable std::shared_ptr<TestEntity> m_cachedTestEntity;
+  mutable std::shared_ptr<TestNPC> m_cachedTestNPC;
   mutable std::atomic<size_t> m_movementIndex{0};
 };
 
@@ -353,8 +333,8 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorAssignment,
                         ThreadedAITestFixture) {
   std::cout << "Starting TestThreadSafeBehaviorAssignment..." << std::endl;
   const int NUM_ENTITIES = 100;
-  std::vector<std::shared_ptr<TestEntity>> entities;
-  std::vector<std::shared_ptr<TestEntity>> entityPtrs;
+  std::vector<std::shared_ptr<TestNPC>> entities;
+  std::vector<std::shared_ptr<TestNPC>> entityPtrs;
   std::shared_ptr<ThreadTestBehavior> behavior =
       std::make_shared<ThreadTestBehavior>(0);
 
@@ -368,7 +348,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorAssignment,
 
   // Prepare entities
   for (int i = 0; i < NUM_ENTITIES; ++i) {
-    auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
+    auto entity = std::make_shared<TestNPC>(Vector2D(i * 10.0f, i * 10.0f));
     entities.push_back(entity);
     entityPtrs.push_back(entity);
     // Entities start without behaviors - will be assigned by worker threads below
@@ -414,7 +394,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
   const int NUM_BEHAVIORS = 5;
   const int UPDATES_PER_BEHAVIOR = 10;
 
-  std::vector<std::shared_ptr<TestEntity>> entities;
+  std::vector<std::shared_ptr<TestNPC>> entities;
   std::vector<std::shared_ptr<ThreadTestBehavior>> behaviors;
 
   // Register behaviors
@@ -433,7 +413,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
 
   // Create entities and assign behaviors
   for (int i = 0; i < NUM_ENTITIES; ++i) {
-    auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
+    auto entity = std::make_shared<TestNPC>(Vector2D(i * 10.0f, i * 10.0f));
     entities.push_back(entity);
     std::string behaviorName = "Behavior" + std::to_string(i % NUM_BEHAVIORS);
     AIManager::Instance().assignBehavior(entity->getHandle(), behaviorName);
@@ -496,9 +476,9 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessaging, ThreadedAITestFixture) {
   std::cout << "Registered MessageTest behavior" << std::endl;
 
   // Create entities with IDs for easier tracking
-  std::vector<std::shared_ptr<TestEntity>> entities;
+  std::vector<std::shared_ptr<TestNPC>> entities;
   for (int i = 0; i < NUM_ENTITIES; ++i) {
-    auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
+    auto entity = std::make_shared<TestNPC>(Vector2D(i * 10.0f, i * 10.0f));
     entities.push_back(entity);
 
     // Explicitly assign the behavior to each entity
@@ -614,10 +594,10 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCacheInvalidation,
   AIManager::Instance().registerBehavior("CacheTest", behavior);
 
   // Create a pool of entities
-  std::vector<std::shared_ptr<TestEntity>> entities;
-  std::vector<EntityPtr> entityPtrs;
+  std::vector<std::shared_ptr<TestNPC>> entities;
+  std::vector<std::shared_ptr<TestNPC>> entityPtrs;
   for (int i = 0; i < NUM_ENTITIES; ++i) {
-    auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
+    auto entity = std::make_shared<TestNPC>(Vector2D(i * 10.0f, i * 10.0f));
     entities.push_back(entity);
     entityPtrs.push_back(entity);
   }
@@ -686,7 +666,7 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentBehaviorProcessing,
   const int NUM_ENTITIES = 10; // Reduced for stability
 
   // Create and set a player entity to ensure consistent updates
-  auto player = std::make_shared<TestEntity>(Vector2D(0, 0));
+  auto player = std::make_shared<TestNPC>(Vector2D(0, 0));
   AIManager::Instance().setPlayerHandle(player->getHandle());
 
   // Register a behavior
@@ -699,9 +679,9 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentBehaviorProcessing,
   AIManager::Instance().registerBehavior("ConcurrentTest", behavior);
 
   // Create entities
-  std::vector<std::shared_ptr<TestEntity>> entities;
+  std::vector<std::shared_ptr<TestNPC>> entities;
   for (int i = 0; i < NUM_ENTITIES; ++i) {
-    auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
+    auto entity = std::make_shared<TestNPC>(Vector2D(i * 10.0f, i * 10.0f));
     entities.push_back(entity);
     AIManager::Instance().assignBehavior(entity->getHandle(), "ConcurrentTest");
   }
@@ -752,8 +732,8 @@ BOOST_FIXTURE_TEST_CASE(StressTestThreadSafeAIManager, ThreadedAITestFixture) {
   const int OPERATIONS_PER_THREAD = 100; // Number of operations per thread
 
   std::vector<std::shared_ptr<ThreadTestBehavior>> behaviors;
-  std::vector<std::shared_ptr<TestEntity>> entities;
-  std::vector<std::shared_ptr<TestEntity>> entityPtrs;
+  std::vector<std::shared_ptr<TestNPC>> entities;
+  std::vector<std::shared_ptr<TestNPC>> entityPtrs;
 
   try {
     // Register behaviors
@@ -776,7 +756,7 @@ BOOST_FIXTURE_TEST_CASE(StressTestThreadSafeAIManager, ThreadedAITestFixture) {
     // Create test entities
     for (int i = 0; i < NUM_ENTITIES; ++i) {
       auto entity =
-          std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
+          std::make_shared<TestNPC>(Vector2D(i * 10.0f, i * 10.0f));
       entities.push_back(entity);
       entityPtrs.push_back(entity);
     }
@@ -942,7 +922,7 @@ BOOST_FIXTURE_TEST_CASE(TestWaitForAsyncBatchCompletion, ThreadedAITestFixture) 
   const int NUM_ENTITIES = 100;
 
   // Create and set a player entity for distance optimization
-  auto player = std::make_shared<TestEntity>(Vector2D(500, 500));
+  auto player = std::make_shared<TestNPC>(Vector2D(500, 500));
   AIManager::Instance().setPlayerHandle(player->getHandle());
 
   // Register a behavior
@@ -954,10 +934,10 @@ BOOST_FIXTURE_TEST_CASE(TestWaitForAsyncBatchCompletion, ThreadedAITestFixture) 
   AIManager::Instance().registerBehavior("BatchTest", behavior);
 
   // Create entities with behaviors
-  std::vector<std::shared_ptr<TestEntity>> entities;
+  std::vector<std::shared_ptr<TestNPC>> entities;
   entities.reserve(NUM_ENTITIES);
   for (int i = 0; i < NUM_ENTITIES; ++i) {
-    auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
+    auto entity = std::make_shared<TestNPC>(Vector2D(i * 10.0f, i * 10.0f));
     entities.push_back(entity);
     AIManager::Instance().assignBehavior(entity->getHandle(), "BatchTest");
   }
@@ -995,7 +975,7 @@ BOOST_FIXTURE_TEST_CASE(TestPrepareForStateTransition, ThreadedAITestFixture) {
   const int NUM_ENTITIES = 30;
 
   // Create a player entity
-  auto player = std::make_shared<TestEntity>(Vector2D(500, 500));
+  auto player = std::make_shared<TestNPC>(Vector2D(500, 500));
   AIManager::Instance().setPlayerHandle(player->getHandle());
 
   // Register a behavior
@@ -1007,10 +987,10 @@ BOOST_FIXTURE_TEST_CASE(TestPrepareForStateTransition, ThreadedAITestFixture) {
   AIManager::Instance().registerBehavior("TransitionTest", behavior);
 
   // Create entities
-  std::vector<std::shared_ptr<TestEntity>> entities;
+  std::vector<std::shared_ptr<TestNPC>> entities;
   entities.reserve(NUM_ENTITIES);
   for (int i = 0; i < NUM_ENTITIES; ++i) {
-    auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
+    auto entity = std::make_shared<TestNPC>(Vector2D(i * 10.0f, i * 10.0f));
     entities.push_back(entity);
     AIManager::Instance().assignBehavior(entity->getHandle(), "TransitionTest");
   }

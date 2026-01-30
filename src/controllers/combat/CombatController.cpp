@@ -5,7 +5,6 @@
 
 #include "controllers/combat/CombatController.hpp"
 #include "core/Logger.hpp"
-#include "entities/NPC.hpp"
 #include "entities/Player.hpp"
 #include "events/CombatEvent.hpp"
 #include "events/EntityEvents.hpp"
@@ -234,30 +233,6 @@ void CombatController::updateTargetTimer(float deltaTime) {
       COMBAT_DEBUG("Target display timer expired");
     }
   }
-}
-
-std::shared_ptr<NPC> CombatController::getTargetedNPC() const {
-  // Phase 2 EDM Migration: Use handle-based lookup
-  if (!m_targetedHandle.isValid()) {
-    return nullptr;
-  }
-
-  // Check if target is still alive via EDM
-  auto &edm = EntityDataManager::Instance();
-  size_t idx = edm.getIndex(m_targetedHandle);
-  if (idx == SIZE_MAX) {
-    return nullptr;
-  }
-
-  const auto &hotData = edm.getHotDataByIndex(idx);
-  if (!hotData.isAlive()) {
-    return nullptr;
-  }
-
-  // NOTE: Returning nullptr since we can't create NPC from handle alone
-  // UI should use getTargetedHandle() + EDM for data access
-  // This method is kept for backwards compatibility but should be deprecated
-  return nullptr;
 }
 
 bool CombatController::hasActiveTarget() const {

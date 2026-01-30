@@ -724,7 +724,7 @@ void GuardBehavior::updateRoamingGuard(BehaviorContext &ctx,
 }
 
 void GuardBehavior::updateAlertGuard(BehaviorContext &ctx, BehaviorData &data) {
-  auto &guard = data.state.guard;
+  const auto &guard = data.state.guard;
 
   // Alert guard moves faster and has heightened awareness
   if (guard.currentAlertLevel >= 2) { // INVESTIGATING or higher
@@ -853,12 +853,12 @@ Vector2D GuardBehavior::generateRoamTarget() const {
 bool GuardBehavior::isAtPosition(const Vector2D &currentPos,
                                  const Vector2D &targetPos,
                                  float threshold) const {
-  return (currentPos - targetPos).length() <= threshold;
+  return (currentPos - targetPos).lengthSquared() <= threshold * threshold;
 }
 
 bool GuardBehavior::isWithinGuardArea(const Vector2D &position) const {
   if (m_useCircularArea) {
-    return (position - m_areaCenter).length() <= m_areaRadius;
+    return (position - m_areaCenter).lengthSquared() <= m_areaRadius * m_areaRadius;
   } else {
     return (position.getX() >= m_areaTopLeft.getX() &&
             position.getX() <= m_areaBottomRight.getX() &&

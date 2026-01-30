@@ -69,14 +69,6 @@ void EventManager::enableThreading(bool enable) {
 bool EventManager::isThreadingEnabled() const {
   return m_threadingEnabled.load();
 }
-
-void EventManager::setThreadingThreshold(size_t threshold) {
-  m_threadingThreshold = threshold;
-}
-
-size_t EventManager::getThreadingThreshold() const {
-  return m_threadingThreshold;
-}
 #endif
 
 void EventManager::setGlobalPause(bool paused) {
@@ -102,8 +94,8 @@ bool EventManager::triggerSceneChange(const std::string &sceneId,
 }
 
 bool EventManager::triggerNPCSpawn(const std::string &npcType, float x,
-                                   float y) const {
-  return spawnNPC(npcType, x, y);
+                                   float y, const std::string &npcRace) const {
+  return spawnNPC(npcType, x, y, 1, 0.0f, npcRace);
 }
 
 bool EventManager::init() {
@@ -179,6 +171,16 @@ bool EventManager::init() {
 
   m_lastUpdateTime.store(getCurrentTimeNanos());
   m_initialized.store(true);
+
+  // Register internal handler for NPCSpawn events (pure event-driven architecture)
+  // This handler executes the spawn action when the event is dispatched
+  registerHandler(EventTypeId::NPCSpawn, [](const EventData &data) {
+    if (!data.isActive() || !data.event) return;
+    auto npcEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(data.event);
+    if (npcEvent) {
+      npcEvent->execute();
+    }
+  });
 
   EVENT_INFO("EventManager initialized successfully with type-indexed storage");
   return true;
@@ -304,9 +306,35 @@ void EventManager::update() {
     return;
   }
 
-  // NOTE: Early exit optimization removed - some tests dispatch events during
-  // update that need to be processed in the same frame. Keep for now.
-  // TODO: Re-evaluate this optimization with deferred event dispatch
+  // EARLY EXIT: Skip processing if no registered events AND no pending dispatches
+  {
+    // Check dispatch queue first (most common case for trigger methods)
+    bool hasDispatchPending = false;
+    {
+      std::lock_guard<std::mutex> dispatchLock(m_dispatchMutex);
+      hasDispatchPending = !m_pendingDispatch.empty();
+    }
+
+    // Check registered events if no pending dispatches
+    bool hasRegisteredEvents = false;
+    if (!hasDispatchPending) {
+      std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
+      for (const auto &container : m_eventsByType) {
+        auto it = std::find_if(container.begin(), container.end(),
+          [](const EventData &data) {
+            return !(data.flags & EventData::FLAG_PENDING_REMOVAL);
+          });
+        if (it != container.end()) {
+          hasRegisteredEvents = true;
+          break;
+        }
+      }
+    }
+
+    if (!hasDispatchPending && !hasRegisteredEvents) {
+      return;
+    }
+  }
 
   // NOTE: We do NOT wait for previous frame's batches here - they can overlap
   // with current frame EventManager batches don't update collision data, so
@@ -342,15 +370,22 @@ void EventManager::update() {
   // Track threading decision for interval logging (local struct, zero overhead
   // in release)
   EventThreadingInfo threadingInfo;
+  bool anyThreaded = false;
+  size_t totalThreadedBatches = 0;
 
   // Update all event types in optimized batches with per-type threading
-  // decision Global check: Only consider threading if total events > threshold
-  bool useThreadingGlobal =
-      m_threadingEnabled.load() && totalEventCount > m_threadingThreshold;
+  // WorkerBudget is the AUTHORITATIVE source - no manager overrides
+  auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  auto decision = budgetMgr.shouldUseThreading(
+      HammerEngine::SystemType::Event, totalEventCount);
+  bool useThreadingGlobal = decision.shouldThread;
 
   // Helper lambda to decide threading per type (uses cached counts - no mutex!)
+  // WorkerBudget is the AUTHORITATIVE source - getBatchStrategy() returns
+  // batchCount=1 for small workloads, naturally triggering single-threaded path.
   auto updateEventType = [this, useThreadingGlobal, &eventCountsByType,
-                          &threadingInfo](EventTypeId typeId) {
+                          &threadingInfo, &budgetMgr, &anyThreaded,
+                          &totalThreadedBatches](EventTypeId typeId) {
     // Early exit for empty event types - avoids lock acquisition and iteration
     // overhead
     size_t typeEventCount = eventCountsByType[static_cast<size_t>(typeId)];
@@ -364,13 +399,30 @@ void EventManager::update() {
       return;
     }
 
-    // Global threshold met - check per-type threshold
-    if (typeEventCount >= PER_TYPE_THREAD_THRESHOLD) {
-      // This type has enough events to benefit from threading
-      updateEventTypeBatchThreaded(typeId, threadingInfo);
-    } else {
-      // Too few events in this type - threading overhead would hurt performance
+    // Global threshold met - let WorkerBudget decide batching per type
+    // Skip threaded path when batchCount <= 1 to avoid shared_ptr/local copy overhead.
+    size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::Event, typeEventCount);
+    auto [batchCount, calculatedBatchSize] = budgetMgr.getBatchStrategy(
+        HammerEngine::SystemType::Event, typeEventCount, optimalWorkerCount);
+    (void)calculatedBatchSize;
+
+    if (batchCount <= 1) {
       updateEventTypeBatch(typeId);
+      return;
+    }
+
+    EventThreadingInfo perTypeInfo;
+    updateEventTypeBatchThreaded(typeId, optimalWorkerCount, batchCount,
+                                 perTypeInfo);
+    if (perTypeInfo.wasThreaded) {
+      anyThreaded = true;
+      totalThreadedBatches += perTypeInfo.batchCount;
+      threadingInfo.workerCount =
+          std::max(threadingInfo.workerCount, perTypeInfo.workerCount);
+      threadingInfo.availableWorkers =
+          std::max(threadingInfo.availableWorkers, perTypeInfo.availableWorkers);
+      threadingInfo.budget = std::max(threadingInfo.budget, perTypeInfo.budget);
     }
   };
 
@@ -387,6 +439,9 @@ void EventManager::update() {
   updateEventType(EventTypeId::Collision);
   updateEventType(EventTypeId::WorldTrigger);
 
+  threadingInfo.wasThreaded = anyThreaded;
+  threadingInfo.batchCount = anyThreaded ? std::max<size_t>(1, totalThreadedBatches) : 0;
+
   // Simplified performance tracking - reduce lock contention
   // Drain deferred dispatch queue with budget after event updates
   drainDispatchQueueWithBudget();
@@ -394,11 +449,11 @@ void EventManager::update() {
   auto endTime = getCurrentTimeNanos();
   double totalTimeMs = (endTime - startTime) / 1000000.0;
 
-  // Report batch completion for adaptive tuning (only if threading was used)
-  if (threadingInfo.wasThreaded && threadingInfo.batchCount > 0) {
-    HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
-        HammerEngine::SystemType::Event, totalEventCount,
-        threadingInfo.batchCount, totalTimeMs);
+  // Report results for unified adaptive tuning
+  if (totalEventCount > 0) {
+    budgetMgr.reportExecution(HammerEngine::SystemType::Event,
+                              totalEventCount, threadingInfo.wasThreaded,
+                              threadingInfo.batchCount, totalTimeMs);
   }
 
   // Update rolling average for DEBUG logging
@@ -491,7 +546,7 @@ void EventManager::drainAllDeferredEvents() {
   }
 }
 
-bool EventManager::registerEvent(const std::string &name, EventPtr event) {
+bool EventManager::registerEvent(const std::string &name, const EventPtr& event) {
   if (!event) {
     EVENT_ERROR(std::format("Cannot register null event with name: {}", name));
     return false;
@@ -539,7 +594,7 @@ bool EventManager::registerCameraEvent(const std::string &name,
 }
 
 bool EventManager::registerEventInternal(const std::string &name,
-                                         EventPtr event, EventTypeId typeId,
+                                         const EventPtr& event, EventTypeId typeId,
                                          uint32_t priority) {
   if (!event) {
     return false;
@@ -990,7 +1045,8 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) const {
 }
 
 void EventManager::updateEventTypeBatchThreaded(
-    EventTypeId typeId, EventThreadingInfo &outThreadingInfo) {
+    EventTypeId typeId, size_t optimalWorkerCount, size_t batchCount,
+    EventThreadingInfo &outThreadingInfo) {
   if (m_isShutdown || !HammerEngine::ThreadSystem::Exists()) {
     // Fall back to single-threaded if shutting down or ThreadSystem not
     // available
@@ -1025,54 +1081,16 @@ void EventManager::updateEventTypeBatchThreaded(
     return;
   }
 
-  // Use centralized WorkerBudgetManager for smart worker allocation
-  size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+  // Set thread allocation info for debug output
+  outThreadingInfo.availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
   auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
   const auto &budget = budgetMgr.getBudget();
-
-  // Set thread allocation info for debug output
-  outThreadingInfo.availableWorkers = availableWorkers;
   outThreadingInfo.budget = budget.totalWorkers;
 
-  // Check queue pressure before submitting tasks
-  size_t queueSize = threadSystem.getQueueSize();
-  size_t queueCapacity = threadSystem.getQueueCapacity();
-  size_t pressureThreshold = static_cast<size_t>(
-      queueCapacity *
-      HammerEngine::QUEUE_PRESSURE_CRITICAL); // Use unified threshold
-
-  if (queueSize > pressureThreshold) {
-    // Graceful degradation: fallback to single-threaded processing
-    EVENT_DEBUG(std::format(
-        "Queue pressure detected ({}/{}), using single-threaded processing",
-        queueSize, queueCapacity));
-    outThreadingInfo.wasThreaded = false;
-    for (auto &evt : *localEvents) {
-      evt->update();
-    }
-
-    // Record performance and return early
-    auto endTime = getCurrentTimeNanos();
-    double timeMs = (endTime - startTime) / 1000000.0;
-    if (timeMs > 1.0 || localEvents->size() > 50) {
-      recordPerformance(typeId, timeMs);
-    }
-    return;
-  }
-
-  // Get optimal workers (WorkerBudget determines everything dynamically)
-  size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-      HammerEngine::SystemType::Event, localEvents->size());
-
-  // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on
-  // timing)
-  auto [batchCount, calculatedBatchSize] = budgetMgr.getBatchStrategy(
-      HammerEngine::SystemType::Event, localEvents->size(), optimalWorkerCount);
-
-  // Set threading info
+  // Set threading info based on actual batch strategy
   outThreadingInfo.workerCount = optimalWorkerCount;
   outThreadingInfo.batchCount = batchCount;
-  outThreadingInfo.wasThreaded = true;
+  outThreadingInfo.wasThreaded = (batchCount > 1);
 
   // Simple batch processing without complex spin-wait
   if (batchCount > 1) {
@@ -1222,9 +1240,15 @@ bool EventManager::changeScene(const std::string &sceneId,
 }
 
 bool EventManager::spawnNPC(const std::string &npcType, float x, float y,
+                            int count, float spawnRadius,
+                            const std::string &npcRace,
+                            const std::vector<std::string> &aiBehaviors,
+                            bool worldWide,
                             DispatchMode mode) const {
-  // Build payload
-  SpawnParameters params(npcType, 1, 0.0f);
+  // Build payload with count, radius, race, behaviors, and worldWide flag
+  SpawnParameters params(npcType, count, spawnRadius, npcRace);
+  params.aiBehaviors = aiBehaviors;
+  params.worldWide = worldWide;
   auto npcEvent = m_npcSpawnPool.acquire();
   if (!npcEvent)
     npcEvent = std::make_shared<NPCSpawnEvent>("trigger_npc_spawn", params);
@@ -1237,6 +1261,7 @@ bool EventManager::spawnNPC(const std::string &npcType, float x, float y,
   data.setActive(true);
   data.event = npcEvent;
 
+  // Dispatch to handlers - internal handler will call execute() to spawn NPCs
   return dispatchEvent(EventTypeId::NPCSpawn, data, mode, "spawnNPC");
 }
 
@@ -1281,14 +1306,14 @@ bool EventManager::triggerParticleEffect(const std::string &effectName,
 }
 
 bool EventManager::triggerResourceChange(
-    EntityPtr owner, HammerEngine::ResourceHandle resourceHandle,
+    EntityHandle ownerHandle, HammerEngine::ResourceHandle resourceHandle,
     int oldQuantity, int newQuantity, const std::string &changeReason,
     DispatchMode mode) const {
   EventData eventData;
   eventData.typeId = EventTypeId::ResourceChange;
   eventData.setActive(true);
   eventData.event = std::make_shared<ResourceChangeEvent>(
-      owner, resourceHandle, oldQuantity, newQuantity, changeReason);
+      ownerHandle, resourceHandle, oldQuantity, newQuantity, changeReason);
 
   return dispatchEvent(EventTypeId::ResourceChange, eventData, mode,
                        "triggerResourceChange");
@@ -1410,11 +1435,11 @@ bool EventManager::createNPCSpawnEvent(const std::string &name,
 }
 
 bool EventManager::createResourceChangeEvent(
-    const std::string &name, EntityPtr owner,
+    const std::string &name, EntityHandle ownerHandle,
     HammerEngine::ResourceHandle resourceHandle, int oldQuantity,
     int newQuantity, const std::string &changeReason) {
   auto event = std::make_shared<ResourceChangeEvent>(
-      owner, resourceHandle, oldQuantity, newQuantity, changeReason);
+      ownerHandle, resourceHandle, oldQuantity, newQuantity, changeReason);
   return registerResourceChangeEvent(name, event);
 }
 
@@ -1566,6 +1591,18 @@ bool EventManager::triggerWorldGenerated(const std::string &worldId, int width,
   data.event = std::make_shared<WorldGeneratedEvent>(worldId, width, height,
                                                      generationTime);
   return dispatchEvent(EventTypeId::World, data, mode, "triggerWorldGenerated");
+}
+
+bool EventManager::triggerStaticCollidersReady(size_t solidBodyCount,
+                                               size_t triggerCount,
+                                               DispatchMode mode) const {
+  EventData data;
+  data.typeId = EventTypeId::World;
+  data.setActive(true);
+  data.event =
+      std::make_shared<StaticCollidersReadyEvent>(solidBodyCount, triggerCount);
+  return dispatchEvent(EventTypeId::World, data, mode,
+                       "triggerStaticCollidersReady");
 }
 
 PerformanceStats EventManager::getPerformanceStats(EventTypeId typeId) const {
@@ -1792,7 +1829,8 @@ void EventManager::drainDispatchQueueWithBudget() {
       }
     }
 
-    // Name handlers removed - all handlers registered by typeId
+    // Release pooled event back to pool for reuse
+    releaseEventToPool(pd.typeId, eventData.event);
   }
 }
 
@@ -1828,6 +1866,9 @@ bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
       }
     }
 
+    // Release pooled event back to pool for reuse
+    releaseEventToPool(typeId, eventData.event);
+
     // Name handlers removed - all dispatch uses typeId only
     return true;
   }
@@ -1835,6 +1876,62 @@ bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
   // Deferred dispatch
   enqueueDispatch(typeId, eventData);
   return true;
+}
+
+void EventManager::releaseEventToPool(EventTypeId typeId, const EventPtr& event) const {
+  if (!event) return;
+
+  switch (typeId) {
+    case EventTypeId::Weather:
+      if (auto we = std::dynamic_pointer_cast<WeatherEvent>(event)) {
+        m_weatherPool.release(we);
+      }
+      break;
+    case EventTypeId::SceneChange:
+      if (auto sce = std::dynamic_pointer_cast<SceneChangeEvent>(event)) {
+        m_sceneChangePool.release(sce);
+      }
+      break;
+    case EventTypeId::NPCSpawn:
+      if (auto nse = std::dynamic_pointer_cast<NPCSpawnEvent>(event)) {
+        m_npcSpawnPool.release(nse);
+      }
+      break;
+    case EventTypeId::ResourceChange:
+      if (auto rce = std::dynamic_pointer_cast<ResourceChangeEvent>(event)) {
+        m_resourceChangePool.release(rce);
+      }
+      break;
+    case EventTypeId::World:
+      if (auto we = std::dynamic_pointer_cast<WorldEvent>(event)) {
+        m_worldPool.release(we);
+      }
+      break;
+    case EventTypeId::Camera:
+      if (auto ce = std::dynamic_pointer_cast<CameraEvent>(event)) {
+        m_cameraPool.release(ce);
+      }
+      break;
+    case EventTypeId::Collision:
+      if (auto ce = std::dynamic_pointer_cast<CollisionEvent>(event)) {
+        m_collisionPool.release(ce);
+      }
+      break;
+    case EventTypeId::ParticleEffect:
+      if (auto pe = std::dynamic_pointer_cast<ParticleEffectEvent>(event)) {
+        m_particleEffectPool.release(pe);
+      }
+      break;
+    case EventTypeId::CollisionObstacleChanged:
+      if (auto coce = std::dynamic_pointer_cast<CollisionObstacleChangedEvent>(event)) {
+        m_collisionObstacleChangedPool.release(coce);
+      }
+      break;
+    default:
+      // Non-pooled event types (Custom, Harvest, WorldTrigger, etc.)
+      // These are not recycled via pools
+      break;
+  }
 }
 
 // Camera event convenience methods
@@ -1934,8 +2031,8 @@ bool EventManager::triggerCameraShakeEnded(DispatchMode mode) const {
                        "triggerCameraShakeEnded");
 }
 
-bool EventManager::triggerCameraTargetChanged(std::weak_ptr<Entity> newTarget,
-                                              std::weak_ptr<Entity> oldTarget,
+bool EventManager::triggerCameraTargetChanged(const std::weak_ptr<Entity>& newTarget,
+                                              const std::weak_ptr<Entity>& oldTarget,
                                               DispatchMode mode) const {
   EventData data;
   data.typeId = EventTypeId::Camera;
@@ -1956,7 +2053,7 @@ bool EventManager::triggerCameraZoomChanged(float newZoom, float oldZoom,
 }
 
 // Public dispatch method for EventPtr (used by GameTime for TimeEvents)
-bool EventManager::dispatchEvent(EventPtr event, DispatchMode mode) const {
+bool EventManager::dispatchEvent(const EventPtr& event, DispatchMode mode) const {
   if (!event) {
     EVENT_ERROR("dispatchEvent called with null event");
     return false;

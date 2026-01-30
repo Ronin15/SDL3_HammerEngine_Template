@@ -95,8 +95,8 @@ public:
   float getLastAttackTime() const;
   int getCurrentCombo() const;
 
-  // Animation state notification - triggers NPC animation state changes
-  void notifyAnimationStateChange(EntityPtr entity, AttackState newState);
+  // State change notification - applies velocity lunge for attack states
+  void notifyAnimationStateChange(size_t edmIndex, AttackState newState, const Vector2D& targetPos);
 
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
@@ -113,14 +113,10 @@ private:
   void updateTargetDistance(const Vector2D& entityPos, const Vector2D& targetPos, BehaviorData& data);
   void updateCombatState(BehaviorData& data);
   void handleNoTarget(BehaviorData& data);
-  void dispatchModeUpdate(EntityPtr entity, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
+  void dispatchModeUpdate(size_t edmIndex, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
 
   // Configuration system
   void applyConfig(const HammerEngine::AttackBehaviorConfig& config);
-
-  // Cache EntityPtr for helper methods that still use it (temporary during migration)
-  // TODO: Planned refactor to remove EntityPtr dependency
-  std::unordered_map<EntityHandle::IDType, EntityPtr> m_entityPtrCache;
 
   // Attack parameters
   AttackMode m_attackMode{AttackMode::MELEE_ATTACK};
@@ -205,35 +201,35 @@ private:
   bool shouldCharge(float distance, const BehaviorData& data) const;
 
   // Attack execution
-  void executeAttack(EntityPtr entity, const Vector2D& targetPos, BehaviorData& data);
-  void executeSpecialAttack(EntityPtr entity, const Vector2D& targetPos, BehaviorData& data);
-  void executeComboAttack(EntityPtr entity, const Vector2D& targetPos, BehaviorData& data);
+  void executeAttack(size_t edmIndex, const Vector2D& targetPos, BehaviorData& data);
+  void executeSpecialAttack(size_t edmIndex, const Vector2D& targetPos, BehaviorData& data);
+  void executeComboAttack(size_t edmIndex, const Vector2D& targetPos, BehaviorData& data);
   void applyDamageToTarget(EntityHandle targetHandle, float damage, const Vector2D& knockback);
   void applyAreaOfEffectDamage(const Vector2D& entityPos, const Vector2D& targetPos, float damage);
 
   // Mode-specific updates
-  void updateMeleeAttack(EntityPtr entity, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
-  void updateRangedAttack(EntityPtr entity, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
-  void updateChargeAttack(EntityPtr entity, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
-  void updateAmbushAttack(EntityPtr entity, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
-  void updateCoordinatedAttack(EntityPtr entity, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
-  void updateHitAndRun(EntityPtr entity, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
-  void updateBerserkerAttack(EntityPtr entity, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
+  void updateMeleeAttack(size_t edmIndex, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
+  void updateRangedAttack(size_t edmIndex, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
+  void updateChargeAttack(size_t edmIndex, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
+  void updateAmbushAttack(size_t edmIndex, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
+  void updateCoordinatedAttack(size_t edmIndex, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
+  void updateHitAndRun(size_t edmIndex, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
+  void updateBerserkerAttack(size_t edmIndex, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
 
   // State-specific updates
   void updateSeeking(BehaviorData& data);
-  void updateApproaching(EntityPtr entity, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
-  void updatePositioning(EntityPtr entity, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
-  void updateAttacking(EntityPtr entity, BehaviorData& data, const Vector2D& targetPos);
+  void updateApproaching(size_t edmIndex, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
+  void updatePositioning(size_t edmIndex, BehaviorData& data, float deltaTime, const Vector2D& targetPos);
+  void updateAttacking(size_t edmIndex, BehaviorData& data, const Vector2D& targetPos);
   void updateRecovering(BehaviorData& data);
-  void updateRetreating(EntityPtr entity, BehaviorData& data, const Vector2D& targetPos);
+  void updateRetreating(size_t edmIndex, BehaviorData& data, const Vector2D& targetPos);
   void updateCooldown(BehaviorData& data);
 
   // Movement and positioning
-  void moveToPosition(EntityPtr entity, const Vector2D &targetPos, float speed, float deltaTime);
-  void maintainDistance(EntityPtr entity, const Vector2D& targetPos, float desiredDistance, float deltaTime);
-  void circleStrafe(EntityPtr entity, const Vector2D& targetPos, BehaviorData& data, float deltaTime);
-  void performFlankingManeuver(EntityPtr entity, const Vector2D& targetPos, BehaviorData& data, float deltaTime);
+  void moveToPosition(size_t edmIndex, const Vector2D &targetPos, float speed, float deltaTime);
+  void maintainDistance(size_t edmIndex, const Vector2D& targetPos, float desiredDistance, float deltaTime);
+  void circleStrafe(size_t edmIndex, const Vector2D& targetPos, BehaviorData& data, float deltaTime);
+  void performFlankingManeuver(size_t edmIndex, const Vector2D& targetPos, BehaviorData& data, float deltaTime);
 
   // Utility methods
   bool isValidAttackPosition(const Vector2D &position, const Vector2D& targetPos) const;

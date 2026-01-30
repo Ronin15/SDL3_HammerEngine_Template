@@ -19,44 +19,41 @@
 #include "managers/EntityDataManager.hpp"
 #include "core/ThreadSystem.hpp"
 
-// Simple test entity
-class IntegrationTestEntity : public Entity {
+// Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
+class IntegrationTestNPC {
 public:
-    IntegrationTestEntity(int id = 0, const Vector2D& pos = Vector2D(0, 0)) : m_id(id) {
-        // Register with EntityDataManager first (required before setPosition)
-        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
-        setTextureID("test_texture");
-        setWidth(32);
-        setHeight(32);
+    explicit IntegrationTestNPC(int id = 0, const Vector2D& pos = Vector2D(0, 0)) : m_id(id) {
+        auto& edm = EntityDataManager::Instance();
+        m_handle = edm.createNPCWithRaceClass(pos, "Human", "Guard");
+        m_initialPosition = pos;
     }
 
-    static std::shared_ptr<IntegrationTestEntity> create(int id = 0, const Vector2D& pos = Vector2D(0, 0)) {
-        return std::make_shared<IntegrationTestEntity>(id, pos);
+    static std::shared_ptr<IntegrationTestNPC> create(int id = 0, const Vector2D& pos = Vector2D(0, 0)) {
+        return std::make_shared<IntegrationTestNPC>(id, pos);
     }
 
-    void update(float deltaTime) override {
-        m_updateCount++;
-        (void)deltaTime; // Suppress unused parameter warning
-    }
-    void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override { (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha; }
-    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
-    void clean() override {
-        // Proper cleanup to avoid bad_weak_ptr exceptions
-        // Never call shared_from_this() in the destructor!
-        try {
-            // Explicitly unassign behavior before destruction
-            // AIManager::Instance().unassignBehaviorFromEntity(shared_from_this());
-        } catch (const std::exception& e) {
-            std::cerr << "Error during IntegrationTestEntity cleanup: " << e.what() << std::endl;
-        }
-    }
+    [[nodiscard]] EntityHandle getHandle() const { return m_handle; }
 
     int getId() const { return m_id; }
-    int getUpdateCount() const { return m_updateCount.load(); }
+
+    // Check if entity was updated (position changed or has velocity)
+    int getUpdateCount() const {
+        if (!m_handle.isValid()) return 0;
+
+        auto& edm = EntityDataManager::Instance();
+        size_t index = edm.getIndex(m_handle);
+        if (index == SIZE_MAX) return 0;
+
+        auto& transform = edm.getTransformByIndex(index);
+        bool positionMoved = (transform.position - m_initialPosition).length() > 0.01f;
+        bool hasVelocity = transform.velocity.length() > 0.01f;
+        return (positionMoved || hasVelocity) ? 1 : 0;
+    }
 
 private:
+    EntityHandle m_handle;
+    Vector2D m_initialPosition;
     int m_id;
-    std::atomic<int> m_updateCount{0};
 };
 
 // Test behavior
@@ -147,7 +144,7 @@ struct AIIntegrationTestFixture {
 
         // Create test entities
         for (int i = 0; i < NUM_ENTITIES; ++i) {
-            auto entity = IntegrationTestEntity::create(i, Vector2D(i * 10.0f, i * 10.0f));
+            auto entity = IntegrationTestNPC::create(i, Vector2D(i * 10.0f, i * 10.0f));
             entities.push_back(entity);
             int behaviorIdx = i % NUM_BEHAVIORS;
             AIManager::Instance().registerEntity(entity->getHandle(), "Behavior" + std::to_string(behaviorIdx));
@@ -180,7 +177,7 @@ struct AIIntegrationTestFixture {
     static constexpr int NUM_UPDATES = 10;
 
     std::vector<std::shared_ptr<IntegrationTestBehavior>> behaviors;
-    std::vector<std::shared_ptr<IntegrationTestEntity>> entities;
+    std::vector<std::shared_ptr<IntegrationTestNPC>> entities;
 };
 
 // Apply the global fixture to the entire test module

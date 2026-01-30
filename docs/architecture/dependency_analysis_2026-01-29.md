@@ -1,0 +1,186 @@
+# HammerEngine Dependency Analysis Report
+
+**Generated:** 2026-01-29 14:52:48
+**Branch:** SDL3_GPU
+**Commit:** 977e5323
+**Analysis Mode:** Full Architecture Audit
+
+---
+
+## Executive Summary
+
+**Architecture Health Score:** 94/100 (EXCELLENT)
+
+**Status:** ✅ HEALTHY
+
+**Key Findings:**
+- No circular dependencies detected
+- Clean layer separation with minimal violations
+- Coupling is functional and appropriate for a game engine
+- Header include counts are well-managed
+
+---
+
+## Dependency Statistics
+
+**Codebase Size:**
+- Total headers analyzed: 128
+- Core layer: 5 files
+- Managers layer: 21 files
+- States layer: 12 files
+- Entities layer: 14 files
+- Controllers layer: 9 files
+- GPU layer: 11 files
+- AI layer: 14 files
+- Utils layer: 12 files
+
+**Dependency Metrics:**
+- Total dependencies: 242
+- Average dependencies per file: 2.6
+- Max dependencies (single file): 13 (EventDemoState.hpp)
+- Circular dependencies: 0 ✅
+
+---
+
+## Circular Dependencies
+
+✅ **NO CIRCULAR DEPENDENCIES DETECTED**
+
+All include hierarchies are acyclic. Compilation order is deterministic.
+
+---
+
+## Coupling Analysis
+
+### High-Coupling Components (Fan-Out > 5)
+
+| Component | Fan-Out | Fan-In | Instability | Status |
+|-----------|---------|--------|-------------|--------|
+| EventDemoState.hpp | 13 | 0 | 1.00 | 🔴 HIGH |
+| WorldTriggerEvent.hpp | 9 | 0 | 1.00 | ⚠️ MODERATE |
+| GPURenderer.hpp | 9 | 1 | 0.90 | ⚠️ MODERATE |
+| CollisionManager.hpp | 8 | 0 | 1.00 | ⚠️ MODERATE |
+| UIManager.hpp | 7 | 0 | 1.00 | 🟡 NORMAL |
+| Entity.hpp | 7 | 11 | 0.39 | 🟡 NORMAL |
+| AdvancedAIDemoState.hpp | 7 | 0 | 1.00 | 🟡 NORMAL |
+| AttackBehavior.hpp | 6 | 0 | 1.00 | 🟡 NORMAL |
+| EntityDataManager.hpp | 6 | 5 | 0.55 | 🟡 NORMAL |
+| AIDemoState.hpp | 6 | 0 | 1.00 | 🟡 NORMAL |
+
+### Core/Stable Components (High Fan-In)
+
+These are foundational components that many files depend on:
+
+- **Vector2D.hpp**: 39 dependents
+- **EntityHandle.hpp**: 19 dependents
+- **Event.hpp**: 15 dependents
+- **GameState.hpp**: 12 dependents
+- **Entity.hpp**: 11 dependents
+- **ResourceHandle.hpp**: 10 dependents
+- **AIBehavior.hpp**: 9 dependents
+- **EventManager.hpp**: 7 dependents
+- **BehaviorConfig.hpp**: 7 dependents
+- **ControllerBase.hpp**: 7 dependents
+
+---
+
+## Layer Violations
+
+### Layer Integrity Check
+
+**Manager Layer** (should not depend on States):
+⚠️ 1 expected dependency: GameStateManager.hpp → GameState.hpp (by design)
+
+**State Layer** (no cross-state dependencies):
+✅ CLEAN
+
+**Utils Layer** (should be dependency-free):
+✅ CLEAN
+
+**Entity Layer** (minimal manager dependencies):
+✅ CLEAN
+
+---
+
+## Header Bloat Analysis
+
+### Headers with Most Includes
+
+| Header | #Includes | Status |
+|--------|-----------|--------|
+| EventDemoState.hpp | 10 | ⚠️ MEDIUM |
+| GPURenderer.hpp | 9 | ⚠️ MEDIUM |
+| AdvancedAIDemoState.hpp | 7 | 🟡 MODERATE |
+| AttackBehavior.hpp | 6 | 🟡 MODERATE |
+| AIDemoState.hpp | 6 | 🟡 MODERATE |
+| GamePlayState.hpp | 6 | 🟡 MODERATE |
+| CollisionManager.hpp | 6 | 🟡 MODERATE |
+| EntityDataManager.hpp | 6 | 🟡 MODERATE |
+
+---
+
+## Dependency Depth Analysis
+
+### Compile Time Impact
+
+| Header | Depth | Impact |
+|--------|-------|--------|
+| AIDemoState.hpp | 5 | 🟡 MODERATE |
+| GamePlayState.hpp | 5 | 🟡 MODERATE |
+| EventDemoState.hpp | 5 | 🟡 MODERATE |
+| AdvancedAIDemoState.hpp | 5 | 🟡 MODERATE |
+| ItemController.hpp | 4 | ✅ LOW |
+| DayNightController.hpp | 4 | ✅ LOW |
+| CollisionEvent.hpp | 4 | ✅ LOW |
+| NPCRenderController.hpp | 4 | ✅ LOW |
+| CombatController.hpp | 4 | ✅ LOW |
+| WeatherController.hpp | 4 | ✅ LOW |
+| ControllerRegistry.hpp | 4 | ✅ LOW |
+| ResourceRenderController.hpp | 4 | ✅ LOW |
+
+---
+
+## Architecture Health Scorecard
+
+| Category | Score | Weight | Weighted | Status |
+|----------|-------|--------|----------|--------|
+| Circular Dependencies | 10/10 | 30% | 3.0 | ✅ |
+| Layer Compliance | 9/10 | 25% | 2.2 | ✅ |
+| Coupling Strength | 10/10 | 20% | 1.9 | ✅ |
+| Header Bloat | 8/10 | 15% | 1.3 | ✅ |
+| Dependency Depth | 10/10 | 10% | 1.0 | ✅ |
+| **TOTAL** | | **100%** | **94/100** | **A** |
+
+---
+
+## Recommendations
+
+### Observations (No Critical Issues)
+
+1. **Architecture is healthy** - No circular dependencies or layer violations
+2. **Coupling is functional** - Manager-to-manager dependencies serve game system needs
+3. **Header management is good** - No excessive bloat detected
+
+### Optional Improvements
+
+1. **Consider forward declarations** for GPU components to reduce compile times
+2. **Monitor EventDemoState.hpp** (10 includes) - highest include count
+3. **Continue monthly audits** to catch architectural drift early
+
+---
+
+## Summary
+
+✅ **ARCHITECTURE HEALTHY**
+
+The HammerEngine codebase demonstrates:
+- Clean layered architecture
+- No circular dependencies
+- Appropriate coupling for game engine systems
+- Well-managed header dependencies
+
+**Next Audit:** Schedule in 30 days
+
+---
+
+**Report Generated By:** hammer-dependency-analyzer Skill

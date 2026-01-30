@@ -7,6 +7,11 @@
 #include "managers/GameTimeManager.hpp"
 #include "core/Logger.hpp"
 #include <format>
+#include <cmath>
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#endif
 
 void DayNightController::subscribe()
 {
@@ -28,9 +33,18 @@ void DayNightController::subscribe()
     m_currentPeriod = hourToTimePeriod(currentHour);
     m_previousPeriod = m_currentPeriod;
 
+    // Initialize lighting to current period (no interpolation needed at start)
+    auto visuals = TimePeriodVisuals::getForPeriod(m_currentPeriod);
+    m_currentR = m_targetR = static_cast<float>(visuals.overlayR);
+    m_currentG = m_targetG = static_cast<float>(visuals.overlayG);
+    m_currentB = m_targetB = static_cast<float>(visuals.overlayB);
+    m_currentA = m_targetA = static_cast<float>(visuals.overlayA);
+
+    // Update GPU with initial lighting state
+    updateGPULighting();
+
     // Dispatch initial event so subscribers know the current state
     // This allows GamePlayState (and other subscribers) to set up ambient particles
-    auto visuals = TimePeriodVisuals::getForPeriod(m_currentPeriod);
     auto event = std::make_shared<TimePeriodChangedEvent>(m_currentPeriod, m_previousPeriod, visuals);
     eventMgr.dispatchEvent(event, EventManager::DispatchMode::Deferred);
 
@@ -71,9 +85,15 @@ void DayNightController::transitionToPeriod(TimePeriod newPeriod)
     m_previousPeriod = m_currentPeriod;
     m_currentPeriod = newPeriod;
 
-    // Dispatch TimePeriodChangedEvent through EventManager
-    // Subscribers (like GamePlayState) handle visual changes and ambient particles
+    // Set target lighting values for interpolation
     auto visuals = TimePeriodVisuals::getForPeriod(m_currentPeriod);
+    m_targetR = static_cast<float>(visuals.overlayR);
+    m_targetG = static_cast<float>(visuals.overlayG);
+    m_targetB = static_cast<float>(visuals.overlayB);
+    m_targetA = static_cast<float>(visuals.overlayA);
+
+    // Dispatch TimePeriodChangedEvent through EventManager
+    // Subscribers (like GamePlayState) handle ambient particles
     auto event = std::make_shared<TimePeriodChangedEvent>(m_currentPeriod, m_previousPeriod, visuals);
     EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Deferred);
 
@@ -124,4 +144,34 @@ TimePeriod DayNightController::hourToTimePeriod(float hour)
     } else {
         return TimePeriod::Night;
     }
+}
+
+void DayNightController::update(float deltaTime)
+{
+    // Exponential smoothing for natural-feeling transitions
+    // lerpFactor approaches 1.0 over TRANSITION_DURATION seconds
+    float lerpFactor = 1.0f - std::exp(-deltaTime * (3.0f / TRANSITION_DURATION));
+
+    // Interpolate current values toward target
+    m_currentR += (m_targetR - m_currentR) * lerpFactor;
+    m_currentG += (m_targetG - m_currentG) * lerpFactor;
+    m_currentB += (m_targetB - m_currentB) * lerpFactor;
+    m_currentA += (m_targetA - m_currentA) * lerpFactor;
+
+    // Update GPU with interpolated lighting
+    updateGPULighting();
+}
+
+void DayNightController::updateGPULighting()
+{
+#ifdef USE_SDL3_GPU
+    auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
+    // Convert from 0-255 range to 0-1 range for shader
+    gpuRenderer.setDayNightParams(
+        m_currentR / 255.0f,
+        m_currentG / 255.0f,
+        m_currentB / 255.0f,
+        m_currentA / 255.0f
+    );
+#endif
 }

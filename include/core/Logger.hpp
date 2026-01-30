@@ -108,13 +108,14 @@ private:
   do { if (cond) HAMMER_DEBUG(system, msg); } while(0)
 
 #else
-// Release builds - ultra-minimal overhead, lockless
+// Release builds - file-based logging, no console dependency
+// Implementations in src/core/Logger.cpp
 class Logger {
 private:
   static std::atomic<bool> s_benchmarkMode;
 
 public:
-  static std::mutex s_logMutex; // Public for macro access
+  static std::mutex s_logMutex; // Public for legacy compatibility
 
   static void SetBenchmarkMode(bool enabled) {
     s_benchmarkMode.store(enabled, std::memory_order_relaxed);
@@ -124,25 +125,10 @@ public:
     return s_benchmarkMode.load(std::memory_order_relaxed);
   }
 
+  // Declarations only - implementations in Logger.cpp write to file
   static void Log(const char *level, const char *system,
-                  const std::string &message) {
-    if (s_benchmarkMode.load(std::memory_order_relaxed)) {
-      return;
-    }
-    std::lock_guard<std::mutex> lock(s_logMutex);
-    printf("Hammer Game Engine - [%s] %s: %s\n", system, level,
-           message.c_str());
-    fflush(stdout);
-  }
-
-  static void Log(const char *level, const char *system, const char *message) {
-    if (s_benchmarkMode.load(std::memory_order_relaxed)) {
-      return;
-    }
-    std::lock_guard<std::mutex> lock(s_logMutex);
-    printf("Hammer Game Engine - [%s] %s: %s\n", system, level, message);
-    fflush(stdout);
-  }
+                  const std::string &message);
+  static void Log(const char *level, const char *system, const char *message);
 };
 
 #define HAMMER_CRITICAL(system, msg)                                           \
@@ -192,7 +178,18 @@ inline std::mutex Logger::s_logMutex{};
 #define TIMESTEP_INFO(msg) HAMMER_INFO("TimestepManager", msg)
 #define TIMESTEP_DEBUG(msg) HAMMER_DEBUG("TimestepManager", msg)
 
+#define RESOURCEPATH_CRITICAL(msg) HAMMER_CRITICAL("ResourcePath", msg)
+#define RESOURCEPATH_ERROR(msg) HAMMER_ERROR("ResourcePath", msg)
+#define RESOURCEPATH_WARN(msg) HAMMER_WARN("ResourcePath", msg)
+#define RESOURCEPATH_INFO(msg) HAMMER_INFO("ResourcePath", msg)
+#define RESOURCEPATH_DEBUG(msg) HAMMER_DEBUG("ResourcePath", msg)
+
 // Manager Systems
+#define BGSIM_CRITICAL(msg) HAMMER_CRITICAL("BackgroundSim", msg)
+#define BGSIM_ERROR(msg) HAMMER_ERROR("BackgroundSim", msg)
+#define BGSIM_WARN(msg) HAMMER_WARN("BackgroundSim", msg)
+#define BGSIM_INFO(msg) HAMMER_INFO("BackgroundSim", msg)
+#define BGSIM_DEBUG(msg) HAMMER_DEBUG("BackgroundSim", msg)
 #define TEXTURE_CRITICAL(msg) HAMMER_CRITICAL("TextureManager", msg)
 #define TEXTURE_ERROR(msg) HAMMER_ERROR("TextureManager", msg)
 #define TEXTURE_WARN(msg) HAMMER_WARN("TextureManager", msg)
@@ -250,6 +247,12 @@ inline std::mutex Logger::s_logMutex{};
 #define CAMERA_INFO(msg) HAMMER_INFO("Camera", msg)
 #define CAMERA_DEBUG(msg) HAMMER_DEBUG("Camera", msg)
 
+#define SCENE_RENDERER_CRITICAL(msg) HAMMER_CRITICAL("SceneRenderer", msg)
+#define SCENE_RENDERER_ERROR(msg) HAMMER_ERROR("SceneRenderer", msg)
+#define SCENE_RENDERER_WARN(msg) HAMMER_WARN("SceneRenderer", msg)
+#define SCENE_RENDERER_INFO(msg) HAMMER_INFO("SceneRenderer", msg)
+#define SCENE_RENDERER_DEBUG(msg) HAMMER_DEBUG("SceneRenderer", msg)
+
 #define SAVEGAME_CRITICAL(msg) HAMMER_CRITICAL("SaveGameManager", msg)
 #define SAVEGAME_ERROR(msg) HAMMER_ERROR("SaveGameManager", msg)
 #define SAVEGAME_WARN(msg) HAMMER_WARN("SaveGameManager", msg)
@@ -289,6 +292,12 @@ inline std::mutex Logger::s_logMutex{};
 #define WORLD_MANAGER_WARN(msg) HAMMER_WARN("WorldManager", msg)
 #define WORLD_MANAGER_INFO(msg) HAMMER_INFO("WorldManager", msg)
 #define WORLD_MANAGER_DEBUG(msg) HAMMER_DEBUG("WorldManager", msg)
+
+#define WORLD_RENDER_PIPELINE_CRITICAL(msg) HAMMER_CRITICAL("WorldRenderPipeline", msg)
+#define WORLD_RENDER_PIPELINE_ERROR(msg) HAMMER_ERROR("WorldRenderPipeline", msg)
+#define WORLD_RENDER_PIPELINE_WARN(msg) HAMMER_WARN("WorldRenderPipeline", msg)
+#define WORLD_RENDER_PIPELINE_INFO(msg) HAMMER_INFO("WorldRenderPipeline", msg)
+#define WORLD_RENDER_PIPELINE_DEBUG(msg) HAMMER_DEBUG("WorldRenderPipeline", msg)
 
 // Entity and State Systems
 #define GAMESTATE_CRITICAL(msg) HAMMER_CRITICAL("GameStateManager", msg)
@@ -385,6 +394,13 @@ inline std::mutex Logger::s_logMutex{};
 #define COMBAT_WARN(msg) HAMMER_WARN("CombatController", msg)
 #define COMBAT_INFO(msg) HAMMER_INFO("CombatController", msg)
 #define COMBAT_DEBUG(msg) HAMMER_DEBUG("CombatController", msg)
+
+// ItemController logging
+#define ITEM_CRITICAL(msg) HAMMER_CRITICAL("ItemController", msg)
+#define ITEM_ERROR(msg) HAMMER_ERROR("ItemController", msg)
+#define ITEM_WARN(msg) HAMMER_WARN("ItemController", msg)
+#define ITEM_INFO(msg) HAMMER_INFO("ItemController", msg)
+#define ITEM_DEBUG(msg) HAMMER_DEBUG("ItemController", msg)
 
 // Conditional logging macros for common systems
 // Use these when an if-block contains ONLY logging (eliminates condition overhead in release)

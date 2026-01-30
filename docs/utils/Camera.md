@@ -35,7 +35,7 @@ struct Config {
     bool clampToWorldBounds{true};   // Whether to clamp to world bounds
 
     // Zoom configuration
-    std::vector<float> zoomLevels{1.0f, 1.5f, 2.0f}; // Discrete zoom levels
+    std::vector<float> zoomLevels{1.0f, 2.0f, 3.0f}; // Integer zoom levels (pixel-perfect)
     int defaultZoomLevel{0};                          // Starting zoom level index
 
     bool isValid() const; // Validates all parameters
@@ -69,7 +69,7 @@ struct Config {
 - Recommended: 0.7-0.9 for smooth following
 - Range: 0.0-1.0
 
-**zoomLevels** (default: {1.0f, 1.5f, 2.0f})
+**zoomLevels** (default: {1.0f, 2.0f, 3.0f})
 - Array of discrete zoom levels
 - 1.0 = native resolution
 - >1.0 = zoomed in (objects appear larger)
@@ -259,7 +259,7 @@ Zooms in to the next zoom level (makes objects appear larger).
 ```cpp
 // User presses zoom in key
 if (inputManager.wasKeyPressed(SDL_SCANCODE_EQUALS)) {
-    camera.zoomIn(); // 1.0 → 1.5 → 2.0 (stops at max)
+    camera.zoomIn(); // 1.0 → 2.0 → 3.0 (stops at max)
 }
 ```
 
@@ -271,7 +271,7 @@ Zooms out to the previous zoom level (makes objects appear smaller).
 ```cpp
 // User presses zoom out key
 if (inputManager.wasKeyPressed(SDL_SCANCODE_MINUS)) {
-    camera.zoomOut(); // 2.0 → 1.5 → 1.0 (stops at min)
+    camera.zoomOut(); // 3.0 → 2.0 → 1.0 (stops at min)
 }
 ```
 
@@ -288,7 +288,7 @@ camera.setZoomLevel(2); // Jump to third zoom level
 #### `float getZoom() const`
 Gets current zoom scale factor.
 ```cpp
-float zoom = camera.getZoom(); // 1.0, 1.5, 2.0, etc.
+float zoom = camera.getZoom(); // 1.0, 2.0, 3.0, etc.
 ```
 
 #### `int getZoomLevel() const`
@@ -300,7 +300,7 @@ int level = camera.getZoomLevel(); // 0, 1, 2, etc.
 #### `int getNumZoomLevels() const`
 Gets number of configured zoom levels.
 ```cpp
-int count = camera.getNumZoomLevels(); // 3 for {1.0, 1.5, 2.0}
+int count = camera.getNumZoomLevels(); // 3 for {1.0, 2.0, 3.0}
 ```
 
 ### Coordinate Transformation
@@ -428,7 +428,7 @@ public:
         config.followSpeed = 4.0f;
         config.smoothingFactor = 0.85f;
         config.deadZoneRadius = 16.0f;
-        config.zoomLevels = {1.0f, 1.5f, 2.0f, 2.5f};
+        config.zoomLevels = {1.0f, 2.0f, 3.0f, 4.0f};
         config.defaultZoomLevel = 0; // Start at 1.0x
         m_camera.setConfig(config);
 
@@ -569,7 +569,7 @@ public:
             int level = m_camera.getZoomLevel();
             int maxLevel = m_camera.getNumZoomLevels() - 1;
 
-            // Render zoom UI (e.g., "Zoom: 1.5x (2/3)")
+            // Render zoom UI (e.g., "Zoom: 2.0x (2/3)")
             renderZoomUI(zoom, level, maxLevel);
         }
     }
@@ -672,9 +672,9 @@ for (const auto& entity : m_entities) {
 }
 ```
 
-## Thread-Safe Interpolation
+## Interpolation for Smooth Rendering
 
-The Camera implements lock-free atomic interpolation for smooth rendering at any display refresh rate, regardless of the fixed timestep update rate.
+The Camera provides smooth interpolation for rendering at any display refresh rate, regardless of the fixed timestep update rate.
 
 ### Why Interpolation?
 
@@ -683,22 +683,15 @@ Without interpolation, the camera "stutters" because:
 - Display may render at different rate (e.g., 144 Hz)
 - Camera jumps to discrete positions each update
 
-### Atomic Interpolation State
+### Previous Position Tracking
 
-The camera uses a 16-byte aligned atomic struct for thread-safe position sharing:
+The camera tracks both current and previous positions for interpolation:
 
 ```cpp
-struct alignas(16) InterpolationState {
-    float posX{0.0f}, posY{0.0f};
-    float prevPosX{0.0f}, prevPosY{0.0f};
-};
-std::atomic<InterpolationState> m_interpState{};
+// Internal state
+Vector2D m_position{960.0f, 540.0f};         // Current position (from update)
+Vector2D m_previousPosition{960.0f, 540.0f}; // Previous position (for lerp)
 ```
-
-**Why 16 bytes?**
-- Lock-free on x86-64 (CMPXCHG16B instruction)
-- Lock-free on ARM64 (LDXP/STXP instruction pair)
-- All four floats read/written atomically as one unit
 
 ### Using getRenderOffset()
 
@@ -712,16 +705,16 @@ Vector2D getRenderOffset(float& offsetX, float& offsetY, float interpolationAlph
 - `offsetX`, `offsetY`: Output camera offset for rendering (top-left of view)
 - `interpolationAlpha`: Blend factor from GameLoop (0.0 = previous, 1.0 = current)
 
-**Returns:** Interpolated center position
+**Returns:** Interpolated center position (for synced followed-entity rendering)
 
 ### Integration Pattern
 
 ```cpp
 // In GameState::render()
 void GamePlayState::render(float interpolationAlpha) {
-    // Get interpolated camera offset (single atomic read internally)
+    // Get interpolated camera offset
     float cameraX, cameraY;
-    m_camera->getRenderOffset(cameraX, cameraY, interpolationAlpha);
+    Vector2D cameraCenter = m_camera->getRenderOffset(cameraX, cameraY, interpolationAlpha);
 
     // Use for entity rendering
     for (auto& entity : m_entities) {
@@ -730,40 +723,42 @@ void GamePlayState::render(float interpolationAlpha) {
 
     // Use for world rendering
     WorldManager::Instance().render(renderer, cameraX, cameraY, viewW, viewH);
+
+    // Followed entity uses cameraCenter to avoid jitter
+    if (mp_Player) {
+        mp_Player->renderAtCenter(renderer, cameraCenter, interpolationAlpha);
+    }
 }
 ```
 
-### Thread Safety Guarantees
+### Single-Read Pattern
 
-| Operation | Thread | Guarantee |
-|-----------|--------|-----------|
-| `update()` | Update thread | Publishes new state atomically |
-| `getRenderOffset()` | Render thread | Lock-free atomic read |
-| `setPosition()` | Update thread | Resets interpolation state |
-
-### Avoiding Jitter
-
-**Problem:** Multiple atomic reads in render path cause inconsistent values:
+For consistent rendering, call `getRenderOffset()` once per frame and use the returned values for all rendering operations:
 
 ```cpp
-// WRONG: Two atomic reads may see different updates
+// WRONG: Multiple separate reads may be inconsistent
 float x = camera.getX();  // Read 1
-float y = camera.getY();  // Read 2 - may be from different update!
-```
+float y = camera.getY();  // Read 2 - inconsistent with Read 1
 
-**Solution:** Single atomic read through `getRenderOffset()`:
-
-```cpp
-// CORRECT: One atomic read, consistent values
+// CORRECT: Single read, consistent values
 float cameraX, cameraY;
 camera.getRenderOffset(cameraX, cameraY, alpha);
+// Use cameraX, cameraY throughout render
 ```
 
-### Performance
+### Followed Entity Jitter Prevention
 
-- **Lock-free**: No mutex contention between threads
-- **Single atomic operation**: One load per frame in render path
-- **Cache friendly**: 16-byte aligned for optimal access
+In Follow mode, `getRenderOffset()` returns the exact position used to calculate the camera offset. Use this for rendering the followed entity:
+
+```cpp
+// getRenderOffset returns the camera center (target position in Follow mode)
+Vector2D center = camera.getRenderOffset(offsetX, offsetY, alpha);
+
+// Render followed entity at this exact center - no jitter
+player.renderAt(center);
+```
+
+This eliminates jitter from separate interpolations of camera and entity positions.
 
 For more details on the interpolation system, see `docs/architecture/InterpolationSystem.md`.
 
@@ -816,7 +811,7 @@ Camera::ViewRect view = camera.getViewRect();
 
 // New code (with zoom)
 Camera camera;
-camera.zoomIn(); // Zoom to 1.5x
+camera.zoomIn(); // Zoom to 2.0x
 Camera::ViewRect view = camera.getViewRect();
 // View rect is now viewport size / zoom (smaller visible area)
 ```
@@ -833,7 +828,7 @@ if (inputManager.wasKeyPressed(SDL_SCANCODE_MINUS)) {
 
 // 2. Configure zoom levels in Config
 Camera::Config config;
-config.zoomLevels = {0.75f, 1.0f, 1.5f, 2.0f}; // 4 levels
+config.zoomLevels = {1.0f, 2.0f, 3.0f, 4.0f}; // 4 integer levels (pixel-perfect)
 config.defaultZoomLevel = 1; // Start at 1.0x
 camera.setConfig(config);
 

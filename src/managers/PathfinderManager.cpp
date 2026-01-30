@@ -240,8 +240,8 @@ uint64_t PathfinderManager::requestPath(
     // Callback is captured and called when task completes
     auto& threadSystem = HammerEngine::ThreadSystem::Instance();
 
-    // Capture callback by value for async execution
-    auto work = [this, entityId, nStart, nGoal, cacheKey, callback]() {
+    // Capture callback by move for async execution (avoids copy)
+    auto work = [this, entityId, nStart, nGoal, cacheKey, callback = std::move(callback)]() {
         std::vector<Vector2D> path;
         bool cacheHit = false;
 
@@ -1119,7 +1119,7 @@ void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal,
     goal = clampToWorldBounds(goal, EDGE_MARGIN, grid);
 }
 
-bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& currentPos,
+bool PathfinderManager::followPathStep(const EntityPtr& entity, const Vector2D& currentPos,
                                      std::vector<Vector2D>& path, size_t& pathIndex,
                                      float speed, float nodeRadius) const {
     if (!entity || path.empty() || pathIndex >= path.size()) {
@@ -1426,15 +1426,19 @@ void PathfinderManager::subscribeToEvents() {
         m_eventHandlerTokens.push_back(token);
         PATHFIND_DEBUG("PathfinderManager subscribed to CollisionObstacleChanged events");
 
-        // Subscribe to world events (WorldLoaded, WorldUnloaded, TileChanged)
+        // Subscribe to world events (StaticCollidersReady, WorldUnloaded, TileChanged)
+        // NOTE: Grid rebuild waits for StaticCollidersReadyEvent (not WorldLoadedEvent)
+        // to ensure collision data is available when pathfinding queries it
         auto worldToken = eventMgr.registerHandlerWithToken(EventTypeId::World,
             [this](const EventData& data) {
                 auto baseEvent = data.event;
                 if (!baseEvent) return;
 
-                // Handle WorldLoadedEvent
-                if (auto loadedEvent = std::dynamic_pointer_cast<WorldLoadedEvent>(baseEvent)) {
-                    onWorldLoaded(loadedEvent->getWidth(), loadedEvent->getHeight());
+                // Handle StaticCollidersReadyEvent - collision data is ready, rebuild grid
+                if (auto collidersEvent = std::dynamic_pointer_cast<StaticCollidersReadyEvent>(baseEvent)) {
+                    PATHFIND_INFO(std::format("Static colliders ready ({} solid, {} triggers) - rebuilding pathfinding grid",
+                                  collidersEvent->getSolidBodyCount(), collidersEvent->getTriggerCount()));
+                    onStaticCollidersReady();
                     return;
                 }
 
@@ -1453,7 +1457,7 @@ void PathfinderManager::subscribeToEvents() {
             });
 
         m_eventHandlerTokens.push_back(worldToken);
-        PATHFIND_DEBUG("PathfinderManager subscribed to World events (WorldLoaded, WorldUnloaded, TileChanged)");
+        PATHFIND_DEBUG("PathfinderManager subscribed to World events (StaticCollidersReady, WorldUnloaded, TileChanged)");
 
     } catch (const std::exception& e) {
         PATHFIND_ERROR(std::format("Failed to subscribe to events: {}", e.what()));
@@ -1534,8 +1538,19 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
     }
 }
 
-void PathfinderManager::onWorldLoaded(int worldWidth, int worldHeight) {
-    PATHFIND_INFO(std::format("World loaded ({}x{}) - rebuilding pathfinding grid and clearing cache",
+void PathfinderManager::onStaticCollidersReady() {
+    // Get world dimensions from WorldManager
+    const auto& worldManager = WorldManager::Instance();
+    const auto* worldData = worldManager.getWorldData();
+    if (!worldData) {
+        PATHFIND_WARN("StaticCollidersReady received but no world data available");
+        return;
+    }
+
+    int worldHeight = static_cast<int>(worldData->grid.size());
+    int worldWidth = worldHeight > 0 ? static_cast<int>(worldData->grid[0].size()) : 0;
+
+    PATHFIND_INFO(std::format("Static colliders ready - rebuilding pathfinding grid (world: {}x{})",
                   worldWidth, worldHeight));
 
     // Clear all cached paths - old world paths are completely invalid

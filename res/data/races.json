@@ -1,0 +1,88 @@
+{
+  "races": [
+    {
+      "id": "Human",
+      "textureId": "human",
+      "name": "Human",
+      "baseHealth": 100,
+      "baseStamina": 100,
+      "baseMoveSpeed": 100,
+      "baseAttackDamage": 10,
+      "baseAttackRange": 50,
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 1,
+        "speed": 150
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 2,
+        "speed": 100
+      },
+      "sizeMultiplier": 1.0
+    },
+    {
+      "id": "Elf",
+      "textureId": "elf",
+      "name": "Elf",
+      "baseHealth": 80,
+      "baseStamina": 120,
+      "baseMoveSpeed": 120,
+      "baseAttackDamage": 8,
+      "baseAttackRange": 60,
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 1,
+        "speed": 150
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 2,
+        "speed": 100
+      },
+      "sizeMultiplier": 0.9
+    },
+    {
+      "id": "Orc",
+      "textureId": "orc",
+      "name": "Orc",
+      "baseHealth": 150,
+      "baseStamina": 80,
+      "baseMoveSpeed": 80,
+      "baseAttackDamage": 15,
+      "baseAttackRange": 45,
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 1,
+        "speed": 150
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 2,
+        "speed": 100
+      },
+      "sizeMultiplier": 1.2
+    },
+    {
+      "id": "Dwarf",
+      "textureId": "dwarf",
+      "name": "Dwarf",
+      "baseHealth": 120,
+      "baseStamina": 90,
+      "baseMoveSpeed": 70,
+      "baseAttackDamage": 12,
+      "baseAttackRange": 40,
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 1,
+        "speed": 150
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 2,
+        "speed": 100
+      },
+      "sizeMultiplier": 0.85
+    }
+  ]
+}

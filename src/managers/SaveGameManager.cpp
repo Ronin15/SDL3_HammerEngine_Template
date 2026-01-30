@@ -285,7 +285,7 @@ std::vector<std::string> SaveGameManager::getSaveFiles() const {
     for (const auto &entry : std::filesystem::directory_iterator(savePath)) {
       if (entry.is_regular_file()) {
         // Get file path and extension
-        std::filesystem::path filePath = entry.path();
+        const auto& filePath = entry.path();
         std::string extension = filePath.extension().string();
 
         // Convert extension to lowercase for case-insensitive comparison

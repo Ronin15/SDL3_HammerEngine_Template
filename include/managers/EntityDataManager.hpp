@@ -38,6 +38,7 @@
 
 #include "collisions/CollisionBody.hpp"
 #include "collisions/TriggerTag.hpp"
+#include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
@@ -47,10 +48,18 @@
 #include <limits>
 #include <mutex>
 #include <span>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
-// Forward declarations
-class Entity;
+// Forward declarations - Entity and AnimationConfig now included via Entity.hpp
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/// Invalid inventory index constant (defined early for use in struct defaults)
+static constexpr uint32_t INVALID_INVENTORY_INDEX = std::numeric_limits<uint32_t>::max();
 
 /**
  * @brief Transform data for entity movement (32 bytes)
@@ -160,15 +169,49 @@ static_assert(sizeof(EntityHotData) == 64, "EntityHotData should be 64 bytes (on
 // ============================================================================
 
 /**
- * @brief Character data for Player and NPC entities
+ * @brief Creature category for distinguishing NPCs, Monsters, and Animals
+ *
+ * Used by CharacterData to identify the creature composition system in use.
+ */
+enum class CreatureCategory : uint8_t {
+    NPC = 0,      // Humanoid characters (race + class)
+    Monster = 1,  // Hostile creatures (type + variant)
+    Animal = 2    // Wildlife (species + role)
+};
+
+/**
+ * @brief Biological sex for creatures
+ */
+enum class Sex : uint8_t {
+    Male = 0,
+    Female = 1,
+    Unknown = 2   // For creatures where sex is undefined/irrelevant
+};
+
+/**
+ * @brief Character data for Player, NPC, Monster, and Animal entities
+ *
+ * Unified character data for all creature types. The category field
+ * distinguishes NPCs (race+class), Monsters (type+variant), and Animals (species+role).
+ * typeId and subtypeId reference the appropriate registries based on category.
  */
 struct CharacterData {
+    // Stats (computed from base × modifier at creation)
     float health{100.0f};
     float maxHealth{100.0f};
     float stamina{100.0f};
     float maxStamina{100.0f};
     float attackDamage{10.0f};
     float attackRange{50.0f};
+    float moveSpeed{100.0f};   // Base movement speed (NEW)
+
+    // Identity (creature composition)
+    CreatureCategory category{CreatureCategory::NPC};  // NPC, Monster, or Animal
+    Sex sex{Sex::Unknown};     // Male, Female, or Unknown
+    uint8_t typeId{0};         // raceId / monsterTypeId / speciesId
+    uint8_t subtypeId{0};      // classId / variantId / roleId
+
+    // Faction and AI
     uint8_t faction{0};        // 0=Friendly, 1=Enemy, 2=Neutral
     uint8_t behaviorType{0};   // BehaviorType enum
     uint8_t priority{5};       // AI priority (0-9)
@@ -220,12 +263,50 @@ struct ProjectileData {
 /**
  * @brief Container data for Container entities (chests, barrels)
  */
+/**
+ * @brief Container types for chests, barrels, corpses, etc.
+ */
+enum class ContainerType : uint8_t {
+    Chest = 0,
+    Barrel = 1,
+    Corpse = 2,
+    Crate = 3,
+    COUNT
+};
+
+/**
+ * @brief Container data for Container entities (chests, barrels)
+ */
 struct ContainerData {
-    uint32_t inventoryId{0};    // Reference to inventory storage
+    uint32_t inventoryIndex{INVALID_INVENTORY_INDEX};  // EDM inventory index
     uint16_t maxSlots{20};
-    uint8_t containerType{0};   // Chest, Barrel, Corpse
-    uint8_t lockLevel{0};       // 0 = unlocked
-    bool isOpen{false};
+    uint8_t containerType{0};   // ContainerType enum value
+    uint8_t lockLevel{0};       // 0 = unlocked, 1-10 = lock difficulty
+
+    // Container state flags
+    static constexpr uint8_t FLAG_IS_OPEN = 0x01;
+    static constexpr uint8_t FLAG_IS_LOCKED = 0x02;
+    static constexpr uint8_t FLAG_WAS_LOOTED = 0x04;
+    uint8_t flags{0};
+
+    [[nodiscard]] bool isOpen() const noexcept { return flags & FLAG_IS_OPEN; }
+    [[nodiscard]] bool isLocked() const noexcept { return flags & FLAG_IS_LOCKED; }
+    [[nodiscard]] bool wasLooted() const noexcept { return flags & FLAG_WAS_LOOTED; }
+
+    void setOpen(bool v) noexcept {
+        if (v) flags |= FLAG_IS_OPEN;
+        else flags &= ~FLAG_IS_OPEN;
+    }
+
+    void setLocked(bool v) noexcept {
+        if (v) flags |= FLAG_IS_LOCKED;
+        else flags &= ~FLAG_IS_LOCKED;
+    }
+
+    void setLooted(bool v) noexcept {
+        if (v) flags |= FLAG_WAS_LOOTED;
+        else flags &= ~FLAG_WAS_LOOTED;
+    }
 };
 
 /**
@@ -241,6 +322,91 @@ struct HarvestableData {
     bool isDepleted{false};
 };
 
+// ============================================================================
+// INVENTORY DATA STRUCTURES
+// ============================================================================
+
+/**
+ * @brief Single inventory slot data (12 bytes)
+ *
+ * Compact slot for inventory storage. ResourceHandle provides type-safe
+ * resource identification via ResourceTemplateManager.
+ */
+struct InventorySlotData {
+    HammerEngine::ResourceHandle resourceHandle;  // 8 bytes: Type-safe resource reference (6 + padding)
+    int16_t quantity{0};                          // 2 bytes: Stack quantity
+    int16_t _pad{0};                              // 2 bytes: Padding for alignment
+
+    [[nodiscard]] bool isEmpty() const noexcept { return quantity <= 0 || !resourceHandle.isValid(); }
+    void clear() noexcept { resourceHandle = HammerEngine::ResourceHandle{}; quantity = 0; _pad = 0; }
+};
+
+// InventorySlotData is ~12 bytes (ResourceHandle 8 + quantity 2 + pad 2)
+
+/**
+ * @brief Inventory data with inline slots (128 bytes, 2 cache lines)
+ *
+ * Stores up to INLINE_SLOT_COUNT slots inline. Larger inventories use
+ * InventoryOverflow for additional slots beyond the inline capacity.
+ *
+ * Design: Player has 50 slots (8 inline + 42 overflow), NPC loot containers
+ * have fewer slots and often fit entirely inline.
+ */
+struct InventoryData {
+    static constexpr size_t INLINE_SLOT_COUNT = 8;
+
+    // Flags for inventory state
+    static constexpr uint8_t FLAG_VALID = 0x01;         // Slot is in use
+    static constexpr uint8_t FLAG_WORLD_TRACKED = 0x02; // Registered with WorldResourceManager
+    static constexpr uint8_t FLAG_DIRTY = 0x04;         // Needs cache rebuild
+
+    InventorySlotData slots[INLINE_SLOT_COUNT];   // 96 bytes: Inline slot storage (8 * 12)
+    uint32_t overflowId{0};                       // 4 bytes: ID into overflow map (0 = none)
+    uint16_t maxSlots{INLINE_SLOT_COUNT};         // 2 bytes: Max slots for this inventory
+    uint16_t usedSlots{0};                        // 2 bytes: Current used slot count
+    uint8_t flags{0};                             // 1 byte: State flags
+    uint8_t ownerKind{0};                         // 1 byte: EntityKind of owner (for debugging)
+    uint8_t _padding[22]{};                       // 22 bytes: Pad to 128 bytes
+
+    [[nodiscard]] bool isValid() const noexcept { return flags & FLAG_VALID; }
+    [[nodiscard]] bool isWorldTracked() const noexcept { return flags & FLAG_WORLD_TRACKED; }
+    [[nodiscard]] bool needsOverflow() const noexcept { return maxSlots > INLINE_SLOT_COUNT; }
+
+    void setValid(bool v) noexcept {
+        if (v) flags |= FLAG_VALID;
+        else flags &= ~FLAG_VALID;
+    }
+
+    void setWorldTracked(bool v) noexcept {
+        if (v) flags |= FLAG_WORLD_TRACKED;
+        else flags &= ~FLAG_WORLD_TRACKED;
+    }
+
+    void clear() noexcept {
+        for (auto& slot : slots) slot.clear();
+        overflowId = 0;
+        maxSlots = INLINE_SLOT_COUNT;
+        usedSlots = 0;
+        flags = 0;
+        ownerKind = 0;
+    }
+};
+
+// InventoryData target: ~128 bytes (may vary with compiler padding)
+
+/**
+ * @brief Overflow storage for large inventories
+ *
+ * When an inventory needs more than INLINE_SLOT_COUNT (12) slots,
+ * additional slots are stored here. The overflowId in InventoryData
+ * maps to an entry in EntityDataManager::m_inventoryOverflow.
+ */
+struct InventoryOverflow {
+    std::vector<InventorySlotData> extraSlots;  // Slots beyond inline capacity
+
+    void clear() noexcept { extraSlots.clear(); }
+};
+
 /**
  * @brief Area effect data for AoE zones (spell effects, traps)
  */
@@ -253,6 +419,330 @@ struct AreaEffectData {
     float elapsed{0.0f};        // Time since creation
     float lastTick{0.0f};       // Time since last damage tick
     uint8_t effectType{0};      // Poison, Fire, Heal, Slow
+};
+
+// Forward declaration for SDL texture
+struct SDL_Texture;
+
+/**
+ * @brief Render data for data-driven NPCs (velocity-based animation)
+ *
+ * Stores all rendering state for NPCs without needing the NPC class.
+ * Animation is driven by velocity: Idle when stationary, Moving when velocity > threshold.
+ * Indexed by typeLocalIndex (same as CharacterData for NPCs).
+ */
+struct NPCRenderData {
+    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
+    SDL_Texture* cachedTexture{nullptr};
+    uint16_t atlasX{0};                   // X offset in atlas (pixels)
+    uint16_t atlasY{0};                   // Y offset in atlas (pixels)
+    uint16_t frameWidth{32};              // Single frame width
+    uint16_t frameHeight{32};             // Single frame height
+    uint16_t idleSpeedMs{150};            // Milliseconds per frame for idle
+    uint16_t moveSpeedMs{100};            // Milliseconds per frame for moving
+    uint8_t currentFrame{0};              // Current animation frame index
+    uint8_t numIdleFrames{1};             // Number of frames in idle animation (static)
+    uint8_t numMoveFrames{2};             // Number of frames in move animation
+    uint8_t idleRow{0};                   // Sprite sheet row for idle (0-based)
+    uint8_t moveRow{0};                   // Sprite sheet row for moving (0-based, same as idle)
+    uint8_t flipMode{0};                  // SDL_FLIP_NONE (0) or SDL_FLIP_HORIZONTAL (1)
+    uint8_t currentRow{0};                // Active row (set by update from velocity)
+    float animationAccumulator{0.0f};     // Time accumulator for frame advancement
+
+    void clear() noexcept {
+        cachedTexture = nullptr;
+        atlasX = 0;
+        atlasY = 0;
+        frameWidth = 32;
+        frameHeight = 32;
+        idleSpeedMs = 150;
+        moveSpeedMs = 100;
+        currentFrame = 0;
+        numIdleFrames = 1;
+        numMoveFrames = 2;
+        idleRow = 0;
+        moveRow = 0;
+        flipMode = 0;
+        currentRow = 0;
+        animationAccumulator = 0.0f;
+    }
+};
+
+// ============================================================================
+// CREATURE COMPOSITION SYSTEM (Race/Class, MonsterType/Variant, Species/Role)
+// ============================================================================
+
+/**
+ * @brief Race definition for NPC composition
+ *
+ * Races define BASE stats and visual appearance. Combined with ClassInfo
+ * at creation to produce final NPC stats (race.base * class.multiplier).
+ */
+struct RaceInfo {
+    std::string name;
+
+    // Base stats (before class modifiers)
+    float baseHealth{100.0f};
+    float baseStamina{100.0f};
+    float baseMoveSpeed{100.0f};
+    float baseAttackDamage{10.0f};
+    float baseAttackRange{50.0f};
+
+    // Visual (atlas region for this race's sprites)
+    uint16_t atlasX{0};
+    uint16_t atlasY{0};
+    uint16_t atlasW{64};
+    uint16_t atlasH{32};
+
+    // Animations
+    AnimationConfig idleAnim;
+    AnimationConfig moveAnim;
+
+    // Size (affects collision)
+    float sizeMultiplier{1.0f};
+};
+
+/**
+ * @brief Class definition for NPC composition
+ *
+ * Classes define stat MULTIPLIERS and behavior tendencies.
+ * Applied to RaceInfo base stats at creation.
+ */
+struct ClassInfo {
+    std::string name;
+
+    // Stat multipliers (applied to race base)
+    float healthMult{1.0f};
+    float staminaMult{1.0f};
+    float moveSpeedMult{1.0f};
+    float attackDamageMult{1.0f};
+    float attackRangeMult{1.0f};
+
+    // AI hints (not auto-applied, for reference)
+    std::string suggestedBehavior;
+    uint8_t basePriority{5};
+
+    // Default faction (can be overridden at spawn)
+    uint8_t defaultFaction{0};
+};
+
+/**
+ * @brief Monster type definition for monster composition
+ *
+ * Monster types define BASE stats and visual appearance.
+ * Combined with MonsterVariantInfo at creation.
+ */
+struct MonsterTypeInfo {
+    std::string name;
+
+    // Base stats
+    float baseHealth{100.0f};
+    float baseStamina{100.0f};
+    float baseMoveSpeed{100.0f};
+    float baseAttackDamage{10.0f};
+    float baseAttackRange{50.0f};
+
+    // Visual
+    uint16_t atlasX{0};
+    uint16_t atlasY{0};
+    uint16_t atlasW{64};
+    uint16_t atlasH{32};
+
+    // Animations
+    AnimationConfig idleAnim;
+    AnimationConfig moveAnim;
+
+    // Size
+    float sizeMultiplier{1.0f};
+
+    // Monsters are enemies by default
+    uint8_t defaultFaction{1};
+};
+
+/**
+ * @brief Monster variant definition for monster composition
+ *
+ * Variants define stat MULTIPLIERS for monster types.
+ * E.g., "Scout" is fast/weak, "Boss" is strong/slow.
+ */
+struct MonsterVariantInfo {
+    std::string name;
+
+    // Stat multipliers
+    float healthMult{1.0f};
+    float staminaMult{1.0f};
+    float moveSpeedMult{1.0f};
+    float attackDamageMult{1.0f};
+    float attackRangeMult{1.0f};
+
+    // AI hints
+    std::string suggestedBehavior;
+    uint8_t basePriority{5};
+};
+
+/**
+ * @brief Species definition for animal composition
+ *
+ * Species define BASE stats and visual appearance for animals.
+ * Combined with AnimalRoleInfo at creation.
+ */
+struct SpeciesInfo {
+    std::string name;
+
+    // Base stats
+    float baseHealth{50.0f};
+    float baseStamina{100.0f};
+    float baseMoveSpeed{80.0f};
+    float baseAttackDamage{5.0f};
+    float baseAttackRange{30.0f};
+
+    // Visual
+    uint16_t atlasX{0};
+    uint16_t atlasY{0};
+    uint16_t atlasW{64};
+    uint16_t atlasH{32};
+
+    // Animations
+    AnimationConfig idleAnim;
+    AnimationConfig moveAnim;
+
+    // Size
+    float sizeMultiplier{1.0f};
+
+    // Behavior hint
+    bool predator{false};
+};
+
+/**
+ * @brief Animal role definition for animal composition
+ *
+ * Roles define stat MULTIPLIERS and behavior for animals.
+ * E.g., "Pup" is weak, "Alpha" is strong/aggressive.
+ */
+struct AnimalRoleInfo {
+    std::string name;
+
+    // Stat multipliers
+    float healthMult{1.0f};
+    float staminaMult{1.0f};
+    float moveSpeedMult{1.0f};
+    float attackDamageMult{1.0f};
+
+    // AI hints
+    std::string suggestedBehavior;
+    uint8_t basePriority{5};
+
+    // Animals are neutral by default
+    uint8_t defaultFaction{2};
+};
+
+// ============================================================================
+// RESOURCE RENDER DATA STRUCTURES
+// ============================================================================
+
+/**
+ * @brief Render data for dropped items (bobbing animation)
+ *
+ * Stores rendering state for DroppedItem entities.
+ * Indexed by typeLocalIndex in EntityHotData.
+ */
+struct ItemRenderData {
+    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
+    SDL_Texture* cachedTexture{nullptr};
+    uint16_t atlasX{0};                   // X offset in atlas (pixels)
+    uint16_t atlasY{0};                   // Y offset in atlas (pixels)
+    uint16_t frameWidth{16};              // Single frame width
+    uint16_t frameHeight{16};             // Single frame height
+    uint16_t animSpeedMs{100};            // Milliseconds per frame
+    uint8_t currentFrame{0};              // Current animation frame
+    uint8_t numFrames{1};                 // Total animation frames
+    float animTimer{0.0f};                // Animation accumulator
+    float bobPhase{0.0f};                 // Sine-wave bob phase (0-2PI)
+    float bobAmplitude{3.0f};             // Vertical bob amplitude in pixels
+
+    void clear() noexcept {
+        cachedTexture = nullptr;
+        atlasX = 0;
+        atlasY = 0;
+        frameWidth = 16;
+        frameHeight = 16;
+        animSpeedMs = 100;
+        currentFrame = 0;
+        numFrames = 1;
+        animTimer = 0.0f;
+        bobPhase = 0.0f;
+        bobAmplitude = 3.0f;
+    }
+};
+
+/**
+ * @brief Render data for containers (chests, barrels)
+ *
+ * Supports open/closed states with different textures.
+ * Indexed by typeLocalIndex in EntityHotData.
+ */
+struct ContainerRenderData {
+    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
+    SDL_Texture* closedTexture{nullptr};
+    SDL_Texture* openTexture{nullptr};
+    uint16_t atlasX{0};                   // Atlas X offset (0 = unmapped, use default)
+    uint16_t atlasY{0};                   // Atlas Y offset (0 = unmapped, use default)
+    uint16_t openAtlasX{0};               // Atlas X offset for open state
+    uint16_t openAtlasY{0};               // Atlas Y offset for open state
+    uint16_t frameWidth{32};              // Sprite width
+    uint16_t frameHeight{32};             // Sprite height
+    uint8_t currentFrame{0};              // For animated open/close
+    uint8_t numFrames{1};                 // Animation frames
+    float animTimer{0.0f};                // Animation accumulator
+
+    void clear() noexcept {
+        closedTexture = nullptr;
+        openTexture = nullptr;
+        atlasX = 0;
+        atlasY = 0;
+        openAtlasX = 0;
+        openAtlasY = 0;
+        frameWidth = 32;
+        frameHeight = 32;
+        currentFrame = 0;
+        numFrames = 1;
+        animTimer = 0.0f;
+    }
+};
+
+/**
+ * @brief Render data for harvestable resources (trees, ore nodes)
+ *
+ * Supports normal/depleted states with different textures.
+ * Indexed by typeLocalIndex in EntityHotData.
+ */
+struct HarvestableRenderData {
+    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
+    SDL_Texture* normalTexture{nullptr};
+    SDL_Texture* depletedTexture{nullptr};
+    uint16_t atlasX{0};                     // Atlas X offset (0 = unmapped, use default)
+    uint16_t atlasY{0};                     // Atlas Y offset (0 = unmapped, use default)
+    uint16_t depletedAtlasX{0};             // Atlas X offset for depleted state
+    uint16_t depletedAtlasY{0};             // Atlas Y offset for depleted state
+    uint16_t frameWidth{32};                // Sprite width
+    uint16_t frameHeight{32};               // Sprite height
+    uint8_t currentFrame{0};                // Animation frame
+    uint8_t numFrames{1};                   // Animation frames (e.g., swaying tree)
+    float animTimer{0.0f};                  // Animation accumulator
+
+    void clear() noexcept {
+        normalTexture = nullptr;
+        depletedTexture = nullptr;
+        atlasX = 0;
+        atlasY = 0;
+        depletedAtlasX = 0;
+        depletedAtlasY = 0;
+        frameWidth = 32;
+        frameHeight = 32;
+        currentFrame = 0;
+        numFrames = 1;
+        animTimer = 0.0f;
+    }
 };
 
 /**
@@ -632,37 +1122,172 @@ public:
     void prepareForStateTransition();
 
     // ========================================================================
-    // ENTITY CREATION
+    // ENTITY CREATION (Creature Composition System)
     // ========================================================================
 
     /**
-     * @brief Create a new NPC entity
-     * @param position Initial world position
-     * @param halfWidth Collision half-width
-     * @param halfHeight Collision half-height
-     * @return Handle to the created entity
+     * @brief Create an NPC with race and class composition
+     * @param position World position
+     * @param race Race name (e.g., "Human", "Elf", "Orc")
+     * @param charClass Class name (e.g., "Warrior", "Guard", "Merchant")
+     * @param factionOverride Optional faction override (0xFF = use class default)
+     * @return Handle to the created entity, or invalid handle if race/class not found
+     *
+     * Final stats computed as: raceBase * classMultiplier
+     * Example: Human (100 HP) + Warrior (1.3x) = 130 HP
      */
-    EntityHandle createNPC(const Vector2D& position,
-                          float halfWidth = 16.0f,
-                          float halfHeight = 16.0f);
+    EntityHandle createNPCWithRaceClass(const Vector2D& position,
+                                        const std::string& race,
+                                        const std::string& charClass,
+                                        Sex sex = Sex::Unknown,
+                                        uint8_t factionOverride = 0xFF);
 
     /**
-     * @brief Create the player entity
-     * @param position Initial world position
-     * @return Handle to the player entity
+     * @brief Get all registered race IDs
+     * @return Vector of race ID strings
      */
-    EntityHandle createPlayer(const Vector2D& position);
+    [[nodiscard]] std::vector<std::string> getRaceIds() const;
+
+    /**
+     * @brief Get all registered class IDs
+     * @return Vector of class ID strings
+     */
+    [[nodiscard]] std::vector<std::string> getClassIds() const;
+
+    /**
+     * @brief Create a monster with type and variant composition
+     * @param position World position
+     * @param monsterType Monster type name (e.g., "Goblin", "Skeleton", "Dragon")
+     * @param variant Variant name (e.g., "Scout", "Brute", "Boss")
+     * @param sex Optional sex (default Unknown)
+     * @param factionOverride Optional faction override (0xFF = use type default, usually Enemy)
+     * @return Handle to the created entity, or invalid handle if type/variant not found
+     */
+    EntityHandle createMonster(const Vector2D& position,
+                               const std::string& monsterType,
+                               const std::string& variant,
+                               Sex sex = Sex::Unknown,
+                               uint8_t factionOverride = 0xFF);
+
+    /**
+     * @brief Create an animal with species and role composition
+     * @param position World position
+     * @param species Species name (e.g., "Wolf", "Bear", "Deer")
+     * @param role Role name (e.g., "Pup", "Adult", "Alpha")
+     * @param sex Optional sex (default Unknown)
+     * @param factionOverride Optional faction override (0xFF = use role default, usually Neutral)
+     * @return Handle to the created entity, or invalid handle if species/role not found
+     */
+    EntityHandle createAnimal(const Vector2D& position,
+                              const std::string& species,
+                              const std::string& role,
+                              Sex sex = Sex::Unknown,
+                              uint8_t factionOverride = 0xFF);
+
+    /**
+     * @brief Get race info from registry
+     * @param race Race name
+     * @return Pointer to RaceInfo, or nullptr if not found
+     */
+    [[nodiscard]] const RaceInfo* getRaceInfo(const std::string& race) const;
+
+    /**
+     * @brief Get class info from registry
+     * @param charClass Class name
+     * @return Pointer to ClassInfo, or nullptr if not found
+     */
+    [[nodiscard]] const ClassInfo* getClassInfo(const std::string& charClass) const;
+
+    /**
+     * @brief Get monster type info from registry
+     * @param monsterType Monster type name
+     * @return Pointer to MonsterTypeInfo, or nullptr if not found
+     */
+    [[nodiscard]] const MonsterTypeInfo* getMonsterTypeInfo(const std::string& monsterType) const;
+
+    /**
+     * @brief Get monster variant info from registry
+     * @param variant Variant name
+     * @return Pointer to MonsterVariantInfo, or nullptr if not found
+     */
+    [[nodiscard]] const MonsterVariantInfo* getMonsterVariantInfo(const std::string& variant) const;
+
+    /**
+     * @brief Get species info from registry
+     * @param species Species name
+     * @return Pointer to SpeciesInfo, or nullptr if not found
+     */
+    [[nodiscard]] const SpeciesInfo* getSpeciesInfo(const std::string& species) const;
+
+    /**
+     * @brief Get animal role info from registry
+     * @param role Role name
+     * @return Pointer to AnimalRoleInfo, or nullptr if not found
+     */
+    [[nodiscard]] const AnimalRoleInfo* getAnimalRoleInfo(const std::string& role) const;
 
     /**
      * @brief Create a dropped item entity
      * @param position World position
      * @param resourceHandle Item template reference
      * @param quantity Stack size
+     * @param worldId World to register with (empty = use active world from WRM)
      * @return Handle to the created entity
+     *
+     * Note: Auto-registers with WorldResourceManager for spatial queries.
+     *       Dropped items use WRM spatial index, not collision system.
      */
     EntityHandle createDroppedItem(const Vector2D& position,
                                    HammerEngine::ResourceHandle resourceHandle,
-                                   int quantity = 1);
+                                   int quantity = 1,
+                                   const std::string& worldId = "");
+
+    /**
+     * @brief Create a container entity with auto-inventory
+     * @param position World position
+     * @param containerType Type of container (Chest, Barrel, Corpse, Crate)
+     * @param maxSlots Maximum inventory slots (default 20)
+     * @param lockLevel Lock difficulty (0 = unlocked, 1-10 = requires skill)
+     * @param worldId World to register with (empty = use active world from WRM)
+     * @return Handle to the created entity
+     *
+     * Validation:
+     * - containerType must be valid
+     * - maxSlots must be > 0 and <= 100
+     * - lockLevel clamped to 0-10
+     *
+     * Auto-creates an inventory for the container via createInventory().
+     * Auto-registers inventory with WorldResourceManager.
+     */
+    EntityHandle createContainer(const Vector2D& position,
+                                 ContainerType containerType,
+                                 uint16_t maxSlots = 20,
+                                 uint8_t lockLevel = 0,
+                                 const std::string& worldId = "");
+
+    /**
+     * @brief Create a harvestable resource node
+     * @param position World position
+     * @param yieldResource Resource to yield when harvested
+     * @param yieldMin Minimum yield amount
+     * @param yieldMax Maximum yield amount
+     * @param respawnTime Seconds until respawn after depletion
+     * @param worldId World to register with (empty = use active world from WRM)
+     * @return Handle to the created entity
+     *
+     * Validation:
+     * - yieldResource must be valid
+     * - yieldMin/yieldMax must be positive and yieldMax >= yieldMin
+     * - respawnTime clamped to >= 0
+     *
+     * Auto-registers with WorldResourceManager for both registry and spatial queries.
+     */
+    EntityHandle createHarvestable(const Vector2D& position,
+                                   HammerEngine::ResourceHandle yieldResource,
+                                   int yieldMin = 1,
+                                   int yieldMax = 3,
+                                   float respawnTime = 60.0f,
+                                   const std::string& worldId = "");
 
     // ========================================================================
     // PHASE 1: REGISTRATION OF EXISTING ENTITIES (Parallel Storage)
@@ -670,23 +1295,6 @@ public:
     // (Entity subclass constructors). They mirror data into EntityDataManager
     // until Phase 4 when Entity becomes a lightweight view.
     // ========================================================================
-
-    /**
-     * @brief Register an existing NPC entity with EntityDataManager
-     * @param entityId Existing entity ID from Entity::getID()
-     * @param position Current position
-     * @param halfWidth Collision half-width
-     * @param halfHeight Collision half-height
-     * @param health Current health (for CharacterData)
-     * @param maxHealth Max health
-     * @return Handle to the registered entity
-     */
-    EntityHandle registerNPC(EntityHandle::IDType entityId,
-                             const Vector2D& position,
-                             float halfWidth = 16.0f,
-                             float halfHeight = 16.0f,
-                             float health = 100.0f,
-                             float maxHealth = 100.0f);
 
     /**
      * @brief Register an existing Player entity with EntityDataManager
@@ -795,6 +1403,148 @@ public:
     void processDestructionQueue();
 
     // ========================================================================
+    // INVENTORY MANAGEMENT
+    // ========================================================================
+
+    /**
+     * @brief Create a new inventory
+     * @param maxSlots Maximum number of slots (uses overflow for > INLINE_SLOT_COUNT)
+     * @param worldTracked If true, registers with WorldResourceManager for aggregate queries
+     * @return Inventory index, or INVALID_INVENTORY_INDEX on failure
+     *
+     * Validation:
+     * - maxSlots must be > 0 and <= 1000
+     * - Returns INVALID_INVENTORY_INDEX if allocation fails
+     */
+    uint32_t createInventory(uint16_t maxSlots, bool worldTracked = false);
+
+    /**
+     * @brief Destroy an inventory and release its resources
+     * @param inventoryIndex Index from createInventory()
+     *
+     * Clears overflow data if present, adds slot to free-list.
+     * If worldTracked, unregisters from WorldResourceManager.
+     */
+    void destroyInventory(uint32_t inventoryIndex);
+
+    /**
+     * @brief Add resources to an inventory (with stacking)
+     * @param inventoryIndex Target inventory
+     * @param handle Resource type handle
+     * @param quantity Amount to add (must be positive)
+     * @return true if added successfully, false on validation failure or full
+     *
+     * Validation:
+     * - inventoryIndex must be valid
+     * - handle must be valid and registered with ResourceTemplateManager
+     * - quantity must be positive
+     *
+     * Stacking: Tries to stack with existing slots of same type first,
+     * then fills empty slots. Respects maxStackSize from ResourceTemplateManager.
+     */
+    bool addToInventory(uint32_t inventoryIndex,
+                        HammerEngine::ResourceHandle handle,
+                        int quantity);
+
+    /**
+     * @brief Remove resources from an inventory
+     * @param inventoryIndex Target inventory
+     * @param handle Resource type handle
+     * @param quantity Amount to remove (must be positive)
+     * @return true if removed successfully, false if insufficient quantity
+     *
+     * Removes from slots in order until quantity is satisfied.
+     * Clears empty slots for reuse.
+     */
+    bool removeFromInventory(uint32_t inventoryIndex,
+                             HammerEngine::ResourceHandle handle,
+                             int quantity);
+
+    /**
+     * @brief Get total quantity of a resource in an inventory
+     * @param inventoryIndex Target inventory
+     * @param handle Resource type handle
+     * @return Total quantity across all slots, or 0 if not found/invalid
+     */
+    [[nodiscard]] int getInventoryQuantity(uint32_t inventoryIndex,
+                                           HammerEngine::ResourceHandle handle) const;
+
+    /**
+     * @brief Check if an inventory contains at least the specified quantity
+     * @param inventoryIndex Target inventory
+     * @param handle Resource type handle
+     * @param quantity Required amount
+     * @return true if inventory contains >= quantity
+     */
+    [[nodiscard]] bool hasInInventory(uint32_t inventoryIndex,
+                                      HammerEngine::ResourceHandle handle,
+                                      int quantity) const;
+
+    /**
+     * @brief Get all resources in an inventory as a map
+     * @param inventoryIndex Target inventory
+     * @return Map of resource handle to total quantity
+     *
+     * Iterates through all slots (inline and overflow) and sums quantities
+     * by resource type. Returns empty map for invalid inventory.
+     */
+    [[nodiscard]] std::unordered_map<HammerEngine::ResourceHandle, int>
+    getInventoryResources(uint32_t inventoryIndex) const;
+
+    /**
+     * @brief Get inventory data by index
+     * @param inventoryIndex Target inventory
+     * @return Reference to inventory data
+     */
+    [[nodiscard]] InventoryData& getInventoryData(uint32_t inventoryIndex);
+    [[nodiscard]] const InventoryData& getInventoryData(uint32_t inventoryIndex) const;
+
+    /**
+     * @brief Get overflow data for large inventories
+     * @param overflowId ID from InventoryData::overflowId
+     * @return Pointer to overflow data, or nullptr if not found
+     */
+    [[nodiscard]] InventoryOverflow* getInventoryOverflow(uint32_t overflowId);
+    [[nodiscard]] const InventoryOverflow* getInventoryOverflow(uint32_t overflowId) const;
+
+    /**
+     * @brief Check if inventory index is valid
+     */
+    [[nodiscard]] bool isValidInventoryIndex(uint32_t inventoryIndex) const noexcept {
+        return inventoryIndex != INVALID_INVENTORY_INDEX &&
+               inventoryIndex < m_inventoryData.size() &&
+               m_inventoryData[inventoryIndex].isValid();
+    }
+
+    // ========================================================================
+    // RESOURCE RENDER DATA ACCESS
+    // ========================================================================
+
+    /**
+     * @brief Get item render data by type index
+     * @param typeLocalIndex Index from EntityHotData::typeLocalIndex
+     * @return Reference to item render data
+     */
+    [[nodiscard]] ItemRenderData& getItemRenderDataByTypeIndex(uint32_t typeLocalIndex);
+    [[nodiscard]] const ItemRenderData& getItemRenderDataByTypeIndex(uint32_t typeLocalIndex) const;
+
+    /**
+     * @brief Get container render data by type index
+     * @param typeLocalIndex Index from EntityHotData::typeLocalIndex
+     * @return Reference to container render data
+     */
+    [[nodiscard]] ContainerRenderData& getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex);
+    [[nodiscard]] const ContainerRenderData& getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex) const;
+
+    /**
+     * @brief Get harvestable render data by type index
+     * @param typeLocalIndex Index from EntityHotData::typeLocalIndex
+     * @return Reference to harvestable render data
+     */
+    [[nodiscard]] HarvestableRenderData& getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex);
+    [[nodiscard]] const HarvestableRenderData& getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex) const;
+
+    // ========================================================================
     // HANDLE VALIDATION
     // ========================================================================
 
@@ -889,6 +1639,14 @@ public:
      */
     [[nodiscard]] size_t getStaticIndex(EntityHandle handle) const;
 
+    /**
+     * @brief Get handle for static pool entity by index
+     * @param staticIndex Index in m_staticHotData
+     * @return EntityHandle with correct kind and generation
+     * @note Used for resources (DroppedItem, Container, Harvestable) which are in static pool
+     */
+    [[nodiscard]] EntityHandle getStaticHandle(size_t staticIndex) const;
+
     // ========================================================================
     // TYPE-SPECIFIC DATA ACCESS
     // ========================================================================
@@ -904,12 +1662,36 @@ public:
 
     [[nodiscard]] ContainerData& getContainerData(EntityHandle handle);
     [[nodiscard]] const ContainerData& getContainerData(EntityHandle handle) const;
+    [[nodiscard]] ContainerData& getContainerData(uint32_t typeLocalIndex);
+    [[nodiscard]] const ContainerData& getContainerData(uint32_t typeLocalIndex) const;
 
     [[nodiscard]] HarvestableData& getHarvestableData(EntityHandle handle);
     [[nodiscard]] const HarvestableData& getHarvestableData(EntityHandle handle) const;
+    [[nodiscard]] HarvestableData& getHarvestableData(uint32_t typeLocalIndex);
+    [[nodiscard]] const HarvestableData& getHarvestableData(uint32_t typeLocalIndex) const;
 
     [[nodiscard]] AreaEffectData& getAreaEffectData(EntityHandle handle);
     [[nodiscard]] const AreaEffectData& getAreaEffectData(EntityHandle handle) const;
+
+    // ========================================================================
+    // NPC RENDER DATA ACCESS (for data-driven NPCs)
+    // ========================================================================
+
+    /**
+     * @brief Get NPC render data by entity handle
+     * @param handle Entity handle (must be NPC)
+     * @return Reference to NPCRenderData
+     */
+    [[nodiscard]] NPCRenderData& getNPCRenderData(EntityHandle handle);
+    [[nodiscard]] const NPCRenderData& getNPCRenderData(EntityHandle handle) const;
+
+    /**
+     * @brief Get NPC render data by type-local index (for batch processing)
+     * @param typeLocalIndex Index from EntityHotData.typeLocalIndex
+     * @return Reference to NPCRenderData
+     */
+    [[nodiscard]] NPCRenderData& getNPCRenderDataByTypeIndex(uint32_t typeLocalIndex);
+    [[nodiscard]] const NPCRenderData& getNPCRenderDataByTypeIndex(uint32_t typeLocalIndex) const;
 
     // ========================================================================
     // BY-INDEX TYPE-SPECIFIC ACCESS (for batch processing)
@@ -1147,6 +1929,21 @@ private:
     uint8_t nextGeneration(size_t index);
     void rebuildTierIndicesFromHotData();
 
+    /**
+     * @brief Allocate a character slot (CharacterData + NPCRenderData in sync)
+     * @return The allocated typeLocalIndex
+     * @note Both arrays always grow together to keep indices valid
+     */
+    uint32_t allocateCharacterSlot();
+
+    /**
+     * @brief Internal: Create NPC entity with collision data
+     * @note Use createNPCWithRaceClass() for the public API
+     */
+    EntityHandle createNPC(const Vector2D& position,
+                          float halfWidth = 16.0f,
+                          float halfHeight = 16.0f);
+
     // ========================================================================
     // STORAGE (Structure of Arrays)
     // ========================================================================
@@ -1168,6 +1965,17 @@ private:
     std::vector<ContainerData> m_containerData;      // Container
     std::vector<HarvestableData> m_harvestableData;  // Harvestable
     std::vector<AreaEffectData> m_areaEffectData;    // AreaEffect
+    std::vector<NPCRenderData> m_npcRenderData;      // NPC render data (same index as CharacterData for NPCs)
+    std::vector<ItemRenderData> m_itemRenderData;    // DroppedItem render data (same index as ItemData)
+    std::vector<ContainerRenderData> m_containerRenderData;  // Container render data
+    std::vector<HarvestableRenderData> m_harvestableRenderData;  // Harvestable render data
+
+    // Inventory data (indexed by inventory index from createInventory())
+    std::vector<InventoryData> m_inventoryData;
+    std::unordered_map<uint32_t, InventoryOverflow> m_inventoryOverflow;  // overflowId -> overflow data
+    std::vector<uint32_t> m_freeInventorySlots;                           // Free-list for inventory reuse
+    uint32_t m_nextOverflowId{1};                                         // Next overflow ID (0 = none)
+    mutable std::mutex m_inventoryMutex;                                  // Thread safety for inventory ops
 
     // Path data (indexed by edmIndex, sparse - grows lazily for AI entities)
     std::vector<PathData> m_pathData;
@@ -1200,9 +2008,35 @@ private:
     mutable std::vector<size_t> m_triggerDetectionIndices;
     mutable bool m_triggerDetectionDirty{true};
 
-    // Kind indices
+    // Kind indices (per-kind dirty flags to avoid full rebuild when querying single kind)
+    // NOTE: Entity creation/destruction is main-thread-only, so these don't need atomics.
     std::array<std::vector<size_t>, static_cast<size_t>(EntityKind::COUNT)> m_kindIndices;
-    bool m_kindIndicesDirty{true};
+    mutable std::array<bool, static_cast<size_t>(EntityKind::COUNT)> m_kindIndicesDirty{};
+
+    // Helper to mark specific kind dirty (called when entities are created/destroyed)
+    void markKindDirty(EntityKind kind) {
+        m_kindIndicesDirty[static_cast<size_t>(kind)] = true;
+    }
+    void markAllKindsDirty() {
+        m_kindIndicesDirty.fill(true);
+    }
+
+    /**
+     * @brief Internal: Get inventory quantity while already holding m_inventoryMutex
+     * @param inventoryIndex Target inventory
+     * @param handle Resource type handle
+     * @return Total quantity across all slots
+     * @note MUST be called while holding m_inventoryMutex lock
+     */
+    [[nodiscard]] int getInventoryQuantityLocked(uint32_t inventoryIndex,
+                                                  HammerEngine::ResourceHandle handle) const;
+
+    /**
+     * @brief Internal: Destroy a static resource entity (DroppedItem, Container, Harvestable)
+     * @param handle Entity handle to destroy
+     * @note Static resources are destroyed immediately (no deferred queue)
+     */
+    void destroyStaticResource(EntityHandle handle);
 
     // Destruction queue and processing buffer (avoid per-frame allocation)
     std::vector<EntityHandle> m_destructionQueue;
@@ -1218,6 +2052,43 @@ private:
 
     // Thread safety (destruction queue only - structural ops are main-thread-only)
     std::mutex m_destructionMutex;
+
+    // ========================================================================
+    // CREATURE COMPOSITION REGISTRIES
+    // ========================================================================
+
+    // NPC Race/Class registries
+    std::unordered_map<std::string, RaceInfo> m_raceRegistry;
+    std::unordered_map<std::string, ClassInfo> m_classRegistry;
+    std::unordered_map<std::string, uint8_t> m_raceNameToId;
+    std::unordered_map<std::string, uint8_t> m_classNameToId;
+    std::vector<std::string> m_raceIdToName;
+    std::vector<std::string> m_classIdToName;
+    void initializeRaceRegistry();
+    void initializeClassRegistry();
+
+    // Monster Type/Variant registries
+    std::unordered_map<std::string, MonsterTypeInfo> m_monsterTypeRegistry;
+    std::unordered_map<std::string, MonsterVariantInfo> m_monsterVariantRegistry;
+    std::unordered_map<std::string, uint8_t> m_monsterTypeNameToId;
+    std::unordered_map<std::string, uint8_t> m_monsterVariantNameToId;
+    std::vector<std::string> m_monsterTypeIdToName;
+    std::vector<std::string> m_monsterVariantIdToName;
+    void initializeMonsterTypeRegistry();
+    void initializeMonsterVariantRegistry();
+
+    // Animal Species/Role registries
+    std::unordered_map<std::string, SpeciesInfo> m_speciesRegistry;
+    std::unordered_map<std::string, AnimalRoleInfo> m_animalRoleRegistry;
+    std::unordered_map<std::string, uint8_t> m_speciesNameToId;
+    std::unordered_map<std::string, uint8_t> m_animalRoleNameToId;
+    std::vector<std::string> m_speciesIdToName;
+    std::vector<std::string> m_animalRoleIdToName;
+    void initializeSpeciesRegistry();
+    void initializeAnimalRoleRegistry();
+
+    // Helper for faction-based collision layers
+    void applyFactionCollision(size_t index, uint8_t faction);
 
     // State
     std::atomic<bool> m_initialized{false};
@@ -1315,6 +2186,69 @@ inline const CharacterData& EntityDataManager::getCharacterDataByIndex(size_t in
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
     assert(typeIndex < m_characterData.size() && "Type index out of bounds");
     return m_characterData[typeIndex];
+}
+
+// NPC render data accessors - O(1) access by type index
+inline NPCRenderData& EntityDataManager::getNPCRenderDataByTypeIndex(uint32_t typeLocalIndex) {
+    assert(typeLocalIndex < m_npcRenderData.size() && "NPC render data type index out of bounds");
+    return m_npcRenderData[typeLocalIndex];
+}
+
+inline const NPCRenderData& EntityDataManager::getNPCRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
+    assert(typeLocalIndex < m_npcRenderData.size() && "NPC render data type index out of bounds");
+    return m_npcRenderData[typeLocalIndex];
+}
+
+// Resource render data accessors - O(1) access by type index
+inline ItemRenderData& EntityDataManager::getItemRenderDataByTypeIndex(uint32_t typeLocalIndex) {
+    assert(typeLocalIndex < m_itemRenderData.size() && "Item render data type index out of bounds");
+    return m_itemRenderData[typeLocalIndex];
+}
+
+inline const ItemRenderData& EntityDataManager::getItemRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
+    assert(typeLocalIndex < m_itemRenderData.size() && "Item render data type index out of bounds");
+    return m_itemRenderData[typeLocalIndex];
+}
+
+inline ContainerRenderData& EntityDataManager::getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex) {
+    assert(typeLocalIndex < m_containerRenderData.size() && "Container render data type index out of bounds");
+    return m_containerRenderData[typeLocalIndex];
+}
+
+inline const ContainerRenderData& EntityDataManager::getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
+    assert(typeLocalIndex < m_containerRenderData.size() && "Container render data type index out of bounds");
+    return m_containerRenderData[typeLocalIndex];
+}
+
+inline HarvestableRenderData& EntityDataManager::getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex) {
+    assert(typeLocalIndex < m_harvestableRenderData.size() && "Harvestable render data type index out of bounds");
+    return m_harvestableRenderData[typeLocalIndex];
+}
+
+inline const HarvestableRenderData& EntityDataManager::getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
+    assert(typeLocalIndex < m_harvestableRenderData.size() && "Harvestable render data type index out of bounds");
+    return m_harvestableRenderData[typeLocalIndex];
+}
+
+// Container/Harvestable data accessors by type index - O(1) access for batch processing
+inline ContainerData& EntityDataManager::getContainerData(uint32_t typeLocalIndex) {
+    assert(typeLocalIndex < m_containerData.size() && "Container type index out of bounds");
+    return m_containerData[typeLocalIndex];
+}
+
+inline const ContainerData& EntityDataManager::getContainerData(uint32_t typeLocalIndex) const {
+    assert(typeLocalIndex < m_containerData.size() && "Container type index out of bounds");
+    return m_containerData[typeLocalIndex];
+}
+
+inline HarvestableData& EntityDataManager::getHarvestableData(uint32_t typeLocalIndex) {
+    assert(typeLocalIndex < m_harvestableData.size() && "Harvestable type index out of bounds");
+    return m_harvestableData[typeLocalIndex];
+}
+
+inline const HarvestableData& EntityDataManager::getHarvestableData(uint32_t typeLocalIndex) const {
+    assert(typeLocalIndex < m_harvestableData.size() && "Harvestable type index out of bounds");
+    return m_harvestableData[typeLocalIndex];
 }
 
 #endif // ENTITY_DATA_MANAGER_HPP

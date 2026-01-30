@@ -36,10 +36,6 @@ for arg in "$@"; do
       TEST_FILTER="world_resource_manager_tests"
       shift
       ;;
-    --inventory-test)
-      TEST_FILTER="inventory_component_tests"
-      shift
-      ;;
     --resource-event-test)
       TEST_FILTER="resource_change_event_tests"
       shift
@@ -65,7 +61,6 @@ for arg in "$@"; do
       echo -e "  --resource-factory-test      Run only resource factory tests"
       echo -e "  --resource-template-json-test Run only resource template JSON tests"
       echo -e "  --world-resource-test        Run only world resource manager tests"
-      echo -e "  --inventory-test             Run only inventory component tests"
       echo -e "  --resource-event-test        Run only resource event tests"
       echo -e "  --edge-case-test             Run only resource edge case tests"
       echo -e "  --integration-test           Run only resource integration tests"
@@ -76,7 +71,6 @@ for arg in "$@"; do
       echo -e "  Resource Factory Tests:        Resource creation and factory patterns"
       echo -e "  Resource Template JSON Tests:  JSON-based resource template operations"
       echo -e "  World Resource Tests:          Global resource quantity tracking"
-      echo -e "  Inventory Component Tests:     Inventory operations and thread safety"
       echo -e "  Resource Event Tests:          Resource change event handling"
       echo -e "  Edge Case Tests:               Resource boundary and error conditions"
       echo -e "  Integration Tests:             Cross-system resource operations"
@@ -112,7 +106,6 @@ else
         "resource_factory_tests"
         "resource_template_manager_json_tests"
         "world_resource_manager_tests"
-        "inventory_component_tests"
         "resource_change_event_tests"
         "resource_edge_case_tests"
         "resource_integration_tests"

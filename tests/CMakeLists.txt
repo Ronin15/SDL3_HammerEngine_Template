@@ -18,7 +18,6 @@ message(STATUS "Building tests with Boost Test support")
 # --- Create TestMocks Library ---
 set(MOCK_SOURCES
     mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
     mocks/MockGameEngine.cpp
     events/EventManagerTestAccess.cpp
 )
@@ -71,15 +70,16 @@ set(SIMPLE_TESTS
     entity_data_manager_tests
     background_simulation_manager_tests
     collision_manager_edm_integration_tests
+    event_manager_tests
 )
 
 # Complex tests (need mocks)
 set(MOCK_TESTS
     ai_scaling_benchmark
     event_manager_scaling_benchmark
+    background_simulation_manager_benchmark
     thread_safe_ai_manager_tests
     thread_safe_ai_integration_tests
-    event_manager_tests
     event_types_tests
     event_manager_behavior_tests
     particle_manager_core_tests
@@ -90,6 +90,7 @@ set(MOCK_TESTS
     behavior_functionality_tests
     collision_pathfinding_integration_tests
     collision_scaling_benchmark
+    adaptive_threading_analysis
     pathfinder_benchmark
     pathfinder_ai_contention_tests
     event_coordination_integration_tests
@@ -97,13 +98,13 @@ set(MOCK_TESTS
     weather_controller_tests
     day_night_controller_tests
     controller_registry_tests
+    npc_render_controller_tests
     ai_manager_edm_integration_tests
     pathfinder_manager_edm_integration_tests
 )
 
 # Tests that need special mock combinations
 set(INVENTORY_TESTS
-    inventory_component_tests
     resource_integration_tests
     resource_architecture_tests
 )
@@ -190,6 +191,8 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "managers/BackgroundSimulationManagerTests.cpp")
     elseif(${test_name} STREQUAL "collision_manager_edm_integration_tests")
         set(test_source "collisions/CollisionManagerEDMIntegrationTests.cpp")
+    elseif(${test_name} STREQUAL "event_manager_tests")
+        set(test_source "events/EventManagerTest.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})
@@ -204,12 +207,12 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "AIScalingBenchmark.cpp")
     elseif(${test_name} STREQUAL "event_manager_scaling_benchmark")
         set(test_source "EventManagerScalingBenchmark.cpp")
+    elseif(${test_name} STREQUAL "background_simulation_manager_benchmark")
+        set(test_source "managers/BackgroundSimulationManagerBenchmark.cpp")
     elseif(${test_name} STREQUAL "thread_safe_ai_manager_tests")
         set(test_source "ThreadSafeAIManagerTest.cpp")
     elseif(${test_name} STREQUAL "thread_safe_ai_integration_tests")
         set(test_source "ThreadSafeAIIntegrationTest.cpp")
-    elseif(${test_name} STREQUAL "event_manager_tests")
-        set(test_source "events/EventManagerTest.cpp")
     elseif(${test_name} STREQUAL "event_types_tests")
         set(test_source "events/EventTypesTest.cpp")
     elseif(${test_name} STREQUAL "event_manager_behavior_tests")
@@ -222,6 +225,8 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "CollisionPathfindingIntegrationTests.cpp")
     elseif(${test_name} STREQUAL "collision_scaling_benchmark")
         set(test_source "performance/CollisionScalingBenchmark.cpp")
+    elseif(${test_name} STREQUAL "adaptive_threading_analysis")
+        set(test_source "performance/AdaptiveThreadingAnalysis.cpp")
     elseif(${test_name} STREQUAL "pathfinder_benchmark")
         set(test_source "performance/PathfinderBenchmark.cpp")
     elseif(${test_name} STREQUAL "pathfinder_ai_contention_tests")
@@ -248,6 +253,8 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "controllers/DayNightControllerTests.cpp")
     elseif(${test_name} STREQUAL "controller_registry_tests")
         set(test_source "controllers/ControllerRegistryTests.cpp")
+    elseif(${test_name} STREQUAL "npc_render_controller_tests")
+        set(test_source "controllers/NPCRenderControllerTests.cpp")
     elseif(${test_name} STREQUAL "ai_manager_edm_integration_tests")
         set(test_source "managers/AIManagerEDMIntegrationTests.cpp")
     elseif(${test_name} STREQUAL "pathfinder_manager_edm_integration_tests")
@@ -261,9 +268,7 @@ endforeach()
 
 # Create inventory tests (need specific mock combination)
 foreach(test_name ${INVENTORY_TESTS})
-    if(${test_name} STREQUAL "inventory_component_tests")
-        set(test_source "resources/InventoryComponentTests.cpp")
-    elseif(${test_name} STREQUAL "resource_integration_tests")
+    if(${test_name} STREQUAL "resource_integration_tests")
         set(test_source "resources/ResourceIntegrationTests.cpp")
     elseif(${test_name} STREQUAL "resource_architecture_tests")
         set(test_source "resources/ResourceArchitectureTests.cpp")
@@ -278,6 +283,8 @@ endforeach()
 # Special configurations
 target_link_libraries(ui_stress_test PRIVATE Boost::container)
 target_compile_definitions(event_manager_tests PRIVATE RUNNING_TESTS)
+target_sources(event_manager_tests PRIVATE events/EventManagerTestAccess.cpp)
+target_include_directories(event_manager_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/events)
 target_compile_definitions(event_types_tests PRIVATE RUNNING_TESTS)
 target_compile_definitions(ui_stress_test PRIVATE UI_STRESS_TEST_BUILD)
 
@@ -295,6 +302,12 @@ foreach(test_name ${ALL_TESTS})
     elseif(${test_name} STREQUAL "collision_scaling_benchmark")
         # Only run MM scaling test by default (fast representative test)
         add_test(NAME ${test_name} COMMAND ${test_name} --run_test=CollisionScalingTests/MMScaling)
+    elseif(${test_name} STREQUAL "ui_stress_test")
+        # Run quick 10-second test for ctest (scripts run full duration)
+        add_test(NAME ${test_name} COMMAND ${test_name} --duration 10)
+    elseif(${test_name} STREQUAL "integrated_system_benchmark")
+        # Only run quick 60FPS test for ctest (full suite takes ~90s due to sustained perf test)
+        add_test(NAME ${test_name} COMMAND ${test_name} --run_test=IntegratedSystemBenchmarkSuite/TestRealisticGameSimulation60FPS)
     else()
         add_test(NAME ${test_name} COMMAND ${test_name})
     endif()
@@ -316,3 +329,86 @@ target_include_directories(PowerProfile PRIVATE ${CMAKE_SOURCE_DIR}/include)
 set_target_properties(PowerProfile PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
 )
+
+# --- GPU Tests (conditional on USE_SDL3_GPU) ---
+if(USE_SDL3_GPU)
+    message(STATUS "Building GPU tests (SDL3_GPU enabled)")
+
+    # GPU test executables
+    set(GPU_UNIT_TESTS
+        gpu_types_tests
+        gpu_pipeline_config_tests
+    )
+
+    set(GPU_INTEGRATION_TESTS
+        gpu_device_tests
+        gpu_shader_manager_tests
+        gpu_resource_tests
+        gpu_vertex_pool_tests
+        sprite_batch_tests
+    )
+
+    set(GPU_SYSTEM_TESTS
+        gpu_renderer_tests
+    )
+
+    # Source file mapping for GPU unit tests (no GPU required)
+    foreach(test_name ${GPU_UNIT_TESTS})
+        if(${test_name} STREQUAL "gpu_types_tests")
+            set(test_source "gpu/GPUTypesTests.cpp")
+        elseif(${test_name} STREQUAL "gpu_pipeline_config_tests")
+            set(test_source "gpu/GPUPipelineConfigTests.cpp")
+        endif()
+
+        add_executable(${test_name} ${test_source})
+        target_link_libraries(${test_name} PRIVATE HammerEngineLib Boost::unit_test_framework)
+        target_include_directories(${test_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gpu)
+        target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
+        add_test(NAME ${test_name} COMMAND ${test_name})
+        set_tests_properties(${test_name} PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "GPU;Unit")
+    endforeach()
+
+    # Source file mapping for GPU integration tests (require GPU)
+    foreach(test_name ${GPU_INTEGRATION_TESTS})
+        if(${test_name} STREQUAL "gpu_device_tests")
+            set(test_source "gpu/GPUDeviceTests.cpp")
+        elseif(${test_name} STREQUAL "gpu_shader_manager_tests")
+            set(test_source "gpu/GPUShaderManagerTests.cpp")
+        elseif(${test_name} STREQUAL "gpu_resource_tests")
+            set(test_source "gpu/GPUResourceTests.cpp")
+        elseif(${test_name} STREQUAL "gpu_vertex_pool_tests")
+            set(test_source "gpu/GPUVertexPoolTests.cpp")
+        elseif(${test_name} STREQUAL "sprite_batch_tests")
+            set(test_source "gpu/SpriteBatchTests.cpp")
+        endif()
+
+        add_executable(${test_name} ${test_source})
+        target_link_libraries(${test_name} PRIVATE HammerEngineLib Boost::unit_test_framework)
+        target_include_directories(${test_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gpu)
+        target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
+        add_test(NAME ${test_name} COMMAND ${test_name})
+        set_tests_properties(${test_name} PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "GPU;Integration")
+    endforeach()
+
+    # Source file mapping for GPU system tests (full frame flow)
+    foreach(test_name ${GPU_SYSTEM_TESTS})
+        if(${test_name} STREQUAL "gpu_renderer_tests")
+            set(test_source "gpu/GPURendererTests.cpp")
+        endif()
+
+        add_executable(${test_name} ${test_source})
+        target_link_libraries(${test_name} PRIVATE HammerEngineLib Boost::unit_test_framework)
+        target_include_directories(${test_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gpu)
+        target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
+        add_test(NAME ${test_name} COMMAND ${test_name})
+        set_tests_properties(${test_name} PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "GPU;System")
+    endforeach()
+else()
+    message(STATUS "Skipping GPU tests (USE_SDL3_GPU not enabled)")
+endif()

@@ -12,6 +12,14 @@
 #include <vector>
 #include "gameStates/GameState.hpp"
 
+#ifdef USE_SDL3_GPU
+struct SDL_GPURenderPass;
+
+namespace HammerEngine {
+class GPURenderer;
+}
+#endif
+
 class GameStateManager {
 
  public:
@@ -24,6 +32,29 @@ class GameStateManager {
   void update(float deltaTime);
   void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f);
   void handleInput();
+
+#ifdef USE_SDL3_GPU
+  /**
+   * Record vertices for GPU rendering (called before scene pass).
+   * Delegates to active state's recordGPUVertices().
+   */
+  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer, float interpolationAlpha);
+
+  /**
+   * Issue GPU draw calls during scene pass.
+   * Delegates to active state's renderGPUScene().
+   */
+  void renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+                       SDL_GPURenderPass* scenePass,
+                       float interpolationAlpha);
+
+  /**
+   * Render UI/overlays during swapchain pass.
+   * Delegates to active state's renderGPUUI().
+   */
+  void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+                    SDL_GPURenderPass* swapchainPass);
+#endif
 
   bool hasState(const std::string& stateName) const;
   std::shared_ptr<GameState> getState(const std::string& stateName) const;

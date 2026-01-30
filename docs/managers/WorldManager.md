@@ -61,11 +61,179 @@ The `WorldManager` uses a `WorldData` object to store the current world's tile d
 
 ### WorldData
 
-The `WorldData` struct holds the world's configuration, tile data, and other metadata.
+The `WorldData` struct holds the world's configuration, tile data, and other metadata:
+
+```cpp
+struct WorldData {
+    std::string worldId;
+    std::vector<std::vector<Tile>> grid;  // 2D tile grid
+};
+```
 
 ### TileRenderer
 
 The `TileRenderer` is responsible for rendering the world's tiles. It uses a chunk-based approach to optimize rendering performance. Chunks are pre-rendered to textures, and only the visible chunks are drawn to the screen.
+
+## Chunk-Based Rendering System
+
+WorldManager uses chunked rendering for efficient handling of large worlds.
+
+### How Chunks Work
+
+1. **Chunk Creation**: World is divided into fixed-size chunks (e.g., 16x16 tiles)
+2. **Pre-rendering**: Each chunk renders its tiles to a texture once
+3. **Viewport Culling**: Only chunks overlapping the viewport are drawn
+4. **Cache Invalidation**: Chunks re-render when tiles change or seasons change
+
+### Viewport Padding
+
+The renderer includes padding beyond the visible viewport to ensure smooth scrolling:
+- Prevents pop-in at screen edges
+- Chunks slightly outside viewport are still rendered
+- Enables seamless camera movement
+
+### Tile Culling Optimization
+
+```cpp
+// Internal culling logic (simplified)
+void TileRenderer::render(float cameraX, float cameraY, int viewW, int viewH) {
+    // Calculate visible tile range with padding
+    int startTileX = static_cast<int>(cameraX / TILE_SIZE) - 1;
+    int endTileX = static_cast<int>((cameraX + viewW) / TILE_SIZE) + 2;
+
+    // Only render chunks that overlap this range
+    for (auto& chunk : m_chunks) {
+        if (chunk.overlaps(startTileX, endTileX, startTileY, endTileY)) {
+            chunk.render(renderer);
+        }
+    }
+}
+```
+
+## Biome System
+
+The world uses procedural biome generation with 8 distinct biome types.
+
+### Available Biomes
+
+| Biome | Description | Characteristics |
+|-------|-------------|-----------------|
+| **DESERT** | Arid sandy regions | Sparse vegetation, ore deposits |
+| **FOREST** | Dense woodland | Many trees, wildlife, mushrooms |
+| **PLAINS** | Open grassland | Sparse vegetation, flowers |
+| **MOUNTAIN** | Rocky highlands | Ore deposits, difficult terrain |
+| **SWAMP** | Wetland areas | Water tiles, lily pads, frogs |
+| **HAUNTED** | Dark corrupted land | Special visual effects |
+| **CELESTIAL** | Magical regions | Unique resources |
+| **OCEAN** | Deep water | Water tiles, no land traversal |
+
+### Biome Assignment
+
+Biomes are assigned during world generation based on noise functions:
+
+```cpp
+// Simplified biome selection logic
+Biome selectBiome(float elevation, float humidity) {
+    if (elevation < waterLevel) return Biome::OCEAN;
+    if (elevation > mountainLevel) return Biome::MOUNTAIN;
+    if (humidity > swampThreshold) return Biome::SWAMP;
+    if (humidity < desertThreshold) return Biome::DESERT;
+    if (elevation > hillThreshold) return Biome::FOREST;
+    return Biome::PLAINS;
+}
+```
+
+### Tile Structure
+
+Each tile stores its biome and additional properties:
+
+```cpp
+struct Tile {
+    Biome biome;                              // Biome type
+    ObstacleType obstacleType = NONE;         // Rock, tree, water, building, ore deposits
+    DecorationType decorationType = NONE;     // Flowers, mushrooms, grass, stumps
+    float elevation = 0.0f;                   // Height value (0.0-1.0)
+    bool isWater = false;                     // Water tile flag
+    HammerEngine::ResourceHandle resourceHandle;  // Associated resource
+
+    // Building support for multi-tile structures
+    uint32_t buildingId = 0;                  // 0 = no building, >0 = unique ID
+    uint8_t buildingSize = 0;                 // Connected building tile count
+    bool isTopLeftOfBuilding = false;         // Render optimization flag
+};
+```
+
+## Village and Building Generation
+
+The world generator creates villages with multi-tile buildings.
+
+### Building Placement
+
+Buildings are placed during world generation with these rules:
+1. Must be on valid terrain (not water, mountains)
+2. Maintain minimum spacing from other buildings
+3. Connected tiles share the same `buildingId`
+4. Only top-left tile has `isTopLeftOfBuilding = true` (for single-draw rendering)
+
+### Building Sizes
+
+| Size | Dimensions | Typical Use |
+|------|------------|-------------|
+| 1 | 1x1 tile | Huts, small structures |
+| 2 | 2x2 tiles | Houses |
+| 3 | 3x3 tiles | Large buildings |
+| 4 | 4x4 tiles | City halls, temples |
+
+### Building Rendering
+
+Buildings render as single sprites from their top-left tile:
+
+```cpp
+// In TileRenderer (simplified)
+if (tile.obstacleType == ObstacleType::BUILDING && tile.isTopLeftOfBuilding) {
+    // Draw building sprite at this position
+    std::string textureKey = getBuildingTexture(tile.buildingSize);
+    renderBuildingSprite(textureKey, tileX, tileY, tile.buildingSize);
+}
+// Skip non-top-left building tiles (covered by main sprite)
+```
+
+## Obstacle Types
+
+Tiles can contain various obstacles that affect gameplay:
+
+```cpp
+enum class ObstacleType {
+    NONE,
+    ROCK,               // Impassable terrain
+    TREE,               // Impassable, harvestable
+    WATER,              // Impassable (swimming not implemented)
+    BUILDING,           // Multi-tile structures
+    // Ore deposits (harvestable)
+    IRON_DEPOSIT, GOLD_DEPOSIT, COPPER_DEPOSIT,
+    MITHRIL_DEPOSIT, LIMESTONE_DEPOSIT, COAL_DEPOSIT,
+    // Gem deposits (harvestable)
+    EMERALD_DEPOSIT, RUBY_DEPOSIT, SAPPHIRE_DEPOSIT, DIAMOND_DEPOSIT
+};
+```
+
+## Decoration Types
+
+Non-blocking visual elements that add variety:
+
+```cpp
+enum class DecorationType : uint8_t {
+    NONE,
+    FLOWER_BLUE, FLOWER_PINK, FLOWER_WHITE, FLOWER_YELLOW,
+    MUSHROOM_PURPLE, MUSHROOM_TAN,
+    GRASS_SMALL, GRASS_LARGE,
+    BUSH,
+    STUMP_SMALL, STUMP_MEDIUM,
+    ROCK_SMALL,
+    DEAD_LOG_HZ, DEAD_LOG_VERTICAL,
+    LILY_PAD, WATER_FLOWER
+};
+```
 
 ## World Management
 

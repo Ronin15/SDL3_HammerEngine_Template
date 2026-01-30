@@ -79,7 +79,7 @@ bool ResourceFactory::registerCreator(const std::string &typeName,
     return false;
   }
 
-  creators[typeName] = creator;
+  creators[typeName] = std::move(creator);
   RESOURCE_DEBUG(std::format("ResourceFactory::registerCreator - Registered creator for type: {}",
                              typeName));
   return true;
@@ -585,7 +585,7 @@ ResourceFactory::createGameResource(HammerEngine::ResourceHandle handle,
 
   return gameResource;
 }
-void ResourceFactory::setCommonProperties(ResourcePtr resource,
+void ResourceFactory::setCommonProperties(const ResourcePtr& resource,
                                           const JsonValue &json) {
   if (!resource)
     return;
@@ -608,12 +608,19 @@ void ResourceFactory::setCommonProperties(ResourcePtr resource,
     resource->setConsumable(json["consumable"].tryAsBool().value_or(false));
   }
 
+  // Support unified textureId field (sets both icon and world texture)
+  if (json.hasKey("textureId")) {
+    std::string textureId = json["textureId"].tryAsString().value_or("");
+    resource->setIconTextureId(textureId);
+    resource->setWorldTextureId(textureId);
+  }
+
+  // Legacy support: separate iconTextureId/worldTextureId override unified field
   if (json.hasKey("iconTextureId")) {
     resource->setIconTextureId(
         json["iconTextureId"].tryAsString().value_or(""));
   }
 
-  // Set visual properties for world rendering
   if (json.hasKey("worldTextureId")) {
     resource->setWorldTextureId(
         json["worldTextureId"].tryAsString().value_or(""));
@@ -626,6 +633,10 @@ void ResourceFactory::setCommonProperties(ResourcePtr resource,
   if (json.hasKey("animSpeed")) {
     resource->setAnimSpeed(json["animSpeed"].tryAsInt().value_or(0));
   }
+
+  // Note: Atlas coordinates (atlasX/Y/W/H) are now looked up from atlas.json
+  // in ResourceTemplateManager::createDefaultResources(), not read from
+  // resource JSON files. This allows a single source of truth for sprite coords.
 }
 
 } // namespace HammerEngine
