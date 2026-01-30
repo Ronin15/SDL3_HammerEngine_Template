@@ -8,6 +8,7 @@
 #include "core/Logger.hpp"
 #include "utils/Camera.hpp"
 #include "utils/FrameProfiler.hpp"
+#include "utils/ResourcePath.hpp"
 #include "utils/SIMDMath.hpp"
 #include "core/ThreadSystem.hpp"
 #include "events/ResourceChangeEvent.hpp"
@@ -937,7 +938,7 @@ HammerEngine::TileRenderer::TileRenderer()
 
 void HammerEngine::TileRenderer::loadWorldObjects() {
   JsonReader reader;
-  if (!reader.loadFromFile("res/data/world_objects.json")) {
+  if (!reader.loadFromFile(ResourcePath::resolve("res/data/world_objects.json"))) {
     WORLD_MANAGER_WARN(std::format(
         "Could not load world_objects.json: {} - using hardcoded defaults",
         reader.getLastError()));
@@ -1425,7 +1426,7 @@ void HammerEngine::TileRenderer::initAtlasCoords() {
 
   // Load atlas.json for source rect coordinates
   JsonReader atlasReader;
-  if (!atlasReader.loadFromFile("res/data/atlas.json")) {
+  if (!atlasReader.loadFromFile(ResourcePath::resolve("res/data/atlas.json"))) {
     WORLD_MANAGER_WARN("Could not load atlas.json - using individual textures");
     m_useAtlas = false;
     return;
@@ -1442,7 +1443,7 @@ void HammerEngine::TileRenderer::initAtlasCoords() {
 
   // Load world_objects.json to get texture IDs for each object type
   JsonReader worldReader;
-  if (!worldReader.loadFromFile("res/data/world_objects.json")) {
+  if (!worldReader.loadFromFile(ResourcePath::resolve("res/data/world_objects.json"))) {
     WORLD_MANAGER_WARN("Could not load world_objects.json - using individual textures");
     m_useAtlas = false;
     return;
