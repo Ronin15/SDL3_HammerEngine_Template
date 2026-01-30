@@ -701,7 +701,7 @@ void ResourceTemplateManager::createDefaultResources() {
 
     // Apply atlas coordinates from atlas.json (following WorldManager pattern)
     JsonReader atlasReader;
-    if (atlasReader.loadFromFile("res/data/atlas.json")) {
+    if (atlasReader.loadFromFile(HammerEngine::ResourcePath::resolve("res/data/atlas.json"))) {
       const auto& atlasRoot = atlasReader.getRoot();
       if (atlasRoot.hasKey("regions")) {
         const auto& regions = atlasRoot["regions"].asObject();
