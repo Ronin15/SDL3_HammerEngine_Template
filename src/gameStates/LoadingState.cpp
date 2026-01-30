@@ -154,11 +154,10 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
   }
 }
 
-void LoadingState::render(SDL_Renderer *renderer, float interpolationAlpha) {
+void LoadingState::render(SDL_Renderer *renderer, float /*interpolationAlpha*/) {
 #ifdef USE_SDL3_GPU
   // GPU mode uses recordGPUVertices() and renderGPUUI() instead
   (void)renderer;
-  (void)interpolationAlpha;
 #else
   // All rendering happens through GameEngine::render() -> this method
   // No manual SDL_RenderClear() or SDL_RenderPresent() calls needed!
