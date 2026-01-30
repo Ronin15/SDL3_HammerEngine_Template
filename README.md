@@ -100,10 +100,38 @@ See [Platform Notes](docs/README.md#platform-notes) for detailed Windows, Linux,
 ```bash
 git clone https://github.com/yourname/SDL3_HammerEngine_Template.git
 cd SDL3_HammerEngine_Template
-cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug
-ninja -C build
-./bin/debug/SDL3_Template
+
+# Debug build (recommended for development)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
+
+# Release build (optimized)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
+
+# GPU rendering path (SDL3 GPU API with SPIR-V/Metal shaders)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DUSE_SDL3_GPU=ON && ninja -C build
+
+# Run the engine
+./bin/debug/SDL3_Template   # Debug build
+./bin/release/SDL3_Template # Release build
 ```
+
+**Sanitizer builds** (for debugging memory/thread issues):
+```bash
+# AddressSanitizer (memory errors, leaks)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address -fno-omit-frame-pointer -g" \
+  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF && ninja -C build
+
+# ThreadSanitizer (data races, deadlocks)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=thread -fno-omit-frame-pointer -g" \
+  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" -DUSE_MOLD_LINKER=OFF && ninja -C build
+
+# TSAN suppressions (for known benign races)
+export TSAN_OPTIONS="suppressions=$(pwd)/tests/tsan_suppressions.txt"
+```
+
+**Note:** ASAN and TSAN are mutually exclusive. To reconfigure without a full rebuild: `rm build/CMakeCache.txt` before running cmake.
 
 ---
 
