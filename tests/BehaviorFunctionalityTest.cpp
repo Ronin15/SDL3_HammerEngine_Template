@@ -97,29 +97,33 @@ private:
 // Test fixture for behavior functionality tests
 struct BehaviorTestFixture {
     BehaviorTestFixture() {
-        // Initialize ThreadSystem first (required for PathfinderManager)
-        if (!HammerEngine::ThreadSystem::Exists()) {
-            HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
-        }
+        // Initialize ThreadSystem first (required for PathfinderManager async tasks)
+        HammerEngine::ThreadSystem::Instance().init();
 
-        // Initialize managers in proper order for pathfinding support
-        EntityDataManager::Instance().init();  // Must be first - entities need this
+        // Initialize managers in proper order (matches CollisionPathfindingIntegrationTests)
         EventManager::Instance().init();
         WorldManager::Instance().init();
+        EntityDataManager::Instance().init();
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         AIManager::Instance().init();
         BackgroundSimulationManager::Instance().init();
 
         // Load a simple test world for pathfinding
+        // Note: World must be >= 26x26 to satisfy VILLAGE_RADIUS constraints in WorldGenerator
         HammerEngine::WorldGenerationConfig cfg{};
-        cfg.width = 20; cfg.height = 20; cfg.seed = 12345;
+        cfg.width = 30; cfg.height = 30; cfg.seed = 12345;
         cfg.elevationFrequency = 0.05f; cfg.humidityFrequency = 0.05f;
         cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
 
         if (!WorldManager::Instance().loadNewWorld(cfg)) {
             throw std::runtime_error("Failed to load test world for behavior tests");
         }
+
+        // EVENT-DRIVEN: Process any deferred events (triggers WorldLoaded task on ThreadSystem)
+        EventManager::Instance().update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        EventManager::Instance().update();
 
         // Set world bounds explicitly for tests (20x20 tiles * 64 pixels/tile = 1280x1280)
         const float TILE_SIZE = 64.0f;
@@ -157,14 +161,19 @@ struct BehaviorTestFixture {
     }
 
     ~BehaviorTestFixture() {
-        // Simple cleanup - just release entities
-        // Managers persist across tests (singleton pattern)
+        // Release test entities first
         testEntities.clear();
         playerEntity.reset();
 
-        // Reset AI and tier state for next test
-        AIManager::Instance().resetBehaviors();
-        BackgroundSimulationManager::Instance().prepareForStateTransition();
+        // Clean up managers in reverse initialization order
+        BackgroundSimulationManager::Instance().clean();
+        AIManager::Instance().clean();
+        PathfinderManager::Instance().clean();
+        CollisionManager::Instance().clean();
+        EntityDataManager::Instance().clean();
+        WorldManager::Instance().clean();
+        EventManager::Instance().clean();
+        // ThreadSystem persists across tests
     }
     
     std::vector<std::shared_ptr<TestNPC>> testEntities;
