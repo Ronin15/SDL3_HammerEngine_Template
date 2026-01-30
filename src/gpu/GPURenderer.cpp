@@ -76,9 +76,9 @@ bool GPURenderer::init() {
 
     // Initialize vertex pools
     // 4K (3840x2160) at 32px tiles = 120x68 = 8160 tiles visible
-    // 2 layers (biome + obstacle) = ~16k sprites, 6 verts each = ~100k vertices
-    // Use 150k for zoom headroom
-    if (!m_spriteVertexPool.init(m_device, sizeof(SpriteVertex), 150000)) {
+    // 2 layers (biome + obstacle) = ~16k sprites + NPCs + effects
+    // Use 300k for high entity counts and zoom headroom
+    if (!m_spriteVertexPool.init(m_device, sizeof(SpriteVertex), 300000)) {
         GAMEENGINE_ERROR("GPURenderer: failed to init sprite vertex pool");
         cleanupPartialInit();
         return false;
