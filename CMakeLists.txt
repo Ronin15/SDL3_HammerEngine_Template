@@ -393,6 +393,9 @@ target_include_directories(HammerEngineLib PUBLIC
 target_link_libraries(HammerEngineLib PUBLIC
     $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_LINK_LIBRARIES>
 )
+target_compile_definitions(HammerEngineLib PUBLIC
+    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_COMPILE_DEFINITIONS>
+)
 
 # Create executable for your project with proper extensions
 if(WIN32)
@@ -586,6 +589,11 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # Specify include directories
 target_include_directories(${PROJECT_NAME} PRIVATE
     $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_INCLUDE_DIRECTORIES>
+)
+
+# Propagate compile definitions (e.g., USE_SDL3_GPU)
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_COMPILE_DEFINITIONS>
 )
 
 # Copy SDL3 runtime libraries to build directory (Windows-specific)
