@@ -64,8 +64,8 @@ void LogoState::recalculateLayout() {
   m_engineX = m_windowWidth / 2 - m_engineSize / 2;
   m_engineY = (m_windowHeight / 2) + static_cast<int>(10 * scale);
 
-  m_cppX = m_windowWidth / 2 + static_cast<int>(120 * scale);
-  m_cppY = (m_windowHeight / 2) + static_cast<int>(195 * scale);
+  m_cppX = m_windowWidth / 2 + static_cast<int>(155 * scale);
+  m_cppY = (m_windowHeight / 2) + static_cast<int>(205 * scale);
 
   m_sdlX = (m_windowWidth / 2) - (m_sdlSize / 2) + static_cast<int>(20 * scale);
   m_sdlY = (m_windowHeight / 2) + static_cast<int>(260 * scale);
