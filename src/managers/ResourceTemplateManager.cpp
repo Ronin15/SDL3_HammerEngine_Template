@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include "managers/ResourceFactory.hpp"
 #include "utils/JsonReader.hpp"
+#include "utils/ResourcePath.hpp"
 #include <algorithm>
 #include <format>
 
@@ -690,14 +691,42 @@ void ResourceTemplateManager::createDefaultResources() {
       "resource templates");
 
   try {
-    // Load resources from JSON files
-    bool itemsLoaded = loadResourcesFromJson("res/data/items.json");
-    bool materialsLoaded =
-        loadResourcesFromJson("res/data/materials_and_currency.json");
+    // Load resources from unified JSON file
+    const std::string resourcesPath = HammerEngine::ResourcePath::resolve("res/data/resources.json");
+    bool resourcesLoaded = loadResourcesFromJson(resourcesPath);
 
-    RESOURCE_WARN_IF(!itemsLoaded || !materialsLoaded,
-        "ResourceTemplateManager::createDefaultResources - Some "
-        "resource files failed to load");
+    RESOURCE_WARN_IF(!resourcesLoaded,
+        "ResourceTemplateManager::createDefaultResources - "
+        "Failed to load resources.json");
+
+    // Apply atlas coordinates from atlas.json (following WorldManager pattern)
+    JsonReader atlasReader;
+    if (atlasReader.loadFromFile("res/data/atlas.json")) {
+      const auto& atlasRoot = atlasReader.getRoot();
+      if (atlasRoot.hasKey("regions")) {
+        const auto& regions = atlasRoot["regions"].asObject();
+        size_t coordsApplied = 0;
+
+        for (auto& [handle, resource] : m_resourceTemplates) {
+          std::string texId = resource->getIconTextureId();
+          if (texId.empty()) {
+            texId = resource->getWorldTextureId();
+          }
+          auto it = regions.find(texId);
+          if (it != regions.end()) {
+            const auto& r = it->second;
+            resource->setAtlasX(r["x"].asInt());
+            resource->setAtlasY(r["y"].asInt());
+            resource->setAtlasW(r["w"].asInt());
+            resource->setAtlasH(r["h"].asInt());
+            ++coordsApplied;
+          }
+        }
+        RESOURCE_DEBUG(std::format(
+            "ResourceTemplateManager::createDefaultResources - Applied atlas "
+            "coordinates to {} resources", coordsApplied));
+      }
+    }
 
     RESOURCE_INFO("ResourceTemplateManager::createDefaultResources - Default "
                   "resources loaded from JSON files");

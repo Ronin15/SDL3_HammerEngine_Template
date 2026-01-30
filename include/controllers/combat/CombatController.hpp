@@ -30,7 +30,6 @@
 // Forward declarations
 class Player;
 class Entity;
-class NPC;
 
 class CombatController : public ControllerBase, public IUpdatable
 {
@@ -82,10 +81,10 @@ public:
     bool tryAttack();
 
     /**
-     * @brief Get the currently targeted NPC (for UI display)
-     * @return Shared pointer to targeted NPC, or nullptr if no target/expired
+     * @brief Get the currently targeted entity handle (for data-driven UI)
+     * @return EntityHandle of targeted NPC, or invalid handle if no target
      */
-    [[nodiscard]] std::shared_ptr<NPC> getTargetedNPC() const;
+    [[nodiscard]] EntityHandle getTargetedHandle() const { return m_targetedHandle; }
 
     /**
      * @brief Get remaining time for target display

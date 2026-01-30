@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 62 test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTime simulation, controller systems, entity state management, entity data management, background simulation, EDM integration tests, and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 70 test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTime simulation, controller systems, entity state management, entity data management, background simulation, EDM integration tests, GPU rendering subsystem (when USE_SDL3_GPU=ON), and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -83,10 +83,21 @@ The Hammer Game Engine has the following test suites:
     - AIManager EDM Integration Tests: Sparse behavior vector, batch processing with EDM indices, state transitions
     - CollisionManager EDM Integration Tests: Active tier filtering, dual index semantics, static/dynamic separation
 
+13. **GPU System Tests** (conditional on USE_SDL3_GPU)
+    - GPU Types Tests: Vertex struct layouts (SpriteVertex, ColorVertex), UBO alignment validation
+    - GPU Pipeline Config Tests: Pipeline configuration factory methods, blend modes
+    - GPU Device Tests: Device lifecycle, shader format queries, swapchain format
+    - GPU Shader Manager Tests: Shader loading, caching, SPIR-V/Metal path validation
+    - GPU Resource Tests: Buffer, texture, transfer buffer, sampler wrappers
+    - GPU Vertex Pool Tests: Triple-buffered vertex pool, frame cycling
+    - Sprite Batch Tests: Batch recording, vertex data verification
+    - GPU Renderer Tests: Full frame flow, pipeline/pool accessors, composite rendering
+
 **Test Execution Categories:**
 - **Core Tests** (16 suites): Fast functional validation (~4-8 minutes total)
 - **Benchmarks** (5 suites): Performance and scalability testing (~8-20 minutes total)
-- **Total Coverage**: 62 test executables with comprehensive automation scripts
+- **GPU Tests** (8 suites): SDL3 GPU rendering validation (when USE_SDL3_GPU=ON)
+- **Total Coverage**: 70 test executables with comprehensive automation scripts
 
 ## Running Tests
 
@@ -1518,6 +1529,141 @@ Tests are configured in `tests/CMakeLists.txt` with the following structure:
 4. Register tests with CTest
 
 For thread-safe tests, ensure `BOOST_TEST_NO_SIGNAL_HANDLING` is defined.
+
+## 13. GPU System Tests
+
+Located in `tests/gpu/`, these tests validate the SDL3 GPU rendering subsystem. Tests are organized into three categories based on GPU requirements.
+
+### Test Categories
+
+#### Unit Tests (No GPU Required)
+
+**GPUTypesTests.cpp** - Vertex and UBO layout validation:
+- SpriteVertex size (20 bytes) and member offsets
+- ColorVertex size (12 bytes) and member offsets
+- ViewProjectionUBO layout (64 bytes)
+- CompositeUBO std140 alignment (32 bytes)
+- Trivially copyable and standard layout verification
+
+**GPUPipelineConfigTests.cpp** - Pipeline configuration creation:
+- PipelineConfig default values
+- PipelineType enum values
+- Sprite config factory (opaque/alpha)
+- Particle config factory (additive blending)
+- Primitive and composite config factories
+
+#### Integration Tests (GPU Required)
+
+**GPUDeviceTests.cpp** - GPU device lifecycle:
+- Singleton pattern validation
+- Init/shutdown with valid window
+- Double init/shutdown safety
+- Shader format queries
+- Swapchain format queries
+- Driver name retrieval
+- Format support queries
+
+**GPUShaderManagerTests.cpp** - Shader loading and caching:
+- Load all 6 shaders (sprite, color, composite × vert/frag)
+- Shader caching and retrieval
+- SPIR-V and Metal path verification
+- Nonexistent shader handling
+
+**GPUResourceTests.cpp** - Buffer, texture, sampler wrappers:
+- GPUBuffer creation (vertex, index)
+- GPUTexture creation (sampler, render target, combined)
+- GPUTransferBuffer map/unmap operations
+- GPUSampler factory methods (nearest, linear, mipmapped)
+- Move semantics for all resource types
+
+**GPUVertexPoolTests.cpp** - Triple-buffered vertex pool:
+- Initialization with SpriteVertex/ColorVertex sizes
+- Custom capacity configuration
+- beginFrame/endFrame cycle
+- Frame index advancement
+- No GPU stall verification
+
+**SpriteBatchTests.cpp** - Sprite batch recording:
+- begin/draw/drawUV/end workflow
+- Vertex count tracking
+- Color tint application
+- Capacity and hasSprites flag
+- Vertex position and UV verification
+
+#### System Tests (Full Frame Flow)
+
+**GPURendererTests.cpp** - Complete rendering pipeline:
+- Singleton and lifecycle management
+- Frame cycle (beginFrame, beginScenePass, beginSwapchainPass, endFrame)
+- Pipeline accessor validation (7 pipelines)
+- Vertex pool accessor validation (5 pools)
+- Sampler and scene texture validation
+- Composite params and day/night params
+- Viewport management
+- Orthographic matrix creation
+
+### Running GPU Tests
+
+```bash
+# Run all GPU tests (requires GPU)
+./tests/test_scripts/run_gpu_tests.sh
+
+# Run only unit tests (no GPU required, works in CI)
+./tests/test_scripts/run_gpu_tests.sh --unit-only
+
+# Run only integration tests
+./tests/test_scripts/run_gpu_tests.sh --integration-only
+
+# Run only system tests
+./tests/test_scripts/run_gpu_tests.sh --system-only
+
+# Skip GPU-requiring tests (for headless CI)
+./tests/test_scripts/run_gpu_tests.sh --skip-gpu
+
+# Verbose output
+./tests/test_scripts/run_gpu_tests.sh --verbose
+
+# Run via CTest with GPU label
+ctest -L GPU --output-on-failure
+
+# Run unit tests only via CTest
+ctest -L "GPU;Unit" --output-on-failure
+```
+
+### Build Requirements
+
+GPU tests are only built when `USE_SDL3_GPU=ON`:
+
+```bash
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DUSE_SDL3_GPU=ON && ninja -C build
+```
+
+### Test Fixture Pattern
+
+GPU tests use a common fixture that handles GPU availability detection:
+
+```cpp
+struct GPUTestFixture {
+    GPUTestFixture() {
+        // Initialize SDL and detect GPU availability
+    }
+    static bool isGPUAvailable();
+    static SDL_Window* getTestWindow();
+};
+
+// Use SKIP_IF_NO_GPU() macro for graceful skip in CI
+BOOST_FIXTURE_TEST_CASE(TestName, GPUTestFixture) {
+    SKIP_IF_NO_GPU();
+    // Test code that requires GPU
+}
+```
+
+### Test Count
+
+- Unit tests: ~20 test cases
+- Integration tests: ~45 test cases
+- System tests: ~25 test cases
+- **Total: ~90 test cases across 8 test executables**
 
 ## Additional Documentation
 

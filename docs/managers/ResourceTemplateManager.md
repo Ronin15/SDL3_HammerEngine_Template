@@ -348,8 +348,7 @@ auto& rtm = ResourceTemplateManager::Instance();
 rtm.init();
 
 // Phase 1: Data Loading (name-based lookups allowed)
-rtm.loadResourcesFromJson("res/data/items.json");
-rtm.loadResourcesFromJson("res/data/materials_and_currency.json");
+rtm.loadResourcesFromJson("res/data/resources.json");
 
 // Convert names to handles during initialization
 HammerEngine::ResourceHandle goldHandle = rtm.getHandleByName("Gold");

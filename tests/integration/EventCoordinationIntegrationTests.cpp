@@ -40,43 +40,31 @@ using namespace HammerEngine;
 } while(0)
 
 /**
- * @brief Simple test entity for integration tests
+ * @brief Simple test entity for event coordination tests (doesn't use EDM data-driven NPCs)
+ * NOTE: This is intentionally NOT a data-driven NPC - it's a mock entity for testing
+ * event coordination between managers, not NPC AI behavior.
  */
 class TestEntity : public Entity {
 public:
-    TestEntity(int id, const Vector2D& pos) : m_id(id) {
-        // Register with EntityDataManager first (required before setPosition)
-        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
+    explicit TestEntity(const Vector2D& pos) {
+        // Register with EntityDataManager to get a valid handle
+        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::Player);  // Use Player kind (still class-based)
         setTextureID("test_texture");
         setWidth(32);
         setHeight(32);
     }
 
-    static std::shared_ptr<TestEntity> create(int id, const Vector2D& pos) {
-        return std::make_shared<TestEntity>(id, pos);
+    static std::shared_ptr<TestEntity> create(const Vector2D& pos) {
+        return std::make_shared<TestEntity>(pos);
     }
 
-    void update(float deltaTime) override {
-        m_updateCount++;
-        (void)deltaTime;
-    }
-
+    void update(float deltaTime) override { (void)deltaTime; }
     void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override {
-        (void)renderer;
-        (void)cameraX;
-        (void)cameraY;
-        (void)interpolationAlpha;
+        (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha;
     }
-
     void clean() override {}
-    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
-
-    int getId() const { return m_id; }
-    int getUpdateCount() const { return m_updateCount.load(); }
-
-private:
-    int m_id;
-    std::atomic<int> m_updateCount{0};
+    [[nodiscard]] EntityKind getKind() const override { return EntityKind::Player; }
+    // Uses inherited Entity::getID() for EntityID
 };
 
 /**
@@ -249,7 +237,7 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
     AIManager::Instance().registerBehavior("WeatherResponse", weatherBehavior);
 
     for (int i = 0; i < 5; ++i) {
-        auto entity = TestEntity::create(i, Vector2D(50.0f + i * 10.0f, 50.0f));
+        auto entity = TestEntity::create(Vector2D(50.0f + i * 10.0f, 50.0f));
         testEntities.push_back(entity);
 
         // EDM-CENTRIC: Set collision layers directly on EDM hot data
@@ -407,7 +395,7 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
     // Setup: Create entities in old scene
     std::vector<std::shared_ptr<TestEntity>> oldSceneEntities;
     for (int i = 0; i < 3; ++i) {
-        auto entity = TestEntity::create(i, Vector2D(i * 20.0f, i * 20.0f));
+        auto entity = TestEntity::create(Vector2D(i * 20.0f, i * 20.0f));
         oldSceneEntities.push_back(entity);
 
         // EDM-CENTRIC: Set collision layers directly on EDM hot data
@@ -533,7 +521,7 @@ BOOST_AUTO_TEST_CASE(TestResourceChangeEventPropagation) {
     TEST_LOG("Starting TestResourceChangeEventPropagation");
 
     // Setup: Create test entity with inventory
-    auto testEntity = TestEntity::create(1, Vector2D(100.0f, 100.0f));
+    auto testEntity = TestEntity::create(Vector2D(100.0f, 100.0f));
 
     // Setup: Get test resource
     auto goldHandle = ResourceTemplateManager::Instance().getHandleByName("Platinum Coins");
@@ -567,7 +555,7 @@ BOOST_AUTO_TEST_CASE(TestResourceChangeEventPropagation) {
     const int numChanges = 5;
     for (int i = 1; i <= numChanges; ++i) {
         EventManager::Instance().triggerResourceChange(
-            testEntity, goldHandle, (i - 1) * 100, i * 100,
+            testEntity->getHandle(), goldHandle, (i - 1) * 100, i * 100,
             "test_accumulation", EventManager::DispatchMode::Immediate);
     }
 
@@ -653,7 +641,7 @@ BOOST_AUTO_TEST_CASE(TestEventCoordinationPerformance) {
         });
 
     // Setup: Create test entity for resource events
-    auto testEntity = TestEntity::create(1, Vector2D(100.0f, 100.0f));
+    auto testEntity = TestEntity::create(Vector2D(100.0f, 100.0f));
     auto goldHandle = ResourceTemplateManager::Instance().getHandleByName("Platinum Coins");
     BOOST_REQUIRE(goldHandle.isValid());
 
@@ -679,7 +667,7 @@ BOOST_AUTO_TEST_CASE(TestEventCoordinationPerformance) {
 
         // Resource events
         EventManager::Instance().triggerResourceChange(
-            testEntity, goldHandle, i * 10, (i + 1) * 10, "test_batch",
+            testEntity->getHandle(), goldHandle, i * 10, (i + 1) * 10, "test_batch",
             EventManager::DispatchMode::Deferred);
     }
 

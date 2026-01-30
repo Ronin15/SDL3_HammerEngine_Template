@@ -7,6 +7,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "managers/EntityDataManager.hpp"
+#include "entities/Entity.hpp"  // For AnimationConfig
 #include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <cmath>
@@ -75,7 +76,7 @@ BOOST_AUTO_TEST_CASE(TestDoubleInitialization) {
 
 BOOST_AUTO_TEST_CASE(TestCleanAndReinit) {
     // Create an entity first
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     BOOST_CHECK(handle.isValid());
 
     // Clean should clear everything
@@ -91,8 +92,8 @@ BOOST_AUTO_TEST_CASE(TestCleanAndReinit) {
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransition) {
     // Create some entities
-    edm->createNPC(Vector2D(100.0f, 100.0f));
-    edm->createNPC(Vector2D(200.0f, 200.0f));
+    edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 2);
 
     // State transition should clear entities
@@ -113,7 +114,7 @@ BOOST_FIXTURE_TEST_SUITE(EntityCreationTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestCreateNPC) {
     Vector2D position(100.0f, 200.0f);
-    EntityHandle handle = edm->createNPC(position, 16.0f, 16.0f);
+    EntityHandle handle = edm->createNPCWithRaceClass(position, "Human", "Guard");
 
     BOOST_CHECK(handle.isValid());
     BOOST_CHECK(handle.isNPC());
@@ -136,7 +137,7 @@ BOOST_AUTO_TEST_CASE(TestCreateNPC) {
 
 BOOST_AUTO_TEST_CASE(TestCreatePlayer) {
     Vector2D position(300.0f, 400.0f);
-    EntityHandle handle = edm->createPlayer(position);
+    EntityHandle handle = edm->registerPlayer(1,position);
 
     BOOST_CHECK(handle.isValid());
     BOOST_CHECK(handle.isPlayer());
@@ -171,7 +172,7 @@ BOOST_AUTO_TEST_CASE(TestCreateDroppedItem) {
 BOOST_AUTO_TEST_CASE(TestCreateProjectile) {
     Vector2D position(100.0f, 100.0f);
     Vector2D velocity(50.0f, 0.0f);
-    EntityHandle owner = edm->createPlayer(Vector2D(0.0f, 0.0f));
+    EntityHandle owner = edm->registerPlayer(1,Vector2D(0.0f, 0.0f));
     EntityHandle handle = edm->createProjectile(position, velocity, owner, 25.0f, 3.0f);
 
     BOOST_CHECK(handle.isValid());
@@ -189,7 +190,7 @@ BOOST_AUTO_TEST_CASE(TestCreateProjectile) {
 
 BOOST_AUTO_TEST_CASE(TestCreateAreaEffect) {
     Vector2D position(200.0f, 200.0f);
-    EntityHandle owner = edm->createPlayer(Vector2D(0.0f, 0.0f));
+    EntityHandle owner = edm->registerPlayer(1,Vector2D(0.0f, 0.0f));
     EntityHandle handle = edm->createAreaEffect(position, 50.0f, owner, 10.0f, 5.0f);
 
     BOOST_CHECK(handle.isValid());
@@ -223,9 +224,9 @@ BOOST_AUTO_TEST_CASE(TestCreateStaticBody) {
 
 BOOST_AUTO_TEST_CASE(TestCreateMultipleEntities) {
     // Create various entity types
-    edm->createNPC(Vector2D(100.0f, 100.0f));
-    edm->createNPC(Vector2D(200.0f, 200.0f));
-    edm->createPlayer(Vector2D(300.0f, 300.0f));
+    edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
+    edm->registerPlayer(1,Vector2D(300.0f, 300.0f));
     edm->createDroppedItem(Vector2D(400.0f, 400.0f), HammerEngine::ResourceHandle{1, 1}, 1);
 
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 4);
@@ -242,21 +243,20 @@ BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_FIXTURE_TEST_SUITE(EntityRegistrationTests, EntityDataManagerTestFixture)
 
-BOOST_AUTO_TEST_CASE(TestRegisterNPC) {
-    // Use a known entity ID
-    EntityHandle::IDType entityId = 12345;
+BOOST_AUTO_TEST_CASE(TestCreateNPCWithCharacterData) {
+    // NPCs are created via createNPCWithRaceClass - stats = base × class multiplier
+    // Human base health = 100, Guard healthMult = 1.2, so expected = 120
     Vector2D position(100.0f, 200.0f);
 
-    EntityHandle handle = edm->registerNPC(entityId, position, 16.0f, 16.0f, 80.0f, 100.0f);
+    EntityHandle handle = edm->createNPCWithRaceClass(position, "Human", "Guard");
 
     BOOST_CHECK(handle.isValid());
-    BOOST_CHECK_EQUAL(handle.id, entityId);
     BOOST_CHECK(handle.isNPC());
 
-    // Verify character data has custom health
+    // Verify character data has computed health (Human 100 × Guard 1.2 = 120)
     const auto& charData = edm->getCharacterData(handle);
-    BOOST_CHECK(approxEqual(charData.health, 80.0f));
-    BOOST_CHECK(approxEqual(charData.maxHealth, 100.0f));
+    BOOST_CHECK(approxEqual(charData.health, 120.0f));
+    BOOST_CHECK(approxEqual(charData.maxHealth, 120.0f));
 }
 
 BOOST_AUTO_TEST_CASE(TestRegisterPlayer) {
@@ -285,37 +285,13 @@ BOOST_AUTO_TEST_CASE(TestRegisterDroppedItem) {
     BOOST_CHECK_EQUAL(itemData.quantity, 10);
 }
 
-BOOST_AUTO_TEST_CASE(TestRegisterInvalidEntityId) {
-    // Registering with ID 0 should fail
-    EntityHandle handle = edm->registerNPC(0, Vector2D(0.0f, 0.0f));
-    BOOST_CHECK(!handle.isValid());
-}
-
-BOOST_AUTO_TEST_CASE(TestRegisterDuplicateEntity) {
-    EntityHandle::IDType entityId = 99999;
-    Vector2D position(100.0f, 100.0f);
-
-    // Register once
-    EntityHandle handle1 = edm->registerNPC(entityId, position);
-    BOOST_CHECK(handle1.isValid());
-
-    // Register again with same ID - should return existing handle
-    EntityHandle handle2 = edm->registerNPC(entityId, Vector2D(200.0f, 200.0f));
-    BOOST_CHECK(handle2.isValid());
-    BOOST_CHECK_EQUAL(handle1.id, handle2.id);
-
-    // Should still only be one entity
-    BOOST_CHECK_EQUAL(edm->getEntityCount(EntityKind::NPC), 1);
-}
-
 BOOST_AUTO_TEST_CASE(TestUnregisterEntity) {
-    EntityHandle::IDType entityId = 55555;
-    EntityHandle handle = edm->registerNPC(entityId, Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     BOOST_CHECK(handle.isValid());
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 1);
 
-    // Unregister
-    edm->unregisterEntity(entityId);
+    // Unregister by entity ID
+    edm->unregisterEntity(handle.id);
 
     // Entity should be gone
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
@@ -338,7 +314,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(DestructionQueueTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestDestroyEntity) {
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     BOOST_CHECK(edm->isValidHandle(handle));
 
     // Queue for destruction
@@ -356,9 +332,9 @@ BOOST_AUTO_TEST_CASE(TestDestroyEntity) {
 }
 
 BOOST_AUTO_TEST_CASE(TestDestroyMultipleEntities) {
-    EntityHandle handle1 = edm->createNPC(Vector2D(100.0f, 100.0f));
-    EntityHandle handle2 = edm->createNPC(Vector2D(200.0f, 200.0f));
-    EntityHandle handle3 = edm->createNPC(Vector2D(300.0f, 300.0f));
+    EntityHandle handle1 = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    EntityHandle handle2 = edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
+    EntityHandle handle3 = edm->createNPCWithRaceClass(Vector2D(300.0f, 300.0f), "Human", "Guard");
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 3);
 
     // Queue all for destruction
@@ -384,14 +360,14 @@ BOOST_AUTO_TEST_CASE(TestDestroyInvalidHandle) {
 
 BOOST_AUTO_TEST_CASE(TestGenerationIncrementAfterDestruction) {
     // Create and destroy, then create again - should get different generation
-    EntityHandle handle1 = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle1 = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     [[maybe_unused]] uint8_t gen1 = handle1.generation;
 
     edm->destroyEntity(handle1);
     edm->processDestructionQueue();
 
     // Create new entity - may reuse slot with new generation
-    EntityHandle handle2 = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle2 = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
 
     // The old handle should be stale
     BOOST_CHECK(!edm->isValidHandle(handle1));
@@ -413,7 +389,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(HandleValidationTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestValidHandle) {
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     BOOST_CHECK(edm->isValidHandle(handle));
 }
 
@@ -422,7 +398,7 @@ BOOST_AUTO_TEST_CASE(TestInvalidHandle) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetIndex) {
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     size_t index = edm->getIndex(handle);
 
     BOOST_CHECK(index != SIZE_MAX);
@@ -438,7 +414,7 @@ BOOST_AUTO_TEST_CASE(TestGetIndexInvalidHandle) {
 }
 
 BOOST_AUTO_TEST_CASE(TestFindIndexByEntityId) {
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     size_t index = edm->findIndexByEntityId(handle.id);
 
     BOOST_CHECK(index != SIZE_MAX);
@@ -454,7 +430,7 @@ BOOST_AUTO_TEST_CASE(TestFindIndexByInvalidEntityId) {
 }
 
 BOOST_AUTO_TEST_CASE(TestStaleHandleDetection) {
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     BOOST_CHECK(edm->isValidHandle(handle));
 
     // Destroy the entity
@@ -475,7 +451,7 @@ BOOST_FIXTURE_TEST_SUITE(TransformAccessTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetTransform) {
     Vector2D position(100.0f, 200.0f);
-    EntityHandle handle = edm->createNPC(position);
+    EntityHandle handle = edm->createNPCWithRaceClass(position, "Human", "Guard");
 
     const auto& transform = edm->getTransform(handle);
     BOOST_CHECK(approxEqual(transform.position.getX(), 100.0f));
@@ -483,7 +459,7 @@ BOOST_AUTO_TEST_CASE(TestGetTransform) {
 }
 
 BOOST_AUTO_TEST_CASE(TestModifyTransform) {
-    EntityHandle handle = edm->createNPC(Vector2D(0.0f, 0.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(0.0f, 0.0f), "Human", "Guard");
 
     auto& transform = edm->getTransform(handle);
     transform.position = Vector2D(500.0f, 600.0f);
@@ -497,7 +473,7 @@ BOOST_AUTO_TEST_CASE(TestModifyTransform) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetTransformByIndex) {
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 200.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 200.0f), "Human", "Guard");
     size_t index = edm->getIndex(handle);
 
     const auto& transform = edm->getTransformByIndex(index);
@@ -523,17 +499,18 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(HotDataAccessTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetHotData) {
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f), 20.0f, 30.0f);
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
 
     const auto& hot = edm->getHotData(handle);
     BOOST_CHECK(hot.isAlive());
     BOOST_CHECK_EQUAL(static_cast<int>(hot.kind), static_cast<int>(EntityKind::NPC));
-    BOOST_CHECK(approxEqual(hot.halfWidth, 20.0f));
-    BOOST_CHECK(approxEqual(hot.halfHeight, 30.0f));
+    // Default frame size is 32x32, so halfWidth/halfHeight = 16
+    BOOST_CHECK(approxEqual(hot.halfWidth, 16.0f));
+    BOOST_CHECK(approxEqual(hot.halfHeight, 16.0f));
 }
 
 BOOST_AUTO_TEST_CASE(TestGetHotDataByIndex) {
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     size_t index = edm->getIndex(handle);
 
     const auto& hot = edm->getHotDataByIndex(index);
@@ -541,8 +518,8 @@ BOOST_AUTO_TEST_CASE(TestGetHotDataByIndex) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetHotDataArray) {
-    edm->createNPC(Vector2D(100.0f, 100.0f));
-    edm->createNPC(Vector2D(200.0f, 200.0f));
+    edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
 
     auto hotArray = edm->getHotDataArray();
     BOOST_CHECK(hotArray.size() >= 2);
@@ -564,7 +541,7 @@ BOOST_AUTO_TEST_CASE(TestGetStaticHotDataArray) {
 }
 
 BOOST_AUTO_TEST_CASE(TestHotDataFlags) {
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
 
     auto& hot = edm->getHotData(handle);
     BOOST_CHECK(hot.isAlive());
@@ -588,7 +565,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(TypeSpecificDataTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetCharacterData) {
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
 
     auto& charData = edm->getCharacterData(handle);
     BOOST_CHECK(charData.isCharacterAlive());
@@ -600,7 +577,7 @@ BOOST_AUTO_TEST_CASE(TestGetCharacterData) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetCharacterDataByIndex) {
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     size_t index = edm->getIndex(handle);
 
     const auto& charData = edm->getCharacterDataByIndex(index);
@@ -621,7 +598,7 @@ BOOST_AUTO_TEST_CASE(TestGetItemData) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetProjectileData) {
-    EntityHandle owner = edm->createPlayer(Vector2D(0.0f, 0.0f));
+    EntityHandle owner = edm->registerPlayer(1,Vector2D(0.0f, 0.0f));
     EntityHandle handle = edm->createProjectile(Vector2D(100.0f, 100.0f),
                                                  Vector2D(50.0f, 0.0f),
                                                  owner, 25.0f, 5.0f);
@@ -633,7 +610,7 @@ BOOST_AUTO_TEST_CASE(TestGetProjectileData) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetAreaEffectData) {
-    EntityHandle owner = edm->createPlayer(Vector2D(0.0f, 0.0f));
+    EntityHandle owner = edm->registerPlayer(1,Vector2D(0.0f, 0.0f));
     EntityHandle handle = edm->createAreaEffect(Vector2D(200.0f, 200.0f),
                                                  100.0f, owner, 15.0f, 10.0f);
 
@@ -652,13 +629,13 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(SimulationTierTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestDefaultTierIsActive) {
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     const auto& hot = edm->getHotData(handle);
     BOOST_CHECK_EQUAL(static_cast<int>(hot.tier), static_cast<int>(SimulationTier::Active));
 }
 
 BOOST_AUTO_TEST_CASE(TestSetSimulationTier) {
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
 
     edm->setSimulationTier(handle, SimulationTier::Background);
     const auto& hot = edm->getHotData(handle);
@@ -671,9 +648,9 @@ BOOST_AUTO_TEST_CASE(TestSetSimulationTier) {
 
 BOOST_AUTO_TEST_CASE(TestUpdateSimulationTiers) {
     // Create entities at various distances
-    EntityHandle near = edm->createNPC(Vector2D(100.0f, 100.0f));     // Close
-    EntityHandle mid = edm->createNPC(Vector2D(2000.0f, 2000.0f));    // Medium
-    EntityHandle far = edm->createNPC(Vector2D(15000.0f, 15000.0f));  // Far
+    EntityHandle near = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");     // Close
+    EntityHandle mid = edm->createNPCWithRaceClass(Vector2D(2000.0f, 2000.0f), "Human", "Guard");    // Medium
+    EntityHandle far = edm->createNPCWithRaceClass(Vector2D(15000.0f, 15000.0f), "Human", "Guard");  // Far
 
     // Update tiers with reference point at origin
     Vector2D refPoint(0.0f, 0.0f);
@@ -690,8 +667,8 @@ BOOST_AUTO_TEST_CASE(TestUpdateSimulationTiers) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetActiveIndices) {
-    edm->createNPC(Vector2D(100.0f, 100.0f));
-    edm->createNPC(Vector2D(200.0f, 200.0f));
+    edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
 
     // Force tier update
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 1500.0f, 10000.0f);
@@ -702,8 +679,8 @@ BOOST_AUTO_TEST_CASE(TestGetActiveIndices) {
 
 BOOST_AUTO_TEST_CASE(TestGetBackgroundIndices) {
     // Create entities at background distance
-    edm->createNPC(Vector2D(5000.0f, 5000.0f));
-    edm->createNPC(Vector2D(6000.0f, 6000.0f));
+    edm->createNPCWithRaceClass(Vector2D(5000.0f, 5000.0f), "Human", "Guard");
+    edm->createNPCWithRaceClass(Vector2D(6000.0f, 6000.0f), "Human", "Guard");
 
     // Update tiers
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 1500.0f, 10000.0f);
@@ -713,9 +690,9 @@ BOOST_AUTO_TEST_CASE(TestGetBackgroundIndices) {
 }
 
 BOOST_AUTO_TEST_CASE(TestEntityCountByTier) {
-    edm->createNPC(Vector2D(100.0f, 100.0f));      // Will be active
-    edm->createNPC(Vector2D(5000.0f, 5000.0f));    // Will be background
-    edm->createNPC(Vector2D(15000.0f, 15000.0f));  // Will be hibernated
+    edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");      // Will be active
+    edm->createNPCWithRaceClass(Vector2D(5000.0f, 5000.0f), "Human", "Guard");    // Will be background
+    edm->createNPCWithRaceClass(Vector2D(15000.0f, 15000.0f), "Human", "Guard");  // Will be hibernated
 
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 1500.0f, 10000.0f);
 
@@ -726,7 +703,7 @@ BOOST_AUTO_TEST_CASE(TestEntityCountByTier) {
 
 BOOST_AUTO_TEST_CASE(TestPlayerAlwaysActive) {
     // Player should stay active regardless of distance
-    EntityHandle player = edm->createPlayer(Vector2D(50000.0f, 50000.0f));
+    EntityHandle player = edm->registerPlayer(1,Vector2D(50000.0f, 50000.0f));
 
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 1500.0f, 10000.0f);
 
@@ -744,9 +721,9 @@ BOOST_FIXTURE_TEST_SUITE(QueryTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestQueryEntitiesInRadius) {
     // Create entities at known positions
-    edm->createNPC(Vector2D(100.0f, 100.0f));   // In radius
-    edm->createNPC(Vector2D(150.0f, 150.0f));   // In radius
-    edm->createNPC(Vector2D(1000.0f, 1000.0f)); // Out of radius
+    edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");   // In radius
+    edm->createNPCWithRaceClass(Vector2D(150.0f, 150.0f), "Human", "Guard");   // In radius
+    edm->createNPCWithRaceClass(Vector2D(1000.0f, 1000.0f), "Human", "Guard"); // Out of radius
 
     std::vector<EntityHandle> found;
     edm->queryEntitiesInRadius(Vector2D(100.0f, 100.0f), 200.0f, found);
@@ -755,8 +732,8 @@ BOOST_AUTO_TEST_CASE(TestQueryEntitiesInRadius) {
 }
 
 BOOST_AUTO_TEST_CASE(TestQueryEntitiesWithKindFilter) {
-    edm->createNPC(Vector2D(100.0f, 100.0f));
-    edm->createPlayer(Vector2D(150.0f, 150.0f));
+    edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    edm->registerPlayer(1,Vector2D(150.0f, 150.0f));
     edm->createDroppedItem(Vector2D(120.0f, 120.0f), HammerEngine::ResourceHandle{1, 1}, 1);
 
     std::vector<EntityHandle> found;
@@ -767,7 +744,7 @@ BOOST_AUTO_TEST_CASE(TestQueryEntitiesWithKindFilter) {
 }
 
 BOOST_AUTO_TEST_CASE(TestQueryEmptyResult) {
-    edm->createNPC(Vector2D(1000.0f, 1000.0f));
+    edm->createNPCWithRaceClass(Vector2D(1000.0f, 1000.0f), "Human", "Guard");
 
     std::vector<EntityHandle> found;
     edm->queryEntitiesInRadius(Vector2D(0.0f, 0.0f), 100.0f, found);
@@ -778,17 +755,17 @@ BOOST_AUTO_TEST_CASE(TestQueryEmptyResult) {
 BOOST_AUTO_TEST_CASE(TestGetEntityCount) {
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
 
-    edm->createNPC(Vector2D(100.0f, 100.0f));
+    edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 1);
 
-    edm->createNPC(Vector2D(200.0f, 200.0f));
+    edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 2);
 }
 
 BOOST_AUTO_TEST_CASE(TestGetEntityCountByKind) {
-    edm->createNPC(Vector2D(100.0f, 100.0f));
-    edm->createNPC(Vector2D(200.0f, 200.0f));
-    edm->createPlayer(Vector2D(300.0f, 300.0f));
+    edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
+    edm->registerPlayer(1,Vector2D(300.0f, 300.0f));
     edm->createDroppedItem(Vector2D(400.0f, 400.0f), HammerEngine::ResourceHandle{1, 1}, 1);
 
     BOOST_CHECK_EQUAL(edm->getEntityCount(EntityKind::NPC), 2);
@@ -798,9 +775,9 @@ BOOST_AUTO_TEST_CASE(TestGetEntityCountByKind) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetIndicesByKind) {
-    edm->createNPC(Vector2D(100.0f, 100.0f));
-    edm->createNPC(Vector2D(200.0f, 200.0f));
-    edm->createPlayer(Vector2D(300.0f, 300.0f));
+    edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
+    edm->registerPlayer(1,Vector2D(300.0f, 300.0f));
 
     auto npcIndices = edm->getIndicesByKind(EntityKind::NPC);
     BOOST_CHECK_EQUAL(npcIndices.size(), 2);
@@ -818,7 +795,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(EntityLookupTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetEntityId) {
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     size_t index = edm->getIndex(handle);
 
     EntityHandle::IDType id = edm->getEntityId(index);
@@ -831,7 +808,7 @@ BOOST_AUTO_TEST_CASE(TestGetEntityIdInvalidIndex) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetHandle) {
-    EntityHandle original = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle original = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     size_t index = edm->getIndex(original);
 
     EntityHandle retrieved = edm->getHandle(index);
@@ -858,7 +835,7 @@ BOOST_AUTO_TEST_CASE(TestSlotReuseAfterDestruction) {
     // Create and destroy entities to test slot reuse
     std::vector<EntityHandle> handles;
     for (int i = 0; i < 10; ++i) {
-        handles.push_back(edm->createNPC(Vector2D(static_cast<float>(i * 100), 0.0f)));
+        handles.push_back(edm->createNPCWithRaceClass(Vector2D(static_cast<float>(i * 100), 0.0f), "Human", "Guard"));
     }
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 10);
 
@@ -871,7 +848,7 @@ BOOST_AUTO_TEST_CASE(TestSlotReuseAfterDestruction) {
 
     // Create new entities - should reuse slots
     for (int i = 0; i < 5; ++i) {
-        edm->createNPC(Vector2D(static_cast<float>(i * 100 + 50), 100.0f));
+        edm->createNPCWithRaceClass(Vector2D(static_cast<float>(i * 100 + 50), 100.0f), "Human", "Guard");
     }
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 10);
 
@@ -883,15 +860,15 @@ BOOST_AUTO_TEST_CASE(TestSlotReuseAfterDestruction) {
 
 BOOST_AUTO_TEST_CASE(TestTypeSpecificSlotReuse) {
     // Create character entities
-    EntityHandle npc1 = edm->createNPC(Vector2D(100.0f, 100.0f));
-    EntityHandle npc2 = edm->createNPC(Vector2D(200.0f, 200.0f));
+    EntityHandle npc1 = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    EntityHandle npc2 = edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
 
     // Destroy first NPC
     edm->destroyEntity(npc1);
     edm->processDestructionQueue();
 
     // Create new NPC - should reuse character data slot
-    EntityHandle npc3 = edm->createNPC(Vector2D(300.0f, 300.0f));
+    EntityHandle npc3 = edm->createNPCWithRaceClass(Vector2D(300.0f, 300.0f), "Human", "Guard");
 
     // Both remaining NPCs should be valid
     BOOST_CHECK(!edm->isValidHandle(npc1));
@@ -912,7 +889,7 @@ BOOST_AUTO_TEST_CASE(TestMassCreationAndDestruction) {
     std::vector<EntityHandle> handles;
     handles.reserve(COUNT);
     for (size_t i = 0; i < COUNT; ++i) {
-        handles.push_back(edm->createNPC(Vector2D(static_cast<float>(i), 0.0f)));
+        handles.push_back(edm->createNPCWithRaceClass(Vector2D(static_cast<float>(i), 0.0f), "Human", "Guard"));
     }
     BOOST_CHECK_EQUAL(edm->getEntityCount(), COUNT);
 
@@ -926,7 +903,7 @@ BOOST_AUTO_TEST_CASE(TestMassCreationAndDestruction) {
     // Create again - should reuse all slots
     handles.clear();
     for (size_t i = 0; i < COUNT; ++i) {
-        handles.push_back(edm->createNPC(Vector2D(static_cast<float>(i), 0.0f)));
+        handles.push_back(edm->createNPCWithRaceClass(Vector2D(static_cast<float>(i), 0.0f), "Human", "Guard"));
     }
     BOOST_CHECK_EQUAL(edm->getEntityCount(), COUNT);
 
@@ -958,9 +935,9 @@ BOOST_FIXTURE_TEST_SUITE(StateTransitionCachedIndicesTests, EntityDataManagerTes
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsActiveIndices) {
     // Create entities that will be in Active tier
-    edm->createNPC(Vector2D(100.0f, 100.0f));
-    edm->createNPC(Vector2D(200.0f, 200.0f));
-    edm->createNPC(Vector2D(300.0f, 300.0f));
+    edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
+    edm->createNPCWithRaceClass(Vector2D(300.0f, 300.0f), "Human", "Guard");
 
     // Update tiers to populate active indices
     edm->updateSimulationTiers(Vector2D(150.0f, 150.0f), 1500.0f, 10000.0f);
@@ -978,8 +955,8 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsActiveIndices) {
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsBackgroundIndices) {
     // Create entities at background distance
-    edm->createNPC(Vector2D(5000.0f, 5000.0f));
-    edm->createNPC(Vector2D(6000.0f, 6000.0f));
+    edm->createNPCWithRaceClass(Vector2D(5000.0f, 5000.0f), "Human", "Guard");
+    edm->createNPCWithRaceClass(Vector2D(6000.0f, 6000.0f), "Human", "Guard");
 
     // Update tiers - should be Background
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 1500.0f, 10000.0f);
@@ -997,8 +974,8 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsBackgroundIndices) {
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsHibernatedIndices) {
     // Create entities at hibernation distance
-    edm->createNPC(Vector2D(15000.0f, 15000.0f));
-    edm->createNPC(Vector2D(20000.0f, 20000.0f));
+    edm->createNPCWithRaceClass(Vector2D(15000.0f, 15000.0f), "Human", "Guard");
+    edm->createNPCWithRaceClass(Vector2D(20000.0f, 20000.0f), "Human", "Guard");
 
     // Update tiers - should be Hibernated
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 1500.0f, 10000.0f);
@@ -1012,8 +989,8 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsHibernatedIndices) {
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsActiveCollisionIndices) {
     // Create entities with collision enabled
-    EntityHandle h1 = edm->createNPC(Vector2D(100.0f, 100.0f));
-    EntityHandle h2 = edm->createNPC(Vector2D(200.0f, 200.0f));
+    EntityHandle h1 = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    EntityHandle h2 = edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
 
     // Enable collision on entities
     auto& hot1 = edm->getHotData(h1);
@@ -1037,8 +1014,8 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsActiveCollisionIndices) 
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsTriggerDetectionIndices) {
     // Create entities that need trigger detection (e.g., Player)
-    EntityHandle h1 = edm->createNPC(Vector2D(100.0f, 100.0f));
-    EntityHandle h2 = edm->createNPC(Vector2D(200.0f, 200.0f));
+    EntityHandle h1 = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    EntityHandle h2 = edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
 
     // Set trigger detection flag (distinct from isTrigger - this is for entities
     // that need to DETECT triggers, like the player)
@@ -1063,24 +1040,25 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsTriggerDetectionIndices)
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsKindIndices) {
     // Create entities of different kinds
-    edm->createNPC(Vector2D(100.0f, 100.0f));
-    edm->createNPC(Vector2D(200.0f, 200.0f));
-    edm->createPlayer(Vector2D(300.0f, 300.0f));
+    edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
+    edm->registerPlayer(99999, Vector2D(300.0f, 300.0f));  // Use unique ID to avoid collision
+    // Note: DroppedItems are now in static pool, not tracked by getIndicesByKind()
     edm->createDroppedItem(Vector2D(400.0f, 400.0f), HammerEngine::ResourceHandle{1, 1}, 1);
 
-    // Get kind indices - this populates the cache
+    // Get kind indices - this populates the cache (dynamic pool only)
     auto npcIndices = edm->getIndicesByKind(EntityKind::NPC);
     auto playerIndices = edm->getIndicesByKind(EntityKind::Player);
-    auto itemIndices = edm->getIndicesByKind(EntityKind::DroppedItem);
 
     BOOST_CHECK_EQUAL(npcIndices.size(), 2);
     BOOST_CHECK_EQUAL(playerIndices.size(), 1);
-    BOOST_CHECK_EQUAL(itemIndices.size(), 1);
+    // DroppedItems are in static pool - getIndicesByKind returns 0 for them
+    BOOST_CHECK(edm->getIndicesByKind(EntityKind::DroppedItem).empty());
 
     // State transition
     edm->prepareForStateTransition();
 
-    // All kind indices should be empty
+    // All dynamic pool kind indices should be empty
     BOOST_CHECK(edm->getIndicesByKind(EntityKind::NPC).empty());
     BOOST_CHECK(edm->getIndicesByKind(EntityKind::Player).empty());
     BOOST_CHECK(edm->getIndicesByKind(EntityKind::DroppedItem).empty());
@@ -1098,17 +1076,17 @@ BOOST_AUTO_TEST_CASE(TestAllCachedIndicesClearedComprehensive) {
 
     // NPCs at various distances
     for (int i = 0; i < 5; ++i) {
-        handles.push_back(edm->createNPC(Vector2D(100.0f + i * 50, 100.0f)));
+        handles.push_back(edm->createNPCWithRaceClass(Vector2D(100.0f + i * 50, 100.0f), "Human", "Guard"));
     }
 
     // Background distance
-    handles.push_back(edm->createNPC(Vector2D(5000.0f, 5000.0f)));
+    handles.push_back(edm->createNPCWithRaceClass(Vector2D(5000.0f, 5000.0f), "Human", "Guard"));
 
     // Hibernated distance
-    handles.push_back(edm->createNPC(Vector2D(15000.0f, 15000.0f)));
+    handles.push_back(edm->createNPCWithRaceClass(Vector2D(15000.0f, 15000.0f), "Human", "Guard"));
 
     // Player (always active)
-    handles.push_back(edm->createPlayer(Vector2D(300.0f, 300.0f)));
+    handles.push_back(edm->registerPlayer(1,Vector2D(300.0f, 300.0f)));
 
     // Items
     handles.push_back(edm->createDroppedItem(Vector2D(400.0f, 400.0f),
@@ -1175,8 +1153,8 @@ BOOST_AUTO_TEST_CASE(TestNoStaleIndicesAfterStateTransitionReuse) {
     // Phase 1: Create and populate caches
     std::vector<EntityHandle> phase1Handles;
     for (int i = 0; i < 20; ++i) {
-        phase1Handles.push_back(edm->createNPC(
-            Vector2D(static_cast<float>(i * 50), 0.0f)));
+        phase1Handles.push_back(edm->createNPCWithRaceClass(
+            Vector2D(static_cast<float>(i * 50), 0.0f), "Human", "Guard"));
     }
 
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 2000.0f, 10000.0f);
@@ -1196,8 +1174,8 @@ BOOST_AUTO_TEST_CASE(TestNoStaleIndicesAfterStateTransitionReuse) {
     // Phase 3: Create new entities
     std::vector<EntityHandle> phase2Handles;
     for (int i = 0; i < 10; ++i) {
-        phase2Handles.push_back(edm->createNPC(
-            Vector2D(static_cast<float>(i * 100), 0.0f)));
+        phase2Handles.push_back(edm->createNPCWithRaceClass(
+            Vector2D(static_cast<float>(i * 100), 0.0f), "Human", "Guard"));
     }
 
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 2000.0f, 10000.0f);
@@ -1226,7 +1204,7 @@ BOOST_AUTO_TEST_CASE(TestNoStaleIndicesAfterStateTransitionReuse) {
  */
 BOOST_AUTO_TEST_CASE(TestAccessAfterClearDoesNotCrash) {
     // Create entity and get its index
-    EntityHandle h = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle h = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     size_t index = edm->getIndex(h);
     BOOST_REQUIRE(index != SIZE_MAX);
 
@@ -1238,6 +1216,113 @@ BOOST_AUTO_TEST_CASE(TestAccessAfterClearDoesNotCrash) {
 
     // getIndex on stale handle should return SIZE_MAX
     BOOST_CHECK_EQUAL(edm->getIndex(h), SIZE_MAX);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// NPC RENDER DATA TESTS
+// ============================================================================
+/**
+ * @brief Tests for NPCRenderData initialization and lifecycle.
+ *
+ * Verifies that createNPCWithRaceClass() correctly populates NPCRenderData
+ * from AnimationConfig parameters, and that the data is properly cleared
+ * on entity destruction.
+ */
+BOOST_FIXTURE_TEST_SUITE(NPCRenderDataTests, EntityDataManagerTestFixture)
+
+BOOST_AUTO_TEST_CASE(TestNPCRenderDataInitialization) {
+    // Create NPC using data-driven approach (config loaded from races.json)
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    BOOST_REQUIRE(handle.isValid());
+
+    // Get render data via handle
+    const auto& renderData = edm->getNPCRenderData(handle);
+
+    // Verify animation config was loaded from JSON (Guard uses idle row 0, move row 1)
+    // Values come from races.json, so we verify they were loaded
+    BOOST_CHECK_GE(renderData.numIdleFrames, 1);
+    BOOST_CHECK_GE(renderData.numMoveFrames, 1);
+    BOOST_CHECK_GE(renderData.idleSpeedMs, 1);
+    BOOST_CHECK_GE(renderData.moveSpeedMs, 1);
+
+    // Verify initial state
+    BOOST_CHECK_EQUAL(renderData.currentFrame, 0);
+    BOOST_CHECK(approxEqual(renderData.animationAccumulator, 0.0f));
+    BOOST_CHECK_EQUAL(renderData.flipMode, 0);  // SDL_FLIP_NONE
+
+    // Verify atlas coordinates were loaded
+    BOOST_CHECK_GE(renderData.atlasX, 0);
+    BOOST_CHECK_GE(renderData.atlasY, 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestNPCRenderDataDefaultsWithoutTexture) {
+    // Create NPC - in test environment without renderer, atlas texture won't exist
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    BOOST_REQUIRE(handle.isValid());
+
+    const auto& renderData = edm->getNPCRenderData(handle);
+
+    // cachedTexture should be nullptr (no renderer in test environment)
+    BOOST_CHECK(renderData.cachedTexture == nullptr);
+
+    // Frame dimensions should be set from JSON config
+    BOOST_CHECK_GT(renderData.frameWidth, 0);
+    BOOST_CHECK_GT(renderData.frameHeight, 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestNPCRenderDataMinimumValues) {
+    // Create NPC using data-driven approach
+    // EDM should enforce minimum values regardless of JSON config
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    BOOST_REQUIRE(handle.isValid());
+
+    const auto& renderData = edm->getNPCRenderData(handle);
+
+    // Should always have at least 1 frame and 1ms speed (enforced by EDM)
+    BOOST_CHECK_GE(renderData.numIdleFrames, 1);
+    BOOST_CHECK_GE(renderData.numMoveFrames, 1);
+    BOOST_CHECK_GE(renderData.idleSpeedMs, 1);
+    BOOST_CHECK_GE(renderData.moveSpeedMs, 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestMultipleNPCsGetSeparateRenderData) {
+    // Create two NPCs of same type at different positions
+    EntityHandle h1 = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    EntityHandle h2 = edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
+    BOOST_REQUIRE(h1.isValid());
+    BOOST_REQUIRE(h2.isValid());
+
+    auto& rd1 = edm->getNPCRenderData(h1);
+    auto& rd2 = edm->getNPCRenderData(h2);
+
+    // Both NPCs should have same config from Guard type
+    BOOST_CHECK_EQUAL(rd1.idleRow, rd2.idleRow);
+    BOOST_CHECK_EQUAL(rd1.moveRow, rd2.moveRow);
+    BOOST_CHECK_EQUAL(rd1.numIdleFrames, rd2.numIdleFrames);
+    BOOST_CHECK_EQUAL(rd1.numMoveFrames, rd2.numMoveFrames);
+
+    // But they should have separate instances (can modify independently)
+    rd1.currentFrame = 1;
+    rd2.currentFrame = 2;
+    BOOST_CHECK_NE(rd1.currentFrame, rd2.currentFrame);
+
+    // Verify they point to different memory
+    BOOST_CHECK_NE(&rd1, &rd2);
+}
+
+BOOST_AUTO_TEST_CASE(TestNPCRenderDataClearedOnDestroy) {
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    BOOST_REQUIRE(handle.isValid());
+
+    // Destroy the entity
+    edm->destroyEntity(handle);
+    edm->processDestructionQueue();
+
+    // Handle should be invalid
+    BOOST_CHECK(!edm->isValidHandle(handle));
+    BOOST_CHECK_EQUAL(edm->getEntityCount(EntityKind::NPC), 0);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -11,6 +11,10 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#endif
+
 #include <string>
 
 // OverlayDemoState Implementation
@@ -60,14 +64,17 @@ bool OverlayDemoState::enter() {
 void OverlayDemoState::update(float deltaTime) {
     // Update transition timer
     m_transitionTimer += deltaTime;
+
+    // Process UI input (click detection, hover states, callbacks)
+    auto& ui = UIManager::Instance();
+    if (!ui.isShutdown()) {
+        ui.update(0.0f);  // UI updates are not time-dependent in this state
+    }
 }
 
 void OverlayDemoState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
-    // Update and render UI components through UIManager using cached renderer for cleaner API
+    // Render UI components (input handled in update())
     auto& ui = UIManager::Instance();
-    if (!ui.isShutdown()) {
-        ui.update(0.0); // UI updates are not time-dependent in this state
-    }
     ui.render(renderer);
 }
 
@@ -392,5 +399,23 @@ void OverlayDemoState::handleInput() {
 void OverlayDemoState::handleBackButton() {
     mp_stateManager->changeState("MainMenuState");
 }
+
+#ifdef USE_SDL3_GPU
+void OverlayDemoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                                          [[maybe_unused]] float interpolationAlpha) {
+    auto& ui = UIManager::Instance();
+    if (!ui.isShutdown()) {
+        ui.recordGPUVertices(gpuRenderer);
+    }
+}
+
+void OverlayDemoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+                                    SDL_GPURenderPass* swapchainPass) {
+    auto& ui = UIManager::Instance();
+    if (!ui.isShutdown()) {
+        ui.renderGPU(gpuRenderer, swapchainPass);
+    }
+}
+#endif
 
 // Pure UIManager implementation - no UIScreen needed

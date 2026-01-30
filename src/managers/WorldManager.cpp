@@ -6,17 +6,30 @@
 #include "managers/WorldManager.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
+#include "utils/Camera.hpp"
+#include "utils/FrameProfiler.hpp"
+#include "utils/SIMDMath.hpp"
 #include "core/ThreadSystem.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "events/TimeEvent.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/WorldResourceManager.hpp"
+#include "utils/JsonReader.hpp"
 
 #include "events/HarvestResourceEvent.hpp"
 #include <algorithm>
+#include <cmath>
 #include <format>
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#include "gpu/SpriteBatch.hpp"
+#endif
+
+using namespace HammerEngine::SIMD;
 
 bool WorldManager::init() {
   if (m_initialized.load(std::memory_order_acquire)) {
@@ -245,26 +258,89 @@ void WorldManager::update() {
   // This could be extended for dynamic world changes, weather effects, etc.
 }
 
-void WorldManager::render(SDL_Renderer *renderer, float cameraX, float cameraY,
-                          int viewportWidth, int viewportHeight) {
+void WorldManager::render(SDL_Renderer* renderer, float cameraX, float cameraY,
+                          float viewportWidth, float viewportHeight) {
   if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled ||
       !renderer) {
     return;
   }
 
-  std::shared_lock<std::shared_mutex> lock(m_worldMutex);
-
-  // Check m_currentWorld AFTER acquiring lock to prevent TOCTOU race condition
+  // No lock needed - render always runs on main thread after update completes.
+  // World modifications (load/unload/harvest) also run on main thread sequentially.
   if (!m_currentWorld || !m_tileRenderer) {
     return;
   }
 
-  // Snap camera offset to whole pixels for tile rendering
-  // Pass camera position as-is; pixel snapping happens at final destRect in
-  // renderVisibleTiles() This avoids double-snapping which causes 1-pixel jumps
-  // at 0.5 boundaries
-  m_tileRenderer->renderVisibleTiles(*m_currentWorld, renderer, cameraX,
-                                     cameraY, viewportWidth, viewportHeight);
+  m_tileRenderer->render(*m_currentWorld, renderer, cameraX, cameraY,
+                         viewportWidth, viewportHeight);
+}
+
+void WorldManager::prefetchChunks(SDL_Renderer* renderer, HammerEngine::Camera& camera) {
+  if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled ||
+      !renderer) {
+    return;
+  }
+
+  if (!m_currentWorld || !m_tileRenderer) {
+    return;
+  }
+
+  // Get camera parameters
+  float zoom = camera.getZoom();
+  const auto& viewport = camera.getViewport();
+  float viewWidth = viewport.width / zoom;
+  float viewHeight = viewport.height / zoom;
+
+  // Get floored camera position
+  float rawX = 0.0f;
+  float rawY = 0.0f;
+  camera.getRenderOffset(rawX, rawY, 0.0f);
+  float cameraX = std::floor(rawX);
+  float cameraY = std::floor(rawY);
+
+  m_tileRenderer->prefetchChunks(*m_currentWorld, renderer, cameraX, cameraY,
+                                  viewWidth, viewHeight);
+}
+
+void WorldManager::prewarmChunks(SDL_Renderer* renderer, float cameraX, float cameraY,
+                                  float viewportWidth, float viewportHeight) {
+  if (!m_initialized.load(std::memory_order_acquire) || !renderer) {
+    return;
+  }
+
+  if (!m_currentWorld || !m_tileRenderer) {
+    return;
+  }
+
+  m_tileRenderer->prewarmChunks(*m_currentWorld, renderer, cameraX, cameraY,
+                                 viewportWidth, viewportHeight);
+}
+
+void WorldManager::prefetchChunksInternal() {
+  if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled ||
+      !mp_renderer || !mp_activeCamera) {
+    return;
+  }
+
+  if (!m_currentWorld || !m_tileRenderer) {
+    return;
+  }
+
+  // Get camera parameters
+  float zoom = mp_activeCamera->getZoom();
+  const auto& viewport = mp_activeCamera->getViewport();
+  float viewWidth = viewport.width / zoom;
+  float viewHeight = viewport.height / zoom;
+
+  // Get floored camera position
+  float rawX = 0.0f;
+  float rawY = 0.0f;
+  mp_activeCamera->getRenderOffset(rawX, rawY, 0.0f);
+  float cameraX = std::floor(rawX);
+  float cameraY = std::floor(rawY);
+
+  m_tileRenderer->prefetchChunks(*m_currentWorld, mp_renderer, cameraX, cameraY,
+                                  viewWidth, viewHeight);
 }
 
 bool WorldManager::handleHarvestResource(int entityId, int targetX,
@@ -327,27 +403,77 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile &newTile) {
     return false;
   }
 
+  const HammerEngine::Tile &oldTile = m_currentWorld->grid[y][x];
+
+  // Skip invalidation entirely if tile data hasn't changed
+  if (oldTile.biome == newTile.biome &&
+      oldTile.obstacleType == newTile.obstacleType &&
+      oldTile.decorationType == newTile.decorationType &&
+      oldTile.buildingId == newTile.buildingId &&
+      oldTile.buildingSize == newTile.buildingSize &&
+      oldTile.isTopLeftOfBuilding == newTile.isTopLeftOfBuilding &&
+      oldTile.isWater == newTile.isWater) {
+    return true; // No visual change, skip chunk invalidation
+  }
+
+  // Check if change affects sprite overhang (obstacles/buildings have tall sprites)
+  const bool hasOverhangChange =
+      (oldTile.obstacleType != newTile.obstacleType ||
+       oldTile.buildingId != newTile.buildingId ||
+       oldTile.buildingSize != newTile.buildingSize ||
+       oldTile.isTopLeftOfBuilding != newTile.isTopLeftOfBuilding);
+
   m_currentWorld->grid[y][x] = newTile;
 
-  // Invalidate chunk containing this tile AND adjacent chunks (for sprite
-  // overhang) Sprites can extend from adjacent tiles into neighboring chunks
+  // Invalidate chunk containing this tile AND adjacent chunks only if sprite
+  // overhang is affected. Sprites can extend up to 2 tiles into neighbors.
   if (m_tileRenderer) {
-    constexpr int chunkSize = 32; // TileRenderer::CHUNK_SIZE
+    constexpr int chunkSize = 16;    // TileRenderer::CHUNK_SIZE
+    constexpr int overhangTiles = 2; // SPRITE_OVERHANG (64) / TILE_SIZE (32)
+
     const int chunkX = x / chunkSize;
     const int chunkY = y / chunkSize;
 
-    // Invalidate primary chunk
+    // Primary chunk always invalidated when tile changes
     m_tileRenderer->invalidateChunk(chunkX, chunkY);
 
-    // Invalidate adjacent chunks that might render this tile's sprites
-    m_tileRenderer->invalidateChunk(chunkX - 1, chunkY);     // Left
-    m_tileRenderer->invalidateChunk(chunkX + 1, chunkY);     // Right
-    m_tileRenderer->invalidateChunk(chunkX, chunkY - 1);     // Top
-    m_tileRenderer->invalidateChunk(chunkX, chunkY + 1);     // Bottom
-    m_tileRenderer->invalidateChunk(chunkX - 1, chunkY - 1); // Top-left
-    m_tileRenderer->invalidateChunk(chunkX + 1, chunkY - 1); // Top-right
-    m_tileRenderer->invalidateChunk(chunkX - 1, chunkY + 1); // Bottom-left
-    m_tileRenderer->invalidateChunk(chunkX + 1, chunkY + 1); // Bottom-right
+    // Neighbors only invalidated for sprite overhang changes (obstacles/buildings)
+    if (hasOverhangChange) {
+      const int localX = x % chunkSize;
+      const int localY = y % chunkSize;
+
+      const bool nearLeft = localX < overhangTiles;
+      const bool nearRight = localX >= (chunkSize - overhangTiles);
+      const bool nearTop = localY < overhangTiles;
+      const bool nearBottom = localY >= (chunkSize - overhangTiles);
+
+      if (nearLeft) {
+        m_tileRenderer->invalidateChunk(chunkX - 1, chunkY);
+      }
+      if (nearRight) {
+        m_tileRenderer->invalidateChunk(chunkX + 1, chunkY);
+      }
+      if (nearTop) {
+        m_tileRenderer->invalidateChunk(chunkX, chunkY - 1);
+      }
+      if (nearBottom) {
+        m_tileRenderer->invalidateChunk(chunkX, chunkY + 1);
+      }
+
+      // Diagonal neighbors only if near both edges
+      if (nearLeft && nearTop) {
+        m_tileRenderer->invalidateChunk(chunkX - 1, chunkY - 1);
+      }
+      if (nearRight && nearTop) {
+        m_tileRenderer->invalidateChunk(chunkX + 1, chunkY - 1);
+      }
+      if (nearLeft && nearBottom) {
+        m_tileRenderer->invalidateChunk(chunkX - 1, chunkY + 1);
+      }
+      if (nearRight && nearBottom) {
+        m_tileRenderer->invalidateChunk(chunkX + 1, chunkY + 1);
+      }
+    }
   }
 
   fireTileChangedEvent(x, y, newTile);
@@ -613,112 +739,131 @@ void WorldManager::initializeWorldResources() {
   }
 
   try {
-    // Calculate base resource quantities based on world size
-    const int baseAmount =
-        std::max(10, totalTiles / 20); // Scale with world size
-    // Basic resources available everywhere
+    auto& edm = EntityDataManager::Instance();
+    const std::string& worldId = m_currentWorld->worldId;
+
+    // Helper lambda to spawn harvestables at appropriate tile positions
+    auto spawnHarvestablesInBiome = [&](HammerEngine::ResourceHandle handle,
+                                        HammerEngine::Biome targetBiome,
+                                        int count, int yieldMin, int yieldMax,
+                                        float respawnTime) {
+      if (!handle.isValid() || count <= 0) return;
+
+      int spawned = 0;
+      const size_t gridHeight = m_currentWorld->grid.size();
+      if (gridHeight == 0) return;
+      const size_t gridWidth = m_currentWorld->grid[0].size();
+
+      // Distribute harvestables across the world
+      for (size_t y = 0; y < gridHeight && spawned < count; ++y) {
+        for (size_t x = 0; x < gridWidth && spawned < count; ++x) {
+          const auto& tile = m_currentWorld->grid[y][x];
+          if (tile.isWater) continue;
+          if (tile.biome != targetBiome) continue;
+
+          // Skip some tiles for natural distribution (every ~10 tiles)
+          if ((x + y * 7) % 10 != 0) continue;
+
+          Vector2D pos(static_cast<float>(x) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
+                       static_cast<float>(y) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
+
+          // createHarvestable auto-registers with WRM using worldId
+          EntityHandle h = edm.createHarvestable(pos, handle, yieldMin, yieldMax, respawnTime, worldId);
+          if (h.isValid()) {
+            ++spawned;
+          }
+        }
+      }
+      WORLD_MANAGER_DEBUG(std::format("Spawned {} harvestables of type {} in {}",
+                                      spawned, handle.toString(), worldId));
+    };
+
+    // Helper for high-elevation resources
+    auto spawnHarvestablesAtElevation = [&](HammerEngine::ResourceHandle handle,
+                                            float minElevation, int count,
+                                            int yieldMin, int yieldMax,
+                                            float respawnTime) {
+      if (!handle.isValid() || count <= 0) return;
+
+      int spawned = 0;
+      const size_t gridHeight = m_currentWorld->grid.size();
+      if (gridHeight == 0) return;
+      const size_t gridWidth = m_currentWorld->grid[0].size();
+
+      for (size_t y = 0; y < gridHeight && spawned < count; ++y) {
+        for (size_t x = 0; x < gridWidth && spawned < count; ++x) {
+          const auto& tile = m_currentWorld->grid[y][x];
+          if (tile.isWater || tile.elevation < minElevation) continue;
+
+          // Skip some tiles for natural distribution
+          if ((x + y * 11) % 12 != 0) continue;
+
+          Vector2D pos(static_cast<float>(x) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
+                       static_cast<float>(y) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
+
+          // createHarvestable auto-registers with WRM using worldId
+          EntityHandle h = edm.createHarvestable(pos, handle, yieldMin, yieldMax, respawnTime, worldId);
+          if (h.isValid()) {
+            ++spawned;
+          }
+        }
+      }
+      WORLD_MANAGER_DEBUG(std::format("Spawned {} high-elevation harvestables of type {}",
+                                      spawned, handle.toString()));
+    };
+
+    // Calculate target harvestable counts based on tile counts
+    const int baseCount = std::max(5, totalTiles / 100);
+
+    // Basic resources - spawn as harvestables in appropriate biomes
     auto woodHandle = resourceMgr.getHandleById("wood");
+    spawnHarvestablesInBiome(woodHandle, HammerEngine::Biome::FOREST,
+                             baseCount + forestTiles / 20, 1, 3, 60.0f);
+
     auto ironHandle = resourceMgr.getHandleById("iron_ore");
-    auto goldHandle = resourceMgr.getHandleById("gold");
+    spawnHarvestablesInBiome(ironHandle, HammerEngine::Biome::MOUNTAIN,
+                             baseCount + mountainTiles / 25, 1, 2, 90.0f);
 
-    if (woodHandle.isValid()) {
-      const int woodAmount =
-          baseAmount + forestTiles * 2; // More wood in forests
-      WorldResourceManager::Instance().addResource(m_currentWorld->worldId,
-                                                   woodHandle, woodAmount);
-      WORLD_MANAGER_DEBUG(std::format("Added {} wood to world", woodAmount));
-    }
+    // Gold ore - rarer than iron, found in mountains
+    auto goldHandle = resourceMgr.getHandleById("gold_ore");
+    spawnHarvestablesInBiome(goldHandle, HammerEngine::Biome::MOUNTAIN,
+                             std::max(1, mountainTiles / 40), 1, 2, 120.0f);
 
-    if (ironHandle.isValid()) {
-      const int ironAmount =
-          baseAmount + mountainTiles; // More iron in mountains
-      WorldResourceManager::Instance().addResource(m_currentWorld->worldId,
-                                                   ironHandle, ironAmount);
-      WORLD_MANAGER_DEBUG(
-          std::format("Added {} iron ore to world", ironAmount));
-    }
-
-    if (goldHandle.isValid()) {
-      const int goldAmount = baseAmount * 3; // Basic starting gold
-      WorldResourceManager::Instance().addResource(m_currentWorld->worldId,
-                                                   goldHandle, goldAmount);
-      WORLD_MANAGER_DEBUG(std::format("Added {} gold to world", goldAmount));
-    }
-
-    // Rare resources based on specific biomes and elevation
+    // Rare resources
     if (mountainTiles > 0) {
       auto mithrilHandle = resourceMgr.getHandleById("mithril_ore");
-      if (mithrilHandle.isValid()) {
-        const int mithrilAmount =
-            std::max(1, mountainTiles / 10); // Rare resource
-        WorldResourceManager::Instance().addResource(
-            m_currentWorld->worldId, mithrilHandle, mithrilAmount);
-        WORLD_MANAGER_DEBUG(
-            std::format("Added {} mithril ore to world", mithrilAmount));
-      }
+      spawnHarvestablesInBiome(mithrilHandle, HammerEngine::Biome::MOUNTAIN,
+                               std::max(1, mountainTiles / 50), 1, 1, 180.0f);
     }
 
     if (forestTiles > 0) {
       auto enchantedWoodHandle = resourceMgr.getHandleById("enchanted_wood");
-      if (enchantedWoodHandle.isValid()) {
-        const int enchantedAmount =
-            std::max(1, forestTiles / 15); // Rare forest resource
-        WorldResourceManager::Instance().addResource(
-            m_currentWorld->worldId, enchantedWoodHandle, enchantedAmount);
-        WORLD_MANAGER_DEBUG(
-            std::format("Added {} enchanted wood to world", enchantedAmount));
-      }
+      spawnHarvestablesInBiome(enchantedWoodHandle, HammerEngine::Biome::FOREST,
+                               std::max(1, forestTiles / 40), 1, 2, 120.0f);
     }
 
     if (celestialTiles > 0) {
       auto crystalHandle = resourceMgr.getHandleById("crystal_essence");
-      if (crystalHandle.isValid()) {
-        const int crystalAmount =
-            std::max(1, celestialTiles / 8); // Celestial biome exclusive
-        WorldResourceManager::Instance().addResource(
-            m_currentWorld->worldId, crystalHandle, crystalAmount);
-        WORLD_MANAGER_DEBUG(
-            std::format("Added {} crystal essence to world", crystalAmount));
-      }
+      spawnHarvestablesInBiome(crystalHandle, HammerEngine::Biome::CELESTIAL,
+                               std::max(1, celestialTiles / 30), 1, 2, 150.0f);
     }
 
     if (swampTiles > 0) {
       auto voidSilkHandle = resourceMgr.getHandleById("void_silk");
-      if (voidSilkHandle.isValid()) {
-        const int voidSilkAmount =
-            std::max(1, swampTiles / 20); // Very rare swamp resource
-        WorldResourceManager::Instance().addResource(
-            m_currentWorld->worldId, voidSilkHandle, voidSilkAmount);
-        WORLD_MANAGER_DEBUG(
-            std::format("Added {} void silk to world", voidSilkAmount));
-      }
+      spawnHarvestablesInBiome(voidSilkHandle, HammerEngine::Biome::SWAMP,
+                               std::max(1, swampTiles / 60), 1, 1, 200.0f);
     }
 
-    // High elevation bonuses
+    // High elevation resources
     if (highElevationTiles > 0) {
       auto stoneHandle = resourceMgr.getHandleById("enchanted_stone");
-      if (stoneHandle.isValid()) {
-        const int stoneAmount =
-            highElevationTiles / 5; // Building materials from high areas
-        WorldResourceManager::Instance().addResource(m_currentWorld->worldId,
-                                                     stoneHandle, stoneAmount);
-        WORLD_MANAGER_DEBUG(
-            std::format("Added {} enchanted stone to world", stoneAmount));
-      }
-    }
-
-    // Energy resources based on world size
-    auto arcaneEnergyHandle = resourceMgr.getHandleById("arcane_energy");
-    if (arcaneEnergyHandle.isValid()) {
-      const int energyAmount = totalTiles * 2; // Abundant energy resource
-      WorldResourceManager::Instance().addResource(
-          m_currentWorld->worldId, arcaneEnergyHandle, energyAmount);
-      WORLD_MANAGER_DEBUG(
-          std::format("Added {} arcane energy to world", energyAmount));
+      spawnHarvestablesAtElevation(stoneHandle, 0.7f,
+                                   std::max(1, highElevationTiles / 30),
+                                   1, 3, 90.0f);
     }
 
     WORLD_MANAGER_INFO(std::format(
-        "World resource initialization completed for {} ({} tiles processed)",
+        "World harvestable initialization completed for {} ({} tiles processed)",
         m_currentWorld->worldId, totalTiles));
 
   } catch (const std::exception &ex) {
@@ -776,33 +921,187 @@ void WorldManager::setCurrentSeason(Season season) {
 
 HammerEngine::TileRenderer::TileRenderer()
     : m_currentSeason(Season::Spring), m_subscribedToSeasons(false) {
-  // Initialize cached texture IDs for current season
+  // Pre-allocate buffers to avoid per-frame reallocations
+  m_ySortBuffer.reserve(512);
+  m_visibleChunks.reserve(64);   // Typical viewport ~24 chunks
+
+  // Load world object definitions from JSON
+  loadWorldObjects();
+
+  // Get atlas pointer and pre-load source rect coords from JSON
+  initAtlasCoords();
+
+  // Initialize cached texture pointers/coords for current season
   updateCachedTextureIDs();
 }
 
+void HammerEngine::TileRenderer::loadWorldObjects() {
+  JsonReader reader;
+  if (!reader.loadFromFile("res/data/world_objects.json")) {
+    WORLD_MANAGER_WARN(std::format(
+        "Could not load world_objects.json: {} - using hardcoded defaults",
+        reader.getLastError()));
+    return;
+  }
+
+  const auto& root = reader.getRoot();
+  if (!root.isObject()) {
+    WORLD_MANAGER_WARN("world_objects.json root is not an object");
+    return;
+  }
+
+  // Parse version
+  if (root.hasKey("version") && root["version"].isString()) {
+    m_worldObjects.version = root["version"].asString();
+  }
+
+  // Helper to parse a single object definition from a key-value pair
+  auto parseObjectDef = [](const std::string& id, const JsonValue& obj) -> WorldObjectDef {
+    WorldObjectDef def;
+    def.id = id;
+    if (obj.hasKey("name") && obj["name"].isString()) {
+      def.name = obj["name"].asString();
+    }
+    if (obj.hasKey("textureId") && obj["textureId"].isString()) {
+      def.textureId = obj["textureId"].asString();
+    }
+    if (obj.hasKey("seasonal") && obj["seasonal"].isBool()) {
+      def.seasonal = obj["seasonal"].asBool();
+    }
+    if (obj.hasKey("blocking") && obj["blocking"].isBool()) {
+      def.blocking = obj["blocking"].asBool();
+    }
+    if (obj.hasKey("harvestable") && obj["harvestable"].isBool()) {
+      def.harvestable = obj["harvestable"].asBool();
+    }
+    if (obj.hasKey("buildingSize") && obj["buildingSize"].isNumber()) {
+      def.buildingSize = obj["buildingSize"].asInt();
+    }
+    return def;
+  };
+
+  // Helper to parse a category (object format: { "key": { ... }, ... })
+  auto parseCategory = [&parseObjectDef](const JsonValue& root, const std::string& category,
+                                          std::unordered_map<std::string, WorldObjectDef>& target) {
+    if (!root.hasKey(category) || !root[category].isObject()) {
+      return;
+    }
+    const auto& catObj = root[category].asObject();
+    for (const auto& [key, value] : catObj) {
+      if (value.isObject()) {
+        target[key] = parseObjectDef(key, value);
+      }
+    }
+  };
+
+  // Parse all categories (object format for tool compatibility)
+  parseCategory(root, "biomes", m_worldObjects.biomes);
+  parseCategory(root, "obstacles", m_worldObjects.obstacles);
+  parseCategory(root, "decorations", m_worldObjects.decorations);
+  parseCategory(root, "buildings", m_worldObjects.buildings);
+
+  m_worldObjects.loaded = true;
+  WORLD_MANAGER_INFO(std::format(
+      "Loaded world_objects.json v{}: {} biomes, {} obstacles, {} decorations, {} buildings",
+      m_worldObjects.version,
+      m_worldObjects.biomes.size(),
+      m_worldObjects.obstacles.size(),
+      m_worldObjects.decorations.size(),
+      m_worldObjects.buildings.size()));
+}
+
 void HammerEngine::TileRenderer::updateCachedTextureIDs() {
+  // If using atlas, just apply pre-loaded coords (no lookups)
+  if (m_useAtlas) {
+    applyCoordsToTextures(m_currentSeason);
+    buildLookupTables();  // Must build LUTs for render loop
+    return;
+  }
+
+  // Fallback: individual textures via TextureManager
   static const char *const seasonPrefixes[] = {"spring_", "summer_", "fall_",
                                                "winter_"};
   const char *const prefix = seasonPrefixes[static_cast<int>(m_currentSeason)];
 
+  // Helper to get texture ID from JSON or use default, with optional seasonal prefix
+  auto getTextureId = [prefix](
+      const std::unordered_map<std::string, WorldObjectDef>& map,
+      const std::string& id,
+      const std::string& defaultTexture) -> std::string {
+    auto it = map.find(id);
+    if (it != map.end() && !it->second.textureId.empty()) {
+      if (it->second.seasonal) {
+        return std::string(prefix) + it->second.textureId;
+      }
+      return it->second.textureId;
+    }
+    // Default: assume seasonal
+    return std::string(prefix) + defaultTexture;
+  };
+
   // Pre-compute all seasonal texture IDs once (eliminates ~24,000 heap
   // allocations/frame at 4K)
-  m_cachedTextureIDs.biome_default = std::string(prefix) + "biome_default";
-  m_cachedTextureIDs.biome_desert = std::string(prefix) + "biome_desert";
-  m_cachedTextureIDs.biome_forest = std::string(prefix) + "biome_forest";
-  m_cachedTextureIDs.biome_mountain = std::string(prefix) + "biome_mountain";
-  m_cachedTextureIDs.biome_swamp = std::string(prefix) + "biome_swamp";
-  m_cachedTextureIDs.biome_haunted = std::string(prefix) + "biome_haunted";
-  m_cachedTextureIDs.biome_celestial = std::string(prefix) + "biome_celestial";
-  m_cachedTextureIDs.biome_ocean = std::string(prefix) + "biome_ocean";
-  m_cachedTextureIDs.obstacle_water = std::string(prefix) + "obstacle_water";
-  m_cachedTextureIDs.obstacle_tree = std::string(prefix) + "obstacle_tree";
-  m_cachedTextureIDs.obstacle_rock = std::string(prefix) + "obstacle_rock";
-  m_cachedTextureIDs.building_hut = std::string(prefix) + "building_hut";
-  m_cachedTextureIDs.building_house = std::string(prefix) + "building_house";
-  m_cachedTextureIDs.building_large = std::string(prefix) + "building_large";
-  m_cachedTextureIDs.building_cityhall =
-      std::string(prefix) + "building_cityhall";
+  // Use JSON data when loaded, otherwise fall back to hardcoded defaults
+  if (m_worldObjects.loaded) {
+    m_cachedTextureIDs.biome_default = getTextureId(m_worldObjects.biomes, "default", "biome_default");
+    m_cachedTextureIDs.biome_desert = getTextureId(m_worldObjects.biomes, "desert", "biome_desert");
+    m_cachedTextureIDs.biome_forest = getTextureId(m_worldObjects.biomes, "forest", "biome_forest");
+    m_cachedTextureIDs.biome_plains = getTextureId(m_worldObjects.biomes, "plains", "biome_plains");
+    m_cachedTextureIDs.biome_mountain = getTextureId(m_worldObjects.biomes, "mountain", "biome_mountain");
+    m_cachedTextureIDs.biome_swamp = getTextureId(m_worldObjects.biomes, "swamp", "biome_swamp");
+    m_cachedTextureIDs.biome_haunted = getTextureId(m_worldObjects.biomes, "haunted", "biome_haunted");
+    m_cachedTextureIDs.biome_celestial = getTextureId(m_worldObjects.biomes, "celestial", "biome_celestial");
+    m_cachedTextureIDs.biome_ocean = getTextureId(m_worldObjects.biomes, "ocean", "biome_ocean");
+    m_cachedTextureIDs.obstacle_water = getTextureId(m_worldObjects.obstacles, "water", "obstacle_water");
+    m_cachedTextureIDs.obstacle_tree = getTextureId(m_worldObjects.obstacles, "tree", "obstacle_tree");
+    m_cachedTextureIDs.obstacle_rock = getTextureId(m_worldObjects.obstacles, "rock", "obstacle_rock");
+    m_cachedTextureIDs.building_hut = getTextureId(m_worldObjects.buildings, "hut", "building_hut");
+    m_cachedTextureIDs.building_house = getTextureId(m_worldObjects.buildings, "house", "building_house");
+    m_cachedTextureIDs.building_large = getTextureId(m_worldObjects.buildings, "large", "building_large");
+    m_cachedTextureIDs.building_cityhall = getTextureId(m_worldObjects.buildings, "cityhall", "building_cityhall");
+    // Ore deposits (non-seasonal)
+    m_cachedTextureIDs.obstacle_iron_deposit = getTextureId(m_worldObjects.obstacles, "iron_deposit", "ore_iron_deposit");
+    m_cachedTextureIDs.obstacle_gold_deposit = getTextureId(m_worldObjects.obstacles, "gold_deposit", "ore_gold_deposit");
+    m_cachedTextureIDs.obstacle_copper_deposit = getTextureId(m_worldObjects.obstacles, "copper_deposit", "ore_copper_deposit");
+    m_cachedTextureIDs.obstacle_mithril_deposit = getTextureId(m_worldObjects.obstacles, "mithril_deposit", "ore_mithril_deposit");
+    m_cachedTextureIDs.obstacle_limestone_deposit = getTextureId(m_worldObjects.obstacles, "limestone_deposit", "ore_limestone_deposit");
+    m_cachedTextureIDs.obstacle_coal_deposit = getTextureId(m_worldObjects.obstacles, "coal_deposit", "ore_coal_deposit");
+    // Gem deposits (non-seasonal)
+    m_cachedTextureIDs.obstacle_emerald_deposit = getTextureId(m_worldObjects.obstacles, "emerald_deposit", "gem_emerald_deposit");
+    m_cachedTextureIDs.obstacle_ruby_deposit = getTextureId(m_worldObjects.obstacles, "ruby_deposit", "gem_ruby_deposit");
+    m_cachedTextureIDs.obstacle_sapphire_deposit = getTextureId(m_worldObjects.obstacles, "sapphire_deposit", "gem_sapphire_deposit");
+    m_cachedTextureIDs.obstacle_diamond_deposit = getTextureId(m_worldObjects.obstacles, "diamond_deposit", "gem_diamond_deposit");
+  } else {
+    // Hardcoded defaults when JSON not loaded
+    m_cachedTextureIDs.biome_default = std::string(prefix) + "biome_default";
+    m_cachedTextureIDs.biome_desert = std::string(prefix) + "biome_desert";
+    m_cachedTextureIDs.biome_forest = std::string(prefix) + "biome_forest";
+    m_cachedTextureIDs.biome_plains = std::string(prefix) + "biome_plains";
+    m_cachedTextureIDs.biome_mountain = std::string(prefix) + "biome_mountain";
+    m_cachedTextureIDs.biome_swamp = std::string(prefix) + "biome_swamp";
+    m_cachedTextureIDs.biome_haunted = std::string(prefix) + "biome_haunted";
+    m_cachedTextureIDs.biome_celestial = std::string(prefix) + "biome_celestial";
+    m_cachedTextureIDs.biome_ocean = std::string(prefix) + "biome_ocean";
+    m_cachedTextureIDs.obstacle_water = std::string(prefix) + "obstacle_water";
+    m_cachedTextureIDs.obstacle_tree = std::string(prefix) + "obstacle_tree";
+    m_cachedTextureIDs.obstacle_rock = std::string(prefix) + "obstacle_rock";
+    m_cachedTextureIDs.building_hut = std::string(prefix) + "building_hut";
+    m_cachedTextureIDs.building_house = std::string(prefix) + "building_house";
+    m_cachedTextureIDs.building_large = std::string(prefix) + "building_large";
+    m_cachedTextureIDs.building_cityhall = std::string(prefix) + "building_cityhall";
+    // Ore deposits (non-seasonal, no prefix)
+    m_cachedTextureIDs.obstacle_iron_deposit = "ore_iron_deposit";
+    m_cachedTextureIDs.obstacle_gold_deposit = "ore_gold_deposit";
+    m_cachedTextureIDs.obstacle_copper_deposit = "ore_copper_deposit";
+    m_cachedTextureIDs.obstacle_mithril_deposit = "ore_mithril_deposit";
+    m_cachedTextureIDs.obstacle_limestone_deposit = "ore_limestone_deposit";
+    m_cachedTextureIDs.obstacle_coal_deposit = "ore_coal_deposit";
+    // Gem deposits (non-seasonal, no prefix)
+    m_cachedTextureIDs.obstacle_emerald_deposit = "gem_emerald_deposit";
+    m_cachedTextureIDs.obstacle_ruby_deposit = "gem_ruby_deposit";
+    m_cachedTextureIDs.obstacle_sapphire_deposit = "gem_sapphire_deposit";
+    m_cachedTextureIDs.obstacle_diamond_deposit = "gem_diamond_deposit";
+  }
 
   // Cache raw texture pointers for direct rendering (eliminates ~8,000 hash
   // lookups/frame at 4K)
@@ -823,6 +1122,7 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
                m_cachedTextureIDs.biome_default);
   cacheTexture(m_cachedTextures.biome_desert, m_cachedTextureIDs.biome_desert);
   cacheTexture(m_cachedTextures.biome_forest, m_cachedTextureIDs.biome_forest);
+  cacheTexture(m_cachedTextures.biome_plains, m_cachedTextureIDs.biome_plains);
   cacheTexture(m_cachedTextures.biome_mountain,
                m_cachedTextureIDs.biome_mountain);
   cacheTexture(m_cachedTextures.biome_swamp, m_cachedTextureIDs.biome_swamp);
@@ -844,6 +1144,29 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
                m_cachedTextureIDs.building_large);
   cacheTexture(m_cachedTextures.building_cityhall,
                m_cachedTextureIDs.building_cityhall);
+
+  // Ore deposit textures
+  cacheTexture(m_cachedTextures.obstacle_iron_deposit,
+               m_cachedTextureIDs.obstacle_iron_deposit);
+  cacheTexture(m_cachedTextures.obstacle_gold_deposit,
+               m_cachedTextureIDs.obstacle_gold_deposit);
+  cacheTexture(m_cachedTextures.obstacle_copper_deposit,
+               m_cachedTextureIDs.obstacle_copper_deposit);
+  cacheTexture(m_cachedTextures.obstacle_mithril_deposit,
+               m_cachedTextureIDs.obstacle_mithril_deposit);
+  cacheTexture(m_cachedTextures.obstacle_limestone_deposit,
+               m_cachedTextureIDs.obstacle_limestone_deposit);
+  cacheTexture(m_cachedTextures.obstacle_coal_deposit,
+               m_cachedTextureIDs.obstacle_coal_deposit);
+  // Gem deposit textures
+  cacheTexture(m_cachedTextures.obstacle_emerald_deposit,
+               m_cachedTextureIDs.obstacle_emerald_deposit);
+  cacheTexture(m_cachedTextures.obstacle_ruby_deposit,
+               m_cachedTextureIDs.obstacle_ruby_deposit);
+  cacheTexture(m_cachedTextures.obstacle_sapphire_deposit,
+               m_cachedTextureIDs.obstacle_sapphire_deposit);
+  cacheTexture(m_cachedTextures.obstacle_diamond_deposit,
+               m_cachedTextureIDs.obstacle_diamond_deposit);
 
   // Decoration textures - handle seasonal variants
   // Flowers only appear in Spring/Summer (empty string = won't render)
@@ -871,19 +1194,29 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
     m_cachedTextureIDs.decoration_grass_large = "dead_grass_obstacle_large";
   }
 
-  // Bushes - seasonal variants
+  // Bushes - seasonal variants (prefix pattern: season_bush)
   if (m_currentSeason == Season::Fall) {
-    m_cachedTextureIDs.decoration_bush = "bush_fall";
+    m_cachedTextureIDs.decoration_bush = "fall_bush";
   } else if (m_currentSeason == Season::Winter) {
-    m_cachedTextureIDs.decoration_bush = "bush_winter";
+    m_cachedTextureIDs.decoration_bush = "winter_bush";
+  } else if (m_currentSeason == Season::Spring) {
+    m_cachedTextureIDs.decoration_bush = "spring_bush";
   } else {
-    m_cachedTextureIDs.decoration_bush = "bush_spring";
+    m_cachedTextureIDs.decoration_bush = "summer_bush";
   }
 
   // Stumps and rocks - no seasonal variants
   m_cachedTextureIDs.decoration_stump_small = "stump_obstacle_small";
   m_cachedTextureIDs.decoration_stump_medium = "stump_obstacle_medium";
   m_cachedTextureIDs.decoration_rock_small = "obstacle_rock";
+
+  // Logs - no seasonal variants
+  m_cachedTextureIDs.decoration_dead_log_hz = "dead_log_hz";
+  m_cachedTextureIDs.decoration_dead_log_vertical = "dead_log_vertical";
+
+  // Water decorations - no seasonal variants
+  m_cachedTextureIDs.decoration_lily_pad = "small_lily_pad";
+  m_cachedTextureIDs.decoration_water_flower = "blue_water_flower";
 
   // Cache decoration texture pointers
   cacheTexture(m_cachedTextures.decoration_flower_blue,
@@ -910,6 +1243,14 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
                m_cachedTextureIDs.decoration_stump_medium);
   cacheTexture(m_cachedTextures.decoration_rock_small,
                m_cachedTextureIDs.decoration_rock_small);
+  cacheTexture(m_cachedTextures.decoration_dead_log_hz,
+               m_cachedTextureIDs.decoration_dead_log_hz);
+  cacheTexture(m_cachedTextures.decoration_dead_log_vertical,
+               m_cachedTextureIDs.decoration_dead_log_vertical);
+  cacheTexture(m_cachedTextures.decoration_lily_pad,
+               m_cachedTextureIDs.decoration_lily_pad);
+  cacheTexture(m_cachedTextures.decoration_water_flower,
+               m_cachedTextureIDs.decoration_water_flower);
 
   // Validate critical textures to catch missing seasonal assets early
   if (!m_cachedTextures.biome_default.ptr) {
@@ -922,6 +1263,57 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
         "TileRenderer: Missing obstacle_water texture for season {}",
         static_cast<int>(m_currentSeason)));
   }
+
+  // Build O(1) lookup tables for render loop
+  buildLookupTables();
+}
+
+void HammerEngine::TileRenderer::buildLookupTables() {
+  // Biome lookup table (indexed by Biome enum: DESERT=0...OCEAN=7)
+  m_biomeLUT[0] = &m_cachedTextures.biome_desert;    // DESERT
+  m_biomeLUT[1] = &m_cachedTextures.biome_forest;    // FOREST
+  m_biomeLUT[2] = &m_cachedTextures.biome_plains;    // PLAINS
+  m_biomeLUT[3] = &m_cachedTextures.biome_mountain;  // MOUNTAIN
+  m_biomeLUT[4] = &m_cachedTextures.biome_swamp;     // SWAMP
+  m_biomeLUT[5] = &m_cachedTextures.biome_haunted;   // HAUNTED
+  m_biomeLUT[6] = &m_cachedTextures.biome_celestial; // CELESTIAL
+  m_biomeLUT[7] = &m_cachedTextures.biome_ocean;     // OCEAN
+
+  // Decoration lookup table (indexed by DecorationType enum: NONE=0...WATER_FLOWER=16)
+  m_decorationLUT[0] = nullptr;  // NONE
+  m_decorationLUT[1] = &m_cachedTextures.decoration_flower_blue;
+  m_decorationLUT[2] = &m_cachedTextures.decoration_flower_pink;
+  m_decorationLUT[3] = &m_cachedTextures.decoration_flower_white;
+  m_decorationLUT[4] = &m_cachedTextures.decoration_flower_yellow;
+  m_decorationLUT[5] = &m_cachedTextures.decoration_mushroom_purple;
+  m_decorationLUT[6] = &m_cachedTextures.decoration_mushroom_tan;
+  m_decorationLUT[7] = &m_cachedTextures.decoration_grass_small;
+  m_decorationLUT[8] = &m_cachedTextures.decoration_grass_large;
+  m_decorationLUT[9] = &m_cachedTextures.decoration_bush;
+  m_decorationLUT[10] = &m_cachedTextures.decoration_stump_small;
+  m_decorationLUT[11] = &m_cachedTextures.decoration_stump_medium;
+  m_decorationLUT[12] = &m_cachedTextures.decoration_rock_small;
+  m_decorationLUT[13] = &m_cachedTextures.decoration_dead_log_hz;
+  m_decorationLUT[14] = &m_cachedTextures.decoration_dead_log_vertical;
+  m_decorationLUT[15] = &m_cachedTextures.decoration_lily_pad;
+  m_decorationLUT[16] = &m_cachedTextures.decoration_water_flower;
+
+  // Obstacle lookup table (indexed by ObstacleType enum: NONE=0...DIAMOND_DEPOSIT=14)
+  m_obstacleLUT[0] = nullptr;  // NONE
+  m_obstacleLUT[1] = &m_cachedTextures.obstacle_rock;           // ROCK
+  m_obstacleLUT[2] = &m_cachedTextures.obstacle_tree;           // TREE
+  m_obstacleLUT[3] = &m_cachedTextures.obstacle_water;          // WATER
+  m_obstacleLUT[4] = nullptr;  // BUILDING (handled separately)
+  m_obstacleLUT[5] = &m_cachedTextures.obstacle_iron_deposit;
+  m_obstacleLUT[6] = &m_cachedTextures.obstacle_gold_deposit;
+  m_obstacleLUT[7] = &m_cachedTextures.obstacle_copper_deposit;
+  m_obstacleLUT[8] = &m_cachedTextures.obstacle_mithril_deposit;
+  m_obstacleLUT[9] = &m_cachedTextures.obstacle_limestone_deposit;
+  m_obstacleLUT[10] = &m_cachedTextures.obstacle_coal_deposit;
+  m_obstacleLUT[11] = &m_cachedTextures.obstacle_emerald_deposit;
+  m_obstacleLUT[12] = &m_cachedTextures.obstacle_ruby_deposit;
+  m_obstacleLUT[13] = &m_cachedTextures.obstacle_sapphire_deposit;
+  m_obstacleLUT[14] = &m_cachedTextures.obstacle_diamond_deposit;
 }
 
 void HammerEngine::TileRenderer::setCurrentSeason(Season season) {
@@ -934,23 +1326,373 @@ void HammerEngine::TileRenderer::setCurrentSeason(Season season) {
 }
 
 void HammerEngine::TileRenderer::invalidateChunk(int chunkX, int chunkY) {
-  const uint64_t key = makeChunkKey(chunkX, chunkY);
-  auto it = m_chunkCache.find(key);
-  if (it != m_chunkCache.end()) {
-    it->second.dirty = true;
+  if (!m_gridInitialized) return;
+  if (chunkY >= 0 && chunkY < m_gridHeight &&
+      chunkX >= 0 && chunkX < m_gridWidth) {
+    m_chunkGrid[chunkY][chunkX].dirty = true;
+    m_hasDirtyChunks = true;
   }
 }
 
 void HammerEngine::TileRenderer::clearChunkCache() {
-  // Defer cache clear to render thread to prevent Metal command encoder crash
-  // Update thread calls this during season change events while render may be
-  // using textures
+  // Mark all chunks as dirty for re-rendering (e.g., on season change)
   m_cachePendingClear.store(true, std::memory_order_release);
-  WORLD_MANAGER_DEBUG(
-      "TileRenderer: Chunk cache invalidated (deferred clear pending)");
+  m_hasDirtyChunks = true;
+}
+
+void HammerEngine::TileRenderer::initTexturePool(SDL_Renderer *renderer) {
+  if (m_poolInitialized || !renderer) {
+    return;
+  }
+
+  constexpr int chunkPixelSize =
+      CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
+
+  m_texturePool.reserve(TEXTURE_POOL_SIZE);
+  for (size_t i = 0; i < TEXTURE_POOL_SIZE; ++i) {
+    SDL_Texture *tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
+                                         SDL_TEXTUREACCESS_TARGET,
+                                         chunkPixelSize, chunkPixelSize);
+    if (tex) {
+      SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+      m_texturePool.push_back(
+          std::shared_ptr<SDL_Texture>(tex, SDL_DestroyTexture));
+    }
+  }
+  m_poolInitialized = true;
+  WORLD_MANAGER_INFO(
+      std::format("Texture pool initialized with {} textures", m_texturePool.size()));
+}
+
+std::shared_ptr<SDL_Texture>
+HammerEngine::TileRenderer::acquireTexture(SDL_Renderer *renderer) {
+  // Try to get from pool first
+  if (!m_texturePool.empty()) {
+    auto tex = std::move(m_texturePool.back());
+    m_texturePool.pop_back();
+    return tex;
+  }
+
+  // Pool empty - create new texture (should be rare after warmup)
+  constexpr int chunkPixelSize =
+      CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
+  SDL_Texture *tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
+                                       SDL_TEXTUREACCESS_TARGET,
+                                       chunkPixelSize, chunkPixelSize);
+  if (!tex) {
+    return nullptr;
+  }
+  SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+  return std::shared_ptr<SDL_Texture>(tex, SDL_DestroyTexture);
+}
+
+void HammerEngine::TileRenderer::releaseTexture(std::shared_ptr<SDL_Texture> tex) {
+  if (tex && m_texturePool.size() < TEXTURE_POOL_SIZE) {
+    m_texturePool.push_back(std::move(tex));
+  }
+  // If pool is full, texture is destroyed via shared_ptr destructor
 }
 
 HammerEngine::TileRenderer::~TileRenderer() { unsubscribeFromSeasonEvents(); }
+
+void HammerEngine::TileRenderer::initAtlasCoords() {
+  // Get atlas texture pointer from TextureManager (already loaded)
+  // For GPU rendering, SDL_Texture may not exist - check GPU texture instead
+  auto atlasTex = TextureManager::Instance().getTexture("atlas");
+  if (atlasTex) {
+    m_atlasPtr = atlasTex.get();
+  }
+#ifdef USE_SDL3_GPU
+  else {
+    // Check if GPU texture is available (GPU rendering path)
+    auto* gpuTex = TextureManager::Instance().getGPUTexture("atlas");
+    if (gpuTex) {
+      m_atlasGPUPtr = gpuTex;
+      WORLD_MANAGER_INFO("Using GPU atlas texture for rendering");
+    } else {
+      WORLD_MANAGER_INFO("Atlas texture not found - using individual textures");
+      m_useAtlas = false;
+      return;
+    }
+  }
+#else
+  if (!atlasTex) {
+    WORLD_MANAGER_INFO("Atlas texture not found - using individual textures");
+    m_useAtlas = false;
+    return;
+  }
+#endif
+
+  // Load atlas.json for source rect coordinates
+  JsonReader atlasReader;
+  if (!atlasReader.loadFromFile("res/data/atlas.json")) {
+    WORLD_MANAGER_WARN("Could not load atlas.json - using individual textures");
+    m_useAtlas = false;
+    return;
+  }
+
+  const auto& atlasRoot = atlasReader.getRoot();
+  if (!atlasRoot.isObject() || !atlasRoot.hasKey("regions")) {
+    WORLD_MANAGER_WARN("Invalid atlas.json format - using individual textures");
+    m_useAtlas = false;
+    return;
+  }
+
+  const auto& regions = atlasRoot["regions"].asObject();
+
+  // Load world_objects.json to get texture IDs for each object type
+  JsonReader worldReader;
+  if (!worldReader.loadFromFile("res/data/world_objects.json")) {
+    WORLD_MANAGER_WARN("Could not load world_objects.json - using individual textures");
+    m_useAtlas = false;
+    return;
+  }
+
+  const auto& worldRoot = worldReader.getRoot();
+
+  // Helper to get coords from atlas regions
+  auto getCoords = [&regions](const std::string& id) -> AtlasCoords {
+    auto it = regions.find(id);
+    if (it == regions.end()) {
+      return {0, 0, 0, 0};
+    }
+    const auto& r = it->second;
+    return {
+      static_cast<float>(r["x"].asNumber()),
+      static_cast<float>(r["y"].asNumber()),
+      static_cast<float>(r["w"].asNumber()),
+      static_cast<float>(r["h"].asNumber())
+    };
+  };
+
+  // Helper to get textureId from world_objects.json
+  auto getTextureId = [&worldRoot](const std::string& category, const std::string& key) -> std::string {
+    if (!worldRoot.hasKey(category)) return "";
+    const auto& cat = worldRoot[category];
+    if (!cat.isObject() || !cat.hasKey(key)) return "";
+    const auto& obj = cat[key];
+    if (!obj.hasKey("textureId")) return "";
+    return obj["textureId"].asString();
+  };
+
+  // Helper to check if object is seasonal
+  auto isSeasonal = [&worldRoot](const std::string& category, const std::string& key) -> bool {
+    if (!worldRoot.hasKey(category)) return false;
+    const auto& cat = worldRoot[category];
+    if (!cat.isObject() || !cat.hasKey(key)) return false;
+    const auto& obj = cat[key];
+    if (!obj.hasKey("seasonal")) return false;
+    return obj["seasonal"].asBool();
+  };
+
+  // Season prefixes
+  static const char* seasonPrefixes[] = {"spring_", "summer_", "fall_", "winter_"};
+
+  // Pre-load coords for all seasons
+  for (int s = 0; s < 4; ++s) {
+    const std::string prefix = seasonPrefixes[s];
+    auto& coords = m_seasonalCoords[s];
+
+    // Biomes - get textureId from JSON, apply seasonal prefix
+    auto loadBiome = [&](AtlasCoords& target, const std::string& key) {
+      std::string texId = getTextureId("biomes", key);
+      if (texId.empty()) texId = "biome_" + key;  // Fallback
+      target = isSeasonal("biomes", key) ? getCoords(prefix + texId) : getCoords(texId);
+    };
+
+    loadBiome(coords.biome_default, "default");
+    loadBiome(coords.biome_desert, "desert");
+    loadBiome(coords.biome_forest, "forest");
+    loadBiome(coords.biome_plains, "plains");
+    loadBiome(coords.biome_mountain, "mountain");
+    loadBiome(coords.biome_swamp, "swamp");
+    loadBiome(coords.biome_haunted, "haunted");
+    loadBiome(coords.biome_celestial, "celestial");
+    loadBiome(coords.biome_ocean, "ocean");
+
+    // Obstacles - get textureId from JSON
+    auto loadObstacle = [&](AtlasCoords& target, const std::string& key) {
+      std::string texId = getTextureId("obstacles", key);
+      if (texId.empty()) texId = "obstacle_" + key;
+      target = isSeasonal("obstacles", key) ? getCoords(prefix + texId) : getCoords(texId);
+    };
+
+    loadObstacle(coords.obstacle_water, "water");
+    loadObstacle(coords.obstacle_tree, "tree");
+    loadObstacle(coords.obstacle_rock, "rock");
+
+    // Buildings - get textureId from JSON
+    auto loadBuilding = [&](AtlasCoords& target, const std::string& key) {
+      std::string texId = getTextureId("buildings", key);
+      if (texId.empty()) texId = "building_" + key;
+      target = isSeasonal("buildings", key) ? getCoords(prefix + texId) : getCoords(texId);
+    };
+
+    loadBuilding(coords.building_hut, "hut");
+    loadBuilding(coords.building_house, "house");
+    loadBuilding(coords.building_large, "large");
+    loadBuilding(coords.building_cityhall, "cityhall");
+
+    // Ore deposits (non-seasonal)
+    loadObstacle(coords.obstacle_iron_deposit, "iron_deposit");
+    loadObstacle(coords.obstacle_gold_deposit, "gold_deposit");
+    loadObstacle(coords.obstacle_copper_deposit, "copper_deposit");
+    loadObstacle(coords.obstacle_mithril_deposit, "mithril_deposit");
+    loadObstacle(coords.obstacle_limestone_deposit, "limestone_deposit");
+    loadObstacle(coords.obstacle_coal_deposit, "coal_deposit");
+    // Gem deposits (non-seasonal)
+    loadObstacle(coords.obstacle_emerald_deposit, "emerald_deposit");
+    loadObstacle(coords.obstacle_ruby_deposit, "ruby_deposit");
+    loadObstacle(coords.obstacle_sapphire_deposit, "sapphire_deposit");
+    loadObstacle(coords.obstacle_diamond_deposit, "diamond_deposit");
+
+    // Decorations - special handling for seasonal availability
+    auto loadDecoration = [&](AtlasCoords& target, const std::string& key) {
+      if (!worldRoot.hasKey("decorations")) {
+        target = {0, 0, 0, 0};
+        return;
+      }
+      const auto& decorations = worldRoot["decorations"];
+      if (!decorations.hasKey(key)) {
+        target = {0, 0, 0, 0};
+        return;
+      }
+      const auto& obj = decorations[key];
+
+      // Check if this decoration has season restrictions
+      if (obj.hasKey("seasons")) {
+        const auto& seasons = obj["seasons"].asArray();
+        bool availableThisSeason = false;
+        for (const auto& seasonVal : seasons) {
+          const std::string& seasonName = seasonVal.asString();
+          if ((s == 0 && seasonName == "spring") ||
+              (s == 1 && seasonName == "summer") ||
+              (s == 2 && seasonName == "fall") ||
+              (s == 3 && seasonName == "winter")) {
+            availableThisSeason = true;
+            break;
+          }
+        }
+        if (!availableThisSeason) {
+          target = {0, 0, 0, 0};
+          return;
+        }
+      }
+
+      std::string texId = obj.hasKey("textureId") ? obj["textureId"].asString() : key;
+
+      // Check for fallback seasons
+      if (obj.hasKey("fallbackSeasons")) {
+        const auto& fallbacks = obj["fallbackSeasons"];
+        const char* seasonNames[] = {"spring", "summer", "fall", "winter"};
+        if (fallbacks.hasKey(seasonNames[s])) {
+          texId = fallbacks[seasonNames[s]].asString();
+          target = getCoords(texId);
+          return;
+        }
+      }
+
+      // Check for seasonal textures override
+      if (obj.hasKey("seasonTextures")) {
+        const auto& seasonTex = obj["seasonTextures"];
+        const char* seasonNames[] = {"spring", "summer", "fall", "winter"};
+        if (seasonTex.hasKey(seasonNames[s])) {
+          texId = seasonTex[seasonNames[s]].asString();
+          target = getCoords(texId);
+          return;
+        }
+      }
+
+      // Apply seasonal prefix if marked seasonal
+      bool seasonal = obj.hasKey("seasonal") && obj["seasonal"].asBool();
+      target = seasonal ? getCoords(prefix + texId) : getCoords(texId);
+    };
+
+    loadDecoration(coords.decoration_flower_blue, "flower_blue");
+    loadDecoration(coords.decoration_flower_pink, "flower_pink");
+    loadDecoration(coords.decoration_flower_white, "flower_white");
+    loadDecoration(coords.decoration_flower_yellow, "flower_yellow");
+    loadDecoration(coords.decoration_mushroom_purple, "mushroom_purple");
+    loadDecoration(coords.decoration_mushroom_tan, "mushroom_tan");
+    loadDecoration(coords.decoration_grass_small, "grass_small");
+    loadDecoration(coords.decoration_grass_large, "grass_large");
+    loadDecoration(coords.decoration_bush, "bush");
+    loadDecoration(coords.decoration_stump_small, "stump_small");
+    loadDecoration(coords.decoration_stump_medium, "stump_medium");
+    loadDecoration(coords.decoration_rock_small, "rock_small");
+    loadDecoration(coords.decoration_dead_log_hz, "dead_log_hz");
+    loadDecoration(coords.decoration_dead_log_vertical, "dead_log_vertical");
+    loadDecoration(coords.decoration_lily_pad, "lily_pad");
+    loadDecoration(coords.decoration_water_flower, "water_flower");
+  }
+
+  m_useAtlas = true;
+  WORLD_MANAGER_INFO("TileRenderer: Atlas coords loaded from world_objects.json");
+}
+
+void HammerEngine::TileRenderer::applyCoordsToTextures(Season season) {
+  if (!m_useAtlas || !m_atlasPtr) {
+    return;
+  }
+
+  const int s = static_cast<int>(season);
+  const auto& coords = m_seasonalCoords[s];
+
+  // Helper to apply coords to cached texture
+  auto apply = [this](CachedTexture& tex, const AtlasCoords& c) {
+    tex.ptr = m_atlasPtr;
+    tex.atlasX = c.x;
+    tex.atlasY = c.y;
+    tex.w = c.w;
+    tex.h = c.h;
+  };
+
+  // Apply all coords
+  apply(m_cachedTextures.biome_default, coords.biome_default);
+  apply(m_cachedTextures.biome_desert, coords.biome_desert);
+  apply(m_cachedTextures.biome_forest, coords.biome_forest);
+  apply(m_cachedTextures.biome_plains, coords.biome_plains);
+  apply(m_cachedTextures.biome_mountain, coords.biome_mountain);
+  apply(m_cachedTextures.biome_swamp, coords.biome_swamp);
+  apply(m_cachedTextures.biome_haunted, coords.biome_haunted);
+  apply(m_cachedTextures.biome_celestial, coords.biome_celestial);
+  apply(m_cachedTextures.biome_ocean, coords.biome_ocean);
+  apply(m_cachedTextures.obstacle_water, coords.obstacle_water);
+  apply(m_cachedTextures.obstacle_tree, coords.obstacle_tree);
+  apply(m_cachedTextures.obstacle_rock, coords.obstacle_rock);
+  apply(m_cachedTextures.building_hut, coords.building_hut);
+  apply(m_cachedTextures.building_house, coords.building_house);
+  apply(m_cachedTextures.building_large, coords.building_large);
+  apply(m_cachedTextures.building_cityhall, coords.building_cityhall);
+  // Ore deposits
+  apply(m_cachedTextures.obstacle_iron_deposit, coords.obstacle_iron_deposit);
+  apply(m_cachedTextures.obstacle_gold_deposit, coords.obstacle_gold_deposit);
+  apply(m_cachedTextures.obstacle_copper_deposit, coords.obstacle_copper_deposit);
+  apply(m_cachedTextures.obstacle_mithril_deposit, coords.obstacle_mithril_deposit);
+  apply(m_cachedTextures.obstacle_limestone_deposit, coords.obstacle_limestone_deposit);
+  apply(m_cachedTextures.obstacle_coal_deposit, coords.obstacle_coal_deposit);
+  // Gem deposits
+  apply(m_cachedTextures.obstacle_emerald_deposit, coords.obstacle_emerald_deposit);
+  apply(m_cachedTextures.obstacle_ruby_deposit, coords.obstacle_ruby_deposit);
+  apply(m_cachedTextures.obstacle_sapphire_deposit, coords.obstacle_sapphire_deposit);
+  apply(m_cachedTextures.obstacle_diamond_deposit, coords.obstacle_diamond_deposit);
+  apply(m_cachedTextures.decoration_flower_blue, coords.decoration_flower_blue);
+  apply(m_cachedTextures.decoration_flower_pink, coords.decoration_flower_pink);
+  apply(m_cachedTextures.decoration_flower_white, coords.decoration_flower_white);
+  apply(m_cachedTextures.decoration_flower_yellow, coords.decoration_flower_yellow);
+  apply(m_cachedTextures.decoration_mushroom_purple, coords.decoration_mushroom_purple);
+  apply(m_cachedTextures.decoration_mushroom_tan, coords.decoration_mushroom_tan);
+  apply(m_cachedTextures.decoration_grass_small, coords.decoration_grass_small);
+  apply(m_cachedTextures.decoration_grass_large, coords.decoration_grass_large);
+  apply(m_cachedTextures.decoration_bush, coords.decoration_bush);
+  apply(m_cachedTextures.decoration_stump_small, coords.decoration_stump_small);
+  apply(m_cachedTextures.decoration_stump_medium, coords.decoration_stump_medium);
+  apply(m_cachedTextures.decoration_rock_small, coords.decoration_rock_small);
+  apply(m_cachedTextures.decoration_dead_log_hz, coords.decoration_dead_log_hz);
+  apply(m_cachedTextures.decoration_dead_log_vertical, coords.decoration_dead_log_vertical);
+  apply(m_cachedTextures.decoration_lily_pad, coords.decoration_lily_pad);
+  apply(m_cachedTextures.decoration_water_flower, coords.decoration_water_flower);
+}
 
 void HammerEngine::TileRenderer::subscribeToSeasonEvents() {
   if (m_subscribedToSeasons) {
@@ -1013,12 +1755,12 @@ std::string HammerEngine::TileRenderer::getSeasonalTextureID(
 void HammerEngine::TileRenderer::renderChunkToTexture(
     const HammerEngine::WorldData &world, SDL_Renderer *renderer, int chunkX,
     int chunkY, SDL_Texture *target) {
-  // Set render target to chunk texture
+  // Called from updateDirtyChunks() which runs before SceneRenderer pipeline,
+  // so no need to save/restore render target
   SDL_SetRenderTarget(renderer, target);
   SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
   SDL_RenderClear(renderer);
 
-  // Calculate tile range for this chunk (extended by 1 tile for padding fill)
   const int worldWidth = static_cast<int>(world.grid[0].size());
   const int worldHeight = static_cast<int>(world.grid.size());
   const int startTileX = chunkX * CHUNK_SIZE;
@@ -1026,430 +1768,424 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
   const int endTileX = std::min(startTileX + CHUNK_SIZE, worldWidth);
   const int endTileY = std::min(startTileY + CHUNK_SIZE, worldHeight);
 
-  // Extended range for biome rendering (fills padding area)
-  const int extStartX = std::max(0, startTileX - 1);
-  const int extStartY = std::max(0, startTileY - 1);
-  const int extEndX = std::min(worldWidth, endTileX + 1);
-  const int extEndY = std::min(worldHeight, endTileY + 1);
-
   constexpr int tileSize = static_cast<int>(TILE_SIZE);
+  constexpr float tileSizeF = TILE_SIZE;
 
-  // LAYER 1: Biomes - fill entire texture including padding
-  for (int y = extStartY; y < extEndY; ++y) {
-    for (int x = extStartX; x < extEndX; ++x) {
-      const HammerEngine::Tile &tile = world.grid[y][x];
-      // Biomes render without SPRITE_OVERHANG offset for padding fill
-      const float localX =
-          static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-      const float localY =
-          static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
+  // LAYER 1: Biomes - O(1) lookup table, no switch statements
+  // NOTE: Biomes don't overhang, so we render ONLY the chunk area (not extended)
+  // This reduces draw calls from 400 to 256 per chunk
+  const CachedTexture *waterTex = &m_cachedTextures.obstacle_water;
+  const CachedTexture *defaultTex = &m_cachedTextures.biome_default;
 
-      const CachedTexture *tex = &m_cachedTextures.biome_default;
-      if (tile.isWater) {
-        tex = &m_cachedTextures.obstacle_water;
-      } else {
-        switch (tile.biome) {
-        case HammerEngine::Biome::DESERT:
-          tex = &m_cachedTextures.biome_desert;
-          break;
-        case HammerEngine::Biome::FOREST:
-          tex = &m_cachedTextures.biome_forest;
-          break;
-        case HammerEngine::Biome::MOUNTAIN:
-          tex = &m_cachedTextures.biome_mountain;
-          break;
-        case HammerEngine::Biome::SWAMP:
-          tex = &m_cachedTextures.biome_swamp;
-          break;
-        case HammerEngine::Biome::HAUNTED:
-          tex = &m_cachedTextures.biome_haunted;
-          break;
-        case HammerEngine::Biome::CELESTIAL:
-          tex = &m_cachedTextures.biome_celestial;
-          break;
-        case HammerEngine::Biome::OCEAN:
-          tex = &m_cachedTextures.biome_ocean;
-          break;
-        default:
-          break;
-        }
-      }
-      // CRITICAL: Use tileSize,tileSize for biomes - NOT tex->w,tex->h
-      // This ensures exact grid alignment regardless of source texture size
-      TextureManager::drawTileDirect(tex->ptr, localX, localY, tileSize,
-                                     tileSize, renderer);
-    }
-  }
-
-  // LAYER 2: Decorations (ground-level, rendered before Y-sorted obstacles)
+  float baseLocalY = static_cast<float>(SPRITE_OVERHANG);
   for (int y = startTileY; y < endTileY; ++y) {
+    const auto &row = world.grid[y];
+    float localX = static_cast<float>(SPRITE_OVERHANG);
+
     for (int x = startTileX; x < endTileX; ++x) {
-      const HammerEngine::Tile &tile = world.grid[y][x];
+      const HammerEngine::Tile &tile = row[x];
 
-      if (tile.decorationType == HammerEngine::DecorationType::NONE) {
-        continue;
+      // O(1) texture lookup - no branching for biome type
+      const CachedTexture *tex;
+      if (tile.isWater || tile.obstacleType == HammerEngine::ObstacleType::WATER) {
+        tex = waterTex;
+      } else {
+        const size_t biomeIdx = static_cast<size_t>(tile.biome);
+        tex = (biomeIdx < BIOME_COUNT) ? m_biomeLUT[biomeIdx] : defaultTex;
       }
 
-      const float localX =
-          static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-      const float localY =
-          static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
-
-      const CachedTexture *tex = nullptr;
-      switch (tile.decorationType) {
-      case HammerEngine::DecorationType::FLOWER_BLUE:
-        tex = &m_cachedTextures.decoration_flower_blue;
-        break;
-      case HammerEngine::DecorationType::FLOWER_PINK:
-        tex = &m_cachedTextures.decoration_flower_pink;
-        break;
-      case HammerEngine::DecorationType::FLOWER_WHITE:
-        tex = &m_cachedTextures.decoration_flower_white;
-        break;
-      case HammerEngine::DecorationType::FLOWER_YELLOW:
-        tex = &m_cachedTextures.decoration_flower_yellow;
-        break;
-      case HammerEngine::DecorationType::MUSHROOM_PURPLE:
-        tex = &m_cachedTextures.decoration_mushroom_purple;
-        break;
-      case HammerEngine::DecorationType::MUSHROOM_TAN:
-        tex = &m_cachedTextures.decoration_mushroom_tan;
-        break;
-      case HammerEngine::DecorationType::GRASS_SMALL:
-        tex = &m_cachedTextures.decoration_grass_small;
-        break;
-      case HammerEngine::DecorationType::GRASS_LARGE:
-        tex = &m_cachedTextures.decoration_grass_large;
-        break;
-      case HammerEngine::DecorationType::BUSH:
-        tex = &m_cachedTextures.decoration_bush;
-        break;
-      case HammerEngine::DecorationType::STUMP_SMALL:
-        tex = &m_cachedTextures.decoration_stump_small;
-        break;
-      case HammerEngine::DecorationType::STUMP_MEDIUM:
-        tex = &m_cachedTextures.decoration_stump_medium;
-        break;
-      case HammerEngine::DecorationType::ROCK_SMALL:
-        tex = &m_cachedTextures.decoration_rock_small;
-        break;
-      default:
-        continue;
+      if (tex && tex->ptr) {
+        SDL_FRect srcRect = {tex->atlasX, tex->atlasY, tex->w, tex->h};
+        SDL_FRect destRect = {localX, baseLocalY, tileSizeF, tileSizeF};
+        SDL_RenderTexture(renderer, tex->ptr, &srcRect, &destRect);
       }
-
-      // Skip if texture not loaded (e.g., flowers in winter have empty texture
-      // ID)
-      if (!tex || !tex->ptr) {
-        continue;
-      }
-
-      // Center decoration horizontally, align bottom to tile bottom
-      const float offsetX = (TILE_SIZE - tex->w) / 2.0f;
-      const float offsetY = TILE_SIZE - tex->h;
-
-      TextureManager::drawTileDirect(tex->ptr, localX + offsetX,
-                                     localY + offsetY, static_cast<int>(tex->w),
-                                     static_cast<int>(tex->h), renderer);
+      localX += tileSizeF;
     }
+    baseLocalY += tileSizeF;
   }
 
-  // LAYER 3: Collect obstacles and buildings for Y-sorted rendering
-  // Extended range to capture sprites that overhang into this chunk from
-  // adjacent tiles
-  const int spriteStartX =
-      std::max(0, startTileX - 2); // 2 tiles for building overhang
-  const int spriteStartY =
-      std::max(0, startTileY - 4); // 4 tiles for tall sprites above
-  const int spriteEndX = std::min(worldWidth, endTileX + 2);
-  const int spriteEndY = std::min(worldHeight, endTileY + 1);
+  // LAYER 2: Decorations - O(1) lookup, early continue for common case
+  baseLocalY = static_cast<float>(SPRITE_OVERHANG);
+  for (int y = startTileY; y < endTileY; ++y) {
+    const auto &row = world.grid[y];
+    float localX = static_cast<float>(SPRITE_OVERHANG);
+
+    for (int x = startTileX; x < endTileX; ++x) {
+      const HammerEngine::Tile &tile = row[x];
+      const auto decoType = static_cast<size_t>(tile.decorationType);
+
+      // Fast path: skip if no decoration or blocked by obstacle
+      if (decoType == 0 ||
+          (tile.obstacleType != HammerEngine::ObstacleType::NONE &&
+           tile.obstacleType != HammerEngine::ObstacleType::WATER)) {
+        localX += tileSizeF;
+        continue;
+      }
+
+      // O(1) lookup
+      const CachedTexture *tex = (decoType < DECORATION_COUNT) ? m_decorationLUT[decoType] : nullptr;
+
+      if (tex && tex->ptr) {
+        const float offsetX = (tileSizeF - tex->w) * 0.5f;
+        const float offsetY = tileSizeF - tex->h;
+        SDL_FRect srcRect = {tex->atlasX, tex->atlasY, tex->w, tex->h};
+        SDL_FRect destRect = {localX + offsetX, baseLocalY + offsetY, tex->w, tex->h};
+        SDL_RenderTexture(renderer, tex->ptr, &srcRect, &destRect);
+      }
+      localX += tileSizeF;
+    }
+    baseLocalY += tileSizeF;
+  }
+
+  // LAYER 3: Y-sorted obstacles and buildings - optimized with lookup tables
+  // Sprites extend UPWARD from their base, so scan BELOW chunk for tall sprite bases
+  // X: ±1 tile for sprite width overhang
+  // Y: 0 above (sprites don't extend down), +4 below (tallest buildings are 4 tiles)
+  const int spriteStartX = std::max(0, startTileX - 1);
+  const int spriteStartY = startTileY;  // No extension above - sprites extend upward, not down
+  const int spriteEndX = std::min(worldWidth, endTileX + 1);
+  const int spriteEndY = std::min(worldHeight, endTileY + 4);  // Scan below for tall sprites
 
   m_ySortBuffer.clear();
 
+  // Building textures array for O(1) lookup by size
+  const CachedTexture* buildingLUT[5] = {
+    &m_cachedTextures.building_hut,    // size 0 (fallback)
+    &m_cachedTextures.building_hut,    // size 1
+    &m_cachedTextures.building_house,  // size 2
+    &m_cachedTextures.building_large,  // size 3
+    &m_cachedTextures.building_cityhall // size 4
+  };
+
+  baseLocalY = static_cast<float>((spriteStartY - startTileY) * tileSize + SPRITE_OVERHANG);
   for (int y = spriteStartY; y < spriteEndY; ++y) {
+    const auto &row = world.grid[y];
+    float localX = static_cast<float>((spriteStartX - startTileX) * tileSize + SPRITE_OVERHANG);
+
     for (int x = spriteStartX; x < spriteEndX; ++x) {
-      const HammerEngine::Tile &tile = world.grid[y][x];
+      const HammerEngine::Tile &tile = row[x];
+      const auto obstacleIdx = static_cast<size_t>(tile.obstacleType);
 
-      // Calculate local position in chunk texture
-      const float localX =
-          static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-      const float localY =
-          static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
-
-      const bool isPartOfBuilding =
-          (tile.obstacleType == HammerEngine::ObstacleType::BUILDING &&
-           !tile.isTopLeftOfBuilding);
-
-      // Obstacles (trees, rocks) - bottom-center positioned
-      if (!isPartOfBuilding &&
-          tile.obstacleType != HammerEngine::ObstacleType::NONE &&
-          tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
-
-        const CachedTexture *tex = &m_cachedTextures.biome_default;
-        switch (tile.obstacleType) {
-        case HammerEngine::ObstacleType::TREE:
-          tex = &m_cachedTextures.obstacle_tree;
-          break;
-        case HammerEngine::ObstacleType::ROCK:
-          tex = &m_cachedTextures.obstacle_rock;
-          break;
-        case HammerEngine::ObstacleType::WATER:
-          continue; // Water is biome layer
-        default:
-          break;
-        }
-
-        const float offsetX = (TILE_SIZE - tex->w) / 2.0f;
-        const float offsetY = TILE_SIZE - tex->h;
-
-        // Y-sort key is bottom of sprite (tile Y + 1 tile = bottom)
-        const float sortY = localY + TILE_SIZE;
-
-        m_ySortBuffer.push_back(
-            {sortY, localX + offsetX, localY + offsetY, tex, false, 0, 0});
+      // Skip NONE, WATER (rendered in layer 1), and building parts (not top-left)
+      if (obstacleIdx == 0 || obstacleIdx == 3) {  // NONE=0, WATER=3
+        localX += tileSizeF;
+        continue;
       }
 
-      // Buildings - from top-left tile only
-      if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING &&
-          tile.isTopLeftOfBuilding) {
-        const CachedTexture *tex = &m_cachedTextures.building_hut;
-        switch (tile.buildingSize) {
-        case 1:
-          tex = &m_cachedTextures.building_hut;
-          break;
-        case 2:
-          tex = &m_cachedTextures.building_house;
-          break;
-        case 3:
-          tex = &m_cachedTextures.building_large;
-          break;
-        case 4:
-          tex = &m_cachedTextures.building_cityhall;
-          break;
-        default:
-          break;
+      // Handle buildings
+      if (obstacleIdx == 4) {  // BUILDING
+        if (tile.isTopLeftOfBuilding) {
+          const size_t sizeIdx = std::min(static_cast<size_t>(tile.buildingSize), size_t{4});
+          const CachedTexture *tex = buildingLUT[sizeIdx];
+          if (tex && tex->ptr) {
+            const float sortY = baseLocalY + (tile.buildingSize * tileSizeF);
+            m_ySortBuffer.push_back({sortY, localX, baseLocalY, tex, true,
+                                     static_cast<int>(tex->w),
+                                     static_cast<int>(tex->h)});
+          }
         }
-
-        // Y-sort key is bottom of building footprint
-        float sortY = localY + (tile.buildingSize * TILE_SIZE);
-
-        m_ySortBuffer.push_back({sortY, localX, localY, tex, true,
-                                 static_cast<int>(tex->w),
-                                 static_cast<int>(tex->h)});
+        localX += tileSizeF;
+        continue;
       }
+
+      // Regular obstacles - O(1) lookup
+      const CachedTexture *tex = (obstacleIdx < OBSTACLE_COUNT) ? m_obstacleLUT[obstacleIdx] : nullptr;
+      if (tex && tex->ptr) {
+        const float offsetX = (tileSizeF - tex->w) * 0.5f;
+        const float offsetY = tileSizeF - tex->h;
+        const float sortY = baseLocalY + tileSizeF;
+        m_ySortBuffer.push_back({sortY, localX + offsetX, baseLocalY + offsetY, tex, false, 0, 0});
+      }
+      localX += tileSizeF;
+    }
+    baseLocalY += tileSizeF;
+  }
+
+  // Sort is unavoidable for correct Y-ordering, but buffer is pre-allocated
+  if (!m_ySortBuffer.empty()) {
+    std::sort(m_ySortBuffer.begin(), m_ySortBuffer.end(),
+              [](const YSortedSprite &a, const YSortedSprite &b) {
+                if (a.y != b.y) return a.y < b.y;
+                if (a.renderX != b.renderX) return a.renderX < b.renderX;
+                return a.renderY < b.renderY;
+              });
+
+    // Render all sorted sprites
+    for (const auto &sprite : m_ySortBuffer) {
+      const float spriteW = sprite.isBuilding ? static_cast<float>(sprite.buildingWidth) : sprite.tex->w;
+      const float spriteH = sprite.isBuilding ? static_cast<float>(sprite.buildingHeight) : sprite.tex->h;
+      SDL_FRect srcRect = {sprite.tex->atlasX, sprite.tex->atlasY, sprite.tex->w, sprite.tex->h};
+      SDL_FRect destRect = {sprite.renderX, sprite.renderY, spriteW, spriteH};
+      SDL_RenderTexture(renderer, sprite.tex->ptr, &srcRect, &destRect);
     }
   }
 
-  // Sort by Y (bottom of sprite) for proper layering
-  std::sort(
-      m_ySortBuffer.begin(), m_ySortBuffer.end(),
-      [](const YSortedSprite &a, const YSortedSprite &b) { return a.y < b.y; });
-
-  // Render sorted sprites into chunk texture
-  for (const auto &sprite : m_ySortBuffer) {
-    const int spriteW = sprite.isBuilding ? sprite.buildingWidth
-                                          : static_cast<int>(sprite.tex->w);
-    const int spriteH = sprite.isBuilding ? sprite.buildingHeight
-                                          : static_cast<int>(sprite.tex->h);
-    TextureManager::drawTileDirect(sprite.tex->ptr, sprite.renderX,
-                                   sprite.renderY, spriteW, spriteH, renderer);
-  }
-
-  // Reset render target to default (screen)
   SDL_SetRenderTarget(renderer, nullptr);
 }
 
-void HammerEngine::TileRenderer::renderVisibleTiles(
+void HammerEngine::TileRenderer::render(
     const HammerEngine::WorldData &world, SDL_Renderer *renderer, float cameraX,
-    float cameraY, int viewportWidth, int viewportHeight) {
-  if (world.grid.empty()) {
-    WORLD_MANAGER_WARN(
-        "TileRenderer: Cannot render tiles - world grid is empty");
+    float cameraY, float viewportWidth, float viewportHeight) {
+  PROFILE_RENDER_GPU(HammerEngine::RenderPhase::WorldTiles, renderer);
+
+  if (world.grid.empty() || !renderer || !m_gridInitialized) {
     return;
   }
 
-  if (!renderer) {
-    WORLD_MANAGER_ERROR("TileRenderer: Cannot render tiles - renderer is null");
-    return;
+  // Check if camera crossed chunk boundary - rebuild visible list
+  const int camChunkX = static_cast<int>(cameraX * INV_CHUNK_PIXELS);
+  const int camChunkY = static_cast<int>(cameraY * INV_CHUNK_PIXELS);
+
+  if (camChunkX != m_lastCamChunkX || camChunkY != m_lastCamChunkY) {
+    rebuildVisibleList(camChunkX, camChunkY, viewportWidth, viewportHeight);
+    m_lastCamChunkX = camChunkX;
+    m_lastCamChunkY = camChunkY;
   }
 
-  // Process deferred cache clear safely on render thread (before any texture
-  // access) This prevents Metal command encoder crash when season change clears
-  // cache during render
-  if (m_cachePendingClear.exchange(false, std::memory_order_acq_rel)) {
-    m_chunkCache.clear();
-    WORLD_MANAGER_DEBUG("TileRenderer: Chunk cache cleared (deferred)");
-  }
+  // SIMD: Calculate screen positions (4 chunks at a time)
+  calculateScreenPositionsSIMD(cameraX, cameraY);
 
-  // Increment frame counter for LRU tracking
-  ++m_frameCounter;
-
-  // Calculate visible chunk range
-  const int worldWidth = static_cast<int>(world.grid[0].size());
-  const int worldHeight = static_cast<int>(world.grid.size());
-  const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
-  const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
-
-  const int startChunkX =
-      std::max(0, static_cast<int>(cameraX / (CHUNK_SIZE * TILE_SIZE)));
-  const int startChunkY =
-      std::max(0, static_cast<int>(cameraY / (CHUNK_SIZE * TILE_SIZE)));
-  const int endChunkX =
-      std::min(maxChunkX, static_cast<int>((cameraX + viewportWidth) /
-                                           (CHUNK_SIZE * TILE_SIZE)) +
-                              1);
-  const int endChunkY =
-      std::min(maxChunkY, static_cast<int>((cameraY + viewportHeight) /
-                                           (CHUNK_SIZE * TILE_SIZE)) +
-                              1);
-
-  // Chunk texture size includes padding for sprites extending beyond tile
-  // bounds
-  constexpr int chunkPixelSize =
-      CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
-
-  // Track currently visible chunk keys for LRU eviction (uses member buffer to
-  // avoid per-frame allocs)
-  m_visibleKeysBuffer.clear();
-
-  // Render visible chunks (typically 4-16 chunks vs 8000 individual tiles)
-  for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
-    for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
-      const uint64_t key = makeChunkKey(chunkX, chunkY);
-      m_visibleKeysBuffer.push_back(key);
-
-      // Get or create chunk cache entry
-      auto it = m_chunkCache.find(key);
-      if (it == m_chunkCache.end()) {
-        // Create new chunk texture
-        SDL_Texture *tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
-                                             SDL_TEXTUREACCESS_TARGET,
-                                             chunkPixelSize, chunkPixelSize);
-        if (!tex) {
-          WORLD_MANAGER_ERROR("Failed to create chunk texture");
-          continue;
-        }
-        SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
-
-        ChunkCache cache;
-        cache.texture = std::shared_ptr<SDL_Texture>(tex, SDL_DestroyTexture);
-        cache.dirty = true;
-        cache.lastUsedFrame = m_frameCounter;
-        it = m_chunkCache.emplace(key, std::move(cache)).first;
-      }
-
-      ChunkCache &chunk = it->second;
-      chunk.lastUsedFrame = m_frameCounter; // Update LRU timestamp
-
-      // Re-render chunk if dirty
-      if (chunk.dirty && chunk.texture) {
-        renderChunkToTexture(world, renderer, chunkX, chunkY,
-                             chunk.texture.get());
-        chunk.dirty = false;
-      }
-
-      // Render chunk texture to screen with source rect to prevent
-      // overlap/double-blend
-      if (chunk.texture) {
-        constexpr int chunkWorldSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
-
-        // Default: full chunk texture
-        float srcX = 0;
-        float srcY = 0;
-        float srcW = static_cast<float>(chunkPixelSize);
-        float srcH = static_cast<float>(chunkPixelSize);
-
-        float screenX = static_cast<float>(chunkX * chunkWorldSize) - cameraX -
-                        SPRITE_OVERHANG;
-        float screenY = static_cast<float>(chunkY * chunkWorldSize) - cameraY -
-                        SPRITE_OVERHANG;
-        float destW = srcW;
-        float destH = srcH;
-
-        // If not leftmost visible chunk, exclude left padding (already drawn by
-        // chunk to left)
-        if (chunkX > startChunkX) {
-          srcX = SPRITE_OVERHANG;
-          srcW -= SPRITE_OVERHANG;
-          screenX += SPRITE_OVERHANG;
-          destW = srcW;
-        }
-
-        // If not topmost visible chunk, exclude top padding (already drawn by
-        // chunk above)
-        if (chunkY > startChunkY) {
-          srcY = SPRITE_OVERHANG;
-          srcH -= SPRITE_OVERHANG;
-          screenY += SPRITE_OVERHANG;
-          destH = srcH;
-        }
-
-        // Snap destination to pixel grid to prevent sub-pixel rendering
-        // artifacts (waviness at screen edges from texture filtering on
-        // fractional positions)
-        SDL_FRect srcRect = {srcX, srcY, srcW, srcH};
-        SDL_FRect destRect = {std::floor(screenX), std::floor(screenY), destW,
-                              destH};
-        SDL_RenderTexture(renderer, chunk.texture.get(), &srcRect, &destRect);
-      }
-    }
-  }
-
-  // LRU eviction: Remove oldest chunks when cache exceeds limit
-  if (m_chunkCache.size() > MAX_CACHED_CHUNKS) {
-    // Find chunks not currently visible and sort by last used frame (uses
-    // member buffer)
-    m_evictionBuffer.clear();
-    for (const auto &[key, cache] : m_chunkCache) {
-      // Don't evict currently visible chunks
-      if (std::find(m_visibleKeysBuffer.begin(), m_visibleKeysBuffer.end(),
-                    key) == m_visibleKeysBuffer.end()) {
-        m_evictionBuffer.emplace_back(key, cache.lastUsedFrame);
-      }
-    }
-
-    // Sort by oldest first (lowest frame number)
-    std::sort(m_evictionBuffer.begin(), m_evictionBuffer.end(),
-              [](const auto &a, const auto &b) { return a.second < b.second; });
-
-    // Evict oldest chunks until we're under the limit
-    const size_t toEvict = m_chunkCache.size() - MAX_CACHED_CHUNKS;
-    for (size_t i = 0; i < std::min(toEvict, m_evictionBuffer.size()); ++i) {
-      m_chunkCache.erase(m_evictionBuffer[i].first);
-    }
-
-    // Note: toEvict is always > 0 here since we're inside the size() > MAX
-    // block
-    WORLD_MANAGER_DEBUG(std::format(
-        "TileRenderer: Evicted {} chunks from cache (cache size: {})",
-        std::min(toEvict, m_evictionBuffer.size()), m_chunkCache.size()));
+  // Draw all visible chunks
+  for (size_t i = 0; i < m_visibleChunks.count; ++i) {
+    SDL_FRect srcRect = {
+        m_visibleChunks.srcX[i], m_visibleChunks.srcY[i],
+        m_visibleChunks.srcW[i], m_visibleChunks.srcH[i]
+    };
+    SDL_FRect destRect = {
+        m_visibleChunks.screenX[i], m_visibleChunks.screenY[i],
+        m_visibleChunks.srcW[i], m_visibleChunks.srcH[i]
+    };
+    SDL_RenderTexture(renderer, m_visibleChunks.textures[i], &srcRect, &destRect);
   }
 }
 
-HammerEngine::TileRenderer::ChunkBounds
-HammerEngine::TileRenderer::calculateVisibleChunks(float cameraX, float cameraY,
-                                                   int viewportWidth,
-                                                   int viewportHeight) const {
+void HammerEngine::TileRenderer::prefetchChunks(
+    const HammerEngine::WorldData &world, SDL_Renderer *renderer,
+    float cameraX, float cameraY, float viewportWidth, float viewportHeight) {
+  // Handles dirty chunk re-rendering, deferred cache clears (season changes),
+  // and ensures proper render target restoration after chunk operations.
+  if (world.grid.empty() || !renderer || !m_gridInitialized) {
+    return;
+  }
 
-  // Add generous padding for chunk pre-loading (load chunks well in advance)
-  const float chunkPadding = (CHUNK_SIZE * TILE_SIZE) *
-                             2.0f; // Load 2 full chunks ahead in each direction
+  // Handle deferred cache clear (e.g., season change)
+  if (m_cachePendingClear.exchange(false, std::memory_order_acq_rel)) {
+    for (auto& row : m_chunkGrid) {
+      for (auto& chunk : row) {
+        chunk.dirty = true;
+      }
+    }
+    m_hasDirtyChunks = true;
+    m_lastCamChunkX = -1;  // Force visible list rebuild
+  }
 
-  // Calculate camera bounds with expanded padding for chunk pre-loading
-  const float leftBound = cameraX - (viewportWidth * 0.5f) - chunkPadding;
-  const float rightBound = cameraX + (viewportWidth * 0.5f) + chunkPadding;
-  const float topBound = cameraY - (viewportHeight * 0.5f) - chunkPadding;
-  const float bottomBound = cameraY + (viewportHeight * 0.5f) + chunkPadding;
+  // Early-out: no dirty chunks
+  if (!m_hasDirtyChunks) {
+    return;
+  }
 
-  // Convert to chunk coordinates
-  ChunkBounds bounds;
-  const int chunkPixelSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
-  bounds.startChunkX =
-      std::max(0, static_cast<int>(leftBound) / chunkPixelSize);
-  bounds.endChunkX = static_cast<int>(rightBound) / chunkPixelSize;
-  bounds.startChunkY = std::max(0, static_cast<int>(topBound) / chunkPixelSize);
-  bounds.endChunkY = static_cast<int>(bottomBound) / chunkPixelSize;
+  // Calculate extended chunk range (visible + 2 chunk margin in all directions)
+  constexpr int margin = 2;
+  const int startX = std::max(0, static_cast<int>(cameraX * INV_CHUNK_PIXELS) - margin);
+  const int startY = std::max(0, static_cast<int>(cameraY * INV_CHUNK_PIXELS) - margin);
+  const int endX = std::min(m_gridWidth, static_cast<int>((cameraX + viewportWidth) * INV_CHUNK_PIXELS) + 1 + margin);
+  const int endY = std::min(m_gridHeight, static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 1 + margin);
 
-  return bounds;
+  // Re-render dirty chunks with budget to avoid stuttering
+  constexpr int renderBudget = 4;
+  int rendered = 0;
+  bool anyDirty = false;
+
+  for (int cy = startY; cy < endY && rendered < renderBudget; ++cy) {
+    for (int cx = startX; cx < endX && rendered < renderBudget; ++cx) {
+      auto& chunk = m_chunkGrid[cy][cx];
+      if (chunk.dirty && chunk.texture) {
+        renderChunkToTexture(world, renderer, cx, cy, chunk.texture.get());
+        chunk.dirty = false;
+        ++rendered;
+      }
+    }
+  }
+
+  // Check if more dirty chunks remain
+  if (rendered == renderBudget) {
+    for (int cy = startY; cy < endY; ++cy) {
+      for (int cx = startX; cx < endX; ++cx) {
+        if (m_chunkGrid[cy][cx].dirty) {
+          anyDirty = true;
+          break;
+        }
+      }
+      if (anyDirty) break;
+    }
+  }
+
+  m_hasDirtyChunks = anyDirty;
+
+  // Force visible list rebuild if chunks were re-rendered
+  if (rendered > 0) {
+    m_lastCamChunkX = -1;
+    // Restore render target after chunk operations
+    SDL_SetRenderTarget(renderer, nullptr);
+  }
+}
+
+void HammerEngine::TileRenderer::prewarmChunks(
+    const HammerEngine::WorldData &world, SDL_Renderer *renderer,
+    float cameraX, float cameraY, float viewportWidth, float viewportHeight) {
+  if (world.grid.empty() || !renderer) {
+    return;
+  }
+
+  // Initialize texture pool
+  if (!m_poolInitialized) {
+    initTexturePool(renderer);
+  }
+
+  // Initialize chunk grid if not done yet
+  if (!m_gridInitialized) {
+    initChunkGrid(world, renderer);
+    return;  // Grid init renders all chunks
+  }
+
+  // Calculate visible chunk range with margin for smooth initial scrolling
+  constexpr int margin = 3;
+  const int startX = std::max(0, static_cast<int>(cameraX * INV_CHUNK_PIXELS) - margin);
+  const int startY = std::max(0, static_cast<int>(cameraY * INV_CHUNK_PIXELS) - margin);
+  const int endX = std::min(m_gridWidth, static_cast<int>((cameraX + viewportWidth) * INV_CHUNK_PIXELS) + 1 + margin);
+  const int endY = std::min(m_gridHeight, static_cast<int>((cameraY + viewportHeight) * INV_CHUNK_PIXELS) + 1 + margin);
+
+  // Re-render any dirty chunks in visible area - no budget limit for prewarm
+  bool anyRendered = false;
+  for (int cy = startY; cy < endY; ++cy) {
+    for (int cx = startX; cx < endX; ++cx) {
+      auto& chunk = m_chunkGrid[cy][cx];
+      if (chunk.dirty && chunk.texture) {
+        renderChunkToTexture(world, renderer, cx, cy, chunk.texture.get());
+        chunk.dirty = false;
+        anyRendered = true;
+      }
+    }
+  }
+
+  // Restore render target after prewarming chunks
+  if (anyRendered) {
+    SDL_SetRenderTarget(renderer, nullptr);
+  }
+
+  m_hasDirtyChunks = false;  // All visible chunks are now rendered
+  m_lastCamChunkX = -1;      // Force visible list rebuild
+}
+
+void HammerEngine::TileRenderer::initChunkGrid(
+    const HammerEngine::WorldData &world, SDL_Renderer *renderer) {
+  if (world.grid.empty() || !renderer) {
+    return;
+  }
+
+  const int worldWidth = static_cast<int>(world.grid[0].size());
+  const int worldHeight = static_cast<int>(world.grid.size());
+  m_gridWidth = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
+  m_gridHeight = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+  WORLD_MANAGER_INFO(std::format("Initializing chunk grid: {}x{} chunks ({} total)",
+                                  m_gridWidth, m_gridHeight, m_gridWidth * m_gridHeight));
+
+  // Allocate 2D grid
+  m_chunkGrid.resize(m_gridHeight);
+  for (auto& row : m_chunkGrid) {
+    row.resize(m_gridWidth);
+  }
+
+  // Create and render all chunk textures
+  for (int cy = 0; cy < m_gridHeight; ++cy) {
+    for (int cx = 0; cx < m_gridWidth; ++cx) {
+      auto tex = acquireTexture(renderer);
+      if (tex) {
+        renderChunkToTexture(world, renderer, cx, cy, tex.get());
+        m_chunkGrid[cy][cx].texture = std::move(tex);
+        m_chunkGrid[cy][cx].dirty = false;
+      }
+    }
+  }
+
+  // Restore render target after initializing all chunks
+  SDL_SetRenderTarget(renderer, nullptr);
+
+  m_gridInitialized = true;
+  m_hasDirtyChunks = false;
+  m_lastCamChunkX = -1;  // Force visible list rebuild on first render
+
+  WORLD_MANAGER_INFO("Chunk grid initialization complete");
+}
+
+void HammerEngine::TileRenderer::rebuildVisibleList(
+    int camChunkX, int camChunkY, float viewW, float viewH) {
+  m_visibleChunks.clear();
+
+  // Calculate visible range with 1 chunk margin for edge sprites
+  const int chunksX = static_cast<int>(viewW * INV_CHUNK_PIXELS) + 3;
+  const int chunksY = static_cast<int>(viewH * INV_CHUNK_PIXELS) + 3;
+
+  const int startX = std::max(0, camChunkX - 1);
+  const int startY = std::max(0, camChunkY - 1);
+  const int endX = std::min(m_gridWidth, camChunkX + chunksX);
+  const int endY = std::min(m_gridHeight, camChunkY + chunksY);
+
+  // Reserve space for expected visible chunks
+  m_visibleChunks.reserve((endX - startX) * (endY - startY));
+
+  for (int cy = startY; cy < endY; ++cy) {
+    for (int cx = startX; cx < endX; ++cx) {
+      SDL_Texture* tex = m_chunkGrid[cy][cx].texture.get();
+      if (!tex) continue;
+
+      // Calculate source rect with edge clipping for sprite overhang
+      const float srcX = (cx > startX) ? static_cast<float>(SPRITE_OVERHANG) : 0.0f;
+      const float srcY = (cy > startY) ? static_cast<float>(SPRITE_OVERHANG) : 0.0f;
+      const float srcW = static_cast<float>(CHUNK_TEXTURE_SIZE) - srcX;
+      const float srcH = static_cast<float>(CHUNK_TEXTURE_SIZE) - srcY;
+
+      // Calculate world position (accounting for overhang offset)
+      const float worldX = static_cast<float>(cx * CHUNK_PIXELS) -
+                           static_cast<float>(SPRITE_OVERHANG) + srcX;
+      const float worldY = static_cast<float>(cy * CHUNK_PIXELS) -
+                           static_cast<float>(SPRITE_OVERHANG) + srcY;
+
+      m_visibleChunks.push_back(tex, worldX, worldY, srcX, srcY, srcW, srcH);
+    }
+  }
+}
+
+void HammerEngine::TileRenderer::calculateScreenPositionsSIMD(
+    float cameraX, float cameraY) {
+  const size_t count = m_visibleChunks.count;
+  if (count == 0) return;
+
+  // Ensure output vectors have proper size
+  m_visibleChunks.screenX.resize(count);
+  m_visibleChunks.screenY.resize(count);
+
+  size_t i = 0;
+
+  // SIMD: Process 4 chunks at a time
+  const Float4 camXVec = broadcast(cameraX);
+  const Float4 camYVec = broadcast(cameraY);
+
+  for (; i + 4 <= count; i += 4) {
+    Float4 wx = load4(&m_visibleChunks.worldX[i]);
+    Float4 wy = load4(&m_visibleChunks.worldY[i]);
+    Float4 sx = sub(wx, camXVec);
+    Float4 sy = sub(wy, camYVec);
+    store4(&m_visibleChunks.screenX[i], sx);
+    store4(&m_visibleChunks.screenY[i], sy);
+  }
+
+  // Scalar tail for remaining chunks
+  for (; i < count; ++i) {
+    m_visibleChunks.screenX[i] = m_visibleChunks.worldX[i] - cameraX;
+    m_visibleChunks.screenY[i] = m_visibleChunks.worldY[i] - cameraY;
+  }
 }
 
 void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile &tile,
@@ -1499,6 +2235,8 @@ HammerEngine::TileRenderer::getBiomeTexture(HammerEngine::Biome biome) const {
     return "biome_desert";
   case HammerEngine::Biome::FOREST:
     return "biome_forest";
+  case HammerEngine::Biome::PLAINS:
+    return "biome_plains";
   case HammerEngine::Biome::MOUNTAIN:
     return "biome_mountain";
   case HammerEngine::Biome::SWAMP:
@@ -1525,7 +2263,368 @@ std::string HammerEngine::TileRenderer::getObstacleTexture(
     return "obstacle_water";
   case HammerEngine::ObstacleType::BUILDING:
     return "building_hut"; // Default to hut texture
+  // Ore deposits
+  case HammerEngine::ObstacleType::IRON_DEPOSIT:
+    return "ore_iron_deposit";
+  case HammerEngine::ObstacleType::GOLD_DEPOSIT:
+    return "ore_gold_deposit";
+  case HammerEngine::ObstacleType::COPPER_DEPOSIT:
+    return "ore_copper_deposit";
+  case HammerEngine::ObstacleType::MITHRIL_DEPOSIT:
+    return "ore_mithril_deposit";
+  case HammerEngine::ObstacleType::LIMESTONE_DEPOSIT:
+    return "ore_limestone_deposit";
+  case HammerEngine::ObstacleType::COAL_DEPOSIT:
+    return "ore_coal_deposit";
+  // Gem deposits
+  case HammerEngine::ObstacleType::EMERALD_DEPOSIT:
+    return "gem_emerald_deposit";
+  case HammerEngine::ObstacleType::RUBY_DEPOSIT:
+    return "gem_ruby_deposit";
+  case HammerEngine::ObstacleType::SAPPHIRE_DEPOSIT:
+    return "gem_sapphire_deposit";
+  case HammerEngine::ObstacleType::DIAMOND_DEPOSIT:
+    return "gem_diamond_deposit";
   default:
     return "biome_default";
   }
 }
+
+#ifdef USE_SDL3_GPU
+// ============================================================================
+// GPU Rendering Implementation
+// ============================================================================
+
+auto HammerEngine::TileRenderer::getBiomeAtlasCoords(Biome biome, Season season) const
+    -> const AtlasCoords& {
+  const auto& coords = m_seasonalCoords[static_cast<int>(season)];
+  switch (biome) {
+  case Biome::DESERT:
+    return coords.biome_desert;
+  case Biome::FOREST:
+    return coords.biome_forest;
+  case Biome::PLAINS:
+    return coords.biome_plains;
+  case Biome::MOUNTAIN:
+    return coords.biome_mountain;
+  case Biome::SWAMP:
+    return coords.biome_swamp;
+  case Biome::HAUNTED:
+    return coords.biome_haunted;
+  case Biome::CELESTIAL:
+    return coords.biome_celestial;
+  case Biome::OCEAN:
+    return coords.biome_ocean;
+  default:
+    return coords.biome_default;
+  }
+}
+
+auto HammerEngine::TileRenderer::getObstacleAtlasCoords(ObstacleType obstacle, Season season) const
+    -> const AtlasCoords& {
+  const auto& coords = m_seasonalCoords[static_cast<int>(season)];
+  switch (obstacle) {
+  case ObstacleType::TREE:
+    return coords.obstacle_tree;
+  case ObstacleType::ROCK:
+    return coords.obstacle_rock;
+  case ObstacleType::WATER:
+    return coords.obstacle_water;
+  case ObstacleType::BUILDING:
+    return coords.building_hut;
+  case ObstacleType::IRON_DEPOSIT:
+    return coords.obstacle_iron_deposit;
+  case ObstacleType::GOLD_DEPOSIT:
+    return coords.obstacle_gold_deposit;
+  case ObstacleType::COPPER_DEPOSIT:
+    return coords.obstacle_copper_deposit;
+  case ObstacleType::MITHRIL_DEPOSIT:
+    return coords.obstacle_mithril_deposit;
+  case ObstacleType::LIMESTONE_DEPOSIT:
+    return coords.obstacle_limestone_deposit;
+  case ObstacleType::COAL_DEPOSIT:
+    return coords.obstacle_coal_deposit;
+  case ObstacleType::EMERALD_DEPOSIT:
+    return coords.obstacle_emerald_deposit;
+  case ObstacleType::RUBY_DEPOSIT:
+    return coords.obstacle_ruby_deposit;
+  case ObstacleType::SAPPHIRE_DEPOSIT:
+    return coords.obstacle_sapphire_deposit;
+  case ObstacleType::DIAMOND_DEPOSIT:
+    return coords.obstacle_diamond_deposit;
+  default:
+    return coords.biome_default;
+  }
+}
+
+HammerEngine::GPUTexture*
+HammerEngine::TileRenderer::getAtlasGPUTexture() const {
+  if (!m_useAtlas) {
+    return nullptr;
+  }
+  // Get GPU texture from TextureManager
+  if (!m_atlasGPUPtr) {
+    const_cast<TileRenderer*>(this)->m_atlasGPUPtr =
+        TextureManager::Instance().getGPUTexture("atlas");
+  }
+  return m_atlasGPUPtr;
+}
+
+void HammerEngine::TileRenderer::recordGPUTiles(
+    SpriteBatch& spriteBatch, float cameraX, float cameraY,
+    float viewportWidth, float viewportHeight, float zoom,
+    Season season) {
+
+  // GPU rendering doesn't require chunk grid (m_gridInitialized)
+  // It only requires atlas coords to be loaded (m_useAtlas)
+  if (!m_useAtlas) {
+    return;
+  }
+
+  // Get world data from WorldManager
+  const auto* worldData = WorldManager::Instance().getWorldData();
+  if (!worldData || worldData->grid.empty()) {
+    return;
+  }
+
+  // 2D grid dimensions
+  const int worldHeight = static_cast<int>(worldData->grid.size());
+  const int worldWidth = static_cast<int>(worldData->grid[0].size());
+
+  // Calculate visible tile range (with padding for partially visible tiles)
+  const float effectiveViewWidth = viewportWidth / zoom;
+  const float effectiveViewHeight = viewportHeight / zoom;
+
+  const int startTileX = std::max(0, static_cast<int>(cameraX / TILE_SIZE) - VIEWPORT_PADDING);
+  const int startTileY = std::max(0, static_cast<int>(cameraY / TILE_SIZE) - VIEWPORT_PADDING);
+  const int endTileX = std::min(worldWidth,
+                                static_cast<int>((cameraX + effectiveViewWidth) / TILE_SIZE) + VIEWPORT_PADDING + 1);
+  const int endTileY = std::min(worldHeight,
+                                static_cast<int>((cameraY + effectiveViewHeight) / TILE_SIZE) + VIEWPORT_PADDING + 1);
+
+  // Early exit if no visible tiles
+  if (startTileX >= endTileX || startTileY >= endTileY) {
+    return;
+  }
+
+  // Pre-fetch seasonal coords (avoids per-tile lookups)
+  const auto& sc = m_seasonalCoords[static_cast<int>(season)];
+
+  // Render at 1x scale (matching SDL_Renderer approach)
+  // Zoom is handled in the composite shader, not by scaling tile positions
+  const float scaledTileSize = TILE_SIZE;  // 1x scale, no zoom multiplier
+  const float baseCameraX = cameraX;       // No zoom multiplier
+  const float baseCameraY = cameraY;
+  const float startScreenX = startTileX * scaledTileSize - baseCameraX;
+
+  // Debug: Log tile rendering params on viewport change (uses member vars to avoid static)
+  if (viewportWidth != m_lastGPUViewportW || viewportHeight != m_lastGPUViewportH) {
+    WORLD_MANAGER_INFO(std::format(
+        "GPU tile params: viewport={}x{}, zoom={}, tileSize={}, "
+        "scaledTileSize={}, visibleTiles={}x{}, cameraY={}, effectiveH={}, endTileY={}",
+        viewportWidth, viewportHeight, zoom, TILE_SIZE,
+        scaledTileSize, endTileX - startTileX, endTileY - startTileY,
+        cameraY, effectiveViewHeight, endTileY));
+    m_lastGPUViewportW = viewportWidth;
+    m_lastGPUViewportH = viewportHeight;
+  }
+
+  // Build biome lookup table for O(1) access (enum value -> coords pointer)
+  // Avoids switch overhead in inner loop
+  const AtlasCoords* biomeLUT[8] = {
+      &sc.biome_desert, &sc.biome_forest, &sc.biome_plains, &sc.biome_mountain,
+      &sc.biome_swamp, &sc.biome_haunted, &sc.biome_celestial, &sc.biome_ocean
+  };
+
+  // Build obstacle lookup table (enum value -> coords pointer)
+  // Index 0 = NONE (unused), indices 1-14 match ObstacleType enum values
+  const AtlasCoords* obstacleLUT[15] = {
+      &sc.biome_default,          // NONE (never used)
+      &sc.obstacle_rock,          // ROCK
+      &sc.obstacle_tree,          // TREE
+      &sc.obstacle_water,         // WATER
+      &sc.building_hut,           // BUILDING
+      &sc.obstacle_iron_deposit,  // IRON_DEPOSIT
+      &sc.obstacle_gold_deposit,  // GOLD_DEPOSIT
+      &sc.obstacle_copper_deposit, // COPPER_DEPOSIT
+      &sc.obstacle_mithril_deposit, // MITHRIL_DEPOSIT
+      &sc.obstacle_limestone_deposit, // LIMESTONE_DEPOSIT
+      &sc.obstacle_coal_deposit,  // COAL_DEPOSIT
+      &sc.obstacle_emerald_deposit, // EMERALD_DEPOSIT
+      &sc.obstacle_ruby_deposit,  // RUBY_DEPOSIT
+      &sc.obstacle_sapphire_deposit, // SAPPHIRE_DEPOSIT
+      &sc.obstacle_diamond_deposit // DIAMOND_DEPOSIT
+  };
+
+  // Build decoration lookup table (enum value -> coords pointer)
+  // Index 0 = NONE (null), indices 1-16 match DecorationType enum values
+  const AtlasCoords* decorationLUT[17] = {
+      nullptr,                          // NONE
+      &sc.decoration_flower_blue,       // FLOWER_BLUE
+      &sc.decoration_flower_pink,       // FLOWER_PINK
+      &sc.decoration_flower_white,      // FLOWER_WHITE
+      &sc.decoration_flower_yellow,     // FLOWER_YELLOW
+      &sc.decoration_mushroom_purple,   // MUSHROOM_PURPLE
+      &sc.decoration_mushroom_tan,      // MUSHROOM_TAN
+      &sc.decoration_grass_small,       // GRASS_SMALL
+      &sc.decoration_grass_large,       // GRASS_LARGE
+      &sc.decoration_bush,              // BUSH
+      &sc.decoration_stump_small,       // STUMP_SMALL
+      &sc.decoration_stump_medium,      // STUMP_MEDIUM
+      &sc.decoration_rock_small,        // ROCK_SMALL
+      &sc.decoration_dead_log_hz,       // DEAD_LOG_HZ
+      &sc.decoration_dead_log_vertical, // DEAD_LOG_VERTICAL
+      &sc.decoration_lily_pad,          // LILY_PAD
+      &sc.decoration_water_flower       // WATER_FLOWER
+  };
+
+  // Clear reusable member buffers (avoids per-frame allocations)
+  m_gpuDecoBuffer.clear();
+  m_gpuObstacleBuffer.clear();
+
+  // PASS 1: Render biomes, collect decorations + obstacles
+  for (int tileY = startTileY; tileY < endTileY; ++tileY) {
+    const auto& row = worldData->grid[tileY];
+    const float screenY = tileY * scaledTileSize - baseCameraY;
+    float screenX = startScreenX;
+
+    for (int tileX = startTileX; tileX < endTileX; ++tileX) {
+      const auto& tile = row[tileX];
+
+      // Draw biome tile immediately
+      const AtlasCoords* biomeCoords = tile.isWater
+          ? &sc.obstacle_water
+          : biomeLUT[static_cast<int>(tile.biome)];
+
+      spriteBatch.draw(
+          biomeCoords->x, biomeCoords->y, biomeCoords->w, biomeCoords->h,
+          screenX, screenY, scaledTileSize, scaledTileSize);
+
+      // Collect decoration (if any, not blocked by non-water obstacle)
+      const auto decoIdx = static_cast<size_t>(tile.decorationType);
+      if (decoIdx != 0 &&
+          (tile.obstacleType == ObstacleType::NONE ||
+           tile.obstacleType == ObstacleType::WATER)) {
+        const AtlasCoords* decoCoords = (decoIdx < 17) ? decorationLUT[decoIdx] : nullptr;
+        if (decoCoords && decoCoords->w > 0) {
+          const float offsetX = (scaledTileSize - decoCoords->w) * 0.5f;
+          const float offsetY = scaledTileSize - decoCoords->h;
+          m_gpuDecoBuffer.push_back({
+              screenX + offsetX, screenY + offsetY,
+              static_cast<float>(decoCoords->x), static_cast<float>(decoCoords->y),
+              static_cast<float>(decoCoords->w), static_cast<float>(decoCoords->h),
+              static_cast<float>(decoCoords->w), static_cast<float>(decoCoords->h)
+          });
+        }
+      }
+
+      // Collect obstacle for Y-sorting
+      if (tile.obstacleType != ObstacleType::NONE &&
+          tile.obstacleType != ObstacleType::WATER) {
+
+        // Handle buildings specially (match SDL_Renderer behavior)
+        if (tile.obstacleType == ObstacleType::BUILDING) {
+          if (tile.isTopLeftOfBuilding) {
+            // Get building coords by size
+            const AtlasCoords* buildingCoords = nullptr;
+            switch (tile.buildingSize) {
+              case 0:
+              case 1: buildingCoords = &sc.building_hut; break;
+              case 2: buildingCoords = &sc.building_house; break;
+              case 3: buildingCoords = &sc.building_large; break;
+              case 4: buildingCoords = &sc.building_cityhall; break;
+              default: buildingCoords = &sc.building_hut; break;
+            }
+
+            if (buildingCoords && buildingCoords->w > 0) {
+              const float spriteW = static_cast<float>(buildingCoords->w);
+              const float spriteH = static_cast<float>(buildingCoords->h);
+              // Buildings render at tile position WITHOUT offsets (match SDL_Renderer)
+              // sortY = bottom of building (tile.buildingSize tiles down)
+              const float sortY = screenY + (tile.buildingSize * scaledTileSize);
+
+              m_gpuObstacleBuffer.push_back({
+                  {screenX, screenY,
+                   static_cast<float>(buildingCoords->x), static_cast<float>(buildingCoords->y),
+                   static_cast<float>(buildingCoords->w), static_cast<float>(buildingCoords->h),
+                   spriteW, spriteH},
+                  sortY
+              });
+            }
+          }
+          // Skip to next tile (don't render non-top-left building tiles)
+          screenX += scaledTileSize;
+          continue;
+        }
+
+        // Regular obstacles
+        const auto obstacleIdx = static_cast<int>(tile.obstacleType);
+        const AtlasCoords* obstacleCoords = obstacleLUT[obstacleIdx];
+
+        if (obstacleCoords && obstacleCoords->w > 0) {
+          const float spriteW = static_cast<float>(obstacleCoords->w);
+          const float spriteH = static_cast<float>(obstacleCoords->h);
+          const float offsetX = (scaledTileSize - spriteW) * 0.5f;
+          const float offsetY = scaledTileSize - spriteH;
+
+          m_gpuObstacleBuffer.push_back({
+              {screenX + offsetX, screenY + offsetY,
+               static_cast<float>(obstacleCoords->x), static_cast<float>(obstacleCoords->y),
+               static_cast<float>(obstacleCoords->w), static_cast<float>(obstacleCoords->h),
+               spriteW, spriteH},
+              screenY + scaledTileSize  // sortY = tile bottom
+          });
+        }
+      }
+
+      screenX += scaledTileSize;
+    }
+  }
+
+  // PASS 2: Render collected decorations, then sorted obstacles
+
+  // Decorations (no sorting needed, just deferred to render after all biomes)
+  for (const auto& deco : m_gpuDecoBuffer) {
+    spriteBatch.draw(
+        deco.srcX, deco.srcY, deco.srcW, deco.srcH,
+        deco.screenX, deco.screenY, deco.dstW, deco.dstH);
+  }
+
+  // Obstacles (Y-sorted for correct overlap)
+  if (!m_gpuObstacleBuffer.empty()) {
+    std::sort(m_gpuObstacleBuffer.begin(), m_gpuObstacleBuffer.end(),
+              [](const GPUYSortedSprite& a, const GPUYSortedSprite& b) {
+                if (a.sortY != b.sortY) return a.sortY < b.sortY;
+                if (a.screenX != b.screenX) return a.screenX < b.screenX;
+                return a.screenY < b.screenY;
+              });
+
+    for (const auto& obs : m_gpuObstacleBuffer) {
+      spriteBatch.draw(
+          obs.srcX, obs.srcY, obs.srcW, obs.srcH,
+          obs.screenX, obs.screenY, obs.dstW, obs.dstH);
+    }
+  }
+  // Batch end() is called by GPUSceneRenderer, not here
+}
+
+// WorldManager GPU method - delegates to TileRenderer
+void WorldManager::recordGPU(HammerEngine::SpriteBatch& spriteBatch,
+                             float cameraX, float cameraY,
+                             float viewWidth, float viewHeight, float zoom) {
+  if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled) {
+    return;
+  }
+
+  if (!m_currentWorld || !m_tileRenderer) {
+    return;
+  }
+
+  // Get current season
+  auto season = getCurrentSeason();
+
+  // Delegate to TileRenderer - batch is already begin()-ed by GPUSceneRenderer
+  m_tileRenderer->recordGPUTiles(spriteBatch, cameraX, cameraY,
+                                 viewWidth, viewHeight, zoom, season);
+}
+#endif

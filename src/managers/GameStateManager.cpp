@@ -6,6 +6,8 @@
 #include "managers/GameStateManager.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/GameState.hpp"
+#include "gpu/GPURenderer.hpp"
+#include "utils/FrameProfiler.hpp"
 #include <algorithm>
 #include <format>
 #include <stdexcept>
@@ -38,6 +40,9 @@ void GameStateManager::addState(std::unique_ptr<GameState> state) {
 void GameStateManager::pushState(const std::string &stateName) {
   auto it = m_registeredStates.find(stateName);
   if (it != m_registeredStates.end()) {
+    // Suppress profiler hitch detection during state transition
+    HammerEngine::FrameProfiler::Instance().suppressFrames(5);
+
     // Pause the current top state if it exists
     if (!m_activeStates.empty()) {
       m_activeStates.back()->pause();
@@ -60,10 +65,13 @@ void GameStateManager::pushState(const std::string &stateName) {
 
 void GameStateManager::popState() {
   if (!m_activeStates.empty()) {
+    // Suppress profiler hitch detection during state transition
+    HammerEngine::FrameProfiler::Instance().suppressFrames(5);
+
     // CRITICAL: Wait for exit to complete BEFORE removing from stack
     auto currentState = m_activeStates.back();
     currentState->exit(); // Wait for exit to complete fully
-    
+
     // Only remove after exit is complete
     m_activeStates.pop_back();
     GAMESTATE_INFO("Popped state");
@@ -101,6 +109,30 @@ void GameStateManager::render(SDL_Renderer* renderer, float interpolationAlpha) 
     m_activeStates.back()->render(renderer, interpolationAlpha);
   }
 }
+
+#ifdef USE_SDL3_GPU
+void GameStateManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                                          float interpolationAlpha) {
+  if (!m_activeStates.empty()) {
+    m_activeStates.back()->recordGPUVertices(gpuRenderer, interpolationAlpha);
+  }
+}
+
+void GameStateManager::renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+                                        SDL_GPURenderPass* scenePass,
+                                        float interpolationAlpha) {
+  if (!m_activeStates.empty()) {
+    m_activeStates.back()->renderGPUScene(gpuRenderer, scenePass, interpolationAlpha);
+  }
+}
+
+void GameStateManager::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+                                     SDL_GPURenderPass* swapchainPass) {
+  if (!m_activeStates.empty()) {
+    m_activeStates.back()->renderGPUUI(gpuRenderer, swapchainPass);
+  }
+}
+#endif
 
 void GameStateManager::handleInput() {
   // Only the top state handles input

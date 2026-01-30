@@ -549,7 +549,8 @@ bool ParticleManager::init() {
     // PERFORMANCE OPTIMIZATION: Initialize trigonometric lookup tables
     initTrigLookupTables();
 
-    // Built-in effects will be registered by GameEngine after init
+    // Register built-in particle effects
+    registerBuiltInEffects();
 
     m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false;
@@ -773,10 +774,11 @@ void ParticleManager::update(float deltaTime) {
     m_windPhase += deltaTime * 0.5f;
 
     // Phase 4: Update particle physics with optimal threading strategy
-    // Gate threading on ACTIVE particle count, not buffer size
-    bool useThreading = (activeCount >= m_threadingThreshold &&
-                         m_useThreading.load(std::memory_order_acquire) &&
-                         HammerEngine::ThreadSystem::Exists());
+    // WorkerBudget is the AUTHORITATIVE source - no manager overrides
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto decision = budgetMgr.shouldUseThreading(
+        HammerEngine::SystemType::Particle, activeCount);
+    bool useThreading = decision.shouldThread;
 
     // Track threading decision for interval logging (local vars, zero overhead in release)
     ParticleThreadingInfo threadingInfo;
@@ -838,7 +840,7 @@ void ParticleManager::update(float deltaTime) {
 #ifndef NDEBUG
     // Interval stats logging - zero overhead in release (entire block compiles out)
     static thread_local uint64_t logFrameCounter = 0;
-    if (++logFrameCounter % 300 == 0) {
+    if (++logFrameCounter % 2400 == 0) {  // ~40 seconds at 60fps (staggered: AI@30s, Collision@35s)
       size_t currentActiveCount = countActiveParticles();
       recordPerformance(false, timeMs, currentActiveCount);
 
@@ -858,15 +860,15 @@ void ParticleManager::update(float deltaTime) {
     }
 #endif
 
-    // Measure total update time for adaptive batch tuning
+    // Report results for adaptive tuning - report for BOTH modes
+    // Even though threaded timing isn't perfectly accurate (fire-and-forget pattern),
+    // having some data lets WorkerBudget make comparisons and transition between modes.
+    // Note: activeCount > 0 guaranteed here due to early return at line 770
     auto updateEndTime = std::chrono::high_resolution_clock::now();
     double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
-
-    // Report batch completion for adaptive tuning (only if threaded with WorkerBudget)
-    if (threadingInfo.wasThreaded && m_useWorkerBudget.load(std::memory_order_acquire)) {
-      HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
-          HammerEngine::SystemType::Particle, activeCount, threadingInfo.batchCount, totalUpdateTime);
-    }
+    budgetMgr.reportExecution(HammerEngine::SystemType::Particle,
+                              activeCount, threadingInfo.wasThreaded,
+                              threadingInfo.batchCount, totalUpdateTime);
 
   } catch (const std::exception &e) {
     PARTICLE_ERROR(std::format("Exception in ParticleManager::update: {}", e.what()));
@@ -1068,6 +1070,139 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
   }
   flush();
 }
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#include "gpu/GPUTypes.hpp"
+
+void ParticleManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                                        float cameraX, float cameraY,
+                                        float interpolationAlpha) {
+  // Store camera position for weather particle spawning
+  m_viewport.x = cameraX;
+  m_viewport.y = cameraY;
+
+  if (m_globallyPaused.load(std::memory_order_acquire) ||
+      !m_globallyVisible.load(std::memory_order_acquire)) {
+    return;
+  }
+
+  // THREAD SAFETY: Get immutable snapshot of particle data
+  const auto &particles = m_storage.getParticlesForRead();
+  const size_t n = particles.getSafeAccessCount();
+  if (n == 0) return;
+
+  // Get particle vertex pool from GPURenderer (already mapped by GPURenderer::beginFrame)
+  auto& vertexPool = gpuRenderer.getParticleVertexPool();
+  auto* basePtr = static_cast<HammerEngine::ColorVertex*>(vertexPool.getMappedPtr());
+  if (!basePtr) {
+    return;
+  }
+
+  constexpr size_t VERTICES_PER_QUAD = 6;  // Two triangles
+  size_t maxVertices = vertexPool.getMaxVertices();
+  size_t vertexOffset = 0;
+
+  for (size_t i = 0; i < n; ++i) {
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
+        !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE)) continue;
+
+    const uint32_t c = particles.colors[i];
+    const uint8_t a8 = c & 0xFF;
+    if (a8 == 0) continue;
+
+    // Check we have space for another quad
+    if (vertexOffset + VERTICES_PER_QUAD > maxVertices) break;
+
+    // Extract RGBA (stored as RGBA in uint32_t)
+    const uint8_t r = static_cast<uint8_t>((c >> 24) & 0xFF);
+    const uint8_t g = static_cast<uint8_t>((c >> 16) & 0xFF);
+    const uint8_t b = static_cast<uint8_t>((c >> 8) & 0xFF);
+    const uint8_t a = a8;
+
+    const float size = particles.sizes[i];
+
+    // INTERPOLATION: Smooth position between previous and current
+    const float cx = (particles.prevPosX[i] + (particles.posX[i] - particles.prevPosX[i]) * interpolationAlpha) - cameraX;
+    const float cy = (particles.prevPosY[i] + (particles.posY[i] - particles.prevPosY[i]) * interpolationAlpha) - cameraY;
+    const float hx = size * 0.5f;
+    const float hy = size * 0.5f;
+
+    // Quad corners
+    const float x0 = cx - hx, y0 = cy - hy;
+    const float x1 = cx + hx, y1 = cy - hy;
+    const float x2 = cx + hx, y2 = cy + hy;
+    const float x3 = cx - hx, y3 = cy + hy;
+
+    // Helper to write a ColorVertex
+    auto writeVertex = [&](float px, float py) {
+      basePtr[vertexOffset].x = px;
+      basePtr[vertexOffset].y = py;
+      basePtr[vertexOffset].r = r;
+      basePtr[vertexOffset].g = g;
+      basePtr[vertexOffset].b = b;
+      basePtr[vertexOffset].a = a;
+      ++vertexOffset;
+    };
+
+    // Triangle 1: v0, v1, v2
+    writeVertex(x0, y0);
+    writeVertex(x1, y1);
+    writeVertex(x2, y2);
+
+    // Triangle 2: v2, v3, v0
+    writeVertex(x2, y2);
+    writeVertex(x3, y3);
+    writeVertex(x0, y0);
+  }
+
+  // Record actual vertex count written
+  vertexPool.setWrittenVertexCount(vertexOffset);
+}
+
+void ParticleManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
+                                SDL_GPURenderPass* scenePass) {
+  if (m_globallyPaused.load(std::memory_order_acquire) ||
+      !m_globallyVisible.load(std::memory_order_acquire)) {
+    return;
+  }
+
+  // Get particle vertex pool
+  auto& vertexPool = gpuRenderer.getParticleVertexPool();
+  size_t vertexCount = vertexPool.getPendingVertexCount();
+
+  if (vertexCount == 0) return;
+
+  // Get scene texture for ortho matrix dimensions
+  auto* sceneTexture = gpuRenderer.getSceneTexture();
+  if (!sceneTexture) return;
+
+  // Create orthographic projection for scene texture
+  float orthoMatrix[16];
+  HammerEngine::GPURenderer::createOrthoMatrix(
+      0.0f, static_cast<float>(sceneTexture->getWidth()),
+      static_cast<float>(sceneTexture->getHeight()), 0.0f,
+      orthoMatrix);
+
+  // Push view-projection matrix
+  gpuRenderer.pushViewProjection(scenePass, orthoMatrix);
+
+  // Bind particle pipeline
+  SDL_GPUGraphicsPipeline* particlePipeline = gpuRenderer.getParticlePipeline();
+  if (!particlePipeline) return;
+
+  SDL_BindGPUGraphicsPipeline(scenePass, particlePipeline);
+
+  // Bind vertex buffer
+  SDL_GPUBufferBinding vertexBinding{};
+  vertexBinding.buffer = vertexPool.getGPUBuffer();
+  vertexBinding.offset = 0;
+  SDL_BindGPUVertexBuffers(scenePass, 0, &vertexBinding, 1);
+
+  // Draw particles
+  SDL_DrawGPUPrimitives(scenePass, static_cast<uint32_t>(vertexCount), 1, 0, 0);
+}
+#endif
 
 uint32_t ParticleManager::playEffect(ParticleEffectType effectType,
                                      const Vector2D &position,
@@ -2217,7 +2352,7 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
         try {
           updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime, windPhase);
         } catch (const std::exception &e) {
-          PARTICLE_ERROR(std::string("Exception in particle batch: ") + e.what());
+          PARTICLE_ERROR(std::format("Exception in particle batch: {}", e.what()));
         } catch (...) {
           PARTICLE_ERROR("Unknown exception in particle batch");
         }
@@ -2498,12 +2633,23 @@ void ParticleManager::createParticleForEffect(
   if (!config.useWorldSpace) {
     // Screen-space effect (like weather) - spawn relative to camera position
     const auto &gameEngine = GameEngine::Instance();
+    int logicalWidth = gameEngine.getLogicalWidth();
+    int logicalHeight = gameEngine.getLogicalHeight();
+
+    // Guard against uninitialized GameEngine (default to viewport size or sensible fallback)
+    if (logicalWidth <= 0) {
+      logicalWidth = static_cast<int>(m_viewport.width > 0 ? m_viewport.width : 1920);
+    }
+    if (logicalHeight <= 0) {
+      logicalHeight = static_cast<int>(m_viewport.height > 0 ? m_viewport.height : 1080);
+    }
+
     float const spawnX = m_viewport.x +
-        static_cast<float>(fast_rand() % gameEngine.getLogicalWidth());
+        static_cast<float>(fast_rand() % logicalWidth);
     float spawnY;
     if (config.fullScreenSpawn) {
       // Spawn across full screen height (weather, ambient effects)
-      spawnY = m_viewport.y + static_cast<float>(fast_rand() % gameEngine.getLogicalHeight());
+      spawnY = m_viewport.y + static_cast<float>(fast_rand() % logicalHeight);
     } else {
       // Spawn at configured Y position
       spawnY = m_viewport.y + config.position.getY();
@@ -2630,9 +2776,11 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime,
    * @param particleCount Current number of active particles
    * @param outThreadingInfo Output struct for threading info (zero overhead in release)
    */
-  if (!m_useWorkerBudget.load(std::memory_order_acquire) ||
-      particleCount < m_threadingThreshold ||
-      !HammerEngine::ThreadSystem::Exists()) {
+  // WorkerBudget is the AUTHORITATIVE source - no manager overrides
+  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  auto decision = budgetMgr.shouldUseThreading(
+      HammerEngine::SystemType::Particle, particleCount);
+  if (!decision.shouldThread) {
     // Fall back to regular single-threaded update
     // outThreadingInfo stays at defaults (wasThreaded=false, batchCount=1)
     updateParticlesSingleThreaded(deltaTime, particleCount);
@@ -2647,15 +2795,6 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime,
 void ParticleManager::enableThreading(bool enable) {
   m_useThreading.store(enable, std::memory_order_release);
   PARTICLE_INFO(std::format("Threading {}", enable ? "enabled" : "disabled"));
-}
-
-void ParticleManager::setThreadingThreshold(size_t threshold) {
-  m_threadingThreshold = threshold;
-  PARTICLE_INFO(std::format("Threading threshold set to {} particles", threshold));
-}
-
-size_t ParticleManager::getThreadingThreshold() const {
-  return m_threadingThreshold;
 }
 #endif
 

@@ -29,6 +29,7 @@ constexpr float TILE_SIZE = 32.0f;  // Tile size in pixels
 enum class Biome {
     DESERT,
     FOREST,
+    PLAINS,     // Open grassland with sparse vegetation
     MOUNTAIN,
     SWAMP,
     HAUNTED,
@@ -41,7 +42,19 @@ enum class ObstacleType {
     ROCK,
     TREE,
     WATER,
-    BUILDING
+    BUILDING,
+    // Ore deposits
+    IRON_DEPOSIT,
+    GOLD_DEPOSIT,
+    COPPER_DEPOSIT,
+    MITHRIL_DEPOSIT,
+    LIMESTONE_DEPOSIT,
+    COAL_DEPOSIT,
+    // Gem deposits
+    EMERALD_DEPOSIT,
+    RUBY_DEPOSIT,
+    SAPPHIRE_DEPOSIT,
+    DIAMOND_DEPOSIT
 };
 
 enum class DecorationType : uint8_t {
@@ -57,7 +70,11 @@ enum class DecorationType : uint8_t {
     BUSH,
     STUMP_SMALL,
     STUMP_MEDIUM,
-    ROCK_SMALL
+    ROCK_SMALL,
+    DEAD_LOG_HZ,
+    DEAD_LOG_VERTICAL,
+    LILY_PAD,
+    WATER_FLOWER
 };
 
 // Stream operators for test output
@@ -65,6 +82,7 @@ inline std::ostream& operator<<(std::ostream& os, const Biome& biome) {
     switch (biome) {
         case Biome::DESERT: return os << "DESERT";
         case Biome::FOREST: return os << "FOREST";
+        case Biome::PLAINS: return os << "PLAINS";
         case Biome::MOUNTAIN: return os << "MOUNTAIN";
         case Biome::SWAMP: return os << "SWAMP";
         case Biome::HAUNTED: return os << "HAUNTED";
@@ -81,6 +99,18 @@ inline std::ostream& operator<<(std::ostream& os, const ObstacleType& obstacle) 
         case ObstacleType::TREE: return os << "TREE";
         case ObstacleType::WATER: return os << "WATER";
         case ObstacleType::BUILDING: return os << "BUILDING";
+        // Ore deposits
+        case ObstacleType::IRON_DEPOSIT: return os << "IRON_DEPOSIT";
+        case ObstacleType::GOLD_DEPOSIT: return os << "GOLD_DEPOSIT";
+        case ObstacleType::COPPER_DEPOSIT: return os << "COPPER_DEPOSIT";
+        case ObstacleType::MITHRIL_DEPOSIT: return os << "MITHRIL_DEPOSIT";
+        case ObstacleType::LIMESTONE_DEPOSIT: return os << "LIMESTONE_DEPOSIT";
+        case ObstacleType::COAL_DEPOSIT: return os << "COAL_DEPOSIT";
+        // Gem deposits
+        case ObstacleType::EMERALD_DEPOSIT: return os << "EMERALD_DEPOSIT";
+        case ObstacleType::RUBY_DEPOSIT: return os << "RUBY_DEPOSIT";
+        case ObstacleType::SAPPHIRE_DEPOSIT: return os << "SAPPHIRE_DEPOSIT";
+        case ObstacleType::DIAMOND_DEPOSIT: return os << "DIAMOND_DEPOSIT";
         default: return os << "UNKNOWN";
     }
 }
@@ -100,6 +130,10 @@ inline std::ostream& operator<<(std::ostream& os, const DecorationType& decorati
         case DecorationType::STUMP_SMALL: return os << "STUMP_SMALL";
         case DecorationType::STUMP_MEDIUM: return os << "STUMP_MEDIUM";
         case DecorationType::ROCK_SMALL: return os << "ROCK_SMALL";
+        case DecorationType::DEAD_LOG_HZ: return os << "DEAD_LOG_HZ";
+        case DecorationType::DEAD_LOG_VERTICAL: return os << "DEAD_LOG_VERTICAL";
+        case DecorationType::LILY_PAD: return os << "LILY_PAD";
+        case DecorationType::WATER_FLOWER: return os << "WATER_FLOWER";
         default: return os << "UNKNOWN";
     }
 }

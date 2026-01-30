@@ -8,9 +8,9 @@
 
 #include <mutex>
 #include <unordered_map>
-#include <atomic>
 #include <unordered_set>
 #include <vector>
+#include <map>
 #include <functional>
 #include <cstddef>
 #include <chrono>
@@ -94,6 +94,19 @@ public:
      */
     bool isGloballyPaused() const;
 
+    /**
+     * @brief Enable or disable threading for collision processing (debug/benchmark only)
+     * @param enable true to enable threading, false for single-threaded
+     */
+#ifndef NDEBUG
+    void enableThreading(bool enable) {
+        m_useThreading.store(enable, std::memory_order_release);
+    }
+    bool isThreadingEnabled() const {
+        return m_useThreading.load(std::memory_order_acquire);
+    }
+#endif
+
     // Tick: run collision detection/resolution only (no movement integration)
     void update(float dt);
 
@@ -113,7 +126,7 @@ public:
     void applyBatchedKinematicUpdates(const std::vector<std::vector<KinematicUpdate>>& batchUpdates);
 
     // Single-vector overload for non-batched updates (convenience wrapper)
-    void applyKinematicUpdates(std::vector<KinematicUpdate>& updates);
+    void applyKinematicUpdates(const std::vector<KinematicUpdate>& updates);
 
     // Convenience methods for triggers
     // Routes through EDM::createTrigger() for single source of truth
@@ -173,7 +186,7 @@ public:
     void updateCollisionBodyVelocity(EntityID id, const Vector2D& newVelocity);
     Vector2D getCollisionBodyVelocity(EntityID id) const;
     void updateCollisionBodySize(EntityID id, const Vector2D& newHalfSize);
-    void attachEntity(EntityID id, EntityPtr entity);
+    void attachEntity(EntityID id, const EntityPtr& entity);
 
     // Body State Management Methods
     void setBodyEnabled(EntityID id, bool enabled);
@@ -191,7 +204,6 @@ public:
     void prepareCollisionBuffers(size_t bodyCount);
 
     // UPDATE HELPER METHODS
-    void syncSpatialHashesWithActiveIndices();
     void resolve(const CollisionInfo& collision);
     void processTriggerEvents();
 
@@ -273,11 +285,13 @@ private:
                          std::vector<std::pair<size_t, size_t>>& outMovableStatic);
 
     // Internal helper methods for SOA buffer management
-    void buildActiveIndices();
     void prepareCollisionPools(size_t bodyCount, size_t threadCount);
 
     // Apply pending kinematic updates from async AI threads (called at start of update)
     void applyPendingKinematicUpdates();
+
+    // Helper: Apply a single kinematic update to EDM and cached AABB
+    void applyKinematicUpdate(const KinematicUpdate& update);
 
     // Spatial hash optimization methods
     void rebuildStaticSpatialHash();
@@ -311,6 +325,7 @@ private:
     bool m_initialized{false};
     bool m_isShutdown{false};
     std::atomic<bool> m_globallyPaused{false}; // Global pause state for update() early exit
+    std::atomic<bool> m_useThreading{true};    // Threading control for benchmarking
     AABB m_worldBounds{0,0, 100000.0f, 100000.0f}; // large default box (centered at 0,0)
 
     // NEW SOA STORAGE SYSTEM: Following AIManager pattern for better cache performance
@@ -419,37 +434,34 @@ private:
 
     /* ========== DUAL SPATIAL HASH ARCHITECTURE ==========
      *
-     * The collision system uses TWO separate spatial hashes for optimal performance:
+     * The collision system uses TWO spatial hashes for optimal performance:
      *
      * 1. STATIC SPATIAL HASH (m_staticSpatialHash):
-     *    - Contains: World geometry (buildings, obstacles, water triggers)
+     *    - Contains: World geometry (buildings, obstacles) - excludes EventOnly triggers
      *    - Rebuilt: Only when world changes (tile edits, building placement)
-     *    - Queried: By dynamic/kinematic bodies during broadphase
+     *    - Queried: By movable bodies during broadphase
      *    - Optimization: Coarse-grid region cache (128×128 cells) reduces redundant queries
      *    - Benefit: Static world geometry doesn't need to be re-hashed every frame
      *
-     * 2. DYNAMIC SPATIAL HASH (m_dynamicSpatialHash):
-     *    - Contains: Moving entities (player, NPCs, projectiles)
-     *    - Rebuilt: Every frame from active culled bodies
-     *    - Queried: For dynamic-vs-dynamic collision detection
-     *    - Optimization: Only includes bodies within culling area (player-centered)
-     *    - Benefit: Fast dynamic collision detection without static world overhead
+     * 2. EVENTONLY SPATIAL HASH (m_eventOnlySpatialHash):
+     *    - Contains: EventOnly triggers (water, lava, portals) - no physics response
+     *    - Rebuilt: Only when world changes (same as static)
+     *    - Queried: Per-entity spatial query for trigger detection
+     *    - Optimization: Separated from static hash to avoid polluting broadphase
+     *    - Benefit: Fast O(k) trigger detection without 400+ water triggers in broadphase
      *
-     * WHY SEPARATION:
-     * - Avoids rebuilding thousands of static tiles every frame
-     * - Static bodies never initiate collision checks (optimization)
-     * - Cache remains valid across frames for static geometry
-     * - Culling only applies to dynamic hash, not static (prevents missing collisions)
+     * NOTE: Dynamic spatial hash removed - movable-vs-movable collision uses direct
+     * SIMD sweep-and-prune on pools.movableAABBs, which is faster for typical workloads.
      *
      * BROADPHASE FLOW:
-     * 1. Rebuild dynamic hash with active movable bodies (line ~1180)
-     * 2. For each movable body:
-     *    a. Query dynamic hash → movable-vs-movable pairs
-     *    b. Query static cache → movable-vs-static pairs
-     * 3. Narrowphase filters pairs and computes collision details
+     * 1. Build movableAABBs from EDM Active tier entities with collision enabled
+     * 2. Movable-vs-movable: SIMD sweep-and-prune on sorted movableAABBs
+     * 3. Movable-vs-static: Query m_staticSpatialHash or iterate cached staticAABBs
+     * 4. Narrowphase filters pairs and computes collision details
+     * 5. EventOnly detection queries m_eventOnlySpatialHash separately
      * ===================================================== */
-    HammerEngine::HierarchicalSpatialHash m_staticSpatialHash;   // Static world geometry
-    HammerEngine::HierarchicalSpatialHash m_dynamicSpatialHash;  // Moving entities
+    HammerEngine::HierarchicalSpatialHash m_staticSpatialHash;     // Static world geometry
+    HammerEngine::HierarchicalSpatialHash m_eventOnlySpatialHash;  // EventOnly triggers (water, etc.)
 
     // Current culling area for spatial queries
     mutable CullingArea m_currentCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
@@ -477,6 +489,7 @@ private:
         std::vector<size_t> movableIndices;       // EDM indices of Active tier entities with collision
         std::vector<size_t> staticIndices;        // m_storage indices of static bodies in culling area
         std::vector<size_t> sortedMovableIndices; // Pool indices sorted by X for Sweep-and-Prune
+        std::vector<size_t> sortedStaticIndices;  // Pool indices into staticAABBs sorted by X for SAP
 
         // EDM-CENTRIC: Cached AABBs for movables, computed from EDM each frame
         // Parallel to movableIndices: movableAABBs[i] corresponds to movableIndices[i]
@@ -489,6 +502,10 @@ private:
             bool isTrigger;         // Cached to avoid edm.getHotDataByIndex() in narrowphase
         };
         std::vector<MovableAABB> movableAABBs;
+
+        // Reverse mapping: EDM index → pool index for O(1) lookup in trigger detection
+        // SIZE_MAX indicates EDM index not in current pool (entity not in Active tier or culled)
+        std::vector<size_t> edmToPoolIndex;
 
         // Cached AABBs for statics, populated when culling area changes
         // Parallel to staticIndices: staticAABBs[i] corresponds to staticIndices[i]
@@ -542,6 +559,7 @@ private:
                 movableAABBs.reserve(bodyCount / 4);    // Parallel to movableIndices
                 staticIndices.reserve(bodyCount);
                 sortedMovableIndices.reserve(bodyCount / 4);
+                sortedStaticIndices.reserve(bodyCount);  // For SAP on statics
                 movableMovablePairs.reserve(expectedPairs / 4);
                 movableStaticPairs.reserve(expectedPairs);
 
@@ -560,6 +578,7 @@ private:
             // EDM-centric resets
             movableIndices.clear();
             movableAABBs.clear();
+            // NOTE: edmToPoolIndex uses assign() with SIZE_MAX, not clear(), in buildActiveIndices()
             // NOTE: staticIndices is cached and cleared only when culling area changes
             sortedMovableIndices.clear();
             movableMovablePairs.clear();
@@ -571,6 +590,13 @@ private:
 
     mutable CollisionPool m_collisionPool;
 
+    // Adaptive sort helpers for SAP - uses insertion sort for nearly-sorted data
+    bool isNearlySorted(const std::vector<size_t>& indices,
+                        const std::vector<CollisionPool::MovableAABB>& aabbs,
+                        size_t sampleSize = 100) const;
+    void insertionSortByMinX(std::vector<size_t>& indices,
+                             const std::vector<CollisionPool::MovableAABB>& aabbs) const;
+
     // PERFORMANCE: Vector pool for temporary allocations in hot paths
     mutable std::vector<std::vector<size_t>> m_vectorPool;
     mutable std::atomic<size_t> m_nextPoolIndex{0};
@@ -580,6 +606,15 @@ private:
     mutable std::unordered_set<uint64_t> m_currentTriggerPairsBuffer;   // For processTriggerEvents()
     mutable std::vector<size_t> m_triggerCandidates;  // For detectEventOnlyTriggers() spatial queries
     // Note: buildActiveIndices() uses pools.staticIndices directly (already a reusable buffer)
+
+    // Trigger sweep edge buffer (avoids per-frame allocation in detectEventOnlyTriggersSweep)
+    struct TriggerSweepEdge {
+        float x;
+        size_t idx;     // edmIdx for entities, storageIdx for triggers
+        bool isStart;
+        bool isTrigger;
+    };
+    mutable std::vector<TriggerSweepEdge> m_triggerSweepEdges;
 
     // Performance metrics
     struct PerfStats {
@@ -653,6 +688,18 @@ private:
     // Optimization: Track when static spatial hash needs rebuilding
     bool m_staticHashDirty{false};
 
+    // Optimization: Track when collision statistics need recalculation
+    mutable bool m_statisticsDirty{true};
+
+    // Cached collision statistics to avoid expensive recalculation
+    mutable size_t m_cachedStaticBodies{0};
+    mutable size_t m_cachedKinematicBodies{0};
+    mutable size_t m_cachedDynamicBodies{0};
+    mutable size_t m_cachedEventOnlyTriggers{0};
+    mutable size_t m_cachedPhysicalTriggers{0};
+    mutable size_t m_cachedSolidObstacles{0};
+    mutable std::map<uint32_t, size_t> m_cachedLayerCounts;
+
     // Multi-threading support for broadphase (WorkerBudget integrated)
     // Matches AIManager pattern: reusable member vectors, no mutex (futures are thread-safe)
     mutable std::vector<std::future<void>> m_broadphaseFutures;
@@ -664,32 +711,10 @@ private:
     mutable std::vector<BroadphaseBatchBuffer> m_broadphaseBatchBuffers;
 
     // Threading config for broadphase
-    // Broadphase: With SIMD direct iteration, workload = M×M/2 + M×S AABB checks
-    //             150 movables × 150/2 = 11K checks, plus 150 × statics - worth threading
-    static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 200;  // Broadphase: min movable bodies
+    // Uses WorkerBudget's adaptive threading threshold which learns optimal
+    // cutoff based on measured throughput (adapts to hardware, Debug/Release, etc.)
     mutable bool m_lastBroadphaseWasThreaded{false};
     mutable size_t m_lastBroadphaseBatchCount{1};
-
-    // Thread-local buffers for parallel broadphase (stack-allocated per batch, zero contention)
-    // Each worker thread creates its own instance to avoid data races on spatial hash queries
-    struct BroadphaseThreadBuffers {
-        std::vector<size_t> dynamicCandidates;
-        std::vector<size_t> staticCandidates;
-        HammerEngine::HierarchicalSpatialHash::QueryBuffers queryBuffers;
-
-        void reserve() {
-            dynamicCandidates.reserve(256);
-            staticCandidates.reserve(256);
-            queryBuffers.reserve();
-        }
-
-        void clear() {
-            dynamicCandidates.clear();
-            staticCandidates.clear();
-            queryBuffers.clear();
-        }
-    };
-
 };
 
 #endif // COLLISION_MANAGER_HPP

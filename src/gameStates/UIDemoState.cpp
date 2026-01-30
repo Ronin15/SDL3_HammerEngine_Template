@@ -10,7 +10,11 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#endif
 
+#include <array>
 #include <sstream>
 #include <iomanip>
 
@@ -84,7 +88,9 @@ bool UIExampleState::enter() {
     ui.createLabel("uiexample_event_log_label", {rightColumnX, ui.getLogicalHeight() - 220, rightColumnWidth/2, 20}, "Event Log (Fixed Size):");
     ui.setComponentPositioning("uiexample_event_log_label", {UIPositionMode::BOTTOM_RIGHT, 10, 210, 730, 20});
 
-    ui.setupDemoEventLog("uiexample_demo_event_log");
+    // Initialize event log with initial messages
+    ui.addEventLogEntry("uiexample_demo_event_log", "Event log initialized");
+    ui.addEventLogEntry("uiexample_demo_event_log", "Demo components created");
 
     // Right column components - use CENTERED_H for responsive center-based layout
     // CENTERED_H: bounds.x = (width - bounds.width) / 2 + offsetX
@@ -151,16 +157,20 @@ void UIExampleState::update(float deltaTime) {
 
     // Update progress bar animation
     updateProgressBar(deltaTime);
+
+    // Update event log demo with sample messages
+    updateEventLogDemo(deltaTime);
+
+    // Process UI input (click detection, hover states, callbacks)
+    auto& ui = UIManager::Instance();
+    if (!ui.isShutdown()) {
+        ui.update(deltaTime);
+    }
 }
 
 void UIExampleState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
-    // Cache manager reference for better performance
-    UIManager &ui = UIManager::Instance();
-
-    // Update and render UI components
-    // Each state that uses UI is responsible for rendering its own UI components
-    // This ensures proper render order and state-specific UI management
-    ui.update(m_lastDeltaTime);
+    // Render UI components (input handled in update())
+    auto& ui = UIManager::Instance();
     ui.render(renderer);
 }
 
@@ -277,5 +287,45 @@ void UIExampleState::applyDarkTheme(bool dark) {
 
     // Title styling is handled automatically by UIManager's TITLE component type
 }
+
+void UIExampleState::updateEventLogDemo(float deltaTime) {
+    m_eventLogTimer += deltaTime;
+
+    if (m_eventLogTimer >= EVENT_LOG_INTERVAL) {
+        m_eventLogTimer = 0.0f;
+
+        // Sample messages for demo (state-owned, not in UIManager)
+        static constexpr std::array<const char*, 10> sampleMessages = {{
+            "System initialized successfully", "User interface components loaded",
+            "Database connection established", "Configuration files validated",
+            "Network module started",          "Audio system ready",
+            "Graphics renderer initialized",   "Input handlers registered",
+            "Memory pools allocated",          "Security protocols activated"
+        }};
+
+        UIManager::Instance().addEventLogEntry(
+            "uiexample_demo_event_log",
+            sampleMessages[m_eventLogMessageIndex % sampleMessages.size()]);
+        m_eventLogMessageIndex++;
+    }
+}
+
+#ifdef USE_SDL3_GPU
+void UIExampleState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                                        [[maybe_unused]] float interpolationAlpha) {
+    auto& ui = UIManager::Instance();
+    if (!ui.isShutdown()) {
+        ui.recordGPUVertices(gpuRenderer);
+    }
+}
+
+void UIExampleState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+                                  SDL_GPURenderPass* swapchainPass) {
+    auto& ui = UIManager::Instance();
+    if (!ui.isShutdown()) {
+        ui.renderGPU(gpuRenderer, swapchainPass);
+    }
+}
+#endif
 
 // Pure UIManager implementation - no UIScreen needed

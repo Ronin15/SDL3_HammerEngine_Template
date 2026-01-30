@@ -5,48 +5,64 @@ SDL3 HammerEngine development guidance.
 ## Build
 
 ```bash
-# Debug/Release
+# Debug/Release (SDL_Renderer path)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
+
+# Debug/Release with SDL3 GPU rendering (compiles SPIR-V/Metal shaders)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DUSE_SDL3_GPU=ON && ninja -C build
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release -DUSE_SDL3_GPU=ON && ninja -C build
 
 # ASAN/TSAN (require -DUSE_MOLD_LINKER=OFF, mutually exclusive)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address -fno-omit-frame-pointer -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF && ninja -C build
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=thread -fno-omit-frame-pointer -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" -DUSE_MOLD_LINKER=OFF && ninja -C build
 
 # TSAN suppressions: export TSAN_OPTIONS="suppressions=$(pwd)/tests/tsan_suppressions.txt"
+# CMake reconfigure (without full rebuild): rm build/CMakeCache.txt && cmake -B build/ ...
 ```
 
 **Output**: `bin/debug/` or `bin/release/` | **Run**: `./bin/debug/SDL3_Template`
 
 ## Testing
 
-Boost.Test (58 executables). Use targeted tests during development. See `tests/TESTING.md` for comprehensive documentation.
+Boost.Test (65 executables). **Prefer direct test execution** - much faster than test scripts.
 
 ```bash
-# Use test scripts (preferred - handles output properly)
+# Direct test execution (PREFERRED for development - fast feedback)
+./bin/debug/<test_executable>                        # Run all tests in executable
+./bin/debug/<test_executable> --list_content         # List available tests
+./bin/debug/<test_executable> --run_test="TestCase*" # Run specific test
+./bin/debug/entity_data_manager_tests                # Run EDM tests directly
+./bin/debug/ai_manager_edm_integration_tests         # Run AI-EDM integration
+
+# Test scripts (use for comprehensive validation only - slow)
 ./tests/test_scripts/run_all_tests.sh --core-only --errors-only
 ./tests/test_scripts/run_controller_tests.sh --verbose
-./tests/test_scripts/run_ai_benchmark.sh
-
-# Direct test execution - list tests first, then run
-./bin/debug/<test_executable> --list_content       # List available tests
-./bin/debug/<test_executable> --run_test="TestCase*"  # Run specific test
-./bin/debug/save_manager_tests --run_test="TestSaveAndLoad*"
 ```
+
+See `tests/TESTING.md` for comprehensive documentation.
 
 **Boost.Test Notes**: Test names use the BOOST_AUTO_TEST_CASE name directly (e.g., `ThreadingModeComparison`, not `TestThreadingModeComparison`). Suite prefix is optional. Use `--list_content` to verify exact names.
 
 ## Architecture
 
-**Core**: GameEngine (fixed timestep) | ThreadSystem (WorkerBudget) | Logger (thread-safe)
+**Core**: GameEngine (fixed timestep) | ThreadSystem (WorkerBudget) | Logger (thread-safe) | TimestepManager
 
-**Managers**: AIManager (10K+ entities, SIMD batch) | EventManager (thread-safe batch) | CollisionManager (spatial hash) | ParticleManager (camera-aware) | WorldManager (tile-based procedural) | UIManager (theming, DPI) | GameTimeManager + WeatherController/DayNightController
+**Managers**: EntityDataManager (central data store, SoA) | AIManager (10K+ entities, SIMD) | EventManager (15 event types) | CollisionManager (HierarchicalSpatialHash) | ParticleManager (SoA, pooled) | PathfinderManager | WorldManager (chunk-based procedural) | BackgroundSimulationManager (tiered) | UIManager (theming, DPI) | GameTimeManager | InputManager | TextureManager | FontManager | SoundManager
 
-**Utils**: Camera (world↔screen) | Vector2D | JsonReader | BinarySerializer
+**Entities**: EntityKind (9 types) | SimulationTier (Active/Background/Hibernated) | EntityHandle (generation-safe)
 
-**Controllers**: State-scoped helpers (no data ownership). Dir: `controllers/{world,combat}/`
+**AI**: AIBehavior base → 8 behaviors (Idle, Wander, Patrol, Chase, Flee, Follow, Guard, Attack) | BehaviorContext (lock-free EDM access)
+
+**Controllers**: State-scoped helpers via ControllerRegistry. Dir: `controllers/{combat,world,render}/`
+
+**Utils**: Camera (world↔screen) | Vector2D | SIMDMath (SSE2/NEON) | JsonReader | BinarySerializer | UniqueID | WorldRenderPipeline (SDL_Renderer facade) | FrameProfiler (F3 debug overlay)
+
+**GPU Rendering** (USE_SDL3_GPU): GPUDevice (singleton) | GPURenderer (frame orchestration) | GPUShaderManager (SPIR-V/Metal) | SpriteBatch (25K sprites) | GPUVertexPool (triple-buffered) | GPUSceneRenderer (scene facade). Shaders: `res/shaders/`
 
 **Structure**: `src/{core,managers,controllers,gameStates,entities,events,ai,collisions,utils,world}` | `include/` mirrors src | `tests/` | `res/`
+
+**Layer Dependencies**: Core → Managers → GameStates → Entities/Controllers
 
 ## Standards
 
@@ -58,7 +74,31 @@ Boost.Test (58 executables). Use targeted tests during development. See `tests/T
 
 **Headers**: `.hpp` C++, `.h` C | Forward declarations | Non-trivial logic in .cpp
 
-**Threading**: Main thread: Update→Render sequential | Background: ThreadSystem for AI/Particle/Pathfinding | **No static vars in threaded code**
+**Threading**: Sequential execution with parallel batching. Main thread handles SDL (events, render). Worker threads process batches.
+
+**ThreadSystem**: Pool of `hardware_concurrency - 1` workers. 5 priority levels (Critical→Idle). Use `enqueueTaskWithResult()` for futures, `batchEnqueueTasks()` for bulk submission.
+
+**WorkerBudget**: Adaptive batch sizing with unified threshold learning. `shouldUseThreading()` returns threading decision. `getBatchStrategy()` calculates batch count/size. `reportExecution()` for unified throughput tracking.
+
+**Manager Pattern** (AIManager, ParticleManager):
+```cpp
+auto decision = budgetMgr.shouldUseThreading(SystemType::AI, count);
+if (decision.shouldThread) {
+    for (size_t i = 0; i < decision.batchCount; ++i) {
+        m_futures.push_back(threadSystem.enqueueTaskWithResult([...] { processBatch(...); }));
+    }
+    for (auto& f : m_futures) { f.get(); }  // Wait before frame ends
+}
+budgetMgr.reportExecution(SystemType::AI, count, decision.shouldThread, decision.batchCount, elapsedMs);
+```
+
+**State Transitions**: Call `prepareForStateTransition()` on managers before cleanup. Pauses work, waits for pending batches, drains message queues.
+
+**Thread-Local**: Use for RNG (`thread_local std::mt19937`), reusable buffers, and spatial caches. Eliminates contention without locks.
+
+**Synchronization**: `shared_mutex` for reader-writer (entities, behaviors) | `mutex` for exclusive | `atomic<bool>` for flags | `condition_variable` for worker wake.
+
+**Rules**: NEVER static vars in threaded code | Main thread only for SDL | Futures must complete before dependent ops | Cache-line align hot atomics (`alignas(64)`)
 
 **Logging**: Use `std::format()`, never `+` concatenation. Use `AI_INFO_IF(cond, msg)` macros when condition only gates logging.
 
@@ -106,6 +146,12 @@ Modes: TOP_ALIGNED, BOTTOM_ALIGNED, LEFT/RIGHT_ALIGNED, BOTTOM_RIGHT, CENTERED_H
 
 **One Present() per frame** via `GameEngine::render()` → `GameStateManager::render()` → `GameState::render()`. NEVER call SDL_RenderClear/Present in GameStates.
 
+**SDL_Renderer Path**: WorldRenderPipeline (4-phase: prepareChunks→beginScene→renderWorld→endScene) wraps SceneRenderer for pixel-perfect zoom and sub-pixel scrolling.
+
+**GPU Path**: Scene texture → Composite pass (day/night tinting, sub-pixel offset, zoom) → UI pass. GameStates implement `renderGPUScene()` and `renderGPUUI()`.
+
+**DayNightController**: Requires `update(dt)` each frame for lighting interpolation (30s transitions). GPU path updates automatically via `GPURenderer::setDayNightParams()`.
+
 **Loading**: Use `LoadingState` with async ThreadSystem ops, not blocking manual rendering.
 
 **Deferred transitions**: Set flag in `enter()`, transition in `update()` to avoid timing issues.
@@ -130,6 +176,16 @@ m_controllers.get<WeatherController>()->getCurrentWeather();
 
 **Layout Caching**: Compute static positions (LogoState) in `enter()`, use cached values in `render()`.
 
+## Debug Tools
+
+**FrameProfiler** (F3): Three-tier timing (Frame→Manager→Render phases). RAII timers: `ScopedPhaseTimer`, `ScopedManagerTimer`, `ScopedRenderTimer`. Hitch detection (>20ms). No-op in Release builds.
+
 ## Workflow
 
-Search existing patterns before implementing. Reference states: EventDemoState, UIDemoState, SettingsMenuState, MainMenuState.
+Search existing patterns before implementing.
+
+**Demo States**: States with "Demo" suffix (EventDemoState, UIDemoState, AIDemoState, OverlayDemoState) are for testing/showcasing features.
+
+**GamePlayState**: The pristine official gameplay state. Keep clean and production-ready.
+
+**Reference States**: SettingsMenuState, MainMenuState for menu patterns.

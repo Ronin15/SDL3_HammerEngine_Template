@@ -56,28 +56,75 @@ AIManager::Instance().registerEntityByEDMIndex(edmIndex, priority);
 
 ### BehaviorContext - EDM Data Access
 
-Behaviors access entity data through `BehaviorContext` which pre-fetches EDM data:
+Behaviors access entity data through `BehaviorContext` which pre-fetches EDM data. This eliminates map lookups during batch processing and provides lock-free access to entity state.
 
 ```cpp
 struct BehaviorContext {
     uint32_t edmIndex;           // EDM storage index
-    AIBehaviorData* behaviorData; // Pre-fetched from EDM
-    PathData* pathData;          // Pre-fetched from EDM
+    AIBehaviorData* behaviorData; // Pre-fetched from EDM (behavior state)
+    PathData* pathData;          // Pre-fetched from EDM (pathfinding)
     EntityHotData* hotData;      // Pre-fetched from EDM (position, tier, etc.)
 };
+```
 
-// In behavior execution:
-void ChaseBehavior::execute(BehaviorContext& ctx) {
-    // Access position via pre-fetched EDM data (no map lookups)
-    Vector2D& position = ctx.hotData->transform.position;
+#### How BehaviorContext is Created
 
-    // Store path in EDM (persists between frames)
-    PathData& pd = *ctx.pathData;
-    if (pd.pathPoints.empty()) {
-        PathfinderManager::Instance().requestPathToEDM(ctx.edmIndex, target);
+During batch processing, AIManager pre-fetches all EDM data for each entity:
+
+```cpp
+// In AIManager::processBatch() (simplified)
+void AIManager::processBatch(float dt, size_t start, size_t end) {
+    auto& edm = EntityDataManager::Instance();
+
+    for (size_t i = start; i < end; ++i) {
+        uint32_t edmIndex = m_activeIndices[i];
+
+        // Pre-fetch ALL data once (avoids repeated lookups in behavior)
+        BehaviorContext ctx;
+        ctx.edmIndex = edmIndex;
+        ctx.hotData = &edm.getHotDataByIndex(edmIndex);
+        ctx.behaviorData = &edm.getBehaviorData(edmIndex);
+        ctx.pathData = &edm.getPathData(edmIndex);
+
+        // Execute behavior with pre-fetched context
+        behavior->execute(ctx, dt);
     }
 }
 ```
+
+#### Using BehaviorContext in Behaviors
+
+```cpp
+void ChaseBehavior::execute(BehaviorContext& ctx, float dt) {
+    // Access position via pre-fetched EDM data (no map lookups)
+    Vector2D& position = ctx.hotData->transform.position;
+    Vector2D& velocity = ctx.hotData->transform.velocity;
+
+    // Access behavior state (persists between frames)
+    ChaseState& state = ctx.behaviorData->state.chase;
+
+    // Access path data for navigation
+    PathData& pd = *ctx.pathData;
+    if (!pd.hasPath) {
+        PathfinderManager::Instance().requestPathToEDM(ctx.edmIndex, target);
+    }
+
+    // Update position based on path
+    if (pd.hasPath && pd.navIndex < pd.pathLength) {
+        Vector2D waypoint = pd.currentWaypoint;
+        Vector2D direction = (waypoint - position).normalized();
+        velocity = direction * m_chaseSpeed;
+    }
+}
+```
+
+#### Lock-Free Batch Processing
+
+BehaviorContext enables lock-free processing because:
+1. **Index-based access**: Uses `getHotDataByIndex()` instead of map lookups
+2. **Pre-fetched pointers**: No synchronization needed during behavior execution
+3. **Per-entity isolation**: Each entity's context is independent
+4. **Sequential updates**: Main thread modifies EDM only before/after batches
 
 ### Critical Pattern: EDM for Persistent State
 

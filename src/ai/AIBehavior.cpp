@@ -147,18 +147,19 @@ void AIBehavior::moveToPosition(BehaviorContext &ctx, const Vector2D &targetPos,
   } else {
     // Fallback: direct movement
     Vector2D direction = normalizeDirection(targetPos - currentPos);
-    if (direction.length() > 0.001f) {
+    if (direction.lengthSquared() > 0.000001f) {
       ctx.transform.velocity = direction * speed;
       state.progressTimer = 0.0f;
     }
   }
 
-  // Stall detection and recovery
-  float currentSpeed = ctx.transform.velocity.length();
+  // Stall detection and recovery (use lengthSquared to avoid sqrt)
+  float currentSpeedSq = ctx.transform.velocity.lengthSquared();
   const float stallSpeed = std::max(0.5f, speed * 0.5f);
+  const float stallSpeedSq = stallSpeed * stallSpeed;
   constexpr float stallSeconds = 0.6f;
 
-  if (currentSpeed < stallSpeed) {
+  if (currentSpeedSq < stallSpeedSq) {
     if (state.progressTimer > stallSeconds) {
       state.pathPoints.clear();
       state.currentPathIndex = 0;
@@ -169,7 +170,7 @@ void AIBehavior::moveToPosition(BehaviorContext &ctx, const Vector2D &targetPos,
       std::uniform_real_distribution<float> jitterDist(-0.15f, 0.15f);
       float jitter = jitterDist(getThreadLocalRNG());
       Vector2D v = ctx.transform.velocity;
-      if (v.length() < 0.01f)
+      if (v.lengthSquared() < 0.0001f)
         v = Vector2D(1, 0);
       float c = std::cos(jitter), s = std::sin(jitter);
       Vector2D rotated(v.getX() * c - v.getY() * s,

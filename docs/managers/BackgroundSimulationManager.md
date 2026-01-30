@@ -18,6 +18,113 @@ BackgroundSimulationManager processes entities that are outside the active camer
 | **Background** | BackgroundSimulationManager | 10 Hz | Position-only updates, no collision |
 | **Hibernated** | None | 0 Hz | Data stored only, no processing |
 
+## Simulation Tier Details
+
+### Active Tier
+
+Entities in the Active tier receive full simulation:
+- **AI Processing**: Full behavior execution via AIManager
+- **Collision Detection**: Participates in CollisionManager narrowphase
+- **Rendering**: Visible on screen
+- **Update Rate**: Every frame (60 Hz)
+
+**When to use**: Entities near the player/camera that need full gameplay interaction.
+
+### Background Tier
+
+Entities in the Background tier receive reduced simulation:
+- **Position Updates**: Simplified movement (continue current velocity)
+- **No Collision**: Skipped to reduce CPU cost
+- **No Rendering**: Off-screen
+- **Update Rate**: 10 Hz (configurable)
+- **State Preservation**: Behavior state maintained in EDM
+
+**When to use**: Entities outside the visible area but still in the "active world" zone. Maintains world consistency (NPCs continue patrolling, animals continue grazing) without full simulation cost.
+
+**What Background Entities Do**:
+```cpp
+// Simplified Background tier update
+void BackgroundSimulationManager::processBackgroundEntity(size_t edmIndex, float dt) {
+    auto& edm = EntityDataManager::Instance();
+    auto& transform = edm.getTransformByIndex(edmIndex);
+
+    // Simple position integration (no AI, no collision)
+    transform.position += transform.velocity * dt;
+
+    // Optional: Apply simple world bounds clamping
+}
+```
+
+### Hibernated Tier
+
+Entities in the Hibernated tier receive no updates:
+- **No Processing**: Completely dormant
+- **Data Stored**: All EDM data preserved (position, state, inventory)
+- **No CPU Cost**: Zero frame-to-frame overhead
+- **Reactivation**: Instantly resume when transitioning to Background/Active
+
+**When to use**: Entities far from the player that don't need any simulation. Their state is preserved for when the player returns.
+
+### Tier Transitions
+
+Entities automatically transition between tiers based on distance from the reference point (usually the player):
+
+```
+Distance from player:
+├─ 0 to activeRadius       → Active (full simulation)
+├─ activeRadius to backgroundRadius → Background (10Hz position)
+└─ > backgroundRadius      → Hibernated (no updates)
+```
+
+**Transition Events**:
+- **Active → Background**: Entity leaves visible area, continues with simplified updates
+- **Background → Hibernated**: Entity far enough to stop all processing
+- **Hibernated → Background**: Entity approaching active zone, begin position updates
+- **Background → Active**: Entity visible, resume full AI/collision
+
+### Tier Configuration
+
+```cpp
+auto& bsm = BackgroundSimulationManager::Instance();
+
+// Configure tier radii based on screen size
+bsm.configureForScreenSize(1920, 1080);
+// Results in:
+//   activeRadius ≈ 1650 (1.5x half-diagonal)
+//   backgroundRadius ≈ 2200 (2x half-diagonal)
+
+// Or set manually
+bsm.setActiveRadius(1500.0f);
+bsm.setBackgroundRadius(5000.0f);
+
+// Adjust Background tier update rate
+bsm.setUpdateRate(10.0f);  // 10 Hz (default)
+bsm.setUpdateRate(5.0f);   // 5 Hz (power saving)
+bsm.setUpdateRate(30.0f);  // 30 Hz (more responsive)
+```
+
+### Tier State in EDM
+
+Entity tier is stored in `EntityHotData`:
+
+```cpp
+struct EntityHotData {
+    // ...
+    SimulationTier tier;  // Active, Background, or Hibernated
+    // ...
+};
+
+// Check entity tier
+const auto& hot = edm.getHotDataByIndex(edmIndex);
+if (hot.tier == SimulationTier::Active) {
+    // Full processing
+} else if (hot.tier == SimulationTier::Background) {
+    // Simplified processing
+} else {
+    // Hibernated - skip entirely
+}
+```
+
 ### Key Features
 
 - **Power-Efficient**: Zero CPU when paused or no background entities

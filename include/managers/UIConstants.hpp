@@ -35,8 +35,9 @@ namespace UIConstants {
 
   // Z-Order Layering Constants
   // Controls the render order of UI components (lower values render first/behind)
-  constexpr int ZORDER_DIALOG = -10;          // Dialog backgrounds render behind everything
+  constexpr int ZORDER_OVERLAY = -10;         // Overlay backgrounds render behind everything
   constexpr int ZORDER_PANEL = 0;             // Background panels
+  constexpr int ZORDER_DIALOG = 2;            // Dialogs render above overlays and panels
   constexpr int ZORDER_IMAGE = 1;             // Background images
   constexpr int ZORDER_PROGRESS_BAR = 5;      // Progress indicators
   constexpr int ZORDER_EVENT_LOG = 6;         // Event log displays
@@ -118,6 +119,8 @@ namespace UIConstants {
   // Positioning Constants
   constexpr int TITLE_TOP_OFFSET = 10;          // Default top offset for titles
   constexpr int BUTTON_BOTTOM_OFFSET = 20;      // Default bottom offset for buttons
+  constexpr int BOTTOM_RIGHT_OFFSET_X = 10;     // Default offset from right edge for bottom-right elements
+  constexpr int BOTTOM_RIGHT_OFFSET_Y = 10;     // Default offset from bottom edge for bottom-right elements
   constexpr int DEFAULT_TITLE_HEIGHT = 40;      // Default title component height
   constexpr int DEFAULT_BUTTON_WIDTH = 120;     // Default button width
   constexpr int DEFAULT_BUTTON_HEIGHT = 40;     // Default button height
@@ -128,9 +131,9 @@ namespace UIConstants {
   constexpr int INFO_LABEL_HEIGHT_COMPACT = 24;    // Compact info labels (tighter layouts)
 
   // Info Label Positioning Constants (baseline pixels)
-  constexpr int INFO_FIRST_LINE_Y = 55;            // Y position of first info line after title (5px gap from title end)
+  constexpr int INFO_FIRST_LINE_Y = 62;            // Y position of first info line after title (12px gap from title end)
   constexpr int INFO_LINE_SPACING = 8;             // Vertical gap between consecutive info lines
-  constexpr int INFO_STATUS_SPACING = 12;          // Extra gap before status line
+  constexpr int INFO_STATUS_SPACING = 4;           // Extra gap before status line
   constexpr int INFO_LABEL_MARGIN_X = 10;          // Left margin for info labels
 
   // Form/Settings Layout Constants (reusable for any form-like interface)
@@ -149,6 +152,15 @@ namespace UIConstants {
   // Performance/Memory Constants
   constexpr int DEFAULT_COMPONENT_BATCH_SIZE = 32;  // Reserve size for component removal operations
   constexpr int MAX_COMPONENT_BATCH_SIZE = 64;      // Reserve size for bulk component clearing
+
+  // Debug Profiler Overlay Constants (Debug builds only)
+  constexpr int PROFILER_OVERLAY_WIDTH = 300;       // Width of profiler overlay panel
+  constexpr int PROFILER_OVERLAY_HEIGHT = 172;      // Height of profiler overlay panel (7 lines)
+  constexpr int PROFILER_OVERLAY_MARGIN = 10;       // Margin from screen edge
+  constexpr int PROFILER_LINE_HEIGHT = 22;          // Height per profiler text line
+  constexpr int PROFILER_LABEL_COUNT = 7;           // Number of profiler labels
+  constexpr int PROFILER_ZORDER_PANEL = 9000;       // Z-order for profiler panel (high priority)
+  constexpr int PROFILER_ZORDER_LABEL = 9001;       // Z-order for profiler labels
 
 } // namespace UIConstants
 

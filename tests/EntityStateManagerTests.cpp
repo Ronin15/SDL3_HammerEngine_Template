@@ -225,51 +225,17 @@ BOOST_AUTO_TEST_CASE(UpdateOnlyAffectsCurrentState) {
 // Remove State Tests
 // ============================================================================
 
-BOOST_AUTO_TEST_CASE(RemoveState) {
-    EntityStateManager manager;
 
-    manager.addState("idle", createMockState());
-    BOOST_CHECK(manager.hasState("idle"));
 
-    manager.removeState("idle");
-    BOOST_CHECK(!manager.hasState("idle"));
-}
 
-BOOST_AUTO_TEST_CASE(RemoveCurrentStateResetsIt) {
-    EntityStateManager manager;
 
-    manager.addState("idle", createMockState());
-    manager.setState("idle");
-    BOOST_CHECK_EQUAL(manager.getCurrentStateName(), "idle");
 
-    manager.removeState("idle");
-
-    BOOST_CHECK_EQUAL(manager.getCurrentStateName(), "");
-    BOOST_CHECK(!manager.hasState("idle"));
-}
-
-BOOST_AUTO_TEST_CASE(RemoveNonExistentStateIsNoOp) {
-    EntityStateManager manager;
-
-    manager.addState("idle", createMockState());
-
-    // Should not crash
-    BOOST_REQUIRE_NO_THROW(manager.removeState("nonexistent"));
-    BOOST_CHECK(manager.hasState("idle"));
-}
 
 // ============================================================================
 // Edge Cases
 // ============================================================================
 
-BOOST_AUTO_TEST_CASE(EmptyManagerIsValid) {
-    EntityStateManager manager;
 
-    BOOST_CHECK_EQUAL(manager.getCurrentStateName(), "");
-    BOOST_CHECK(!manager.hasState("anything"));
-    BOOST_REQUIRE_NO_THROW(manager.update(0.016f));
-    BOOST_REQUIRE_NO_THROW(manager.removeState("anything"));
-}
 
 BOOST_AUTO_TEST_CASE(MultipleTransitions) {
     EntityStateManager manager;

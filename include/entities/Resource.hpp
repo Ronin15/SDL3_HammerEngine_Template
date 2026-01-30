@@ -83,6 +83,12 @@ public:
   int getNumFrames() const { return m_numFrames; }
   int getAnimSpeed() const { return m_animSpeed; }
 
+  // Atlas coordinates (for sprite atlas rendering)
+  int getAtlasX() const { return m_atlasX; }
+  int getAtlasY() const { return m_atlasY; }
+  int getAtlasW() const { return m_atlasW; }
+  int getAtlasH() const { return m_atlasH; }
+
   // Property setters (for initialization only)
   void setDescription(const std::string &description) {
     m_description = description;
@@ -106,6 +112,10 @@ public:
   void setAnimSpeed(int speed) {
     m_animSpeed = speed;
   }
+  void setAtlasX(int x) { m_atlasX = x; }
+  void setAtlasY(int y) { m_atlasY = y; }
+  void setAtlasW(int w) { m_atlasW = w; }
+  void setAtlasH(int h) { m_atlasH = h; }
 
   // Factory method for proper shared_ptr creation
   template <typename T, typename... Args>
@@ -141,6 +151,12 @@ protected:
   std::string m_worldTextureId{""};      // Texture ID for world rendering
   int m_numFrames{1};                    // Animation frames for rendering
   int m_animSpeed{100};                  // Animation speed for rendering
+
+  // Atlas coordinates (for sprite atlas rendering)
+  int m_atlasX{0};                       // X offset in atlas
+  int m_atlasY{0};                       // Y offset in atlas
+  int m_atlasW{16};                      // Width in atlas
+  int m_atlasH{16};                      // Height in atlas
 };
 
 #endif // RESOURCE_HPP

@@ -62,6 +62,10 @@ if(APPLE)
         set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -mcpu=apple-m1")
     endif()
 
+    # LTO requires linker flags to match compiler flags
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto")
+    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -flto")
+
     # Store aggressive flags for our project targets only
     set(HAMMER_AGGRESSIVE_C_FLAGS
         "-ffunction-sections -fdata-sections -ffast-math -ftree-vectorize -funroll-loops")
@@ -73,6 +77,10 @@ else()
         -fno-strict-aliasing -fomit-frame-pointer")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto \
         -fno-strict-aliasing -fomit-frame-pointer")
+
+    # LTO requires linker flags to match compiler flags
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto -fuse-linker-plugin")
+    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -flto -fuse-linker-plugin")
 
     # Store aggressive flags for our project targets only
     set(HAMMER_AGGRESSIVE_C_FLAGS
@@ -106,6 +114,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(USE_MOLD_LINKER "Use mold linker if available" ON)
+option(USE_SDL3_GPU "Use SDL3_GPU instead of SDL_Renderer" OFF)
 
 if(USE_MOLD_LINKER)
     find_program(MOLD_LINKER mold)
@@ -169,7 +178,7 @@ message(STATUS
 # SDL3 3.4.0 is first stable release - includes native PNG loading (SDL_LoadPNG)
 set(SDL3_GIT_TAG "release-3.4.0")          # SDL3 3.4.0 stable release
 set(SDL3_TTF_GIT_TAG "release-3.2.2")      # Latest stable SDL3_ttf release
-set(SDL3_MIXER_GIT_TAG "main")             # Keep on main for latest SDL3_mixer features
+set(SDL3_MIXER_GIT_TAG "prerelease-3.1.2")  # SDL3_mixer prerelease-3.1.2
 
 # Download and configure SDL3
 FetchContent_Declare(
@@ -223,11 +232,108 @@ file(GLOB_RECURSE SOURCES
     "src/ai/*.cpp"
     "src/world/*.cpp"
     "src/utils/*.cpp"
-    "src/controllers/*.cpp"
+    "src/controllers/**/*.cpp"
 )
 
 # Exclude HammerMain.cpp from library sources (contains main() which conflicts with test frameworks)
 list(FILTER SOURCES EXCLUDE REGEX ".*HammerMain\\.cpp$")
+
+# SDL3_GPU support
+if(USE_SDL3_GPU)
+    # Add GPU module sources
+    file(GLOB GPU_SOURCES "src/gpu/*.cpp")
+    list(APPEND SOURCES ${GPU_SOURCES})
+
+    # Find glslang/glslangValidator for shader compilation
+    find_program(GLSLANG_VALIDATOR
+        NAMES glslangValidator glslang
+        HINTS ENV VULKAN_SDK
+        PATH_SUFFIXES bin
+    )
+
+    if(NOT GLSLANG_VALIDATOR)
+        message(FATAL_ERROR "glslangValidator not found. Install glslang package or Vulkan SDK.")
+    endif()
+
+    message(STATUS "Found glslangValidator: ${GLSLANG_VALIDATOR}")
+
+    # Find spirv-cross for Metal shader generation (macOS)
+    find_program(SPIRV_CROSS
+        NAMES spirv-cross
+        HINTS ENV VULKAN_SDK /opt/homebrew/bin /usr/local/bin
+        PATH_SUFFIXES bin
+    )
+
+    if(SPIRV_CROSS)
+        message(STATUS "Found spirv-cross: ${SPIRV_CROSS} (Metal shaders will be generated)")
+        set(GENERATE_METAL_SHADERS ON)
+    else()
+        message(STATUS "spirv-cross not found - Metal shaders will not be generated")
+        message(STATUS "  Install with: brew install spirv-cross")
+        set(GENERATE_METAL_SHADERS OFF)
+    endif()
+
+    # Shader source files
+    set(SHADER_SOURCES
+        ${CMAKE_SOURCE_DIR}/res/shaders/sprite.vert.glsl
+        ${CMAKE_SOURCE_DIR}/res/shaders/sprite.frag.glsl
+        ${CMAKE_SOURCE_DIR}/res/shaders/color.vert.glsl
+        ${CMAKE_SOURCE_DIR}/res/shaders/color.frag.glsl
+        ${CMAKE_SOURCE_DIR}/res/shaders/composite.vert.glsl
+        ${CMAKE_SOURCE_DIR}/res/shaders/composite.frag.glsl
+    )
+
+    # Compile each shader to SPIR-V and optionally to Metal
+    set(SHADER_SPIRV_OUTPUTS "")
+    set(SHADER_METAL_OUTPUTS "")
+    foreach(SHADER_SOURCE ${SHADER_SOURCES})
+        get_filename_component(SHADER_NAME ${SHADER_SOURCE} NAME)
+        string(REPLACE ".glsl" ".spv" SHADER_SPV_NAME ${SHADER_NAME})
+        string(REPLACE ".glsl" ".metal" SHADER_METAL_NAME ${SHADER_NAME})
+        set(SHADER_SPV "${CMAKE_SOURCE_DIR}/res/shaders/${SHADER_SPV_NAME}")
+        set(SHADER_METAL "${CMAKE_SOURCE_DIR}/res/shaders/${SHADER_METAL_NAME}")
+
+        # GLSL -> SPIR-V
+        add_custom_command(
+            OUTPUT ${SHADER_SPV}
+            COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} -o ${SHADER_SPV}
+            DEPENDS ${SHADER_SOURCE}
+            COMMENT "Compiling shader: ${SHADER_NAME} -> ${SHADER_SPV_NAME}"
+            VERBATIM
+        )
+        list(APPEND SHADER_SPIRV_OUTPUTS ${SHADER_SPV})
+
+        # SPIR-V -> Metal (if spirv-cross available)
+        if(GENERATE_METAL_SHADERS)
+            # Determine entry point name and stage based on shader type
+            if(SHADER_NAME MATCHES "\\.vert\\.")
+                set(METAL_ENTRY "vertexMain")
+                set(METAL_STAGE "vert")
+            else()
+                set(METAL_ENTRY "fragmentMain")
+                set(METAL_STAGE "frag")
+            endif()
+
+            add_custom_command(
+                OUTPUT ${SHADER_METAL}
+                COMMAND ${SPIRV_CROSS} --msl ${SHADER_SPV} --output ${SHADER_METAL} --rename-entry-point main ${METAL_ENTRY} ${METAL_STAGE}
+                DEPENDS ${SHADER_SPV}
+                COMMENT "Cross-compiling shader: ${SHADER_SPV_NAME} -> ${SHADER_METAL_NAME}"
+                VERBATIM
+            )
+            list(APPEND SHADER_METAL_OUTPUTS ${SHADER_METAL})
+        endif()
+    endforeach()
+
+    # Create shader compilation target
+    if(GENERATE_METAL_SHADERS)
+        add_custom_target(compile_shaders ALL DEPENDS ${SHADER_SPIRV_OUTPUTS} ${SHADER_METAL_OUTPUTS})
+        message(STATUS "SDL3_GPU enabled - shaders will be compiled to SPIR-V and Metal")
+    else()
+        add_custom_target(compile_shaders ALL DEPENDS ${SHADER_SPIRV_OUTPUTS})
+        message(STATUS "SDL3_GPU enabled - shaders will be compiled to SPIR-V only")
+    endif()
+endif()
 
 # Create object library for shared compilation (without main())
 add_library(HammerEngineObjects OBJECT ${SOURCES})
@@ -246,6 +352,7 @@ target_include_directories(HammerEngineObjects PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ui
     ${CMAKE_CURRENT_SOURCE_DIR}/include/world
     ${CMAKE_CURRENT_SOURCE_DIR}/include/collisions
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/gpu
 )
 target_include_directories(HammerEngineObjects PRIVATE
     ${INTERNAL_SRC_INCLUDE}
@@ -255,6 +362,17 @@ target_link_libraries(HammerEngineObjects PUBLIC
     SDL3_ttf::SDL3_ttf
     SDL3_mixer::SDL3_mixer
 )
+
+# Pass project name to code for file logging paths
+target_compile_definitions(HammerEngineObjects PRIVATE
+    HAMMER_APP_NAME="${PROJECT_NAME}"
+)
+
+# SDL3_GPU compile definition
+if(USE_SDL3_GPU)
+    target_compile_definitions(HammerEngineObjects PUBLIC USE_SDL3_GPU)
+    add_dependencies(HammerEngineObjects compile_shaders)
+endif()
 
 # Apply aggressive optimization flags to our project targets only (not SDL3)
 # These flags like -ffast-math conflict with SDL3's audio code
@@ -304,7 +422,7 @@ if(WIN32)
 
     # Generate a resource file that includes the icon
     configure_file(
-    "${CMAKE_SOURCE_DIR}/res/windows_icon.rc.in"
+    "${CMAKE_SOURCE_DIR}/platforms/windows/windows_icon.rc.in"
     "${CMAKE_BINARY_DIR}/windows_icon.rc"
     @ONLY
   )
@@ -410,8 +528,15 @@ if(APPLE)
             "LLDB debugging flags enabled (-glldb, -fstandalone-debug)")
     else()
         # For release builds, create a proper macOS application bundle
+        # Set bundle metadata
+        set(MACOSX_BUNDLE_BUNDLE_NAME "${PROJECT_NAME}")
+        set(MACOSX_BUNDLE_GUI_IDENTIFIER "com.hammerforged.${PROJECT_NAME}")
+        set(MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
+        set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
+
         set_target_properties(${PROJECT_NAME} PROPERTIES
             MACOSX_BUNDLE TRUE
+            MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/platforms/macos/Info.plist.in"
             BUILD_WITH_INSTALL_RPATH TRUE
             BUILD_RPATH "@executable_path/../Frameworks;@executable_path"
             INSTALL_RPATH "@executable_path/../Frameworks;@executable_path"
@@ -435,6 +560,20 @@ if(APPLE)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 $<TARGET_SONAME_FILE:SDL3_mixer::SDL3_mixer>
                 "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Frameworks/"
+        )
+
+        # Copy resources to app bundle
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_SOURCE_DIR}/res"
+                "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Resources/res"
+            COMMENT "Copying resources to app bundle"
+        )
+
+        # Code sign the app bundle (required for Game Mode and other macOS features)
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>"
+            COMMENT "Code signing app bundle"
         )
     endif()
 endif()

@@ -5,7 +5,9 @@
 
 #include "core/WorkerBudget.hpp"
 #include "core/ThreadSystem.hpp"
+#include "core/Logger.hpp"
 #include <algorithm>
+#include <format>
 
 namespace HammerEngine {
 
@@ -57,7 +59,7 @@ std::pair<size_t, size_t> WorkerBudgetManager::getBatchStrategy(
         return {1, workloadSize};  // Single batch with all items
     }
 
-    auto& state = m_batchState[static_cast<size_t>(system)];
+    auto& state = m_systemState[static_cast<size_t>(system)];
 
     // =======================================================================
     // Simple and robust: base = workers, adjusted by throughput-tuned multiplier
@@ -72,11 +74,16 @@ std::pair<size_t, size_t> WorkerBudgetManager::getBatchStrategy(
     size_t batchCount = static_cast<size_t>(std::max(1.0, adjustedBatches));
 
     // Cap based on minimum items per batch (prevent trivial batches)
-    size_t maxBatches = std::max(size_t{1}, workloadSize / BatchTuningState::MIN_ITEMS_PER_BATCH);
+    size_t maxBatches = std::max(size_t{1}, workloadSize / SystemTuningState::MIN_ITEMS_PER_BATCH);
     batchCount = std::min(batchCount, maxBatches);
 
-    // Ensure at least 1 batch
-    batchCount = std::max(batchCount, size_t{1});
+    // Ensure minimum batches: at least 2 when we have multiple workers
+    // This guarantees actual parallelism when threading is decided
+    if (optimalWorkers >= 2 && workloadSize >= SystemTuningState::MIN_ITEMS_PER_BATCH * 2) {
+        batchCount = std::max(batchCount, size_t{2});
+    } else {
+        batchCount = std::max(batchCount, size_t{1});
+    }
 
     // Calculate batch size (round up to ensure all items are processed)
     size_t batchSize = (workloadSize + batchCount - 1) / batchCount;
@@ -84,71 +91,230 @@ std::pair<size_t, size_t> WorkerBudgetManager::getBatchStrategy(
     return {batchCount, batchSize};
 }
 
-void WorkerBudgetManager::reportBatchCompletion(SystemType system,
-                                                 size_t workloadSize,
-                                                 size_t batchCount,
-                                                 double totalTimeMs) {
-    if (batchCount == 0 || workloadSize == 0 || totalTimeMs <= 0.0) {
+ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, size_t workloadSize) {
+    // ThreadSystem must exist for threading to be possible
+    if (!ThreadSystem::Exists()) {
+        return {false, 0};
+    }
+
+    // Single-core hardware: no parallelism possible, always single-threaded
+    if (ThreadSystem::Instance().getThreadCount() <= 1) {
+        return {false, 0};
+    }
+
+    // Always single-threaded for very small workloads
+    if (workloadSize < SystemTuningState::MIN_WORKLOAD) {
+        return {false, 0};
+    }
+
+    auto& state = m_systemState[static_cast<size_t>(system)];
+
+    // ====== Adaptive Threshold Learning State Machine ======
+    size_t threshold = state.learnedThreshold.load(std::memory_order_relaxed);
+    bool active = state.thresholdActive.load(std::memory_order_relaxed);
+
+    if (threshold == 0) {
+        // LEARNING: No threshold learned yet - stay single-threaded
+        // reportExecution() will detect when to set threshold (time >= 1.0ms)
+        return {false, 0};
+    }
+
+    if (active) {
+        // ACTIVE: Check for hysteresis deactivation
+        size_t hysteresisLow = static_cast<size_t>(
+            static_cast<double>(threshold) * SystemTuningState::HYSTERESIS_FACTOR);
+
+        if (workloadSize < hysteresisLow) {
+            // Dropped below hysteresis band - reset and re-learn
+            state.learnedThreshold.store(0, std::memory_order_relaxed);
+            state.thresholdActive.store(false, std::memory_order_relaxed);
+            state.smoothedSingleTime.store(0.0, std::memory_order_relaxed);  // Reset for fresh learning
+
+#ifndef NDEBUG
+            HAMMER_DEBUG("WorkerBudget", std::format(
+                "{}: Re-learning (workload {} < hysteresis {})",
+                getSystemName(system), workloadSize, hysteresisLow));
+#endif
+            return {false, 0};  // Back to learning mode
+        }
+
+        // Still above hysteresis - continue multi-threaded
+        return {true, 0};
+    }
+
+    // Threshold learned but not active (edge case: workload dropped then rose again)
+    // Activate if workload exceeds threshold
+    if (workloadSize >= threshold) {
+        state.thresholdActive.store(true, std::memory_order_relaxed);
+        return {true, 0};
+    }
+
+    return {false, 0};
+}
+
+void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize,
+                                           bool wasThreaded, size_t batchCount,
+                                           double totalTimeMs) {
+    if (workloadSize == 0 || totalTimeMs <= 0.0) {
         return;
     }
 
-    auto& state = m_batchState[static_cast<size_t>(system)];
+    auto& state = m_systemState[static_cast<size_t>(system)];
 
-    // =======================================================================
-    // THROUGHPUT-BASED HILL-CLIMBING
-    // Simple and robust: measure throughput, adjust multiplier to maximize it
-    // No model assumptions - just finds what works best experimentally
-    // =======================================================================
+    // ====== Smoothed Single-Threaded Time Tracking ======
+    // Update smoothed time when running single-threaded with meaningful workload
+    size_t threshold = state.learnedThreshold.load(std::memory_order_relaxed);
+    if (!wasThreaded && workloadSize >= SystemTuningState::MIN_WORKLOAD) {
+        double prevSmoothed = state.smoothedSingleTime.load(std::memory_order_relaxed);
+        double newSmoothed;
+        if (prevSmoothed <= 0.0) {
+            newSmoothed = totalTimeMs;  // First sample
+        } else {
+            newSmoothed = prevSmoothed * (1.0 - SystemTuningState::TIME_SMOOTHING)
+                        + totalTimeMs * SystemTuningState::TIME_SMOOTHING;
+        }
+        state.smoothedSingleTime.store(newSmoothed, std::memory_order_relaxed);
 
-    // Calculate current throughput (items per ms)
-    double currentThroughput = static_cast<double>(workloadSize) / totalTimeMs;
+        // ====== Threshold Learning Detection ======
+        // Learn threshold when SMOOTHED time exceeds limit (not instantaneous)
+        // This prevents spike-triggered oscillation from per-frame variance
+        if (threshold == 0 && newSmoothed >= SystemTuningState::LEARNING_TIME_THRESHOLD_MS) {
+            state.learnedThreshold.store(workloadSize, std::memory_order_relaxed);
+            state.thresholdActive.store(true, std::memory_order_relaxed);
 
-    // Get previous values
-    double prev = state.smoothedThroughput.load(std::memory_order_relaxed);
-    double prevSmoothed = state.prevThroughput.load(std::memory_order_relaxed);
+#ifndef NDEBUG
+            HAMMER_DEBUG("WorkerBudget", std::format(
+                "{}: Learned threshold={} (smoothed={:.2f}ms >= {:.1f}ms, instant={:.2f}ms)",
+                getSystemName(system), workloadSize, newSmoothed,
+                SystemTuningState::LEARNING_TIME_THRESHOLD_MS, totalTimeMs));
+#endif
+        }
+    }
 
-    // Update smoothed throughput
-    double smoothed = prev * (1.0 - BatchTuningState::THROUGHPUT_SMOOTHING)
-                    + currentThroughput * BatchTuningState::THROUGHPUT_SMOOTHING;
-    state.smoothedThroughput.store(smoothed, std::memory_order_relaxed);
-    state.prevThroughput.store(prev, std::memory_order_relaxed);
+    double throughput = static_cast<double>(workloadSize) / totalTimeMs;
 
-    // Skip first two frames (need history to compare)
-    if (prevSmoothed <= 0.0) {
+    // Update appropriate throughput tracker (kept for batch multiplier tuning)
+    if (wasThreaded) {
+        // Update multi-threaded throughput
+        double prev = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
+        double smoothed;
+        if (prev <= 0.0) {
+            smoothed = throughput;  // First sample
+        } else {
+            smoothed = prev * (1.0 - SystemTuningState::THROUGHPUT_SMOOTHING)
+                     + throughput * SystemTuningState::THROUGHPUT_SMOOTHING;
+        }
+        state.multiSmoothedThroughput.store(smoothed, std::memory_order_relaxed);
+
+        // Run batch tuning (only when multi-threaded)
+        // Use smoothed throughput to filter noise from frame-to-frame variance
+        if (batchCount > 0) {
+            updateBatchMultiplier(state, smoothed);
+        }
+
+        // Reset frames counter for single-threaded sampling
+        // (we're in multi mode, so count frames until we sample single again)
+    } else {
+        // Update single-threaded throughput
+        double prev = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
+        double smoothed;
+        if (prev <= 0.0) {
+            smoothed = throughput;  // First sample
+        } else {
+            smoothed = prev * (1.0 - SystemTuningState::THROUGHPUT_SMOOTHING)
+                     + throughput * SystemTuningState::THROUGHPUT_SMOOTHING;
+        }
+        state.singleSmoothedThroughput.store(smoothed, std::memory_order_relaxed);
+    }
+
+    // Update mode tracking (for batch multiplier tuning)
+    state.lastWasThreaded.store(wasThreaded, std::memory_order_relaxed);
+}
+
+void WorkerBudgetManager::updateBatchMultiplier(SystemTuningState& state, double throughput) {
+    // Get previous throughput for comparison
+    double prevTP = state.prevMultiThroughput.load(std::memory_order_relaxed);
+    state.prevMultiThroughput.store(throughput, std::memory_order_relaxed);
+
+    // Skip first sample (need history to compare)
+    if (prevTP <= 0.0) {
         return;
     }
 
-    // Calculate relative change from previous smoothed value
-    double change = (smoothed - prevSmoothed) / prevSmoothed;
+    // Calculate relative change
+    double change = (throughput - prevTP) / prevTP;
 
     // Hill-climb multiplier
     float multiplier = state.multiplier.load(std::memory_order_relaxed);
     int8_t direction = state.direction.load(std::memory_order_relaxed);
 
-    if (change > BatchTuningState::THROUGHPUT_TOLERANCE) {
+    if (change > SystemTuningState::THROUGHPUT_TOLERANCE) {
         // Throughput improved - continue in same direction
-        multiplier += static_cast<float>(direction) * BatchTuningState::ADJUST_RATE;
-    } else if (change < -BatchTuningState::THROUGHPUT_TOLERANCE) {
+        multiplier += static_cast<float>(direction) * SystemTuningState::ADJUST_RATE;
+    } else if (change < -SystemTuningState::THROUGHPUT_TOLERANCE) {
         // Throughput degraded - reverse direction
         direction = static_cast<int8_t>(-direction);
         state.direction.store(direction, std::memory_order_relaxed);
-        multiplier += static_cast<float>(direction) * BatchTuningState::ADJUST_RATE;
+        multiplier += static_cast<float>(direction) * SystemTuningState::ADJUST_RATE;
     }
     // Within tolerance: at equilibrium, hold steady
 
     // Clamp multiplier
     multiplier = std::clamp(multiplier,
-                            BatchTuningState::MIN_MULTIPLIER,
-                            BatchTuningState::MAX_MULTIPLIER);
+                            SystemTuningState::MIN_MULTIPLIER,
+                            SystemTuningState::MAX_MULTIPLIER);
 
     state.multiplier.store(multiplier, std::memory_order_relaxed);
+}
+
+double WorkerBudgetManager::getExpectedThroughput(SystemType system, bool threaded) const {
+    const auto& state = m_systemState[static_cast<size_t>(system)];
+    if (threaded) {
+        return state.multiSmoothedThroughput.load(std::memory_order_relaxed);
+    }
+    return state.singleSmoothedThroughput.load(std::memory_order_relaxed);
+}
+
+float WorkerBudgetManager::getBatchMultiplier(SystemType system) const {
+    return m_systemState[static_cast<size_t>(system)].multiplier.load(std::memory_order_relaxed);
+}
+
+size_t WorkerBudgetManager::getLearnedThreshold(SystemType system) const {
+    return m_systemState[static_cast<size_t>(system)].learnedThreshold.load(std::memory_order_relaxed);
+}
+
+bool WorkerBudgetManager::isThresholdActive(SystemType system) const {
+    return m_systemState[static_cast<size_t>(system)].thresholdActive.load(std::memory_order_relaxed);
+}
+
+const char* WorkerBudgetManager::getSystemName(SystemType system) {
+    switch (system) {
+        case SystemType::AI: return "AI";
+        case SystemType::Particle: return "Particle";
+        case SystemType::Pathfinding: return "Pathfinding";
+        case SystemType::Event: return "Event";
+        case SystemType::Collision: return "Collision";
+        default: return "Unknown";
+    }
 }
 
 void WorkerBudgetManager::invalidateCache() {
     m_budgetValid.store(false, std::memory_order_release);
 }
 
+void WorkerBudgetManager::markFrameStart() {
+    // Increment frame counter - this invalidates per-frame caches
+    m_currentFrame.fetch_add(1, std::memory_order_relaxed);
+}
+
 double WorkerBudgetManager::getQueuePressure() const {
+    // Fast path: return cached value if same frame
+    uint64_t currentFrame = m_currentFrame.load(std::memory_order_relaxed);
+    if (m_queuePressureFrame.load(std::memory_order_relaxed) == currentFrame) {
+        return m_cachedQueuePressure.load(std::memory_order_relaxed);
+    }
+
+    // Slow path: calculate and cache
     if (!ThreadSystem::Exists()) {
         return 0.0;
     }
@@ -157,11 +323,16 @@ double WorkerBudgetManager::getQueuePressure() const {
     size_t queueSize = threadSystem.getQueueSize();
     size_t queueCapacity = threadSystem.getQueueCapacity();
 
-    if (queueCapacity == 0) {
-        return 0.0;
+    double pressure = 0.0;
+    if (queueCapacity > 0) {
+        pressure = static_cast<double>(queueSize) / static_cast<double>(queueCapacity);
     }
 
-    return static_cast<double>(queueSize) / static_cast<double>(queueCapacity);
+    // Cache for this frame
+    m_cachedQueuePressure.store(pressure, std::memory_order_relaxed);
+    m_queuePressureFrame.store(currentFrame, std::memory_order_relaxed);
+
+    return pressure;
 }
 
 WorkerBudget WorkerBudgetManager::calculateBudget() const {

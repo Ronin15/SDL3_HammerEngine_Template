@@ -10,13 +10,19 @@
 #include "managers/GameStateManager.hpp"
 #include "core/GameEngine.hpp"
 
-bool PauseState::enter() {
-  // Pause all game managers via GameEngine (collision, pathfinding, AI, particles, GameTime)
-  GameEngine::Instance().setGlobalPause(true);
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#endif
 
-  // Create pause state UI
+bool PauseState::enter() {
+  // Cache manager references at function start
   auto& gameEngine = GameEngine::Instance();
   auto& ui = UIManager::Instance();
+
+  // Pause all game managers via GameEngine (collision, pathfinding, AI, particles, GameTime)
+  gameEngine.setGlobalPause(true);
+
+  // Create pause state UI
   int windowWidth = gameEngine.getLogicalWidth();
   int windowHeight = gameEngine.getLogicalHeight();
 
@@ -53,15 +59,16 @@ bool PauseState::enter() {
 }
 
 void PauseState::update([[maybe_unused]] float deltaTime) {
+    // Process UI input (click detection, hover states, callbacks)
+    auto& ui = UIManager::Instance();
+    if (!ui.isShutdown()) {
+        ui.update(0.0f);
+    }
 }
 
 void PauseState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
+    // Render UI components (input handled in update())
     auto& ui = UIManager::Instance();
-
-    // Update and render UI components through UIManager
-    if (!ui.isShutdown()) {
-        ui.update(0.0);  // UI updates are not time-dependent in this state
-    }
     ui.render(renderer);
 }
 bool PauseState::exit() {
@@ -95,3 +102,21 @@ void PauseState::handleInput() {
       GameEngine::Instance().setRunning(false);
   }
 }
+
+#ifdef USE_SDL3_GPU
+void PauseState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                                    [[maybe_unused]] float interpolationAlpha) {
+    auto& ui = UIManager::Instance();
+    if (!ui.isShutdown()) {
+        ui.recordGPUVertices(gpuRenderer);
+    }
+}
+
+void PauseState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+                              SDL_GPURenderPass* swapchainPass) {
+    auto& ui = UIManager::Instance();
+    if (!ui.isShutdown()) {
+        ui.renderGPU(gpuRenderer, swapchainPass);
+    }
+}
+#endif

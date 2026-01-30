@@ -18,6 +18,7 @@
  */
 
 #include "Event.hpp"
+#include "entities/EntityHandle.hpp"
 #include <string>
 #include <functional>
 #include <vector>
@@ -31,7 +32,8 @@ using EntityPtr = std::shared_ptr<Entity>;
 using EntityWeakPtr = std::weak_ptr<Entity>;
 
 struct SpawnParameters {
-    std::string npcType;          // Type/class of NPC to spawn
+    std::string npcType;          // Type/class of NPC to spawn (or "Random" for random class)
+    std::string npcRace;          // Race of NPC to spawn (empty = "Human", "Random" for random race)
     std::string npcID;            // Optional unique ID for the spawned NPC
     int count{1};                 // Number of NPCs to spawn
     float spawnRadius{0.0f};      // Radius around spawn point (0 = exact point)
@@ -50,7 +52,8 @@ struct SpawnParameters {
     float despawnDistance{-1.0f}; // Distance at which NPC despawns (-1 = never)
 
     // AI behavior assignment
-    std::string aiBehavior;       // AI behavior to assign to spawned NPCs
+    std::string aiBehavior;                    // Single AI behavior for all NPCs
+    std::vector<std::string> aiBehaviors;      // Multiple behaviors to rotate through
 
     // Custom properties to set on spawned NPCs
     std::unordered_map<std::string, std::string> properties;
@@ -59,14 +62,18 @@ struct SpawnParameters {
     SpawnParameters() = default;
 
     // Constructor with commonly used parameters
-    explicit SpawnParameters(const std::string& type, int count = 1, float radius = 0.0f)
-        : npcType(type), count(count), spawnRadius(radius) {}
+    explicit SpawnParameters(const std::string& type, int count = 1, float radius = 0.0f,
+                            const std::string& race = "")
+        : npcType(type), npcRace(race), count(count), spawnRadius(radius) {}
 
     // Optional area constraints for spawns
     bool useAreaRect{false};
     float areaMinX{0.0f}, areaMinY{0.0f}, areaMaxX{0.0f}, areaMaxY{0.0f};
     bool useAreaCircle{false};
     float areaCenterX{0.0f}, areaCenterY{0.0f}, areaRadius{0.0f};
+
+    // World-wide spawning (queries WorldManager for bounds)
+    bool worldWide{false};
 };
 
 class NPCSpawnEvent : public Event {
@@ -128,9 +135,9 @@ public:
     void clearSpawnedEntities();
     bool areAllEntitiesDead() const;
 
-    // Direct spawn control (for scripting)
-    static EntityPtr forceSpawnNPC(const std::string& npcType, float x, float y);
-    static std::vector<EntityPtr> forceSpawnNPCs(const SpawnParameters& params, float x, float y);
+    // Spawn NPCs - handles "Random" type for random race/class selection
+    static EntityHandle spawnNPC(const std::string& npcType, float x, float y);
+    static std::vector<EntityHandle> spawnNPCs(const SpawnParameters& params, float x, float y);
     
     // Area constraint configuration for the spawn event
     void setAreaConstraints(float minX, float minY, float maxX, float maxY) {
@@ -203,9 +210,6 @@ private:
 
     // Helper to get player position
     Vector2D getPlayerPosition() const;
-
-    // Helper to map NPC type to texture ID
-    static std::string getTextureForNPCType(const std::string& npcType);
 
     // Spawn implementation
     void cleanDeadEntities();

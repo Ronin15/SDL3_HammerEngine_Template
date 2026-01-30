@@ -6,6 +6,8 @@
 #include "entities/playerStates/PlayerRunningState.hpp"
 #include "entities/Player.hpp"
 #include "managers/InputManager.hpp"
+#include "managers/UIManager.hpp"
+#include "utils/Camera.hpp"
 
 PlayerRunningState::PlayerRunningState(Player& player) : m_player(player) {}
 
@@ -41,21 +43,21 @@ void PlayerRunningState::handleMovementInput(float deltaTime) {
     bool hasInput = false;
 
     // Keyboard input (highest priority - most responsive)
-    if (input.isKeyDown(SDL_SCANCODE_RIGHT)) {
+    if (input.isKeyDown(SDL_SCANCODE_D)) {
         velocity.setX(speed);
         m_player.get().setFlip(SDL_FLIP_NONE);
         hasInput = true;
     }
-    if (input.isKeyDown(SDL_SCANCODE_LEFT)) {
+    if (input.isKeyDown(SDL_SCANCODE_A)) {
         velocity.setX(-speed);
         m_player.get().setFlip(SDL_FLIP_HORIZONTAL);
         hasInput = true;
     }
-    if (input.isKeyDown(SDL_SCANCODE_UP)) {
+    if (input.isKeyDown(SDL_SCANCODE_W)) {
         velocity.setY(-speed);
         hasInput = true;
     }
-    if (input.isKeyDown(SDL_SCANCODE_DOWN)) {
+    if (input.isKeyDown(SDL_SCANCODE_S)) {
         velocity.setY(speed);
         hasInput = true;
     }
@@ -81,25 +83,34 @@ void PlayerRunningState::handleMovementInput(float deltaTime) {
 
     // Mouse input (lowest priority - only when no keyboard or controller input)
     if (!hasInput && input.getMouseButtonState(LEFT)) {
-        const Vector2D& mousePos = input.getMousePosition();
-        Vector2D playerPos = m_player.get().getPosition();
-        Vector2D direction = mousePos - playerPos;
+        const Vector2D& mouseScreenPos = input.getMousePosition();
 
-        if (direction.length() > 5.0f) {
-            direction.normalize();
-            velocity = direction * speed;
-            hasInput = true;
+        // Don't move player when clicking on UI elements (inventory, buttons, etc.)
+        if (!UIManager::Instance().isClickOnUI(mouseScreenPos)) {
+            const HammerEngine::Camera* camera = m_player.get().getCamera();
+            if (camera) {
+                // Convert mouse screen position to world coordinates
+                Vector2D mouseWorldPos = camera->screenToWorld(mouseScreenPos);
+                Vector2D playerPos = m_player.get().getPosition();
+                Vector2D direction = mouseWorldPos - playerPos;
 
-            if (direction.getX() > 0) {
-                m_player.get().setFlip(SDL_FLIP_NONE);
-            } else if (direction.getX() < 0) {
-                m_player.get().setFlip(SDL_FLIP_HORIZONTAL);
+                if (direction.length() > 5.0f) {
+                    direction.normalize();
+                    velocity = direction * speed;
+                    hasInput = true;
+
+                    if (direction.getX() > 0) {
+                        m_player.get().setFlip(SDL_FLIP_NONE);
+                    } else if (direction.getX() < 0) {
+                        m_player.get().setFlip(SDL_FLIP_HORIZONTAL);
+                    }
+                }
             }
         }
     }
 
     // Normalize diagonal movement for consistent speed (only if we have input)
-    if (hasInput && velocity.length() > speed) {
+    if (hasInput && velocity.lengthSquared() > speed * speed) {
         velocity.normalize();
         velocity = velocity * speed;
     }
@@ -112,7 +123,7 @@ void PlayerRunningState::handleRunningAnimation(float deltaTime) {
     Vector2D velocity = m_player.get().getVelocity();
 
     // Only animate when player is moving
-    if (velocity.length() > 1.0f) {
+    if (velocity.lengthSquared() > 1.0f) {
         // Accumulate deltaTime (m_animSpeed is in milliseconds, convert to seconds)
         float accumulator = m_player.get().getAnimationAccumulator() + deltaTime;
         float frameTime = m_player.get().getAnimSpeed() / 1000.0f;  // ms to seconds
@@ -134,11 +145,22 @@ void PlayerRunningState::handleRunningAnimation(float deltaTime) {
 bool PlayerRunningState::hasInputDetected() const {
     // Returns true if any movement input is currently active
     const InputManager& input = InputManager::Instance();
-    return (input.isKeyDown(SDL_SCANCODE_RIGHT) ||
-            input.isKeyDown(SDL_SCANCODE_LEFT) ||
-            input.isKeyDown(SDL_SCANCODE_UP) ||
-            input.isKeyDown(SDL_SCANCODE_DOWN) ||
-            input.getAxisX(0, 1) != 0 ||
-            input.getAxisY(0, 1) != 0 ||
-            input.getMouseButtonState(LEFT));
+
+    // Keyboard or controller input
+    if (input.isKeyDown(SDL_SCANCODE_D) ||
+        input.isKeyDown(SDL_SCANCODE_A) ||
+        input.isKeyDown(SDL_SCANCODE_W) ||
+        input.isKeyDown(SDL_SCANCODE_S) ||
+        input.getAxisX(0, 1) != 0 ||
+        input.getAxisY(0, 1) != 0) {
+        return true;
+    }
+
+    // Mouse input - only counts if not clicking on UI
+    if (input.getMouseButtonState(LEFT)) {
+        const Vector2D& mousePos = input.getMousePosition();
+        return !UIManager::Instance().isClickOnUI(mousePos);
+    }
+
+    return false;
 }

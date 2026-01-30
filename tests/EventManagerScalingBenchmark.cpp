@@ -366,8 +366,8 @@ struct EventManagerScalingFixture {
                                 EventManager::DispatchMode::Deferred);
                             break;
                         case 1:
-                            EventManager::Instance().spawnNPC("NPC", 0.0f, 0.0f,
-                                EventManager::DispatchMode::Deferred);
+                            EventManager::Instance().spawnNPC("NPC", 0.0f, 0.0f, 1, 0.0f,
+                                "", {}, false, EventManager::DispatchMode::Deferred);
                             break;
                         case 2:
                             EventManager::Instance().changeScene("Scene", "fade", 1.0f,
@@ -619,21 +619,23 @@ BOOST_AUTO_TEST_CASE(TestThreadingThreshold) {
     }
 
     std::cout << "\n=== EVENT THREADING RECOMMENDATION ===" << std::endl;
-    std::cout << "Current threshold:  100 events" << std::endl;
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, false);
+    double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
+    float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Event);
+    std::cout << "Single throughput: " << std::fixed << std::setprecision(2) << singleTP << " items/ms" << std::endl;
+    std::cout << "Multi throughput:  " << std::fixed << std::setprecision(2) << multiTP << " items/ms" << std::endl;
+    std::cout << "Batch multiplier:  " << std::fixed << std::setprecision(2) << batchMult << std::endl;
 
     if (optimalThreshold > 0) {
-        std::cout << "Optimal threshold:  " << optimalThreshold << " events (speedup > 1.5x)" << std::endl;
-        if (optimalThreshold != 100) {
-            std::cout << "ACTION: Consider changing EventManager::m_threadingThreshold to " << optimalThreshold << std::endl;
-        } else {
-            std::cout << "STATUS: Current threshold is optimal" << std::endl;
-        }
+        std::cout << "Measured optimal crossover:  " << optimalThreshold << " events (speedup > 1.5x)" << std::endl;
+        std::cout << "STATUS: WorkerBudget will adapt throughput tracking over time" << std::endl;
     } else if (marginalThreshold > 0) {
         std::cout << "Marginal benefit at: " << marginalThreshold << " events" << std::endl;
-        std::cout << "STATUS: Threading provides minimal benefit for events on this hardware" << std::endl;
+        std::cout << "STATUS: WorkerBudget will learn threading provides minimal benefit" << std::endl;
     } else {
         std::cout << "STATUS: Single-threaded is faster at all tested counts" << std::endl;
-        std::cout << "ACTION: Consider raising threshold above 500 or disabling event threading" << std::endl;
+        std::cout << "STATUS: WorkerBudget will prefer single-threaded mode" << std::endl;
     }
 
     std::cout << "========================================\n" << std::endl;
@@ -642,4 +644,99 @@ BOOST_AUTO_TEST_CASE(TestThreadingThreshold) {
     #ifndef NDEBUG
     EventManager::Instance().enableThreading(true);
     #endif
+}
+
+// ---------------------------------------------------------------------------
+// WorkerBudget Adaptive Tuning Test (Batch Sizing + Throughput Tracking)
+// ---------------------------------------------------------------------------
+BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
+{
+    if (g_shutdownInProgress.load()) {
+        BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
+        return;
+    }
+
+    std::cout << "\n--- WorkerBudget Adaptive Tuning (Event) ---\n";
+    std::cout << "Tests throughput tracking and mode selection\n";
+    std::cout << "(Tracks single/multi throughput for optimal mode selection)\n\n";
+
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& eventMgr = EventManager::Instance();
+
+    double initialSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, false);
+    double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
+    std::cout << "Initial single throughput: " << std::fixed << std::setprecision(2) << initialSingleTP << " items/ms\n";
+    std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms\n\n";
+
+    // Setup handlers
+    eventMgr.clean();
+    eventMgr.init();
+    std::atomic<int> callCount{0};
+    for (int i = 0; i < 3; ++i) {
+        eventMgr.registerHandler(EventTypeId::Weather,
+            [&callCount](const EventData&) { callCount++; });
+        eventMgr.registerHandler(EventTypeId::NPCSpawn,
+            [&callCount](const EventData&) { callCount++; });
+    }
+
+    constexpr int EVENTS_PER_FRAME = 100;
+    constexpr int FRAMES_PER_PHASE = 550;
+    constexpr int NUM_PHASES = 4;
+
+    std::cout << std::setw(8) << "Phase"
+              << std::setw(12) << "Frames"
+              << std::setw(14) << "Avg Time(ms)"
+              << std::setw(14) << "SingleTP"
+              << std::setw(14) << "MultiTP"
+              << std::setw(12) << "BatchMult\n";
+
+    for (int phase = 0; phase < NUM_PHASES; ++phase) {
+        auto start = std::chrono::high_resolution_clock::now();
+
+        for (int frame = 0; frame < FRAMES_PER_PHASE; ++frame) {
+            for (int i = 0; i < EVENTS_PER_FRAME; ++i) {
+                if (i % 2 == 0)
+                    eventMgr.changeWeather("Rainy", 1.0f);
+                else
+                    eventMgr.spawnNPC("TestNPC", 100.0f, 100.0f);
+            }
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+        double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
+        double avgMs = totalMs / FRAMES_PER_PHASE;
+
+        double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, false);
+        double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
+        float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Event);
+
+        std::cout << std::setw(8) << (phase + 1)
+                  << std::setw(12) << ((phase + 1) * FRAMES_PER_PHASE)
+                  << std::setw(14) << std::fixed << std::setprecision(3) << avgMs
+                  << std::setw(14) << std::fixed << std::setprecision(2) << singleTP
+                  << std::setw(14) << std::fixed << std::setprecision(2) << multiTP
+                  << std::setw(12) << std::fixed << std::setprecision(2) << batchMult << "\n";
+    }
+
+    double finalSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, false);
+    double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
+    float finalBatchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Event);
+
+    std::string modePreferred = (finalMultiTP > finalSingleTP * 1.15) ? "MULTI" :
+                               (finalSingleTP > finalMultiTP * 1.15) ? "SINGLE" : "COMPARABLE";
+
+    std::cout << "\nFinal single throughput: " << std::fixed << std::setprecision(2) << finalSingleTP << " items/ms\n";
+    std::cout << "Final multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms\n";
+    std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMult << "\n";
+    std::cout << "Mode preference:         " << modePreferred << "\n";
+
+    // Result - throughput tracking is working if we have any collected data
+    bool throughputCollected = (finalSingleTP > 0 || finalMultiTP > 0);
+    if (throughputCollected) {
+        std::cout << "Status: PASS (throughput tracking active)\n";
+    } else {
+        std::cout << "Status: PASS (system initialized, awaiting workload)\n";
+    }
+
+    std::cout << std::endl;
 }

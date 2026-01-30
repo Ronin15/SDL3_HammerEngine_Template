@@ -6,10 +6,9 @@
 #define BOOST_TEST_MODULE ResourceEdgeCaseTests
 #include <boost/test/unit_test.hpp>
 
-#include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "entities/Resource.hpp"
-#include "entities/resources/InventoryComponent.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/WorldResourceManager.hpp"
@@ -18,7 +17,6 @@
 #include <atomic>
 #include <chrono>
 #include <future>
-#include <limits>
 #include <memory>
 #include <random>
 #include <set>
@@ -28,6 +26,7 @@ using HammerEngine::ResourceHandle;
 
 struct ResourceEdgeCaseFixture {
   ResourceTemplateManager *templateManager;
+  EntityDataManager *entityDataManager;
   WorldResourceManager *worldManager;
   HammerEngine::ThreadSystem *threadSystem;
 
@@ -43,20 +42,23 @@ struct ResourceEdgeCaseFixture {
     }
 
     templateManager = &ResourceTemplateManager::Instance();
+    entityDataManager = &EntityDataManager::Instance();
     worldManager = &WorldResourceManager::Instance();
 
     // Clean and reinitialize managers
     templateManager->clean();
+    entityDataManager->clean();
     worldManager->clean();
 
     BOOST_REQUIRE(templateManager->init());
+    BOOST_REQUIRE(entityDataManager->init());
     BOOST_REQUIRE(worldManager->init());
   }
 
   ~ResourceEdgeCaseFixture() {
     worldManager->clean();
+    entityDataManager->clean();
     templateManager->clean();
-    // Note: Don't clean ThreadSystem here as it's shared across tests
   }
 
   ResourcePtr
@@ -64,7 +66,7 @@ struct ResourceEdgeCaseFixture {
                      ResourceCategory category = ResourceCategory::Material,
                      ResourceType type = ResourceType::RawResource) {
     auto handle = templateManager->generateHandle();
-    std::string id = "test_" + name; // Use test_ prefix for ID
+    std::string id = "test_" + name;
     return std::make_shared<Resource>(handle, id, name, category, type);
   }
 };
@@ -107,11 +109,12 @@ BOOST_AUTO_TEST_CASE(TestStaleHandleDetection) {
 
   // Verify stale handle is detected
   BOOST_CHECK(templateManager->getResourceTemplate(handle) == nullptr);
+
   // Test operations with stale handle
   auto newResource = createTestResource("NewResource");
   auto newHandle = newResource->getHandle();
 
-  // Verify new handle is different from stale one (avoid direct comparison)
+  // Verify new handle is different from stale one
   BOOST_CHECK(handle.getId() != newHandle.getId() ||
               handle.getGeneration() != newHandle.getGeneration());
 }
@@ -127,22 +130,20 @@ BOOST_AUTO_TEST_CASE(TestInvalidHandleOperations) {
   // Test operations with invalid handle
   BOOST_CHECK(templateManager->getResourceTemplate(invalidHandle) == nullptr);
 
-  // Test world manager operations with default world
-  auto defaultWorldId = WorldResourceManager::WorldId("default");
-  worldManager->createWorld(defaultWorldId);
+  // Test EDM inventory operations with invalid handle (should fail gracefully)
+  uint32_t invIndex = entityDataManager->createInventory(10, true);
+  BOOST_REQUIRE(invIndex != INVALID_INVENTORY_INDEX);
 
-  BOOST_CHECK(!worldManager->hasResource(defaultWorldId, invalidHandle));
-  BOOST_CHECK_EQUAL(
-      worldManager->getResourceQuantity(defaultWorldId, invalidHandle), 0);
+  // Adding invalid resource should fail
+  bool added = entityDataManager->addToInventory(invIndex, invalidHandle, 100);
+  BOOST_CHECK(!added);
 
-  // Test transaction operations with invalid handle (should be safe)
-  auto addResult =
-      worldManager->addResource(defaultWorldId, invalidHandle, 100);
-  BOOST_CHECK(addResult == ResourceTransactionResult::InvalidResourceHandle);
+  // Query with invalid handle should return 0
+  int qty = entityDataManager->getInventoryQuantity(invIndex, invalidHandle);
+  BOOST_CHECK_EQUAL(qty, 0);
 
-  auto removeResult =
-      worldManager->removeResource(defaultWorldId, invalidHandle, 25);
-  BOOST_CHECK(removeResult == ResourceTransactionResult::InvalidResourceHandle);
+  // Cleanup
+  entityDataManager->destroyInventory(invIndex);
 }
 
 //==============================================================================
@@ -165,8 +166,6 @@ BOOST_AUTO_TEST_CASE(TestConcurrentHandleGeneration) {
 
           for (int i = 0; i < HANDLES_PER_THREAD; ++i) {
             auto handle = templateManager->generateHandle();
-            // Validate handles after threads complete to avoid
-            // multithreaded Boost test assertions
             threadHandles.push_back(handle);
           }
           return threadHandles;
@@ -186,8 +185,8 @@ BOOST_AUTO_TEST_CASE(TestConcurrentHandleGeneration) {
   // Process any events generated during handle creation
   EventManager::Instance().update();
 
-  // Validate all handles are valid (done on main thread after all threads complete)
-  for (const auto& handle : allHandles) {
+  // Validate all handles are valid
+  for (const auto &handle : allHandles) {
     BOOST_CHECK(handle.isValid());
   }
 
@@ -196,7 +195,7 @@ BOOST_AUTO_TEST_CASE(TestConcurrentHandleGeneration) {
   BOOST_CHECK_EQUAL(uniqueHandles.size(), allHandles.size());
 }
 
-BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
+BOOST_AUTO_TEST_CASE(TestConcurrentInventoryOperations) {
   // Create test resources
   auto goldResource = createTestResource("ConcurrentGold");
   auto silverResource = createTestResource("ConcurrentSilver");
@@ -207,14 +206,13 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
   auto goldHandle = goldResource->getHandle();
   auto silverHandle = silverResource->getHandle();
 
-  // Create test world
-  auto worldId = WorldResourceManager::WorldId("concurrent_test");
-  worldManager->createWorld(worldId);
+  // Create EDM inventory with initial resources
+  uint32_t invIndex = entityDataManager->createInventory(100, true);
+  BOOST_REQUIRE(invIndex != INVALID_INVENTORY_INDEX);
+
   // Set initial quantities
-  BOOST_REQUIRE(worldManager->setResource(worldId, goldHandle, 1000) ==
-                ResourceTransactionResult::Success);
-  BOOST_REQUIRE(worldManager->setResource(worldId, silverHandle, 2000) ==
-                ResourceTransactionResult::Success);
+  BOOST_REQUIRE(entityDataManager->addToInventory(invIndex, goldHandle, 1000));
+  BOOST_REQUIRE(entityDataManager->addToInventory(invIndex, silverHandle, 2000));
 
   const int NUM_THREADS = 4;
   const int OPERATIONS_PER_THREAD = 100;
@@ -239,23 +237,20 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
 
             if (operationDist(gen) == 0) {
               // Add operation
-              if (worldManager->addResource(worldId, handle, amount) ==
-                  ResourceTransactionResult::Success) {
+              if (entityDataManager->addToInventory(invIndex, handle, amount)) {
                 totalAdded.fetch_add(amount, std::memory_order_relaxed);
               }
             } else {
               // Remove operation
-              if (worldManager->removeResource(worldId, handle, amount) ==
-                  ResourceTransactionResult::Success) {
+              if (entityDataManager->removeFromInventory(invIndex, handle, amount)) {
                 totalRemoved.fetch_add(amount, std::memory_order_relaxed);
               }
             }
 
-            // Small delay to increase chance of race conditions
             std::this_thread::sleep_for(std::chrono::microseconds(1));
           }
         },
-        HammerEngine::TaskPriority::Normal, "ConcurrentResourceOpsTask");
+        HammerEngine::TaskPriority::Normal, "ConcurrentInventoryOpsTask");
 
     futures.push_back(std::move(future));
   }
@@ -266,8 +261,8 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
   }
 
   // Verify final state is consistent
-  auto finalGold = worldManager->getResourceQuantity(worldId, goldHandle);
-  auto finalSilver = worldManager->getResourceQuantity(worldId, silverHandle);
+  auto finalGold = entityDataManager->getInventoryQuantity(invIndex, goldHandle);
+  auto finalSilver = entityDataManager->getInventoryQuantity(invIndex, silverHandle);
 
   BOOST_CHECK_GE(finalGold, 0);
   BOOST_CHECK_GE(finalSilver, 0);
@@ -277,6 +272,9 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
   auto actualTotal = finalGold + finalSilver;
 
   BOOST_CHECK_EQUAL(actualTotal, expectedTotal);
+
+  // Cleanup
+  entityDataManager->destroyInventory(invIndex);
 }
 
 //==============================================================================
@@ -313,38 +311,39 @@ BOOST_AUTO_TEST_CASE(TestLargeNumberOfResources) {
 
 BOOST_AUTO_TEST_CASE(TestExtremeQuantityValues) {
   auto resource = createTestResource("ExtremeQuantityTest");
+  // Set a known max stack size for predictable capacity testing
+  resource->setMaxStackSize(100);
   BOOST_REQUIRE(templateManager->registerResourceTemplate(resource));
 
   auto handle = resource->getHandle();
-  auto worldId = WorldResourceManager::WorldId("extreme_test");
-  worldManager->createWorld(worldId);
-  // Test maximum safe values
-  const uint64_t MAX_SAFE_QUANTITY = std::numeric_limits<uint64_t>::max() / 2;
-  const uint64_t NEAR_MAX_QUANTITY =
-      std::numeric_limits<uint64_t>::max() - 1000;
 
-  // Test setting large quantities
-  auto setResult =
-      worldManager->setResource(worldId, handle, MAX_SAFE_QUANTITY);
-  BOOST_CHECK(setResult == ResourceTransactionResult::Success);
-  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(worldId, handle),
-                    MAX_SAFE_QUANTITY);
+  // Create inventory with 100 slots
+  const uint16_t SLOT_COUNT = 100;
+  uint32_t invIndex = entityDataManager->createInventory(SLOT_COUNT, true);
+  BOOST_REQUIRE(invIndex != INVALID_INVENTORY_INDEX);
 
-  // Test overflow protection
-  auto addResult =
-      worldManager->addResource(worldId, handle, NEAR_MAX_QUANTITY);
-  BOOST_CHECK(addResult !=
-              ResourceTransactionResult::Success); // Should fail due to
-                                                   // overflow protection
+  // Calculate expected capacity: slots * maxStackSize
+  const int MAX_STACK = 100;
+  const int MAX_CAPACITY = SLOT_COUNT * MAX_STACK;  // 10,000 items
 
-  // Test underflow protection
-  worldManager->setResource(worldId, handle, 100);
-  auto removeResult = worldManager->removeResource(worldId, handle, 200);
-  BOOST_CHECK(removeResult !=
-              ResourceTransactionResult::Success); // Should fail due to
-                                                   // underflow protection
-  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(worldId, handle),
-                    100); // Quantity should remain unchanged
+  // Test adding up to capacity
+  bool added = entityDataManager->addToInventory(invIndex, handle, MAX_CAPACITY);
+  BOOST_CHECK(added);
+  BOOST_CHECK_EQUAL(entityDataManager->getInventoryQuantity(invIndex, handle),
+                    MAX_CAPACITY);
+
+  // Test adding beyond capacity fails
+  bool addedBeyond = entityDataManager->addToInventory(invIndex, handle, 1);
+  BOOST_CHECK(!addedBeyond);  // Should fail - inventory full
+
+  // Test underflow protection - removing more than available
+  bool removed = entityDataManager->removeFromInventory(invIndex, handle, MAX_CAPACITY + 100);
+  BOOST_CHECK(!removed);  // Should fail
+  BOOST_CHECK_EQUAL(entityDataManager->getInventoryQuantity(invIndex, handle),
+                    MAX_CAPACITY);  // Unchanged
+
+  // Cleanup
+  entityDataManager->destroyInventory(invIndex);
 }
 
 //==============================================================================
@@ -359,8 +358,7 @@ BOOST_AUTO_TEST_CASE(TestNullPointerHandling) {
   auto resource = createTestResource("NullTest");
   auto handle = resource->getHandle();
 
-  // These operations should handle null gracefully (implementation dependent)
-  // Main goal is to ensure no crashes occur
+  // These operations should handle null gracefully
   BOOST_CHECK_NO_THROW(templateManager->getResourceTemplate(handle));
 }
 
@@ -376,8 +374,7 @@ BOOST_AUTO_TEST_CASE(TestEmptyStringHandling) {
 
 BOOST_AUTO_TEST_CASE(TestDuplicateResourceHandling) {
   auto resource1 = createTestResource("DuplicateTest");
-  auto resource2 =
-      createTestResource("DuplicateTest"); // Same name, different handle
+  auto resource2 = createTestResource("DuplicateTest"); // Same name, different handle
 
   BOOST_CHECK(templateManager->registerResourceTemplate(resource1));
   // Second registration should fail due to duplicate name enforcement
@@ -401,8 +398,11 @@ BOOST_AUTO_TEST_CASE(TestRapidOperationSequences) {
   BOOST_REQUIRE(templateManager->registerResourceTemplate(resource));
 
   auto handle = resource->getHandle();
-  auto worldId = WorldResourceManager::WorldId("rapid_test");
-  worldManager->createWorld(worldId);
+
+  // Create EDM inventory
+  uint32_t invIndex = entityDataManager->createInventory(100, true);
+  BOOST_REQUIRE(invIndex != INVALID_INVENTORY_INDEX);
+
   const int RAPID_OPERATIONS = 10000;
 
   // Enable benchmark mode to disable debug logging during performance test
@@ -412,8 +412,8 @@ BOOST_AUTO_TEST_CASE(TestRapidOperationSequences) {
 
   // Perform rapid add/remove sequences
   for (int i = 0; i < RAPID_OPERATIONS; ++i) {
-    worldManager->addResource(worldId, handle, 1);
-    worldManager->removeResource(worldId, handle, 1);
+    entityDataManager->addToInventory(invIndex, handle, 1);
+    entityDataManager->removeFromInventory(invIndex, handle, 1);
   }
 
   // Process all deferred events before measuring end time
@@ -427,13 +427,14 @@ BOOST_AUTO_TEST_CASE(TestRapidOperationSequences) {
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
       endTime - startTime);
 
-  // Should complete in reasonable time (restored original expectation of 1
-  // second) EventManager is designed for high performance with automatic
-  // threading and batching
+  // Should complete in reasonable time
   BOOST_CHECK_LT(duration.count(), 1000);
 
   // Final quantity should be 0
-  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(worldId, handle), 0);
+  BOOST_CHECK_EQUAL(entityDataManager->getInventoryQuantity(invIndex, handle), 0);
+
+  // Cleanup
+  entityDataManager->destroyInventory(invIndex);
 }
 
 BOOST_AUTO_TEST_CASE(TestHighFrequencyCallbacks) {
@@ -441,27 +442,26 @@ BOOST_AUTO_TEST_CASE(TestHighFrequencyCallbacks) {
   BOOST_REQUIRE(templateManager->registerResourceTemplate(resource));
 
   auto handle = resource->getHandle();
-  std::atomic<int> callbackCount{0};
-  const int EXPECTED_CALLBACKS = 1000;
+  const int EXPECTED_OPERATIONS = 1000;
 
-  // Create inventory component with callback
-  InventoryComponent inventory;
-  inventory.setResourceChangeCallback(
-      [&callbackCount](const ResourceHandle &, uint64_t, uint64_t) {
-        callbackCount.fetch_add(1);
-      });
+  // Create EDM inventory
+  uint32_t invIndex = entityDataManager->createInventory(100, true);
+  BOOST_REQUIRE(invIndex != INVALID_INVENTORY_INDEX);
 
-  // Perform operations that trigger callbacks
-  for (int i = 0; i < EXPECTED_CALLBACKS; ++i) {
-    inventory.addResource(handle, 1);
-    inventory.removeResource(handle, 1);
+  // Perform operations that would trigger callbacks
+  for (int i = 0; i < EXPECTED_OPERATIONS; ++i) {
+    entityDataManager->addToInventory(invIndex, handle, 1);
+    entityDataManager->removeFromInventory(invIndex, handle, 1);
   }
 
   // Allow time for any asynchronous callback processing
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-  // Verify callbacks were triggered (exact count depends on implementation)
-  BOOST_CHECK_GT(callbackCount.load(), 0);
+  // Verify final state is consistent
+  BOOST_CHECK_EQUAL(entityDataManager->getInventoryQuantity(invIndex, handle), 0);
+
+  // Cleanup
+  entityDataManager->destroyInventory(invIndex);
 }
 
 //==============================================================================
@@ -474,16 +474,19 @@ BOOST_AUTO_TEST_CASE(TestManagerShutdownAndReinit) {
   BOOST_REQUIRE(templateManager->registerResourceTemplate(resource));
 
   auto handle = resource->getHandle();
-  auto worldId = WorldResourceManager::WorldId("shutdown_test");
-  worldManager->createWorld(worldId);
-  worldManager->setResource(worldId, handle, 500);
+
+  // Create EDM inventory
+  uint32_t invIndex = entityDataManager->createInventory(10, true);
+  BOOST_REQUIRE(invIndex != INVALID_INVENTORY_INDEX);
+  entityDataManager->addToInventory(invIndex, handle, 500);
 
   // Verify initial state
-  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(worldId, handle), 500);
+  BOOST_CHECK_EQUAL(entityDataManager->getInventoryQuantity(invIndex, handle), 500);
   BOOST_CHECK_GT(templateManager->getResourceTemplateCount(), 0);
 
   // Shutdown managers
   worldManager->clean();
+  entityDataManager->clean();
   templateManager->clean();
 
   // Verify shutdown state
@@ -492,59 +495,59 @@ BOOST_AUTO_TEST_CASE(TestManagerShutdownAndReinit) {
 
   // Reinitialize
   BOOST_REQUIRE(templateManager->init());
+  BOOST_REQUIRE(entityDataManager->init());
   BOOST_REQUIRE(worldManager->init());
 
   // Verify clean reinitialization
   BOOST_CHECK(templateManager->isInitialized());
-  BOOST_CHECK_GT(templateManager->getResourceTemplateCount(),
-                 0); // Default resources loaded
+  BOOST_CHECK_GT(templateManager->getResourceTemplateCount(), 0); // Default resources loaded
 
   // Original resource should be gone
   BOOST_CHECK(templateManager->getResourceTemplate(handle) == nullptr);
-  worldManager->createWorld(worldId); // Recreate world
-  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(worldId, handle), 0);
 }
 
 BOOST_AUTO_TEST_CASE(TestCrossManagerConsistency) {
-  // Test consistency between template and world managers
+  // Test consistency between template and EDM
   auto resource = createTestResource("ConsistencyTest");
   auto handle = resource->getHandle();
-  auto worldId = WorldResourceManager::WorldId("consistency_test");
 
   // Add to template manager only
   BOOST_REQUIRE(templateManager->registerResourceTemplate(resource));
   BOOST_CHECK(templateManager->getResourceTemplate(handle) != nullptr);
 
-  worldManager->createWorld(worldId);
-  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(worldId, handle), 0);
+  // Create EDM inventory
+  uint32_t invIndex = entityDataManager->createInventory(10, true);
+  BOOST_REQUIRE(invIndex != INVALID_INVENTORY_INDEX);
 
-  // Add quantity to world manager
-  auto addResult = worldManager->addResource(worldId, handle, 100);
-  BOOST_CHECK(addResult == ResourceTransactionResult::Success);
-  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(worldId, handle), 100);
+  // Initially no quantity
+  BOOST_CHECK_EQUAL(entityDataManager->getInventoryQuantity(invIndex, handle), 0);
 
-  // Allow EventManager to process any deferred events from the add operation
+  // Add quantity to inventory
+  bool added = entityDataManager->addToInventory(invIndex, handle, 100);
+  BOOST_CHECK(added);
+  BOOST_CHECK_EQUAL(entityDataManager->getInventoryQuantity(invIndex, handle), 100);
+
+  // Allow EventManager to process any deferred events
   EventManager::Instance().update();
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  // Remove from template manager (world quantities should remain)
+  // Remove from template manager
   templateManager->removeResourceTemplate(handle);
   BOOST_CHECK(templateManager->getResourceTemplate(handle) == nullptr);
-  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(worldId, handle),
-                    100); // World data persists
 
-  // Allow EventManager to process any deferred events from the template removal
+  // Inventory quantity should still exist (EDM doesn't depend on template for existing data)
+  BOOST_CHECK_EQUAL(entityDataManager->getInventoryQuantity(invIndex, handle), 100);
+
+  // Allow EventManager to process any deferred events
   EventManager::Instance().update();
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  // Operations on orphaned world data should fail
-  auto addResult2 = worldManager->addResource(worldId, handle, 50);
-  BOOST_CHECK(addResult2 == ResourceTransactionResult::InvalidResourceHandle);
-  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(worldId, handle), 100);
+  // Operations on orphaned handle should fail (template doesn't exist)
+  bool added2 = entityDataManager->addToInventory(invIndex, handle, 50);
+  BOOST_CHECK(!added2);  // Should fail - resource template doesn't exist
 
-  // Final event processing to ensure clean state
-  EventManager::Instance().update();
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  // Cleanup
+  entityDataManager->destroyInventory(invIndex);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

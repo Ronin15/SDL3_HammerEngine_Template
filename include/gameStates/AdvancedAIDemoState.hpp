@@ -8,24 +8,28 @@
 
 #include "gameStates/GameState.hpp"
 #include "controllers/ControllerRegistry.hpp"
-#include "entities/NPC.hpp"
+#include "controllers/render/NPCRenderController.hpp"
+#include "entities/EntityHandle.hpp"
 #include "entities/Player.hpp"
 #include "utils/Camera.hpp"
+#include "utils/WorldRenderPipeline.hpp"
 
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 // Forward declarations with smart pointer types
-class NPC;
-using NPCPtr = std::shared_ptr<NPC>;
-
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
+#ifdef USE_SDL3_GPU
+namespace HammerEngine {
+class GPUSceneRenderer;
+}
+#endif
+
 class AdvancedAIDemoState : public GameState {
 public:
-
+    AdvancedAIDemoState();  // Defined in .cpp for unique_ptr with forward-declared types
     ~AdvancedAIDemoState() override;
 
     void update(float deltaTime) override;
@@ -37,6 +41,18 @@ public:
 
     std::string getName() const override { return "AdvancedAIDemoState"; }
 
+#ifdef USE_SDL3_GPU
+    // GPU rendering support
+    void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                           float interpolationAlpha) override;
+    void renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+                        SDL_GPURenderPass* scenePass,
+                        float interpolationAlpha) override;
+    void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+                     SDL_GPURenderPass* swapchainPass) override;
+    bool supportsGPURendering() const override { return true; }
+#endif
+
     // Get the player entity for AI behaviors to access
     EntityPtr getPlayer() const { return m_player; }
 
@@ -47,11 +63,20 @@ private:
     void initializeCamera();
     void updateCamera(float deltaTime);
 
-    // Members - stored by handle ID for O(1) lookup
-    std::unordered_map<uint32_t, NPCPtr> m_npcsById{};
-    std::vector<NPCPtr> m_npcsByEdmIndex{};
+    // Data-driven NPC rendering (velocity-based animation)
+    NPCRenderController m_npcRenderCtrl{};
+
+    // Player entity
     PlayerPtr m_player{};
     std::unique_ptr<HammerEngine::Camera> m_camera;
+
+    // World render pipeline for coordinated chunk management and scene rendering
+    std::unique_ptr<HammerEngine::WorldRenderPipeline> m_renderPipeline{nullptr};
+
+#ifdef USE_SDL3_GPU
+    // GPU scene renderer for coordinated GPU rendering
+    std::unique_ptr<HammerEngine::GPUSceneRenderer> m_gpuSceneRenderer{nullptr};
+#endif
 
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
 
@@ -87,12 +112,12 @@ private:
 
     // Status display optimization - zero per-frame allocations (C++20 type-safe)
     std::string m_statusBuffer{};
-    int m_lastDisplayedFPS{-1};
+    float m_lastDisplayedFPS{-1.0f};
     size_t m_lastDisplayedNPCCount{0};
     bool m_lastDisplayedPauseState{false};
 
-    // Render scale caching - avoid GPU state changes when zoom unchanged
-    float m_lastRenderedZoom{1.0f};
+    // Cached NPC count (updated in update(), used in render())
+    size_t m_cachedNPCCount{0};
 };
 
 #endif // ADVANCED_AI_DEMO_STATE_HPP

@@ -23,7 +23,7 @@
 #include "managers/EventManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "core/ThreadSystem.hpp"
-#include "entities/NPC.hpp"
+#include "entities/EntityHandle.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "utils/Vector2D.hpp"
@@ -47,31 +47,29 @@
  * - PathfinderManager (pathfinding with collision-aware grids)
  */
 
-// Test entity with collision tracking
-// Note: We use the NPC factory method which auto-generates IDs
-// For testing, we track entities by position rather than forcing specific IDs
-class CollisionTestEntity : public NPC {
-public:
-    CollisionTestEntity(const Vector2D& pos)
-        : NPC("test_texture", pos, 32, 32)
-    {
-        setWidth(32);
-        setHeight(32);
+// Data-driven test entity helper
+// Creates entities via EntityDataManager for collision testing
+struct TestEntityHelper {
+    // Create a data-driven NPC for testing
+    static EntityHandle createTestEntity(const Vector2D& pos) {
+        auto& edm = EntityDataManager::Instance();
+        return edm.createNPCWithRaceClass(pos, "Human", "Guard");
     }
 
-    static std::shared_ptr<CollisionTestEntity> create(const Vector2D& pos) {
-        return std::make_shared<CollisionTestEntity>(pos);
+    // Get entity position from EDM
+    static Vector2D getPosition(EntityHandle handle) {
+        auto& edm = EntityDataManager::Instance();
+        size_t idx = edm.getIndex(handle);
+        if (idx != SIZE_MAX) {
+            return edm.getHotDataByIndex(idx).transform.position;
+        }
+        return Vector2D(0, 0);
     }
 
-    void update(float deltaTime) override {
-        m_updateCount++;
-        NPC::update(deltaTime);
+    // Get entity ID from handle
+    static EntityID getID(EntityHandle handle) {
+        return handle.getId();
     }
-
-    int getUpdateCount() const { return m_updateCount.load(); }
-
-private:
-    std::atomic<int> m_updateCount{0};
 };
 
 // Collision query tracker - monitors CollisionManager spatial queries
@@ -189,7 +187,7 @@ struct AICollisionTestFixture {
         // Set fixed RNG seed for reproducibility
         m_rng.seed(42);
 
-        m_entities.clear();
+        m_entityHandles.clear();
         m_queryTracker.reset();
     }
 
@@ -197,13 +195,13 @@ struct AICollisionTestFixture {
         std::cout << "--- Test Teardown ---" << std::endl;
 
         // Clean up entities
-        for (auto& entity : m_entities) {
-            if (entity) {
-                AIManager::Instance().unregisterEntity(entity->getHandle());
-                AIManager::Instance().unassignBehavior(entity->getHandle());
+        for (auto& handle : m_entityHandles) {
+            if (handle.isValid()) {
+                AIManager::Instance().unregisterEntity(handle);
+                AIManager::Instance().unassignBehavior(handle);
             }
         }
-        m_entities.clear();
+        m_entityHandles.clear();
 
         // Prepare for next test
         AIManager::Instance().prepareForStateTransition();
@@ -213,15 +211,14 @@ struct AICollisionTestFixture {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
-    // Helper: Create entity with collision body
-    std::shared_ptr<CollisionTestEntity> createEntity(const Vector2D& pos) {
-        auto entity = CollisionTestEntity::create(pos);
-        m_entities.push_back(entity);
+    // Helper: Create entity with collision body (data-driven)
+    EntityHandle createEntity(const Vector2D& pos) {
+        EntityHandle handle = TestEntityHelper::createTestEntity(pos);
+        m_entityHandles.push_back(handle);
 
-        // EDM-CENTRIC: Entity is already registered with EDM via NPC constructor
-        // Just set collision layers on EDM hot data
+        // Set collision layers on EDM hot data
         auto& edm = EntityDataManager::Instance();
-        size_t idx = edm.getIndex(entity->getHandle());
+        size_t idx = edm.getIndex(handle);
         if (idx != SIZE_MAX) {
             auto& hot = edm.getHotDataByIndex(idx);
             hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Default;
@@ -229,7 +226,7 @@ struct AICollisionTestFixture {
             hot.setCollisionEnabled(true);
         }
 
-        return entity;
+        return handle;
     }
 
     // Helper: Create static obstacle with proper EDM routing
@@ -288,7 +285,7 @@ struct AICollisionTestFixture {
     }
 
     std::mt19937 m_rng;
-    std::vector<std::shared_ptr<CollisionTestEntity>> m_entities;
+    std::vector<EntityHandle> m_entityHandles;
     std::vector<EntityID> m_obstacleIds;
     CollisionQueryTracker m_queryTracker;
 };
@@ -396,7 +393,7 @@ BOOST_AUTO_TEST_CASE(TestAINavigatesObstacleField) {
         // Register behavior
         std::string behaviorName = "WanderBehavior_" + std::to_string(i);
         AIManager::Instance().registerBehavior(behaviorName, behavior);
-        AIManager::Instance().registerEntity(entity->getHandle(), behaviorName);
+        AIManager::Instance().registerEntity(entity, behaviorName);
     }
 
     // Process collision commands for entities
@@ -412,8 +409,8 @@ BOOST_AUTO_TEST_CASE(TestAINavigatesObstacleField) {
 
     // VERIFICATION: Check that entities are NOT overlapping obstacles
     int entitiesOverlappingObstacles = 0;
-    for (const auto& entity : m_entities) {
-        EntityID entityId = entity->getID();
+    for (const auto& handle : m_entityHandles) {
+        EntityID entityId = handle.getId();
         if (isEntityOverlappingObstacles(entityId)) {
             entitiesOverlappingObstacles++;
             std::cout << "FAILURE: Entity " << entityId << " is overlapping an obstacle!" << std::endl;
@@ -474,7 +471,7 @@ BOOST_AUTO_TEST_CASE(TestAISeparationForces) {
 
         std::string behaviorName = "SeparationBehavior_" + std::to_string(i);
         AIManager::Instance().registerBehavior(behaviorName, behavior);
-        AIManager::Instance().registerEntity(entity->getHandle(), behaviorName);
+        AIManager::Instance().registerEntity(entity, behaviorName);
     }
 
     // Process collision commands
@@ -506,13 +503,13 @@ BOOST_AUTO_TEST_CASE(TestAISeparationForces) {
     int overlappingPairs = 0;
     int tooClosePairs = 0;
 
-    for (size_t i = 0; i < m_entities.size(); ++i) {
-        for (size_t j = i + 1; j < m_entities.size(); ++j) {
-            EntityID id1 = m_entities[i]->getID();
-            EntityID id2 = m_entities[j]->getID();
+    for (size_t i = 0; i < m_entityHandles.size(); ++i) {
+        for (size_t j = i + 1; j < m_entityHandles.size(); ++j) {
+            EntityID id1 = m_entityHandles[i].getId();
+            EntityID id2 = m_entityHandles[j].getId();
 
-            Vector2D pos1 = m_entities[i]->getPosition();
-            Vector2D pos2 = m_entities[j]->getPosition();
+            Vector2D pos1 = TestEntityHelper::getPosition(m_entityHandles[i]);
+            Vector2D pos2 = TestEntityHelper::getPosition(m_entityHandles[j]);
 
             float distance = (pos2 - pos1).length();
 
@@ -623,7 +620,7 @@ BOOST_AUTO_TEST_CASE(TestAIBoundaryAvoidance) {
 
         std::string behaviorName = "BoundaryBehavior_" + std::to_string(i);
         AIManager::Instance().registerBehavior(behaviorName, behavior);
-        AIManager::Instance().registerEntity(entity->getHandle(), behaviorName);
+        AIManager::Instance().registerEntity(entity, behaviorName);
     }
 
 
@@ -637,8 +634,8 @@ BOOST_AUTO_TEST_CASE(TestAIBoundaryAvoidance) {
     const float TOLERANCE = 50.0f; // Allow entities near boundary
 
     int entitiesOutOfBounds = 0;
-    for (const auto& entity : m_entities) {
-        Vector2D pos = entity->getPosition();
+    for (const auto& handle : m_entityHandles) {
+        Vector2D pos = TestEntityHelper::getPosition(handle);
 
         if (pos.getX() < WORLD_MIN_X - TOLERANCE ||
             pos.getX() > WORLD_MAX_X + TOLERANCE ||
@@ -646,7 +643,7 @@ BOOST_AUTO_TEST_CASE(TestAIBoundaryAvoidance) {
             pos.getY() > WORLD_MAX_Y + TOLERANCE) {
 
             entitiesOutOfBounds++;
-            std::cout << "FAILURE: Entity " << entity->getID() << " out of bounds at ("
+            std::cout << "FAILURE: Entity " << handle.getId() << " out of bounds at ("
                       << pos.getX() << ", " << pos.getY() << ")" << std::endl;
         }
     }
@@ -692,7 +689,7 @@ BOOST_AUTO_TEST_CASE(TestAICollisionPerformanceUnderLoad) {
 
         std::string behaviorName = "LoadTestBehavior_" + std::to_string(i);
         AIManager::Instance().registerBehavior(behaviorName, behavior);
-        AIManager::Instance().registerEntity(entity->getHandle(), behaviorName);
+        AIManager::Instance().registerEntity(entity, behaviorName);
     }
 
 

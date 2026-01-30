@@ -14,9 +14,10 @@
 #include <thread>
 #include <vector>
 
-#include "../mocks/MockPlayer.hpp"
+#include "entities/EntityHandle.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
+#include "collisions/CollisionInfo.hpp"
 #include "events/Event.hpp"
 #include "events/ParticleEffectEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
@@ -26,6 +27,9 @@
 #include "managers/EntityDataManager.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "EventManagerTestAccess.hpp"
+
+// Test handle for ResourceChangeEvent tests - no real entity needed
+static const EntityHandle TEST_PLAYER_HANDLE{1, EntityKind::Player, 1};
 
 // Mock Event class for testing
 class MockEvent : public Event {
@@ -312,7 +316,7 @@ BOOST_FIXTURE_TEST_CASE(ConvenienceMethods, EventManagerFixture) {
   // Test trigger aliases with immediate dispatch - should return true when handlers are registered
   BOOST_CHECK(EventManager::Instance().changeWeather("Stormy", 2.0f, EventManager::DispatchMode::Immediate));
   BOOST_CHECK(EventManager::Instance().changeScene("NewScene", "dissolve", 1.0f, EventManager::DispatchMode::Immediate));
-  BOOST_CHECK(EventManager::Instance().spawnNPC("Villager", 100.0f, 200.0f, EventManager::DispatchMode::Immediate));
+  BOOST_CHECK(EventManager::Instance().spawnNPC("Villager", 100.0f, 200.0f, 1, 0.0f, "", {}, false, EventManager::DispatchMode::Immediate));
 
   // Verify handlers were called immediately
   BOOST_CHECK(weatherHandlerCalled);
@@ -401,7 +405,7 @@ BOOST_FIXTURE_TEST_CASE(NPCSpawnEvents, EventManagerFixture) {
       });
 
   // Test NPC spawn trigger
-  EventManager::Instance().spawnNPC("Guard", 100.0f, 200.0f, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().spawnNPC("Guard", 100.0f, 200.0f, 1, 0.0f, "", {}, false, EventManager::DispatchMode::Immediate);
 
   BOOST_CHECK(handlerCalled);
 }
@@ -882,16 +886,12 @@ BOOST_FIXTURE_TEST_CASE(ConcurrentPriorityTest, EventManagerFixture) {
 
 // Test ResourceChangeEvent creation and registration
 BOOST_FIXTURE_TEST_CASE(ResourceChangeEventCreation, EventManagerFixture) {
-  // Create a mock player entity for testing
-  auto player = std::make_shared<MockPlayer>();
-  BOOST_REQUIRE(player != nullptr);
-
   // Create a resource handle for testing (ID, Generation)
   HammerEngine::ResourceHandle testResource(1, 1);
 
   // Create a ResourceChangeEvent
   auto resourceEvent = std::make_shared<ResourceChangeEvent>(
-      player, testResource, 5, 10, "crafted");
+      TEST_PLAYER_HANDLE, testResource, 5, 10, "crafted");
 
   BOOST_REQUIRE(resourceEvent != nullptr);
 
@@ -923,11 +923,10 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventCreation, EventManagerFixture) {
 
 // Test ResourceChangeEvent convenience methods for different scenarios
 BOOST_FIXTURE_TEST_CASE(ResourceChangeEventScenarios, EventManagerFixture) {
-  auto player = std::make_shared<MockPlayer>();
   HammerEngine::ResourceHandle testResource(2, 1);
 
   // Test resource addition (0 -> 5)
-  auto addEvent = std::make_shared<ResourceChangeEvent>(player, testResource, 0,
+  auto addEvent = std::make_shared<ResourceChangeEvent>(TEST_PLAYER_HANDLE, testResource, 0,
                                                         5, "gathered");
 
   BOOST_CHECK(addEvent->isIncrease());
@@ -937,7 +936,7 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventScenarios, EventManagerFixture) {
   BOOST_CHECK_EQUAL(addEvent->getQuantityChange(), 5);
 
   // Test resource removal (8 -> 0)
-  auto removeEvent = std::make_shared<ResourceChangeEvent>(player, testResource,
+  auto removeEvent = std::make_shared<ResourceChangeEvent>(TEST_PLAYER_HANDLE, testResource,
                                                            8, 0, "consumed");
 
   BOOST_CHECK(!removeEvent->isIncrease());
@@ -948,7 +947,7 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventScenarios, EventManagerFixture) {
 
   // Test resource decrease (10 -> 3)
   auto decreaseEvent = std::make_shared<ResourceChangeEvent>(
-      player, testResource, 10, 3, "crafted");
+      TEST_PLAYER_HANDLE, testResource, 10, 3, "crafted");
 
   BOOST_CHECK(!decreaseEvent->isIncrease());
   BOOST_CHECK(decreaseEvent->isDecrease());
@@ -966,11 +965,10 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventScenarios, EventManagerFixture) {
 
 // Test ResourceChangeEvent execution and handler integration
 BOOST_FIXTURE_TEST_CASE(ResourceChangeEventExecution, EventManagerFixture) {
-  auto player = std::make_shared<MockPlayer>();
   HammerEngine::ResourceHandle goldResource(3, 1);
 
   auto resourceEvent = std::make_shared<ResourceChangeEvent>(
-      player, goldResource, 100, 150, "trade");
+      TEST_PLAYER_HANDLE, goldResource, 100, 150, "trade");
 
   EventManager::Instance().registerEvent("GoldChange", resourceEvent);
 
@@ -1007,17 +1005,16 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventHandlers, EventManagerFixture) {
         BOOST_CHECK(resourceEvent != nullptr);
       });
 
-  auto player = std::make_shared<MockPlayer>();
   HammerEngine::ResourceHandle ironResource(4, 1);
 
   // Test convenience method for creating events
   BOOST_CHECK(EventManager::Instance().createResourceChangeEvent(
-      "TestResourceChange", player, ironResource, 20, 35, "smelted"));
+      "TestResourceChange", TEST_PLAYER_HANDLE, ironResource, 20, 35, "smelted"));
   BOOST_CHECK(EventManager::Instance().hasEvent("TestResourceChange"));
 
   // Test triggering resource change with immediate dispatch
   BOOST_CHECK(EventManager::Instance().triggerResourceChange(
-      player, ironResource, 20, 35, "smelted", EventManager::DispatchMode::Immediate));
+      TEST_PLAYER_HANDLE, ironResource, 20, 35, "smelted", EventManager::DispatchMode::Immediate));
 
   // Verify handler was called
   BOOST_CHECK(handlerCalled);
@@ -1025,15 +1022,13 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventHandlers, EventManagerFixture) {
 
 // Test ResourceChangeEvent retrieval by type
 BOOST_FIXTURE_TEST_CASE(ResourceChangeEventsByType, EventManagerFixture) {
-  auto player = std::make_shared<MockPlayer>();
-
   // Create multiple ResourceChangeEvents
   auto event1 = std::make_shared<ResourceChangeEvent>(
-      player, HammerEngine::ResourceHandle(1, 1), 0, 10, "mined");
+      TEST_PLAYER_HANDLE, HammerEngine::ResourceHandle(1, 1), 0, 10, "mined");
   auto event2 = std::make_shared<ResourceChangeEvent>(
-      player, HammerEngine::ResourceHandle(2, 1), 5, 15, "chopped");
+      TEST_PLAYER_HANDLE, HammerEngine::ResourceHandle(2, 1), 5, 15, "chopped");
   auto event3 = std::make_shared<ResourceChangeEvent>(
-      player, HammerEngine::ResourceHandle(3, 1), 20, 18, "consumed");
+      TEST_PLAYER_HANDLE, HammerEngine::ResourceHandle(3, 1), 20, 18, "consumed");
 
   // Register all events
   EventManager::Instance().registerEvent("StoneChange", event1);
@@ -1065,13 +1060,12 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventThreadSafety, EventManagerFixture) {
   EventManager::Instance().clean();
   BOOST_CHECK(EventManager::Instance().init());
 
-  auto player = std::make_shared<MockPlayer>();
   HammerEngine::ResourceHandle testResource(1, 1);
 
   // Register multiple resource change events
   for (int i = 0; i < 5; ++i) {
     auto event = std::make_shared<ResourceChangeEvent>(
-        player, testResource, i * 10, (i + 1) * 10,
+        TEST_PLAYER_HANDLE, testResource, i * 10, (i + 1) * 10,
         "test_" + std::to_string(i));
     EventManager::Instance().registerEvent("ResourceTest" + std::to_string(i),
                                            event);
@@ -1095,10 +1089,10 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventThreadSafety, EventManagerFixture) {
   // Trigger multiple resource change events concurrently with immediate dispatch
   std::vector<std::thread> threads;
   for (int i = 0; i < 5; ++i) {
-    threads.emplace_back([i, player, &testResource]() {
+    threads.emplace_back([i, &testResource]() {
       HammerEngine::ResourceHandle handle = testResource;
       EventManager::Instance().triggerResourceChange(
-          player, handle, i * 5, (i + 1) * 5, "concurrent_test", 
+          TEST_PLAYER_HANDLE, handle, i * 5, (i + 1) * 5, "concurrent_test",
           EventManager::DispatchMode::Immediate);
     });
   }
@@ -1128,11 +1122,10 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventThreadSafety, EventManagerFixture) {
 
 // Test ResourceChangeEvent activation and deactivation
 BOOST_FIXTURE_TEST_CASE(ResourceChangeEventActivation, EventManagerFixture) {
-  auto player = std::make_shared<MockPlayer>();
   HammerEngine::ResourceHandle testResource(1, 1);
 
   auto resourceEvent = std::make_shared<ResourceChangeEvent>(
-      player, testResource, 0, 100, "initial");
+      TEST_PLAYER_HANDLE, testResource, 0, 100, "initial");
 
   EventManager::Instance().registerEvent("ActivationTest", resourceEvent);
 
@@ -1219,13 +1212,12 @@ BOOST_FIXTURE_TEST_CASE(ThreadSystemIntegrationBatchProcessing, EventManagerFixt
         totalHandlerCalls.fetch_add(1);
       });
   
-  auto player = std::make_shared<MockPlayer>();
   HammerEngine::ResourceHandle testResource(10, 1);
-  
+
   // Create multiple resource change events to trigger batch processing
   for (int i = 0; i < 20; ++i) {
     EventManager::Instance().triggerResourceChange(
-        player, testResource, i * 10, (i + 1) * 10, 
+        TEST_PLAYER_HANDLE, testResource, i * 10, (i + 1) * 10,
         "batch_test_" + std::to_string(i));
   }
   
@@ -1438,3 +1430,81 @@ BOOST_FIXTURE_TEST_CASE(DynamicThreadingControl, EventManagerFixture) {
   #endif
 }
 #endif // NDEBUG
+
+// Test that pooled events properly reset and recycle
+BOOST_FIXTURE_TEST_CASE(EventPoolRecycling, EventManagerFixture) {
+  // Weather: dispatch twice, verify same pointer reused (proves recycling works)
+  EventPtr firstWeather = nullptr;
+  EventPtr secondWeather = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::Weather, [&](const EventData &data) {
+        if (!firstWeather) firstWeather = data.event;
+        else secondWeather = data.event;
+      });
+  EventManager::Instance().changeWeather("Storm", 1.0f, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().changeWeather("Clear", 1.0f, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(firstWeather != nullptr);
+  BOOST_CHECK(secondWeather != nullptr);
+  BOOST_CHECK_EQUAL(firstWeather.get(), secondWeather.get());
+
+  // SceneChange recycling
+  EventPtr firstScene = nullptr;
+  EventPtr secondScene = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::SceneChange, [&](const EventData &data) {
+        if (!firstScene) firstScene = data.event;
+        else secondScene = data.event;
+      });
+  EventManager::Instance().changeScene("A", "fade", 1.0f, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().changeScene("B", "fade", 1.0f, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK_EQUAL(firstScene.get(), secondScene.get());
+
+  // NPCSpawn recycling
+  EventPtr firstNPC = nullptr;
+  EventPtr secondNPC = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::NPCSpawn, [&](const EventData &data) {
+        if (!firstNPC) firstNPC = data.event;
+        else secondNPC = data.event;
+      });
+  EventManager::Instance().spawnNPC("A", 0, 0, 1, 0, "", {}, false, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().spawnNPC("B", 0, 0, 1, 0, "", {}, false, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK_EQUAL(firstNPC.get(), secondNPC.get());
+
+  // Collision recycling
+  EventPtr firstColl = nullptr;
+  EventPtr secondColl = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::Collision, [&](const EventData &data) {
+        if (!firstColl) firstColl = data.event;
+        else secondColl = data.event;
+      });
+  HammerEngine::CollisionInfo info{};
+  EventManager::Instance().triggerCollision(info, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerCollision(info, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK_EQUAL(firstColl.get(), secondColl.get());
+
+  // ParticleEffect recycling
+  EventPtr firstParticle = nullptr;
+  EventPtr secondParticle = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::ParticleEffect, [&](const EventData &data) {
+        if (!firstParticle) firstParticle = data.event;
+        else secondParticle = data.event;
+      });
+  EventManager::Instance().triggerParticleEffect("Fire", 0, 0, 1.0f, 1.0f, "", EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerParticleEffect("Fire", 0, 0, 1.0f, 1.0f, "", EventManager::DispatchMode::Immediate);
+  BOOST_CHECK_EQUAL(firstParticle.get(), secondParticle.get());
+
+  // CollisionObstacleChanged recycling
+  EventPtr firstObstacle = nullptr;
+  EventPtr secondObstacle = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::CollisionObstacleChanged, [&](const EventData &data) {
+        if (!firstObstacle) firstObstacle = data.event;
+        else secondObstacle = data.event;
+      });
+  EventManager::Instance().triggerCollisionObstacleChanged(Vector2D(0,0), 64.0f, "", EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerCollisionObstacleChanged(Vector2D(0,0), 64.0f, "", EventManager::DispatchMode::Immediate);
+  BOOST_CHECK_EQUAL(firstObstacle.get(), secondObstacle.get());
+}

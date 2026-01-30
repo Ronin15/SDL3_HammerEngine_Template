@@ -15,6 +15,7 @@
 #include <random>
 
 #include "core/ThreadSystem.hpp"
+#include "core/Logger.hpp"  // For benchmark mode
 #include "managers/EventManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
@@ -25,53 +26,27 @@
 #include "utils/Vector2D.hpp"
 #include "events/Event.hpp"
 #include "events/WorldEvent.hpp"
+#include "ai/behaviors/WanderBehavior.hpp"
+#include "ai/behaviors/GuardBehavior.hpp"
+#include "ai/behaviors/IdleBehavior.hpp"
 
-// Simple test entity for benchmark
-class BenchmarkEntity : public Entity {
+// Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
+class BenchmarkNPC {
 public:
-    BenchmarkEntity(int id, const Vector2D& pos) : m_id(id) {
-        // Register with EntityDataManager first (required before setPosition)
-        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
-        setTextureID("benchmark");
-        setWidth(32);
-        setHeight(32);
+    explicit BenchmarkNPC(int id, const Vector2D& pos) : m_id(id) {
+        auto& edm = EntityDataManager::Instance();
+        m_handle = edm.createNPCWithRaceClass(pos, "Human", "Guard");
     }
 
-    static std::shared_ptr<BenchmarkEntity> create(int id, const Vector2D& pos) {
-        return std::make_shared<BenchmarkEntity>(id, pos);
+    static std::shared_ptr<BenchmarkNPC> create(int id, const Vector2D& pos) {
+        return std::make_shared<BenchmarkNPC>(id, pos);
     }
 
-    void update(float deltaTime) override { (void)deltaTime; }
-    void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override { (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha; }
-    void clean() override {}
-    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
-
+    [[nodiscard]] EntityHandle getHandle() const { return m_handle; }
     int getId() const { return m_id; }
 
 private:
-    int m_id;
-};
-
-// Simple benchmark behavior
-class BenchmarkBehavior : public AIBehavior {
-public:
-    BenchmarkBehavior(int id) : m_id(id) {}
-
-    // Lock-free hot path (required by pure virtual)
-    void executeLogic(BehaviorContext& ctx) override {
-        // Simulate some work directly on transform
-        ctx.transform.position.setX(ctx.transform.position.getX() + 1.0f);
-    }
-
-    void init(EntityHandle handle) override { (void)handle; }
-    void clean(EntityHandle handle) override { (void)handle; }
-    void onMessage(EntityHandle /* handle */, const std::string& /* message */) override {}
-    std::string getName() const override { return "BenchmarkBehavior"; }
-    std::shared_ptr<AIBehavior> clone() const override {
-        return std::make_shared<BenchmarkBehavior>(m_id);
-    }
-
-private:
+    EntityHandle m_handle;
     int m_id;
 };
 
@@ -137,7 +112,8 @@ namespace {
             std::cout << "Testing frame time degradation with increasing entity counts" << std::endl;
             std::cout << std::endl;
 
-            std::vector<size_t> entityCounts = {1000, 5000, 10000, 15000, 20000};
+            // Entity counts aligned with engine's 10K+ AI target (see CLAUDE.md)
+            std::vector<size_t> entityCounts = {500, 1000, 2500, 5000, 10000};
             std::vector<FrameStats> scalingResults;
 
             for (size_t entityCount : entityCounts) {
@@ -146,7 +122,8 @@ namespace {
                 cleanupScenario();
                 setupRealisticScenario(entityCount, entityCount / 2);
 
-                constexpr size_t frameCount = 300;
+                // 60 frames (1 second at 60 FPS) - sufficient for stable measurements
+                constexpr size_t frameCount = 60;
                 constexpr float deltaTime = 1.0f / 60.0f;
                 auto stats = runFrameBenchmark(frameCount, deltaTime);
 
@@ -271,10 +248,12 @@ namespace {
 
     private:
         std::mt19937 m_rng;
-        std::vector<std::shared_ptr<BenchmarkEntity>> m_testEntities;
-        std::vector<std::shared_ptr<BenchmarkBehavior>> m_behaviors;
+        std::vector<std::shared_ptr<BenchmarkNPC>> m_testEntities;
 
         void initializeAllManagers() {
+            // Enable benchmark mode to suppress verbose logging during benchmarks
+            HAMMER_ENABLE_BENCHMARK_MODE();
+
             // Initialize in dependency order (matching GameEngine::init pattern)
             HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
 
@@ -323,7 +302,6 @@ namespace {
                 }
             }
             m_testEntities.clear();
-            m_behaviors.clear();
 
             // Particles will be cleaned automatically during manager cleanup
         }
@@ -333,15 +311,21 @@ namespace {
             auto& particleMgr = ParticleManager::Instance();
 
             m_testEntities.reserve(aiEntityCount);
-            m_behaviors.reserve(5);
 
-            // Create behaviors
-            const std::vector<std::string> behaviorNames = {"Wander", "Guard", "Patrol", "Follow", "Chase"};
-            for (size_t i = 0; i < behaviorNames.size(); ++i) {
-                auto behavior = std::make_shared<BenchmarkBehavior>(static_cast<int>(i));
-                m_behaviors.push_back(behavior);
-                aiMgr.registerBehavior(behaviorNames[i], behavior);
-            }
+            // Register production behaviors (realistic workload)
+            // WanderBehavior(WanderMode mode, float speed)
+            aiMgr.registerBehavior("Wander", std::make_shared<WanderBehavior>(
+                WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f));
+
+            // GuardBehavior(const Vector2D& guardPosition, float guardRadius, float alertRadius)
+            aiMgr.registerBehavior("Guard", std::make_shared<GuardBehavior>(
+                Vector2D(2500.0f, 2500.0f), 200.0f, 300.0f));
+
+            // IdleBehavior(IdleMode mode, float idleRadius)
+            aiMgr.registerBehavior("Idle", std::make_shared<IdleBehavior>(
+                IdleBehavior::IdleMode::LIGHT_FIDGET, 20.0f));
+
+            const std::vector<std::string> behaviorNames = {"Wander", "Guard", "Idle"};
 
             // Create AI entities distributed across tier zones for realistic testing
             // Active tier: within 1650px of center (first 60%)
@@ -369,10 +353,10 @@ namespace {
 
                 Vector2D pos(2500.0f + distance * std::cos(angle),
                              2500.0f + distance * std::sin(angle));
-                auto entity = BenchmarkEntity::create(static_cast<int>(i), pos);
+                auto entity = BenchmarkNPC::create(static_cast<int>(i), pos);
                 m_testEntities.push_back(entity);
 
-                // Assign behavior
+                // Assign behavior - distribute across types
                 std::string behaviorName = behaviorNames[i % behaviorNames.size()];
                 aiMgr.registerEntity(entity->getHandle(), behaviorName);
             }
@@ -395,10 +379,9 @@ namespace {
             auto& aiMgr = AIManager::Instance();
             m_testEntities.reserve(entityCount);
 
-            // Create single behavior
-            auto behavior = std::make_shared<BenchmarkBehavior>(0);
-            m_behaviors.push_back(behavior);
-            aiMgr.registerBehavior("Wander", behavior);
+            // Register production behavior
+            aiMgr.registerBehavior("Wander", std::make_shared<WanderBehavior>(
+                WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f));
 
             // Distribute entities across tier zones (same as setupRealisticScenario)
             std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
@@ -420,7 +403,7 @@ namespace {
 
                 Vector2D pos(2500.0f + distance * std::cos(angle),
                              2500.0f + distance * std::sin(angle));
-                auto entity = BenchmarkEntity::create(static_cast<int>(i), pos);
+                auto entity = BenchmarkNPC::create(static_cast<int>(i), pos);
                 m_testEntities.push_back(entity);
 
                 aiMgr.registerEntity(entity->getHandle(), "Wander");

@@ -116,7 +116,7 @@ private:
   bool isAtWaypoint(const Vector2D &position, const Vector2D &waypoint) const;
 
   // Reset entity to a new position on screen edge
-  void resetEntityPosition(EntityPtr entity);
+  void resetEntityPosition(const EntityPtr& entity);
 
   // Reverse the order of waypoints
   void reverseWaypoints();

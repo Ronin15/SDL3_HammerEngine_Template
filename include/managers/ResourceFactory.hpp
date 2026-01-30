@@ -96,7 +96,7 @@ private:
                                         const JsonValue &json);
 
   // Helper method to extract common resource properties from JSON
-  static void setCommonProperties(ResourcePtr resource, const JsonValue &json);
+  static void setCommonProperties(const ResourcePtr& resource, const JsonValue &json);
 };
 
 } // namespace HammerEngine

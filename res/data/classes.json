@@ -1,0 +1,76 @@
+{
+    "classes": [
+        {
+            "id": "Warrior",
+            "name": "Warrior",
+            "healthMult": 1.3,
+            "staminaMult": 1.0,
+            "moveSpeedMult": 0.9,
+            "attackDamageMult": 1.5,
+            "attackRangeMult": 1.0,
+            "suggestedBehavior": "Chase",
+            "basePriority": 7,
+            "defaultFaction": 1
+        },
+        {
+            "id": "Guard",
+            "name": "Guard",
+            "healthMult": 1.2,
+            "staminaMult": 1.1,
+            "moveSpeedMult": 0.8,
+            "attackDamageMult": 1.2,
+            "attackRangeMult": 1.0,
+            "suggestedBehavior": "Guard",
+            "basePriority": 6,
+            "defaultFaction": 0
+        },
+        {
+            "id": "Merchant",
+            "name": "Merchant",
+            "healthMult": 0.7,
+            "staminaMult": 0.8,
+            "moveSpeedMult": 0.9,
+            "attackDamageMult": 0.3,
+            "attackRangeMult": 0.5,
+            "suggestedBehavior": "Idle",
+            "basePriority": 2,
+            "defaultFaction": 0
+        },
+        {
+            "id": "Rogue",
+            "name": "Rogue",
+            "healthMult": 0.8,
+            "staminaMult": 1.3,
+            "moveSpeedMult": 1.3,
+            "attackDamageMult": 1.2,
+            "attackRangeMult": 0.8,
+            "suggestedBehavior": "Chase",
+            "basePriority": 8,
+            "defaultFaction": 1
+        },
+        {
+            "id": "Mage",
+            "name": "Mage",
+            "healthMult": 0.6,
+            "staminaMult": 1.5,
+            "moveSpeedMult": 0.85,
+            "attackDamageMult": 1.8,
+            "attackRangeMult": 2.5,
+            "suggestedBehavior": "Attack",
+            "basePriority": 7,
+            "defaultFaction": 2
+        },
+        {
+            "id": "Villager",
+            "name": "Villager",
+            "healthMult": 0.8,
+            "staminaMult": 0.9,
+            "moveSpeedMult": 1.0,
+            "attackDamageMult": 0.5,
+            "attackRangeMult": 0.5,
+            "suggestedBehavior": "Wander",
+            "basePriority": 3,
+            "defaultFaction": 0
+        }
+    ]
+}

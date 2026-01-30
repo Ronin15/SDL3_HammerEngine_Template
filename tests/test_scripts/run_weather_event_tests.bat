@@ -4,6 +4,9 @@ rem Copyright 2025 Hammer Forged Games
 
 setlocal enabledelayedexpansion
 
+rem Navigate to script directory for correct relative paths
+cd /d "%~dp0"
+
 rem Enable ANSI escape sequences (Windows 10+)
 for /F %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"
 rem Color codes for Windows

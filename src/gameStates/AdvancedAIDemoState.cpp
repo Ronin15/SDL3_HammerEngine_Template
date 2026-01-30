@@ -22,10 +22,20 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "utils/WorldRenderPipeline.hpp"
+
+#ifdef USE_SDL3_GPU
+#include "gpu/GPURenderer.hpp"
+#include "gpu/SpriteBatch.hpp"
+#include "utils/GPUSceneRenderer.hpp"
+#endif
 
 #include <cmath>
 #include <cstddef>
 #include <format>
+
+// Constructor/destructor defined here where GPUSceneRenderer is complete (for unique_ptr)
+AdvancedAIDemoState::AdvancedAIDemoState() = default;
 
 AdvancedAIDemoState::~AdvancedAIDemoState() {
   // Don't call virtual functions from destructors
@@ -38,9 +48,8 @@ AdvancedAIDemoState::~AdvancedAIDemoState() {
     AIManager &aiMgr = AIManager::Instance();
     aiMgr.resetBehaviors();
 
-    // Clear NPCs without calling clean() on them
-    m_npcsById.clear();
-    m_npcsByEdmIndex.clear();
+    // Clear NPCs via NPCRenderController
+    m_npcRenderCtrl.clearSpawnedNPCs();
 
     // Clean up player
     m_player.reset();
@@ -58,6 +67,7 @@ void AdvancedAIDemoState::handleInput() {
   // Cache manager references for better performance
   InputManager &inputMgr = InputManager::Instance();
   AIManager &aiMgr = AIManager::Instance();
+  EntityDataManager &edm = EntityDataManager::Instance();
 
   // Use InputManager's new event-driven key press detection
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) {
@@ -84,40 +94,55 @@ void AdvancedAIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
     // Assign Idle behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to IDLE behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      aiMgr.assignBehavior(npc->getHandle(), "Idle");
+    for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = edm.getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "Idle");
+      }
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
     // Assign Flee behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to FLEE behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      aiMgr.assignBehavior(npc->getHandle(), "Flee");
+    for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = edm.getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "Flee");
+      }
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
     // Assign Follow behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to FOLLOW behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      aiMgr.assignBehavior(npc->getHandle(), "Follow");
+    for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = edm.getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "Follow");
+      }
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
     // Assign Guard behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to GUARD behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      aiMgr.assignBehavior(npc->getHandle(), "Guard");
+    for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = edm.getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "Guard");
+      }
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
     // Assign Attack behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to ATTACK behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      aiMgr.assignBehavior(npc->getHandle(), "Attack");
+    for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = edm.getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "Attack");
+      }
     }
   }
 
@@ -131,8 +156,11 @@ void AdvancedAIDemoState::handleInput() {
 }
 
 bool AdvancedAIDemoState::enter() {
+  // Cache GameEngine reference at function start
+  auto &gameEngine = GameEngine::Instance();
+
   // Resume all game managers (may be paused from menu states)
-  GameEngine::Instance().setGlobalPause(false);
+  gameEngine.setGlobalPause(false);
 
   GAMESTATE_INFO("Entering AdvancedAIDemoState...");
 
@@ -158,8 +186,6 @@ bool AdvancedAIDemoState::enter() {
   GAMESTATE_INFO("World already loaded - initializing advanced AI demo");
 
   try {
-    // Cache GameEngine reference for better performance
-    const GameEngine &gameEngine = GameEngine::Instance();
     auto &worldManager = WorldManager::Instance();
 
     // Setup world size using actual world bounds from loaded world
@@ -184,6 +210,14 @@ bool AdvancedAIDemoState::enter() {
 
     // Initialize camera (world is already loaded by LoadingState)
     initializeCamera();
+
+    // Create world render pipeline for coordinated chunk management and scene rendering
+    m_renderPipeline = std::make_unique<HammerEngine::WorldRenderPipeline>();
+
+#ifdef USE_SDL3_GPU
+    // Create GPU scene renderer for coordinated GPU rendering
+    m_gpuSceneRenderer = std::make_unique<HammerEngine::GPUSceneRenderer>();
+#endif
 
     // Initialize PathfinderManager for Follow behavior pathfinding
     PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
@@ -278,7 +312,7 @@ bool AdvancedAIDemoState::enter() {
 
     // Log status
     GAMESTATE_INFO(std::format("Created {} NPCs with advanced AI behaviors",
-                               m_npcsById.size()));
+                               EntityDataManager::Instance().getEntityCount(EntityKind::NPC)));
     GAMESTATE_INFO("CombatController registered");
 
     // Pre-allocate status buffer to avoid per-frame allocations
@@ -318,8 +352,7 @@ bool AdvancedAIDemoState::exit() {
 
     // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
     // NPCs hold EDM indices - must be destroyed while EDM data is still valid
-    m_npcsById.clear();
-    m_npcsByEdmIndex.clear();
+    m_npcRenderCtrl.clearSpawnedNPCs();
     if (m_player) {
       m_player.reset();
     }
@@ -339,8 +372,9 @@ bool AdvancedAIDemoState::exit() {
       collisionMgr.prepareForStateTransition();
     }
 
-    // Clean up camera
+    // Clean up camera and scene renderer
     m_camera.reset();
+    m_renderPipeline.reset();
 
     // Clean up UI
     ui.prepareForStateTransition();
@@ -369,8 +403,7 @@ bool AdvancedAIDemoState::exit() {
 
   // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
   // NPCs hold EDM indices - must be destroyed while EDM data is still valid
-  m_npcsById.clear();
-  m_npcsByEdmIndex.clear();
+  m_npcRenderCtrl.clearSpawnedNPCs();
   if (m_player) {
     m_player.reset();
   }
@@ -391,8 +424,9 @@ bool AdvancedAIDemoState::exit() {
     collisionMgr.prepareForStateTransition();
   }
 
-  // Clean up camera first to stop world rendering
+  // Clean up camera and scene renderer first to stop world rendering
   m_camera.reset();
+  m_renderPipeline.reset();
 
   // Clean up UI components using simplified method
   ui.prepareForStateTransition();
@@ -430,8 +464,8 @@ void AdvancedAIDemoState::update(float deltaTime) {
       config.width = 350; // Medium-sized world for advanced AI showcase
       config.height = 350;
       config.seed = static_cast<int>(std::time(nullptr));
-      config.elevationFrequency = 0.08f;
-      config.humidityFrequency = 0.06f;
+      config.elevationFrequency = 0.025f;  // Lower frequency = larger biome regions
+      config.humidityFrequency = 0.018f;
       config.waterLevel = 0.3f;
       config.mountainLevel = 0.7f;
 
@@ -457,27 +491,21 @@ void AdvancedAIDemoState::update(float deltaTime) {
     }
 
     // Cache manager references for better performance
-    EntityDataManager &edm = EntityDataManager::Instance();
     UIManager &ui = UIManager::Instance();
 
-    // Update Active tier NPCs only (animations and state machine)
-    // AIManager handles behavior logic, BackgroundSimulationManager handles
-    // non-Active Use getActiveIndices() to iterate only ~500 Active entities
-    // instead of all NPCs
-    for (size_t edmIdx : edm.getActiveIndices()) {
-      const auto &hot = edm.getHotDataByIndex(edmIdx);
-      if (hot.kind != EntityKind::NPC)
-        continue;
+    // Update data-driven NPCs (animations handled by NPCRenderController)
+    m_npcRenderCtrl.update(deltaTime);
 
-      NPCPtr npc = (edmIdx < m_npcsByEdmIndex.size()) ? m_npcsByEdmIndex[edmIdx]
-                                                      : nullptr;
-      if (npc) {
-        npc->update(deltaTime);
-      }
-    }
+    // Cache NPC count for render() (avoids EDM query in render path)
+    m_cachedNPCCount = EntityDataManager::Instance().getEntityCount(EntityKind::NPC);
 
     // Update camera (follows player automatically)
     updateCamera(deltaTime);
+
+    // Prepare chunks via WorldRenderPipeline (predictive prefetching + dirty chunk updates)
+    if (m_renderPipeline && m_camera) {
+      m_renderPipeline->prepareChunks(*m_camera, deltaTime);
+    }
 
     // Update controllers (CombatController handles cooldowns, stamina regen)
     m_controllers.updateAll(deltaTime);
@@ -497,71 +525,37 @@ void AdvancedAIDemoState::update(float deltaTime) {
 
 void AdvancedAIDemoState::render(SDL_Renderer *renderer,
                                  float interpolationAlpha) {
-  // Cache manager references for better performance
-  WorldManager &worldMgr = WorldManager::Instance();
-  EntityDataManager &edm = EntityDataManager::Instance();
+  // Cache UI manager reference
   UIManager &ui = UIManager::Instance();
 
-  // Camera offset with unified interpolation (single atomic read for sync)
-  float renderCamX = 0.0f;
-  float renderCamY = 0.0f;
-  float viewWidth = 0.0f;
-  float viewHeight = 0.0f;
-  Vector2D playerInterpPos; // Position synced with camera
+  // Use WorldRenderPipeline for coordinated world rendering
+  const bool worldActive = m_camera && m_renderPipeline;
 
-  // Set render scale for zoom only when changed (avoids GPU state change
-  // overhead)
-  float zoom = m_camera ? m_camera->getZoom() : 1.0f;
-  if (zoom != m_lastRenderedZoom) {
-    SDL_SetRenderScale(renderer, zoom, zoom);
-    m_lastRenderedZoom = zoom;
+  // ========== BEGIN SCENE (to intermediate target) ==========
+  HammerEngine::WorldRenderPipeline::RenderContext ctx;
+  if (worldActive) {
+    ctx = m_renderPipeline->beginScene(renderer, *m_camera, interpolationAlpha);
   }
 
-  if (m_camera) {
-    // Returns the position used for offset - use it for player rendering
-    playerInterpPos =
-        m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
+  if (ctx) {
+    // Render world tiles via pipeline (uses pre-computed context)
+    m_renderPipeline->renderWorld(renderer, ctx);
 
-    // Derive view dimensions from viewport/zoom (no per-frame GameEngine calls)
-    viewWidth = m_camera->getViewport().width / zoom;
-    viewHeight = m_camera->getViewport().height / zoom;
-  }
+    // Render NPCs (sub-pixel smoothness from entity interpolation)
+    m_npcRenderCtrl.renderNPCs(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
 
-  // Render world first (background layer) using pixel-snapped camera
-  if (m_camera && worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-    worldMgr.render(renderer, renderCamX, renderCamY, viewWidth, viewHeight);
-  }
+    // Render player (sub-pixel smoothness from entity's own interpolation)
+    if (m_player) {
+      m_player->render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
 
-  // Render Active tier NPCs only using getActiveIndices() for O(1) lookup
-  // This iterates ~500 Active entities instead of 50K+ total NPCs
-  for (size_t edmIdx : edm.getActiveIndices()) {
-    const auto &hot = edm.getHotDataByIndex(edmIdx);
-    if (hot.kind != EntityKind::NPC)
-      continue;
-
-    NPCPtr npc =
-        (edmIdx < m_npcsByEdmIndex.size()) ? m_npcsByEdmIndex[edmIdx] : nullptr;
-    if (npc) {
-      npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
-      // TODO: Health bar rendering using npc->getHealth() / npc->getMaxHealth()
+      // TODO: Player health bar rendering using m_player->getHealth() /
+      // m_player->getMaxHealth()
     }
   }
 
-  // Render player at the position camera used for offset calculation
-  if (m_player) {
-    // Use position camera returned - no separate atomic read
-    m_player->renderAtPosition(renderer, playerInterpPos, renderCamX,
-                               renderCamY);
-
-    // TODO: Player health bar rendering using m_player->getHealth() /
-    // m_player->getMaxHealth()
-  }
-
-  // Reset render scale to 1.0 for UI rendering only when needed (UI should not
-  // be zoomed)
-  if (m_lastRenderedZoom != 1.0f) {
-    SDL_SetRenderScale(renderer, 1.0f, 1.0f);
-    m_lastRenderedZoom = 1.0f;
+  // ========== END SCENE (composite with zoom) ==========
+  if (worldActive) {
+    m_renderPipeline->endScene(renderer);
   }
 
   // Render UI components (update moved to update() for consistent frame timing)
@@ -569,17 +563,17 @@ void AdvancedAIDemoState::render(SDL_Renderer *renderer,
     // Update status only when values change (C++20 type-safe, zero allocations)
     // Use m_aiPaused member instead of polling AIManager::isGloballyPaused()
     // every frame
-    int currentFPS =
-        static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
-    size_t npcCount = m_npcsById.size();
+    float currentFPS = mp_stateManager->getCurrentFPS();
+    // Use cached NPC count from update() to avoid EDM query in render path
+    size_t npcCount = m_cachedNPCCount;
 
-    if (currentFPS != m_lastDisplayedFPS ||
+    if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
         npcCount != m_lastDisplayedNPCCount ||
         m_aiPaused != m_lastDisplayedPauseState) {
 
       m_statusBuffer.clear();
       std::format_to(std::back_inserter(m_statusBuffer),
-                     "FPS: {} | NPCs: {} | AI: {} | Combat: ON", currentFPS,
+                     "FPS: {:.1f} | NPCs: {} | AI: {} | Combat: ON", currentFPS,
                      npcCount, m_aiPaused ? "PAUSED" : "RUNNING");
       ui.setText("advanced_ai_status", m_statusBuffer);
 
@@ -648,6 +642,7 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
   // TODO: Make an event for advanced NPC's
   //  Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
+  EntityDataManager &edm = EntityDataManager::Instance();
 
   try {
     // Random number generation for positioning near player
@@ -676,30 +671,18 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
         position = Vector2D(playerPos.getX() + distance * std::cos(angle),
                             playerPos.getY() + distance * std::sin(angle));
 
-        // First 3 NPCs are pets (pass through player), rest are regular NPCs
-        std::shared_ptr<NPC> npc;
-        if (i < 3) {
-          npc = NPC::create("npc", position, 0, 0, NPC::NPCType::Pet);
-        } else {
-          npc = NPC::create("npc", position);
+        // Create NPC using race/class composition system
+        // EDM auto-registers with AIManager using class's suggestedBehavior
+        EntityHandle handle = edm.createNPCWithRaceClass(position, "Human", "Guard");
+
+        if (!handle.isValid()) {
+          GAMESTATE_ERROR(std::format("Failed to create data-driven NPC {}", i));
+          continue;
         }
 
-        // Set wander area to keep NPCs on screen
-        npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
+        // Override to Follow behavior for this demo (Guard's default is Patrol)
+        aiMgr.assignBehavior(handle, "Follow");
 
-        // Phase 2 EDM Migration: Use EntityHandle-based registration
-        EntityHandle handle = npc->getHandle();
-        if (handle.isValid()) {
-          aiMgr.registerEntity(handle, "Follow");
-          m_npcsById[handle.getId()] = npc;
-          size_t edmIdx = EntityDataManager::Instance().getIndex(handle);
-          if (edmIdx != SIZE_MAX) {
-            if (edmIdx >= m_npcsByEdmIndex.size()) {
-              m_npcsByEdmIndex.resize(edmIdx + 1);
-            }
-            m_npcsByEdmIndex[edmIdx] = npc;
-          }
-        }
       } catch (const std::exception &e) {
         GAMESTATE_ERROR(
             std::format("Exception creating advanced NPC {}: {}", i, e.what()));
@@ -708,7 +691,8 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
     }
 
     GAMESTATE_INFO(
-        std::format("AdvancedAIDemoState: Created {} NPCs", m_npcsById.size()));
+        std::format("AdvancedAIDemoState: Created {} NPCs",
+                    edm.getEntityCount(EntityKind::NPC)));
   } catch (const std::exception &e) {
     GAMESTATE_ERROR(
         std::format("Exception in createAdvancedNPCs(): {}", e.what()));
@@ -749,8 +733,14 @@ void AdvancedAIDemoState::initializeCamera() {
     config.clampToWorldBounds = true; // Keep camera within world
     m_camera->setConfig(config);
 
+    // Provide camera to player for screen-to-world coordinate conversion
+    m_player->setCamera(m_camera.get());
+
     // Camera auto-synchronizes world bounds on update
   }
+
+  // Register camera with WorldManager for chunk texture updates
+  WorldManager::Instance().setActiveCamera(m_camera.get());
 }
 
 void AdvancedAIDemoState::updateCamera(float deltaTime) {
@@ -762,3 +752,76 @@ void AdvancedAIDemoState::updateCamera(float deltaTime) {
     m_camera->update(deltaTime);
   }
 }
+
+#ifdef USE_SDL3_GPU
+void AdvancedAIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
+                                            float interpolationAlpha) {
+  if (!m_camera || !m_gpuSceneRenderer) { return; }
+
+  // Begin scene - sets up sprite batch with atlas texture and calculates camera params
+  auto ctx = m_gpuSceneRenderer->beginScene(gpuRenderer, *m_camera, interpolationAlpha);
+  if (!ctx) { return; }
+
+  // Record world tiles to sprite batch
+  auto &worldMgr = WorldManager::Instance();
+  worldMgr.recordGPU(*ctx.spriteBatch, ctx.cameraX, ctx.cameraY,
+                     ctx.viewWidth, ctx.viewHeight, ctx.zoom);
+
+  // Record NPCs to sprite batch (atlas-based)
+  m_npcRenderCtrl.recordGPU(ctx);
+
+  // End sprite batch recording (finalizes atlas-based sprites)
+  m_gpuSceneRenderer->endSpriteBatch();
+
+  // Record player (entity batch - separate texture)
+  if (m_player) {
+    m_player->recordGPUVertices(gpuRenderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+  }
+
+  // Update status text before recording UI vertices
+  auto &ui = UIManager::Instance();
+  {
+    float currentFPS = mp_stateManager->getCurrentFPS();
+    size_t npcCount = m_cachedNPCCount;
+
+    if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
+        npcCount != m_lastDisplayedNPCCount ||
+        m_aiPaused != m_lastDisplayedPauseState) {
+
+      m_statusBuffer.clear();
+      std::format_to(std::back_inserter(m_statusBuffer),
+                     "FPS: {:.1f} | NPCs: {} | AI: {} | Combat: ON", currentFPS,
+                     npcCount, m_aiPaused ? "PAUSED" : "RUNNING");
+      ui.setText("advanced_ai_status", m_statusBuffer);
+
+      m_lastDisplayedFPS = currentFPS;
+      m_lastDisplayedNPCCount = npcCount;
+      m_lastDisplayedPauseState = m_aiPaused;
+    }
+  }
+
+  // Record UI vertices
+  ui.recordGPUVertices(gpuRenderer);
+
+  m_gpuSceneRenderer->endScene();
+}
+
+void AdvancedAIDemoState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
+                                         SDL_GPURenderPass *scenePass,
+                                         [[maybe_unused]] float interpolationAlpha) {
+  if (!m_camera || !m_gpuSceneRenderer) { return; }
+
+  // Render world tiles (sprite batch)
+  m_gpuSceneRenderer->renderScene(gpuRenderer, scenePass);
+
+  // Render player (entity batch)
+  if (m_player) {
+    m_player->renderGPU(gpuRenderer, scenePass);
+  }
+}
+
+void AdvancedAIDemoState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
+                                      SDL_GPURenderPass *swapchainPass) {
+  UIManager::Instance().renderGPU(gpuRenderer, swapchainPass);
+}
+#endif

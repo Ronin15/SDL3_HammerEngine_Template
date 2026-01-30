@@ -22,6 +22,15 @@ public:
     bool exit() override;
     std::string getName() const override { return "UIExampleState"; }
 
+#ifdef USE_SDL3_GPU
+    // GPU rendering support
+    void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                           float interpolationAlpha) override;
+    void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+                     SDL_GPURenderPass* swapchainPass) override;
+    bool supportsGPURendering() const override { return true; }
+#endif
+
 private:
     // Demo state variables
     float m_sliderValue{0.5f};
@@ -48,6 +57,12 @@ private:
     float m_progressValue{0.0f};
     bool m_progressIncreasing{true};
     float m_lastDeltaTime{0.0f}; // Track deltaTime for ui.update() in render()
+
+    // Event log demo state (sample messages)
+    float m_eventLogTimer{0.0f};
+    size_t m_eventLogMessageIndex{0};
+    static constexpr float EVENT_LOG_INTERVAL{2.0f};
+    void updateEventLogDemo(float deltaTime);
 };
 
 #endif // UI_EXAMPLE_STATE_HPP

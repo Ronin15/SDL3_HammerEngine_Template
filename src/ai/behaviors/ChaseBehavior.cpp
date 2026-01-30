@@ -9,6 +9,7 @@
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include <chrono>
+#include <numeric>
 #include <random>
 
 namespace {
@@ -150,10 +151,8 @@ void ChaseBehavior::executeLogic(BehaviorContext &ctx) {
 
     // Store cluster center (can't store full vector in union)
     if (!nearbyPositions.empty()) {
-      Vector2D sum{0, 0};
-      for (const auto &pos : nearbyPositions) {
-        sum = sum + pos;
-      }
+      Vector2D sum = std::accumulate(nearbyPositions.begin(),
+                                     nearbyPositions.end(), Vector2D{0, 0});
       data.cachedClusterCenter =
           sum * (1.0f / static_cast<float>(nearbyPositions.size()));
     }
@@ -218,7 +217,7 @@ void ChaseBehavior::executeLogic(BehaviorContext &ctx) {
           needsNewPath = true;
         } else {
           // Check if target moved significantly from when path was computed
-          auto &edm = EntityDataManager::Instance();
+          const auto &edm = EntityDataManager::Instance();
           Vector2D pathGoal = edm.getPathGoal(ctx.edmIndex);
           float const targetMovementSquared =
               (targetPos - pathGoal).lengthSquared();
@@ -330,12 +329,13 @@ void ChaseBehavior::executeLogic(BehaviorContext &ctx) {
       chase.isChasing = true;
 
       // SIMPLIFIED: Basic stall detection using PathData.stallTimer
-      float currentSpeed = ctx.transform.velocity.length();
+      float currentSpeedSq = ctx.transform.velocity.lengthSquared();
       const float stallThreshold =
           std::max(1.0f, m_chaseSpeed * m_config.stallSpeedMultiplier);
+      const float stallThresholdSq = stallThreshold * stallThreshold;
       const float stallTimeLimit = m_config.stallTimeout;
 
-      if (currentSpeed < stallThreshold) {
+      if (currentSpeedSq < stallThresholdSq) {
         pathData.stallTimer += ctx.deltaTime;
         if (pathData.stallTimer >= stallTimeLimit) {
           // Simple stall recovery: clear path in EDM and request new one

@@ -18,6 +18,7 @@
  * - Direct function calls to minimize overhead
  */
 
+#include "entities/EntityHandle.hpp"
 #include "events/EventTypeId.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
@@ -273,7 +274,7 @@ public:
    * @param event Shared pointer to the event to register
    * @return true if registration successful, false otherwise
    */
-  bool registerEvent(const std::string &name, EventPtr event);
+  bool registerEvent(const std::string &name, const EventPtr& event);
 
   /**
    * @brief Registers a weather event with the event system
@@ -432,8 +433,6 @@ public:
   // Threading control (benchmarking only - compiles out in release)
   void enableThreading(bool enable);
   bool isThreadingEnabled() const;
-  void setThreadingThreshold(size_t threshold);
-  size_t getThreadingThreshold() const;
 #endif
 
   // Global pause control (for menu states)
@@ -449,6 +448,10 @@ public:
                    float transitionTime = 1.0f,
                    DispatchMode mode = DispatchMode::Deferred) const;
   bool spawnNPC(const std::string &npcType, float x, float y,
+                int count = 1, float spawnRadius = 0.0f,
+                const std::string &npcRace = "",
+                const std::vector<std::string> &aiBehaviors = {},
+                bool worldWide = false,
                 DispatchMode mode = DispatchMode::Deferred) const;
 
   // Particle effect trigger (stateless, no registration required)
@@ -475,7 +478,7 @@ public:
                            int count = 1, float spawnRadius = 0.0f);
 
   // Resource change convenience methods
-  bool createResourceChangeEvent(const std::string &name, EntityPtr owner,
+  bool createResourceChangeEvent(const std::string &name, EntityHandle ownerHandle,
                                  HammerEngine::ResourceHandle resourceHandle,
                                  int oldQuantity, int newQuantity,
                                  const std::string &changeReason = "");
@@ -514,6 +517,8 @@ public:
   bool triggerWorldGenerated(const std::string &worldId, int width, int height,
                              float generationTime,
                              DispatchMode mode = DispatchMode::Deferred) const;
+  bool triggerStaticCollidersReady(size_t solidBodyCount, size_t triggerCount,
+                                   DispatchMode mode = DispatchMode::Deferred) const;
 
   // Camera event convenience methods
   bool createCameraMovedEvent(const std::string &name, const Vector2D &newPos,
@@ -535,8 +540,8 @@ public:
   bool
   triggerCameraShakeEnded(DispatchMode mode = DispatchMode::Deferred) const;
   bool
-  triggerCameraTargetChanged(std::weak_ptr<Entity> newTarget,
-                             std::weak_ptr<Entity> oldTarget,
+  triggerCameraTargetChanged(const std::weak_ptr<Entity>& newTarget,
+                             const std::weak_ptr<Entity>& oldTarget,
                              DispatchMode mode = DispatchMode::Deferred) const;
   bool triggerCameraZoomChanged(float newZoom, float oldZoom,
                                 DispatchMode mode = DispatchMode::Deferred) const;
@@ -547,10 +552,11 @@ public:
   bool triggerSceneChange(const std::string &sceneId,
                           const std::string &transitionType = "fade",
                           float transitionTime = 1.0f) const;
-  bool triggerNPCSpawn(const std::string &npcType, float x, float y) const;
+  bool triggerNPCSpawn(const std::string &npcType, float x, float y,
+                       const std::string &npcRace = "") const;
 
   // Resource change convenience method
-  bool triggerResourceChange(EntityPtr owner,
+  bool triggerResourceChange(EntityHandle ownerHandle,
                              HammerEngine::ResourceHandle resourceHandle,
                              int oldQuantity, int newQuantity,
                              const std::string &changeReason = "",
@@ -576,7 +582,7 @@ public:
    * @param mode Deferred (processed in update()) or Immediate
    * @return true if dispatch successful, false otherwise
    */
-  bool dispatchEvent(EventPtr event, DispatchMode mode = DispatchMode::Deferred) const;
+  bool dispatchEvent(const EventPtr& event, DispatchMode mode = DispatchMode::Deferred) const;
 
   // Performance monitoring
   PerformanceStats getPerformanceStats(EventTypeId typeId) const;
@@ -634,9 +640,7 @@ private:
   std::atomic<bool> m_threadingEnabled{true};
   std::atomic<bool> m_initialized{false};
   std::atomic<bool> m_globallyPaused{false};
-  size_t m_threadingThreshold{
-      500}; // Global threshold: Thread when total events > 500 (optimal from benchmark)
-  static constexpr size_t PER_TYPE_THREAD_THRESHOLD = 20; // Per-type minimum: Only thread types with 20+ events
+  // All threading/batching decisions managed by WorkerBudget adaptive system.
 
   // Performance monitoring
   mutable std::array<PerformanceStats, static_cast<size_t>(EventTypeId::COUNT)>
@@ -674,7 +678,9 @@ private:
   EventTypeId getEventTypeId(const EventPtr &event) const;
   std::string getEventTypeName(EventTypeId typeId) const;
   void updateEventTypeBatch(EventTypeId typeId) const;
-  void updateEventTypeBatchThreaded(EventTypeId typeId, EventThreadingInfo& outThreadingInfo);
+  void updateEventTypeBatchThreaded(EventTypeId typeId, size_t optimalWorkerCount,
+                                    size_t batchCount,
+                                    EventThreadingInfo& outThreadingInfo);
   void recordPerformance(EventTypeId typeId, double timeMs) const;
   uint64_t getCurrentTimeNanos() const;
   void enqueueDispatch(EventTypeId typeId, const EventData &data) const;
@@ -685,8 +691,11 @@ private:
   bool dispatchEvent(EventTypeId typeId, EventData& eventData, DispatchMode mode,
                      const char* errorContext = "dispatchEvent") const;
 
+  // Release pooled events back to their respective pools after dispatch
+  void releaseEventToPool(EventTypeId typeId, const EventPtr& event) const;
+
   // Internal registration helper
-  bool registerEventInternal(const std::string &name, EventPtr event,
+  bool registerEventInternal(const std::string &name, const EventPtr& event,
                              EventTypeId typeId, uint32_t priority = EventPriority::NORMAL);
 };
 

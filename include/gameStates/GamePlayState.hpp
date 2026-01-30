@@ -6,24 +6,29 @@
 #ifndef GAME_PLAY_STATE_HPP
 #define GAME_PLAY_STATE_HPP
 
-#include "entities/Player.hpp"
-#include "gameStates/GameState.hpp"
-#include "managers/ParticleManager.hpp"
-#include "managers/EventManager.hpp"
+#include "controllers/ControllerRegistry.hpp"
 #include "events/TimeEvent.hpp"
 #include "events/WeatherEvent.hpp"
+#include "gameStates/GameState.hpp"
+#include "managers/EventManager.hpp"
 #include "utils/ResourceHandle.hpp"
-#include "utils/Camera.hpp"
-#include "controllers/ControllerRegistry.hpp"
 #include <memory>
 #include <string>
 
+// Forward declarations (full includes in .cpp)
+class Player;
+namespace HammerEngine {
+class Camera;
+class WorldRenderPipeline;
+#ifdef USE_SDL3_GPU
+class GPUSceneRenderer;
+#endif
+}
+
 class GamePlayState : public GameState {
 public:
-  GamePlayState()
-      : m_transitioningToLoading{false},
-        mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false},
-        m_dayNightEventToken{}, m_weatherEventToken{} {}
+  GamePlayState();  // Defined in .cpp for unique_ptr with forward-declared types
+  ~GamePlayState() override;
   bool enter() override;
   void update(float deltaTime) override;
   void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;
@@ -32,6 +37,18 @@ public:
   void pause() override;
   void resume() override;
   std::string getName() const override;
+
+#ifdef USE_SDL3_GPU
+  // GPU rendering support
+  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+                         float interpolationAlpha) override;
+  void renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+                      SDL_GPURenderPass* scenePass,
+                      float interpolationAlpha) override;
+  void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+                   SDL_GPURenderPass* swapchainPass) override;
+  bool supportsGPURendering() const override { return true; }
+#endif
 
 private:
   bool m_transitioningToLoading{
@@ -42,6 +59,14 @@ private:
 
   // Camera for world navigation and player following
   std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
+
+  // World render pipeline for coordinated chunk management and scene rendering
+  std::unique_ptr<HammerEngine::WorldRenderPipeline> m_renderPipeline{nullptr};
+
+#ifdef USE_SDL3_GPU
+  // GPU scene renderer for coordinated GPU rendering
+  std::unique_ptr<HammerEngine::GPUSceneRenderer> m_gpuSceneRenderer{nullptr};
+#endif
 
   // Resource handles resolved at initialization (resource handle system
   // compliance)
@@ -55,9 +80,6 @@ private:
 
   // Track if we need to transition to loading screen on first update
   bool m_needsLoading{false};
-
-  // Render scale caching - avoid GPU state changes when zoom unchanged
-  float m_lastRenderedZoom{1.0f};
 
   // FPS counter (toggled with F2)
   bool m_fpsVisible{false};

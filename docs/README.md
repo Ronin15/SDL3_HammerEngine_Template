@@ -4,6 +4,7 @@
 
 - [Core Systems](#core-systems)
   - [GameEngine & Core Systems](#gameengine--core-systems)
+  - [GPU Rendering System](#gpu-rendering-system)
   - [AI System](#ai-system)
   - [Collision System](#collision-system)
   - [Combat System](#combat-system)
@@ -30,8 +31,24 @@ The Hammer Game Engine is a high-performance game development framework built on
 Foundation systems that power the game engine architecture and timing.
 
 - **[GameEngine](core/GameEngine.md)** - Central engine singleton managing all systems and coordination
-- **[GameTime](core/GameTime.md)** - Fantasy calendar, day/night cycles, seasons, weather, and time events
+- **[GameTimeManager](managers/GameTimeManager.md)** - Fantasy calendar, day/night cycles, seasons, weather, and time events
 - **[TimestepManager](managers/TimestepManager.md)** - Fixed timestep timing with accumulator-based updates
+
+### GPU Rendering System
+Modern GPU rendering pipeline built on SDL3's GPU API, enabled via `-DUSE_SDL3_GPU=ON`.
+
+- **[GPU Rendering Overview](gpu/GPURendering.md)** - Complete GPU system documentation including two-pass rendering architecture, triple-buffered vertex pools, sprite batching, and shader system
+- **Key Components:**
+  - **GPUDevice** - SDL_GPUDevice wrapper and shader format queries
+  - **GPURenderer** - Frame orchestration, pipeline state, and uniform management
+  - **GPUShaderManager** - Automatic SPIR-V (Vulkan) / MSL (Metal) shader loading
+  - **SpriteBatch** - Up to 25,000 sprites per batch with atlas support
+  - **GPUVertexPool** - Triple-buffered vertex storage for zero CPU stalls
+  - **GPUSceneRenderer** - Scene rendering facade with GPUSceneContext
+- **Features:**
+  - Two-pass rendering: Scene texture → Composite pass (day/night tinting, zoom, sub-pixel offset)
+  - Day/night lighting via composite shader integration with DayNightController
+  - GameState integration via `recordGPUVertices()`, `renderGPUScene()`, `renderGPUUI()`
 
 ### AI System
 The AI system provides flexible, thread-safe behavior management for game entities with individual behavior instances and mode-based configuration.
@@ -67,7 +84,7 @@ State-scoped event handlers that control specific behaviors without owning data.
 - **[Controllers Overview](controllers/README.md)** - Controller pattern, lifecycle, vs. Managers comparison
 - **[ControllerRegistry](controllers/ControllerRegistry.md)** - Type-erased container for batch controller management with `add<T>()`, `subscribeAll()`, `updateAll()` operations
 - **[WeatherController](controllers/WeatherController.md)** - Weather event coordination
-- **[DayNightController](controllers/DayNightController.md)** - Time period tracking and visual effects
+- **[DayNightController](controllers/DayNightController.md)** - Time period tracking, lighting interpolation (requires `update(dt)` each frame), and GPU composite shader integration
 - **[CombatController](controllers/CombatController.md)** - Handles combat logic, including hit detection, damage, and status effects.
 
 ### UI System
@@ -135,13 +152,16 @@ Core utility classes and helper systems used throughout the engine.
 
 See the [Utility Documentation Index](utils/README.md) for additional utility documentation and organization.
 
+- **[SceneRenderer](utils/SceneRenderer.md)** - Pixel-perfect zoomed scene rendering with smooth sub-pixel scrolling via intermediate texture (SDL_Renderer path)
+- **[WorldRenderPipeline](utils/WorldRenderPipeline.md)** - Four-phase rendering facade (prepareChunks→beginScene→renderWorld→endScene) for SDL_Renderer path
+- **[FrameProfiler](utils/FrameProfiler.md)** - Debug-only frame timing with three-tier profiling (Frame→Manager→Render phases), hitch detection (>20ms), F3 overlay toggle, GPU-aware phases. Zero overhead in Release builds.
+- **[Camera](utils/Camera.md)** - 2D camera utility with smooth target following, discrete zoom levels, world bounds clamping, and coordinate transformation
 - **[Logger System](utils/Logger.md)** - Comprehensive logging system with debug/release optimization and system-specific macros
 - **[JsonReader](utils/JsonReader.md)** - RFC 8259 compliant JSON parser with type-safe accessors and robust error handling
 - **[JSON Resource Loading](utils/JSON_Resource_Loading_Guide.md)** - Complete guide to loading items, materials, currency, and game resources from JSON files with ResourceTemplateManager integration
 - **[Binary Serialization](utils/SERIALIZATION.md)** - Fast, header-only serialization system for game data
 - **[ResourceHandle System](utils/ResourceHandle_System.md)** - Lightweight, type-safe handle indirection for resource lookups across modules
 - **[SIMDMath](utils/SIMDMath.md)** - Cross-platform SIMD abstraction layer for x86-64 (SSE2/AVX2) and ARM64 (NEON) with 2-4x performance improvements
-- **[Camera](utils/Camera.md)** - 2D camera utility with smooth target following, discrete zoom levels, world bounds clamping, and coordinate transformation
 - **[Interpolation System](architecture/InterpolationSystem.md)** - Lock-free atomic interpolation for smooth rendering across threads
 - **[Power Efficiency](performance/PowerEfficiency.md)** - Race-to-idle strategy achieving 80%+ idle residency, 2-3W average during gameplay, detailed benchmarks and optimization tips
 
@@ -170,7 +190,7 @@ The HammerEngine features a comprehensive resource management system that integr
 - **[InventoryComponent](../../include/entities/resources/InventoryComponent.hpp)** - Entity-based inventory management with resource stacking and validation
 
 ### Integration Points
-- **JSON Loading**: Resources are loaded from `res/data/items.json` and `res/data/materials_and_currency.json` using the [JsonReader](utils/JsonReader.md) system
+- **JSON Loading**: Resources are loaded from `res/data/resources.json` using the [JsonReader](utils/JsonReader.md) system
 - **Event System**: Resource changes trigger [ResourceChangeEvent](../../include/events/ResourceChangeEvent.hpp) through the EventManager for real-time updates
 - **Entity System**: NPCs and Players can own and manipulate resources through the InventoryComponent
 - **Game States**: Resource interactions are demonstrated in EventDemoState and GamePlayState
@@ -207,16 +227,22 @@ For complete integration examples, see the [JSON Resource Loading Guide](utils/J
   - `mingw-w64-x86_64-boost` (for testing)
   - `mingw-w64-x86_64-harfbuzz` (SDL3 req)
   - `mingw-w64-x86_64-freetype` (SDL3 req)
+  - `mingw-w64-x86_64-glslang` (GPU rendering, optional)
+  - `mingw-w64-x86_64-spirv-cross` (GPU rendering, optional)
 - Install with:
   ```
   pacman -S mingw-w64-x86_64-boost mingw-w64-x86_64-harfbuzz mingw-w64-x86_64-freetype
+  # For GPU rendering (-DUSE_SDL3_GPU=ON):
+  pacman -S mingw-w64-x86_64-glslang mingw-w64-x86_64-spirv-cross
   ```
 
 ### Linux
 - Follow the [official SDL3 Linux instructions](https://wiki.libsdl.org/SDL3/README-linux) for dependencies.
-- Install Boost for tests, Valgrind for memory/thread testing, and cppcheck for static analysis:
+- Install Boost for tests, Valgrind for memory/thread testing, and cppcheck clang-tidy for static analysis. Freetype is optional for SDL3_TTF:
   ```
-  sudo apt-get install libboost-all-dev valgrind cppcheck
+  sudo apt-get install libboost-all-dev valgrind cppcheck clang-tidy mold libfreetype-dev
+  # For GPU rendering (-DUSE_SDL3_GPU=ON):
+  sudo apt-get install glslang-tools spirv-cross
   ```
 - Example tested environment:
   - Ubuntu 24.04.2 LTS
@@ -238,6 +264,9 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 # Release build (production)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
 
+# GPU rendering (compiles SPIR-V/Metal shaders)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DUSE_SDL3_GPU=ON && ninja -C build
+
 # Profile build (Valgrind-compatible optimized)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Profile && ninja -C build
 ```
@@ -252,6 +281,8 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Profile && ninja -C build
 - Use Homebrew for SDL3 dependencies:
   ```
   brew install freetype harfbuzz boost cppcheck
+  # For GPU rendering (-DUSE_SDL3_GPU=ON):
+  brew install glslang spirv-cross
   ```
 - Note: CMake will use SDL3 libraries downloaded via FetchContent, not Homebrew, for the build. Homebrew SDL3 libs can conflict.
 - Xcode command line tools are required to compile.

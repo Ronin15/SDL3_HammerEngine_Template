@@ -7,11 +7,15 @@
 #define PLAYER_HPP
 
 #include "entities/Entity.hpp"
-#include "entities/resources/InventoryComponent.hpp"
 #include "entities/EntityStateManager.hpp"
 #include "utils/ResourceHandle.hpp"
-#include <memory>
+#include <cstdint>
 #include <unordered_map>
+
+namespace HammerEngine {
+class Camera;
+class GPURenderer;
+}  // Forward declarations
 
 class Player : public Entity {
 public:
@@ -37,6 +41,25 @@ public:
   void renderAtPosition(SDL_Renderer* renderer, const Vector2D& interpPos,
                         float cameraX, float cameraY);
 
+#ifdef USE_SDL3_GPU
+  /**
+   * @brief Record player vertices to GPU vertex pool
+   * @param gpuRenderer GPU renderer instance
+   * @param cameraX Camera X offset
+   * @param cameraY Camera Y offset
+   * @param interpolationAlpha Interpolation factor for smooth rendering
+   */
+  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer, float cameraX,
+                         float cameraY, float interpolationAlpha);
+
+  /**
+   * @brief Render player using GPU pipeline
+   * @param gpuRenderer GPU renderer instance
+   * @param scenePass Active scene render pass
+   */
+  void renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* scenePass);
+#endif
+
   void clean() override;
 
   // Sync movement with CollisionManager (player moves itself)
@@ -61,11 +84,14 @@ public:
   // Movement speed accessor
   float getMovementSpeed() const { return m_movementSpeed; }
 
-  // Inventory management
-  InventoryComponent *getInventory() { return m_inventory.get(); }
-  const InventoryComponent *getInventory() const { return m_inventory.get(); }
+  // Inventory management - uses EDM inventory directly
+  [[nodiscard]] uint32_t getInventoryIndex() const { return m_inventoryIndex; }
 
-  // Player-specific resource operations (use ResourceHandle via getInventory())
+  // Resource operations (delegate to EntityDataManager)
+  bool addToInventory(HammerEngine::ResourceHandle handle, int quantity);
+  bool removeFromInventory(HammerEngine::ResourceHandle handle, int quantity);
+  [[nodiscard]] int getInventoryQuantity(HammerEngine::ResourceHandle handle) const;
+  [[nodiscard]] bool hasInInventory(HammerEngine::ResourceHandle handle, int quantity = 1) const;
 
   // Equipment management
   bool equipItem(HammerEngine::ResourceHandle itemHandle);
@@ -86,6 +112,10 @@ public:
 
   // Cache invalidation - call when world changes (e.g., on WorldGeneratedEvent)
   void invalidateWorldBoundsCache() { m_worldBoundsCached = false; }
+
+  // Camera access for player states (non-owning, set by GamePlayState)
+  void setCamera(HammerEngine::Camera* camera) { mp_camera = camera; }
+  HammerEngine::Camera* getCamera() const { return mp_camera; }
 
   // Combat system - all stats stored in EntityDataManager::CharacterData
   void takeDamage(float damage, const Vector2D& knockback = Vector2D(0, 0));
@@ -120,12 +150,12 @@ private:
   void onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                          int oldQuantity, int newQuantity);
   EntityStateManager m_stateManager;
-  std::unique_ptr<InventoryComponent> m_inventory; // Player inventory
+  uint32_t m_inventoryIndex{0};       // EDM inventory index (0 = not created yet)
   int m_frameWidth{0};                // Width of a single animation frame
   int m_spriteSheetRows{0};           // Number of rows in the sprite sheet
   SDL_FlipMode m_flip{SDL_FLIP_NONE}; // Default flip direction
   // Note: Animation timing uses m_animationAccumulator inherited from Entity
-  float m_movementSpeed{120.0f};      // Movement speed in pixels per second (2 px/frame at 60 FPS)
+  float m_movementSpeed{120.0f};      // Movement speed in pixels per second 120 run (2 px/frame at 60 FPS running speed)
   // m_animationMap and m_animationLoops inherited from Entity
 
   // Equipment slots - store handles instead of item IDs
@@ -146,5 +176,8 @@ private:
   // Bootstrap: Initial position before EntityDataManager registration
   // Used in ensurePhysicsBodyRegistered() then cleared
   Vector2D m_initialPosition{400.0f, 300.0f};
+
+  // Non-owning camera pointer for player states (set by GamePlayState)
+  HammerEngine::Camera* mp_camera{nullptr};
 };
 #endif // PLAYER_HPP
