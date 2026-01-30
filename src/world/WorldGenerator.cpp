@@ -840,7 +840,7 @@ void WorldGenerator::generateBuildings(WorldData& world, std::default_random_eng
   auto isFarEnoughFromVillages = [&](int x, int y) -> bool {
     const int minDistSq = BldgCfg::VILLAGE_MIN_DISTANCE * BldgCfg::VILLAGE_MIN_DISTANCE;
     return std::none_of(villageCenters.begin(), villageCenters.end(),
-        [x, y, minDistSq](const auto& center) {
+        [x, y](const auto& center) {
             int dx = x - center.first;
             int dy = y - center.second;
             return dx * dx + dy * dy < minDistSq;
