@@ -1130,6 +1130,7 @@ public:
      * @param position World position
      * @param race Race name (e.g., "Human", "Elf", "Orc")
      * @param charClass Class name (e.g., "Warrior", "Guard", "Merchant")
+     * @param sex Character sex (defaults to Sex::Unknown for random assignment)
      * @param factionOverride Optional faction override (0xFF = use class default)
      * @return Handle to the created entity, or invalid handle if race/class not found
      *

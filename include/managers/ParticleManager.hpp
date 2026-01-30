@@ -662,6 +662,7 @@ public:
    * @brief Updates particles using WorkerBudget-optimized batch processing
    * @param deltaTime Time elapsed since last update
    * @param particleCount Current number of active particles
+   * @param outThreadingInfo Output structure populated with threading decision details
    *
    * This method provides the WorkerBudget-aware update path, which:
    * - Calculates optimal thread allocation using WorkerBudget system

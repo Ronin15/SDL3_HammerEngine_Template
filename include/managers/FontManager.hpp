@@ -70,14 +70,6 @@ class FontManager {
   bool loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight, float dpiScale = 1.0f);
 
   /**
-   * @brief Refreshes existing fonts with new sizes based on updated display characteristics
-   * @param fontPath Path to font file or directory containing TTF/OTF files
-   * @param windowWidth New window width in pixels
-   * @param windowHeight New window height in pixels
-   * @return true if fonts were refreshed successfully, false otherwise
-   */
-
-  /**
    * @brief Renders text to a texture using specified font
    * @param text Text string to render
    * @param fontID Unique identifier of the font to use
@@ -95,6 +87,7 @@ class FontManager {
    * @param fontID Unique identifier of the font to use
    * @param color Text color for rendering
    * @param renderer SDL renderer for texture creation
+   * @param dummy_for_overload Unused parameter to differentiate overload signature
    * @return Raw pointer to a new SDL_Texture, or nullptr if failed. The caller is responsible for destroying this texture.
    */
   SDL_Texture* renderText(const std::string& text, const std::string& fontID,

@@ -14,6 +14,7 @@ tools/*.html
 .vscode/
 res/sprites/
 tools/__pycache__
+docs/doxygen/
 *.plist
 bin/
 *.txt
