@@ -166,8 +166,10 @@ struct BehaviorTestFixture {
         playerEntity.reset();
 
         // Clean up managers in reverse initialization order
+        // Use prepareForStateTransition() for AIManager to properly reset paused state
+        // (clean() sets m_globallyPaused=true but init() doesn't reset it)
         BackgroundSimulationManager::Instance().clean();
-        AIManager::Instance().clean();
+        AIManager::Instance().prepareForStateTransition();
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
         EntityDataManager::Instance().clean();
