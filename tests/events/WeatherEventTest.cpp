@@ -165,9 +165,9 @@ BOOST_FIXTURE_TEST_CASE(EventExecution, WeatherEventFixture) {
 
 // New tests for region + bounds logic using biome as region
 BOOST_FIXTURE_TEST_CASE(RegionNameOnly_MismatchFails_MatchPasses, WeatherEventFixture) {
-    // Generate a small world
+    // Generate world (must be >= 26x26 to satisfy VILLAGE_RADIUS in WorldGenerator)
     HammerEngine::WorldGenerationConfig cfg{};
-    cfg.width = 10; cfg.height = 10; cfg.seed = 1234; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
+    cfg.width = 30; cfg.height = 30; cfg.seed = 1234; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
     BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(cfg));
 
     // Force tile (0,0) biome to FOREST deterministically
@@ -187,9 +187,9 @@ BOOST_FIXTURE_TEST_CASE(RegionNameOnly_MismatchFails_MatchPasses, WeatherEventFi
 }
 
 BOOST_FIXTURE_TEST_CASE(RegionAndBounds_BothMustPass, WeatherEventFixture) {
-    // Generate a small world and set (0,0) biome FOREST
+    // Generate world (must be >= 26x26 to satisfy VILLAGE_RADIUS in WorldGenerator)
     HammerEngine::WorldGenerationConfig cfg{};
-    cfg.width = 8; cfg.height = 8; cfg.seed = 5678; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
+    cfg.width = 30; cfg.height = 30; cfg.seed = 5678; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
     BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(cfg));
     auto* tile = WorldManager::Instance().getTileAt(0,0);
     BOOST_REQUIRE(tile != nullptr);

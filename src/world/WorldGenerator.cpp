@@ -796,6 +796,10 @@ void WorldGenerator::generateBuildings(WorldData& world, std::default_random_eng
 
   if (width <= BldgCfg::BUILDING_SIZE || height <= BldgCfg::BUILDING_SIZE) return;
 
+  // World must be large enough for village placement (VILLAGE_RADIUS on each side)
+  int minWorldSize = 2 * BldgCfg::VILLAGE_RADIUS + 2;
+  if (width < minWorldSize || height < minWorldSize) return;
+
   std::uniform_real_distribution<float> dist(0.0f, 1.0f);
   std::uniform_int_distribution<int> xDist(BldgCfg::VILLAGE_RADIUS, width - BldgCfg::VILLAGE_RADIUS - 1);
   std::uniform_int_distribution<int> yDist(BldgCfg::VILLAGE_RADIUS, height - BldgCfg::VILLAGE_RADIUS - 1);
