@@ -6,6 +6,7 @@
 #include "managers/TextureManager.hpp"
 #include "core/Logger.hpp"
 #include "utils/FrameProfiler.hpp"
+#include "utils/ResourcePath.hpp"
 #include <cstring>
 #include <format>
 
@@ -573,23 +574,23 @@ bool GPURenderer::loadShaders() {
     compositeFragInfo.numSamplers = 1;
     compositeFragInfo.numUniformBuffers = 1;  // CompositeUBO
 
-    // Load all shaders
-    if (!shaderMgr.loadShader("res/shaders/sprite.vert", SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo)) {
+    // Load all shaders (use ResourcePath::resolve for bundle compatibility)
+    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/sprite.vert"), SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader("res/shaders/sprite.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, spriteFragInfo)) {
+    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/sprite.frag"), SDL_GPU_SHADERSTAGE_FRAGMENT, spriteFragInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader("res/shaders/color.vert", SDL_GPU_SHADERSTAGE_VERTEX, colorVertInfo)) {
+    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/color.vert"), SDL_GPU_SHADERSTAGE_VERTEX, colorVertInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader("res/shaders/color.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, colorFragInfo)) {
+    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/color.frag"), SDL_GPU_SHADERSTAGE_FRAGMENT, colorFragInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader("res/shaders/composite.vert", SDL_GPU_SHADERSTAGE_VERTEX, compositeVertInfo)) {
+    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/composite.vert"), SDL_GPU_SHADERSTAGE_VERTEX, compositeVertInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader("res/shaders/composite.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, compositeFragInfo)) {
+    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/composite.frag"), SDL_GPU_SHADERSTAGE_FRAGMENT, compositeFragInfo)) {
         return false;
     }
 
@@ -604,11 +605,19 @@ bool GPURenderer::createPipelines() {
     SDL_GPUTextureFormat sceneFormat = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
     SDL_GPUTextureFormat swapchainFormat = GPUDevice::Instance().getSwapchainFormat();
 
+    // Cache resolved shader paths (must match keys used in loadShaders)
+    const std::string spriteVert = ResourcePath::resolve("res/shaders/sprite.vert");
+    const std::string spriteFrag = ResourcePath::resolve("res/shaders/sprite.frag");
+    const std::string colorVert = ResourcePath::resolve("res/shaders/color.vert");
+    const std::string colorFrag = ResourcePath::resolve("res/shaders/color.frag");
+    const std::string compositeVert = ResourcePath::resolve("res/shaders/composite.vert");
+    const std::string compositeFrag = ResourcePath::resolve("res/shaders/composite.frag");
+
     // Sprite opaque pipeline (renders to scene texture)
     {
         auto config = GPUPipeline::createSpriteConfig(
-            shaderMgr.getShader("res/shaders/sprite.vert"),
-            shaderMgr.getShader("res/shaders/sprite.frag"),
+            shaderMgr.getShader(spriteVert),
+            shaderMgr.getShader(spriteFrag),
             sceneFormat,
             false  // opaque
         );
@@ -620,8 +629,8 @@ bool GPURenderer::createPipelines() {
     // Sprite alpha pipeline (renders to scene texture)
     {
         auto config = GPUPipeline::createSpriteConfig(
-            shaderMgr.getShader("res/shaders/sprite.vert"),
-            shaderMgr.getShader("res/shaders/sprite.frag"),
+            shaderMgr.getShader(spriteVert),
+            shaderMgr.getShader(spriteFrag),
             sceneFormat,
             true  // alpha
         );
@@ -633,8 +642,8 @@ bool GPURenderer::createPipelines() {
     // Particle pipeline (renders to scene texture, uses color shaders)
     {
         auto config = GPUPipeline::createParticleConfig(
-            shaderMgr.getShader("res/shaders/color.vert"),
-            shaderMgr.getShader("res/shaders/color.frag"),
+            shaderMgr.getShader(colorVert),
+            shaderMgr.getShader(colorFrag),
             sceneFormat
         );
         if (!m_particlePipeline.create(m_device, config)) {
@@ -645,8 +654,8 @@ bool GPURenderer::createPipelines() {
     // Primitive pipeline (renders to scene texture, uses color shaders)
     {
         auto config = GPUPipeline::createPrimitiveConfig(
-            shaderMgr.getShader("res/shaders/color.vert"),
-            shaderMgr.getShader("res/shaders/color.frag"),
+            shaderMgr.getShader(colorVert),
+            shaderMgr.getShader(colorFrag),
             sceneFormat
         );
         if (!m_primitivePipeline.create(m_device, config)) {
@@ -657,8 +666,8 @@ bool GPURenderer::createPipelines() {
     // Composite pipeline (renders to swapchain)
     {
         auto config = GPUPipeline::createCompositeConfig(
-            shaderMgr.getShader("res/shaders/composite.vert"),
-            shaderMgr.getShader("res/shaders/composite.frag"),
+            shaderMgr.getShader(compositeVert),
+            shaderMgr.getShader(compositeFrag),
             swapchainFormat
         );
         if (!m_compositePipeline.create(m_device, config)) {
@@ -669,8 +678,8 @@ bool GPURenderer::createPipelines() {
     // UI sprite pipeline (renders to swapchain for text/icons)
     {
         auto config = GPUPipeline::createSpriteConfig(
-            shaderMgr.getShader("res/shaders/sprite.vert"),
-            shaderMgr.getShader("res/shaders/sprite.frag"),
+            shaderMgr.getShader(spriteVert),
+            shaderMgr.getShader(spriteFrag),
             swapchainFormat,
             true  // alpha blending for text
         );
@@ -682,8 +691,8 @@ bool GPURenderer::createPipelines() {
     // UI primitive pipeline (renders to swapchain for UI backgrounds, uses color shaders)
     {
         auto config = GPUPipeline::createPrimitiveConfig(
-            shaderMgr.getShader("res/shaders/color.vert"),
-            shaderMgr.getShader("res/shaders/color.frag"),
+            shaderMgr.getShader(colorVert),
+            shaderMgr.getShader(colorFrag),
             swapchainFormat
         );
         if (!m_uiPrimitivePipeline.create(m_device, config)) {
