@@ -4,6 +4,7 @@
  */
 
 #include "ai/behaviors/AttackBehavior.hpp"
+#include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include <algorithm>
@@ -280,7 +281,27 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
   // Check for retreat conditions
   if (shouldRetreat(ctx.edmIndex) &&
       attack.currentState != static_cast<uint8_t>(AttackState::RETREATING)) {
-    changeState(data, AttackState::RETREATING);
+    // Very high fear + low bravery = full flee, not just tactical retreat
+    bool shouldFlee = false;
+    if (ctx.memoryData && ctx.memoryData->isValid()) {
+      float fear = ctx.memoryData->emotions.fear;
+      float bravery = ctx.memoryData->personality.bravery;
+      // Terrified and cowardly: fear > 0.7 and bravery < 0.4
+      shouldFlee = (fear > 0.7f && bravery < 0.4f);
+    }
+
+    if (shouldFlee) {
+      // Switch to Flee behavior (same pattern as GuardBehavior::handleThreatDetection)
+      auto &aiMgr = AIManager::Instance();
+      auto &edm = EntityDataManager::Instance();
+      EntityHandle handle = edm.getHandle(ctx.edmIndex);
+      if (handle.isValid() && aiMgr.hasBehavior("Flee")) {
+        aiMgr.assignBehavior(handle, "Flee");
+        AI_INFO("Attacker switched to Flee - too afraid to continue fighting");
+      }
+    } else {
+      changeState(data, AttackState::RETREATING);
+    }
   }
 
   // Execute behavior based on attack mode
@@ -684,7 +705,29 @@ bool AttackBehavior::shouldRetreat(size_t edmIndex) const {
   auto &edm = EntityDataManager::Instance();
   const auto &charData = edm.getCharacterDataByIndex(edmIndex);
   float const healthRatio = charData.health / charData.maxHealth;
-  return healthRatio <= m_retreatThreshold && m_aggression < 0.8f;
+
+  // Emotion-modulated retreat threshold
+  float effectiveThreshold = m_retreatThreshold;
+  if (edm.hasMemoryData(edmIndex)) {
+    const auto &memData = edm.getMemoryData(edmIndex);
+    if (memData.isValid()) {
+      // Fear increases threshold (retreat sooner), aggression decreases it
+      effectiveThreshold *= (1.0f + memData.emotions.fear * 0.5f
+                                  - memData.emotions.aggression * 0.3f);
+
+      // Personality affects threshold: brave NPCs fight longer
+      float braveryFactor = memData.personality.bravery;
+      effectiveThreshold *= (1.0f - braveryFactor * 0.3f);  // Brave = lower threshold
+
+      // Personality aggression also affects willingness to retreat
+      float personalAggression = memData.personality.aggression;
+      effectiveThreshold *= (1.0f - personalAggression * 0.2f);
+
+      effectiveThreshold = std::clamp(effectiveThreshold, 0.1f, 0.7f);
+    }
+  }
+
+  return healthRatio <= effectiveThreshold && m_aggression < 0.8f;
 }
 
 bool AttackBehavior::shouldCharge(float distance,

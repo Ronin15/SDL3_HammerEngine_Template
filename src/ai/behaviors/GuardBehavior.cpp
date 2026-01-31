@@ -162,6 +162,19 @@ void GuardBehavior::executeLogic(BehaviorContext &ctx) {
   guard.alertDecayTimer += ctx.deltaTime;
   guard.roamTimer -= ctx.deltaTime;
 
+  // Update escalation multiplier from suspicion (1.0 = normal, 0.5 = 2x faster)
+  // High suspicion guards escalate alert levels faster
+  // Loyalty also contributes: loyal guards are more protective
+  if (ctx.memoryData && ctx.memoryData->isValid()) {
+    float suspicion = ctx.memoryData->emotions.suspicion;
+    float loyalty = ctx.memoryData->personality.loyalty;
+    // Suspicion reduces threshold (up to 50% at max suspicion)
+    // Loyalty also reduces threshold (up to 25% at max loyalty)
+    guard.escalationMultiplier = 1.0f / (1.0f + suspicion * 0.5f + loyalty * 0.25f);
+  } else {
+    guard.escalationMultiplier = 1.0f;
+  }
+
   // Update path timers from context (no Instance() call needed)
   if (!ctx.pathData)
     return;
@@ -628,14 +641,18 @@ void GuardBehavior::updateAlertLevel(BehaviorData &data,
       // Gradual escalation for other threats (player, unknowns)
       float const threatDuration = guard.alertTimer;
 
+      // Get suspicion for faster escalation (looked up via edmIndex later if needed)
+      // Note: Suspicion is applied at the caller level in executeLogic since we
+      // don't have edmIndex here. The thresholds are scaled there.
+
       if (guard.currentAlertLevel == 0) { // CALM
         guard.currentAlertLevel = 1;      // SUSPICIOUS
         guard.alertTimer = 0.0f;
       } else if (guard.currentAlertLevel == 1 && // SUSPICIOUS
-                 threatDuration > SUSPICIOUS_THRESHOLD) {
+                 threatDuration > SUSPICIOUS_THRESHOLD * guard.escalationMultiplier) {
         guard.currentAlertLevel = 2;             // INVESTIGATING
       } else if (guard.currentAlertLevel == 2 && // INVESTIGATING
-                 threatDuration > INVESTIGATING_THRESHOLD) {
+                 threatDuration > INVESTIGATING_THRESHOLD * guard.escalationMultiplier) {
         guard.currentAlertLevel = 3; // HOSTILE
       }
     }

@@ -496,3 +496,204 @@ BOOST_AUTO_TEST_CASE(TestMemoryClearedOnEntityDestruction) {
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// PERSONALITY TRAITS TESTS
+// ============================================================================
+
+BOOST_FIXTURE_TEST_SUITE(PersonalityTraitsTests, NPCMemoryTestFixture)
+
+BOOST_AUTO_TEST_CASE(TestPersonalityTraitsSize) {
+    // PersonalityTraits should be exactly 16 bytes
+    BOOST_CHECK_EQUAL(sizeof(PersonalityTraits), 16);
+}
+
+BOOST_AUTO_TEST_CASE(TestPersonalityTraitsDefaults) {
+    PersonalityTraits traits;
+
+    // All traits should default to 0.5 (neutral)
+    BOOST_CHECK(approxEqual(traits.bravery, 0.5f));
+    BOOST_CHECK(approxEqual(traits.aggression, 0.5f));
+    BOOST_CHECK(approxEqual(traits.composure, 0.5f));
+    BOOST_CHECK(approxEqual(traits.loyalty, 0.5f));
+}
+
+BOOST_AUTO_TEST_CASE(TestPersonalityTraitsClearing) {
+    PersonalityTraits traits;
+    traits.bravery = 0.8f;
+    traits.aggression = 0.2f;
+    traits.composure = 0.9f;
+    traits.loyalty = 0.1f;
+
+    traits.clear();
+
+    // Should reset to defaults
+    BOOST_CHECK(approxEqual(traits.bravery, 0.5f));
+    BOOST_CHECK(approxEqual(traits.aggression, 0.5f));
+    BOOST_CHECK(approxEqual(traits.composure, 0.5f));
+    BOOST_CHECK(approxEqual(traits.loyalty, 0.5f));
+}
+
+BOOST_AUTO_TEST_CASE(TestPersonalityRandomization) {
+    PersonalityTraits traits;
+    std::mt19937 rng{42};  // Fixed seed for reproducibility
+
+    traits.randomize(rng);
+
+    // All traits should be in valid range [0, 1]
+    BOOST_CHECK(traits.bravery >= 0.0f && traits.bravery <= 1.0f);
+    BOOST_CHECK(traits.aggression >= 0.0f && traits.aggression <= 1.0f);
+    BOOST_CHECK(traits.composure >= 0.0f && traits.composure <= 1.0f);
+    BOOST_CHECK(traits.loyalty >= 0.0f && traits.loyalty <= 1.0f);
+
+    // With normal distribution, most values should be near 0.5
+    // (This is probabilistic but with fixed seed we know the result)
+}
+
+BOOST_AUTO_TEST_CASE(TestEffectiveResilienceCalculation) {
+    PersonalityTraits traits;
+
+    // Test with neutral personality (all 0.5)
+    float classResilience = 0.8f;  // Guard-like high resilience
+    float effective = traits.getEffectiveResilience(classResilience);
+
+    // 60% class (0.48) + 40% personality average (0.2) = 0.68
+    // Personality average = (0.5 + 0.5) / 2 * 0.4 = 0.2
+    BOOST_CHECK(approxEqual(effective, 0.68f));
+
+    // Test with brave and composed personality
+    traits.bravery = 0.9f;
+    traits.composure = 0.9f;
+    effective = traits.getEffectiveResilience(classResilience);
+    // 60% class (0.48) + 40% personality average (0.36) = 0.84
+    BOOST_CHECK(approxEqual(effective, 0.84f));
+
+    // Test with cowardly and reactive personality
+    traits.bravery = 0.1f;
+    traits.composure = 0.1f;
+    effective = traits.getEffectiveResilience(classResilience);
+    // 60% class (0.48) + 40% personality average (0.04) = 0.52
+    BOOST_CHECK(approxEqual(effective, 0.52f));
+}
+
+BOOST_AUTO_TEST_CASE(TestNPCSpawnHasPersonality) {
+    auto [handle, index] = createTestNPC();
+
+    edm->initMemoryData(index);
+    auto& memData = edm->getMemoryData(index);
+
+    BOOST_CHECK(memData.isValid());
+
+    // Personality should be randomized (not all defaults)
+    // At least one trait should differ from 0.5 (default)
+    // This is probabilistic but extremely likely to pass
+    bool hasVariation =
+        !approxEqual(memData.personality.bravery, 0.5f) ||
+        !approxEqual(memData.personality.aggression, 0.5f) ||
+        !approxEqual(memData.personality.composure, 0.5f) ||
+        !approxEqual(memData.personality.loyalty, 0.5f);
+
+    BOOST_CHECK_MESSAGE(hasVariation,
+        "Personality should be randomized on spawn, not all 0.5 defaults");
+
+    // All values should still be in valid range
+    BOOST_CHECK(memData.personality.bravery >= 0.0f && memData.personality.bravery <= 1.0f);
+    BOOST_CHECK(memData.personality.aggression >= 0.0f && memData.personality.aggression <= 1.0f);
+    BOOST_CHECK(memData.personality.composure >= 0.0f && memData.personality.composure <= 1.0f);
+    BOOST_CHECK(memData.personality.loyalty >= 0.0f && memData.personality.loyalty <= 1.0f);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// EMOTIONAL RESILIENCE TESTS
+// ============================================================================
+
+BOOST_FIXTURE_TEST_SUITE(EmotionalResilienceTests, NPCMemoryTestFixture)
+
+BOOST_AUTO_TEST_CASE(TestClassInfoHasResilience) {
+    // Guards should have high resilience
+    const ClassInfo* guardClass = edm->getClassInfo("Guard");
+    BOOST_REQUIRE(guardClass != nullptr);
+    BOOST_CHECK(guardClass->emotionalResilience > 0.6f);  // Guards are stoic
+
+    // Merchants should have low resilience
+    const ClassInfo* merchantClass = edm->getClassInfo("GeneralMerchant");
+    BOOST_REQUIRE(merchantClass != nullptr);
+    BOOST_CHECK(merchantClass->emotionalResilience < 0.4f);  // Merchants panic easily
+}
+
+BOOST_AUTO_TEST_CASE(TestCharacterDataInheritsResilience) {
+    // Create a Guard NPC
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100, 100), "Human", "Guard");
+    BOOST_REQUIRE(handle.isValid());
+
+    size_t index = edm->getIndex(handle);
+    uint32_t typeIndex = edm->getHotDataByIndex(index).typeLocalIndex;
+    const auto& charData = edm->getCharacterDataByIndex(typeIndex);
+
+    // Should have Guard's resilience
+    const ClassInfo* guardClass = edm->getClassInfo("Guard");
+    BOOST_REQUIRE(guardClass != nullptr);
+    BOOST_CHECK(approxEqual(charData.emotionalResilience, guardClass->emotionalResilience));
+}
+
+BOOST_AUTO_TEST_CASE(TestResilienceAffectsFearGain) {
+    // Create two NPCs: one with high resilience (Guard), one with low (Merchant)
+    EntityHandle guardHandle = edm->createNPCWithRaceClass(Vector2D(100, 100), "Human", "Guard");
+    EntityHandle merchantHandle = edm->createNPCWithRaceClass(Vector2D(200, 200), "Human", "GeneralMerchant");
+
+    BOOST_REQUIRE(guardHandle.isValid());
+    BOOST_REQUIRE(merchantHandle.isValid());
+
+    size_t guardIdx = edm->getIndex(guardHandle);
+    size_t merchantIdx = edm->getIndex(merchantHandle);
+
+    // Initialize memory data
+    edm->initMemoryData(guardIdx);
+    edm->initMemoryData(merchantIdx);
+
+    // Record same combat event for both
+    EntityHandle attacker{999, EntityKind::NPC, 1};
+    float damage = 50.0f;
+
+    edm->recordCombatEvent(guardIdx, attacker, EntityHandle{}, damage, true, 0.0f);
+    edm->recordCombatEvent(merchantIdx, attacker, EntityHandle{}, damage, true, 0.0f);
+
+    // Get resulting fear levels
+    auto& guardMem = edm->getMemoryData(guardIdx);
+    auto& merchantMem = edm->getMemoryData(merchantIdx);
+
+    // Merchant (low resilience) should have more fear than Guard (high resilience)
+    BOOST_CHECK_MESSAGE(merchantMem.emotions.fear > guardMem.emotions.fear,
+        "Low resilience NPCs should gain more fear from damage");
+}
+
+BOOST_AUTO_TEST_CASE(TestBraveryAffectsFearGain) {
+    auto [handle, index] = createTestNPC();
+
+    edm->initMemoryData(index);
+    auto& memData = edm->getMemoryData(index);
+
+    // Set personality to very cowardly
+    memData.personality.bravery = 0.1f;
+    memData.personality.composure = 0.5f;
+    memData.emotions.fear = 0.0f;
+
+    // Record combat event
+    EntityHandle attacker{999, EntityKind::NPC, 1};
+    edm->recordCombatEvent(index, attacker, EntityHandle{}, 30.0f, true, 0.0f);
+    float cowardFear = memData.emotions.fear;
+
+    // Reset and test with brave personality
+    memData.emotions.fear = 0.0f;
+    memData.personality.bravery = 0.9f;
+    edm->recordCombatEvent(index, attacker, EntityHandle{}, 30.0f, true, 1.0f);
+    float braveFear = memData.emotions.fear;
+
+    // Brave NPCs should gain less fear
+    BOOST_CHECK_MESSAGE(braveFear < cowardFear,
+        "Brave NPCs should gain less fear from damage");
+}
+
+BOOST_AUTO_TEST_SUITE_END()

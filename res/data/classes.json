@@ -12,6 +12,7 @@
             "basePriority": 7,
             "defaultFaction": 1,
             "isMerchant": false,
+            "emotionalResilience": 0.7,
             "startingItems": [
                 {"id": "iron_sword", "quantity": 1},
                 {"id": "health_potion", "quantity": 1}
@@ -29,6 +30,7 @@
             "basePriority": 6,
             "defaultFaction": 0,
             "isMerchant": false,
+            "emotionalResilience": 0.8,
             "startingItems": [
                 {"id": "iron_sword", "quantity": 1},
                 {"id": "iron_shield", "quantity": 1},
@@ -47,6 +49,7 @@
             "basePriority": 8,
             "defaultFaction": 1,
             "isMerchant": false,
+            "emotionalResilience": 0.5,
             "startingItems": [
                 {"id": "dagger", "quantity": 1},
                 {"id": "gold_coins", "quantity": 50}
@@ -64,6 +67,7 @@
             "basePriority": 7,
             "defaultFaction": 2,
             "isMerchant": false,
+            "emotionalResilience": 0.4,
             "startingItems": [
                 {"id": "wooden_staff", "quantity": 1},
                 {"id": "mana_elixir", "quantity": 3}
@@ -81,6 +85,7 @@
             "basePriority": 7,
             "defaultFaction": 1,
             "isMerchant": false,
+            "emotionalResilience": 0.6,
             "startingItems": [
                 {"id": "bow", "quantity": 1},
                 {"id": "arrows", "quantity": 30},
@@ -99,6 +104,7 @@
             "basePriority": 3,
             "defaultFaction": 0,
             "isMerchant": true,
+            "emotionalResilience": 0.5,
             "startingItems": [
                 {"id": "iron_sword", "quantity": 3},
                 {"id": "steel_sword", "quantity": 1},
@@ -118,6 +124,7 @@
             "basePriority": 3,
             "defaultFaction": 0,
             "isMerchant": true,
+            "emotionalResilience": 0.5,
             "startingItems": [
                 {"id": "leather_armor", "quantity": 2},
                 {"id": "iron_armor", "quantity": 1},
@@ -138,6 +145,7 @@
             "basePriority": 3,
             "defaultFaction": 0,
             "isMerchant": true,
+            "emotionalResilience": 0.35,
             "startingItems": [
                 {"id": "health_potion", "quantity": 10},
                 {"id": "super_health_potion", "quantity": 3},
@@ -157,6 +165,7 @@
             "basePriority": 2,
             "defaultFaction": 0,
             "isMerchant": true,
+            "emotionalResilience": 0.4,
             "startingItems": [
                 {"id": "bread", "quantity": 20},
                 {"id": "meat", "quantity": 10},
@@ -176,6 +185,7 @@
             "basePriority": 2,
             "defaultFaction": 0,
             "isMerchant": true,
+            "emotionalResilience": 0.45,
             "startingItems": [
                 {"id": "ale", "quantity": 20},
                 {"id": "wine", "quantity": 10},
@@ -195,6 +205,7 @@
             "basePriority": 2,
             "defaultFaction": 0,
             "isMerchant": true,
+            "emotionalResilience": 0.3,
             "startingItems": [
                 {"id": "health_potion", "quantity": 5},
                 {"id": "bread", "quantity": 10},
@@ -214,6 +225,7 @@
             "basePriority": 2,
             "defaultFaction": 0,
             "isMerchant": true,
+            "emotionalResilience": 0.25,
             "startingItems": [
                 {"id": "emerald", "quantity": 2},
                 {"id": "ruby", "quantity": 2},
@@ -233,6 +245,7 @@
             "basePriority": 3,
             "defaultFaction": 0,
             "isMerchant": true,
+            "emotionalResilience": 0.4,
             "startingItems": [
                 {"id": "wheat", "quantity": 30},
                 {"id": "vegetables", "quantity": 20},
@@ -252,6 +265,7 @@
             "basePriority": 3,
             "defaultFaction": 0,
             "isMerchant": true,
+            "emotionalResilience": 0.5,
             "startingItems": [
                 {"id": "iron_ore", "quantity": 20},
                 {"id": "copper_ore", "quantity": 15},
@@ -271,6 +285,7 @@
             "basePriority": 3,
             "defaultFaction": 0,
             "isMerchant": true,
+            "emotionalResilience": 0.5,
             "startingItems": [
                 {"id": "wood", "quantity": 50},
                 {"id": "iron_axe", "quantity": 1},
