@@ -156,6 +156,12 @@ public:
                         std::shared_ptr<AIBehavior> behavior);
 
   /**
+   * @brief Registers all standard behavior types (Idle, Wander, Chase, Guard, Attack, Flee, Follow)
+   * @details Called by GameEngine after init(). GameStates don't need to register behaviors manually.
+   */
+  void registerDefaultBehaviors();
+
+  /**
    * @brief Checks if a behavior template is registered
    * @param name Name of the behavior to check
    * @return true if behavior is registered, false otherwise
