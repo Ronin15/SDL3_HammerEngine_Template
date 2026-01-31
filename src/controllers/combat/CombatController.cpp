@@ -11,6 +11,7 @@
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/GameTimeManager.hpp"
 #include <format>
 
 void CombatController::subscribe() {
@@ -169,6 +170,11 @@ void CombatController::performAttack(Player *player) {
 
     // Apply damage directly to CharacterData
     charData.health = std::max(0.0f, charData.health - attackDamage);
+
+    // Record combat event in NPC's memory (they were attacked by player)
+    float gameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
+    edm.recordCombatEvent(idx, playerHandle, handle, attackDamage,
+                          /*wasAttacked=*/true, gameTime);
 
     // Apply knockback via velocity
     hotData.transform.velocity = hotData.transform.velocity + knockback;

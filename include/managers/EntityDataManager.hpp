@@ -203,7 +203,7 @@ struct CharacterData {
     float maxStamina{100.0f};
     float attackDamage{10.0f};
     float attackRange{50.0f};
-    float moveSpeed{100.0f};   // Base movement speed (NEW)
+    float moveSpeed{100.0f};   // Base movement speed
 
     // Identity (creature composition)
     CreatureCategory category{CreatureCategory::NPC};  // NPC, Monster, or Animal
@@ -217,12 +217,24 @@ struct CharacterData {
     uint8_t priority{5};       // AI priority (0-9)
     uint8_t stateFlags{0};     // alive, stunned, invulnerable, etc.
 
+    // Inventory (for merchants and NPCs that carry items)
+    uint32_t inventoryIndex{INVALID_INVENTORY_INDEX};  // EDM inventory index
+
     static constexpr uint8_t STATE_ALIVE = 0x01;
     static constexpr uint8_t STATE_STUNNED = 0x02;
     static constexpr uint8_t STATE_INVULNERABLE = 0x04;
+    static constexpr uint8_t STATE_MERCHANT = 0x08;    // Can trade with player
 
     [[nodiscard]] bool isCharacterAlive() const noexcept {
         return stateFlags & STATE_ALIVE;
+    }
+
+    [[nodiscard]] bool isMerchant() const noexcept {
+        return (stateFlags & STATE_MERCHANT) != 0;
+    }
+
+    [[nodiscard]] bool hasInventory() const noexcept {
+        return inventoryIndex != INVALID_INVENTORY_INDEX;
     }
 };
 
@@ -1633,6 +1645,32 @@ public:
      * - Returns INVALID_INVENTORY_INDEX if allocation fails
      */
     uint32_t createInventory(uint16_t maxSlots, bool worldTracked = false);
+
+    /**
+     * @brief Initialize an NPC as a merchant with an inventory
+     * @param handle NPC entity handle
+     * @param maxSlots Maximum inventory slots (default 20)
+     * @return true if successfully initialized, false on failure
+     *
+     * Creates an inventory for the NPC and sets the STATE_MERCHANT flag.
+     * The inventory index is stored in CharacterData.inventoryIndex.
+     * Use this to enable trading with the NPC via SocialController.
+     */
+    bool initNPCAsmerchant(EntityHandle handle, uint16_t maxSlots = 20);
+
+    /**
+     * @brief Check if an NPC is a merchant
+     * @param handle NPC entity handle
+     * @return true if NPC has merchant capability
+     */
+    [[nodiscard]] bool isNPCMerchant(EntityHandle handle) const;
+
+    /**
+     * @brief Get an NPC's inventory index
+     * @param handle NPC entity handle
+     * @return Inventory index, or INVALID_INVENTORY_INDEX if not a merchant
+     */
+    [[nodiscard]] uint32_t getNPCInventoryIndex(EntityHandle handle) const;
 
     /**
      * @brief Destroy an inventory and release its resources
