@@ -4,6 +4,13 @@
  */
 
 #include "managers/AIManager.hpp"
+#include "ai/behaviors/AttackBehavior.hpp"
+#include "ai/behaviors/ChaseBehavior.hpp"
+#include "ai/behaviors/FleeBehavior.hpp"
+#include "ai/behaviors/FollowBehavior.hpp"
+#include "ai/behaviors/GuardBehavior.hpp"
+#include "ai/behaviors/IdleBehavior.hpp"
+#include "ai/behaviors/WanderBehavior.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
@@ -508,6 +515,56 @@ void AIManager::registerBehavior(const std::string &name,
   std::unique_lock<std::shared_mutex> lock(m_behaviorsMutex);
   m_behaviorTemplates[name] = behavior;
   AI_INFO(std::format("Registered behavior: {}", name));
+}
+
+void AIManager::registerDefaultBehaviors() {
+  AI_INFO("Registering default behaviors...");
+
+  // Idle - stationary with light fidgeting
+  if (!hasBehavior("Idle")) {
+    registerBehavior("Idle", std::make_shared<IdleBehavior>(
+        IdleBehavior::IdleMode::LIGHT_FIDGET, 50.0f));
+  }
+
+  // Wander - random movement in area
+  if (!hasBehavior("Wander")) {
+    registerBehavior("Wander", std::make_shared<WanderBehavior>(
+        40.0f, 3.0f, 200.0f));  // speed, changeInterval, areaRadius
+  }
+
+  // Chase - pursue target
+  if (!hasBehavior("Chase")) {
+    registerBehavior("Chase", std::make_shared<ChaseBehavior>(
+        70.0f, 300.0f, 30.0f));  // speed, maxRange, minRange
+  }
+
+  // Guard - stationary but alert
+  if (!hasBehavior("Guard")) {
+    registerBehavior("Guard", std::make_shared<GuardBehavior>(
+        Vector2D(0, 0), 150.0f, 200.0f));  // position, guardRadius, alertRadius
+  }
+
+  // Attack - combat behavior
+  if (!hasBehavior("Attack")) {
+    auto attack = std::make_shared<AttackBehavior>(80.0f, 25.0f, 1.5f);
+    attack->setMovementSpeed(80.0f);
+    registerBehavior("Attack", attack);
+  }
+
+  // Flee - run away from threats
+  if (!hasBehavior("Flee")) {
+    registerBehavior("Flee", std::make_shared<FleeBehavior>(
+        60.0f, 150.0f, 200.0f));  // speed, detectionRange, safeDistance
+  }
+
+  // Follow - follow a target
+  if (!hasBehavior("Follow")) {
+    auto follow = std::make_shared<FollowBehavior>(50.0f, 100.0f);
+    follow->setStopWhenTargetStops(false);
+    registerBehavior("Follow", follow);
+  }
+
+  AI_INFO("Default behaviors registered successfully");
 }
 
 bool AIManager::hasBehavior(const std::string &name) const {
