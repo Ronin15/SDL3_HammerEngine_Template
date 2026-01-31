@@ -510,6 +510,43 @@ bool Player::hasInInventory(HammerEngine::ResourceHandle handle, int quantity) c
   return EntityDataManager::Instance().hasInInventory(m_inventoryIndex, handle, quantity);
 }
 
+// Currency convenience methods
+int Player::getGold() const {
+  auto goldHandle = ResourceTemplateManager::Instance().getHandleByName("gold");
+  if (!goldHandle.isValid()) {
+    return 0;
+  }
+  return getInventoryQuantity(goldHandle);
+}
+
+bool Player::addGold(int amount) {
+  if (amount <= 0) {
+    return false;
+  }
+  auto goldHandle = ResourceTemplateManager::Instance().getHandleByName("gold");
+  if (!goldHandle.isValid()) {
+    PLAYER_WARN("Player::addGold - gold resource not found");
+    return false;
+  }
+  return addToInventory(goldHandle, amount);
+}
+
+bool Player::removeGold(int amount) {
+  if (amount <= 0) {
+    return false;
+  }
+  auto goldHandle = ResourceTemplateManager::Instance().getHandleByName("gold");
+  if (!goldHandle.isValid()) {
+    PLAYER_WARN("Player::removeGold - gold resource not found");
+    return false;
+  }
+  return removeFromInventory(goldHandle, amount);
+}
+
+bool Player::hasGold(int amount) const {
+  return getGold() >= amount;
+}
+
 // Equipment management
 bool Player::equipItem(HammerEngine::ResourceHandle itemHandle) {
   if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {

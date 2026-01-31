@@ -12,7 +12,12 @@
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/GameTimeManager.hpp"
+#include "managers/UIManager.hpp"
 #include <format>
+
+namespace {
+    constexpr const char* GAMEPLAY_EVENT_LOG = "gameplay_event_log";
+}
 
 void CombatController::subscribe() {
   if (checkAlreadySubscribed()) {
@@ -179,9 +184,17 @@ void CombatController::performAttack(Player *player) {
     // Apply knockback via velocity
     hotData.transform.velocity = hotData.transform.velocity + knockback;
 
+    // Get entity name for display (use kind + ID for now)
+    std::string entityName = std::format("Enemy #{}", handle.getId());
+
     COMBAT_INFO(
         std::format("Hit entity {} for {:.1f} damage! HP: {:.1f} -> {:.1f}",
                     handle.getId(), attackDamage, oldHealth, charData.health));
+
+    // Add to on-screen event log
+    UIManager::Instance().addEventLogEntry(
+        GAMEPLAY_EVENT_LOG,
+        std::format("Hit {} for {:.0f} damage!", entityName, attackDamage));
 
     // Track closest hit for targeting (using handle for now)
     if (distance < closestDist) {
@@ -199,6 +212,11 @@ void CombatController::performAttack(Player *player) {
       hotData.flags &= ~EntityHotData::FLAG_ALIVE;
 
       COMBAT_INFO(std::format("Entity {} killed!", handle.getId()));
+
+      // Add kill to on-screen event log
+      UIManager::Instance().addEventLogEntry(
+          GAMEPLAY_EVENT_LOG,
+          std::format("Defeated {}!", entityName));
 
       // Fire DeathEvent for entity lifecycle observers
       auto deathEvent = std::make_shared<DeathEvent>(

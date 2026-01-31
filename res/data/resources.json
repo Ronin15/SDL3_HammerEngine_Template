@@ -476,6 +476,315 @@
       "maxStackSize": 500,
       "consumable": true,
       "textureId": "spectral_arrows"
+    },
+    {
+      "id": "iron_sword",
+      "name": "Iron Sword",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "A sturdy iron sword suitable for combat.",
+      "value": 100,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "iron_sword_icon",
+      "properties": {
+        "slot": "Weapon",
+        "attackBonus": 10,
+        "defenseBonus": 0,
+        "durability": 100,
+        "maxDurability": 100
+      }
+    },
+    {
+      "id": "steel_sword",
+      "name": "Steel Sword",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "A finely crafted steel sword with superior balance.",
+      "value": 200,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "steel_sword_icon",
+      "properties": {
+        "slot": "Weapon",
+        "attackBonus": 18,
+        "defenseBonus": 0,
+        "durability": 120,
+        "maxDurability": 120
+      }
+    },
+    {
+      "id": "iron_axe",
+      "name": "Iron Axe",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "A heavy iron axe useful for combat or woodcutting.",
+      "value": 120,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "iron_axe_icon",
+      "properties": {
+        "slot": "Weapon",
+        "attackBonus": 12,
+        "defenseBonus": 0,
+        "durability": 100,
+        "maxDurability": 100
+      }
+    },
+    {
+      "id": "bow",
+      "name": "Wooden Bow",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "A simple but effective wooden bow for ranged combat.",
+      "value": 80,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "bow_icon",
+      "properties": {
+        "slot": "Weapon",
+        "attackBonus": 8,
+        "defenseBonus": 0,
+        "durability": 80,
+        "maxDurability": 80
+      }
+    },
+    {
+      "id": "arrows",
+      "name": "Arrows",
+      "category": "Item",
+      "type": "Ammunition",
+      "description": "Standard arrows for use with a bow.",
+      "value": 2,
+      "maxStackSize": 100,
+      "consumable": true,
+      "textureId": "arrows_icon"
+    },
+    {
+      "id": "dagger",
+      "name": "Dagger",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "A small, quick blade favored by rogues and assassins.",
+      "value": 60,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "dagger_icon",
+      "properties": {
+        "slot": "Weapon",
+        "attackBonus": 6,
+        "defenseBonus": 0,
+        "durability": 60,
+        "maxDurability": 60
+      }
+    },
+    {
+      "id": "short_sword",
+      "name": "Short Sword",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "A compact blade suitable for quick strikes.",
+      "value": 75,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "short_sword_icon",
+      "properties": {
+        "slot": "Weapon",
+        "attackBonus": 8,
+        "defenseBonus": 0,
+        "durability": 80,
+        "maxDurability": 80
+      }
+    },
+    {
+      "id": "wooden_staff",
+      "name": "Wooden Staff",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "A simple staff used to channel magical energy.",
+      "value": 50,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "staff_icon",
+      "properties": {
+        "slot": "Weapon",
+        "attackBonus": 4,
+        "defenseBonus": 2,
+        "durability": 50,
+        "maxDurability": 50
+      }
+    },
+    {
+      "id": "arcane_staff",
+      "name": "Arcane Staff",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "An enchanted staff that amplifies magical power.",
+      "value": 200,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "arcane_staff_icon",
+      "properties": {
+        "slot": "Weapon",
+        "attackBonus": 12,
+        "defenseBonus": 3,
+        "durability": 80,
+        "maxDurability": 80
+      }
+    },
+    {
+      "id": "leather_armor",
+      "name": "Leather Armor",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "Light armor made from tanned leather, offering basic protection.",
+      "value": 80,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "leather_armor_icon",
+      "properties": {
+        "slot": "Chest",
+        "attackBonus": 0,
+        "defenseBonus": 10,
+        "durability": 80,
+        "maxDurability": 80
+      }
+    },
+    {
+      "id": "iron_armor",
+      "name": "Iron Armor",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "Heavy iron armor providing solid protection in combat.",
+      "value": 200,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "iron_armor_icon",
+      "properties": {
+        "slot": "Chest",
+        "attackBonus": 0,
+        "defenseBonus": 20,
+        "speedBonus": -5,
+        "durability": 150,
+        "maxDurability": 150
+      }
+    },
+    {
+      "id": "iron_helmet",
+      "name": "Iron Helmet",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "A sturdy iron helmet protecting the head.",
+      "value": 100,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "iron_helmet_icon",
+      "properties": {
+        "slot": "Helmet",
+        "attackBonus": 0,
+        "defenseBonus": 8,
+        "durability": 100,
+        "maxDurability": 100
+      }
+    },
+    {
+      "id": "iron_shield",
+      "name": "Iron Shield",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "A reliable iron shield for blocking attacks.",
+      "value": 150,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "iron_shield_icon",
+      "properties": {
+        "slot": "Shield",
+        "attackBonus": 0,
+        "defenseBonus": 15,
+        "durability": 120,
+        "maxDurability": 120
+      }
+    },
+    {
+      "id": "bread",
+      "name": "Bread",
+      "category": "Item",
+      "type": "Consumable",
+      "description": "A loaf of fresh bread that restores a small amount of health.",
+      "value": 5,
+      "maxStackSize": 50,
+      "consumable": true,
+      "textureId": "bread_icon",
+      "properties": {
+        "effect": "HealHP",
+        "effectPower": 10,
+        "effectDuration": 0
+      }
+    },
+    {
+      "id": "meat",
+      "name": "Cooked Meat",
+      "category": "Item",
+      "type": "Consumable",
+      "description": "Cooked meat that restores health when eaten.",
+      "value": 15,
+      "maxStackSize": 30,
+      "consumable": true,
+      "textureId": "meat_icon",
+      "properties": {
+        "effect": "HealHP",
+        "effectPower": 25,
+        "effectDuration": 0
+      }
+    },
+    {
+      "id": "ale",
+      "name": "Ale",
+      "category": "Item",
+      "type": "Consumable",
+      "description": "A refreshing mug of ale that restores stamina.",
+      "value": 8,
+      "maxStackSize": 30,
+      "consumable": true,
+      "textureId": "ale_icon",
+      "properties": {
+        "effect": "RestoreStamina",
+        "effectPower": 20,
+        "effectDuration": 0
+      }
+    },
+    {
+      "id": "wine",
+      "name": "Wine",
+      "category": "Item",
+      "type": "Consumable",
+      "description": "A bottle of fine wine.",
+      "value": 25,
+      "maxStackSize": 20,
+      "consumable": true,
+      "textureId": "wine_icon"
+    },
+    {
+      "id": "wheat",
+      "name": "Wheat",
+      "category": "Item",
+      "type": "RawResource",
+      "description": "Harvested wheat that can be milled into flour.",
+      "value": 3,
+      "maxStackSize": 100,
+      "consumable": false,
+      "textureId": "wheat_icon"
+    },
+    {
+      "id": "vegetables",
+      "name": "Vegetables",
+      "category": "Item",
+      "type": "RawResource",
+      "description": "Fresh vegetables from the farm.",
+      "value": 4,
+      "maxStackSize": 100,
+      "consumable": false,
+      "textureId": "vegetables_icon"
     }
   ]
 }

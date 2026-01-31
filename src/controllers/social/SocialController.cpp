@@ -6,12 +6,19 @@
 #include "controllers/social/SocialController.hpp"
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
+#include "events/EntityEvents.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
 #include "managers/GameTimeManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
+#include "managers/UIManager.hpp"
 #include <algorithm>
 #include <cmath>
 #include <format>
+
+namespace {
+    constexpr const char* GAMEPLAY_EVENT_LOG = "gameplay_event_log";
+}
 
 void SocialController::subscribe() {
     if (checkAlreadySubscribed()) {
@@ -75,12 +82,15 @@ TradeResult SocialController::tryBuy(EntityHandle npcHandle,
         return TradeResult::InsufficientStock;
     }
 
-    // Calculate price (for relationship/memory purposes)
+    // Calculate price
     float totalPrice = calculateBuyPrice(npcHandle, itemHandle, quantity);
+    int priceInt = static_cast<int>(std::ceil(totalPrice));
 
-    // TODO: Currency check - Player class needs gold/currency methods
-    // For now, trades are free (barter system placeholder)
-    // When Player has currency: check player->getGold() >= totalPrice
+    // Check player has enough gold
+    if (!player->hasGold(priceInt)) {
+        SOCIAL_DEBUG(std::format("tryBuy: Player doesn't have {} gold", priceInt));
+        return TradeResult::InsufficientFunds;
+    }
 
     // Execute trade
     // 1. Remove item from NPC inventory
@@ -97,8 +107,9 @@ TradeResult SocialController::tryBuy(EntityHandle npcHandle,
         return TradeResult::InventoryFull;
     }
 
-    // TODO: Currency transfer when Player has gold methods
-    // player->removeGold(static_cast<int>(totalPrice));
+    // 3. Transfer gold from player to NPC
+    player->removeGold(priceInt);
+    edm.addToInventory(npcInvIdx, ResourceTemplateManager::Instance().getHandleByName("gold"), priceInt);
 
     // Record the trade in NPC's memory
     recordTrade(npcHandle, totalPrice, true);
@@ -153,8 +164,17 @@ TradeResult SocialController::trySell(EntityHandle npcHandle,
         return TradeResult::InsufficientStock;
     }
 
-    // Calculate price (for relationship/memory purposes)
+    // Calculate price
     float totalPrice = calculateSellPrice(npcHandle, itemHandle, quantity);
+    int priceInt = static_cast<int>(std::floor(totalPrice));
+
+    // Check NPC has enough gold to pay
+    uint32_t npcInvIdx = getNPCInventoryIndex(npcHandle);
+    auto goldHandle = ResourceTemplateManager::Instance().getHandleByName("gold");
+    if (!edm.hasInInventory(npcInvIdx, goldHandle, priceInt)) {
+        SOCIAL_DEBUG(std::format("trySell: NPC doesn't have {} gold to pay", priceInt));
+        return TradeResult::InsufficientFunds;
+    }
 
     // Execute trade
     // 1. Remove item from player inventory
@@ -164,7 +184,6 @@ TradeResult SocialController::trySell(EntityHandle npcHandle,
     }
 
     // 2. Add item to NPC inventory
-    uint32_t npcInvIdx = getNPCInventoryIndex(npcHandle);
     if (!edm.addToInventory(npcInvIdx, itemHandle, quantity)) {
         // Rollback - return item to player
         player->addToInventory(itemHandle, quantity);
@@ -172,8 +191,9 @@ TradeResult SocialController::trySell(EntityHandle npcHandle,
         return TradeResult::InventoryFull;
     }
 
-    // TODO: Currency transfer when Player has gold methods
-    // player->addGold(static_cast<int>(totalPrice));
+    // 3. Transfer gold from NPC to player
+    edm.removeFromInventory(npcInvIdx, goldHandle, priceInt);
+    player->addGold(priceInt);
 
     // Record the trade in NPC's memory
     recordTrade(npcHandle, totalPrice, true);
@@ -311,6 +331,96 @@ void SocialController::recordInteraction(EntityHandle npcHandle,
 
     // Update emotions
     updateEmotions(npcHandle, type, value);
+}
+
+void SocialController::reportTheft(EntityHandle thief,
+                                   EntityHandle victim,
+                                   HammerEngine::ResourceHandle stolenItem,
+                                   int quantity) {
+    if (!victim.isValid()) {
+        SOCIAL_DEBUG("reportTheft: Invalid victim handle");
+        return;
+    }
+
+    auto& edm = EntityDataManager::Instance();
+    size_t victimIdx = edm.getIndex(victim);
+    if (victimIdx == SIZE_MAX) {
+        SOCIAL_DEBUG("reportTheft: Victim not found in EDM");
+        return;
+    }
+
+    // 1. Record the theft in victim's memory (severe relationship damage)
+    recordInteraction(victim, InteractionType::Theft, THEFT_RELATIONSHIP_LOSS);
+
+    // 2. Get the location of the theft
+    Vector2D theftLocation = edm.getHotDataByIndex(victimIdx).transform.position;
+
+    // 3. Fire TheftEvent to alert nearby guards
+    auto theftEvent = std::make_shared<TheftEvent>(
+        thief, victim, stolenItem, quantity, theftLocation);
+    EventManager::Instance().dispatchEvent(theftEvent, EventManager::DispatchMode::Immediate);
+
+    // Get item name for logging
+    auto& rtm = ResourceTemplateManager::Instance();
+    auto resTemplate = rtm.getResourceTemplate(stolenItem);
+    std::string itemName = resTemplate ? resTemplate->getName() : "unknown item";
+
+    SOCIAL_INFO(std::format("Theft reported: {} x{} stolen at ({:.0f}, {:.0f})",
+                            itemName, quantity, theftLocation.getX(), theftLocation.getY()));
+
+    // 4. Alert nearby guards
+    alertNearbyGuards(theftLocation, thief);
+}
+
+void SocialController::alertNearbyGuards(const Vector2D& location, EntityHandle criminal) {
+    auto& edm = EntityDataManager::Instance();
+
+    // Iterate active entities looking for guards within alert range
+    auto activeIndices = edm.getActiveIndices();
+    int guardsAlerted = 0;
+
+    for (size_t idx : activeIndices) {
+        // Check if this entity has Guard behavior
+        const auto& behaviorData = edm.getBehaviorData(idx);
+        if (behaviorData.behaviorType != BehaviorType::Guard) {
+            continue;
+        }
+
+        // Check distance from theft location
+        const auto& transform = edm.getHotDataByIndex(idx).transform;
+        float distance = (transform.position - location).length();
+
+        if (distance <= GUARD_ALERT_RANGE) {
+            // Alert this guard by setting their alert state
+            auto& guardData = edm.getBehaviorData(idx);
+            auto& guard = guardData.state.guard;
+
+            // Set to HOSTILE alert level (level 3)
+            guard.currentAlertLevel = 3;
+            guard.alertTimer = 0.0f;
+            guard.lastKnownThreatPosition = location;
+            guard.alertRaised = true;
+            guard.hasActiveThreat = true;
+
+            // Note: Guard will investigate lastKnownThreatPosition
+            // and transition to Attack behavior if they find the target
+            (void)criminal;  // Target tracking happens via normal guard threat detection
+
+            ++guardsAlerted;
+            SOCIAL_DEBUG(std::format("Guard at ({:.0f}, {:.0f}) alerted to theft",
+                                     transform.position.getX(), transform.position.getY()));
+        }
+    }
+
+    if (guardsAlerted > 0) {
+        SOCIAL_INFO(std::format("Alerted {} guards to theft at ({:.0f}, {:.0f})",
+                                guardsAlerted, location.getX(), location.getY()));
+
+        // Add to on-screen event log
+        UIManager::Instance().addEventLogEntry(
+            GAMEPLAY_EVENT_LOG,
+            std::format("Guards alerted! {} guards responding to crime.", guardsAlerted));
+    }
 }
 
 // ============================================================================

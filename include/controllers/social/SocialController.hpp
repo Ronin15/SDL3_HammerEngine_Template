@@ -27,6 +27,7 @@
 #include "controllers/ControllerBase.hpp"
 #include "entities/EntityHandle.hpp"
 #include "managers/EntityDataManager.hpp"  // For INVALID_INVENTORY_INDEX
+#include "utils/ResourceHandle.hpp"
 #include <memory>
 #include <string>
 
@@ -163,6 +164,32 @@ public:
                            InteractionType type,
                            float value = 0.0f);
 
+    /**
+     * @brief Report a theft to the system
+     * @param thief EntityHandle of the thief (typically player)
+     * @param victim EntityHandle of the NPC who was robbed
+     * @param stolenItem ResourceHandle of what was stolen
+     * @param quantity Number of items stolen
+     *
+     * This will:
+     * - Record the theft in the victim's memory (severe relationship damage)
+     * - Fire a TheftEvent that nearby guards can respond to
+     * - Alert nearby guards
+     */
+    void reportTheft(EntityHandle thief,
+                     EntityHandle victim,
+                     HammerEngine::ResourceHandle stolenItem,
+                     int quantity = 1);
+
+    /**
+     * @brief Alert nearby guards to a crime at a location
+     * @param location World position where the crime occurred
+     * @param criminal EntityHandle of the criminal (target for guards)
+     *
+     * Guards within GUARD_ALERT_RANGE will be alerted and respond to the threat.
+     */
+    void alertNearbyGuards(const Vector2D& location, EntityHandle criminal);
+
     // ========================================================================
     // RELATIONSHIP
     // ========================================================================
@@ -238,6 +265,7 @@ public:
     static constexpr float GIFT_RELATIONSHIP_BASE = 0.05f;    // Base gift bonus
     static constexpr float GIFT_VALUE_SCALE = 0.001f;         // Additional per gold value
     static constexpr float THEFT_RELATIONSHIP_LOSS = -0.3f;   // Per theft
+    static constexpr float GUARD_ALERT_RANGE = 500.0f;        // Guards within range respond to theft
 
 private:
     /**

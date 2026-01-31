@@ -28,6 +28,7 @@
 
 #include "Event.hpp"
 #include "entities/EntityHandle.hpp"
+#include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <string>
 
@@ -53,7 +54,10 @@ enum class EntityEventType : uint8_t {
 
     // State changes
     StateChanged,       // Entity state transition
-    TierChanged         // Simulation tier changed
+    TierChanged,        // Simulation tier changed
+
+    // Crime events
+    TheftDetected       // Entity stole from another entity
 };
 
 // ============================================================================
@@ -235,6 +239,66 @@ private:
     EntityKind m_kind;
     Vector2D m_position;
     EntityHandle m_spawnedEntity;  // Set after spawning
+};
+
+// ============================================================================
+// THEFT EVENT
+// ============================================================================
+
+/**
+ * @brief Event for theft detection
+ *
+ * Fired when an entity steals from another entity.
+ * Guards can subscribe to respond to theft alerts.
+ */
+class TheftEvent : public Event {
+public:
+    /**
+     * @brief Construct a theft event
+     * @param thief EntityHandle of the thief
+     * @param victim EntityHandle of the victim
+     * @param stolenItem ResourceHandle of the stolen item
+     * @param quantity Number of items stolen
+     * @param location World position where theft occurred
+     */
+    TheftEvent(EntityHandle thief, EntityHandle victim,
+               HammerEngine::ResourceHandle stolenItem, int quantity,
+               const Vector2D& location)
+        : m_name("TheftEvent")
+        , m_thief(thief)
+        , m_victim(victim)
+        , m_stolenItem(stolenItem)
+        , m_quantity(quantity)
+        , m_location(location) {
+    }
+
+    ~TheftEvent() override = default;
+
+    void update() override {}
+    void execute() override {}
+    void reset() override {}
+    void clean() override {}
+
+    std::string getName() const override { return m_name; }
+    std::string getType() const override { return "Entity"; }
+    std::string getTypeName() const override { return "TheftEvent"; }
+    EventTypeId getTypeId() const override { return EventTypeId::Entity; }
+
+    bool checkConditions() override { return true; }
+
+    [[nodiscard]] EntityHandle getThief() const { return m_thief; }
+    [[nodiscard]] EntityHandle getVictim() const { return m_victim; }
+    [[nodiscard]] HammerEngine::ResourceHandle getStolenItem() const { return m_stolenItem; }
+    [[nodiscard]] int getQuantity() const { return m_quantity; }
+    [[nodiscard]] const Vector2D& getLocation() const { return m_location; }
+
+private:
+    std::string m_name;
+    EntityHandle m_thief;
+    EntityHandle m_victim;
+    HammerEngine::ResourceHandle m_stolenItem;
+    int m_quantity;
+    Vector2D m_location;
 };
 
 #endif // ENTITY_EVENTS_HPP
