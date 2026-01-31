@@ -832,9 +832,6 @@ bool GameEngine::init(std::string_view title) {
     }
     mp_aiManager = &aiMgrTest;
 
-    // Register default AI behaviors (Idle, Wander, Chase, Guard, Attack, etc.)
-    mp_aiManager->registerDefaultBehaviors();
-
     // Validate Event Manager before caching
     EventManager &eventMgrTest = EventManager::Instance();
     if (!eventMgrTest.isInitialized()) {

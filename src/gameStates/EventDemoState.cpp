@@ -4,10 +4,6 @@
  */
 
 #include "gameStates/EventDemoState.hpp"
-#include "ai/behaviors/ChaseBehavior.hpp"
-#include "ai/behaviors/FleeBehavior.hpp"
-#include "ai/behaviors/FollowBehavior.hpp"
-#include "ai/behaviors/IdleBehavior.hpp"
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "controllers/world/DayNightController.hpp"
@@ -1203,20 +1199,14 @@ void EventDemoState::onResourceChanged(const EventData &data) {
 }
 
 void EventDemoState::setupAIBehaviors() {
-  // TODO: need to make sure that this logic is moved out of the gamestate.
-  // Maybe on AI Manager init. init/configure all available behaviors
   GAMESTATE_INFO(
-      "EventDemoState: Setting up AI behaviors for NPC integration...");
-  // Cache AIManager reference for better performance
+      "EventDemoState: Setting up custom AI behavior variants...");
+  // Default behaviors (Idle, Wander, Chase, Guard, Attack, Flee, Follow)
+  // are registered by AIManager::registerDefaultBehaviors()
+  // This function registers demo-specific custom variants only
   AIManager &aiMgr = AIManager::Instance();
 
-  if (!aiMgr.hasBehavior("Wander")) {
-    auto wanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::MEDIUM_AREA, 60.0f);
-    aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered Wander behavior");
-  }
-
+  // Custom wander variants for demo
   if (!aiMgr.hasBehavior("SmallWander")) {
     auto smallWanderBehavior = std::make_unique<WanderBehavior>(
         WanderBehavior::WanderMode::SMALL_AREA, 45.0f);
@@ -1266,37 +1256,7 @@ void EventDemoState::setupAIBehaviors() {
     GAMESTATE_INFO("EventDemoState: Registered EventTarget behavior");
   }
 
-  if (!aiMgr.hasBehavior("Chase")) {
-    auto chaseBehavior = std::make_unique<ChaseBehavior>(90.0f, 500.0f, 50.0f);
-    aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
-    GAMESTATE_INFO("EventDemoState: Chase behavior registered (will use "
-                   "AIManager::getPlayerReference())");
-  }
-
-  if (!aiMgr.hasBehavior("Idle")) {
-    auto idleBehavior = std::make_unique<IdleBehavior>(
-        IdleBehavior::IdleMode::SUBTLE_SWAY, 20.0f);
-    aiMgr.registerBehavior("Idle", std::move(idleBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered Idle behavior");
-  }
-
-  if (!aiMgr.hasBehavior("Flee")) {
-    auto fleeBehavior = std::make_unique<FleeBehavior>(
-        100.0f,   // fleeSpeed
-        400.0f,   // detectionRange
-        600.0f);  // safeDistance
-    aiMgr.registerBehavior("Flee", std::move(fleeBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered Flee behavior");
-  }
-
-  if (!aiMgr.hasBehavior("Follow")) {
-    auto followBehavior = std::make_unique<FollowBehavior>(
-        FollowBehavior::FollowMode::LOOSE_FOLLOW, 60.0f);
-    aiMgr.registerBehavior("Follow", std::move(followBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered Follow behavior");
-  }
-
-  GAMESTATE_DEBUG("AI Behaviors configured for NPC integration");
+  GAMESTATE_DEBUG("Custom AI behavior variants configured for demo");
 }
 
 void EventDemoState::addLogEntry(const std::string &entry) {

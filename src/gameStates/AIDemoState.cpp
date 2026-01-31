@@ -4,7 +4,6 @@
  */
 
 #include "gameStates/AIDemoState.hpp"
-#include "ai/behaviors/ChaseBehavior.hpp"
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "core/GameEngine.hpp"
@@ -286,12 +285,8 @@ bool AIDemoState::enter() {
     // (EntityHandle-based API)
     aiMgr.setPlayerHandle(m_player->getHandle());
 
-    // Create and register chase behavior - behaviors can get player via
-    // getPlayerHandle() or getPlayerPosition()
-    auto chaseBehavior = std::make_unique<ChaseBehavior>(90.0f, 500.0f, 50.0f);
-    aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
-    GAMESTATE_INFO(
-        "Chase behavior registered (will use AIManager::getPlayerHandle())");
+    // Chase behavior is now registered by AIManager::registerDefaultBehaviors()
+    // Behaviors get player via AIManager::getPlayerHandle() or getPlayerPosition()
 
     // Create simple HUD UI (matches EventDemoState spacing pattern)
     auto &ui = UIManager::Instance();
@@ -640,20 +635,13 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
 }
 
 void AIDemoState::setupAIBehaviors() {
-  GAMESTATE_INFO("AIDemoState: Setting up AI behaviors using EventDemoState "
-                 "implementation...");
-  // TODO: need to move all availible behaviors into the AIManager and Event
-  // Manager NPC creation with behavior
-  //  Cache AIManager reference for better performance
+  GAMESTATE_INFO("AIDemoState: Setting up custom AI behavior variants...");
+  // Default behaviors (Idle, Wander, Chase, Guard, Attack, Flee, Follow)
+  // are registered by AIManager::registerDefaultBehaviors()
+  // This function registers demo-specific custom variants only
   AIManager &aiMgr = AIManager::Instance();
 
-  if (!aiMgr.hasBehavior("Wander")) {
-    auto wanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::MEDIUM_AREA, 60.0f);
-    aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered Wander behavior");
-  }
-
+  // Custom wander variants for demo
   if (!aiMgr.hasBehavior("SmallWander")) {
     auto smallWanderBehavior = std::make_unique<WanderBehavior>(
         WanderBehavior::WanderMode::SMALL_AREA, 45.0f);

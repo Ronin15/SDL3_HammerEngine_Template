@@ -76,6 +76,9 @@ bool AIManager::init() {
     m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false;
 
+    // Register default behaviors (Idle, Wander, Chase, Guard, Attack, Flee, Follow)
+    registerDefaultBehaviors();
+
     // No NPCSpawn handler in AIManager: state owns creation; AI manages
     // behavior only.
 

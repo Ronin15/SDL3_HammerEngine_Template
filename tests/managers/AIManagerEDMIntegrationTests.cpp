@@ -154,6 +154,8 @@ BOOST_AUTO_TEST_CASE(TestBehaviorAssignmentCreatesEdmIndexMapping) {
 
 BOOST_AUTO_TEST_CASE(TestSparseBehaviorVectorHandlesGaps) {
     // Create entities at different positions (will get different EDM indices)
+    // Note: NPCs created via createNPCWithRaceClass auto-register with their
+    // class's suggestedBehavior (e.g., "Guard"), so we must unassign first
     std::vector<std::shared_ptr<AITestNPC>> entities;
     std::vector<EntityHandle> handles;
 
@@ -161,6 +163,8 @@ BOOST_AUTO_TEST_CASE(TestSparseBehaviorVectorHandlesGaps) {
         auto entity = AITestNPC::create(Vector2D(i * 100.0f, 0.0f));
         entities.push_back(entity);
         handles.push_back(entity->getHandle());
+        // Unassign auto-registered behavior to start with clean slate
+        AIManager::Instance().unassignBehavior(entity->getHandle());
     }
 
     // Assign behaviors to only odd-indexed entities (creates gaps)

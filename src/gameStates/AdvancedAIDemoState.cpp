@@ -4,11 +4,6 @@
  */
 
 #include "gameStates/AdvancedAIDemoState.hpp"
-#include "ai/behaviors/AttackBehavior.hpp"
-#include "ai/behaviors/FleeBehavior.hpp"
-#include "ai/behaviors/FollowBehavior.hpp"
-#include "ai/behaviors/GuardBehavior.hpp"
-#include "ai/behaviors/IdleBehavior.hpp"
 #include "controllers/combat/CombatController.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
@@ -589,57 +584,9 @@ void AdvancedAIDemoState::render(SDL_Renderer *renderer,
 }
 
 void AdvancedAIDemoState::setupAdvancedAIBehaviors() {
-  GAMESTATE_INFO("AdvancedAIDemoState: Setting up advanced AI behaviors...");
-
-  // Cache AIManager reference for better performance
-  AIManager &aiMgr = AIManager::Instance();
-  // TODO: Need to see if we can move all of these behaviors into the AIManager
-  // and just have events trigger NPCs creation with behavior
-  //  Register Idle behavior
-  if (!aiMgr.hasBehavior("Idle")) {
-    auto idleBehavior = std::make_unique<IdleBehavior>(
-        IdleBehavior::IdleMode::LIGHT_FIDGET, 50.0f);
-    aiMgr.registerBehavior("Idle", std::move(idleBehavior));
-    GAMESTATE_INFO("AdvancedAIDemoState: Registered Idle behavior");
-  }
-
-  // Register Flee behavior
-  if (!aiMgr.hasBehavior("Flee")) {
-    auto fleeBehavior = std::make_unique<FleeBehavior>(
-        60.0f, 150.0f, 200.0f); // speed, detection range, safe distance
-    aiMgr.registerBehavior("Flee", std::move(fleeBehavior));
-    GAMESTATE_INFO("AdvancedAIDemoState: Registered Flee behavior");
-  }
-
-  // Register Follow behavior
-  if (!aiMgr.hasBehavior("Follow")) {
-    auto followBehavior = std::make_unique<FollowBehavior>(
-        80.0f, 50.0f, 300.0f); // follow speed, follow distance, max distance
-    followBehavior->setStopWhenTargetStops(
-        false); // Always follow, even if player is stationary
-    aiMgr.registerBehavior("Follow", std::move(followBehavior));
-    GAMESTATE_INFO("AdvancedAIDemoState: Registered Follow behavior");
-  }
-
-  // Register Guard behavior
-  if (!aiMgr.hasBehavior("Guard")) {
-    auto guardBehavior = std::make_unique<GuardBehavior>(
-        Vector2D(m_worldWidth / 2, m_worldHeight / 2), 150.0f,
-        200.0f); // position, guard radius, alert radius
-    aiMgr.registerBehavior("Guard", std::move(guardBehavior));
-    GAMESTATE_INFO("AdvancedAIDemoState: Registered Guard behavior");
-  }
-
-  // Register Attack behavior
-  if (!aiMgr.hasBehavior("Attack")) {
-    auto attackBehavior = std::make_unique<AttackBehavior>(
-        80.0f, 25.0f, 1.5f); // range, damage, attackSpeed
-    attackBehavior->setMovementSpeed(80.0f); // Match Follow behavior speed
-    aiMgr.registerBehavior("Attack", std::move(attackBehavior));
-    GAMESTATE_INFO("AdvancedAIDemoState: Registered Attack behavior");
-  }
-
-  GAMESTATE_INFO("AdvancedAIDemoState: Advanced AI behaviors setup complete.");
+  // Default behaviors (Idle, Flee, Follow, Guard, Attack, Wander, Chase)
+  // are now registered by AIManager::registerDefaultBehaviors()
+  GAMESTATE_INFO("AdvancedAIDemoState: Using default AI behaviors from AIManager");
 }
 
 void AdvancedAIDemoState::createAdvancedNPCs() {
