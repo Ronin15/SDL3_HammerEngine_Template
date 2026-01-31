@@ -186,9 +186,8 @@ void CombatController::performAttack(Player *player) {
       // Switch to flee behavior
       AIManager::Instance().assignBehavior(handle, "Flee");
 
-      // Alert nearby guards (broadcast to guard behavior group)
-      AIManager::Instance().broadcastMessage(
-          std::format("alert_attacker:{}", playerHandle.getId()));
+      // Alert nearby guards - player is attacking friendlies
+      AIManager::Instance().broadcastMessage("friendly_under_attack");
     }
 
     // Apply knockback via velocity

@@ -257,6 +257,9 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
     const auto &charData = edm.getCharacterDataByIndex(ctx.edmIndex);
     if (charData.faction == 2) { // Neutral
       edm.setFaction(edm.getHandle(ctx.edmIndex), 1); // Become Enemy
+
+      // Alert guards that the player is under attack
+      AIManager::Instance().broadcastMessage("player_under_attack");
     }
   }
 
