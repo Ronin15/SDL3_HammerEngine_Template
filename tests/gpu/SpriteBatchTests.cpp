@@ -54,8 +54,8 @@ struct SpriteBatchTestFixture : public GPUTestFixture {
 BOOST_AUTO_TEST_SUITE(SpriteBatchConstantsTests)
 
 BOOST_AUTO_TEST_CASE(MaxSpritesConstant) {
-    // Should support 25000 sprites for 4K rendering with zoom
-    BOOST_CHECK_EQUAL(SpriteBatch::MAX_SPRITES, 25000u);
+    // Should support 50000 sprites for 4K rendering with zoom
+    BOOST_CHECK_EQUAL(SpriteBatch::MAX_SPRITES, 50000u);
 }
 
 BOOST_AUTO_TEST_CASE(VerticesPerSpriteConstant) {
