@@ -170,36 +170,36 @@ void GuardBehavior::executeLogic(BehaviorContext &ctx) {
   pathData.progressTimer += ctx.deltaTime;
 
   // Detect threats (uses ctx.transform.position internally)
-  EntityHandle threat = detectThreat(ctx, data);
+  EntityHandle threat = detectThreat(ctx);
   bool threatPresent = threat.isValid();
 
-  // Update alert level based on threat presence
-  updateAlertLevel(data, threatPresent);
+  // Update alert level based on threat presence and type
+  updateAlertLevel(data, threatPresent, threat);
 
   if (threatPresent) {
-    handleThreatDetection(ctx, data, threat);
+    handleThreatDetection(ctx, threat);
   } else if (guard.isInvestigating) {
-    handleInvestigation(ctx, data);
+    handleInvestigation(ctx);
   } else if (guard.returningToPost) {
-    handleReturnToPost(ctx, data);
+    handleReturnToPost(ctx);
   } else {
     // Normal guard behavior based on mode
     GuardMode mode = static_cast<GuardMode>(guard.currentMode);
     switch (mode) {
     case GuardMode::STATIC_GUARD:
-      updateStaticGuard(ctx, data);
+      updateStaticGuard(ctx);
       break;
     case GuardMode::PATROL_GUARD:
-      updatePatrolGuard(ctx, data);
+      updatePatrolGuard(ctx);
       break;
     case GuardMode::AREA_GUARD:
-      updateAreaGuard(ctx, data);
+      updateAreaGuard(ctx);
       break;
     case GuardMode::ROAMING_GUARD:
-      updateRoamingGuard(ctx, data);
+      updateRoamingGuard(ctx);
       break;
     case GuardMode::ALERT_GUARD:
-      updateAlertGuard(ctx, data);
+      updateAlertGuard(ctx);
       break;
     }
   }
@@ -476,33 +476,83 @@ std::shared_ptr<AIBehavior> GuardBehavior::clone() const {
   return clone;
 }
 
-EntityHandle GuardBehavior::detectThreat(const BehaviorContext &ctx,
-                                         const BehaviorData &data) const {
-  // Use cached player info from context (lock-free, cached once per frame)
-  if (!ctx.playerValid)
+EntityHandle GuardBehavior::detectThreat(const BehaviorContext &ctx) const {
+  if (!ctx.behaviorData)
     return EntityHandle{};
+  const auto &data = *ctx.behaviorData;
+  auto &edm = EntityDataManager::Instance();
 
-  Vector2D threatPos = ctx.playerPosition;
+  // Query nearby entities for threat detection
+  std::vector<EntityHandle> nearby;
+  AIManager::Instance().queryHandlesInRadius(ctx.transform.position,
+                                              m_threatDetectionRange, nearby, true);
 
-  // Check if threat is in detection range
-  float distance = (ctx.transform.position - threatPos).length();
-  if (distance > m_threatDetectionRange) {
-    return EntityHandle{};
-  }
+  // First: Check for enemy faction NPCs in range (faction == 1)
+  for (const auto &handle : nearby) {
+    if (!handle.isValid())
+      continue;
+    size_t idx = edm.getIndex(handle);
+    if (idx == SIZE_MAX)
+      continue;
 
-  // Check field of view if required
-  if (m_fieldOfView < 360.0f) {
-    float angleToThreat =
-        calculateAngleToTarget(ctx.transform.position, threatPos);
-    float angleDiff = std::abs(
-        normalizeAngle(angleToThreat - data.state.guard.currentHeading));
-    float halfFOV = (m_fieldOfView * M_PI / 180.0f) * 0.5f;
-    if (angleDiff > halfFOV) {
-      return EntityHandle{};
+    const auto &charData = edm.getCharacterDataByIndex(idx);
+    if (charData.faction == 1) { // Enemy
+      Vector2D threatPos = edm.getHotDataByIndex(idx).transform.position;
+
+      // Check FOV if required
+      if (m_fieldOfView < 360.0f) {
+        float angleToThreat =
+            calculateAngleToTarget(ctx.transform.position, threatPos);
+        float angleDiff = std::abs(
+            normalizeAngle(angleToThreat - data.state.guard.currentHeading));
+        float halfFOV = (m_fieldOfView * M_PI / 180.0f) * 0.5f;
+        if (angleDiff > halfFOV) {
+          continue; // Not in FOV, check next
+        }
+      }
+      return handle; // Found enemy in range and FOV
     }
   }
 
-  return ctx.playerHandle;
+  // Second: Check if any nearby friendly was recently attacked (lastAttacker set)
+  for (const auto &handle : nearby) {
+    if (!handle.isValid())
+      continue;
+    size_t idx = edm.getIndex(handle);
+    if (idx == SIZE_MAX)
+      continue;
+
+    const auto &charData = edm.getCharacterDataByIndex(idx);
+    if (charData.faction == 0) { // Friendly ally
+      const auto &memData = edm.getMemoryData(idx);
+      if (memData.lastAttacker.isValid()) {
+        // Ally was attacked - target their attacker
+        return memData.lastAttacker;
+      }
+    }
+  }
+
+  // Third: Fall back to player check (if player is hostile/attacking)
+  if (ctx.playerValid) {
+    Vector2D threatPos = ctx.playerPosition;
+    float distance = (ctx.transform.position - threatPos).length();
+    if (distance <= m_threatDetectionRange) {
+      // Check field of view if required
+      if (m_fieldOfView < 360.0f) {
+        float angleToThreat =
+            calculateAngleToTarget(ctx.transform.position, threatPos);
+        float angleDiff = std::abs(
+            normalizeAngle(angleToThreat - data.state.guard.currentHeading));
+        float halfFOV = (m_fieldOfView * M_PI / 180.0f) * 0.5f;
+        if (angleDiff > halfFOV) {
+          return EntityHandle{}; // Player not in FOV
+        }
+      }
+      return ctx.playerHandle;
+    }
+  }
+
+  return EntityHandle{};
 }
 
 bool GuardBehavior::isThreatInRange(const Vector2D &entityPos,
@@ -539,25 +589,43 @@ float GuardBehavior::calculateThreatDistance(const Vector2D &entityPos,
 }
 
 void GuardBehavior::updateAlertLevel(BehaviorData &data,
-                                     bool threatPresent) const {
+                                     bool threatPresent,
+                                     EntityHandle threat) const {
   auto &guard = data.state.guard;
 
   if (threatPresent) {
     guard.threatSightingTimer = 0.0f; // Reset threat sighting timer
     guard.hasActiveThreat = true;
 
-    // Escalate alert level based on how long threat has been present
-    float const threatDuration = guard.alertTimer;
+    // Check if threat is an enemy faction NPC - immediate HOSTILE response
+    bool isEnemyFaction = false;
+    if (threat.isValid()) {
+      auto &edm = EntityDataManager::Instance();
+      size_t threatIdx = edm.getIndex(threat);
+      if (threatIdx != SIZE_MAX) {
+        const auto &charData = edm.getCharacterDataByIndex(threatIdx);
+        isEnemyFaction = (charData.faction == 1); // Enemy faction
+      }
+    }
 
-    if (guard.currentAlertLevel == 0) { // CALM
-      guard.currentAlertLevel = 1;      // SUSPICIOUS
-      guard.alertTimer = 0.0f;
-    } else if (guard.currentAlertLevel == 1 && // SUSPICIOUS
-               threatDuration > SUSPICIOUS_THRESHOLD) {
-      guard.currentAlertLevel = 2;             // INVESTIGATING
-    } else if (guard.currentAlertLevel == 2 && // INVESTIGATING
-               threatDuration > INVESTIGATING_THRESHOLD) {
+    if (isEnemyFaction) {
+      // Enemy NPCs trigger immediate HOSTILE response - no gradual escalation
       guard.currentAlertLevel = 3; // HOSTILE
+      guard.alertTimer = 0.0f;
+    } else {
+      // Gradual escalation for other threats (player, unknowns)
+      float const threatDuration = guard.alertTimer;
+
+      if (guard.currentAlertLevel == 0) { // CALM
+        guard.currentAlertLevel = 1;      // SUSPICIOUS
+        guard.alertTimer = 0.0f;
+      } else if (guard.currentAlertLevel == 1 && // SUSPICIOUS
+                 threatDuration > SUSPICIOUS_THRESHOLD) {
+        guard.currentAlertLevel = 2;             // INVESTIGATING
+      } else if (guard.currentAlertLevel == 2 && // INVESTIGATING
+                 threatDuration > INVESTIGATING_THRESHOLD) {
+        guard.currentAlertLevel = 3; // HOSTILE
+      }
     }
   } else {
     guard.hasActiveThreat = false;
@@ -570,15 +638,20 @@ void GuardBehavior::updateAlertLevel(BehaviorData &data,
 }
 
 void GuardBehavior::handleThreatDetection(BehaviorContext &ctx,
-                                          BehaviorData &data,
                                           EntityHandle threat) {
-  if (!threat.isValid())
+  if (!threat.isValid() || !ctx.behaviorData)
     return;
 
+  auto &data = *ctx.behaviorData;
   auto &guard = data.state.guard;
 
-  // Use cached player position from context (lock-free)
-  Vector2D threatPos = ctx.playerPosition;
+  // Get the actual threat's position (not hardcoded player position)
+  auto &edm = EntityDataManager::Instance();
+  size_t threatIdx = edm.getIndex(threat);
+  if (threatIdx == SIZE_MAX)
+    return;
+
+  Vector2D threatPos = edm.getHotDataByIndex(threatIdx).transform.position;
   guard.lastKnownThreatPosition = threatPos;
 
   // React based on alert level
@@ -633,8 +706,10 @@ void GuardBehavior::handleThreatDetection(BehaviorContext &ctx,
   }
 }
 
-void GuardBehavior::handleInvestigation(BehaviorContext &ctx,
-                                        BehaviorData &data) {
+void GuardBehavior::handleInvestigation(BehaviorContext &ctx) {
+  if (!ctx.behaviorData)
+    return;
+  auto &data = *ctx.behaviorData;
   auto &guard = data.state.guard;
 
   // Check if investigation time has expired
@@ -650,8 +725,10 @@ void GuardBehavior::handleInvestigation(BehaviorContext &ctx,
   }
 }
 
-void GuardBehavior::handleReturnToPost(BehaviorContext &ctx,
-                                       BehaviorData &data) {
+void GuardBehavior::handleReturnToPost(BehaviorContext &ctx) {
+  if (!ctx.behaviorData)
+    return;
+  auto &data = *ctx.behaviorData;
   auto &guard = data.state.guard;
 
   // Return to assigned position
@@ -663,8 +740,10 @@ void GuardBehavior::handleReturnToPost(BehaviorContext &ctx,
   }
 }
 
-void GuardBehavior::updateStaticGuard(BehaviorContext &ctx,
-                                      BehaviorData &data) {
+void GuardBehavior::updateStaticGuard(BehaviorContext &ctx) {
+  if (!ctx.behaviorData)
+    return;
+  auto &data = *ctx.behaviorData;
   auto &guard = data.state.guard;
 
   // Stay at assigned position
@@ -680,11 +759,11 @@ void GuardBehavior::updateStaticGuard(BehaviorContext &ctx,
   }
 }
 
-void GuardBehavior::updatePatrolGuard(BehaviorContext &ctx,
-                                      BehaviorData &data) {
-  if (m_patrolWaypoints.empty())
+void GuardBehavior::updatePatrolGuard(BehaviorContext &ctx) {
+  if (m_patrolWaypoints.empty() || !ctx.behaviorData)
     return;
 
+  auto &data = *ctx.behaviorData;
   auto &guard = data.state.guard;
 
   // Move to current patrol waypoint
@@ -709,7 +788,10 @@ void GuardBehavior::updatePatrolGuard(BehaviorContext &ctx,
   }
 }
 
-void GuardBehavior::updateAreaGuard(BehaviorContext &ctx, BehaviorData &data) {
+void GuardBehavior::updateAreaGuard(BehaviorContext &ctx) {
+  if (!ctx.behaviorData)
+    return;
+  auto &data = *ctx.behaviorData;
   auto &guard = data.state.guard;
 
   // Ensure we're within the guard area
@@ -729,8 +811,10 @@ void GuardBehavior::updateAreaGuard(BehaviorContext &ctx, BehaviorData &data) {
   }
 }
 
-void GuardBehavior::updateRoamingGuard(BehaviorContext &ctx,
-                                       BehaviorData &data) {
+void GuardBehavior::updateRoamingGuard(BehaviorContext &ctx) {
+  if (!ctx.behaviorData)
+    return;
+  auto &data = *ctx.behaviorData;
   auto &guard = data.state.guard;
 
   // Generate new roam target if needed
@@ -744,7 +828,10 @@ void GuardBehavior::updateRoamingGuard(BehaviorContext &ctx,
   moveToPositionDirect(ctx, guard.roamTarget, m_movementSpeed);
 }
 
-void GuardBehavior::updateAlertGuard(BehaviorContext &ctx, BehaviorData &data) {
+void GuardBehavior::updateAlertGuard(BehaviorContext &ctx) {
+  if (!ctx.behaviorData)
+    return;
+  const auto &data = *ctx.behaviorData;
   const auto &guard = data.state.guard;
 
   // Alert guard moves faster and has heightened awareness
@@ -755,7 +842,7 @@ void GuardBehavior::updateAlertGuard(BehaviorContext &ctx, BehaviorData &data) {
     }
   } else {
     // Patrol more aggressively
-    updatePatrolGuard(ctx, data);
+    updatePatrolGuard(ctx);
   }
 }
 

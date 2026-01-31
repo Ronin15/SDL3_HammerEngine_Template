@@ -68,13 +68,13 @@ private:
   static WorldBoundsCache s_worldBounds;
 
   // Helper methods for executeLogic refactoring (use BehaviorContext for lock-free access)
-  // State is stored in EDM BehaviorData, not locally
+  // State is stored in EDM BehaviorData via ctx.behaviorData
   void updateTimers(BehaviorData& data, float deltaTime, PathData* pathData);
-  bool handleStartDelay(BehaviorContext& ctx, BehaviorData& data);
+  bool handleStartDelay(BehaviorContext& ctx);
   float calculateMoveDistance(const BehaviorData& data, const Vector2D& position, float baseDistance);
   void applyBoundaryAvoidance(BehaviorData& data, const Vector2D& position);
   void handlePathfinding(const BehaviorContext& ctx, const Vector2D& dest);
-  void handleMovement(BehaviorContext& ctx, BehaviorData& data);
+  void handleMovement(BehaviorContext& ctx);
 
   // Configuration
   HammerEngine::WanderBehaviorConfig m_config;
@@ -96,7 +96,7 @@ private:
   static thread_local std::uniform_int_distribution<Uint64> s_delayDistribution;
 
   // Choose a new random direction for the entity (lock-free version)
-  void chooseNewDirection(BehaviorContext& ctx, BehaviorData& data);
+  void chooseNewDirection(BehaviorContext& ctx);
 
   // Mode setup helper
   void setupModeDefaults(WanderMode mode);

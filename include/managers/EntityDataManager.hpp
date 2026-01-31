@@ -1914,6 +1914,13 @@ public:
     [[nodiscard]] CharacterData& getCharacterData(EntityHandle handle);
     [[nodiscard]] const CharacterData& getCharacterData(EntityHandle handle) const;
 
+    /**
+     * @brief Set the faction of a character and update collision layers
+     * @param handle Entity handle
+     * @param newFaction New faction value (0=Friendly, 1=Enemy, 2=Neutral)
+     */
+    void setFaction(EntityHandle handle, uint8_t newFaction);
+
     [[nodiscard]] ItemData& getItemData(EntityHandle handle);
     [[nodiscard]] const ItemData& getItemData(EntityHandle handle) const;
 

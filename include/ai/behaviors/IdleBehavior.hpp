@@ -60,12 +60,12 @@ private:
   mutable std::uniform_real_distribution<float> m_frequencyVariation{0.5f,
                                                                      1.5f};
 
-  // Helper methods (all entity state stored in EDM BehaviorData)
+  // Helper methods (all entity state stored in EDM BehaviorData via ctx.behaviorData)
   void initializeIdleState(const Vector2D& position, BehaviorData& data) const;
   void updateStationary(BehaviorContext& ctx);
-  void updateSubtleSway(BehaviorContext& ctx, BehaviorData& data) const;
-  void updateOccasionalTurn(BehaviorContext& ctx, BehaviorData& data) const;
-  void updateLightFidget(BehaviorContext& ctx, BehaviorData& data) const;
+  void updateSubtleSway(BehaviorContext& ctx) const;
+  void updateOccasionalTurn(BehaviorContext& ctx) const;
+  void updateLightFidget(BehaviorContext& ctx) const;
 
   Vector2D generateRandomOffset() const;
   float getRandomMovementInterval() const;

@@ -251,6 +251,15 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
   Vector2D targetPos = ctx.playerPosition;
   bool hasTarget = ctx.playerValid;
 
+  // Neutral entities (faction=2) become enemy (faction=1) when attacking
+  if (hasTarget && ctx.edmIndex != SIZE_MAX) {
+    auto &edm = EntityDataManager::Instance();
+    const auto &charData = edm.getCharacterDataByIndex(ctx.edmIndex);
+    if (charData.faction == 2) { // Neutral
+      edm.setFaction(edm.getHandle(ctx.edmIndex), 1); // Become Enemy
+    }
+  }
+
   Vector2D entityPos = ctx.transform.position;
 
   // Track state for animation notification

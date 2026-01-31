@@ -121,17 +121,17 @@ private:
   Vector2D avoidBoundaries(const Vector2D &position,
                            const Vector2D &direction) const;
 
-  void updatePanicFlee(BehaviorContext& ctx, BehaviorData& data, const Vector2D& threatPos);
-  void updateStrategicRetreat(BehaviorContext& ctx, BehaviorData& data, const Vector2D& threatPos);
-  void updateEvasiveManeuver(BehaviorContext& ctx, BehaviorData& data, const Vector2D& threatPos);
-  void updateSeekCover(BehaviorContext& ctx, BehaviorData& data, const Vector2D& threatPos);
+  void updatePanicFlee(BehaviorContext& ctx, const Vector2D& threatPos);
+  void updateStrategicRetreat(BehaviorContext& ctx, const Vector2D& threatPos);
+  void updateEvasiveManeuver(BehaviorContext& ctx, const Vector2D& threatPos);
+  void updateSeekCover(BehaviorContext& ctx, const Vector2D& threatPos);
 
   void updateStamina(BehaviorData& data, float deltaTime, bool fleeing);
   Vector2D normalizeVector(const Vector2D &direction) const;
   float calculateFleeSpeedModifier(const BehaviorData& data) const;
 
   // OPTIMIZATION: Extracted lambda for better compiler optimization
-  bool tryFollowPathToGoal(BehaviorContext& ctx, BehaviorData& data, const Vector2D& goal, float speed);
+  bool tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& goal, float speed);
 };
 
 #endif // FLEE_BEHAVIOR_HPP
