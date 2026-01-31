@@ -130,6 +130,17 @@ void FleeBehavior::executeLogic(BehaviorContext &ctx) {
     flee.backoffTimer -= ctx.deltaTime;
   data.lastCrowdAnalysis += ctx.deltaTime;
 
+  // Cache fear from emotions for speed modifier
+  // Cowardly NPCs (low bravery) get a bonus to fear effect
+  if (ctx.memoryData && ctx.memoryData->isValid()) {
+    float braveryFactor = ctx.memoryData->personality.bravery;
+    float baseFear = ctx.memoryData->emotions.fear;
+    // Low bravery amplifies fear effect (up to +50% for completely cowardly)
+    flee.fearBoost = baseFear * (1.5f - braveryFactor);
+  } else {
+    flee.fearBoost = 0.0f;
+  }
+
   // Update EDM path timers (single source of truth for path state)
   pathData.pathUpdateTimer += ctx.deltaTime;
   pathData.progressTimer += ctx.deltaTime;
@@ -678,6 +689,10 @@ float FleeBehavior::calculateFleeSpeedModifier(const BehaviorData &data) const {
   if (flee.isInPanic) {
     modifier *= 1.3f;
   }
+
+  // Fear boost from emotions (cached in flee state during executeLogic)
+  // Up to 40% faster when terrified
+  modifier *= (1.0f + flee.fearBoost * 0.4f);
 
   // Stamina affects speed
   if (m_useStamina) {

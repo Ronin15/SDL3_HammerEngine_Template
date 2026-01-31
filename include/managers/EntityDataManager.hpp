@@ -47,6 +47,7 @@
 #include <cstdint>
 #include <limits>
 #include <mutex>
+#include <random>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -219,6 +220,9 @@ struct CharacterData {
 
     // Inventory (for merchants and NPCs that carry items)
     uint32_t inventoryIndex{INVALID_INVENTORY_INDEX};  // EDM inventory index
+
+    // Emotional resilience from class (affects emotion changes)
+    float emotionalResilience{0.5f};
 
     static constexpr uint8_t STATE_ALIVE = 0x01;
     static constexpr uint8_t STATE_STUNNED = 0x02;
@@ -539,6 +543,10 @@ struct ClassInfo {
 
     // Commerce flags
     bool isMerchant{false};  // If true, NPC can trade with player
+
+    // Emotional resilience (0.0 = very emotional, 1.0 = stoic)
+    // Affects how much emotions change when modified
+    float emotionalResilience{0.5f};
 
     // Starting inventory {resourceId, quantity}
     std::vector<std::pair<std::string, int>> startingItems;
@@ -961,6 +969,7 @@ struct BehaviorData {
             float alertDecayTimer;
             float currentHeading;
             float roamTimer;
+            float escalationMultiplier{1.0f};  // Suspicion-based threshold multiplier (lower = faster)
             uint32_t currentPatrolIndex;
             uint8_t currentAlertLevel;  // 0=Calm, 1=Suspicious, 2=Alert, 3=Combat
             uint8_t currentMode;
@@ -999,6 +1008,7 @@ struct BehaviorData {
             float zigzagTimer;
             float navRadius;
             float backoffTimer;
+            float fearBoost{0.0f};        // Cached from emotions each frame for speed modifier
             int zigzagDirection;
             bool isFleeing;
             bool isInPanic;
@@ -1200,6 +1210,58 @@ struct EmotionalState {
 static_assert(sizeof(EmotionalState) == 16, "EmotionalState should be 16 bytes");
 
 /**
+ * @brief NPC personality traits - affects emotional responses (16 bytes)
+ *
+ * Generated at spawn time with controlled randomness.
+ * Combined with class resilience for final behavior modulation.
+ * Foundation for future personality expansion (tendencies, quirks, etc.)
+ */
+struct PersonalityTraits {
+    // Core traits (0.0 to 1.0, 0.5 = average)
+    float bravery{0.5f};       // Resistance to fear (high = brave, low = cowardly)
+    float aggression{0.5f};    // Combat eagerness (high = aggressive, low = passive)
+    float composure{0.5f};     // Emotional stability (high = calm, low = reactive)
+    float loyalty{0.5f};       // Faction commitment (affects flee vs fight for allies)
+
+    /**
+     * @brief Generate random personality with bell curve distribution
+     * @param rng Thread-local random engine
+     *
+     * Uses normal distribution centered at 0.5 with std dev 0.15.
+     * Most NPCs cluster around average, with outliers being rarer.
+     */
+    void randomize(std::mt19937& rng) {
+        std::normal_distribution<float> dist(0.5f, 0.15f);  // Mean 0.5, most values 0.2-0.8
+        bravery = std::clamp(dist(rng), 0.0f, 1.0f);
+        aggression = std::clamp(dist(rng), 0.0f, 1.0f);
+        composure = std::clamp(dist(rng), 0.0f, 1.0f);
+        loyalty = std::clamp(dist(rng), 0.0f, 1.0f);
+    }
+
+    /**
+     * @brief Effective resilience combines class + personality
+     * @param classResilience Base resilience from class definition
+     * @return Final resilience value (0.0-1.0) affecting emotion changes
+     *
+     * Bravery and composure both contribute to emotional resilience.
+     * Class provides 60% of the factor, personality 40%.
+     */
+    [[nodiscard]] float getEffectiveResilience(float classResilience) const noexcept {
+        float personalityFactor = (bravery + composure) * 0.5f;  // Average of two traits
+        return classResilience * 0.6f + personalityFactor * 0.4f;
+    }
+
+    void clear() noexcept {
+        bravery = 0.5f;
+        aggression = 0.5f;
+        composure = 0.5f;
+        loyalty = 0.5f;
+    }
+};
+
+static_assert(sizeof(PersonalityTraits) == 16, "PersonalityTraits should be 16 bytes");
+
+/**
  * @brief NPC memory data with inline storage + overflow (384 bytes, 6 cache lines)
  *
  * Stores recent memories inline for fast access. When inline slots fill up,
@@ -1228,6 +1290,9 @@ struct alignas(64) NPCMemoryData {
 
     // Emotional state (16 bytes)
     EmotionalState emotions;
+
+    // Personality traits (16 bytes) - random per NPC, affects behavior decisions
+    PersonalityTraits personality;
 
     // Aggregate combat stats - quick lookup without iterating memories
     EntityHandle lastAttacker;       // 12 bytes: Most recent attacker
@@ -1264,6 +1329,7 @@ struct alignas(64) NPCMemoryData {
         for (auto& m : memories) m.clear();
         for (auto& l : locationHistory) l = Vector2D{};
         emotions.clear();
+        personality.clear();
         lastAttacker = EntityHandle{};
         lastTarget = EntityHandle{};
         totalDamageReceived = 0.0f;

@@ -566,6 +566,7 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     charData.moveSpeed = raceInfo.baseMoveSpeed * classInfo.moveSpeedMult;
     charData.priority = classInfo.basePriority;
     charData.faction = (factionOverride != 0xFF) ? factionOverride : classInfo.defaultFaction;
+    charData.emotionalResilience = classInfo.emotionalResilience;
 
     // Apply faction-based collision layers
     applyFactionCollision(index, charData.faction);
@@ -2649,6 +2650,10 @@ void EntityDataManager::initMemoryData(size_t index) {
     auto& data = m_memoryData[index];
     data.clear();
     data.setValid(true);
+
+    // Generate random personality traits for this NPC
+    static thread_local std::mt19937 s_personalityRng{std::random_device{}()};
+    data.personality.randomize(s_personalityRng);
 }
 
 void EntityDataManager::clearMemoryData(size_t index) {
@@ -2811,25 +2816,46 @@ void EntityDataManager::recordCombatEvent(size_t index, EntityHandle attacker,
         return;
     }
 
-    auto& data = m_memoryData[index];
-    if (!data.isValid()) {
+    auto& memData = m_memoryData[index];
+    if (!memData.isValid()) {
         initMemoryData(index);
     }
 
+    // Get class resilience from CharacterData (typeLocalIndex lookup)
+    float classResilience = 0.5f;  // Default if no character data
+    if (index < m_hotData.size()) {
+        uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+        if (typeIndex < m_characterData.size()) {
+            classResilience = m_characterData[typeIndex].emotionalResilience;
+        }
+    }
+
+    // Combined resilience from class + personality traits
+    float effectiveResilience = memData.personality.getEffectiveResilience(classResilience);
+    float emotionScale = 1.0f - effectiveResilience;  // High resilience = low emotion change
+
     // Update aggregate stats
     if (wasAttacked) {
-        data.lastAttacker = attacker;
-        data.totalDamageReceived += damage;
+        memData.lastAttacker = attacker;
+        memData.totalDamageReceived += damage;
 
-        // Increase fear based on damage
-        data.emotions.fear = std::min(1.0f, data.emotions.fear + (damage / 100.0f));
+        // Fear increases based on damage, scaled by resilience and bravery
+        // Bravery specifically reduces fear gain
+        float fearScale = emotionScale * (1.0f - memData.personality.bravery * 0.5f);
+        float fearIncrease = (damage / 100.0f) * fearScale;
+        memData.emotions.fear = std::min(1.0f, memData.emotions.fear + fearIncrease);
     } else {
-        data.lastTarget = target;
-        data.totalDamageDealt += damage;
+        memData.lastTarget = target;
+        memData.totalDamageDealt += damage;
 
-        // Combat increases aggression
-        data.emotions.aggression = std::min(1.0f, data.emotions.aggression + 0.1f);
+        // Aggression increases when dealing damage, scaled by resilience
+        // Personality aggression trait boosts the effect
+        float aggressionScale = emotionScale * (1.0f + memData.personality.aggression * 0.5f);
+        float aggressionIncrease = (damage / 150.0f) * aggressionScale;
+        memData.emotions.aggression = std::min(1.0f, memData.emotions.aggression + aggressionIncrease);
     }
+
+    auto& data = memData;  // Alias for rest of function
 
     data.lastCombatTime = gameTime;
     data.combatEncounters++;
@@ -3313,6 +3339,10 @@ void EntityDataManager::initializeClassRegistry() {
                 // Commerce
                 info.isMerchant = c.hasKey("isMerchant") ? c["isMerchant"].asBool() : false;
 
+                // Emotional resilience (0.0 = very emotional, 1.0 = stoic)
+                info.emotionalResilience = c.hasKey("emotionalResilience") ?
+                    static_cast<float>(c["emotionalResilience"].asNumber()) : 0.5f;
+
                 // Starting items
                 if (c.hasKey("startingItems") && c["startingItems"].isArray()) {
                     for (size_t j = 0; j < c["startingItems"].size(); ++j) {
@@ -3341,22 +3371,23 @@ void EntityDataManager::initializeClassRegistry() {
     // Fallback defaults
     ENTITY_WARN(std::format("Failed to load classes from {}, using defaults", jsonPath));
 
-    m_classRegistry["Warrior"] = {"Warrior", 1.3f, 1.0f, 0.9f, 1.5f, 1.0f, "Chase", 7, 1, false, {}};
+    // emotionalResilience: 0.7 for warriors, 0.8 for guards, 0.3 for merchants, etc.
+    m_classRegistry["Warrior"] = {"Warrior", 1.3f, 1.0f, 0.9f, 1.5f, 1.0f, "Chase", 7, 1, false, 0.7f, {}};
     m_classNameToId["Warrior"] = 0; m_classIdToName.push_back("Warrior");
 
-    m_classRegistry["Guard"] = {"Guard", 1.2f, 1.1f, 0.8f, 1.2f, 1.0f, "Guard", 6, 0, false, {}};
+    m_classRegistry["Guard"] = {"Guard", 1.2f, 1.1f, 0.8f, 1.2f, 1.0f, "Guard", 6, 0, false, 0.8f, {}};
     m_classNameToId["Guard"] = 1; m_classIdToName.push_back("Guard");
 
-    m_classRegistry["GeneralMerchant"] = {"GeneralMerchant", 0.7f, 0.8f, 0.9f, 0.3f, 0.5f, "Idle", 2, 0, true, {}};
+    m_classRegistry["GeneralMerchant"] = {"GeneralMerchant", 0.7f, 0.8f, 0.9f, 0.3f, 0.5f, "Idle", 2, 0, true, 0.3f, {}};
     m_classNameToId["GeneralMerchant"] = 2; m_classIdToName.push_back("GeneralMerchant");
 
-    m_classRegistry["Rogue"] = {"Rogue", 0.8f, 1.3f, 1.3f, 1.2f, 0.8f, "Chase", 8, 1, false, {}};
+    m_classRegistry["Rogue"] = {"Rogue", 0.8f, 1.3f, 1.3f, 1.2f, 0.8f, "Chase", 8, 1, false, 0.5f, {}};
     m_classNameToId["Rogue"] = 3; m_classIdToName.push_back("Rogue");
 
-    m_classRegistry["Mage"] = {"Mage", 0.6f, 1.5f, 0.85f, 1.8f, 2.5f, "Attack", 7, 2, false, {}};
+    m_classRegistry["Mage"] = {"Mage", 0.6f, 1.5f, 0.85f, 1.8f, 2.5f, "Attack", 7, 2, false, 0.4f, {}};
     m_classNameToId["Mage"] = 4; m_classIdToName.push_back("Mage");
 
-    m_classRegistry["Farmer"] = {"Farmer", 0.9f, 1.1f, 1.0f, 0.5f, 0.5f, "Wander", 3, 0, true, {}};
+    m_classRegistry["Farmer"] = {"Farmer", 0.9f, 1.1f, 1.0f, 0.5f, 0.5f, "Wander", 3, 0, true, 0.4f, {}};
     m_classNameToId["Farmer"] = 5; m_classIdToName.push_back("Farmer");
 
     ENTITY_INFO(std::format("Initialized class registry with {} classes (fallback)", m_classRegistry.size()));
