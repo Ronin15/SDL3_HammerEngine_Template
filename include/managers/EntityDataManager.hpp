@@ -1077,6 +1077,221 @@ struct BehaviorData {
 static_assert(sizeof(BehaviorData) <= 200, "BehaviorData exceeds 200 bytes");
 
 // ============================================================================
+// NPC MEMORY SYSTEM
+// ============================================================================
+
+/**
+ * @brief Memory types for NPC memory system
+ *
+ * NPCs can remember various events and interactions. Memory persists across
+ * behavior changes (unlike BehaviorData) for the entity's session lifetime.
+ */
+enum class MemoryType : uint8_t {
+    // Combat memories
+    AttackedBy = 0,      // Who attacked this NPC
+    Attacked = 1,        // Who this NPC attacked
+    DamageDealt = 2,     // Damage dealt to a target
+    DamageReceived = 3,  // Damage received from a source
+
+    // Social memories
+    Interaction = 4,     // Traded, talked, received item
+
+    // Witnessed events
+    WitnessedCombat = 5, // Saw combat between others
+    WitnessedDeath = 6,  // Saw an entity die
+
+    // Awareness memories
+    ThreatSpotted = 7,   // Spotted a hostile entity
+    AllySpotted = 8,     // Spotted a friendly entity
+    LocationVisited = 9, // Visited a significant location
+
+    COUNT = 10
+};
+
+/**
+ * @brief Single memory entry - compact for inline storage (32 bytes)
+ *
+ * Stores who/what was involved, when it happened, and a numeric value.
+ * The interpretation of 'value' depends on MemoryType:
+ * - Damage memories: damage amount
+ * - Interaction: interaction subtype (0=trade, 1=talk, 2=gift)
+ * - Location: distance traveled to reach
+ */
+struct MemoryEntry {
+    EntityHandle subject;      // 12 bytes: Who/what is remembered
+    Vector2D location;         // 8 bytes: Where it happened
+    float timestamp;           // 4 bytes: Game time when it occurred
+    float value;               // 4 bytes: Context-dependent value (damage, etc.)
+    MemoryType type;           // 1 byte: Type of memory
+    uint8_t importance;        // 1 byte: 0-255 importance score
+    uint8_t flags;             // 1 byte: Additional state
+    uint8_t _pad;              // 1 byte: Alignment padding
+
+    static constexpr uint8_t FLAG_VALID = 0x01;
+    static constexpr uint8_t FLAG_FADING = 0x02;  // Memory is decaying
+
+    [[nodiscard]] bool isValid() const noexcept { return flags & FLAG_VALID; }
+
+    void clear() noexcept {
+        subject = EntityHandle{};
+        location = Vector2D{};
+        timestamp = 0.0f;
+        value = 0.0f;
+        type = MemoryType::AttackedBy;
+        importance = 0;
+        flags = 0;
+    }
+};
+
+static_assert(sizeof(MemoryEntry) <= 40, "MemoryEntry exceeds 40 bytes");
+
+/**
+ * @brief NPC emotional state - affects behavior decisions (16 bytes)
+ *
+ * Emotions decay over time during AI processing.
+ * Values are 0.0 to 1.0 representing intensity.
+ */
+struct EmotionalState {
+    float aggression{0.0f};    // Combat readiness, attack likelihood
+    float fear{0.0f};          // Flee threshold, caution level
+    float curiosity{0.0f};     // Investigation tendency
+    float suspicion{0.0f};     // Alertness to threats
+
+    void clear() noexcept {
+        aggression = 0.0f;
+        fear = 0.0f;
+        curiosity = 0.0f;
+        suspicion = 0.0f;
+    }
+
+    /**
+     * @brief Decay all emotions by the given rate
+     * @param decayRate Rate per second (e.g., 0.1 = 10% decay per second)
+     * @param deltaTime Frame time
+     */
+    void decay(float decayRate, float deltaTime) noexcept {
+        float factor = 1.0f - (decayRate * deltaTime);
+        factor = std::max(0.0f, factor);
+        aggression *= factor;
+        fear *= factor;
+        curiosity *= factor;
+        suspicion *= factor;
+    }
+};
+
+static_assert(sizeof(EmotionalState) == 16, "EmotionalState should be 16 bytes");
+
+/**
+ * @brief NPC memory data with inline storage + overflow (384 bytes, 6 cache lines)
+ *
+ * Stores recent memories inline for fast access. When inline slots fill up,
+ * oldest memories are either discarded or moved to overflow (if enabled).
+ *
+ * Indexed by edmIndex (parallel to PathData, BehaviorData).
+ * Persists across behavior changes - unlike BehaviorData.
+ *
+ * Design rationale:
+ * - 6 inline memory slots (192 bytes) covers most NPCs
+ * - 4 location entries (32 bytes) for patrol/wander history
+ * - EmotionalState (16 bytes) for behavior modulation
+ * - Combat stats (40 bytes) for quick aggregate lookups
+ * - Overflow for detailed history when needed (combat-heavy NPCs)
+ */
+struct alignas(64) NPCMemoryData {
+    // Inline memory storage (most recent memories)
+    static constexpr size_t INLINE_MEMORY_COUNT = 6;
+    static constexpr size_t INLINE_LOCATION_COUNT = 4;
+
+    // Memory slots (192 bytes = 6 * 32)
+    MemoryEntry memories[INLINE_MEMORY_COUNT];
+
+    // Location history (32 bytes) - significant positions visited
+    Vector2D locationHistory[INLINE_LOCATION_COUNT];
+
+    // Emotional state (16 bytes)
+    EmotionalState emotions;
+
+    // Aggregate combat stats - quick lookup without iterating memories
+    EntityHandle lastAttacker;       // 12 bytes: Most recent attacker
+    EntityHandle lastTarget;         // 12 bytes: Most recent attack target
+    float totalDamageReceived{0.0f}; // 4 bytes: Sum of damage received (session)
+    float totalDamageDealt{0.0f};    // 4 bytes: Sum of damage dealt (session)
+    float lastCombatTime{0.0f};      // 4 bytes: When last combat occurred
+
+    // Metadata
+    uint32_t overflowId{0};          // 4 bytes: ID into overflow map (0 = none)
+    uint16_t memoryCount{0};         // 2 bytes: Total memories (inline + overflow)
+    uint16_t locationCount{0};       // 2 bytes: Locations stored (0-4)
+    float lastDecayTime{0.0f};       // 4 bytes: Last emotional decay update
+    uint8_t flags{0};                // 1 byte: State flags
+    uint8_t nextInlineSlot{0};       // 1 byte: Next slot to write (circular)
+    uint8_t combatEncounters{0};     // 1 byte: Number of combat encounters
+    uint8_t _padding{};              // 1 byte: Alignment padding
+
+    // Flags
+    static constexpr uint8_t FLAG_VALID = 0x01;
+    static constexpr uint8_t FLAG_HAS_OVERFLOW = 0x02;
+    static constexpr uint8_t FLAG_IN_COMBAT = 0x04;
+
+    [[nodiscard]] bool isValid() const noexcept { return flags & FLAG_VALID; }
+    [[nodiscard]] bool hasOverflow() const noexcept { return flags & FLAG_HAS_OVERFLOW; }
+    [[nodiscard]] bool isInCombat() const noexcept { return flags & FLAG_IN_COMBAT; }
+
+    void setValid(bool v) noexcept {
+        if (v) flags |= FLAG_VALID;
+        else flags &= ~FLAG_VALID;
+    }
+
+    void clear() noexcept {
+        for (auto& m : memories) m.clear();
+        for (auto& l : locationHistory) l = Vector2D{};
+        emotions.clear();
+        lastAttacker = EntityHandle{};
+        lastTarget = EntityHandle{};
+        totalDamageReceived = 0.0f;
+        totalDamageDealt = 0.0f;
+        lastCombatTime = 0.0f;
+        overflowId = 0;
+        memoryCount = 0;
+        locationCount = 0;
+        lastDecayTime = 0.0f;
+        flags = 0;
+        nextInlineSlot = 0;
+        combatEncounters = 0;
+    }
+};
+
+// Verify size fits in reasonable bounds (under 512 bytes / 8 cache lines)
+static_assert(sizeof(NPCMemoryData) <= 512, "NPCMemoryData exceeds 512 bytes");
+
+/**
+ * @brief Overflow storage for NPCs with extensive memory history
+ *
+ * Used when inline slots are full and full history is desired.
+ * Capped at MAX_OVERFLOW_MEMORIES to prevent unbounded growth.
+ */
+struct MemoryOverflow {
+    static constexpr size_t MAX_OVERFLOW_MEMORIES = 50;
+
+    std::vector<MemoryEntry> extraMemories;
+
+    void clear() noexcept { extraMemories.clear(); }
+
+    void trimToMax() {
+        if (extraMemories.size() > MAX_OVERFLOW_MEMORIES) {
+            // Keep most important and most recent
+            std::sort(extraMemories.begin(), extraMemories.end(),
+                [](const MemoryEntry& a, const MemoryEntry& b) {
+                    // Primary: importance, Secondary: timestamp (recent first)
+                    if (a.importance != b.importance) return a.importance > b.importance;
+                    return a.timestamp > b.timestamp;
+                });
+            extraMemories.resize(MAX_OVERFLOW_MEMORIES);
+        }
+    }
+};
+
+// ============================================================================
 // ENTITY DATA MANAGER
 // ============================================================================
 
@@ -1818,6 +2033,113 @@ public:
     void clearBehaviorData(size_t index);
 
     // ========================================================================
+    // NPC MEMORY DATA ACCESS (indexed by edmIndex, parallel to PathData/BehaviorData)
+    // ========================================================================
+
+    /**
+     * @brief Get memory data by EDM index
+     * @param index EDM index from getActiveIndices()
+     * @return NPCMemoryData for the entity
+     */
+    [[nodiscard]] NPCMemoryData& getMemoryData(size_t index);
+    [[nodiscard]] const NPCMemoryData& getMemoryData(size_t index) const;
+
+    /**
+     * @brief Check if memory data exists and is valid for an entity
+     * @param index EDM index
+     * @return true if memory data storage exists and is initialized
+     */
+    [[nodiscard]] bool hasMemoryData(size_t index) const noexcept;
+
+    /**
+     * @brief Initialize memory data for an entity
+     * @param index EDM index
+     * Called when NPC is created or first needs memory
+     */
+    void initMemoryData(size_t index);
+
+    /**
+     * @brief Clear memory data for an entity (called on destruction)
+     * @param index EDM index
+     */
+    void clearMemoryData(size_t index);
+
+    /**
+     * @brief Add a memory to an NPC
+     * @param index EDM index
+     * @param entry Memory entry to add
+     * @param useOverflow If true, use overflow storage when inline is full
+     */
+    void addMemory(size_t index, const MemoryEntry& entry, bool useOverflow = false);
+
+    /**
+     * @brief Find memories of a specific type
+     * @param index EDM index
+     * @param type Memory type to find
+     * @param outMemories Output vector of matching memories
+     * @param maxResults Maximum results to return (0 = all)
+     */
+    void findMemoriesByType(size_t index, MemoryType type,
+                            std::vector<const MemoryEntry*>& outMemories,
+                            size_t maxResults = 0) const;
+
+    /**
+     * @brief Find memories involving a specific entity
+     * @param index EDM index
+     * @param subject Entity handle to search for
+     * @param outMemories Output vector of matching memories
+     */
+    void findMemoriesOfEntity(size_t index, EntityHandle subject,
+                              std::vector<const MemoryEntry*>& outMemories) const;
+
+    /**
+     * @brief Update emotional state with decay
+     * @param index EDM index
+     * @param deltaTime Frame time for decay calculation
+     * @param decayRate Decay rate per second (default 0.05 = 5%/sec)
+     */
+    void updateEmotionalDecay(size_t index, float deltaTime, float decayRate = 0.05f);
+
+    /**
+     * @brief Modify emotional state
+     * @param index EDM index
+     * @param aggression Delta aggression (-1.0 to 1.0)
+     * @param fear Delta fear (-1.0 to 1.0)
+     * @param curiosity Delta curiosity (-1.0 to 1.0)
+     * @param suspicion Delta suspicion (-1.0 to 1.0)
+     */
+    void modifyEmotions(size_t index, float aggression, float fear,
+                        float curiosity, float suspicion);
+
+    /**
+     * @brief Record a combat event (updates aggregate stats + adds memory)
+     * @param index EDM index of the NPC
+     * @param attacker Who initiated the attack
+     * @param target Who was attacked
+     * @param damage Damage amount
+     * @param wasAttacked true if this NPC was the target
+     * @param gameTime Current game time for timestamp
+     */
+    void recordCombatEvent(size_t index, EntityHandle attacker,
+                           EntityHandle target, float damage, bool wasAttacked,
+                           float gameTime);
+
+    /**
+     * @brief Add a location to history
+     * @param index EDM index
+     * @param location Position to record
+     */
+    void addLocationToHistory(size_t index, const Vector2D& location);
+
+    /**
+     * @brief Get memory overflow data
+     * @param overflowId ID from NPCMemoryData::overflowId
+     * @return Pointer to overflow data, or nullptr if not found
+     */
+    [[nodiscard]] MemoryOverflow* getMemoryOverflow(uint32_t overflowId);
+    [[nodiscard]] const MemoryOverflow* getMemoryOverflow(uint32_t overflowId) const;
+
+    // ========================================================================
     // SIMULATION TIER MANAGEMENT
     // ========================================================================
 
@@ -1986,6 +2308,14 @@ private:
     std::vector<FixedWaypointSlot> m_waypointSlots;
     // Behavior data (indexed by edmIndex, pre-allocated alongside hotData)
     std::vector<BehaviorData> m_behaviorData;
+
+    // NPC Memory data (indexed by edmIndex, pre-allocated alongside hotData)
+    // Persists across behavior changes unlike BehaviorData
+    std::vector<NPCMemoryData> m_memoryData;
+
+    // Memory overflow storage (memoryOverflowId -> overflow data)
+    std::unordered_map<uint32_t, MemoryOverflow> m_memoryOverflow;
+    uint32_t m_nextMemoryOverflowId{1};  // 0 = no overflow
 
     // Type-specific free-lists (reuse indices when entities are destroyed)
     std::vector<uint32_t> m_freeCharacterSlots;
@@ -2159,6 +2489,31 @@ inline Vector2D EntityDataManager::getWaypoint(size_t entityIdx, size_t waypoint
     const auto& pd = m_pathData[entityIdx];
     assert(waypointIdx < pd.pathLength && "Waypoint index out of bounds");
     return m_waypointSlots[entityIdx][waypointIdx];
+}
+
+// NPC Memory data inline accessors
+inline NPCMemoryData& EntityDataManager::getMemoryData(size_t index) {
+    assert(index < m_memoryData.size() && "MemoryData index out of bounds");
+    return m_memoryData[index];
+}
+
+inline const NPCMemoryData& EntityDataManager::getMemoryData(size_t index) const {
+    assert(index < m_memoryData.size() && "MemoryData index out of bounds");
+    return m_memoryData[index];
+}
+
+inline bool EntityDataManager::hasMemoryData(size_t index) const noexcept {
+    return index < m_memoryData.size() && m_memoryData[index].isValid();
+}
+
+inline MemoryOverflow* EntityDataManager::getMemoryOverflow(uint32_t overflowId) {
+    auto it = m_memoryOverflow.find(overflowId);
+    return (it != m_memoryOverflow.end()) ? &it->second : nullptr;
+}
+
+inline const MemoryOverflow* EntityDataManager::getMemoryOverflow(uint32_t overflowId) const {
+    auto it = m_memoryOverflow.find(overflowId);
+    return (it != m_memoryOverflow.end()) ? &it->second : nullptr;
 }
 
 inline Vector2D EntityDataManager::getCurrentWaypoint(size_t entityIdx) const {

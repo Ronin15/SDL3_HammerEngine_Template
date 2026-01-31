@@ -1052,17 +1052,27 @@ void AIManager::processBatch(const std::vector<size_t> &activeIndices,
         edmHotData
             .transform; // Direct access, avoid redundant getTransformByIndex()
 
-    // Pre-fetch BehaviorData and PathData once - avoids repeated Instance()
+    // Pre-fetch BehaviorData, PathData, and MemoryData once - avoids repeated Instance()
     // calls in behaviors BehaviorType is read from EDM BehaviorData (single
     // source of truth)
     BehaviorData *behaviorData = nullptr;
     PathData *pathData = nullptr;
+    NPCMemoryData *memoryData = nullptr;
     if (edm.hasBehaviorData(edmIdx)) {
       behaviorData = &edm.getBehaviorData(edmIdx);
       if (behaviorData->isValid() &&
           behaviorData->behaviorType != BehaviorType::None &&
           behaviorData->behaviorType != BehaviorType::COUNT) {
         pathData = &edm.getPathData(edmIdx);
+      }
+    }
+
+    // Fetch memory data (independent of behavior data)
+    if (edm.hasMemoryData(edmIdx)) {
+      memoryData = &edm.getMemoryData(edmIdx);
+      // Update emotional decay each frame
+      if (memoryData->isValid()) {
+        edm.updateEmotionalDecay(edmIdx, deltaTime);
       }
     }
 
@@ -1077,7 +1087,7 @@ void AIManager::processBatch(const std::vector<size_t> &activeIndices,
       BehaviorContext ctx(
           transform, edmHotData, m_storage.handles[storageIdx].getId(), edmIdx,
           deltaTime, playerHandle, playerPos, playerVel, playerValid,
-          behaviorData, pathData, 0.0f, 0.0f, worldWidth, worldHeight, true);
+          behaviorData, pathData, memoryData, 0.0f, 0.0f, worldWidth, worldHeight, true);
       behavior->executeLogic(ctx);
 
       batchTransforms[batchCount] = &transform;

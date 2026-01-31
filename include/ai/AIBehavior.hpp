@@ -20,6 +20,7 @@ struct TransformData;
 struct EntityHotData;
 struct BehaviorData;
 struct PathData;
+struct NPCMemoryData;
 
 /**
  * @brief Context for behavior execution - provides lock-free access to entity data
@@ -43,6 +44,7 @@ struct BehaviorContext {
     // Pre-fetched EDM data - avoids repeated Instance() calls in behaviors
     BehaviorData* behaviorData{nullptr};  // nullptr if entity has no behavior data initialized
     PathData* pathData{nullptr};          // nullptr if entity has no path data
+    NPCMemoryData* memoryData{nullptr};   // nullptr if entity has no memory data
 
     // World bounds cached once per frame - avoids WorldManager::Instance() calls in behaviors
     float worldMinX{0.0f};
@@ -56,11 +58,11 @@ struct BehaviorContext {
 
     BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt,
                     EntityHandle pHandle, const Vector2D& pPos, const Vector2D& pVel, bool pValid,
-                    BehaviorData* bData, PathData* pData,
+                    BehaviorData* bData, PathData* pData, NPCMemoryData* mData,
                     float wMinX, float wMinY, float wMaxX, float wMaxY, bool wBoundsValid)
         : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt),
           playerHandle(pHandle), playerPosition(pPos), playerVelocity(pVel), playerValid(pValid),
-          behaviorData(bData), pathData(pData),
+          behaviorData(bData), pathData(pData), memoryData(mData),
           worldMinX(wMinX), worldMinY(wMinY), worldMaxX(wMaxX), worldMaxY(wMaxY),
           worldBoundsValid(wBoundsValid) {}
 };

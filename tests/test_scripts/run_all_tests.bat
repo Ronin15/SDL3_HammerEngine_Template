@@ -103,6 +103,7 @@ for %%T in (
     run_ai_manager_edm_integration_tests.bat
     run_collision_manager_edm_integration_tests.bat
     run_pathfinder_manager_edm_integration_tests.bat
+    run_npc_memory_tests.bat
     run_gpu_tests.bat
 ) do (
     echo.
