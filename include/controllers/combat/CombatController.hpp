@@ -98,6 +98,12 @@ public:
      */
     [[nodiscard]] bool hasActiveTarget() const;
 
+    /**
+     * @brief Get the current target's health from EDM
+     * @return Target health, or 0.0f if no valid target
+     */
+    [[nodiscard]] float getTargetHealth() const;
+
     // Configuration constants
     static constexpr float ATTACK_STAMINA_COST{10.0f};
     static constexpr float STAMINA_REGEN_RATE{15.0f};     // per second
