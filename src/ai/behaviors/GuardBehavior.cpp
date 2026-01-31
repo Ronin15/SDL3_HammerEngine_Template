@@ -268,6 +268,18 @@ void GuardBehavior::onMessage(EntityHandle handle, const std::string &message) {
     guard.currentMode = static_cast<uint8_t>(GuardMode::STATIC_GUARD);
   } else if (message == "roam_mode") {
     guard.currentMode = static_cast<uint8_t>(GuardMode::ROAMING_GUARD);
+  } else if (message == "player_under_attack") {
+    // Player is being attacked by an NPC - go to hostile alert
+    // detectThreat() will find the enemy NPC through normal detection
+    guard.currentAlertLevel = 3; // HOSTILE - immediate response
+    guard.hasActiveThreat = true;
+    guard.alertTimer = 0.0f;
+  } else if (message == "friendly_under_attack") {
+    // Player is attacking friendlies - guards target player
+    guard.currentAlertLevel = 3; // HOSTILE - immediate response
+    guard.hasActiveThreat = true;
+    guard.alertTimer = 0.0f;
+    // detectThreat() Priority 3 will return the player
   }
 }
 
