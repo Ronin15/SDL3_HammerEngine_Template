@@ -197,7 +197,7 @@ private:
   // State management
   void changeState(BehaviorData& data, AttackState newState);
   void updateStateTimer(BehaviorData& data);
-  bool shouldRetreat(size_t edmIndex, const BehaviorData& data) const;
+  bool shouldRetreat(size_t edmIndex) const;
   bool shouldCharge(float distance, const BehaviorData& data) const;
 
   // Attack execution

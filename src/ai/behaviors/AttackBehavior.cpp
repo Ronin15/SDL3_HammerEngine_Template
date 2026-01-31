@@ -266,7 +266,7 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
   updateStateTimer(data);
 
   // Check for retreat conditions
-  if (shouldRetreat(ctx.edmIndex, data) &&
+  if (shouldRetreat(ctx.edmIndex) &&
       attack.currentState != static_cast<uint8_t>(AttackState::RETREATING)) {
     changeState(data, AttackState::RETREATING);
   }
@@ -664,8 +664,7 @@ void AttackBehavior::updateStateTimer(BehaviorData &data) {
   }
 }
 
-bool AttackBehavior::shouldRetreat(size_t edmIndex,
-                                   const BehaviorData &data) const {
+bool AttackBehavior::shouldRetreat(size_t edmIndex) const {
   // Read health from CharacterData (live EDM data) instead of stale BehaviorData copy
   if (edmIndex == SIZE_MAX) {
     return false;
@@ -1070,7 +1069,7 @@ void AttackBehavior::updateRetreating(size_t edmIndex, BehaviorData &data,
 
   // Stop retreating if far enough or health recovered
   if (attack.targetDistance > m_attackRange * 2.0f ||
-      !shouldRetreat(edmIndex, data)) {
+      !shouldRetreat(edmIndex)) {
     attack.isRetreating = false;
     changeState(data, AttackState::SEEKING);
   }
