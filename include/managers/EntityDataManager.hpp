@@ -536,6 +536,12 @@ struct ClassInfo {
 
     // Default faction (can be overridden at spawn)
     uint8_t defaultFaction{0};
+
+    // Commerce flags
+    bool isMerchant{false};  // If true, NPC can trade with player
+
+    // Starting inventory {resourceId, quantity}
+    std::vector<std::pair<std::string, int>> startingItems;
 };
 
 /**

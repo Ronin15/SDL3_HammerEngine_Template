@@ -10,7 +10,12 @@
             "attackRangeMult": 1.0,
             "suggestedBehavior": "Chase",
             "basePriority": 7,
-            "defaultFaction": 1
+            "defaultFaction": 1,
+            "isMerchant": false,
+            "startingItems": [
+                {"id": "iron_sword", "quantity": 1},
+                {"id": "health_potion", "quantity": 1}
+            ]
         },
         {
             "id": "Guard",
@@ -22,19 +27,13 @@
             "attackRangeMult": 1.0,
             "suggestedBehavior": "Guard",
             "basePriority": 6,
-            "defaultFaction": 0
-        },
-        {
-            "id": "Merchant",
-            "name": "Merchant",
-            "healthMult": 0.7,
-            "staminaMult": 0.8,
-            "moveSpeedMult": 0.9,
-            "attackDamageMult": 0.3,
-            "attackRangeMult": 0.5,
-            "suggestedBehavior": "Idle",
-            "basePriority": 2,
-            "defaultFaction": 0
+            "defaultFaction": 0,
+            "isMerchant": false,
+            "startingItems": [
+                {"id": "iron_sword", "quantity": 1},
+                {"id": "iron_shield", "quantity": 1},
+                {"id": "health_potion", "quantity": 2}
+            ]
         },
         {
             "id": "Rogue",
@@ -46,7 +45,12 @@
             "attackRangeMult": 0.8,
             "suggestedBehavior": "Chase",
             "basePriority": 8,
-            "defaultFaction": 1
+            "defaultFaction": 1,
+            "isMerchant": false,
+            "startingItems": [
+                {"id": "dagger", "quantity": 1},
+                {"id": "gold_coins", "quantity": 50}
+            ]
         },
         {
             "id": "Mage",
@@ -58,19 +62,220 @@
             "attackRangeMult": 2.5,
             "suggestedBehavior": "Attack",
             "basePriority": 7,
-            "defaultFaction": 2
+            "defaultFaction": 2,
+            "isMerchant": false,
+            "startingItems": [
+                {"id": "wooden_staff", "quantity": 1},
+                {"id": "mana_elixir", "quantity": 3}
+            ]
         },
         {
-            "id": "Villager",
-            "name": "Villager",
-            "healthMult": 0.8,
-            "staminaMult": 0.9,
+            "id": "Ranger",
+            "name": "Ranger",
+            "healthMult": 0.9,
+            "staminaMult": 1.2,
+            "moveSpeedMult": 1.15,
+            "attackDamageMult": 1.3,
+            "attackRangeMult": 2.0,
+            "suggestedBehavior": "Chase",
+            "basePriority": 7,
+            "defaultFaction": 1,
+            "isMerchant": false,
+            "startingItems": [
+                {"id": "bow", "quantity": 1},
+                {"id": "arrows", "quantity": 30},
+                {"id": "dagger", "quantity": 1}
+            ]
+        },
+        {
+            "id": "Blacksmith",
+            "name": "Blacksmith",
+            "healthMult": 1.1,
+            "staminaMult": 1.0,
+            "moveSpeedMult": 0.9,
+            "attackDamageMult": 0.8,
+            "attackRangeMult": 0.5,
+            "suggestedBehavior": "Idle",
+            "basePriority": 3,
+            "defaultFaction": 0,
+            "isMerchant": true,
+            "startingItems": [
+                {"id": "iron_sword", "quantity": 3},
+                {"id": "steel_sword", "quantity": 1},
+                {"id": "iron_axe", "quantity": 2},
+                {"id": "gold_coins", "quantity": 200}
+            ]
+        },
+        {
+            "id": "Armourer",
+            "name": "Armourer",
+            "healthMult": 1.0,
+            "staminaMult": 1.0,
+            "moveSpeedMult": 0.9,
+            "attackDamageMult": 0.6,
+            "attackRangeMult": 0.5,
+            "suggestedBehavior": "Idle",
+            "basePriority": 3,
+            "defaultFaction": 0,
+            "isMerchant": true,
+            "startingItems": [
+                {"id": "leather_armor", "quantity": 2},
+                {"id": "iron_armor", "quantity": 1},
+                {"id": "iron_helmet", "quantity": 2},
+                {"id": "iron_shield", "quantity": 2},
+                {"id": "gold_coins", "quantity": 200}
+            ]
+        },
+        {
+            "id": "Alchemist",
+            "name": "Alchemist",
+            "healthMult": 0.7,
+            "staminaMult": 1.2,
+            "moveSpeedMult": 0.95,
+            "attackDamageMult": 0.4,
+            "attackRangeMult": 0.5,
+            "suggestedBehavior": "Idle",
+            "basePriority": 3,
+            "defaultFaction": 0,
+            "isMerchant": true,
+            "startingItems": [
+                {"id": "health_potion", "quantity": 10},
+                {"id": "super_health_potion", "quantity": 3},
+                {"id": "mana_elixir", "quantity": 5},
+                {"id": "gold_coins", "quantity": 150}
+            ]
+        },
+        {
+            "id": "Innkeeper",
+            "name": "Innkeeper",
+            "healthMult": 0.9,
+            "staminaMult": 1.0,
+            "moveSpeedMult": 1.0,
+            "attackDamageMult": 0.4,
+            "attackRangeMult": 0.5,
+            "suggestedBehavior": "Idle",
+            "basePriority": 2,
+            "defaultFaction": 0,
+            "isMerchant": true,
+            "startingItems": [
+                {"id": "bread", "quantity": 20},
+                {"id": "meat", "quantity": 10},
+                {"id": "health_potion", "quantity": 5},
+                {"id": "gold_coins", "quantity": 100}
+            ]
+        },
+        {
+            "id": "TavernKeeper",
+            "name": "Tavern Keeper",
+            "healthMult": 0.9,
+            "staminaMult": 1.0,
+            "moveSpeedMult": 1.0,
+            "attackDamageMult": 0.5,
+            "attackRangeMult": 0.5,
+            "suggestedBehavior": "Idle",
+            "basePriority": 2,
+            "defaultFaction": 0,
+            "isMerchant": true,
+            "startingItems": [
+                {"id": "ale", "quantity": 20},
+                {"id": "wine", "quantity": 10},
+                {"id": "bread", "quantity": 10},
+                {"id": "gold_coins", "quantity": 100}
+            ]
+        },
+        {
+            "id": "GeneralMerchant",
+            "name": "General Merchant",
+            "healthMult": 0.7,
+            "staminaMult": 0.8,
+            "moveSpeedMult": 0.9,
+            "attackDamageMult": 0.3,
+            "attackRangeMult": 0.5,
+            "suggestedBehavior": "Idle",
+            "basePriority": 2,
+            "defaultFaction": 0,
+            "isMerchant": true,
+            "startingItems": [
+                {"id": "health_potion", "quantity": 5},
+                {"id": "bread", "quantity": 10},
+                {"id": "arrows", "quantity": 50},
+                {"id": "gold_coins", "quantity": 500}
+            ]
+        },
+        {
+            "id": "Jeweler",
+            "name": "Jeweler",
+            "healthMult": 0.6,
+            "staminaMult": 0.8,
+            "moveSpeedMult": 0.95,
+            "attackDamageMult": 0.2,
+            "attackRangeMult": 0.5,
+            "suggestedBehavior": "Idle",
+            "basePriority": 2,
+            "defaultFaction": 0,
+            "isMerchant": true,
+            "startingItems": [
+                {"id": "emerald", "quantity": 2},
+                {"id": "ruby", "quantity": 2},
+                {"id": "sapphire", "quantity": 2},
+                {"id": "gold_coins", "quantity": 300}
+            ]
+        },
+        {
+            "id": "Farmer",
+            "name": "Farmer",
+            "healthMult": 0.9,
+            "staminaMult": 1.1,
             "moveSpeedMult": 1.0,
             "attackDamageMult": 0.5,
             "attackRangeMult": 0.5,
             "suggestedBehavior": "Wander",
             "basePriority": 3,
-            "defaultFaction": 0
+            "defaultFaction": 0,
+            "isMerchant": true,
+            "startingItems": [
+                {"id": "wheat", "quantity": 30},
+                {"id": "vegetables", "quantity": 20},
+                {"id": "bread", "quantity": 5},
+                {"id": "gold_coins", "quantity": 30}
+            ]
+        },
+        {
+            "id": "Miner",
+            "name": "Miner",
+            "healthMult": 1.0,
+            "staminaMult": 1.2,
+            "moveSpeedMult": 0.9,
+            "attackDamageMult": 0.6,
+            "attackRangeMult": 0.5,
+            "suggestedBehavior": "Wander",
+            "basePriority": 3,
+            "defaultFaction": 0,
+            "isMerchant": true,
+            "startingItems": [
+                {"id": "iron_ore", "quantity": 20},
+                {"id": "copper_ore", "quantity": 15},
+                {"id": "coal", "quantity": 25},
+                {"id": "gold_coins", "quantity": 40}
+            ]
+        },
+        {
+            "id": "Woodcutter",
+            "name": "Woodcutter",
+            "healthMult": 1.0,
+            "staminaMult": 1.1,
+            "moveSpeedMult": 1.0,
+            "attackDamageMult": 0.7,
+            "attackRangeMult": 0.6,
+            "suggestedBehavior": "Wander",
+            "basePriority": 3,
+            "defaultFaction": 0,
+            "isMerchant": true,
+            "startingItems": [
+                {"id": "wood", "quantity": 50},
+                {"id": "iron_axe", "quantity": 1},
+                {"id": "gold_coins", "quantity": 25}
+            ]
         }
     ]
 }

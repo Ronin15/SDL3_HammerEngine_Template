@@ -7,6 +7,8 @@
 #include "entities/Player.hpp"
 #include "utils/WorldRenderPipeline.hpp"
 #include "controllers/combat/CombatController.hpp"
+#include "controllers/social/SocialController.hpp"
+#include "controllers/social/TradeController.hpp"
 #include "controllers/world/DayNightController.hpp"
 #include "controllers/world/ItemController.hpp"
 #include "controllers/world/WeatherController.hpp"
@@ -109,6 +111,10 @@ bool GamePlayState::enter() {
     m_controllers.add<CombatController>(mp_Player);
     m_controllers.add<ItemController>(mp_Player);
     m_controllers.add<ResourceRenderController>();
+
+    // Social and trade controllers (SocialController must be created first since TradeController references it)
+    auto& socialCtrl = m_controllers.add<SocialController>(mp_Player);
+    m_controllers.add<TradeController>(mp_Player, socialCtrl);
 
     // Enable automatic weather changes
     gameTimeMgr.enableAutoWeather(true);
@@ -616,11 +622,44 @@ void GamePlayState::handleInput() {
     m_controllers.get<CombatController>()->tryAttack();
   }
 
-  // Item interaction - E to pickup/harvest
+  // Interaction - E to trade/pickup/harvest
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_E) && mp_Player) {
-    auto& itemCtrl = *m_controllers.get<ItemController>();
-    if (!itemCtrl.attemptPickup()) {
-      itemCtrl.attemptHarvest();
+    auto& tradeCtrl = *m_controllers.get<TradeController>();
+
+    // If already trading, close the trade UI
+    if (tradeCtrl.isTrading()) {
+      tradeCtrl.closeTrade();
+    } else {
+      // Try to find a nearby merchant NPC to trade with
+      bool openedTrade = false;
+      auto& edm = EntityDataManager::Instance();
+      auto& aiMgr = AIManager::Instance();
+      Vector2D playerPos = mp_Player->getPosition();
+
+      // Query nearby NPCs
+      std::vector<EntityHandle> nearbyHandles;
+      aiMgr.queryHandlesInRadius(playerPos, 100.0f, nearbyHandles, true);
+
+      for (const auto& handle : nearbyHandles) {
+        if (!handle.isValid() || handle.getKind() != EntityKind::NPC) {
+          continue;
+        }
+        // Check if this NPC is a merchant
+        if (edm.isNPCMerchant(handle)) {
+          if (tradeCtrl.openTrade(handle)) {
+            openedTrade = true;
+            break;
+          }
+        }
+      }
+
+      // If no merchant found, try pickup/harvest
+      if (!openedTrade) {
+        auto& itemCtrl = *m_controllers.get<ItemController>();
+        if (!itemCtrl.attemptPickup()) {
+          itemCtrl.attemptHarvest();
+        }
+      }
     }
   }
 

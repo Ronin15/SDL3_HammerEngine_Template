@@ -607,9 +607,29 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     renderData.animationAccumulator = 0.0f;
     renderData.flipMode = 0;
 
-    ENTITY_DEBUG(std::format("Created {} {} at ({},{}) HP:{:.0f} DMG:{:.1f} SPD:{:.0f}",
+    // Set merchant flag based on class
+    if (classInfo.isMerchant) {
+        charData.stateFlags |= CharacterData::STATE_MERCHANT;
+    }
+
+    // Add starting items from class definition
+    if (!classInfo.startingItems.empty()) {
+        auto& rtm = ResourceTemplateManager::Instance();
+        for (const auto& [itemId, qty] : classInfo.startingItems) {
+            auto itemHandle = rtm.getHandleById(itemId);
+            if (itemHandle.isValid()) {
+                addToInventory(charData.inventoryIndex, itemHandle, qty);
+            } else {
+                ENTITY_WARN(std::format("Starting item '{}' not found for class '{}'",
+                                        itemId, classInfo.name));
+            }
+        }
+    }
+
+    ENTITY_DEBUG(std::format("Created {} {} at ({},{}) HP:{:.0f} DMG:{:.1f} SPD:{:.0f}{}",
                             race, charClass, position.getX(), position.getY(),
-                            charData.maxHealth, charData.attackDamage, charData.moveSpeed));
+                            charData.maxHealth, charData.attackDamage, charData.moveSpeed,
+                            classInfo.isMerchant ? " [Merchant]" : ""));
 
     // Auto-register with AIManager using class's suggested behavior
     AIManager::Instance().registerEntity(handle,
@@ -3279,6 +3299,21 @@ void EntityDataManager::initializeClassRegistry() {
                 info.basePriority = c.hasKey("basePriority") ? static_cast<uint8_t>(c["basePriority"].asInt()) : 5;
                 info.defaultFaction = c.hasKey("defaultFaction") ? static_cast<uint8_t>(c["defaultFaction"].asInt()) : 0;
 
+                // Commerce
+                info.isMerchant = c.hasKey("isMerchant") ? c["isMerchant"].asBool() : false;
+
+                // Starting items
+                if (c.hasKey("startingItems") && c["startingItems"].isArray()) {
+                    for (size_t j = 0; j < c["startingItems"].size(); ++j) {
+                        const auto& item = c["startingItems"][j];
+                        if (item.hasKey("id") && item["id"].isString()) {
+                            std::string itemId = item["id"].asString();
+                            int qty = item.hasKey("quantity") ? item["quantity"].asInt() : 1;
+                            info.startingItems.emplace_back(itemId, qty);
+                        }
+                    }
+                }
+
                 uint8_t classId = static_cast<uint8_t>(m_classIdToName.size());
                 m_classRegistry[id] = info;
                 m_classNameToId[id] = classId;
@@ -3295,23 +3330,23 @@ void EntityDataManager::initializeClassRegistry() {
     // Fallback defaults
     ENTITY_WARN(std::format("Failed to load classes from {}, using defaults", jsonPath));
 
-    m_classRegistry["Warrior"] = {"Warrior", 1.3f, 1.0f, 0.9f, 1.5f, 1.0f, "Chase", 7, 1};
+    m_classRegistry["Warrior"] = {"Warrior", 1.3f, 1.0f, 0.9f, 1.5f, 1.0f, "Chase", 7, 1, false, {}};
     m_classNameToId["Warrior"] = 0; m_classIdToName.push_back("Warrior");
 
-    m_classRegistry["Guard"] = {"Guard", 1.2f, 1.1f, 0.8f, 1.2f, 1.0f, "Guard", 6, 0};
+    m_classRegistry["Guard"] = {"Guard", 1.2f, 1.1f, 0.8f, 1.2f, 1.0f, "Guard", 6, 0, false, {}};
     m_classNameToId["Guard"] = 1; m_classIdToName.push_back("Guard");
 
-    m_classRegistry["Merchant"] = {"Merchant", 0.7f, 0.8f, 0.9f, 0.3f, 0.5f, "Idle", 2, 0};
-    m_classNameToId["Merchant"] = 2; m_classIdToName.push_back("Merchant");
+    m_classRegistry["GeneralMerchant"] = {"GeneralMerchant", 0.7f, 0.8f, 0.9f, 0.3f, 0.5f, "Idle", 2, 0, true, {}};
+    m_classNameToId["GeneralMerchant"] = 2; m_classIdToName.push_back("GeneralMerchant");
 
-    m_classRegistry["Rogue"] = {"Rogue", 0.8f, 1.3f, 1.3f, 1.2f, 0.8f, "Chase", 8, 1};
+    m_classRegistry["Rogue"] = {"Rogue", 0.8f, 1.3f, 1.3f, 1.2f, 0.8f, "Chase", 8, 1, false, {}};
     m_classNameToId["Rogue"] = 3; m_classIdToName.push_back("Rogue");
 
-    m_classRegistry["Mage"] = {"Mage", 0.6f, 1.5f, 0.85f, 1.8f, 2.5f, "Attack", 7, 2};
+    m_classRegistry["Mage"] = {"Mage", 0.6f, 1.5f, 0.85f, 1.8f, 2.5f, "Attack", 7, 2, false, {}};
     m_classNameToId["Mage"] = 4; m_classIdToName.push_back("Mage");
 
-    m_classRegistry["Villager"] = {"Villager", 0.8f, 0.9f, 1.0f, 0.5f, 0.5f, "Wander", 3, 0};
-    m_classNameToId["Villager"] = 5; m_classIdToName.push_back("Villager");
+    m_classRegistry["Farmer"] = {"Farmer", 0.9f, 1.1f, 1.0f, 0.5f, 0.5f, "Wander", 3, 0, true, {}};
+    m_classNameToId["Farmer"] = 5; m_classIdToName.push_back("Farmer");
 
     ENTITY_INFO(std::format("Initialized class registry with {} classes (fallback)", m_classRegistry.size()));
 }

@@ -140,6 +140,12 @@ public:
   void consumeStamina(float amount);
   void restoreStamina(float amount);
 
+  // Currency convenience methods (wrapper around inventory gold_coins)
+  [[nodiscard]] int getGold() const;
+  bool addGold(int amount);
+  bool removeGold(int amount);
+  [[nodiscard]] bool hasGold(int amount) const;
+
 private:
   void handleMovementInput(float deltaTime);
   void handleStateTransitions();
