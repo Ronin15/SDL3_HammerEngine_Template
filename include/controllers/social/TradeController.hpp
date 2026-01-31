@@ -99,7 +99,7 @@ public:
      * @brief Update trade UI (call each frame while trading)
      * @param deltaTime Frame delta time
      */
-    void update(float deltaTime);
+    void update(float deltaTime) override;
 
     // ========================================================================
     // SELECTION & TRANSACTIONS

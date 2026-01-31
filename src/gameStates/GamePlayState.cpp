@@ -91,6 +91,9 @@ bool GamePlayState::enter() {
     // Set player handle in AIManager for collision culling reference point
     AIManager::Instance().setPlayerHandle(mp_Player->getHandle());
 
+    // Spawn test village with merchants, guards, and villagers
+    setupTestVillage();
+
     // Initialize the inventory UI
     initializeInventoryUI();
 
@@ -258,6 +261,9 @@ void GamePlayState::update(float deltaTime) {
     // Update all IUpdatable controllers (combat cooldowns, stamina regen, etc.)
     m_controllers.updateAll(deltaTime);
 
+    // Update data-driven NPCs (animations handled by NPCRenderController)
+    m_npcRenderCtrl.update(deltaTime);
+
     // Update combat HUD (health/stamina bars, target frame)
     updateCombatHUD();
   }
@@ -337,6 +343,9 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
       resourceCtrl->renderContainers(renderer, *m_camera, ctx.cameraX, ctx.cameraY, interpolationAlpha);
     }
 
+    // Render NPCs (data-driven via NPCRenderController)
+    m_npcRenderCtrl.renderNPCs(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+
     // Render player (sub-pixel smoothness from entity's own interpolation)
     if (mp_Player) {
       mp_Player->render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
@@ -397,6 +406,9 @@ bool GamePlayState::exit() {
     // Reset the flag after using it
     m_transitioningToLoading = false;
 
+    // Clear NPCs before manager cleanup (NPCs hold EDM indices)
+    m_npcRenderCtrl.clearSpawnedNPCs();
+
     // Clean up managers (same as full exit)
     // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
     // Pending path tasks hold captured edmIndex values - they must complete or
@@ -441,6 +453,9 @@ bool GamePlayState::exit() {
   }
 
   // Full exit (going to main menu, other states, or shutting down)
+
+  // Clear NPCs before manager cleanup (NPCs hold EDM indices)
+  m_npcRenderCtrl.clearSpawnedNPCs();
 
   // Use manager prepareForStateTransition methods for deterministic cleanup
   // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
@@ -617,8 +632,8 @@ void GamePlayState::handleInput() {
     ui.setComponentVisible("gameplay_fps", m_fpsVisible);
   }
 
-  // Combat - spacebar to attack
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE) && mp_Player) {
+  // Combat - F or spacebar to attack (F matches AdvancedAIDemoState)
+  if ((inputMgr.wasKeyPressed(SDL_SCANCODE_F) || inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) && mp_Player) {
     m_controllers.get<CombatController>()->tryAttack();
   }
 
@@ -913,6 +928,149 @@ void GamePlayState::initializeResourceHandles() {
   auto woodResource = templateManager.getResourceByName("wood");
   m_woodHandle =
       woodResource ? woodResource->getHandle() : HammerEngine::ResourceHandle();
+}
+
+void GamePlayState::setupTestVillage() {
+  if (!mp_Player) {
+    GAMEPLAY_WARN("Cannot setup test village: no player");
+    return;
+  }
+
+  auto& edm = EntityDataManager::Instance();
+  auto& aiMgr = AIManager::Instance();
+  auto& ui = UIManager::Instance();
+
+  Vector2D playerPos = mp_Player->getPosition();
+
+  // Village center is offset from player to give them room to approach
+  Vector2D villageCenter = playerPos + Vector2D(200.0f, 0.0f);
+
+  GAMEPLAY_INFO(std::format("Setting up test village at ({:.0f}, {:.0f})",
+                            villageCenter.getX(), villageCenter.getY()));
+
+  // ========================================================================
+  // MERCHANTS - Arranged in a semi-circle for easy access
+  // ========================================================================
+  struct MerchantSpawn {
+    const char* npcClass;
+    Vector2D offset;
+  };
+
+  std::vector<MerchantSpawn> merchants = {
+      {"Blacksmith",      Vector2D(-80.0f, -60.0f)},   // Top-left
+      {"Armourer",        Vector2D(80.0f, -60.0f)},    // Top-right
+      {"Alchemist",       Vector2D(-120.0f, 20.0f)},   // Left
+      {"GeneralMerchant", Vector2D(120.0f, 20.0f)},    // Right
+      {"Innkeeper",       Vector2D(-60.0f, 80.0f)},    // Bottom-left
+      {"TavernKeeper",    Vector2D(60.0f, 80.0f)},     // Bottom-right
+      {"Jeweler",         Vector2D(0.0f, -100.0f)},    // Top-center
+  };
+
+  int merchantCount = 0;
+  for (const auto& spawn : merchants) {
+    Vector2D pos = villageCenter + spawn.offset;
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, "Human", spawn.npcClass);
+    if (handle.isValid()) {
+      // Merchants stay idle at their posts
+      aiMgr.assignBehavior(handle, "Idle");
+      merchantCount++;
+      GAMEPLAY_DEBUG(std::format("Spawned {} at ({:.0f}, {:.0f})",
+                                 spawn.npcClass, pos.getX(), pos.getY()));
+    }
+  }
+
+  // ========================================================================
+  // GUARDS - Patrolling the village perimeter
+  // ========================================================================
+  std::vector<Vector2D> guardOffsets = {
+      Vector2D(-180.0f, -120.0f),  // NW corner
+      Vector2D(180.0f, -120.0f),   // NE corner
+      Vector2D(-180.0f, 140.0f),   // SW corner
+      Vector2D(180.0f, 140.0f),    // SE corner
+      Vector2D(0.0f, -160.0f),     // North entrance
+      Vector2D(0.0f, 180.0f),      // South entrance
+  };
+
+  int guardCount = 0;
+  for (const auto& offset : guardOffsets) {
+    Vector2D pos = villageCenter + offset;
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, "Human", "Guard");
+    if (handle.isValid()) {
+      // Guards use Guard behavior (stationary but alert)
+      aiMgr.assignBehavior(handle, "Guard");
+      guardCount++;
+    }
+  }
+
+  // ========================================================================
+  // WANDERING VILLAGERS - Farmer, Miner, Woodcutter around the edges
+  // ========================================================================
+  struct VillagerSpawn {
+    const char* npcClass;
+    Vector2D offset;
+    const char* behavior;
+  };
+
+  std::vector<VillagerSpawn> villagers = {
+      {"Farmer",     Vector2D(-250.0f, 50.0f),  "Wander"},
+      {"Farmer",     Vector2D(250.0f, 30.0f),   "Wander"},
+      {"Miner",      Vector2D(-200.0f, -180.0f), "Wander"},
+      {"Woodcutter", Vector2D(220.0f, -150.0f),  "Wander"},
+      {"Woodcutter", Vector2D(-180.0f, 200.0f),  "Wander"},
+  };
+
+  int villagerCount = 0;
+  for (const auto& spawn : villagers) {
+    Vector2D pos = villageCenter + spawn.offset;
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, "Human", spawn.npcClass);
+    if (handle.isValid()) {
+      aiMgr.assignBehavior(handle, spawn.behavior);
+      villagerCount++;
+    }
+  }
+
+  // ========================================================================
+  // COMBAT NPCs - A few hostile NPCs for testing combat
+  // ========================================================================
+  std::vector<Vector2D> hostileOffsets = {
+      Vector2D(-350.0f, 0.0f),     // West of village
+      Vector2D(350.0f, -50.0f),    // East of village
+      Vector2D(0.0f, -300.0f),     // North of village
+  };
+
+  int hostileCount = 0;
+  const char* hostileClasses[] = {"Warrior", "Rogue", "Ranger"};
+  for (size_t i = 0; i < hostileOffsets.size(); ++i) {
+    Vector2D pos = villageCenter + hostileOffsets[i];
+    EntityHandle handle = edm.createNPCWithRaceClass(
+        pos, "Human", hostileClasses[i % 3]);
+    if (handle.isValid()) {
+      // Hostile NPCs will chase the player
+      aiMgr.assignBehavior(handle, "Chase");
+      hostileCount++;
+    }
+  }
+
+  // Add a Mage for ranged combat testing
+  {
+    Vector2D pos = villageCenter + Vector2D(300.0f, 200.0f);
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, "Human", "Mage");
+    if (handle.isValid()) {
+      aiMgr.assignBehavior(handle, "Attack");
+      hostileCount++;
+    }
+  }
+
+  // ========================================================================
+  // SUMMARY
+  // ========================================================================
+  GAMEPLAY_INFO(std::format("Test village spawned: {} merchants, {} guards, "
+                            "{} villagers, {} hostile NPCs",
+                            merchantCount, guardCount, villagerCount, hostileCount));
+
+  ui.addEventLogEntry("gameplay_event_log",
+                      std::format("Village spawned: {} merchants, {} guards, {} villagers",
+                                  merchantCount, guardCount, villagerCount));
 }
 
 void GamePlayState::initializeCamera() {
@@ -1335,6 +1493,9 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   auto &worldMgr = WorldManager::Instance();
   worldMgr.recordGPU(*ctx.spriteBatch, ctx.cameraX, ctx.cameraY,
                      ctx.viewWidth, ctx.viewHeight, ctx.zoom);
+
+  // Record NPCs to sprite batch (atlas-based)
+  m_npcRenderCtrl.recordGPU(ctx);
 
   // End sprite batch recording before switching to entity batch
   m_gpuSceneRenderer->endSpriteBatch();
