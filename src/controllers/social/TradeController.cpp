@@ -265,31 +265,46 @@ float TradeController::getPriceModifier() const {
 void TradeController::createTradeUI() {
     auto& ui = UIManager::Instance();
 
-    // Panel dimensions
+    // Panel dimensions - all child offsets calculated from panel center
+    // Panel: 600x450, so half = 300x225
+    // Child offset formula: offsetX = elemX + elemW/2 - 300, offsetY = elemY + elemH/2 - 225
     constexpr int panelW = 600;
     constexpr int panelH = 450;
-    UIRect panelRect{0, 0, panelW, panelH};
+    constexpr int halfW = panelW / 2;  // 300
+    constexpr int halfH = panelH / 2;  // 225
 
     // Create main panel (centered)
-    ui.createPanel(UI_PANEL, panelRect);
-    ui.setComponentPositioning(UI_PANEL, {UIPositionMode::CENTERED_BOTH, 0, 0, 0, 0});
+    ui.createPanel(UI_PANEL, UIRect{0, 0, panelW, panelH});
+    ui.setComponentPositioning(UI_PANEL, {UIPositionMode::CENTERED_BOTH, 0, 0, panelW, panelH});
 
-    // Title
-    ui.createTitle(UI_TITLE, UIRect{20, 10, 560, 30}, "Trading");
+    // Title (centered horizontally at top of panel)
+    ui.createTitle(UI_TITLE, UIRect{0, 0, 560, 30}, "Trading");
+    ui.setComponentPositioning(UI_TITLE, {UIPositionMode::CENTERED_BOTH, 0, 10 + 15 - halfH, 560, 30});
 
     // Relationship info
     std::string relStr = std::format("Relationship: {}  (Price: {:.0f}%)",
                                      getRelationshipDescription(),
                                      getPriceModifier() * 100.0f);
-    ui.createLabel(UI_RELATIONSHIP, UIRect{20, 45, 560, 20}, relStr);
+    ui.createLabel(UI_RELATIONSHIP, UIRect{0, 0, 560, 20}, relStr);
+    ui.setComponentPositioning(UI_RELATIONSHIP, {UIPositionMode::CENTERED_BOTH, 0, 45 + 10 - halfH, 560, 20});
 
     // Merchant inventory list (left side)
-    ui.createLabel("trade_merchant_label", UIRect{20, 75, 270, 20}, "Merchant Inventory");
-    ui.createList(UI_MERCHANT_LIST, UIRect{20, 100, 270, 200});
+    ui.createLabel("trade_merchant_label", UIRect{0, 0, 270, 20}, "Merchant Inventory");
+    ui.setComponentPositioning("trade_merchant_label", {UIPositionMode::CENTERED_BOTH,
+        20 + 135 - halfW, 75 + 10 - halfH, 270, 20});
+
+    ui.createList(UI_MERCHANT_LIST, UIRect{0, 0, 270, 200});
+    ui.setComponentPositioning(UI_MERCHANT_LIST, {UIPositionMode::CENTERED_BOTH,
+        20 + 135 - halfW, 100 + 100 - halfH, 270, 200});
 
     // Player inventory list (right side)
-    ui.createLabel("trade_player_label", UIRect{310, 75, 270, 20}, "Your Inventory");
-    ui.createList(UI_PLAYER_LIST, UIRect{310, 100, 270, 200});
+    ui.createLabel("trade_player_label", UIRect{0, 0, 270, 20}, "Your Inventory");
+    ui.setComponentPositioning("trade_player_label", {UIPositionMode::CENTERED_BOTH,
+        310 + 135 - halfW, 75 + 10 - halfH, 270, 20});
+
+    ui.createList(UI_PLAYER_LIST, UIRect{0, 0, 270, 200});
+    ui.setComponentPositioning(UI_PLAYER_LIST, {UIPositionMode::CENTERED_BOTH,
+        310 + 135 - halfW, 100 + 100 - halfH, 270, 200});
 
     // Populate lists
     for (const auto& item : m_merchantItems) {
@@ -303,16 +318,25 @@ void TradeController::createTradeUI() {
     }
 
     // Quantity and price row
-    ui.createLabel(UI_QUANTITY_LABEL, UIRect{20, 320, 150, 25}, "Quantity: 1");
-    ui.createLabel(UI_PRICE_LABEL, UIRect{180, 320, 200, 25}, "Select an item");
+    ui.createLabel(UI_QUANTITY_LABEL, UIRect{0, 0, 150, 25}, "Quantity: 1");
+    ui.setComponentPositioning(UI_QUANTITY_LABEL, {UIPositionMode::CENTERED_BOTH,
+        20 + 75 - halfW, 320 + 12 - halfH, 150, 25});
+
+    ui.createLabel(UI_PRICE_LABEL, UIRect{0, 0, 200, 25}, "Select an item");
+    ui.setComponentPositioning(UI_PRICE_LABEL, {UIPositionMode::CENTERED_BOTH,
+        180 + 100 - halfW, 320 + 12 - halfH, 200, 25});
 
     // Gold display
     auto player = mp_player.lock();
     int gold = player ? player->getGold() : 0;
-    ui.createLabel(UI_GOLD_LABEL, UIRect{400, 320, 180, 25}, std::format("Your Gold: {}", gold));
+    ui.createLabel(UI_GOLD_LABEL, UIRect{0, 0, 180, 25}, std::format("Your Gold: {}", gold));
+    ui.setComponentPositioning(UI_GOLD_LABEL, {UIPositionMode::CENTERED_BOTH,
+        400 + 90 - halfW, 320 + 12 - halfH, 180, 25});
 
     // Action buttons
-    ui.createButtonSuccess(UI_BUY_BTN, UIRect{20, 360, 100, 35}, "Buy");
+    ui.createButtonSuccess(UI_BUY_BTN, UIRect{0, 0, 100, 35}, "Buy");
+    ui.setComponentPositioning(UI_BUY_BTN, {UIPositionMode::CENTERED_BOTH,
+        20 + 50 - halfW, 360 + 17 - halfH, 100, 35});
     ui.setOnClick(UI_BUY_BTN, [this]() {
         TradeResult result = executeBuy();
         if (result != TradeResult::Success) {
@@ -320,7 +344,9 @@ void TradeController::createTradeUI() {
         }
     });
 
-    ui.createButtonSuccess(UI_SELL_BTN, UIRect{140, 360, 100, 35}, "Sell");
+    ui.createButtonSuccess(UI_SELL_BTN, UIRect{0, 0, 100, 35}, "Sell");
+    ui.setComponentPositioning(UI_SELL_BTN, {UIPositionMode::CENTERED_BOTH,
+        140 + 50 - halfW, 360 + 17 - halfH, 100, 35});
     ui.setOnClick(UI_SELL_BTN, [this]() {
         TradeResult result = executeSell();
         if (result != TradeResult::Success) {
@@ -328,7 +354,9 @@ void TradeController::createTradeUI() {
         }
     });
 
-    ui.createButtonDanger(UI_CLOSE_BTN, UIRect{480, 360, 100, 35}, "Close");
+    ui.createButtonDanger(UI_CLOSE_BTN, UIRect{0, 0, 100, 35}, "Close");
+    ui.setComponentPositioning(UI_CLOSE_BTN, {UIPositionMode::CENTERED_BOTH,
+        480 + 50 - halfW, 360 + 17 - halfH, 100, 35});
     ui.setOnClick(UI_CLOSE_BTN, [this]() {
         closeTrade();
     });

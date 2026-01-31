@@ -7,6 +7,7 @@
 #define GAME_PLAY_STATE_HPP
 
 #include "controllers/ControllerRegistry.hpp"
+#include "controllers/render/NPCRenderController.hpp"
 #include "events/TimeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "gameStates/GameState.hpp"
@@ -89,6 +90,9 @@ private:
   // --- Controllers (owned by ControllerRegistry) ---
   ControllerRegistry m_controllers;
 
+  // Data-driven NPC rendering (direct member like AdvancedAIDemoState)
+  NPCRenderController m_npcRenderCtrl{};
+
   // --- Time UI display buffer ---
   std::string m_statusBuffer{};  // Reusable buffer for status text (zero allocation)
   bool m_statusBarDirty{true};   // Flag to rebuild status bar only when events fire
@@ -111,6 +115,9 @@ private:
   void initializeCamera();
   void updateCamera(float deltaTime);
   // Camera auto-manages world bounds; no state-level setup needed
+
+  // Test village setup (spawns merchant NPCs, guards, and wandering villagers)
+  void setupTestVillage();
 
   // Day/night visual overlay state (updated via TimePeriodChangedEvent)
   // Current interpolated values (what's actually rendered)
