@@ -402,6 +402,13 @@ inline std::mutex Logger::s_logMutex{};
 #define ITEM_INFO(msg) HAMMER_INFO("ItemController", msg)
 #define ITEM_DEBUG(msg) HAMMER_DEBUG("ItemController", msg)
 
+// SocialController logging
+#define SOCIAL_CRITICAL(msg) HAMMER_CRITICAL("SocialController", msg)
+#define SOCIAL_ERROR(msg) HAMMER_ERROR("SocialController", msg)
+#define SOCIAL_WARN(msg) HAMMER_WARN("SocialController", msg)
+#define SOCIAL_INFO(msg) HAMMER_INFO("SocialController", msg)
+#define SOCIAL_DEBUG(msg) HAMMER_DEBUG("SocialController", msg)
+
 // Conditional logging macros for common systems
 // Use these when an if-block contains ONLY logging (eliminates condition overhead in release)
 #define GAMEENGINE_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "GameEngine", msg)

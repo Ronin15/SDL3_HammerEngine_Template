@@ -341,6 +341,14 @@ void EntityDataManager::freeSlot(size_t index) {
             m_freeCharacterSlots.push_back(typeIndex);
             break;
         case EntityKind::NPC:
+            // Destroy the associated inventory first
+            if (typeIndex < m_characterData.size()) {
+                uint32_t invIdx = m_characterData[typeIndex].inventoryIndex;
+                if (invIdx != INVALID_INVENTORY_INDEX) {
+                    destroyInventory(invIdx);
+                    m_characterData[typeIndex].inventoryIndex = INVALID_INVENTORY_INDEX;
+                }
+            }
             m_freeCharacterSlots.push_back(typeIndex);
             // Clear NPC render data (uses same index as CharacterData)
             if (typeIndex < m_npcRenderData.size()) {
@@ -454,6 +462,10 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     uint32_t charIndex = allocateCharacterSlot();
     m_characterData[charIndex].stateFlags = CharacterData::STATE_ALIVE;
     // faction defaults to 0 (Friendly) in CharacterData
+
+    // All NPCs get an inventory (20 slots, not world-tracked)
+    uint32_t invIdx = createInventory(20, false);
+    m_characterData[charIndex].inventoryIndex = invIdx;
 
     // Initialize collision data based on faction
     // Friendly/Neutral NPCs: Layer_Default, don't collide with other NPCs
@@ -1838,6 +1850,71 @@ void EntityDataManager::destroyInventory(uint32_t inventoryIndex) {
     m_freeInventorySlots.push_back(inventoryIndex);
 
     ENTITY_DEBUG(std::format("Destroyed inventory {}", inventoryIndex));
+}
+
+bool EntityDataManager::initNPCAsmerchant(EntityHandle handle, uint16_t maxSlots) {
+    if (!handle.isValid() || handle.getKind() != EntityKind::NPC) {
+        ENTITY_ERROR("initNPCAsmerchant: Invalid handle or not an NPC");
+        return false;
+    }
+
+    size_t idx = getIndex(handle);
+    if (idx == SIZE_MAX) {
+        ENTITY_ERROR("initNPCAsmerchant: Entity not found in EDM");
+        return false;
+    }
+
+    // Get character data
+    auto& charData = getCharacterDataByIndex(idx);
+
+    // Check if already has inventory
+    if (charData.hasInventory()) {
+        ENTITY_WARN("initNPCAsmerchant: NPC already has inventory");
+        return true;  // Already set up
+    }
+
+    // Create inventory
+    uint32_t invIdx = createInventory(maxSlots, false);  // Not world-tracked
+    if (invIdx == INVALID_INVENTORY_INDEX) {
+        ENTITY_ERROR("initNPCAsmerchant: Failed to create inventory");
+        return false;
+    }
+
+    // Store inventory index and set merchant flag
+    charData.inventoryIndex = invIdx;
+    charData.stateFlags |= CharacterData::STATE_MERCHANT;
+
+    ENTITY_INFO(std::format("NPC {} initialized as merchant with {} slots",
+                            handle.getId(), maxSlots));
+    return true;
+}
+
+bool EntityDataManager::isNPCMerchant(EntityHandle handle) const {
+    if (!handle.isValid() || handle.getKind() != EntityKind::NPC) {
+        return false;
+    }
+
+    size_t idx = getIndex(handle);
+    if (idx == SIZE_MAX) {
+        return false;
+    }
+
+    const auto& charData = getCharacterDataByIndex(idx);
+    return charData.isMerchant() && charData.hasInventory();
+}
+
+uint32_t EntityDataManager::getNPCInventoryIndex(EntityHandle handle) const {
+    if (!handle.isValid() || handle.getKind() != EntityKind::NPC) {
+        return INVALID_INVENTORY_INDEX;
+    }
+
+    size_t idx = getIndex(handle);
+    if (idx == SIZE_MAX) {
+        return INVALID_INVENTORY_INDEX;
+    }
+
+    const auto& charData = getCharacterDataByIndex(idx);
+    return charData.inventoryIndex;
 }
 
 bool EntityDataManager::addToInventory(uint32_t inventoryIndex,
