@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 70 test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTime simulation, controller systems, entity state management, entity data management, background simulation, EDM integration tests, GPU rendering subsystem (when USE_SDL3_GPU=ON), and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 71 test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTime simulation, controller systems, entity state management, entity data management, NPC memory system, background simulation, EDM integration tests, GPU rendering subsystem (when USE_SDL3_GPU=ON), and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -83,7 +83,17 @@ The Hammer Game Engine has the following test suites:
     - AIManager EDM Integration Tests: Sparse behavior vector, batch processing with EDM indices, state transitions
     - CollisionManager EDM Integration Tests: Active tier filtering, dual index semantics, static/dynamic separation
 
-13. **GPU System Tests** (conditional on USE_SDL3_GPU)
+13. **NPC Memory System Tests**
+    - Memory Structure Tests: MemoryEntry size validation, EmotionalState layout, NPCMemoryData alignment
+    - Memory Initialization Tests: Memory data allocation, initialization, validity flags
+    - Add Memory Tests: Adding memories, inline vs overflow storage, circular buffer behavior
+    - Find Memory Tests: Search by type, search by entity, combined searches
+    - Emotional State Tests: Emotional decay over time, emotion modification, clamping
+    - Combat Event Tests: Recording attacks, damage tracking, combat statistics
+    - Location History Tests: Location tracking, circular buffer, history limits
+    - Cleanup Tests: Memory clearing, overflow cleanup, state transition handling
+
+14. **GPU System Tests** (conditional on USE_SDL3_GPU)
     - GPU Types Tests: Vertex struct layouts (SpriteVertex, ColorVertex), UBO alignment validation
     - GPU Pipeline Config Tests: Pipeline configuration factory methods, blend modes
     - GPU Device Tests: Device lifecycle, shader format queries, swapchain format
@@ -94,10 +104,10 @@ The Hammer Game Engine has the following test suites:
     - GPU Renderer Tests: Full frame flow, pipeline/pool accessors, composite rendering
 
 **Test Execution Categories:**
-- **Core Tests** (16 suites): Fast functional validation (~4-8 minutes total)
+- **Core Tests** (17 suites): Fast functional validation (~4-8 minutes total)
 - **Benchmarks** (5 suites): Performance and scalability testing (~8-20 minutes total)
 - **GPU Tests** (8 suites): SDL3 GPU rendering validation (when USE_SDL3_GPU=ON)
-- **Total Coverage**: 70 test executables with comprehensive automation scripts
+- **Total Coverage**: 71 test executables with comprehensive automation scripts
 
 ## Running Tests
 
@@ -126,6 +136,7 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 ./tests/test_scripts/run_entity_data_manager_tests.sh     # EntityDataManager and BackgroundSimulationManager tests
 ./tests/test_scripts/run_ai_manager_edm_integration_tests.sh      # AIManager EDM integration tests
 ./tests/test_scripts/run_collision_manager_edm_integration_tests.sh  # CollisionManager EDM integration tests
+./tests/test_scripts/run_npc_memory_tests.sh                      # NPC memory system tests
 
 # Performance scaling benchmarks (slow execution)
 ./tests/test_scripts/run_event_scaling_benchmark.sh     # Event manager scaling benchmark
@@ -184,6 +195,7 @@ tests/test_scripts/run_entity_state_manager_tests.bat   # Entity state machine t
 tests/test_scripts/run_entity_data_manager_tests.bat    # EntityDataManager and BackgroundSimulationManager tests
 tests/test_scripts/run_ai_manager_edm_integration_tests.bat      # AIManager EDM integration tests
 tests/test_scripts/run_collision_manager_edm_integration_tests.bat  # CollisionManager EDM integration tests
+tests/test_scripts/run_npc_memory_tests.bat                       # NPC memory system tests
 
 tests/test_scripts/run_json_reader_tests.bat            # JSON parser validation tests
 
@@ -1190,6 +1202,132 @@ tests/test_scripts/run_entity_data_manager_tests.bat --verbose    # Verbose outp
 ```
 
 **Estimated Runtime:** ~2-3 seconds (97 tests total)
+
+### NPC Memory System Tests
+
+Located in `tests/managers/NPCMemoryTests.cpp`, these tests validate the NPC memory system that enables NPCs to remember combat encounters, social interactions, witnessed events, locations visited, and emotional states.
+
+#### Test Coverage
+
+1. **Memory Structure Tests** (4 tests):
+   - MemoryEntry size validation (≤40 bytes with padding)
+   - EmotionalState layout (16 bytes, 4 floats)
+   - NPCMemoryData cache-line alignment (alignas(64))
+   - MemoryOverflow vector storage
+
+2. **Memory Initialization Tests** (3 tests):
+   - Memory data allocation with entity creation
+   - Initialization sets validity flag
+   - Default emotional state values
+
+3. **Add Memory Tests** (4 tests):
+   - Adding memories to inline storage (6 slots)
+   - Overflow to vector storage when inline full
+   - Memory count tracking
+   - Circular buffer behavior for inline slots
+
+4. **Find Memory Tests** (4 tests):
+   - Search memories by type (AttackedBy, Attacked, etc.)
+   - Search memories by entity handle
+   - Combined type and entity search
+   - Empty result handling
+
+5. **Emotional State Tests** (3 tests):
+   - Emotional decay over time (configurable rate)
+   - Emotion modification (add/subtract)
+   - Clamping to [0.0, 1.0] range
+
+6. **Combat Event Tests** (3 tests):
+   - Recording attack events (attacker/target)
+   - Damage tracking (dealt/received totals)
+   - Combat statistics (encounter count, last combat time)
+
+7. **Location History Tests** (2 tests):
+   - Location tracking with circular buffer
+   - History limit enforcement (4 locations)
+
+8. **Cleanup Tests** (3 tests):
+   - Memory clearing on entity destruction
+   - Overflow cleanup
+   - State transition handling (prepareForStateTransition)
+
+#### Running NPC Memory Tests
+
+```bash
+# Linux/macOS
+./tests/test_scripts/run_npc_memory_tests.sh              # Run all tests
+./tests/test_scripts/run_npc_memory_tests.sh --memory     # NPC memory tests only
+./tests/test_scripts/run_npc_memory_tests.sh --ai-integration  # AI manager integration only
+./tests/test_scripts/run_npc_memory_tests.sh --verbose    # Verbose output
+
+# Windows
+tests/test_scripts/run_npc_memory_tests.bat              # Run all tests
+tests/test_scripts/run_npc_memory_tests.bat --memory     # NPC memory tests only
+tests/test_scripts/run_npc_memory_tests.bat --ai-integration  # AI manager integration only
+tests/test_scripts/run_npc_memory_tests.bat --verbose    # Verbose output
+
+# Direct execution (fastest for development)
+./bin/debug/npc_memory_tests                              # Run all memory tests
+./bin/debug/npc_memory_tests --list_content               # List available tests
+./bin/debug/npc_memory_tests --run_test="AddMemory*"      # Run specific tests
+```
+
+**Estimated Runtime:** ~1-2 seconds (24 tests)
+
+#### Key Data Structures
+
+```cpp
+// Memory entry for storing individual memories (≤40 bytes)
+struct MemoryEntry {
+    EntityHandle subject;   // Who/what is remembered
+    Vector2D location;      // Where it happened
+    float timestamp;        // Game time when occurred
+    float value;            // Context-dependent (damage, etc.)
+    MemoryType type;        // Type of memory (AttackedBy, Interaction, etc.)
+    uint8_t importance;     // 0-255 importance score
+    uint8_t flags;          // State flags (FLAG_VALID, FLAG_FADING)
+};
+
+// Emotional state affecting NPC behavior (16 bytes)
+struct EmotionalState {
+    float aggression;   // Combat readiness
+    float fear;         // Flee threshold
+    float curiosity;    // Investigation tendency
+    float suspicion;    // Alertness to threats
+};
+
+// Per-entity memory data (cache-line aligned, ≤512 bytes)
+struct alignas(64) NPCMemoryData {
+    MemoryEntry memories[6];        // Inline storage
+    Vector2D locationHistory[4];    // Recent locations
+    EmotionalState emotions;
+    EntityHandle lastAttacker, lastTarget;
+    float totalDamageReceived, totalDamageDealt;
+    // ... additional tracking fields
+};
+```
+
+#### Integration with BehaviorContext
+
+Memory data is accessible in AI behaviors via `BehaviorContext`:
+
+```cpp
+void AttackBehavior::executeLogic(BehaviorContext& ctx) {
+    if (ctx.memoryData && ctx.memoryData->isValid()) {
+        auto& memory = *ctx.memoryData;
+
+        // Check grudge against attacker
+        if (memory.lastAttacker == ctx.playerHandle) {
+            memory.emotions.aggression += 0.2f * ctx.deltaTime;
+        }
+
+        // Fear response from damage
+        if (memory.totalDamageReceived > 50.0f) {
+            memory.emotions.fear += 0.1f * ctx.deltaTime;
+        }
+    }
+}
+```
 
 ### EDM Integration Tests
 

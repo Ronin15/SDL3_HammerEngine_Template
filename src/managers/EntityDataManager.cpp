@@ -71,6 +71,9 @@ bool EntityDataManager::init() {
         // Behavior data (indexed by edmIndex, pre-allocated alongside hotData)
         m_behaviorData.reserve(CHARACTER_CAPACITY);
 
+        // NPC Memory data (indexed by edmIndex, pre-allocated alongside hotData)
+        m_memoryData.reserve(CHARACTER_CAPACITY);
+
         m_activeIndices.reserve(INITIAL_CAPACITY);
         m_backgroundIndices.reserve(INITIAL_CAPACITY);
         m_hibernatedIndices.reserve(INITIAL_CAPACITY);
@@ -150,6 +153,9 @@ void EntityDataManager::clean() {
     m_pathData.clear();
     m_waypointSlots.clear();  // Clear per-entity waypoint slots
     m_behaviorData.clear();
+    m_memoryData.clear();
+    m_memoryOverflow.clear();
+    m_nextMemoryOverflowId = 1;
 
     // Clear type-specific free-lists
     m_freeCharacterSlots.clear();
@@ -223,6 +229,9 @@ void EntityDataManager::prepareForStateTransition() {
     m_pathData.clear();
     m_waypointSlots.clear();  // Clear per-entity waypoint slots
     m_behaviorData.clear();
+    m_memoryData.clear();
+    m_memoryOverflow.clear();
+    m_nextMemoryOverflowId = 1;
 
     // Clear type-specific free-lists
     m_freeCharacterSlots.clear();
@@ -288,10 +297,11 @@ size_t EntityDataManager::allocateSlot() {
         m_hotData.emplace_back();
         m_entityIds.emplace_back(0);
         m_generations.emplace_back(0);
-        // Pre-allocate PathData, WaypointSlot, BehaviorData to match - avoids concurrent resize during AI processing
+        // Pre-allocate PathData, WaypointSlot, BehaviorData, MemoryData to match - avoids concurrent resize during AI processing
         m_pathData.emplace_back();
         m_waypointSlots.emplace_back();  // Per-entity waypoint slot (256 bytes)
         m_behaviorData.emplace_back();
+        m_memoryData.emplace_back();     // NPC memory data
     }
 
     m_tierIndicesDirty = true;
@@ -310,9 +320,10 @@ void EntityDataManager::freeSlot(size_t index) {
     EntityKind kind = m_hotData[index].kind;
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
 
-    // Clear path and behavior data for AI entities
+    // Clear path, behavior, and memory data for AI entities
     clearPathData(index);
     clearBehaviorData(index);
+    clearMemoryData(index);
 
     // Clear the slot
     m_hotData[index] = EntityHotData{};
@@ -2516,6 +2527,236 @@ void EntityDataManager::initBehaviorData(size_t index, BehaviorType behaviorType
 void EntityDataManager::clearBehaviorData(size_t index) {
     if (index < m_behaviorData.size()) {
         m_behaviorData[index].clear();
+    }
+}
+
+// ============================================================================
+// NPC MEMORY DATA MANAGEMENT
+// ============================================================================
+
+void EntityDataManager::initMemoryData(size_t index) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+    auto& data = m_memoryData[index];
+    data.clear();
+    data.setValid(true);
+}
+
+void EntityDataManager::clearMemoryData(size_t index) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+    auto& data = m_memoryData[index];
+
+    // Clean up overflow if present
+    if (data.hasOverflow() && data.overflowId > 0) {
+        m_memoryOverflow.erase(data.overflowId);
+    }
+
+    data.clear();
+}
+
+void EntityDataManager::addMemory(size_t index, const MemoryEntry& entry, bool useOverflow) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+
+    auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        initMemoryData(index);
+    }
+
+    // Try to add to inline slots (circular buffer)
+    if (data.memoryCount < NPCMemoryData::INLINE_MEMORY_COUNT) {
+        data.memories[data.nextInlineSlot] = entry;
+        data.nextInlineSlot = (data.nextInlineSlot + 1) % NPCMemoryData::INLINE_MEMORY_COUNT;
+        data.memoryCount++;
+    } else if (useOverflow) {
+        // Allocate overflow if needed
+        if (!data.hasOverflow()) {
+            data.overflowId = m_nextMemoryOverflowId++;
+            data.flags |= NPCMemoryData::FLAG_HAS_OVERFLOW;
+            m_memoryOverflow[data.overflowId] = MemoryOverflow{};
+        }
+
+        auto& overflow = m_memoryOverflow[data.overflowId];
+        overflow.extraMemories.push_back(entry);
+        overflow.trimToMax();
+        data.memoryCount = static_cast<uint16_t>(
+            NPCMemoryData::INLINE_MEMORY_COUNT + overflow.extraMemories.size());
+    } else {
+        // Overwrite oldest inline memory (circular buffer)
+        data.memories[data.nextInlineSlot] = entry;
+        data.nextInlineSlot = (data.nextInlineSlot + 1) % NPCMemoryData::INLINE_MEMORY_COUNT;
+        // memoryCount stays at INLINE_MEMORY_COUNT
+    }
+}
+
+void EntityDataManager::findMemoriesByType(size_t index, MemoryType type,
+                                           std::vector<const MemoryEntry*>& outMemories,
+                                           size_t maxResults) const {
+    outMemories.clear();
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+
+    const auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        return;
+    }
+
+    // Search inline memories
+    for (size_t i = 0; i < NPCMemoryData::INLINE_MEMORY_COUNT; ++i) {
+        const auto& mem = data.memories[i];
+        if (mem.isValid() && mem.type == type) {
+            outMemories.push_back(&mem);
+            if (maxResults > 0 && outMemories.size() >= maxResults) {
+                return;
+            }
+        }
+    }
+
+    // Search overflow if present
+    if (data.hasOverflow() && data.overflowId > 0) {
+        auto it = m_memoryOverflow.find(data.overflowId);
+        if (it != m_memoryOverflow.end()) {
+            for (const auto& mem : it->second.extraMemories) {
+                if (mem.isValid() && mem.type == type) {
+                    outMemories.push_back(&mem);
+                    if (maxResults > 0 && outMemories.size() >= maxResults) {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void EntityDataManager::findMemoriesOfEntity(size_t index, EntityHandle subject,
+                                              std::vector<const MemoryEntry*>& outMemories) const {
+    outMemories.clear();
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+
+    const auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        return;
+    }
+
+    // Search inline memories
+    for (const auto& mem : data.memories) {
+        if (mem.isValid() && mem.subject == subject) {
+            outMemories.push_back(&mem);
+        }
+    }
+
+    // Search overflow
+    if (data.hasOverflow() && data.overflowId > 0) {
+        auto it = m_memoryOverflow.find(data.overflowId);
+        if (it != m_memoryOverflow.end()) {
+            for (const auto& mem : it->second.extraMemories) {
+                if (mem.isValid() && mem.subject == subject) {
+                    outMemories.push_back(&mem);
+                }
+            }
+        }
+    }
+}
+
+void EntityDataManager::updateEmotionalDecay(size_t index, float deltaTime, float decayRate) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+
+    auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        return;
+    }
+
+    data.emotions.decay(decayRate, deltaTime);
+    data.lastDecayTime += deltaTime;
+}
+
+void EntityDataManager::modifyEmotions(size_t index, float aggression, float fear,
+                                        float curiosity, float suspicion) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+
+    auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        return;
+    }
+
+    data.emotions.aggression = std::clamp(data.emotions.aggression + aggression, 0.0f, 1.0f);
+    data.emotions.fear = std::clamp(data.emotions.fear + fear, 0.0f, 1.0f);
+    data.emotions.curiosity = std::clamp(data.emotions.curiosity + curiosity, 0.0f, 1.0f);
+    data.emotions.suspicion = std::clamp(data.emotions.suspicion + suspicion, 0.0f, 1.0f);
+}
+
+void EntityDataManager::recordCombatEvent(size_t index, EntityHandle attacker,
+                                           EntityHandle target, float damage, bool wasAttacked,
+                                           float gameTime) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+
+    auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        initMemoryData(index);
+    }
+
+    // Update aggregate stats
+    if (wasAttacked) {
+        data.lastAttacker = attacker;
+        data.totalDamageReceived += damage;
+
+        // Increase fear based on damage
+        data.emotions.fear = std::min(1.0f, data.emotions.fear + (damage / 100.0f));
+    } else {
+        data.lastTarget = target;
+        data.totalDamageDealt += damage;
+
+        // Combat increases aggression
+        data.emotions.aggression = std::min(1.0f, data.emotions.aggression + 0.1f);
+    }
+
+    data.lastCombatTime = gameTime;
+    data.combatEncounters++;
+    data.flags |= NPCMemoryData::FLAG_IN_COMBAT;
+
+    // Create memory entry
+    MemoryEntry mem;
+    mem.subject = wasAttacked ? attacker : target;
+    if (index < m_hotData.size()) {
+        mem.location = m_hotData[index].transform.position;
+    }
+    mem.timestamp = gameTime;
+    mem.value = damage;
+    mem.type = wasAttacked ? MemoryType::DamageReceived : MemoryType::DamageDealt;
+    mem.importance = static_cast<uint8_t>(std::min(255.0f, damage * 2.0f));
+    mem.flags = MemoryEntry::FLAG_VALID;
+
+    addMemory(index, mem, true);  // Use overflow for combat (important history)
+}
+
+void EntityDataManager::addLocationToHistory(size_t index, const Vector2D& location) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+
+    auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        return;
+    }
+
+    // Circular buffer for location history
+    size_t slot = data.locationCount % NPCMemoryData::INLINE_LOCATION_COUNT;
+    data.locationHistory[slot] = location;
+    if (data.locationCount < NPCMemoryData::INLINE_LOCATION_COUNT) {
+        data.locationCount++;
     }
 }
 

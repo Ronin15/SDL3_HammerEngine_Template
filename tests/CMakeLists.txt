@@ -68,6 +68,7 @@ set(SIMPLE_TESTS
     game_time_manager_season_tests
     entity_state_manager_tests
     entity_data_manager_tests
+    npc_memory_tests
     background_simulation_manager_tests
     collision_manager_edm_integration_tests
     event_manager_tests
@@ -187,6 +188,8 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "EntityStateManagerTests.cpp")
     elseif(${test_name} STREQUAL "entity_data_manager_tests")
         set(test_source "managers/EntityDataManagerTests.cpp")
+    elseif(${test_name} STREQUAL "npc_memory_tests")
+        set(test_source "managers/NPCMemoryTests.cpp")
     elseif(${test_name} STREQUAL "background_simulation_manager_tests")
         set(test_source "managers/BackgroundSimulationManagerTests.cpp")
     elseif(${test_name} STREQUAL "collision_manager_edm_integration_tests")
