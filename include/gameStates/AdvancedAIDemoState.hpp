@@ -62,8 +62,6 @@ private:
     void createAdvancedNPCs();
     void initializeCamera();
     void updateCamera(float deltaTime);
-    void initializeCombatHUD();
-    void updateCombatHUD();
 
     // Data-driven NPC rendering (velocity-based animation)
     NPCRenderController m_npcRenderCtrl{};

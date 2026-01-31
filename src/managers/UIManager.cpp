@@ -3182,6 +3182,136 @@ void UIManager::createLabelAtBottomRight(const std::string &id, const std::strin
   setComponentPositioning(id, {UIPositionMode::BOTTOM_RIGHT, offsetX, offsetY, width, height});
 }
 
+void UIManager::createCombatHUD() {
+  // Combat HUD layout constants (top-left positioning)
+  constexpr int hudMarginLeft = 20;
+  constexpr int hudMarginTop = 40;
+  constexpr int labelWidth = 30;
+  constexpr int barWidth = 150;
+  constexpr int barHeight = 20;
+  constexpr int rowSpacing = 35;
+  constexpr int labelBarGap = 15;
+
+  // Row positions
+  int healthRowY = hudMarginTop;
+  int staminaRowY = hudMarginTop + rowSpacing;
+  int targetRowY = hudMarginTop + rowSpacing * 2 + 10;
+
+  // --- Player Health Bar ---
+  createLabel("hud_health_label",
+              {hudMarginLeft, healthRowY, labelWidth, barHeight}, "HP");
+  setComponentPositioning("hud_health_label",
+                          {UIPositionMode::TOP_ALIGNED, hudMarginLeft, healthRowY,
+                           labelWidth, barHeight});
+
+  createProgressBar("hud_health_bar",
+                    {hudMarginLeft + labelWidth + labelBarGap, healthRowY,
+                     barWidth, barHeight},
+                    0.0f, 100.0f);
+  setComponentPositioning("hud_health_bar",
+                          {UIPositionMode::TOP_ALIGNED,
+                           hudMarginLeft + labelWidth + labelBarGap, healthRowY,
+                           barWidth, barHeight});
+
+  UIStyle healthStyle;
+  healthStyle.backgroundColor = {40, 40, 40, 255};
+  healthStyle.borderColor = {180, 180, 180, 255};
+  healthStyle.hoverColor = {50, 200, 50, 255};
+  healthStyle.borderWidth = 1;
+  setStyle("hud_health_bar", healthStyle);
+
+  // --- Player Stamina Bar ---
+  createLabel("hud_stamina_label",
+              {hudMarginLeft, staminaRowY, labelWidth, barHeight}, "SP");
+  setComponentPositioning("hud_stamina_label",
+                          {UIPositionMode::TOP_ALIGNED, hudMarginLeft, staminaRowY,
+                           labelWidth, barHeight});
+
+  createProgressBar("hud_stamina_bar",
+                    {hudMarginLeft + labelWidth + labelBarGap, staminaRowY,
+                     barWidth, barHeight},
+                    0.0f, 100.0f);
+  setComponentPositioning("hud_stamina_bar",
+                          {UIPositionMode::TOP_ALIGNED,
+                           hudMarginLeft + labelWidth + labelBarGap, staminaRowY,
+                           barWidth, barHeight});
+
+  UIStyle staminaStyle;
+  staminaStyle.backgroundColor = {40, 40, 40, 255};
+  staminaStyle.borderColor = {180, 180, 180, 255};
+  staminaStyle.hoverColor = {255, 200, 50, 255};
+  staminaStyle.borderWidth = 1;
+  setStyle("hud_stamina_bar", staminaStyle);
+
+  // --- Target Frame (label + health bar, no panel wrapper to match health/stamina) ---
+  constexpr int targetBarWidth = barWidth;
+
+  createLabel("hud_target_name",
+              {hudMarginLeft, targetRowY, labelWidth + labelBarGap + targetBarWidth, barHeight}, "");
+  setComponentPositioning("hud_target_name",
+                          {UIPositionMode::TOP_ALIGNED, hudMarginLeft, targetRowY,
+                           labelWidth + labelBarGap + targetBarWidth, barHeight});
+  setComponentVisible("hud_target_name", false);
+
+  createProgressBar("hud_target_health",
+                    {hudMarginLeft + labelWidth + labelBarGap, targetRowY + rowSpacing,
+                     targetBarWidth, barHeight},
+                    0.0f, 100.0f);
+  setComponentPositioning("hud_target_health",
+                          {UIPositionMode::TOP_ALIGNED,
+                           hudMarginLeft + labelWidth + labelBarGap, targetRowY + rowSpacing,
+                           targetBarWidth, barHeight});
+  setComponentVisible("hud_target_health", false);
+
+  UIStyle targetHealthStyle;
+  targetHealthStyle.backgroundColor = {40, 40, 40, 255};
+  targetHealthStyle.borderColor = {180, 180, 180, 255};
+  targetHealthStyle.hoverColor = {200, 50, 50, 255};
+  targetHealthStyle.borderWidth = 1;
+  setStyle("hud_target_health", targetHealthStyle);
+
+  // Add "HP" label for target health bar to match player bars
+  createLabel("hud_target_hp_label",
+              {hudMarginLeft, targetRowY + rowSpacing, labelWidth, barHeight}, "HP");
+  setComponentPositioning("hud_target_hp_label",
+                          {UIPositionMode::TOP_ALIGNED, hudMarginLeft,
+                           targetRowY + rowSpacing, labelWidth, barHeight});
+  setComponentVisible("hud_target_hp_label", false);
+
+  UI_INFO("Combat HUD created");
+}
+
+void UIManager::updateCombatHUD(float playerHealth, float playerStamina,
+                                bool hasTarget, const std::string& targetName,
+                                float targetHealth) {
+  setValue("hud_health_bar", playerHealth);
+  setValue("hud_stamina_bar", playerStamina);
+
+  if (hasTarget) {
+    setComponentVisible("hud_target_name", true);
+    setComponentVisible("hud_target_hp_label", true);
+    setComponentVisible("hud_target_health", true);
+    setText("hud_target_name", targetName);
+    setValue("hud_target_health", targetHealth);
+  } else {
+    setComponentVisible("hud_target_name", false);
+    setComponentVisible("hud_target_hp_label", false);
+    setComponentVisible("hud_target_health", false);
+  }
+}
+
+void UIManager::destroyCombatHUD() {
+  removeComponent("hud_health_label");
+  removeComponent("hud_health_bar");
+  removeComponent("hud_stamina_label");
+  removeComponent("hud_stamina_bar");
+  removeComponent("hud_target_name");
+  removeComponent("hud_target_hp_label");
+  removeComponent("hud_target_health");
+
+  UI_INFO("Combat HUD destroyed");
+}
+
 // Auto-repositioning system implementation
 void UIManager::onWindowResize(int newLogicalWidth, int newLogicalHeight) {
 

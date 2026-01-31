@@ -97,10 +97,6 @@ private:
   std::string m_statusBuffer{};  // Reusable buffer for status text (zero allocation)
   bool m_statusBarDirty{true};   // Flag to rebuild status bar only when events fire
 
-  // --- Combat HUD ---
-  void initializeCombatHUD();
-  void updateCombatHUD();
-
   // Inventory UI methods
   void initializeInventoryUI();
   void toggleInventoryDisplay();

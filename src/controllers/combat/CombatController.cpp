@@ -273,3 +273,17 @@ bool CombatController::hasActiveTarget() const {
 
   return edm.getHotDataByIndex(idx).isAlive();
 }
+
+float CombatController::getTargetHealth() const {
+  if (!m_targetedHandle.isValid()) {
+    return 0.0f;
+  }
+
+  auto &edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(m_targetedHandle);
+  if (idx == SIZE_MAX) {
+    return 0.0f;
+  }
+
+  return edm.getCharacterDataByIndex(idx).health;
+}
