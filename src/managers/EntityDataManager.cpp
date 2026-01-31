@@ -848,6 +848,17 @@ void EntityDataManager::applyFactionCollision(size_t index, uint8_t faction) {
     }
 }
 
+void EntityDataManager::setFaction(EntityHandle handle, uint8_t newFaction) {
+    size_t index = getIndex(handle);
+    if (index == SIZE_MAX) return;
+
+    auto& charData = m_characterData[index];
+    if (charData.faction == newFaction) return;  // No change
+
+    charData.faction = newFaction;
+    applyFactionCollision(index, newFaction);
+}
+
 // Registry getters
 const RaceInfo* EntityDataManager::getRaceInfo(const std::string& race) const {
     auto it = m_raceRegistry.find(race);

@@ -100,13 +100,13 @@ void WanderBehavior::executeLogic(BehaviorContext &ctx) {
   updateTimers(data, ctx.deltaTime, ctx.pathData);
 
   // Check if we need to start movement after delay
-  if (!handleStartDelay(ctx, data)) {
+  if (!handleStartDelay(ctx)) {
     return;
   }
 
   // Handle movement logic
   if (data.state.wander.movementStarted) {
-    handleMovement(ctx, data);
+    handleMovement(ctx);
   }
 }
 
@@ -129,8 +129,10 @@ void WanderBehavior::updateTimers(BehaviorData &data, float deltaTime,
   }
 }
 
-bool WanderBehavior::handleStartDelay(BehaviorContext &ctx,
-                                      BehaviorData &data) {
+bool WanderBehavior::handleStartDelay(BehaviorContext &ctx) {
+  if (!ctx.behaviorData)
+    return false;
+  auto &data = *ctx.behaviorData;
   auto &wander = data.state.wander;
   if (wander.movementStarted) {
     return true;
@@ -275,7 +277,10 @@ void WanderBehavior::handlePathfinding(const BehaviorContext &ctx,
   }
 }
 
-void WanderBehavior::handleMovement(BehaviorContext &ctx, BehaviorData &data) {
+void WanderBehavior::handleMovement(BehaviorContext &ctx) {
+  if (!ctx.behaviorData)
+    return;
+  auto &data = *ctx.behaviorData;
   auto &wander = data.state.wander;
   float baseDistance = std::min(600.0f, m_areaRadius * 1.5f);
   Vector2D position = ctx.transform.position;
@@ -336,7 +341,7 @@ void WanderBehavior::handleMovement(BehaviorContext &ctx, BehaviorData &data) {
   if (speedSq < stallSpeedSq) {
     if (wander.stallTimer >= stallSeconds) {
       pathData.clear();
-      chooseNewDirection(ctx, data);
+      chooseNewDirection(ctx);
       pathData.pathRequestCooldown = 0.6f;
       wander.stallTimer = 0.0f;
       return;
@@ -348,7 +353,7 @@ void WanderBehavior::handleMovement(BehaviorContext &ctx, BehaviorData &data) {
   // Check if it's time to change direction
   float const changeIntervalSeconds = m_changeDirectionInterval / 1000.0f;
   if (wander.directionChangeTimer >= changeIntervalSeconds) {
-    chooseNewDirection(ctx, data);
+    chooseNewDirection(ctx);
     wander.directionChangeTimer = 0.0f;
   }
 
@@ -461,8 +466,10 @@ void WanderBehavior::setChangeDirectionInterval(float interval) {
   m_changeDirectionInterval = interval;
 }
 
-void WanderBehavior::chooseNewDirection(BehaviorContext &ctx,
-                                        BehaviorData &data) {
+void WanderBehavior::chooseNewDirection(BehaviorContext &ctx) {
+  if (!ctx.behaviorData)
+    return;
+  auto &data = *ctx.behaviorData;
   auto &wander = data.state.wander;
   float angle = s_angleDistribution(getSharedRNG());
   wander.currentDirection = Vector2D(std::cos(angle), std::sin(angle));

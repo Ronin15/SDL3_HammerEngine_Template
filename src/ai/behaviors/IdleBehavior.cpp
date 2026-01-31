@@ -75,13 +75,13 @@ void IdleBehavior::executeLogic(BehaviorContext &ctx) {
     updateStationary(ctx);
     break;
   case IdleMode::SUBTLE_SWAY:
-    updateSubtleSway(ctx, data);
+    updateSubtleSway(ctx);
     break;
   case IdleMode::OCCASIONAL_TURN:
-    updateOccasionalTurn(ctx, data);
+    updateOccasionalTurn(ctx);
     break;
   case IdleMode::LIGHT_FIDGET:
-    updateLightFidget(ctx, data);
+    updateLightFidget(ctx);
     break;
   }
 }
@@ -196,8 +196,10 @@ void IdleBehavior::updateStationary(BehaviorContext &ctx) {
   ctx.transform.velocity = Vector2D(0, 0);
 }
 
-void IdleBehavior::updateSubtleSway(BehaviorContext &ctx,
-                                    BehaviorData &data) const {
+void IdleBehavior::updateSubtleSway(BehaviorContext &ctx) const {
+  if (!ctx.behaviorData)
+    return;
+  auto &data = *ctx.behaviorData;
   auto &idle = data.state.idle;
   idle.movementTimer += ctx.deltaTime;
 
@@ -215,8 +217,10 @@ void IdleBehavior::updateSubtleSway(BehaviorContext &ctx,
   // CollisionManager handles overlap resolution
 }
 
-void IdleBehavior::updateOccasionalTurn(BehaviorContext &ctx,
-                                        BehaviorData &data) const {
+void IdleBehavior::updateOccasionalTurn(BehaviorContext &ctx) const {
+  if (!ctx.behaviorData)
+    return;
+  auto &data = *ctx.behaviorData;
   auto &idle = data.state.idle;
   idle.turnTimer += ctx.deltaTime;
 
@@ -234,8 +238,10 @@ void IdleBehavior::updateOccasionalTurn(BehaviorContext &ctx,
   ctx.transform.velocity = Vector2D(0, 0);
 }
 
-void IdleBehavior::updateLightFidget(BehaviorContext &ctx,
-                                     BehaviorData &data) const {
+void IdleBehavior::updateLightFidget(BehaviorContext &ctx) const {
+  if (!ctx.behaviorData)
+    return;
+  auto &data = *ctx.behaviorData;
   auto &idle = data.state.idle;
   idle.movementTimer += ctx.deltaTime;
   idle.turnTimer += ctx.deltaTime;

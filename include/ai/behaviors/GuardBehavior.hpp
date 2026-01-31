@@ -158,25 +158,25 @@ private:
   // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
   // bool m_useAsyncPathfinding removed
 
-  // Helper methods - all entity state stored in EDM BehaviorData (indexed by edmIndex)
-  EntityHandle detectThreat(const BehaviorContext& ctx, const BehaviorData& data) const;
+  // Helper methods - all entity state stored in EDM BehaviorData (accessed via ctx.behaviorData)
+  EntityHandle detectThreat(const BehaviorContext& ctx) const;
   bool isThreatInRange(const Vector2D& entityPos, const Vector2D& threatPos) const;
   bool isThreatInFieldOfView(const Vector2D& entityPos, const Vector2D& threatPos,
                              const BehaviorData& data) const;
   bool hasLineOfSight(const Vector2D& entityPos, const Vector2D& threatPos) const;
   float calculateThreatDistance(const Vector2D& entityPos, const Vector2D& threatPos) const;
 
-  void updateAlertLevel(BehaviorData& data, bool threatPresent) const;
-  void handleThreatDetection(BehaviorContext& ctx, BehaviorData& data, EntityHandle threat);
-  void handleInvestigation(BehaviorContext& ctx, BehaviorData& data);
-  void handleReturnToPost(BehaviorContext& ctx, BehaviorData& data);
+  void updateAlertLevel(BehaviorData& data, bool threatPresent, EntityHandle threat) const;
+  void handleThreatDetection(BehaviorContext& ctx, EntityHandle threat);
+  void handleInvestigation(BehaviorContext& ctx);
+  void handleReturnToPost(BehaviorContext& ctx);
 
   // Mode-specific updates
-  void updateStaticGuard(BehaviorContext& ctx, BehaviorData& data);
-  void updatePatrolGuard(BehaviorContext& ctx, BehaviorData& data);
-  void updateAreaGuard(BehaviorContext& ctx, BehaviorData& data);
-  void updateRoamingGuard(BehaviorContext& ctx, BehaviorData& data);
-  void updateAlertGuard(BehaviorContext& ctx, BehaviorData& data);
+  void updateStaticGuard(BehaviorContext& ctx);
+  void updatePatrolGuard(BehaviorContext& ctx);
+  void updateAreaGuard(BehaviorContext& ctx);
+  void updateRoamingGuard(BehaviorContext& ctx);
+  void updateAlertGuard(BehaviorContext& ctx);
 
   // Movement and positioning
   void moveToPositionDirect(BehaviorContext& ctx, const Vector2D &targetPos, float speed,

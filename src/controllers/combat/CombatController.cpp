@@ -181,6 +181,16 @@ void CombatController::performAttack(Player *player) {
     edm.recordCombatEvent(idx, playerHandle, handle, attackDamage,
                           /*wasAttacked=*/true, gameTime);
 
+    // Combat response: Non-hostile entities flee when attacked
+    if (charData.faction != 1) { // Friendly (0) or Neutral (2)
+      // Switch to flee behavior
+      AIManager::Instance().assignBehavior(handle, "Flee");
+
+      // Alert nearby guards (broadcast to guard behavior group)
+      AIManager::Instance().broadcastMessage(
+          std::format("alert_attacker:{}", playerHandle.getId()));
+    }
+
     // Apply knockback via velocity
     hotData.transform.velocity = hotData.transform.velocity + knockback;
 

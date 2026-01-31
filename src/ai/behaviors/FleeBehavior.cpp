@@ -136,9 +136,21 @@ void FleeBehavior::executeLogic(BehaviorContext &ctx) {
   if (pathData.pathRequestCooldown > 0.0f)
     pathData.pathRequestCooldown -= ctx.deltaTime;
 
-  // Use cached player info from context (lock-free, cached once per frame)
-  if (!ctx.playerValid) {
-    // No threat detected, stop fleeing and recover stamina
+  // Determine threat: use lastAttacker if valid (no player fallback)
+  Vector2D threatPos;
+  bool threatValid = false;
+
+  if (ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
+    auto &edm = EntityDataManager::Instance();
+    size_t attackerIdx = edm.getIndex(ctx.memoryData->lastAttacker);
+    if (attackerIdx != SIZE_MAX && edm.getHotDataByIndex(attackerIdx).isAlive()) {
+      threatPos = edm.getHotDataByIndex(attackerIdx).transform.position;
+      threatValid = true;
+    }
+  }
+
+  if (!threatValid) {
+    // No valid attacker - stop fleeing (don't default to player)
     if (flee.isFleeing) {
       flee.isFleeing = false;
       flee.isInPanic = false;
@@ -151,8 +163,7 @@ void FleeBehavior::executeLogic(BehaviorContext &ctx) {
     return;
   }
 
-  // Check if threat is in detection range (use cached player position)
-  Vector2D threatPos = ctx.playerPosition;
+  // threatPos is now set from lastAttacker
   float distanceToThreatSquared =
       (ctx.transform.position - threatPos).lengthSquared();
   float const detectionRangeSquared = m_detectionRange * m_detectionRange;
@@ -193,16 +204,16 @@ void FleeBehavior::executeLogic(BehaviorContext &ctx) {
   if (flee.isFleeing) {
     switch (m_fleeMode) {
     case FleeMode::PANIC_FLEE:
-      updatePanicFlee(ctx, data, threatPos);
+      updatePanicFlee(ctx, threatPos);
       break;
     case FleeMode::STRATEGIC_RETREAT:
-      updateStrategicRetreat(ctx, data, threatPos);
+      updateStrategicRetreat(ctx, threatPos);
       break;
     case FleeMode::EVASIVE_MANEUVER:
-      updateEvasiveManeuver(ctx, data, threatPos);
+      updateEvasiveManeuver(ctx, threatPos);
       break;
     case FleeMode::SEEK_COVER:
-      updateSeekCover(ctx, data, threatPos);
+      updateSeekCover(ctx, threatPos);
       break;
     }
 
@@ -450,8 +461,11 @@ Vector2D FleeBehavior::avoidBoundaries(const Vector2D &position,
   return adjustedDir;
 }
 
-void FleeBehavior::updatePanicFlee(BehaviorContext &ctx, BehaviorData &data,
+void FleeBehavior::updatePanicFlee(BehaviorContext &ctx,
                                    const Vector2D &threatPos) {
+  if (!ctx.behaviorData)
+    return;
+  auto &data = *ctx.behaviorData;
   auto &flee = data.state.flee;
   Vector2D currentPos = ctx.transform.position;
 
@@ -488,8 +502,10 @@ void FleeBehavior::updatePanicFlee(BehaviorContext &ctx, BehaviorData &data,
 }
 
 void FleeBehavior::updateStrategicRetreat(BehaviorContext &ctx,
-                                          BehaviorData &data,
                                           const Vector2D &threatPos) {
+  if (!ctx.behaviorData)
+    return;
+  auto &data = *ctx.behaviorData;
   auto &flee = data.state.flee;
   Vector2D currentPos = ctx.transform.position;
 
@@ -541,7 +557,7 @@ void FleeBehavior::updateStrategicRetreat(BehaviorContext &ctx,
   // OPTIMIZATION: Use extracted method instead of lambda for better compiler
   // optimization
   float const speedModifier = calculateFleeSpeedModifier(data);
-  if (!tryFollowPathToGoal(ctx, data, dest, m_fleeSpeed * speedModifier)) {
+  if (!tryFollowPathToGoal(ctx, dest, m_fleeSpeed * speedModifier)) {
     // Fallback to direct flee when no path available
     Vector2D const intended2 = flee.fleeDirection * m_fleeSpeed * speedModifier;
     // Set velocity directly - CollisionManager handles overlap resolution
@@ -550,8 +566,10 @@ void FleeBehavior::updateStrategicRetreat(BehaviorContext &ctx,
 }
 
 void FleeBehavior::updateEvasiveManeuver(BehaviorContext &ctx,
-                                         BehaviorData &data,
                                          const Vector2D &threatPos) {
+  if (!ctx.behaviorData)
+    return;
+  auto &data = *ctx.behaviorData;
   auto &flee = data.state.flee;
   Vector2D currentPos = ctx.transform.position;
 
@@ -581,8 +599,11 @@ void FleeBehavior::updateEvasiveManeuver(BehaviorContext &ctx,
   ctx.transform.velocity = intended3;
 }
 
-void FleeBehavior::updateSeekCover(BehaviorContext &ctx, BehaviorData &data,
+void FleeBehavior::updateSeekCover(BehaviorContext &ctx,
                                    const Vector2D &threatPos) {
+  if (!ctx.behaviorData)
+    return;
+  auto &data = *ctx.behaviorData;
   auto &flee = data.state.flee;
   // Move toward nearest safe zone using pathfinding when possible
   Vector2D currentPos = ctx.transform.position;
@@ -621,7 +642,7 @@ void FleeBehavior::updateSeekCover(BehaviorContext &ctx, BehaviorData &data,
   // OPTIMIZATION: Use extracted method instead of lambda for better compiler
   // optimization
   float const speedModifier = calculateFleeSpeedModifier(data);
-  if (!tryFollowPathToGoal(ctx, data, dest, m_fleeSpeed * speedModifier)) {
+  if (!tryFollowPathToGoal(ctx, dest, m_fleeSpeed * speedModifier)) {
     // Fallback to straight-line movement
     Vector2D const intended4 = flee.fleeDirection * m_fleeSpeed * speedModifier;
     // Set velocity directly - CollisionManager handles overlap resolution
@@ -670,8 +691,11 @@ float FleeBehavior::calculateFleeSpeedModifier(const BehaviorData &data) const {
 // OPTIMIZATION: Uses EDM path state for per-entity isolation and no
 // shared_from_this() overhead This method handles path-following logic with TTL
 // and no-progress checks
-bool FleeBehavior::tryFollowPathToGoal(BehaviorContext &ctx, BehaviorData &data,
+bool FleeBehavior::tryFollowPathToGoal(BehaviorContext &ctx,
                                        const Vector2D &goal, float speed) {
+  if (!ctx.behaviorData)
+    return false;
+  const auto &data = *ctx.behaviorData;
   const auto &flee = data.state.flee;
   // PERFORMANCE: Increase TTL to reduce pathfinding frequency
   constexpr float pathTTL = 3.5f;

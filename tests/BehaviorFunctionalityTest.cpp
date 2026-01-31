@@ -496,6 +496,16 @@ BOOST_AUTO_TEST_CASE(TestFleeBehavior) {
 
     // Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle = entity->getHandle();
+
+    // FleeBehavior requires a lastAttacker in memory to know who to flee from
+    // Record a combat event where the player attacked this entity
+    auto &edm = EntityDataManager::Instance();
+    size_t entityIdx = edm.getIndex(handle);
+    if (entityIdx != SIZE_MAX) {
+        edm.recordCombatEvent(entityIdx, playerHandle, handle, 10.0f,
+                              /*wasAttacked=*/true, 0.0f);
+    }
+
     AIManager::Instance().registerEntity(handle, "Flee");
 
     // Wait for async assignment to complete before starting updates
