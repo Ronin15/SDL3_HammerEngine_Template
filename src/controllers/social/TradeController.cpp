@@ -84,12 +84,15 @@ bool TradeController::openTrade(EntityHandle npcHandle) {
 
 void TradeController::closeTrade() {
     if (!m_isTrading) {
+        TRADE_DEBUG("closeTrade called but m_isTrading is false");
         return;
     }
 
+    TRADE_INFO("closeTrade executing - destroying UI");
     destroyTradeUI();
 
     m_isTrading = false;
+    TRADE_INFO("Trade closed - m_isTrading now false");
     m_merchantHandle = EntityHandle{};
     m_merchantItems.clear();
     m_playerItems.clear();
@@ -333,30 +336,29 @@ void TradeController::createTradeUI() {
     ui.setComponentPositioning(UI_GOLD_LABEL, {UIPositionMode::CENTERED_BOTH,
         400 + 90 - halfW, 320 + 12 - halfH, 180, 25});
 
-    // Action buttons
-    ui.createButtonSuccess(UI_BUY_BTN, UIRect{0, 0, 100, 35}, "Buy");
+    // Action buttons - evenly spaced across panel
+    // Panel 600 wide, 3 buttons of 100 each, gaps of 75: positions at 75, 250, 425
+    constexpr int btnY = 360;
+    constexpr int btnW = 100;
+    constexpr int btnH = 35;
+
+    ui.createButtonSuccess(UI_BUY_BTN, UIRect{0, 0, btnW, btnH}, "Buy");
     ui.setComponentPositioning(UI_BUY_BTN, {UIPositionMode::CENTERED_BOTH,
-        20 + 50 - halfW, 360 + 17 - halfH, 100, 35});
+        -175, btnY + btnH/2 - halfH, btnW, btnH});
     ui.setOnClick(UI_BUY_BTN, [this]() {
-        TradeResult result = executeBuy();
-        if (result != TradeResult::Success) {
-            TRADE_DEBUG(std::format("Buy failed: {}", static_cast<int>(result)));
-        }
+        executeBuy();
     });
 
-    ui.createButtonSuccess(UI_SELL_BTN, UIRect{0, 0, 100, 35}, "Sell");
+    ui.createButtonSuccess(UI_SELL_BTN, UIRect{0, 0, btnW, btnH}, "Sell");
     ui.setComponentPositioning(UI_SELL_BTN, {UIPositionMode::CENTERED_BOTH,
-        140 + 50 - halfW, 360 + 17 - halfH, 100, 35});
+        0, btnY + btnH/2 - halfH, btnW, btnH});
     ui.setOnClick(UI_SELL_BTN, [this]() {
-        TradeResult result = executeSell();
-        if (result != TradeResult::Success) {
-            TRADE_DEBUG(std::format("Sell failed: {}", static_cast<int>(result)));
-        }
+        executeSell();
     });
 
-    ui.createButtonDanger(UI_CLOSE_BTN, UIRect{0, 0, 100, 35}, "Close");
+    ui.createButtonDanger(UI_CLOSE_BTN, UIRect{0, 0, btnW, btnH}, "Close");
     ui.setComponentPositioning(UI_CLOSE_BTN, {UIPositionMode::CENTERED_BOTH,
-        480 + 50 - halfW, 360 + 17 - halfH, 100, 35});
+        175, btnY + btnH/2 - halfH, btnW, btnH});
     ui.setOnClick(UI_CLOSE_BTN, [this]() {
         closeTrade();
     });

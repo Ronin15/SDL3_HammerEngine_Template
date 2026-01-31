@@ -1654,6 +1654,11 @@ void UIManager::removeComponentsWithPrefix(const std::string &prefix) {
                      children.end());
     }
   }
+
+  // Invalidate cache so rendering uses updated component list
+  if (!componentsToRemove.empty()) {
+    invalidateComponentCache();
+  }
 }
 
 void UIManager::clearAllComponents() {
@@ -1856,6 +1861,7 @@ void UIManager::handleInput() {
           if (component->m_onFocus) {
             m_deferredCallbacks.push_back(component->m_onFocus);
           }
+          mouseHandled = true;  // Prevent components below from receiving press
         }
 
         if (mouseJustReleased && component->m_state == UIState::PRESSED) {
@@ -1904,12 +1910,14 @@ void UIManager::handleInput() {
       // Handle list selection
       if (component->m_type == UIComponentType::LIST && mouseJustPressed) {
         // Calculate item height dynamically based on current font metrics
+        // Must match rendering calculation (scaled padding) for accurate click detection
         auto &fontManager = FontManager::Instance();
         int lineHeight = 0;
-        int itemHeight = UIConstants::DEFAULT_LIST_ITEM_HEIGHT; // Default fallback
+        int const scaledPadding = static_cast<int>(UIConstants::LIST_ITEM_PADDING * m_globalScale);
+        int itemHeight = static_cast<int>(UIConstants::DEFAULT_LIST_ITEM_HEIGHT * m_globalScale); // Scaled fallback
         if (fontManager.getFontMetrics(component->m_style.fontID, &lineHeight,
                                        nullptr, nullptr)) {
-          itemHeight = lineHeight + UIConstants::LIST_ITEM_PADDING; // Add padding for better mouse accuracy
+          itemHeight = lineHeight + scaledPadding; // Scaled padding to match rendering
         }
         int itemIndex = static_cast<int>(
             (mousePos.getY() - component->m_bounds.y) / itemHeight);
