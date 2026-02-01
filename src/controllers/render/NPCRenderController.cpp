@@ -48,8 +48,8 @@ void NPCRenderController::update(float deltaTime) {
 void NPCRenderController::renderNPCs(SDL_Renderer* renderer, float cameraX, float cameraY, float alpha) {
     auto& edm = EntityDataManager::Instance();
 
-    // Render Active tier NPCs including dying entities (for death animations)
-    for (size_t idx : edm.getRenderableIndices()) {
+    // Only render Active tier NPCs (same as AIManager)
+    for (size_t idx : edm.getActiveIndices()) {
         const auto& hot = edm.getHotDataByIndex(idx);
         if (hot.kind != EntityKind::NPC) continue;
 
@@ -80,15 +80,8 @@ void NPCRenderController::renderNPCs(SDL_Renderer* renderer, float cameraX, floa
             static_cast<float>(r.frameHeight)
         };
 
-        // Determine flip mode: horizontal from render data, vertical if dying
-        SDL_FlipMode flipMode = static_cast<SDL_FlipMode>(r.flipMode);
-        if (hot.isDying()) {
-            // Flip upside-down to indicate death
-            flipMode = static_cast<SDL_FlipMode>(flipMode | SDL_FLIP_VERTICAL);
-        }
-
         SDL_RenderTextureRotated(renderer, r.cachedTexture, &srcRect, &destRect,
-                                  0.0, nullptr, flipMode);
+                                  0.0, nullptr, static_cast<SDL_FlipMode>(r.flipMode));
     }
 }
 
@@ -116,8 +109,8 @@ void NPCRenderController::recordGPU(const HammerEngine::GPUSceneContext& ctx) {
     auto& edm = EntityDataManager::Instance();
     const float alpha = ctx.interpolationAlpha;
 
-    // Render Active tier NPCs including dying entities (for death animations)
-    for (size_t idx : edm.getRenderableIndices()) {
+    // Only render Active tier NPCs (same as AIManager)
+    for (size_t idx : edm.getActiveIndices()) {
         const auto& hot = edm.getHotDataByIndex(idx);
         if (hot.kind != EntityKind::NPC) { continue; }
 
@@ -141,24 +134,11 @@ void NPCRenderController::recordGPU(const HammerEngine::GPUSceneContext& ctx) {
         float dstX = interpX - ctx.cameraX - halfW;
         float dstY = interpY - ctx.cameraY - halfH;
 
-        // Handle horizontal flip via UV swap, vertical flip for dying entities
-        bool flipH = (r.flipMode == static_cast<uint8_t>(SDL_FLIP_HORIZONTAL));
-        bool flipV = hot.isDying();
-
-        if (flipH && flipV) {
-            // Both flips: swap both X and Y UVs
-            ctx.spriteBatch->draw(srcX + srcW, srcY + srcH, -srcW, -srcH,
-                                  dstX, dstY, srcW, srcH);
-        } else if (flipH) {
-            // Horizontal flip only
+        // Handle horizontal flip via UV swap
+        if (r.flipMode == static_cast<uint8_t>(SDL_FLIP_HORIZONTAL)) {
             ctx.spriteBatch->draw(srcX + srcW, srcY, -srcW, srcH,
                                   dstX, dstY, srcW, srcH);
-        } else if (flipV) {
-            // Vertical flip only (dying)
-            ctx.spriteBatch->draw(srcX, srcY + srcH, srcW, -srcH,
-                                  dstX, dstY, srcW, srcH);
         } else {
-            // No flip
             ctx.spriteBatch->draw(srcX, srcY, srcW, srcH,
                                   dstX, dstY, srcW, srcH);
         }

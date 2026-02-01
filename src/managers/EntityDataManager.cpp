@@ -3047,28 +3047,6 @@ std::span<const size_t> EntityDataManager::getActiveIndices() const {
     return std::span<const size_t>(m_activeIndices);
 }
 
-std::span<const size_t> EntityDataManager::getRenderableIndices() const {
-    if (m_tierIndicesDirty || m_renderableIndicesDirty) {
-        // Rebuild renderable indices (alive OR dying entities in Active tier)
-        m_renderableIndices.clear();
-        m_renderableIndices.reserve(m_hotData.size() / 4);  // Estimate ~25% are active
-
-        for (size_t i = 0; i < m_hotData.size(); ++i) {
-            const auto& hot = m_hotData[i];
-            // Include entities that are alive OR dying (in death animation)
-            if (!hot.isAlive() && !hot.isDying()) {
-                continue;
-            }
-            // Only include Active tier entities
-            if (hot.tier == SimulationTier::Active) {
-                m_renderableIndices.push_back(i);
-            }
-        }
-        m_renderableIndicesDirty = false;
-    }
-    return std::span<const size_t>(m_renderableIndices);
-}
-
 std::span<const size_t> EntityDataManager::getActiveIndicesWithCollision() const {
     if (m_tierIndicesDirty) {
         auto& self = const_cast<EntityDataManager&>(*this);

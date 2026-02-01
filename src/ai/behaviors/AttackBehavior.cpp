@@ -936,17 +936,18 @@ void AttackBehavior::applyDamageToTarget(EntityHandle targetHandle,
     AIManager::Instance().broadcastMessage("friendly_under_attack", true);
   }
 
-  // Check for death - transition to dying state
+  // Check for death - destroy entity immediately
   if (charData.health <= 0.0f && hotData.isAlive()) {
     hotData.flags &= ~EntityHotData::FLAG_ALIVE;  // No longer alive
-    hotData.setDying(true);                        // Start death state
-    charData.deathTimer = CharacterData::CORPSE_LIFETIME;  // Start corpse timer
 
     // Clear target if this was our explicit target (they're dead now)
     if (m_hasExplicitTarget && m_targetHandle == targetHandle) {
       m_hasExplicitTarget = false;
       m_targetHandle = EntityHandle{};
     }
+
+    // Queue entity for destruction
+    edm.destroyEntity(targetHandle);
   }
 }
 
