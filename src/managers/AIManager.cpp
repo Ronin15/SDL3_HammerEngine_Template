@@ -600,11 +600,28 @@ void AIManager::assignBehavior(EntityHandle handle,
 
   // Clone behavior for this entity
   auto behavior = behaviorTemplate->clone();
-  behavior->init(handle);
 
   const auto &edm = EntityDataManager::Instance();
 
-  // Find or create entity entry
+  // Check if this is an update (entity already exists)
+  std::shared_ptr<AIBehavior> oldBehavior;
+  {
+    std::shared_lock<std::shared_mutex> readLock(m_entitiesMutex);
+    auto indexIt = m_handleToIndex.find(handle);
+    if (indexIt != m_handleToIndex.end() && indexIt->second < m_storage.size()) {
+      oldBehavior = m_storage.behaviors[indexIt->second];
+    }
+  }
+
+  // Clean old behavior OUTSIDE the lock to avoid deadlock
+  if (oldBehavior) {
+    oldBehavior->clean(handle);
+  }
+
+  // Initialize new behavior OUTSIDE the lock
+  behavior->init(handle);
+
+  // Now acquire write lock for storage modification
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
   auto indexIt = m_handleToIndex.find(handle);
@@ -612,11 +629,6 @@ void AIManager::assignBehavior(EntityHandle handle,
     // Update existing entity
     size_t index = indexIt->second;
     if (index < m_storage.size()) {
-      // Clean up old behavior
-      if (m_storage.behaviors[index]) {
-        m_storage.behaviors[index]->clean(handle);
-      }
-
       // Assign new behavior
       m_storage.behaviors[index] = behavior;
 
@@ -628,8 +640,9 @@ void AIManager::assignBehavior(EntityHandle handle,
       // Refresh EDM index if needed
       size_t edmIndex = edm.getIndex(handle);
 
-      // Initialize BehaviorData in EDM (single source of truth for behaviorType)
-      if (edmIndex != SIZE_MAX) {
+      // Fallback: Initialize BehaviorData only if behavior->init() didn't do it
+      // This preserves state set by init() while ensuring data exists
+      if (edmIndex != SIZE_MAX && !edm.hasBehaviorData(edmIndex)) {
         BehaviorType btype = inferBehaviorType(behaviorName);
         EntityDataManager::Instance().initBehaviorData(edmIndex, btype);
       }
@@ -650,7 +663,7 @@ void AIManager::assignBehavior(EntityHandle handle,
                           behaviorName));
     }
   } else {
-    // Add new entity
+    // Add new entity (init already called above, outside lock)
     size_t newIndex = m_storage.size();
 
     // Add to hot data (priority/behaviorType now in EDM)
@@ -666,8 +679,9 @@ void AIManager::assignBehavior(EntityHandle handle,
     size_t edmIndex = edm.getIndex(handle);
     m_storage.edmIndices.push_back(edmIndex);
 
-    // Initialize BehaviorData in EDM (single source of truth for behaviorType)
-    if (edmIndex != SIZE_MAX) {
+    // Fallback: Initialize BehaviorData only if behavior->init() didn't do it
+    // This preserves state set by init() while ensuring data exists
+    if (edmIndex != SIZE_MAX && !edm.hasBehaviorData(edmIndex)) {
       BehaviorType btype = inferBehaviorType(behaviorName);
       EntityDataManager::Instance().initBehaviorData(edmIndex, btype);
     }
@@ -700,12 +714,27 @@ void AIManager::assignBehaviorDirect(EntityHandle handle,
     return;
   }
 
-  // Initialize behavior for this entity (handles its own BehaviorData init)
-  behavior->init(handle);
-
   const auto& edm = EntityDataManager::Instance();
 
-  // Find or create entity entry
+  // Check if this is an update (entity already exists) and clean old behavior first
+  std::shared_ptr<AIBehavior> oldBehavior;
+  {
+    std::shared_lock<std::shared_mutex> readLock(m_entitiesMutex);
+    auto indexIt = m_handleToIndex.find(handle);
+    if (indexIt != m_handleToIndex.end() && indexIt->second < m_storage.size()) {
+      oldBehavior = m_storage.behaviors[indexIt->second];
+    }
+  }
+
+  // Clean old behavior OUTSIDE the lock to avoid deadlock
+  if (oldBehavior) {
+    oldBehavior->clean(handle);
+  }
+
+  // Initialize new behavior AFTER clean
+  behavior->init(handle);
+
+  // Now acquire write lock for storage modification
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
   auto indexIt = m_handleToIndex.find(handle);
@@ -713,9 +742,6 @@ void AIManager::assignBehaviorDirect(EntityHandle handle,
     // Update existing entity
     size_t index = indexIt->second;
     if (index < m_storage.size()) {
-      if (m_storage.behaviors[index]) {
-        m_storage.behaviors[index]->clean(handle);
-      }
       m_storage.behaviors[index] = behavior;
       if (!m_storage.hotData[index].active) {
         m_storage.hotData[index].active = true;
@@ -732,7 +758,7 @@ void AIManager::assignBehaviorDirect(EntityHandle handle,
         m_edmToStorageIndex[edmIndex] = index;
       }
 
-      AI_INFO(std::format("Assigned behavior directly: {}", behavior->getName()));
+      AI_DEBUG(std::format("Assigned behavior directly: {}", behavior->getName()));
     }
   } else {
     // Add new entity

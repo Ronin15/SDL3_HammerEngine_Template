@@ -189,10 +189,8 @@ void GuardBehavior::executeLogic(BehaviorContext &ctx) {
   updateAlertLevel(data, threatPresent, threat);
 
   if (threatPresent) {
-    AI_DEBUG(std::format("Guard detected threat ID:{} - handling", threat.getId()));
     handleThreatDetection(ctx, threat);
   } else if (guard.isInvestigating) {
-    AI_DEBUG("Guard investigating - no threat found yet");
     handleInvestigation(ctx);
   } else if (guard.returningToPost) {
     handleReturnToPost(ctx);
@@ -294,6 +292,10 @@ void GuardBehavior::onMessage(EntityHandle handle, const std::string &message) {
     guard.isInvestigating = true;
     guard.investigationTarget = playerPos;
     guard.investigationTimer = 0.0f;
+    // Clear existing path to force new path to investigation target
+    auto& pathData = edm.getPathData(idx);
+    pathData.hasPath = false;
+    pathData.pathRequestCooldown = 0.0f;
   } else if (message == "friendly_under_attack") {
     // A friendly NPC is being attacked - go to hostile alert and investigate
     guard.currentAlertLevel = 3; // HOSTILE - immediate response
@@ -305,6 +307,10 @@ void GuardBehavior::onMessage(EntityHandle handle, const std::string &message) {
     guard.isInvestigating = true;
     guard.investigationTarget = playerPos;
     guard.investigationTimer = 0.0f;
+    // Clear existing path to force new path to investigation target
+    auto& pathData = edm.getPathData(idx);
+    pathData.hasPath = false;
+    pathData.pathRequestCooldown = 0.0f;
   }
 }
 
@@ -569,23 +575,27 @@ EntityHandle GuardBehavior::detectThreat(const BehaviorContext &ctx) const {
     }
   }
 
-  // Third: Fall back to player check (if player is hostile/attacking)
-  if (ctx.playerValid) {
-    Vector2D threatPos = ctx.playerPosition;
-    float distance = (ctx.transform.position - threatPos).length();
-    if (distance <= m_threatDetectionRange) {
-      // Check field of view if required
-      if (m_fieldOfView < 360.0f) {
-        float angleToThreat =
-            calculateAngleToTarget(ctx.transform.position, threatPos);
-        float angleDiff = std::abs(
-            normalizeAngle(angleToThreat - data.state.guard.currentHeading));
-        float halfFOV = (m_fieldOfView * M_PI / 180.0f) * 0.5f;
-        if (angleDiff > halfFOV) {
-          return EntityHandle{}; // Player not in FOV
+  // Third: Fall back to player check - ONLY for enemy guards (faction 1)
+  // Friendly guards (faction 0) protect the player, not attack them
+  if (ctx.playerValid && ctx.edmIndex != SIZE_MAX) {
+    const auto &guardCharData = edm.getCharacterDataByIndex(ctx.edmIndex);
+    if (guardCharData.faction == 1) { // Enemy guard - player is a threat
+      Vector2D threatPos = ctx.playerPosition;
+      float distance = (ctx.transform.position - threatPos).length();
+      if (distance <= m_threatDetectionRange) {
+        // Check field of view if required
+        if (m_fieldOfView < 360.0f) {
+          float angleToThreat =
+              calculateAngleToTarget(ctx.transform.position, threatPos);
+          float angleDiff = std::abs(
+              normalizeAngle(angleToThreat - data.state.guard.currentHeading));
+          float halfFOV = (m_fieldOfView * M_PI / 180.0f) * 0.5f;
+          if (angleDiff > halfFOV) {
+            return EntityHandle{}; // Player not in FOV
+          }
         }
+        return ctx.playerHandle;
       }
-      return ctx.playerHandle;
     }
   }
 
@@ -779,12 +789,54 @@ void GuardBehavior::handleInvestigation(BehaviorContext &ctx) {
     return;
   }
 
+  // At HOSTILE alert level, actively scan for threats and engage
+  if (guard.currentAlertLevel >= 3) {
+    // Use wider detection range when responding to attack reports
+    auto &edm = EntityDataManager::Instance();
+    std::vector<EntityHandle> nearby;
+    float scanRange = m_threatDetectionRange * 2.0f;
+    AIManager::Instance().queryHandlesInRadius(ctx.transform.position, scanRange, nearby, true);
+
+    // Engage enemies within attack range (increased when investigating)
+    float engageRange = m_attackEngageRange * 2.0f; // 160 units when investigating
+    for (const auto &handle : nearby) {
+      if (!handle.isValid())
+        continue;
+      size_t idx = edm.getIndex(handle);
+      if (idx == SIZE_MAX)
+        continue;
+
+      const auto &charData = edm.getCharacterDataByIndex(idx);
+      if (charData.faction == 1) { // Enemy faction
+        float distance = (ctx.transform.position - edm.getHotDataByIndex(idx).transform.position).length();
+        if (distance <= engageRange) {
+          // Engage this threat
+          auto &aiMgr = AIManager::Instance();
+          EntityHandle guardHandle = edm.getHandle(ctx.edmIndex);
+          if (guardHandle.isValid() && aiMgr.hasBehavior("Attack")) {
+            auto attackTemplate = std::dynamic_pointer_cast<AttackBehavior>(
+                aiMgr.getBehavior("Attack"));
+            if (attackTemplate) {
+              auto attackBehavior = std::dynamic_pointer_cast<AttackBehavior>(
+                  attackTemplate->clone());
+              if (attackBehavior) {
+                attackBehavior->setTarget(handle);
+                aiMgr.assignBehaviorDirect(guardHandle, attackBehavior);
+                return;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Move to investigation target - use alert speed if at high alert level
   if (!isAtPosition(ctx.transform.position, guard.investigationTarget)) {
-    float dist = (ctx.transform.position - guard.investigationTarget).length();
-    // Use faster alert speed when responding to attacks (alert level 3+)
-    float speed = (guard.currentAlertLevel >= 3) ? m_alertSpeed * 2.0f : m_movementSpeed;
-    AI_DEBUG(std::format("Guard moving to investigate - dist: {:.1f}, speed: {:.1f}", dist, speed));
+    // Use faster speed when responding to attacks - scale by character speed from EDM
+    auto& edm = EntityDataManager::Instance();
+    float baseSpeed = edm.getCharacterDataByIndex(ctx.edmIndex).moveSpeed;
+    float speed = (guard.currentAlertLevel >= 3) ? baseSpeed * 1.5f : baseSpeed;
     moveToPositionDirect(ctx, guard.investigationTarget, speed);
   }
 }
