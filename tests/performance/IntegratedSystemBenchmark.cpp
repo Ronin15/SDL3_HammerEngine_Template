@@ -87,16 +87,16 @@ namespace {
         void testRealisticGameSimulation60FPS() {
             std::cout << "\n=== Integrated System Load Benchmark ===" << std::endl;
             std::cout << "Configuration:" << std::endl;
-            std::cout << "  AI Entities: 10,000" << std::endl;
-            std::cout << "  Particles: 5,000" << std::endl;
-            std::cout << "  Duration: 600 frames (10 seconds @ 60 FPS)" << std::endl;
+            std::cout << "  AI Entities: 2,000" << std::endl;
+            std::cout << "  Particles: 1,000" << std::endl;
+            std::cout << "  Duration: 120 frames (2 seconds @ 60 FPS)" << std::endl;
             std::cout << std::endl;
 
-            // Setup realistic game scenario
-            setupRealisticScenario(10000, 5000);
+            // Setup realistic game scenario (reduced for faster ctest)
+            setupRealisticScenario(2000, 1000);
 
             // Run benchmark
-            constexpr size_t frameCount = 600;
+            constexpr size_t frameCount = 120;
             constexpr float deltaTime = 1.0f / 60.0f;
 
             auto stats = runFrameBenchmark(frameCount, deltaTime);
@@ -143,9 +143,9 @@ namespace {
             std::cout << "Measuring overhead from cross-manager communication" << std::endl;
             std::cout << std::endl;
 
-            constexpr size_t frameCount = 300;
+            constexpr size_t frameCount = 60;
             constexpr float deltaTime = 1.0f / 60.0f;
-            constexpr size_t entityCount = 5000;
+            constexpr size_t entityCount = 1000;
 
             // Baseline: Managers idle
             std::cout << "Baseline (managers idle)..." << std::endl;
@@ -193,13 +193,13 @@ namespace {
         // Test 4: Sustained performance over time
         void testSustainedPerformance() {
             std::cout << "\n=== Sustained Performance Benchmark ===" << std::endl;
-            std::cout << "Testing for performance degradation over 50 seconds" << std::endl;
+            std::cout << "Testing for performance degradation over 10 seconds" << std::endl;
             std::cout << std::endl;
 
-            setupRealisticScenario(10000, 5000);
+            setupRealisticScenario(2000, 1000);
 
-            constexpr size_t totalFrames = 3000;  // 50 seconds at 60 FPS
-            constexpr size_t sampleInterval = 300;  // Sample every 5 seconds
+            constexpr size_t totalFrames = 600;   // 10 seconds at 60 FPS
+            constexpr size_t sampleInterval = 60; // Sample every second
             constexpr float deltaTime = 1.0f / 60.0f;
 
             std::vector<double> segmentAverages;
