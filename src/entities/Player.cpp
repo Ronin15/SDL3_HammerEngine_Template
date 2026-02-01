@@ -443,7 +443,8 @@ void Player::initializeInventory() {
 
   auto goldResource = templateManager.getResourceByName("gold");
   if (goldResource) {
-    edm.addToInventory(m_inventoryIndex, goldResource->getHandle(), 100);
+    m_goldHandle = goldResource->getHandle();  // Cache for gold methods
+    edm.addToInventory(m_inventoryIndex, m_goldHandle, 100);
   }
 
   auto healthPotionResource = templateManager.getResourceByName("health_potion");
@@ -512,35 +513,32 @@ bool Player::hasInInventory(HammerEngine::ResourceHandle handle, int quantity) c
 
 // Currency convenience methods
 int Player::getGold() const {
-  auto goldHandle = ResourceTemplateManager::Instance().getHandleByName("gold");
-  if (!goldHandle.isValid()) {
+  if (!m_goldHandle.isValid()) {
     return 0;
   }
-  return getInventoryQuantity(goldHandle);
+  return getInventoryQuantity(m_goldHandle);
 }
 
 bool Player::addGold(int amount) {
   if (amount <= 0) {
     return false;
   }
-  auto goldHandle = ResourceTemplateManager::Instance().getHandleByName("gold");
-  if (!goldHandle.isValid()) {
+  if (!m_goldHandle.isValid()) {
     PLAYER_WARN("Player::addGold - gold resource not found");
     return false;
   }
-  return addToInventory(goldHandle, amount);
+  return addToInventory(m_goldHandle, amount);
 }
 
 bool Player::removeGold(int amount) {
   if (amount <= 0) {
     return false;
   }
-  auto goldHandle = ResourceTemplateManager::Instance().getHandleByName("gold");
-  if (!goldHandle.isValid()) {
+  if (!m_goldHandle.isValid()) {
     PLAYER_WARN("Player::removeGold - gold resource not found");
     return false;
   }
-  return removeFromInventory(goldHandle, amount);
+  return removeFromInventory(m_goldHandle, amount);
 }
 
 bool Player::hasGold(int amount) const {

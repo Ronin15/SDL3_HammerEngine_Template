@@ -4,12 +4,14 @@
  */
 
 #include "controllers/social/TradeController.hpp"
+#include "controllers/social/SocialController.hpp"
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include <algorithm>
+#include <cmath>
 #include <format>
 
 namespace {
@@ -21,9 +23,9 @@ namespace {
 // ============================================================================
 
 TradeController::TradeController(std::shared_ptr<Player> player,
-                                 SocialController& socialController)
+                                 SocialController* socialController)
     : mp_player(std::move(player))
-    , m_socialController(socialController) {}
+    , mp_socialController(socialController) {}
 
 void TradeController::subscribe() {
     if (checkAlreadySubscribed()) {
@@ -54,13 +56,13 @@ bool TradeController::openTrade(EntityHandle npcHandle) {
     }
 
     // Validate NPC is a merchant
-    if (!m_socialController.isMerchant(npcHandle)) {
+    if (!isMerchant(npcHandle)) {
         TRADE_DEBUG("NPC is not a merchant");
         return false;
     }
 
     // Check if NPC will refuse trade
-    if (m_socialController.willRefuseTrade(npcHandle)) {
+    if (willRefuseTrade(npcHandle)) {
         TRADE_INFO("Merchant refused to trade (relationship too low)");
         return false;
     }
@@ -70,6 +72,7 @@ bool TradeController::openTrade(EntityHandle npcHandle) {
     m_selectedMerchantIndex = -1;
     m_selectedPlayerIndex = -1;
     m_quantity = 1;
+    m_priceDisplayDirty = true;
 
     // Refresh item lists
     refreshMerchantItems();
@@ -99,6 +102,7 @@ void TradeController::closeTrade() {
     m_selectedMerchantIndex = -1;
     m_selectedPlayerIndex = -1;
     m_quantity = 1;
+    m_priceDisplayDirty = true;
 
     TRADE_INFO("Trade session closed");
 }
@@ -125,7 +129,7 @@ void TradeController::selectMerchantItem(size_t index) {
         m_selectedMerchantIndex = static_cast<int>(index);
         m_selectedPlayerIndex = -1;  // Deselect player item
         m_quantity = 1;
-        updatePriceDisplay();
+        m_priceDisplayDirty = true;
         TRADE_DEBUG(std::format("Selected merchant item: {}", m_merchantItems[index].name));
     }
 }
@@ -135,7 +139,7 @@ void TradeController::selectPlayerItem(size_t index) {
         m_selectedPlayerIndex = static_cast<int>(index);
         m_selectedMerchantIndex = -1;  // Deselect merchant item
         m_quantity = 1;
-        updatePriceDisplay();
+        m_priceDisplayDirty = true;
         TRADE_DEBUG(std::format("Selected player item: {}", m_playerItems[index].name));
     }
 }
@@ -152,7 +156,7 @@ void TradeController::setQuantity(int qty) {
         m_quantity = std::min(m_quantity, m_playerItems[m_selectedPlayerIndex].quantity);
     }
 
-    updatePriceDisplay();
+    m_priceDisplayDirty = true;
 }
 
 TradeResult TradeController::executeBuy() {
@@ -164,12 +168,17 @@ TradeResult TradeController::executeBuy() {
         return TradeResult::InvalidItem;
     }
 
+    if (!mp_socialController) {
+        TRADE_ERROR("SocialController not available for trade execution");
+        return TradeResult::InvalidNPC;
+    }
+
     const auto& item = m_merchantItems[m_selectedMerchantIndex];
-    TradeResult result = m_socialController.tryBuy(m_merchantHandle, item.handle, m_quantity);
+    TradeResult result = mp_socialController->tryBuy(m_merchantHandle, item.handle, m_quantity);
 
     if (result == TradeResult::Success) {
         // Get price for log message before resetting quantity
-        float price = m_socialController.calculateBuyPrice(m_merchantHandle, item.handle, m_quantity);
+        float price = calculateBuyPrice(m_merchantHandle, item.handle, m_quantity);
         int savedQty = m_quantity;
 
         // Refresh both inventories
@@ -177,7 +186,7 @@ TradeResult TradeController::executeBuy() {
         refreshPlayerItems();
         m_selectedMerchantIndex = -1;
         m_quantity = 1;
-        updatePriceDisplay();
+        m_priceDisplayDirty = true;
         TRADE_INFO(std::format("Bought {} x{}", item.name, savedQty));
 
         // Add to on-screen event log
@@ -198,12 +207,17 @@ TradeResult TradeController::executeSell() {
         return TradeResult::InvalidItem;
     }
 
+    if (!mp_socialController) {
+        TRADE_ERROR("SocialController not available for trade execution");
+        return TradeResult::InvalidNPC;
+    }
+
     const auto& item = m_playerItems[m_selectedPlayerIndex];
-    TradeResult result = m_socialController.trySell(m_merchantHandle, item.handle, m_quantity);
+    TradeResult result = mp_socialController->trySell(m_merchantHandle, item.handle, m_quantity);
 
     if (result == TradeResult::Success) {
         // Get price for log message before resetting quantity
-        float price = m_socialController.calculateSellPrice(m_merchantHandle, item.handle, m_quantity);
+        float price = calculateSellPrice(m_merchantHandle, item.handle, m_quantity);
         int savedQty = m_quantity;
 
         // Refresh both inventories
@@ -211,7 +225,7 @@ TradeResult TradeController::executeSell() {
         refreshPlayerItems();
         m_selectedPlayerIndex = -1;
         m_quantity = 1;
-        updatePriceDisplay();
+        m_priceDisplayDirty = true;
         TRADE_INFO(std::format("Sold {} x{}", item.name, savedQty));
 
         // Add to on-screen event log
@@ -234,7 +248,7 @@ float TradeController::getCurrentBuyPrice() const {
     }
 
     const auto& item = m_merchantItems[m_selectedMerchantIndex];
-    return m_socialController.calculateBuyPrice(m_merchantHandle, item.handle, m_quantity);
+    return calculateBuyPrice(m_merchantHandle, item.handle, m_quantity);
 }
 
 float TradeController::getCurrentSellPrice() const {
@@ -244,21 +258,21 @@ float TradeController::getCurrentSellPrice() const {
     }
 
     const auto& item = m_playerItems[m_selectedPlayerIndex];
-    return m_socialController.calculateSellPrice(m_merchantHandle, item.handle, m_quantity);
+    return calculateSellPrice(m_merchantHandle, item.handle, m_quantity);
 }
 
 std::string TradeController::getRelationshipDescription() const {
     if (!m_isTrading) {
         return "N/A";
     }
-    return m_socialController.getRelationshipDescription(m_merchantHandle);
+    return getRelationshipDescriptionInternal(m_merchantHandle);
 }
 
 float TradeController::getPriceModifier() const {
     if (!m_isTrading) {
         return 1.0f;
     }
-    return m_socialController.getPriceModifier(m_merchantHandle);
+    return getPriceModifierInternal(m_merchantHandle);
 }
 
 // ============================================================================
@@ -392,7 +406,7 @@ void TradeController::refreshMerchantItems() {
     auto& edm = EntityDataManager::Instance();
     auto& rtm = ResourceTemplateManager::Instance();
 
-    uint32_t invIdx = m_socialController.getNPCInventoryIndex(m_merchantHandle);
+    uint32_t invIdx = getNPCInventoryIndex(m_merchantHandle);
     if (invIdx == INVALID_INVENTORY_INDEX) {
         return;
     }
@@ -408,10 +422,12 @@ void TradeController::refreshMerchantItems() {
         // Get name from resource template
         auto resTemplate = rtm.getResourceTemplate(handle);
         info.name = resTemplate ? resTemplate->getName() : "Unknown";
-        info.unitPrice = m_socialController.calculateBuyPrice(m_merchantHandle, handle, 1);
+        info.unitPrice = calculateBuyPrice(m_merchantHandle, handle, 1);
 
         m_merchantItems.push_back(info);
     }
+
+    m_priceDisplayDirty = true;
 }
 
 void TradeController::refreshPlayerItems() {
@@ -443,16 +459,24 @@ void TradeController::refreshPlayerItems() {
         // Get name from resource template
         auto resTemplate = rtm.getResourceTemplate(handle);
         info.name = resTemplate ? resTemplate->getName() : "Unknown";
-        info.unitPrice = m_socialController.calculateSellPrice(m_merchantHandle, handle, 1);
+        info.unitPrice = calculateSellPrice(m_merchantHandle, handle, 1);
 
         m_playerItems.push_back(info);
     }
+
+    m_priceDisplayDirty = true;
 }
 
 void TradeController::updatePriceDisplay() {
     if (!m_isTrading) {
         return;
     }
+
+    if (!m_priceDisplayDirty) {
+        return;
+    }
+
+    m_priceDisplayDirty = false;
 
     auto& ui = UIManager::Instance();
 
@@ -478,4 +502,139 @@ void TradeController::updatePriceDisplay() {
 
 void TradeController::updateSelectionHighlight() {
     // Future: highlight selected items in lists
+}
+
+// ============================================================================
+// HELPER METHODS (Manager access, replacing SocialController dependency)
+// ============================================================================
+
+bool TradeController::isMerchant(EntityHandle npcHandle) const {
+    return EntityDataManager::Instance().isNPCMerchant(npcHandle);
+}
+
+bool TradeController::willRefuseTrade(EntityHandle npcHandle) const {
+    float relationship = getRelationshipLevel(npcHandle);
+    constexpr float RELATIONSHIP_HOSTILE = -0.5f;
+    return relationship < RELATIONSHIP_HOSTILE;
+}
+
+float TradeController::getRelationshipLevel(EntityHandle npcHandle) const {
+    constexpr float RELATIONSHIP_NEUTRAL = 0.0f;
+
+    if (!npcHandle.isValid()) {
+        return RELATIONSHIP_NEUTRAL;
+    }
+
+    auto& edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(npcHandle);
+    if (idx == SIZE_MAX) {
+        return RELATIONSHIP_NEUTRAL;
+    }
+
+    // Check if NPC has memory data
+    if (!edm.hasMemoryData(idx)) {
+        return RELATIONSHIP_NEUTRAL;
+    }
+
+    const auto& memoryData = edm.getMemoryData(idx);
+    if (!memoryData.isValid()) {
+        return RELATIONSHIP_NEUTRAL;
+    }
+
+    // Calculate relationship from emotional state
+    // Low suspicion + low fear + low aggression = good relationship
+    const auto& emotions = memoryData.emotions;
+
+    float relationship = 0.0f;
+
+    // Negative emotions reduce relationship
+    relationship -= emotions.suspicion * 0.4f;
+    relationship -= emotions.fear * 0.3f;
+    relationship -= emotions.aggression * 0.5f;
+
+    // Check interaction memories for additional context
+    auto player = mp_player.lock();
+    if (player) {
+        std::vector<const MemoryEntry*> memories;
+        edm.findMemoriesOfEntity(idx, player->getHandle(), memories);
+
+        // Sum up interaction values (positive = good, negative = bad)
+        for (const auto* mem : memories) {
+            if (mem && mem->type == MemoryType::Interaction) {
+                relationship += mem->value * 0.1f;  // Scale down memory influence
+            }
+        }
+    }
+
+    return std::clamp(relationship, -1.0f, 1.0f);
+}
+
+uint32_t TradeController::getNPCInventoryIndex(EntityHandle npcHandle) const {
+    return EntityDataManager::Instance().getNPCInventoryIndex(npcHandle);
+}
+
+float TradeController::calculateBuyPrice(EntityHandle npcHandle,
+                                         HammerEngine::ResourceHandle itemHandle,
+                                         int quantity) const {
+    constexpr float BUY_PRICE_MULTIPLIER = 1.2f;
+    float baseValue = getItemBaseValue(itemHandle);
+    float modifier = getPriceModifierInternal(npcHandle);
+
+    return baseValue * modifier * BUY_PRICE_MULTIPLIER * quantity;
+}
+
+float TradeController::calculateSellPrice(EntityHandle npcHandle,
+                                          HammerEngine::ResourceHandle itemHandle,
+                                          int quantity) const {
+    constexpr float SELL_PRICE_MULTIPLIER = 0.6f;
+    float baseValue = getItemBaseValue(itemHandle);
+    float modifier = getPriceModifierInternal(npcHandle);
+
+    // Better relationship = better sell price (inverse of buy modifier)
+    float sellModifier = 2.0f - modifier;  // If buy is 0.7x, sell becomes 1.3x
+
+    return baseValue * sellModifier * SELL_PRICE_MULTIPLIER * quantity;
+}
+
+std::string TradeController::getRelationshipDescriptionInternal(EntityHandle npcHandle) const {
+    constexpr float RELATIONSHIP_TRUSTED = 0.5f;
+    constexpr float RELATIONSHIP_FRIENDLY = 0.25f;
+    constexpr float RELATIONSHIP_NEUTRAL = 0.0f;
+    constexpr float RELATIONSHIP_UNFRIENDLY = -0.25f;
+    constexpr float RELATIONSHIP_HOSTILE = -0.5f;
+
+    float relationship = getRelationshipLevel(npcHandle);
+
+    if (relationship >= RELATIONSHIP_TRUSTED) {
+        return "Trusted Friend";
+    } else if (relationship >= RELATIONSHIP_FRIENDLY) {
+        return "Friendly";
+    } else if (relationship >= RELATIONSHIP_NEUTRAL - 0.1f) {
+        return "Neutral";
+    } else if (relationship >= RELATIONSHIP_UNFRIENDLY) {
+        return "Unfriendly";
+    } else if (relationship >= RELATIONSHIP_HOSTILE) {
+        return "Hostile";
+    } else {
+        return "Despised";
+    }
+}
+
+float TradeController::getPriceModifierInternal(EntityHandle npcHandle) const {
+    float relationship = getRelationshipLevel(npcHandle);
+
+    // Map relationship [-1, 1] to price modifier [1.3, 0.7]
+    // -1.0 (hostile) -> 1.3x prices (30% more expensive)
+    //  0.0 (neutral) -> 1.0x prices (normal)
+    // +1.0 (trusted) -> 0.7x prices (30% cheaper)
+
+    return 1.0f - (relationship * 0.3f);
+}
+
+float TradeController::getItemBaseValue(HammerEngine::ResourceHandle itemHandle) const {
+    if (!itemHandle.isValid()) {
+        return 0.0f;
+    }
+
+    return ResourceTemplateManager::Instance().getValue(itemHandle);
 }

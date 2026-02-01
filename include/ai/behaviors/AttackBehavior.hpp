@@ -95,11 +95,11 @@ public:
   float getLastAttackTime() const;
   int getCurrentCombo() const;
 
-  // Explicit target for NPC-vs-NPC combat
-  void setTarget(EntityHandle target);
-  void clearTarget();
-  [[nodiscard]] EntityHandle getTarget() const;
-  [[nodiscard]] bool hasExplicitTarget() const;
+  // Explicit target for NPC-vs-NPC combat (stored in EDM BehaviorData)
+  void setTarget(size_t edmIndex, EntityHandle target);
+  void clearTarget(size_t edmIndex);
+  [[nodiscard]] EntityHandle getTarget(size_t edmIndex) const;
+  [[nodiscard]] bool hasExplicitTarget(size_t edmIndex) const;
 
   // State change notification - applies velocity lunge for attack states
   void notifyAnimationStateChange(size_t edmIndex, AttackState newState, const Vector2D& targetPos);
@@ -168,6 +168,11 @@ private:
   static constexpr float COMBAT_ENTER_RANGE_MULT = 1.2f;  // Enter combat at 120% of attack range
   static constexpr float COMBAT_EXIT_RANGE_MULT = 2.0f;   // Exit combat at 200% of attack range
 
+  // Combat threshold constants (for retreat and flee logic)
+  static constexpr float FEAR_FLEE_THRESHOLD = 0.7f;      // Fear level that triggers flee behavior
+  static constexpr float BRAVERY_FLEE_THRESHOLD = 0.4f;   // Bravery below this enables fleeing
+  static constexpr float BRAVERY_RETREAT_FACTOR = 0.3f;   // Bravery reduces retreat threshold
+
   // Timing constants
   static constexpr float COMBO_TIMEOUT = 3.0f; // 3 seconds
   static constexpr float CHARGE_TIME = 1.0f;   // 1 second charge
@@ -188,9 +193,8 @@ private:
   mutable std::uniform_real_distribution<float> m_specialRoll{0.0f, 1.0f};
   mutable std::uniform_real_distribution<float> m_angleVariation{-0.5f, 0.5f};
 
-  // Explicit target for NPC-vs-NPC combat (overrides default player targeting)
-  EntityHandle m_targetHandle{};
-  bool m_hasExplicitTarget{false};
+  // Explicit target for NPC-vs-NPC combat now stored in EDM BehaviorData::state.attack
+  // (explicitTarget, hasExplicitTarget) - ensures thread-safe per-entity state
 
   // Helper methods (all entity state stored in EDM BehaviorData)
   EntityHandle getTargetHandle() const; // Gets player handle from AIManager

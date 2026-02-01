@@ -118,7 +118,7 @@ bool GamePlayState::enter() {
 
     // Social and trade controllers (SocialController must be created first since TradeController references it)
     auto& socialCtrl = m_controllers.add<SocialController>(mp_Player);
-    m_controllers.add<TradeController>(mp_Player, socialCtrl);
+    m_controllers.add<TradeController>(mp_Player, &socialCtrl);
 
     // Enable automatic weather changes
     gameTimeMgr.enableAutoWeather(true);

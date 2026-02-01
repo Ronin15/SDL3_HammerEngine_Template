@@ -252,9 +252,9 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
   Vector2D targetPos;
   bool hasTarget = false;
 
-  if (m_hasExplicitTarget && m_targetHandle.isValid()) {
+  if (attack.hasExplicitTarget && attack.explicitTarget.isValid()) {
     auto& edm = EntityDataManager::Instance();
-    size_t targetIdx = edm.getIndex(m_targetHandle);
+    size_t targetIdx = edm.getIndex(attack.explicitTarget);
     if (targetIdx != SIZE_MAX) {
       const auto& targetHot = edm.getHotDataByIndex(targetIdx);
       if (targetHot.isAlive()) {
@@ -264,8 +264,8 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
     }
     // Clear stale explicit target if invalid/dead
     if (!hasTarget) {
-      m_hasExplicitTarget = false;
-      m_targetHandle = EntityHandle{};
+      attack.hasExplicitTarget = false;
+      attack.explicitTarget = EntityHandle{};
     }
   }
 
@@ -276,6 +276,7 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
   }
 
   // Neutral entities (faction=2) become enemy (faction=1) when attacking
+  // Faction values: 0 = Friendly, 1 = Enemy, 2 = Neutral
   if (hasTarget && ctx.edmIndex != SIZE_MAX) {
     auto &edm = EntityDataManager::Instance();
     const auto &charData = edm.getCharacterDataByIndex(ctx.edmIndex);
@@ -283,7 +284,7 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
       edm.setFaction(edm.getHandle(ctx.edmIndex), 1); // Become Enemy
 
       // Alert guards that the player is under attack (immediate delivery)
-      AI_INFO("NPC became hostile - broadcasting player_under_attack");
+      AI_DEBUG("NPC became hostile - broadcasting player_under_attack");
       AIManager::Instance().broadcastMessage("player_under_attack", true);
     }
   }
@@ -310,8 +311,8 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
     if (ctx.memoryData && ctx.memoryData->isValid()) {
       float fear = ctx.memoryData->emotions.fear;
       float bravery = ctx.memoryData->personality.bravery;
-      // Terrified and cowardly: fear > 0.7 and bravery < 0.4
-      shouldFlee = (fear > 0.7f && bravery < 0.4f);
+      // Terrified and cowardly: fear > threshold and bravery < threshold
+      shouldFlee = (fear > FEAR_FLEE_THRESHOLD && bravery < BRAVERY_FLEE_THRESHOLD);
     }
 
     if (shouldFlee) {
@@ -321,7 +322,7 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
       EntityHandle handle = edm.getHandle(ctx.edmIndex);
       if (handle.isValid() && aiMgr.hasBehavior("Flee")) {
         aiMgr.assignBehavior(handle, "Flee");
-        AI_INFO("Attacker switched to Flee - too afraid to continue fighting");
+        AI_DEBUG("Attacker switched to Flee - too afraid to continue fighting");
       }
     } else {
       changeState(data, AttackState::RETREATING);
@@ -542,40 +543,45 @@ std::shared_ptr<AIBehavior> AttackBehavior::clone() const {
 }
 
 EntityHandle AttackBehavior::getTargetHandle() const {
-  // Check explicit target first (NPC-vs-NPC combat)
-  if (m_hasExplicitTarget && m_targetHandle.isValid()) {
-    // Verify target is still alive
-    auto& edm = EntityDataManager::Instance();
-    size_t targetIdx = edm.getIndex(m_targetHandle);
-    if (targetIdx != SIZE_MAX) {
-      const auto& hotData = edm.getHotDataByIndex(targetIdx);
-      if (hotData.isAlive()) {
-        return m_targetHandle;
-      }
-    }
-    // Target is dead or invalid - clear it
-    // Note: Can't clear here as this is const - will be cleared in executeLogic
-  }
-  // Fall back to player
+  // Explicit target is now in EDM BehaviorData - this method returns player as fallback
+  // Use getTarget(edmIndex) for explicit target access
   return AIManager::Instance().getPlayerHandle();
 }
 
-void AttackBehavior::setTarget(EntityHandle target) {
-  m_targetHandle = target;
-  m_hasExplicitTarget = target.isValid();
+void AttackBehavior::setTarget(size_t edmIndex, EntityHandle target) {
+  auto& edm = EntityDataManager::Instance();
+  if (!edm.hasBehaviorData(edmIndex)) {
+    return;
+  }
+  auto& attack = edm.getBehaviorData(edmIndex).state.attack;
+  attack.explicitTarget = target;
+  attack.hasExplicitTarget = target.isValid();
 }
 
-void AttackBehavior::clearTarget() {
-  m_targetHandle = EntityHandle{};
-  m_hasExplicitTarget = false;
+void AttackBehavior::clearTarget(size_t edmIndex) {
+  auto& edm = EntityDataManager::Instance();
+  if (!edm.hasBehaviorData(edmIndex)) {
+    return;
+  }
+  auto& attack = edm.getBehaviorData(edmIndex).state.attack;
+  attack.explicitTarget = EntityHandle{};
+  attack.hasExplicitTarget = false;
 }
 
-EntityHandle AttackBehavior::getTarget() const {
-  return m_targetHandle;
+EntityHandle AttackBehavior::getTarget(size_t edmIndex) const {
+  auto& edm = EntityDataManager::Instance();
+  if (!edm.hasBehaviorData(edmIndex)) {
+    return EntityHandle{};
+  }
+  return edm.getBehaviorData(edmIndex).state.attack.explicitTarget;
 }
 
-bool AttackBehavior::hasExplicitTarget() const {
-  return m_hasExplicitTarget;
+bool AttackBehavior::hasExplicitTarget(size_t edmIndex) const {
+  auto& edm = EntityDataManager::Instance();
+  if (!edm.hasBehaviorData(edmIndex)) {
+    return false;
+  }
+  return edm.getBehaviorData(edmIndex).state.attack.hasExplicitTarget;
 }
 
 Vector2D AttackBehavior::getTargetPosition() const {
@@ -774,7 +780,7 @@ bool AttackBehavior::shouldRetreat(size_t edmIndex) const {
 
       // Personality affects threshold: brave NPCs fight longer
       float braveryFactor = memData.personality.bravery;
-      effectiveThreshold *= (1.0f - braveryFactor * 0.3f);  // Brave = lower threshold
+      effectiveThreshold *= (1.0f - braveryFactor * BRAVERY_RETREAT_FACTOR);  // Brave = lower threshold
 
       // Personality aggression also affects willingness to retreat
       float personalAggression = memData.personality.aggression;
@@ -920,6 +926,11 @@ void AttackBehavior::applyDamageToTarget(EntityHandle targetHandle,
   hotData.transform.velocity = hotData.transform.velocity + scaledKnockback;
 
   // Record attacker in victim's memory (enables guards to detect threats)
+  // Note: This modifies the VICTIM's memory data from the ATTACKER's batch.
+  // Safe because: victim entities in attack range are typically not in the same
+  // batch as their attackers (different spatial positions). Concurrent writes
+  // to the same memData from different batches would be a race, but this is
+  // extremely rare in practice.
   if (attackerHandle.isValid() && edm.hasMemoryData(idx)) {
     auto &memData = edm.getMemoryData(idx);
     memData.lastAttacker = attackerHandle;
@@ -927,12 +938,13 @@ void AttackBehavior::applyDamageToTarget(EntityHandle targetHandle,
   }
 
   // Combat response for NPC-vs-NPC attacks (when target is NPC, not player)
+  // Faction values: 0 = Friendly, 1 = Enemy, 2 = Neutral
   if (targetHandle.getKind() == EntityKind::NPC && charData.faction != 1) {
     // Friendly (0) or Neutral (2) NPC was attacked - they should flee
     AIManager::Instance().assignBehavior(targetHandle, "Flee");
 
     // Alert guards that a friendly is under attack (immediate delivery)
-    AI_INFO("Friendly NPC attacked - broadcasting friendly_under_attack");
+    AI_DEBUG("Friendly NPC attacked - broadcasting friendly_under_attack");
     AIManager::Instance().broadcastMessage("friendly_under_attack", true);
   }
 
@@ -941,9 +953,14 @@ void AttackBehavior::applyDamageToTarget(EntityHandle targetHandle,
     hotData.flags &= ~EntityHotData::FLAG_ALIVE;  // No longer alive
 
     // Clear target if this was our explicit target (they're dead now)
-    if (m_hasExplicitTarget && m_targetHandle == targetHandle) {
-      m_hasExplicitTarget = false;
-      m_targetHandle = EntityHandle{};
+    // Target state is in attacker's BehaviorData
+    size_t attackerIdx = edm.getIndex(attackerHandle);
+    if (attackerIdx != SIZE_MAX && edm.hasBehaviorData(attackerIdx)) {
+      auto& attackerAttack = edm.getBehaviorData(attackerIdx).state.attack;
+      if (attackerAttack.hasExplicitTarget && attackerAttack.explicitTarget == targetHandle) {
+        attackerAttack.hasExplicitTarget = false;
+        attackerAttack.explicitTarget = EntityHandle{};
+      }
     }
 
     // Queue entity for destruction

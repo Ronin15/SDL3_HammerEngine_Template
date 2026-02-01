@@ -155,6 +155,9 @@ private:
   mutable std::uniform_real_distribution<float> m_radiusDistribution{0.3f,
                                                                       1.0f};
 
+  // Reusable buffers to avoid per-frame allocations
+  mutable std::vector<EntityHandle> m_nearbyBuffer;  // Reused for threat detection
+
   // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
   // bool m_useAsyncPathfinding removed
 

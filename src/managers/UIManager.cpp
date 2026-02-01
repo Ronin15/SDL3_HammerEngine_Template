@@ -1645,19 +1645,13 @@ void UIManager::removeComponentsWithPrefix(const std::string &prefix) {
   }
 
   // Remove collected components
+  // BUGFIX: Use removeComponent() instead of direct erase to properly handle:
+  // - Binding count decrements (m_textBinding/m_listBinding)
+  // - Cache invalidation
+  // - Layout removal
+  // - Focus clearing
   for (const auto &id : componentsToRemove) {
-    m_components.erase(id);
-    // Remove from any layouts
-    for (auto &[layoutId, layout] : m_layouts) {
-      auto &children = layout->m_childComponents;
-      children.erase(std::remove(children.begin(), children.end(), id),
-                     children.end());
-    }
-  }
-
-  // Invalidate cache so rendering uses updated component list
-  if (!componentsToRemove.empty()) {
-    invalidateComponentCache();
+    removeComponent(id);
   }
 }
 
@@ -3301,13 +3295,9 @@ void UIManager::updateCombatHUD(float playerHealth, float playerStamina,
 }
 
 void UIManager::destroyCombatHUD() {
-  removeComponent("hud_health_label");
-  removeComponent("hud_health_bar");
-  removeComponent("hud_stamina_label");
-  removeComponent("hud_stamina_bar");
-  removeComponent("hud_target_name");
-  removeComponent("hud_target_hp_label");
-  removeComponent("hud_target_health");
+  // Use prefix removal for better maintainability
+  // All combat HUD components are prefixed with "hud_"
+  removeComponentsWithPrefix("hud_");
 
   UI_INFO("Combat HUD destroyed");
 }

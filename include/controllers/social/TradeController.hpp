@@ -13,15 +13,22 @@
  * TradeController handles:
  * - Opening/closing trade interface when player interacts with merchant
  * - Displaying merchant and player inventories side by side
- * - Buy/sell transactions via SocialController
+ * - Buy/sell transactions via SocialController (optional)
  * - Price display based on relationship modifier
+ *
+ * Architecture Note:
+ * TradeController accesses Managers directly for most operations (EntityDataManager,
+ * ResourceTemplateManager) rather than going through SocialController. SocialController
+ * is only used for actual trade execution (tryBuy/trySell), which contains business
+ * logic for recording memories and updating relationships. This reduces controller-to-
+ * controller coupling while maintaining clean separation of concerns.
  *
  * Ownership: ControllerRegistry owns the controller instance.
  */
 
 #include "controllers/ControllerBase.hpp"
 #include "controllers/IUpdatable.hpp"
-#include "controllers/social/SocialController.hpp"
+#include "controllers/social/SocialController.hpp"  // For TradeResult enum and optional SocialController pointer
 #include "entities/EntityHandle.hpp"
 #include "utils/ResourceHandle.hpp"
 #include <memory>
@@ -44,20 +51,20 @@ struct TradeItemInfo {
 class TradeController : public ControllerBase, public IUpdatable {
 public:
     /**
-     * @brief Construct TradeController with required player and social controller references
+     * @brief Construct TradeController with required player reference
      * @param player Shared pointer to the player (required)
-     * @param socialController Reference to SocialController for trade logic
+     * @param socialController Optional pointer to SocialController (for trade execution)
      */
     explicit TradeController(std::shared_ptr<Player> player,
-                             SocialController& socialController);
+                             SocialController* socialController = nullptr);
 
     ~TradeController() override = default;
 
-    // Non-copyable, non-movable (has reference member)
+    // Movable but non-copyable
     TradeController(const TradeController&) = delete;
     TradeController& operator=(const TradeController&) = delete;
-    TradeController(TradeController&&) = delete;
-    TradeController& operator=(TradeController&&) = delete;
+    TradeController(TradeController&&) noexcept = default;
+    TradeController& operator=(TradeController&&) noexcept = default;
 
     // --- ControllerBase interface ---
 
@@ -192,13 +199,31 @@ private:
     void updatePriceDisplay();
     void updateSelectionHighlight();
 
+    // Helper methods that call Managers directly (replacing SocialController dependency)
+    [[nodiscard]] bool isMerchant(EntityHandle npcHandle) const;
+    [[nodiscard]] bool willRefuseTrade(EntityHandle npcHandle) const;
+    [[nodiscard]] float getRelationshipLevel(EntityHandle npcHandle) const;
+    [[nodiscard]] uint32_t getNPCInventoryIndex(EntityHandle npcHandle) const;
+    [[nodiscard]] float calculateBuyPrice(EntityHandle npcHandle,
+                                          HammerEngine::ResourceHandle itemHandle,
+                                          int quantity) const;
+    [[nodiscard]] float calculateSellPrice(EntityHandle npcHandle,
+                                           HammerEngine::ResourceHandle itemHandle,
+                                           int quantity) const;
+    [[nodiscard]] std::string getRelationshipDescriptionInternal(EntityHandle npcHandle) const;
+    [[nodiscard]] float getPriceModifierInternal(EntityHandle npcHandle) const;
+    [[nodiscard]] float getItemBaseValue(HammerEngine::ResourceHandle itemHandle) const;
+
     // References
     std::weak_ptr<Player> mp_player;
-    SocialController& m_socialController;
+    SocialController* mp_socialController;  // Non-owning pointer, may be null
 
     // Trade state
     EntityHandle m_merchantHandle;
     bool m_isTrading{false};
+
+    // Dirty flags for optimization
+    bool m_priceDisplayDirty{true};
 
     // Item lists
     std::vector<TradeItemInfo> m_merchantItems;

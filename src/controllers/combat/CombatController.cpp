@@ -105,6 +105,12 @@ void CombatController::performAttack(Player *player) {
     return;
   }
 
+  // Cache manager references at function scope
+  auto& edm = EntityDataManager::Instance();
+  auto& aiMgr = AIManager::Instance();
+  auto& gameTimeMgr = GameTimeManager::Instance();
+  auto& uiMgr = UIManager::Instance();
+
   const Vector2D playerPos = player->getPosition();
   const float attackRange = player->getAttackRange();
   const float attackDamage = player->getAttackDamage();
@@ -113,12 +119,10 @@ void CombatController::performAttack(Player *player) {
   float attackDirX = (player->getFlip() == SDL_FLIP_HORIZONTAL) ? -1.0f : 1.0f;
 
   // Query nearby entity handles from AIManager (EntityHandle-based API)
-  std::vector<EntityHandle> nearbyHandles;
-  AIManager::Instance().queryHandlesInRadius(playerPos, attackRange,
-                                             nearbyHandles, true);
-
-  // Get EntityDataManager for position lookups
-  auto &edm = EntityDataManager::Instance();
+  // Reuse buffer to avoid per-frame allocation
+  m_nearbyHandlesBuffer.clear();  // Keeps capacity
+  aiMgr.queryHandlesInRadius(playerPos, attackRange,
+                             m_nearbyHandlesBuffer, true);
 
   // Check all nearby entities for hits
   EntityHandle closestHandle{}; // Invalid handle by default
@@ -127,7 +131,7 @@ void CombatController::performAttack(Player *player) {
   // Get player's EntityHandle for event-driven damage
   EntityHandle playerHandle = player->getHandle();
 
-  for (const auto &handle : nearbyHandles) {
+  for (const auto &handle : m_nearbyHandlesBuffer) {
     if (!handle.isValid())
       continue;
 
@@ -177,33 +181,30 @@ void CombatController::performAttack(Player *player) {
     charData.health = std::max(0.0f, charData.health - attackDamage);
 
     // Record combat event in NPC's memory (they were attacked by player)
-    float gameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
+    float gameTime = gameTimeMgr.getTotalGameTimeSeconds();
     edm.recordCombatEvent(idx, playerHandle, handle, attackDamage,
                           /*wasAttacked=*/true, gameTime);
 
     // Combat response: Non-hostile entities flee when attacked
     if (charData.faction != 1) { // Friendly (0) or Neutral (2)
       // Switch to flee behavior
-      AIManager::Instance().assignBehavior(handle, "Flee");
+      aiMgr.assignBehavior(handle, "Flee");
 
       // Alert nearby guards - player is attacking friendlies
-      AIManager::Instance().broadcastMessage("friendly_under_attack");
+      aiMgr.broadcastMessage("friendly_under_attack");
     }
 
     // Apply knockback via velocity
     hotData.transform.velocity = hotData.transform.velocity + knockback;
 
-    // Get entity name for display (use kind + ID for now)
-    std::string entityName = std::format("Enemy #{}", handle.getId());
-
     COMBAT_INFO(
         std::format("Hit entity {} for {:.1f} damage! HP: {:.1f} -> {:.1f}",
                     handle.getId(), attackDamage, oldHealth, charData.health));
 
-    // Add to on-screen event log
-    UIManager::Instance().addEventLogEntry(
+    // Add to on-screen event log (no intermediate string allocation)
+    uiMgr.addEventLogEntry(
         GAMEPLAY_EVENT_LOG,
-        std::format("Hit {} for {:.0f} damage!", entityName, attackDamage));
+        std::format("Hit Enemy #{} for {:.0f} damage!", handle.getId(), attackDamage));
 
     // Track closest hit for targeting (using handle for now)
     if (distance < closestDist) {
@@ -222,10 +223,10 @@ void CombatController::performAttack(Player *player) {
 
       COMBAT_INFO(std::format("Entity {} killed!", handle.getId()));
 
-      // Add kill to on-screen event log
-      UIManager::Instance().addEventLogEntry(
+      // Add kill to on-screen event log (no intermediate string allocation)
+      uiMgr.addEventLogEntry(
           GAMEPLAY_EVENT_LOG,
-          std::format("Defeated {}!", entityName));
+          std::format("Defeated Enemy #{}!", handle.getId()));
 
       // Fire DeathEvent for entity lifecycle observers
       auto deathEvent = std::make_shared<DeathEvent>(
