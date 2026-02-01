@@ -100,6 +100,7 @@ set(MOCK_TESTS
     day_night_controller_tests
     controller_registry_tests
     npc_render_controller_tests
+    harvest_controller_tests
     ai_manager_edm_integration_tests
     pathfinder_manager_edm_integration_tests
 )
@@ -258,6 +259,8 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "controllers/ControllerRegistryTests.cpp")
     elseif(${test_name} STREQUAL "npc_render_controller_tests")
         set(test_source "controllers/NPCRenderControllerTests.cpp")
+    elseif(${test_name} STREQUAL "harvest_controller_tests")
+        set(test_source "controllers/HarvestControllerTests.cpp")
     elseif(${test_name} STREQUAL "ai_manager_edm_integration_tests")
         set(test_source "managers/AIManagerEDMIntegrationTests.cpp")
     elseif(${test_name} STREQUAL "pathfinder_manager_edm_integration_tests")

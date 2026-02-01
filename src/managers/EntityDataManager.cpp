@@ -1168,7 +1168,8 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
                                                   int yieldMin,
                                                   int yieldMax,
                                                   float respawnTime,
-                                                  const std::string& worldId) {
+                                                  const std::string& worldId,
+                                                  HammerEngine::HarvestType harvestType) {
     // Validation: Valid yield resource
     if (!yieldResource.isValid()) {
         ENTITY_ERROR("createHarvestable: Invalid yield resource handle");
@@ -1240,7 +1241,7 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     harvestable.yieldMax = yieldMax;
     harvestable.respawnTime = respawnTime;
     harvestable.currentRespawn = 0.0f;
-    harvestable.harvestType = 0;  // Will be set by caller if needed
+    harvestable.harvestType = harvestType;
     harvestable.isDepleted = false;
     hot.typeLocalIndex = harvestableIndex;
 

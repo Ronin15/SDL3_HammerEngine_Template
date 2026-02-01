@@ -10,6 +10,7 @@
 #include "controllers/social/SocialController.hpp"
 #include "controllers/social/TradeController.hpp"
 #include "controllers/world/DayNightController.hpp"
+#include "controllers/world/HarvestController.hpp"
 #include "controllers/world/ItemController.hpp"
 #include "controllers/world/WeatherController.hpp"
 #include "controllers/render/ResourceRenderController.hpp"
@@ -114,6 +115,7 @@ bool GamePlayState::enter() {
     m_controllers.add<DayNightController>();
     m_controllers.add<CombatController>(mp_Player);
     m_controllers.add<ItemController>(mp_Player);
+    m_controllers.add<HarvestController>(mp_Player);
     m_controllers.add<ResourceRenderController>();
 
     // Social and trade controllers (SocialController must be created first since TradeController references it)
@@ -679,11 +681,15 @@ void GamePlayState::handleInput() {
       if (!openedTrade) {
         auto& itemCtrl = *m_controllers.get<ItemController>();
         if (!itemCtrl.attemptPickup()) {
-          itemCtrl.attemptHarvest();
+          // Try to start progress-based harvesting
+          auto& harvestCtrl = *m_controllers.get<HarvestController>();
+          harvestCtrl.startHarvest();
         }
       }
     }
   }
+  // Note: HarvestController handles movement cancellation automatically in update()
+  // via position-based detection (MOVEMENT_CANCEL_THRESHOLD)
 
   // Camera zoom controls
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_LEFTBRACKET) && m_camera) {

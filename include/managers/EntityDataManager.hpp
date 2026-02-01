@@ -42,6 +42,7 @@
 #include "entities/EntityHandle.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
+#include "world/HarvestType.hpp"
 #include <atomic>
 #include <cassert>
 #include <cstdint>
@@ -326,7 +327,10 @@ struct ContainerData {
 };
 
 /**
- * @brief Harvestable data for resource nodes (trees, ore)
+ * @brief Harvestable data for resource nodes (trees, ore, gems)
+ *
+ * Used by HarvestController for progress-based harvesting.
+ * harvestType determines duration and action verb via HarvestConfig.
  */
 struct HarvestableData {
     HammerEngine::ResourceHandle yieldResource;
@@ -334,7 +338,7 @@ struct HarvestableData {
     int yieldMax{3};
     float respawnTime{60.0f};   // Seconds until respawn
     float currentRespawn{0.0f}; // Time remaining
-    uint8_t harvestType{0};     // Mining, Chopping, Gathering
+    HammerEngine::HarvestType harvestType{HammerEngine::HarvestType::Gathering};
     bool isDepleted{false};
 };
 
@@ -1575,6 +1579,7 @@ public:
      * @param yieldMax Maximum yield amount
      * @param respawnTime Seconds until respawn after depletion
      * @param worldId World to register with (empty = use active world from WRM)
+     * @param harvestType Type of harvesting required (defaults to Gathering)
      * @return Handle to the created entity
      *
      * Validation:
@@ -1589,7 +1594,8 @@ public:
                                    int yieldMin = 1,
                                    int yieldMax = 3,
                                    float respawnTime = 60.0f,
-                                   const std::string& worldId = "");
+                                   const std::string& worldId = "",
+                                   HammerEngine::HarvestType harvestType = HammerEngine::HarvestType::Gathering);
 
     // ========================================================================
     // PHASE 1: REGISTRATION OF EXISTING ENTITIES (Parallel Storage)

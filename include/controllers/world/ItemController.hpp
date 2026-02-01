@@ -8,13 +8,15 @@
 
 /**
  * @file ItemController.hpp
- * @brief Controller for item pickup and harvestable interactions
+ * @brief Controller for item pickup interactions
  *
- * ItemController handles on-demand interaction when player presses E:
+ * ItemController handles on-demand item pickup when player presses E:
  * - Dropped item pickup via WRM spatial query
- * - Harvestable interaction (spawn drops, mark depleted)
  *
  * NO per-frame polling - queries only when interaction is attempted.
+ *
+ * NOTE: Harvesting has been moved to HarvestController for progress-based
+ * harvesting with type-specific durations.
  *
  * Ownership: ControllerRegistry owns the controller instance.
  */
@@ -58,19 +60,8 @@ public:
      */
     bool attemptPickup();
 
-    /**
-     * @brief Attempt to harvest the closest harvestable
-     * @return true if harvest was successful, false otherwise
-     *
-     * Queries WRM for closest harvestable within harvest radius,
-     * validates it's not depleted, spawns yield as dropped items,
-     * marks harvestable as depleted.
-     */
-    bool attemptHarvest();
-
     // Configuration constants
     static constexpr float PICKUP_RADIUS = 32.0f;
-    static constexpr float HARVEST_RADIUS = 48.0f;
 
 private:
     std::weak_ptr<Player> mp_player;
