@@ -1064,10 +1064,12 @@ struct BehaviorData {
             bool specialAttackReady;
             bool circleStrafing;
             bool flanking;
-            uint8_t _pad[2];
+            bool hasExplicitTarget;    // NPC-vs-NPC combat: explicit target set
+            uint8_t _pad[1];
+            EntityHandle explicitTarget;  // NPC-vs-NPC combat: overrides player targeting
         } attack;
 
-        uint8_t raw[144]; // Ensure union is large enough
+        uint8_t raw[160]; // Ensure union is large enough (attack state grew for explicitTarget)
     };
 
     StateUnion state;
@@ -1728,7 +1730,7 @@ public:
      * The inventory index is stored in CharacterData.inventoryIndex.
      * Use this to enable trading with the NPC via SocialController.
      */
-    bool initNPCAsmerchant(EntityHandle handle, uint16_t maxSlots = 20);
+    bool initNPCAsMerchant(EntityHandle handle, uint16_t maxSlots = 20);
 
     /**
      * @brief Check if an NPC is a merchant
@@ -2432,7 +2434,7 @@ private:
 
     // Memory overflow storage (memoryOverflowId -> overflow data)
     std::unordered_map<uint32_t, MemoryOverflow> m_memoryOverflow;
-    uint32_t m_nextMemoryOverflowId{1};  // 0 = no overflow
+    std::atomic<uint32_t> m_nextMemoryOverflowId{1};  // 0 = no overflow
 
     // Type-specific free-lists (reuse indices when entities are destroyed)
     std::vector<uint32_t> m_freeCharacterSlots;

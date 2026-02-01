@@ -102,6 +102,9 @@ void GuardBehavior::init(EntityHandle handle) {
   if (idx == SIZE_MAX)
     return;
 
+  // Reserve buffer capacity to avoid per-frame allocations
+  m_nearbyBuffer.reserve(32);  // Typical nearby entity count
+
   // Initialize behavior data in EDM (pre-allocated alongside hotData)
   edm.initBehaviorData(idx, BehaviorType::Guard);
   auto &data = edm.getBehaviorData(idx);
@@ -525,13 +528,13 @@ EntityHandle GuardBehavior::detectThreat(const BehaviorContext &ctx) const {
   const auto &data = *ctx.behaviorData;
   auto &edm = EntityDataManager::Instance();
 
-  // Query nearby entities for threat detection
-  std::vector<EntityHandle> nearby;
+  // Query nearby entities for threat detection (reuse buffer to avoid allocation)
+  m_nearbyBuffer.clear();  // Keeps capacity
   AIManager::Instance().queryHandlesInRadius(ctx.transform.position,
-                                              m_threatDetectionRange, nearby, true);
+                                              m_threatDetectionRange, m_nearbyBuffer, true);
 
   // First: Check for enemy faction NPCs in range (faction == 1)
-  for (const auto &handle : nearby) {
+  for (const auto &handle : m_nearbyBuffer) {
     if (!handle.isValid())
       continue;
     size_t idx = edm.getIndex(handle);
@@ -558,7 +561,7 @@ EntityHandle GuardBehavior::detectThreat(const BehaviorContext &ctx) const {
   }
 
   // Second: Check if any nearby friendly was recently attacked (lastAttacker set)
-  for (const auto &handle : nearby) {
+  for (const auto &handle : m_nearbyBuffer) {
     if (!handle.isValid())
       continue;
     size_t idx = edm.getIndex(handle);
@@ -734,7 +737,6 @@ void GuardBehavior::handleThreatDetection(BehaviorContext &ctx,
       if (distance <= m_attackEngageRange) {
         // Transition to Attack behavior for combat engagement
         auto &aiMgr = AIManager::Instance();
-        auto &edm = EntityDataManager::Instance();
         EntityHandle handle = edm.getHandle(ctx.edmIndex);
         if (handle.isValid() && aiMgr.hasBehavior("Attack")) {
           // Get the Attack behavior template and clone it
@@ -744,10 +746,10 @@ void GuardBehavior::handleThreatDetection(BehaviorContext &ctx,
             auto attackBehavior = std::dynamic_pointer_cast<AttackBehavior>(
                 attackTemplate->clone());
             if (attackBehavior) {
-              // Set the explicit target to the detected threat
-              attackBehavior->setTarget(threat);
-              // Use direct assignment to preserve the target
+              // Use direct assignment first (this initializes EDM BehaviorData)
               aiMgr.assignBehaviorDirect(handle, attackBehavior);
+              // Now set the explicit target in EDM (requires valid edmIndex)
+              attackBehavior->setTarget(ctx.edmIndex, threat);
               AI_INFO("Guard transitioned to Attack behavior - engaging NPC threat");
             }
           } else {
@@ -791,13 +793,13 @@ void GuardBehavior::handleInvestigation(BehaviorContext &ctx) {
   if (guard.currentAlertLevel >= 3) {
     // Use wider detection range when responding to attack reports
     auto &edm = EntityDataManager::Instance();
-    std::vector<EntityHandle> nearby;
+    m_nearbyBuffer.clear();  // Reuse buffer, keeps capacity
     float scanRange = m_threatDetectionRange * 2.0f;
-    AIManager::Instance().queryHandlesInRadius(ctx.transform.position, scanRange, nearby, true);
+    AIManager::Instance().queryHandlesInRadius(ctx.transform.position, scanRange, m_nearbyBuffer, true);
 
     // Engage enemies within attack range (increased when investigating)
     float engageRange = m_attackEngageRange * 2.0f; // 160 units when investigating
-    for (const auto &handle : nearby) {
+    for (const auto &handle : m_nearbyBuffer) {
       if (!handle.isValid())
         continue;
       size_t idx = edm.getIndex(handle);
@@ -818,8 +820,10 @@ void GuardBehavior::handleInvestigation(BehaviorContext &ctx) {
               auto attackBehavior = std::dynamic_pointer_cast<AttackBehavior>(
                   attackTemplate->clone());
               if (attackBehavior) {
-                attackBehavior->setTarget(handle);
+                // Assign behavior first (initializes EDM BehaviorData)
                 aiMgr.assignBehaviorDirect(guardHandle, attackBehavior);
+                // Now set the explicit target in EDM
+                attackBehavior->setTarget(ctx.edmIndex, handle);
                 return;
               }
             }

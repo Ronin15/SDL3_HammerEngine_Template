@@ -1884,15 +1884,15 @@ void EntityDataManager::destroyInventory(uint32_t inventoryIndex) {
     ENTITY_DEBUG(std::format("Destroyed inventory {}", inventoryIndex));
 }
 
-bool EntityDataManager::initNPCAsmerchant(EntityHandle handle, uint16_t maxSlots) {
+bool EntityDataManager::initNPCAsMerchant(EntityHandle handle, uint16_t maxSlots) {
     if (!handle.isValid() || handle.getKind() != EntityKind::NPC) {
-        ENTITY_ERROR("initNPCAsmerchant: Invalid handle or not an NPC");
+        ENTITY_ERROR("initNPCAsMerchant: Invalid handle or not an NPC");
         return false;
     }
 
     size_t idx = getIndex(handle);
     if (idx == SIZE_MAX) {
-        ENTITY_ERROR("initNPCAsmerchant: Entity not found in EDM");
+        ENTITY_ERROR("initNPCAsMerchant: Entity not found in EDM");
         return false;
     }
 
@@ -1901,14 +1901,14 @@ bool EntityDataManager::initNPCAsmerchant(EntityHandle handle, uint16_t maxSlots
 
     // Check if already has inventory
     if (charData.hasInventory()) {
-        ENTITY_WARN("initNPCAsmerchant: NPC already has inventory");
+        ENTITY_WARN("initNPCAsMerchant: NPC already has inventory");
         return true;  // Already set up
     }
 
     // Create inventory
     uint32_t invIdx = createInventory(maxSlots, false);  // Not world-tracked
     if (invIdx == INVALID_INVENTORY_INDEX) {
-        ENTITY_ERROR("initNPCAsmerchant: Failed to create inventory");
+        ENTITY_ERROR("initNPCAsMerchant: Failed to create inventory");
         return false;
     }
 
@@ -2670,6 +2670,10 @@ void EntityDataManager::clearMemoryData(size_t index) {
     data.clear();
 }
 
+// Thread Safety Note: This function is primarily called from the main thread
+// via recordCombatEvent() from CombatController. If called from worker threads
+// during AI batch processing, ensure proper synchronization or that each index
+// is only accessed by one thread.
 void EntityDataManager::addMemory(size_t index, const MemoryEntry& entry, bool useOverflow) {
     if (index >= m_memoryData.size()) {
         return;

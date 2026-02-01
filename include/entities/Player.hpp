@@ -185,5 +185,8 @@ private:
 
   // Non-owning camera pointer for player states (set by GamePlayState)
   HammerEngine::Camera* mp_camera{nullptr};
+
+  // PERFORMANCE: Cache gold resource handle to avoid repeated lookups in gold methods
+  HammerEngine::ResourceHandle m_goldHandle{};
 };
 #endif // PLAYER_HPP
