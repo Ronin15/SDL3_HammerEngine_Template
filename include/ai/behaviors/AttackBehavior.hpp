@@ -95,6 +95,12 @@ public:
   float getLastAttackTime() const;
   int getCurrentCombo() const;
 
+  // Explicit target for NPC-vs-NPC combat
+  void setTarget(EntityHandle target);
+  void clearTarget();
+  [[nodiscard]] EntityHandle getTarget() const;
+  [[nodiscard]] bool hasExplicitTarget() const;
+
   // State change notification - applies velocity lunge for attack states
   void notifyAnimationStateChange(size_t edmIndex, AttackState newState, const Vector2D& targetPos);
 
@@ -182,6 +188,10 @@ private:
   mutable std::uniform_real_distribution<float> m_specialRoll{0.0f, 1.0f};
   mutable std::uniform_real_distribution<float> m_angleVariation{-0.5f, 0.5f};
 
+  // Explicit target for NPC-vs-NPC combat (overrides default player targeting)
+  EntityHandle m_targetHandle{};
+  bool m_hasExplicitTarget{false};
+
   // Helper methods (all entity state stored in EDM BehaviorData)
   EntityHandle getTargetHandle() const; // Gets player handle from AIManager
   Vector2D getTargetPosition() const;   // Gets player position from AIManager
@@ -204,7 +214,8 @@ private:
   void executeAttack(size_t edmIndex, const Vector2D& targetPos, BehaviorData& data);
   void executeSpecialAttack(size_t edmIndex, const Vector2D& targetPos, BehaviorData& data);
   void executeComboAttack(size_t edmIndex, const Vector2D& targetPos, BehaviorData& data);
-  void applyDamageToTarget(EntityHandle targetHandle, float damage, const Vector2D& knockback);
+  void applyDamageToTarget(EntityHandle targetHandle, float damage, const Vector2D& knockback,
+                           EntityHandle attackerHandle);
   void applyAreaOfEffectDamage(const Vector2D& entityPos, const Vector2D& targetPos, float damage);
 
   // Mode-specific updates

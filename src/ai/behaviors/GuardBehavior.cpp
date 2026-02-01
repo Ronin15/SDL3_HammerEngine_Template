@@ -4,6 +4,7 @@
  */
 
 #include "ai/behaviors/GuardBehavior.hpp"
+#include "ai/behaviors/AttackBehavior.hpp"
 #include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -144,14 +145,12 @@ void GuardBehavior::executeLogic(BehaviorContext &ctx) {
 
   // Use pre-fetched behavior data from context (no Instance() call needed)
   auto &data = *ctx.behaviorData;
-  if (!data.isValid()) {
+  if (!data.isValid())
     return;
-  }
 
   auto &guard = data.state.guard;
-  if (!guard.onDuty) {
+  if (!guard.onDuty)
     return; // Guard is off duty
-  }
 
   // Update all timers
   guard.threatSightingTimer += ctx.deltaTime;
@@ -190,8 +189,10 @@ void GuardBehavior::executeLogic(BehaviorContext &ctx) {
   updateAlertLevel(data, threatPresent, threat);
 
   if (threatPresent) {
+    AI_DEBUG(std::format("Guard detected threat ID:{} - handling", threat.getId()));
     handleThreatDetection(ctx, threat);
   } else if (guard.isInvestigating) {
+    AI_DEBUG("Guard investigating - no threat found yet");
     handleInvestigation(ctx);
   } else if (guard.returningToPost) {
     handleReturnToPost(ctx);
@@ -282,17 +283,28 @@ void GuardBehavior::onMessage(EntityHandle handle, const std::string &message) {
   } else if (message == "roam_mode") {
     guard.currentMode = static_cast<uint8_t>(GuardMode::ROAMING_GUARD);
   } else if (message == "player_under_attack") {
-    // Player is being attacked by an NPC - go to hostile alert
-    // detectThreat() will find the enemy NPC through normal detection
+    // Player is being attacked by an NPC - go to hostile alert and investigate
+    AI_INFO("Guard received player_under_attack - investigating");
     guard.currentAlertLevel = 3; // HOSTILE - immediate response
     guard.hasActiveThreat = true;
     guard.alertTimer = 0.0f;
+    // Set investigation towards player's position (where attack is happening)
+    // This ensures guards move towards the threat even if out of detection range
+    Vector2D playerPos = AIManager::Instance().getPlayerPosition();
+    guard.isInvestigating = true;
+    guard.investigationTarget = playerPos;
+    guard.investigationTimer = 0.0f;
   } else if (message == "friendly_under_attack") {
-    // Player is attacking friendlies - guards target player
+    // A friendly NPC is being attacked - go to hostile alert and investigate
     guard.currentAlertLevel = 3; // HOSTILE - immediate response
     guard.hasActiveThreat = true;
     guard.alertTimer = 0.0f;
-    // detectThreat() Priority 3 will return the player
+    // Set investigation towards player's position (likely combat area)
+    // detectThreat() Priority 2 will find attacker via friendly's lastAttacker
+    Vector2D playerPos = AIManager::Instance().getPlayerPosition();
+    guard.isInvestigating = true;
+    guard.investigationTarget = playerPos;
+    guard.investigationTimer = 0.0f;
   }
 }
 
@@ -709,14 +721,32 @@ void GuardBehavior::handleThreatDetection(BehaviorContext &ctx,
     // Check if close enough to engage in combat
     {
       float distance = (ctx.transform.position - threatPos).length();
+      AI_DEBUG(std::format("Guard HOSTILE - distance to threat: {:.1f}, engage range: {:.1f}",
+                           distance, m_attackEngageRange));
       if (distance <= m_attackEngageRange) {
         // Transition to Attack behavior for combat engagement
         auto &aiMgr = AIManager::Instance();
         auto &edm = EntityDataManager::Instance();
         EntityHandle handle = edm.getHandle(ctx.edmIndex);
         if (handle.isValid() && aiMgr.hasBehavior("Attack")) {
-          aiMgr.assignBehavior(handle, "Attack");
-          AI_INFO("Guard transitioned to Attack behavior - engaging threat");
+          // Get the Attack behavior template and clone it
+          auto attackTemplate = std::dynamic_pointer_cast<AttackBehavior>(
+              aiMgr.getBehavior("Attack"));
+          if (attackTemplate) {
+            auto attackBehavior = std::dynamic_pointer_cast<AttackBehavior>(
+                attackTemplate->clone());
+            if (attackBehavior) {
+              // Set the explicit target to the detected threat
+              attackBehavior->setTarget(threat);
+              // Use direct assignment to preserve the target
+              aiMgr.assignBehaviorDirect(handle, attackBehavior);
+              AI_INFO("Guard transitioned to Attack behavior - engaging NPC threat");
+            }
+          } else {
+            // Fallback: assign without target (will attack player)
+            aiMgr.assignBehavior(handle, "Attack");
+            AI_INFO("Guard transitioned to Attack behavior - engaging threat");
+          }
         }
       } else {
         // Move towards threat at alert speed
@@ -741,16 +771,21 @@ void GuardBehavior::handleInvestigation(BehaviorContext &ctx) {
   auto &data = *ctx.behaviorData;
   auto &guard = data.state.guard;
 
-  // Check if investigation time has expired
-  if (guard.investigationTimer > m_investigationTime) {
+  // Check if investigation time has expired (but not when at HOSTILE alert - keep pursuing)
+  if (guard.investigationTimer > m_investigationTime && guard.currentAlertLevel < 3) {
+    AI_DEBUG("Guard investigation expired - returning to post");
     guard.isInvestigating = false;
     guard.returningToPost = true;
     return;
   }
 
-  // Move to investigation target
+  // Move to investigation target - use alert speed if at high alert level
   if (!isAtPosition(ctx.transform.position, guard.investigationTarget)) {
-    moveToPositionDirect(ctx, guard.investigationTarget, m_movementSpeed);
+    float dist = (ctx.transform.position - guard.investigationTarget).length();
+    // Use faster alert speed when responding to attacks (alert level 3+)
+    float speed = (guard.currentAlertLevel >= 3) ? m_alertSpeed * 2.0f : m_movementSpeed;
+    AI_DEBUG(std::format("Guard moving to investigate - dist: {:.1f}, speed: {:.1f}", dist, speed));
+    moveToPositionDirect(ctx, guard.investigationTarget, speed);
   }
 }
 

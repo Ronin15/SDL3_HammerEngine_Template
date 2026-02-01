@@ -114,6 +114,7 @@ struct EntityHotData {
     static constexpr uint8_t FLAG_ALIVE = 0x01;
     static constexpr uint8_t FLAG_DIRTY = 0x02;
     static constexpr uint8_t FLAG_PENDING_DESTROY = 0x04;
+    static constexpr uint8_t FLAG_DYING = 0x08;  // Entity is dead, showing death animation
 
     // Collision flag constants
     static constexpr uint8_t COLLISION_ENABLED = 0x01;
@@ -124,6 +125,12 @@ struct EntityHotData {
     [[nodiscard]] bool isDirty() const noexcept { return flags & FLAG_DIRTY; }
     [[nodiscard]] bool isPendingDestroy() const noexcept {
         return flags & FLAG_PENDING_DESTROY;
+    }
+    [[nodiscard]] bool isDying() const noexcept { return flags & FLAG_DYING; }
+
+    void setDying(bool dying) noexcept {
+        if (dying) flags |= FLAG_DYING;
+        else flags &= ~FLAG_DYING;
     }
     [[nodiscard]] bool hasCollision() const noexcept {
         return collisionFlags & COLLISION_ENABLED;
@@ -205,6 +212,10 @@ struct CharacterData {
     float attackDamage{10.0f};
     float attackRange{50.0f};
     float moveSpeed{100.0f};   // Base movement speed
+    float deathTimer{0.0f};    // Countdown until destruction (0 = not dying)
+
+    // Corpse lifetime constant
+    static constexpr float CORPSE_LIFETIME = 2.5f;  // Seconds before removal
 
     // Identity (creature composition)
     CreatureCategory category{CreatureCategory::NPC};  // NPC, Monster, or Animal
@@ -2283,6 +2294,15 @@ public:
     [[nodiscard]] std::span<const size_t> getActiveIndices() const;
 
     /**
+     * @brief Get indices of Active tier entities including dying (for rendering)
+     *
+     * Returns entities that are alive OR dying (in death animation).
+     * Use this for rendering to show death animations before entity removal.
+     * Do NOT use for AI, collision, or other logic - use getActiveIndices() instead.
+     */
+    [[nodiscard]] std::span<const size_t> getRenderableIndices() const;
+
+    /**
      * @brief Get indices of Active tier entities with collision enabled
      * Cached and rebuilt when tiers change or collision is enabled/disabled.
      * Used by CollisionManager to avoid filtering in hot loop.
@@ -2447,6 +2467,10 @@ private:
     std::vector<size_t> m_backgroundIndices;
     std::vector<size_t> m_hibernatedIndices;
     bool m_tierIndicesDirty{true};
+
+    // Renderable indices (alive OR dying, for rendering death animations)
+    mutable std::vector<size_t> m_renderableIndices;
+    mutable bool m_renderableIndicesDirty{true};
 
     // Collision-enabled active indices (cached for CollisionManager optimization)
     mutable std::vector<size_t> m_activeCollisionIndices;
