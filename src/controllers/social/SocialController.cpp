@@ -243,7 +243,7 @@ bool SocialController::tryGift(EntityHandle npcHandle,
         return false;
     }
 
-    auto& edm = EntityDataManager::Instance();
+    const auto& edm = EntityDataManager::Instance();
     size_t npcIdx = edm.getIndex(npcHandle);
     if (npcIdx == SIZE_MAX) {
         SOCIAL_DEBUG("tryGift: NPC not found in EDM");
@@ -361,7 +361,7 @@ void SocialController::reportTheft(EntityHandle thief,
     EventManager::Instance().dispatchEvent(theftEvent, EventManager::DispatchMode::Immediate);
 
     // Get item name for logging
-    auto& rtm = ResourceTemplateManager::Instance();
+    const auto& rtm = ResourceTemplateManager::Instance();
     auto resTemplate = rtm.getResourceTemplate(stolenItem);
     std::string itemName = resTemplate ? resTemplate->getName() : "unknown item";
 

@@ -27,6 +27,7 @@ This Skill enforces SDL3 HammerEngine's quality standards as defined in `CLAUDE.
    - 5.8 Rendering rules (deferred transitions)
    - 5.9 Singleton manager access (no cached pointers, cache when multiple uses)
    - 5.10 Controller access (no cached pointers, cache when multiple uses)
+   - 5.11 Behavior entity state (per-entity state in EDM, not behavior members)
 6. **Copyright & Legal** - License header validation
 7. **Test Coverage** - Verify tests exist for modified code
 
@@ -881,6 +882,113 @@ void GamePlayState::update(float dt) {
 
 **Quality Gate:** ✓ No cached mp_*Ctrl pointers; cache reference when used multiple times (BLOCKING for GameStates)
 
+#### 5.11 Behavior Entity State Pattern (CRITICAL)
+
+**Background:**
+AIBehavior subclasses must store all per-entity mutable state in EDM BehaviorData, not as member variables. This ensures:
+- Thread-safe batch processing (each entity's data at unique memory location)
+- Architectural consistency (single source of truth in EDM)
+- Efficient cloning (behavior config only, no per-entity state)
+
+**Check Commands:**
+```bash
+# Find EntityHandle members in behavior classes (likely per-entity state)
+grep -rn "EntityHandle m_" include/ai/behaviors/ --include="*.hpp"
+
+# Find mutable bool/float/int members that aren't static constexpr (may be per-entity state)
+grep -rn "bool m_\|float m_\|int m_" include/ai/behaviors/ --include="*.hpp" | grep -v "static constexpr"
+
+# Find mutable state that changes during executeLogic (should be in EDM)
+grep -rn "m_.*=" src/ai/behaviors/ --include="*.cpp" | grep "executeLogic\|update"
+```
+
+**FORBIDDEN PATTERNS:**
+
+**Pattern 1: EntityHandle Member Variables for Targets**
+```cpp
+// ✗ FORBIDDEN - Per-entity target stored in behavior instance
+class AttackBehavior : public AIBehavior {
+    EntityHandle m_targetHandle{};      // MOVE TO EDM BehaviorData
+    bool m_hasExplicitTarget{false};    // MOVE TO EDM BehaviorData
+};
+
+// ✓ CORRECT - Target stored in EDM BehaviorData::state.attack
+struct BehaviorData {
+    struct AttackState {
+        EntityHandle explicitTarget;
+        bool hasExplicitTarget;
+        // ... other state
+    };
+};
+
+// Access via context in executeLogic:
+void AttackBehavior::executeLogic(BehaviorContext& ctx) {
+    auto& attack = ctx.behaviorData->state.attack;
+    if (attack.hasExplicitTarget && attack.explicitTarget.isValid()) {
+        // Use EDM data
+    }
+}
+```
+
+**Pattern 2: Mutable State Modified During executeLogic**
+```cpp
+// ✗ FORBIDDEN - Mutable state in behavior instance
+class SomeBehavior : public AIBehavior {
+    float m_lastActionTime{0.0f};  // Changes per-entity - MOVE TO EDM
+    int m_actionCount{0};           // Changes per-entity - MOVE TO EDM
+};
+
+void SomeBehavior::executeLogic(BehaviorContext& ctx) {
+    m_lastActionTime = currentTime;  // RACE if same behavior used by multiple entities!
+    m_actionCount++;
+}
+
+// ✓ CORRECT - State in EDM, accessed via context
+void SomeBehavior::executeLogic(BehaviorContext& ctx) {
+    auto& state = ctx.behaviorData->state.custom;
+    state.lastActionTime = currentTime;  // Per-entity, thread-safe
+    state.actionCount++;
+}
+```
+
+**What CAN be Member Variables (Configuration):**
+```cpp
+class AttackBehavior : public AIBehavior {
+    // ✓ GOOD - Configuration parameters (set once, read-only during update)
+    float m_attackRange{80.0f};
+    float m_attackDamage{10.0f};
+    float m_attackSpeed{1.0f};
+    AttackMode m_attackMode{AttackMode::MELEE};
+
+    // ✓ GOOD - Static constants
+    static constexpr float COMBO_TIMEOUT = 3.0f;
+
+    // ✓ GOOD - RNG (thread_local for thread safety, or mutable with no cross-entity dependency)
+    mutable std::mt19937 m_rng{std::random_device{}()};
+};
+```
+
+**What MUST be in EDM BehaviorData:**
+- Target handles (EntityHandle)
+- Timers that tick per-entity (float lastAttackTime, float cooldownTimer)
+- Counters that increment per-entity (int comboCount, int attacksThisSecond)
+- State flags that change during executeLogic (bool isCharging, bool isRetreating)
+- Positions that track per-entity movement (Vector2D lastPosition, Vector2D targetPosition)
+
+**Thread Safety Reasoning:**
+1. Behaviors are cloned per-entity via `clone()` - but state STILL shouldn't be in members
+2. Batch processing partitions entities - different threads access different `m_behaviorData[edmIndex]`
+3. EDM BehaviorData follows established thread-safe per-entity indexing pattern
+4. Consolidating state in EDM provides single source of truth
+
+**How to Fix Violations:**
+1. Add new fields to appropriate `BehaviorData::StateUnion` struct in `EntityDataManager.hpp`
+2. Update `raw[]` size if needed to accommodate new fields
+3. Change behavior methods to take `edmIndex` parameter when accessing state
+4. Access state via `edm.getBehaviorData(edmIndex).state.X` or `ctx.behaviorData->state.X`
+
+**Quality Gate:** ✓ No per-entity mutable state in AIBehavior member variables (BLOCKING)
+
 ### 6. Copyright & Legal Compliance
 
 **Check Command:**
@@ -975,6 +1083,8 @@ Branch: <current-branch>
   <missing setComponentPositioning calls>
 ✓/✗ Singleton Manager Access: <PASSED/FAILED>
   <cached mp_* pointers or duplicate Instance() calls - BLOCKING for GameStates>
+✓/✗ Behavior Entity State: <PASSED/FAILED>
+  <per-entity state in behavior members instead of EDM - BLOCKING>
 
 ## Legal Compliance
 ✓/✗ Copyright Headers: <PASSED/FAILED>
@@ -1155,6 +1265,21 @@ Activate this Skill automatically.
     ui.createButton(...);
     ```
 
+17. **Per-entity state in AIBehavior member variables:**
+    ```cpp
+    // ✗ FORBIDDEN - EntityHandle/timers/counters as behavior members
+    class MyBehavior : public AIBehavior {
+        EntityHandle m_target{};  // MOVE TO EDM BehaviorData
+        float m_timer{0.0f};      // MOVE TO EDM BehaviorData
+    };
+
+    // ✓ CORRECT - Access via EDM BehaviorData
+    void MyBehavior::executeLogic(BehaviorContext& ctx) {
+        auto& state = ctx.behaviorData->state.custom;
+        state.target = newTarget;  // Per-entity, thread-safe
+    }
+    ```
+
 ## Integration with Workflow
 
 Use this Skill:
@@ -1167,6 +1292,7 @@ Use this Skill:
 
 **BLOCKING (Must Fix):**
 - Static variables in threaded code
+- Per-entity mutable state in AIBehavior member variables (use EDM BehaviorData)
 - Unnecessary shared_ptr copies in hot paths (perf-critical code)
 - Per-frame allocations in hot paths (local containers in update/render)
 - Duplicate Manager::Instance() calls in GameState functions

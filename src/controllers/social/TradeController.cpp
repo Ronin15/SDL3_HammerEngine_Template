@@ -379,7 +379,7 @@ void TradeController::createTradeUI() {
 
     // Set up list selection callbacks
     ui.setOnClick(UI_MERCHANT_LIST, [this]() {
-        auto& uiMgr = UIManager::Instance();
+        const auto& uiMgr = UIManager::Instance();
         int idx = uiMgr.getSelectedListItem(UI_MERCHANT_LIST);
         if (idx >= 0) {
             selectMerchantItem(static_cast<size_t>(idx));
@@ -387,7 +387,7 @@ void TradeController::createTradeUI() {
     });
 
     ui.setOnClick(UI_PLAYER_LIST, [this]() {
-        auto& uiMgr = UIManager::Instance();
+        const auto& uiMgr = UIManager::Instance();
         int idx = uiMgr.getSelectedListItem(UI_PLAYER_LIST);
         if (idx >= 0) {
             selectPlayerItem(static_cast<size_t>(idx));
@@ -403,8 +403,8 @@ void TradeController::destroyTradeUI() {
 void TradeController::refreshMerchantItems() {
     m_merchantItems.clear();
 
-    auto& edm = EntityDataManager::Instance();
-    auto& rtm = ResourceTemplateManager::Instance();
+    const auto& edm = EntityDataManager::Instance();
+    const auto& rtm = ResourceTemplateManager::Instance();
 
     uint32_t invIdx = getNPCInventoryIndex(m_merchantHandle);
     if (invIdx == INVALID_INVENTORY_INDEX) {
@@ -438,8 +438,8 @@ void TradeController::refreshPlayerItems() {
         return;
     }
 
-    auto& edm = EntityDataManager::Instance();
-    auto& rtm = ResourceTemplateManager::Instance();
+    const auto& edm = EntityDataManager::Instance();
+    const auto& rtm = ResourceTemplateManager::Instance();
 
     uint32_t invIdx = player->getInventoryIndex();
     if (invIdx == INVALID_INVENTORY_INDEX) {
