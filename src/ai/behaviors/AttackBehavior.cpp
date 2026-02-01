@@ -248,9 +248,32 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
   auto &data = *ctx.behaviorData;
   auto &attack = data.state.attack;
 
-  // Use cached player info from context (lock-free, cached once per frame)
-  Vector2D targetPos = ctx.playerPosition;
-  bool hasTarget = ctx.playerValid;
+  // Determine target position - explicit target takes priority over player
+  Vector2D targetPos;
+  bool hasTarget = false;
+
+  if (m_hasExplicitTarget && m_targetHandle.isValid()) {
+    auto& edm = EntityDataManager::Instance();
+    size_t targetIdx = edm.getIndex(m_targetHandle);
+    if (targetIdx != SIZE_MAX) {
+      const auto& targetHot = edm.getHotDataByIndex(targetIdx);
+      if (targetHot.isAlive()) {
+        targetPos = targetHot.transform.position;
+        hasTarget = true;
+      }
+    }
+    // Clear stale explicit target if invalid/dead
+    if (!hasTarget) {
+      m_hasExplicitTarget = false;
+      m_targetHandle = EntityHandle{};
+    }
+  }
+
+  // Fall back to player if no explicit target
+  if (!hasTarget && ctx.playerValid) {
+    targetPos = ctx.playerPosition;
+    hasTarget = true;
+  }
 
   // Neutral entities (faction=2) become enemy (faction=1) when attacking
   if (hasTarget && ctx.edmIndex != SIZE_MAX) {
@@ -259,8 +282,9 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
     if (charData.faction == 2) { // Neutral
       edm.setFaction(edm.getHandle(ctx.edmIndex), 1); // Become Enemy
 
-      // Alert guards that the player is under attack
-      AIManager::Instance().broadcastMessage("player_under_attack");
+      // Alert guards that the player is under attack (immediate delivery)
+      AI_INFO("NPC became hostile - broadcasting player_under_attack");
+      AIManager::Instance().broadcastMessage("player_under_attack", true);
     }
   }
 
@@ -518,7 +542,40 @@ std::shared_ptr<AIBehavior> AttackBehavior::clone() const {
 }
 
 EntityHandle AttackBehavior::getTargetHandle() const {
+  // Check explicit target first (NPC-vs-NPC combat)
+  if (m_hasExplicitTarget && m_targetHandle.isValid()) {
+    // Verify target is still alive
+    auto& edm = EntityDataManager::Instance();
+    size_t targetIdx = edm.getIndex(m_targetHandle);
+    if (targetIdx != SIZE_MAX) {
+      const auto& hotData = edm.getHotDataByIndex(targetIdx);
+      if (hotData.isAlive()) {
+        return m_targetHandle;
+      }
+    }
+    // Target is dead or invalid - clear it
+    // Note: Can't clear here as this is const - will be cleared in executeLogic
+  }
+  // Fall back to player
   return AIManager::Instance().getPlayerHandle();
+}
+
+void AttackBehavior::setTarget(EntityHandle target) {
+  m_targetHandle = target;
+  m_hasExplicitTarget = target.isValid();
+}
+
+void AttackBehavior::clearTarget() {
+  m_targetHandle = EntityHandle{};
+  m_hasExplicitTarget = false;
+}
+
+EntityHandle AttackBehavior::getTarget() const {
+  return m_targetHandle;
+}
+
+bool AttackBehavior::hasExplicitTarget() const {
+  return m_hasExplicitTarget;
 }
 
 Vector2D AttackBehavior::getTargetPosition() const {
@@ -755,9 +812,12 @@ void AttackBehavior::executeAttack(size_t edmIndex, const Vector2D &targetPos,
   Vector2D knockback = calculateKnockbackVector(entityPos, targetPos);
   knockback = knockback * m_knockbackForce;
 
+  // Get attacker handle for victim's memory
+  EntityHandle attackerHandle = edm.getHandle(edmIndex);
+
   // Apply damage via handle-based system
   EntityHandle targetHandle = getTargetHandle();
-  applyDamageToTarget(targetHandle, damage, knockback);
+  applyDamageToTarget(targetHandle, damage, knockback, attackerHandle);
 
   // Update attack state
   attack.attackTimer = 0.0f;
@@ -795,7 +855,8 @@ void AttackBehavior::executeSpecialAttack(size_t edmIndex,
                        (m_knockbackForce * SPECIAL_ATTACK_MULTIPLIER);
 
   EntityHandle targetHandle = getTargetHandle();
-  applyDamageToTarget(targetHandle, specialDamage, knockback);
+  EntityHandle attackerHandle = edm.getHandle(edmIndex);
+  applyDamageToTarget(targetHandle, specialDamage, knockback, attackerHandle);
 
   attack.attackTimer = 0.0f;
   attack.specialAttackReady = false;
@@ -823,7 +884,8 @@ void AttackBehavior::executeComboAttack(size_t edmIndex,
                          (m_knockbackForce * COMBO_FINISHER_MULTIPLIER);
 
     EntityHandle targetHandle = getTargetHandle();
-    applyDamageToTarget(targetHandle, comboDamage, knockback);
+    EntityHandle attackerHandle = edm.getHandle(edmIndex);
+    applyDamageToTarget(targetHandle, comboDamage, knockback, attackerHandle);
 
     // Reset combo
     attack.currentCombo = 0;
@@ -835,7 +897,8 @@ void AttackBehavior::executeComboAttack(size_t edmIndex,
 
 void AttackBehavior::applyDamageToTarget(EntityHandle targetHandle,
                                          float damage,
-                                         const Vector2D &knockback) {
+                                         const Vector2D &knockback,
+                                         EntityHandle attackerHandle) {
   if (!targetHandle.isValid()) {
     return;
   }
@@ -856,9 +919,34 @@ void AttackBehavior::applyDamageToTarget(EntityHandle targetHandle,
   charData.health = std::max(0.0f, charData.health - damage);
   hotData.transform.velocity = hotData.transform.velocity + scaledKnockback;
 
-  // Check for death
-  if (charData.health <= 0.0f) {
-    hotData.flags &= ~EntityHotData::FLAG_ALIVE;
+  // Record attacker in victim's memory (enables guards to detect threats)
+  if (attackerHandle.isValid() && edm.hasMemoryData(idx)) {
+    auto &memData = edm.getMemoryData(idx);
+    memData.lastAttacker = attackerHandle;
+    memData.lastCombatTime = 0.0f;  // Mark as recent
+  }
+
+  // Combat response for NPC-vs-NPC attacks (when target is NPC, not player)
+  if (targetHandle.getKind() == EntityKind::NPC && charData.faction != 1) {
+    // Friendly (0) or Neutral (2) NPC was attacked - they should flee
+    AIManager::Instance().assignBehavior(targetHandle, "Flee");
+
+    // Alert guards that a friendly is under attack (immediate delivery)
+    AI_INFO("Friendly NPC attacked - broadcasting friendly_under_attack");
+    AIManager::Instance().broadcastMessage("friendly_under_attack", true);
+  }
+
+  // Check for death - transition to dying state
+  if (charData.health <= 0.0f && hotData.isAlive()) {
+    hotData.flags &= ~EntityHotData::FLAG_ALIVE;  // No longer alive
+    hotData.setDying(true);                        // Start death state
+    charData.deathTimer = CharacterData::CORPSE_LIFETIME;  // Start corpse timer
+
+    // Clear target if this was our explicit target (they're dead now)
+    if (m_hasExplicitTarget && m_targetHandle == targetHandle) {
+      m_hasExplicitTarget = false;
+      m_targetHandle = EntityHandle{};
+    }
   }
 }
 

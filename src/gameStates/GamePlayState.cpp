@@ -34,6 +34,7 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <random>
 
 #ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
@@ -954,6 +955,12 @@ void GamePlayState::setupTestVillage() {
   GAMEPLAY_INFO(std::format("Setting up test village at ({:.0f}, {:.0f})",
                             villageCenter.getX(), villageCenter.getY()));
 
+  // Random race selection for village diversity
+  static thread_local std::mt19937 rng{std::random_device{}()};
+  static constexpr const char* friendlyRaces[] = {"Human", "Elf", "Dwarf"};
+  std::uniform_int_distribution<size_t> raceDist(0, 2);
+  auto getRandomFriendlyRace = [&]() { return friendlyRaces[raceDist(rng)]; };
+
   // ========================================================================
   // MERCHANTS - Arranged in a semi-circle for easy access
   // ========================================================================
@@ -975,13 +982,14 @@ void GamePlayState::setupTestVillage() {
   int merchantCount = 0;
   for (const auto& spawn : merchants) {
     Vector2D pos = villageCenter + spawn.offset;
-    EntityHandle handle = edm.createNPCWithRaceClass(pos, "Human", spawn.npcClass);
+    const char* race = getRandomFriendlyRace();
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, race, spawn.npcClass);
     if (handle.isValid()) {
       // Merchants stay idle at their posts
       aiMgr.assignBehavior(handle, "Idle");
       merchantCount++;
-      GAMEPLAY_DEBUG(std::format("Spawned {} at ({:.0f}, {:.0f})",
-                                 spawn.npcClass, pos.getX(), pos.getY()));
+      GAMEPLAY_DEBUG(std::format("Spawned {} {} at ({:.0f}, {:.0f})",
+                                 race, spawn.npcClass, pos.getX(), pos.getY()));
     }
   }
 
@@ -1000,7 +1008,8 @@ void GamePlayState::setupTestVillage() {
   int guardCount = 0;
   for (const auto& offset : guardOffsets) {
     Vector2D pos = villageCenter + offset;
-    EntityHandle handle = edm.createNPCWithRaceClass(pos, "Human", "Guard");
+    const char* race = getRandomFriendlyRace();
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, race, "Guard");
     if (handle.isValid()) {
       // Guards use Guard behavior (stationary but alert)
       aiMgr.assignBehavior(handle, "Guard");
@@ -1028,7 +1037,8 @@ void GamePlayState::setupTestVillage() {
   int villagerCount = 0;
   for (const auto& spawn : villagers) {
     Vector2D pos = villageCenter + spawn.offset;
-    EntityHandle handle = edm.createNPCWithRaceClass(pos, "Human", spawn.npcClass);
+    const char* race = getRandomFriendlyRace();
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, race, spawn.npcClass);
     if (handle.isValid()) {
       aiMgr.assignBehavior(handle, spawn.behavior);
       villagerCount++;
@@ -1048,20 +1058,20 @@ void GamePlayState::setupTestVillage() {
   const char* hostileClasses[] = {"Warrior", "Rogue", "Ranger"};
   for (size_t i = 0; i < hostileOffsets.size(); ++i) {
     Vector2D pos = villageCenter + hostileOffsets[i];
-    // Spawn as Neutral (faction 2) - they become Enemy when they attack
+    // Orcs spawn as Neutral (faction 2) - they become Enemy when they attack
     EntityHandle handle = edm.createNPCWithRaceClass(
-        pos, "Human", hostileClasses[i % 3], Sex::Unknown, 2);
+        pos, "Orc", hostileClasses[i % 3], Sex::Unknown, 2);
     if (handle.isValid()) {
-      // NPCs with Attack behavior will attack, becoming enemies
+      // Orcs with Attack behavior will attack, becoming enemies
       aiMgr.assignBehavior(handle, "Attack");
       hostileCount++;
     }
   }
 
-  // Add a Mage for ranged combat testing (already Neutral by default)
+  // Add an Orc Mage for ranged combat testing - Neutral until they attack
   {
     Vector2D pos = villageCenter + Vector2D(300.0f, 200.0f);
-    EntityHandle handle = edm.createNPCWithRaceClass(pos, "Human", "Mage");
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, "Orc", "Mage", Sex::Unknown, 2);
     if (handle.isValid()) {
       aiMgr.assignBehavior(handle, "Attack");
       hostileCount++;

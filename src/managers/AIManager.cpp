@@ -628,12 +628,12 @@ void AIManager::assignBehavior(EntityHandle handle,
       // Refresh EDM index if needed
       size_t edmIndex = edm.getIndex(handle);
 
-      // Initialize BehaviorData in EDM (single source of truth for
-      // behaviorType)
+      // Initialize BehaviorData in EDM (single source of truth for behaviorType)
       if (edmIndex != SIZE_MAX) {
         BehaviorType btype = inferBehaviorType(behaviorName);
         EntityDataManager::Instance().initBehaviorData(edmIndex, btype);
       }
+
       if (index < m_storage.edmIndices.size()) {
         m_storage.edmIndices[index] = edmIndex;
       }
@@ -684,6 +684,79 @@ void AIManager::assignBehavior(EntityHandle handle,
     m_handleToIndex[handle] = newIndex;
 
     AI_INFO(std::format("Added new entity with behavior: {}", behaviorName));
+  }
+
+  m_totalAssignmentCount.fetch_add(1, std::memory_order_relaxed);
+}
+
+void AIManager::assignBehaviorDirect(EntityHandle handle,
+                                     std::shared_ptr<AIBehavior> behavior) {
+  if (!handle.isValid()) {
+    AI_ERROR("Cannot assign behavior to invalid handle");
+    return;
+  }
+  if (!behavior) {
+    AI_ERROR("Cannot assign null behavior");
+    return;
+  }
+
+  // Initialize behavior for this entity (handles its own BehaviorData init)
+  behavior->init(handle);
+
+  const auto& edm = EntityDataManager::Instance();
+
+  // Find or create entity entry
+  std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
+
+  auto indexIt = m_handleToIndex.find(handle);
+  if (indexIt != m_handleToIndex.end()) {
+    // Update existing entity
+    size_t index = indexIt->second;
+    if (index < m_storage.size()) {
+      if (m_storage.behaviors[index]) {
+        m_storage.behaviors[index]->clean(handle);
+      }
+      m_storage.behaviors[index] = behavior;
+      if (!m_storage.hotData[index].active) {
+        m_storage.hotData[index].active = true;
+      }
+
+      size_t edmIndex = edm.getIndex(handle);
+      if (index < m_storage.edmIndices.size()) {
+        m_storage.edmIndices[index] = edmIndex;
+      }
+      if (edmIndex != SIZE_MAX) {
+        if (m_edmToStorageIndex.size() <= edmIndex) {
+          m_edmToStorageIndex.resize(edmIndex + 1, SIZE_MAX);
+        }
+        m_edmToStorageIndex[edmIndex] = index;
+      }
+
+      AI_INFO(std::format("Assigned behavior directly: {}", behavior->getName()));
+    }
+  } else {
+    // Add new entity
+    size_t newIndex = m_storage.size();
+    AIEntityData::HotData hotData{};
+    hotData.active = true;
+
+    m_storage.hotData.push_back(hotData);
+    m_storage.handles.push_back(handle);
+    m_storage.behaviors.push_back(behavior);
+    m_storage.lastUpdateTimes.push_back(0.0f);
+
+    size_t edmIndex = edm.getIndex(handle);
+    m_storage.edmIndices.push_back(edmIndex);
+
+    if (edmIndex != SIZE_MAX) {
+      if (m_edmToStorageIndex.size() <= edmIndex) {
+        m_edmToStorageIndex.resize(edmIndex + 1, SIZE_MAX);
+      }
+      m_edmToStorageIndex[edmIndex] = newIndex;
+    }
+
+    m_handleToIndex[handle] = newIndex;
+    AI_INFO(std::format("Added new entity with direct behavior: {}", behavior->getName()));
   }
 
   m_totalAssignmentCount.fetch_add(1, std::memory_order_relaxed);

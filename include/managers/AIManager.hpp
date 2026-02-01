@@ -181,6 +181,17 @@ public:
   void assignBehavior(EntityHandle handle, const std::string &behaviorName);
 
   /**
+   * @brief Assigns a pre-configured behavior to an entity (skips clone)
+   * @param handle Entity to assign behavior to
+   * @param behavior Pre-configured behavior instance (will NOT be cloned)
+   *
+   * Use this when the behavior has been configured with target-specific data
+   * (e.g., AttackBehavior with setTarget()) that would be lost by cloning.
+   */
+  void assignBehaviorDirect(EntityHandle handle,
+                            std::shared_ptr<AIBehavior> behavior);
+
+  /**
    * @brief Removes behavior assignment from an entity
    */
   void unassignBehavior(EntityHandle handle);
