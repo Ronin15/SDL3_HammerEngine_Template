@@ -129,7 +129,7 @@ private:
   size_t m_currentWeatherIndex{0};
 
   // NPC spawn demo variables
-  std::vector<std::string> m_npcTypes{"Guard", "Villager", "Merchant",
+  std::vector<std::string> m_npcTypes{"Guard", "Farmer", "GeneralMerchant",
                                       "Warrior"};
   size_t m_currentNPCTypeIndex{0};
 

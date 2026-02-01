@@ -624,11 +624,8 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
 
   // Render UI components (update moved to update() for consistent frame timing)
   if (!uiMgr.isShutdown()) {
-    // Lazy-cache weather string (only compute when enum changes)
-    if (m_currentWeather != m_lastCachedWeather) {
-      m_cachedWeatherStr = getCurrentWeatherString();
-      m_lastCachedWeather = m_currentWeather;
-    }
+    // Get weather string from local m_currentWeather (updated by triggerWeatherDemo)
+    std::string currentWeatherStr = getCurrentWeatherString();
 
     float const currentFPS = mp_stateManager->getCurrentFPS();
     // Use cached NPC count from update() to avoid EDM query in render path
@@ -637,17 +634,17 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
     // Update if FPS changed by more than 0.05 (avoids flicker) or other values
     // changed
     if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
-        m_cachedWeatherStr != m_lastDisplayedWeather ||
+        currentWeatherStr != m_lastDisplayedWeather ||
         npcCount != m_lastDisplayedNPCCount) {
 
       m_statusBuffer.clear();
       std::format_to(std::back_inserter(m_statusBuffer),
                      "FPS: {:.1f} | Weather: {} | NPCs: {}", currentFPS,
-                     m_cachedWeatherStr, npcCount);
+                     currentWeatherStr, npcCount);
       uiMgr.setText("event_status", m_statusBuffer);
 
       m_lastDisplayedFPS = currentFPS;
-      m_lastDisplayedWeather = m_cachedWeatherStr;
+      m_lastDisplayedWeather = currentWeatherStr;
       m_lastDisplayedNPCCount = npcCount;
     }
   }
@@ -1066,7 +1063,7 @@ void EventDemoState::triggerMassNPCSpawnDemo() {
 
   // Spawn 200 NPCs via event system - random races, rotating through 6 behaviors
   EventManager::Instance().spawnNPC(
-      "Villager",                                           // npcType
+      "Farmer",                                             // npcType
       playerPos.getX(), playerPos.getY(),                   // center position
       200,                                                  // count
       1500.0f,                                              // spawnRadius
@@ -1101,8 +1098,8 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
       std::format("conv_guards_{}", m_convenienceDemoCounter), "Guard", 2,
       30.0f);
   bool success6 = eventMgr.createNPCSpawnEvent(
-      std::format("conv_merchants_{}", m_convenienceDemoCounter), "Merchant", 1,
-      15.0f);
+      std::format("conv_merchants_{}", m_convenienceDemoCounter),
+      "GeneralMerchant", 1, 15.0f);
 
   int const successCount =
       success1 + success2 + success3 + success4 + success5 + success6;
@@ -1516,21 +1513,23 @@ void EventDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   // Update status text before recording UI vertices
   auto &uiMgr = UIManager::Instance();
   {
+    // Get weather string from local m_currentWeather
+    std::string currentWeatherStr = getCurrentWeatherString();
     float currentFPS = mp_stateManager->getCurrentFPS();
     size_t npcCount = m_cachedNPCCount;
 
     if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
-        m_cachedWeatherStr != m_lastDisplayedWeather ||
+        currentWeatherStr != m_lastDisplayedWeather ||
         npcCount != m_lastDisplayedNPCCount) {
 
       m_statusBuffer.clear();
       std::format_to(std::back_inserter(m_statusBuffer),
                      "FPS: {:.1f} | Weather: {} | NPCs: {}", currentFPS,
-                     m_cachedWeatherStr, npcCount);
+                     currentWeatherStr, npcCount);
       uiMgr.setText("event_status", m_statusBuffer);
 
       m_lastDisplayedFPS = currentFPS;
-      m_lastDisplayedWeather = m_cachedWeatherStr;
+      m_lastDisplayedWeather = currentWeatherStr;
       m_lastDisplayedNPCCount = npcCount;
     }
   }
