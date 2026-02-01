@@ -731,8 +731,6 @@ void GuardBehavior::handleThreatDetection(BehaviorContext &ctx,
     // Check if close enough to engage in combat
     {
       float distance = (ctx.transform.position - threatPos).length();
-      AI_DEBUG(std::format("Guard HOSTILE - distance to threat: {:.1f}, engage range: {:.1f}",
-                           distance, m_attackEngageRange));
       if (distance <= m_attackEngageRange) {
         // Transition to Attack behavior for combat engagement
         auto &aiMgr = AIManager::Instance();

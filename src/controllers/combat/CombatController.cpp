@@ -53,9 +53,6 @@ void CombatController::update(float deltaTime) {
 
   // Update target display timer
   updateTargetTimer(deltaTime);
-
-  // Process death timers for dying entities
-  processDeathTimers(deltaTime);
 }
 
 bool CombatController::tryAttack() {
@@ -298,29 +295,4 @@ float CombatController::getTargetHealth() const {
   }
 
   return edm.getCharacterDataByIndex(idx).health;
-}
-
-void CombatController::processDeathTimers(float deltaTime) {
-  auto& edm = EntityDataManager::Instance();
-
-  // Use renderable indices (includes alive OR dying entities in Active tier)
-  // This is safer than raw iteration - indices are validated
-  for (size_t idx : edm.getRenderableIndices()) {
-    const auto& hot = edm.getHotDataByIndex(idx);
-    if (!hot.isDying()) continue;
-
-    // Only characters (NPC/Player) have death timers
-    if (hot.kind != EntityKind::NPC && hot.kind != EntityKind::Player) continue;
-
-    auto& charData = edm.getCharacterDataByIndex(idx);
-    charData.deathTimer -= deltaTime;
-
-    if (charData.deathTimer <= 0.0f) {
-      // Corpse timer expired - queue for destruction
-      EntityHandle handle = edm.getHandle(idx);
-      edm.destroyEntity(handle);
-      COMBAT_DEBUG(std::format("Corpse {} removed after death timer expired",
-                               handle.getId()));
-    }
-  }
 }

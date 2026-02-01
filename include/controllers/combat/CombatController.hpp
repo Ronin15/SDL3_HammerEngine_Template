@@ -130,15 +130,6 @@ private:
      */
     void updateTargetTimer(float deltaTime);
 
-    /**
-     * @brief Process death timers for dying entities
-     * @param deltaTime Frame delta time in seconds
-     *
-     * Decrements deathTimer for entities with FLAG_DYING set.
-     * When timer expires, entity is queued for destruction.
-     */
-    void processDeathTimers(float deltaTime);
-
     // Player reference (set via setPlayer())
     std::weak_ptr<Player> mp_player;
 
