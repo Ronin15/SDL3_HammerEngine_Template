@@ -821,6 +821,187 @@ BOOST_AUTO_TEST_CASE(TestMultipleEntitiesDifferentBehaviors) {
     BOOST_CHECK_GT(finalBehaviorCount, initialBehaviorCount);
 }
 
+// Test that verifies behavior state persists after transition (regression test for init/clean order bug)
+// Bug: Previously clean() was called AFTER init(), wiping the new behavior's freshly initialized state
+BOOST_AUTO_TEST_CASE(TestGuardToAttackTransitionStatePreserved) {
+    auto entity = testEntities[0];
+    EntityHandle handle = entity->getHandle();
+    auto& edm = EntityDataManager::Instance();
+
+    // Start with Guard behavior
+    AIManager::Instance().registerEntity(handle, "Guard");
+    updateAI(0.016f);  // Allow behavior to initialize
+
+    size_t edmIdx = edm.getIndex(handle);
+    BOOST_REQUIRE_NE(edmIdx, SIZE_MAX);
+
+    // Verify Guard state is valid
+    BOOST_CHECK(edm.hasBehaviorData(edmIdx));
+    auto& guardData = edm.getBehaviorData(edmIdx);
+    BOOST_CHECK(guardData.isValid());
+    BOOST_CHECK(guardData.isInitialized());
+
+    // Now transition to Attack behavior (the problematic transition)
+    AIManager::Instance().assignBehavior(handle, "Attack");
+    updateAI(0.016f);  // Process the transition
+
+    // CRITICAL CHECK: Attack behavior state must be valid after transition
+    // Before the fix, clean() was called after init(), wiping attack state
+    BOOST_CHECK(edm.hasBehaviorData(edmIdx));
+    auto& attackData = edm.getBehaviorData(edmIdx);
+    BOOST_CHECK_MESSAGE(attackData.isValid(),
+        "BehaviorData should be valid after Guard->Attack transition");
+    BOOST_CHECK_MESSAGE(attackData.isInitialized(),
+        "BehaviorData should be initialized after Guard->Attack transition");
+
+    // Verify entity can still function (execute behavior without crash)
+    for (int i = 0; i < 10; ++i) {
+        updateAI(0.016f);
+    }
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
+
+    // Cleanup
+    AIManager::Instance().unassignBehavior(handle);
+    AIManager::Instance().unregisterEntity(handle);
+}
+
+// Test that all behavior transitions preserve state correctly
+BOOST_AUTO_TEST_CASE(TestAllBehaviorTransitionsPreserveState) {
+    auto entity = testEntities[0];
+    EntityHandle handle = entity->getHandle();
+    auto& edm = EntityDataManager::Instance();
+
+    // Test transitions between all core behaviors
+    std::vector<std::pair<std::string, std::string>> transitions = {
+        {"Idle", "Wander"},
+        {"Wander", "Chase"},
+        {"Chase", "Attack"},
+        {"Attack", "Flee"},
+        {"Flee", "Guard"},
+        {"Guard", "Attack"},  // Critical transition that was buggy
+        {"Attack", "Follow"},
+        {"Follow", "Idle"}
+    };
+
+    for (const auto& [fromBehavior, toBehavior] : transitions) {
+        // Start with first behavior
+        AIManager::Instance().registerEntity(handle, fromBehavior);
+        updateAI(0.016f);
+
+        size_t edmIdx = edm.getIndex(handle);
+        BOOST_REQUIRE_NE(edmIdx, SIZE_MAX);
+        BOOST_CHECK_MESSAGE(edm.hasBehaviorData(edmIdx),
+            "Should have behavior data for " + fromBehavior);
+
+        // Transition to second behavior
+        AIManager::Instance().assignBehavior(handle, toBehavior);
+        updateAI(0.016f);
+
+        // Verify state after transition
+        BOOST_CHECK_MESSAGE(edm.hasBehaviorData(edmIdx),
+            "Should have behavior data after " + fromBehavior + " -> " + toBehavior);
+
+        auto& behaviorData = edm.getBehaviorData(edmIdx);
+        BOOST_CHECK_MESSAGE(behaviorData.isValid(),
+            "BehaviorData should be valid after " + fromBehavior + " -> " + toBehavior);
+        BOOST_CHECK_MESSAGE(behaviorData.isInitialized(),
+            "BehaviorData should be initialized after " + fromBehavior + " -> " + toBehavior);
+
+        // Verify entity can execute new behavior
+        updateAI(0.016f);
+        BOOST_CHECK_MESSAGE(AIManager::Instance().hasBehavior(handle),
+            "Entity should still have behavior after " + fromBehavior + " -> " + toBehavior);
+
+        // Clean up for next iteration
+        AIManager::Instance().unassignBehavior(handle);
+        AIManager::Instance().unregisterEntity(handle);
+    }
+}
+
+// Stress test: rapid transitions should not corrupt state
+BOOST_AUTO_TEST_CASE(TestRapidBehaviorTransitionsStability) {
+    auto entity = testEntities[0];
+    EntityHandle handle = entity->getHandle();
+    auto& edm = EntityDataManager::Instance();
+
+    std::vector<std::string> behaviors = {
+        "Idle", "Wander", "Chase", "Attack", "Flee", "Guard", "Follow"
+    };
+
+    // Register initially
+    AIManager::Instance().registerEntity(handle, "Idle");
+    updateAI(0.016f);
+
+    // Rapidly switch behaviors with minimal updates between
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        for (const auto& behavior : behaviors) {
+            AIManager::Instance().assignBehavior(handle, behavior);
+            updateAI(0.016f);  // Single update between transitions
+
+            size_t edmIdx = edm.getIndex(handle);
+            BOOST_REQUIRE_NE(edmIdx, SIZE_MAX);
+
+            // State must remain valid even under rapid transitions
+            BOOST_CHECK(edm.hasBehaviorData(edmIdx));
+            auto& behaviorData = edm.getBehaviorData(edmIdx);
+            BOOST_CHECK_MESSAGE(behaviorData.isValid(),
+                "BehaviorData corrupt during rapid transitions at cycle " +
+                std::to_string(cycle) + ", behavior " + behavior);
+        }
+    }
+
+    // Final verification: entity should be fully functional
+    for (int i = 0; i < 20; ++i) {
+        updateAI(0.016f);
+    }
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
+
+    // Cleanup
+    AIManager::Instance().unassignBehavior(handle);
+    AIManager::Instance().unregisterEntity(handle);
+}
+
+// Test assignBehaviorDirect also preserves state (was also buggy)
+BOOST_AUTO_TEST_CASE(TestAssignBehaviorDirectStatePreserved) {
+    auto entity = testEntities[0];
+    EntityHandle handle = entity->getHandle();
+    auto& edm = EntityDataManager::Instance();
+
+    // Register with Guard behavior
+    AIManager::Instance().registerEntity(handle, "Guard");
+    updateAI(0.016f);
+
+    size_t edmIdx = edm.getIndex(handle);
+    BOOST_REQUIRE_NE(edmIdx, SIZE_MAX);
+
+    // Get Attack behavior directly and assign via assignBehaviorDirect
+    auto attackBehavior = AIManager::Instance().getBehavior("Attack");
+    BOOST_REQUIRE(attackBehavior != nullptr);
+
+    // Clone and assign directly (simulates runtime behavior switching)
+    auto clonedAttack = attackBehavior->clone();
+    AIManager::Instance().assignBehaviorDirect(handle, clonedAttack);
+    updateAI(0.016f);
+
+    // Verify state is valid after direct assignment
+    BOOST_CHECK(edm.hasBehaviorData(edmIdx));
+    auto& behaviorData = edm.getBehaviorData(edmIdx);
+    BOOST_CHECK_MESSAGE(behaviorData.isValid(),
+        "BehaviorData should be valid after assignBehaviorDirect");
+    BOOST_CHECK_MESSAGE(behaviorData.isInitialized(),
+        "BehaviorData should be initialized after assignBehaviorDirect");
+
+    // Verify entity can function with directly assigned behavior
+    for (int i = 0; i < 10; ++i) {
+        updateAI(0.016f);
+    }
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
+
+    // Cleanup
+    AIManager::Instance().unassignBehavior(handle);
+    AIManager::Instance().unregisterEntity(handle);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 // Test Suite 8: Performance and Integration Testing
