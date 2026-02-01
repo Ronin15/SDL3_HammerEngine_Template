@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 71 test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTime simulation, controller systems, entity state management, entity data management, NPC memory system, background simulation, EDM integration tests, GPU rendering subsystem (when USE_SDL3_GPU=ON), and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 71 test executables covering AI systems, AI behaviors, behavior state transitions, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTime simulation, controller systems, entity state management, entity data management, NPC memory system, background simulation, EDM integration tests, GPU rendering subsystem (when USE_SDL3_GPU=ON), and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -13,7 +13,8 @@ The Hammer Game Engine has the following test suites:
    - Thread-Safe AI Tests: Validate thread safety of the AI management system
    - Thread-Safe AI Integration Tests: Test integration of AI components with threading
    - AI Benchmark Tests: Measure performance characteristics and scaling capabilities
-   - Behavior Functionality Tests: Comprehensive validation of all 8 AI behaviors and their modes
+   - Behavior Functionality Tests: Comprehensive validation of all 8 AI behaviors, modes, and behavior transitions
+   - Behavior Transition Tests: Validate state preservation during behavior switches (e.g., Guard→Attack)
    - ThreadSystem Queue Load Tests: Defensive monitoring to prevent ThreadSystem overload
    - AIManager EDM Integration Tests: Validate AIManager's integration with EntityDataManager (sparse behavior vector, batch processing, state transitions)
 
@@ -324,6 +325,59 @@ Special considerations for thread-safety tests:
 - Disable threading before cleanup to prevent segmentation faults
 - Allow time between operations for thread synchronization
 - Use timeout when waiting for futures to prevent hanging
+
+### Behavior Functionality Tests
+
+Located in `BehaviorFunctionalityTest.cpp`, these tests comprehensively validate all 8 AI behaviors:
+
+1. **Behavior Registration and Assignment**: Tests that all behaviors and variants are registered
+2. **Idle Behavior Testing**: Validates stationary, sway, turn, and fidget modes
+3. **Movement Behavior Testing**: Tests Wander, Chase, and Flee behaviors with path following
+4. **Complex Behavior Testing**: Validates Follow, Guard, and Attack behaviors
+5. **Message System Testing**: Tests behavior-specific and broadcast messages
+6. **Behavior Mode Testing**: Tests all behavior variants (FollowClose, AttackMelee, etc.)
+7. **Behavior Transitions**: Critical tests for state preservation during behavior switches
+8. **Performance Testing**: Large-scale entity testing and memory management validation
+
+### Behavior Transition Tests
+
+Located in `BehaviorFunctionalityTest.cpp` (BehaviorTransitionTests suite), these tests specifically validate that behavior state is preserved during transitions. This addresses a critical bug where `clean()` was called after `init()`, causing new behavior state to be wiped.
+
+**Test Cases:**
+
+1. **TestGuardToAttackTransitionStatePreserved**: Tests the specific Guard→Attack transition that was previously buggy. Verifies:
+   - BehaviorData remains valid after transition
+   - BehaviorData is properly initialized after transition
+   - Entity can continue executing behaviors after transition
+
+2. **TestAllBehaviorTransitionsPreserveState**: Tests all behavior pair transitions:
+   - Idle→Wander, Wander→Chase, Chase→Attack, Attack→Flee
+   - Flee→Guard, Guard→Attack (critical path), Attack→Follow, Follow→Idle
+   - Verifies `isValid()` and `isInitialized()` after each transition
+
+3. **TestRapidBehaviorTransitionsStability**: Stress tests rapid behavior switching:
+   - Cycles through all 7 behaviors 3 times
+   - Single update between each transition
+   - Validates no state corruption under rapid transitions
+
+4. **TestAssignBehaviorDirectStatePreserved**: Tests the `assignBehaviorDirect()` API path:
+   - Direct behavior instance assignment (used by combat system)
+   - Verifies same state preservation guarantees as `assignBehavior()`
+
+**What These Tests Catch:**
+- Init/clean order bugs: When `clean()` is called after `init()`, wiping new behavior state
+- BehaviorData initialization failures during transitions
+- State corruption from concurrent behavior assignment
+- Missing `initBehaviorData()` calls in assignment paths
+
+**Running Transition Tests:**
+```bash
+# Run all transition tests
+./bin/debug/behavior_functionality_tests --run_test="BehaviorTransitionTests/*"
+
+# Run specific transition test
+./bin/debug/behavior_functionality_tests --run_test="BehaviorTransitionTests/TestGuardToAttackTransitionStatePreserved"
+```
 
 ### AI Benchmark Tests
 
