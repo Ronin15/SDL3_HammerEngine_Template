@@ -4022,7 +4022,7 @@ void UIManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderP
     SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
 
     // Bind index buffer
-    auto& batch = gpuRenderer.getSpriteBatch();
+    const auto& batch = gpuRenderer.getSpriteBatch();
     SDL_GPUBufferBinding indexBinding{};
     indexBinding.buffer = batch.getIndexBuffer();
     indexBinding.offset = 0;

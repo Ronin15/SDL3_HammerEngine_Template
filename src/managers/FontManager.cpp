@@ -878,7 +878,7 @@ void FontManager::drawTextGPU(const std::string& text, const std::string& fontID
   vertices[3] = {dstX, dstY + dstH, 0.0f, 1.0f, 255, 255, 255, 255};
 
   // Use the sprite batch's index buffer for the quad
-  auto& batch = gpuRenderer.getSpriteBatch();
+  const auto& batch = gpuRenderer.getSpriteBatch();
 
   // Bind texture
   SDL_GPUTextureSamplerBinding texSampler{};

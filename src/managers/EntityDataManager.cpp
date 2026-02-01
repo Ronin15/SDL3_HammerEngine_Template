@@ -615,7 +615,7 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
 
     // Add starting items from class definition
     if (!classInfo.startingItems.empty()) {
-        auto& rtm = ResourceTemplateManager::Instance();
+        const auto& rtm = ResourceTemplateManager::Instance();
         for (const auto& [itemId, qty] : classInfo.startingItems) {
             auto itemHandle = rtm.getHandleById(itemId);
             if (itemHandle.isValid()) {

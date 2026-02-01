@@ -598,7 +598,7 @@ bool GPURenderer::loadShaders() {
 }
 
 bool GPURenderer::createPipelines() {
-    auto& shaderMgr = GPUShaderManager::Instance();
+    const auto& shaderMgr = GPUShaderManager::Instance();
 
     // Scene-rendering pipelines use the scene texture format (RGBA8)
     // Composite pipeline uses the swapchain format (may be BGRA8 on some platforms)

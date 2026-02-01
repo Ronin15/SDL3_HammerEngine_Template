@@ -43,7 +43,7 @@ bool LogoState::enter() {
 
 void LogoState::recalculateLayout() {
   // Cache layout calculations
-  GameEngine& gameEngine = GameEngine::Instance();
+  const GameEngine& gameEngine = GameEngine::Instance();
   m_windowWidth = gameEngine.getLogicalWidth();
   m_windowHeight = gameEngine.getLogicalHeight();
 
@@ -261,7 +261,7 @@ void LogoState::renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
     return;
   }
 
-  auto* sceneTexture = gpuRenderer.getSceneTexture();
+  const auto* sceneTexture = gpuRenderer.getSceneTexture();
   if (!sceneTexture) {
     return;
   }
@@ -286,7 +286,7 @@ void LogoState::renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
   SDL_BindGPUVertexBuffers(scenePass, 0, &vertexBinding, 1);
 
   // Bind index buffer once
-  auto& batch = gpuRenderer.getSpriteBatch();
+  const auto& batch = gpuRenderer.getSpriteBatch();
   SDL_GPUBufferBinding indexBinding{};
   indexBinding.buffer = batch.getIndexBuffer();
   indexBinding.offset = 0;
@@ -333,7 +333,7 @@ void LogoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
   SDL_BindGPUVertexBuffers(swapchainPass, 0, &vertexBinding, 1);
 
   // Bind index buffer
-  auto& batch = gpuRenderer.getSpriteBatch();
+  const auto& batch = gpuRenderer.getSpriteBatch();
   SDL_GPUBufferBinding indexBinding{};
   indexBinding.buffer = batch.getIndexBuffer();
   indexBinding.offset = 0;

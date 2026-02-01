@@ -1329,7 +1329,7 @@ struct alignas(64) NPCMemoryData {
 
     void clear() noexcept {
         for (auto& m : memories) m.clear();
-        for (auto& l : locationHistory) l = Vector2D{};
+        std::fill(std::begin(locationHistory), std::end(locationHistory), Vector2D{});
         emotions.clear();
         personality.clear();
         lastAttacker = EntityHandle{};

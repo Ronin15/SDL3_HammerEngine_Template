@@ -1174,7 +1174,7 @@ void ParticleManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
   if (vertexCount == 0) return;
 
   // Get scene texture for ortho matrix dimensions
-  auto* sceneTexture = gpuRenderer.getSceneTexture();
+  const auto* sceneTexture = gpuRenderer.getSceneTexture();
   if (!sceneTexture) return;
 
   // Create orthographic projection for scene texture
