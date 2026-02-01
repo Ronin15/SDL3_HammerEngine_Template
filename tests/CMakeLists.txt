@@ -318,6 +318,7 @@ foreach(test_name ${ALL_TESTS})
     set_tests_properties(${test_name} PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endforeach()
+
 # resource_factory_tests uses test access helper from tests/resources
 target_sources(resource_factory_tests PRIVATE resources/ResourceTestAccess.cpp)
 
