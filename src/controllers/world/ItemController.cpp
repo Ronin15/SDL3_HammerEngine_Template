@@ -110,25 +110,21 @@ void ItemController::onResourceChange(const EventData& data) {
     // Add event log notification for inventory changes
     int delta = event->getQuantityChange();
     if (delta != 0) {
-        // Get resource display name from ResourceTemplateManager
+        // Get resource display name (prefer template name, fallback to handle string)
         const auto& rtm = ResourceTemplateManager::Instance();
-        auto resourceHandle = event->getResourceHandle();
-        auto resourceTemplate = rtm.getResourceTemplate(resourceHandle);
+        auto resourceTemplate = rtm.getResourceTemplate(event->getResourceHandle());
 
-        // Format notification message using resource name or handle string
-        std::string notification;
+        // Reuse buffer to avoid per-event allocation
         if (resourceTemplate) {
-            const auto& resourceName = resourceTemplate->getName();
-            notification = delta > 0
-                ? std::format("+{} {}", delta, resourceName)
-                : std::format("{} {}", delta, resourceName);
+            m_resourceNameBuffer = delta > 0
+                ? std::format("+{} {}", delta, resourceTemplate->getName())
+                : std::format("{} {}", delta, resourceTemplate->getName());
         } else {
-            notification = delta > 0
-                ? std::format("+{} {}", delta, resourceHandle.toString())
-                : std::format("{} {}", delta, resourceHandle.toString());
+            m_resourceNameBuffer = delta > 0
+                ? std::format("+{} {}", delta, event->getResourceHandle().toString())
+                : std::format("{} {}", delta, event->getResourceHandle().toString());
         }
 
-        ui.addEventLogEntry(EVENT_LOG_ID, notification);
-        ITEM_DEBUG(std::format("Inventory changed: {}", notification));
+        ui.addEventLogEntry(EVENT_LOG_ID, m_resourceNameBuffer);
     }
 }

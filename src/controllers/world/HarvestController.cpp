@@ -229,17 +229,10 @@ void HarvestController::completeHarvest() {
     HARVEST_DEBUG(std::format("Player inventory index: {}", playerInvIdx));
 
     if (playerInvIdx != INVALID_INVENTORY_INDEX) {
-        // Get old quantity for the resource before adding (for ResourceChangeEvent)
-        auto contentsBefore = edm.getInventoryResources(playerInvIdx);
-        for (const auto& [handle, qty] : contentsBefore) {
-            if (handle == harvestData.yieldResource) {
-                oldQuantity = qty;
-                break;
-            }
-        }
+        // Get old quantity with targeted lookup (avoids full inventory scan)
+        oldQuantity = edm.getInventoryQuantity(playerInvIdx, harvestData.yieldResource);
 
         addedToInventory = edm.addToInventory(playerInvIdx, harvestData.yieldResource, yield);
-        HARVEST_DEBUG(std::format("addToInventory returned: {}", addedToInventory));
 
         // Fire ResourceChangeEvent for UI updates (only if added to inventory)
         if (addedToInventory) {
@@ -252,15 +245,6 @@ void HarvestController::completeHarvest() {
                 "harvested"
             );
             EventManager::Instance().dispatchEvent(resourceChangeEvent);
-            HARVEST_DEBUG(std::format("Fired ResourceChangeEvent: {} -> {} (+{})",
-                                     oldQuantity, newQuantity, yield));
-        }
-
-        // Debug: Check inventory contents after adding
-        auto contents = edm.getInventoryResources(playerInvIdx);
-        HARVEST_DEBUG(std::format("Inventory now has {} resource types", contents.size()));
-        for (const auto& [handle, qty] : contents) {
-            HARVEST_DEBUG(std::format("  - {} x{}", handle.toString(), qty));
         }
     } else {
         HARVEST_WARN("Player has no valid inventory index!");
