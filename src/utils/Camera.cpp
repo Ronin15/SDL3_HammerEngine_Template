@@ -92,13 +92,16 @@ void Camera::update(float deltaTime) {
             }
         }
 
-        // SNAP directly to target's position - no smoothing.
-        // This ensures camera and target use identical interpolation paths during render,
-        // eliminating diagonal movement jitter. Both will interpolate from the same
-        // previous/current position values.
+        // Blend toward target's position with subtle damping for smoother tracking.
+        // Both position and previousPosition are blended to preserve interpolation sync
+        // and prevent diagonal movement jitter while reducing high-zoom tracking jitter.
+        // The 0.9/0.1 blend adds ~1 frame of subtle lag but significantly smooths movement.
         if (auto targetPtr = m_target.lock()) {
-            m_position = targetPtr->getPosition();
-            m_previousPosition = targetPtr->getPreviousPosition();
+            constexpr float blendFactor = 0.9f;  // 0.9 = subtle damping, 1.0 = snap (original)
+            Vector2D targetPos = targetPtr->getPosition();
+            Vector2D targetPrevPos = targetPtr->getPreviousPosition();
+            m_position = m_position * (1.0f - blendFactor) + targetPos * blendFactor;
+            m_previousPosition = m_previousPosition * (1.0f - blendFactor) + targetPrevPos * blendFactor;
         } else if (m_positionGetter) {
             // Function-based target: use smoothing since we can't access previous position
             Vector2D const targetPos = m_positionGetter();
