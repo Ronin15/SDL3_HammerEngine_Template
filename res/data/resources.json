@@ -184,6 +184,17 @@
       "textureId": "limestone"
     },
     {
+      "id": "stone",
+      "name": "Stone",
+      "category": "Item",
+      "type": "RawResource",
+      "description": "Raw stone useful for construction and basic crafting.",
+      "value": 2,
+      "maxStackSize": 25,
+      "consumable": false,
+      "textureId": "stone"
+    },
+    {
       "id": "coal",
       "name": "Coal",
       "category": "Item",

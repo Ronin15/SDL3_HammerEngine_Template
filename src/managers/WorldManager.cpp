@@ -756,7 +756,11 @@ void WorldManager::initializeWorldResources() {
                                             HammerEngine::ObstacleType targetObstacle,
                                             int yieldMin, int yieldMax,
                                             float respawnTime) {
-      if (!handle.isValid()) return;
+      if (!handle.isValid()) {
+        WORLD_MANAGER_ERROR(std::format("Invalid resource handle for obstacle type {}",
+                                        HammerEngine::obstacleTypeToString(targetObstacle)));
+        return;
+      }
 
       int spawned = 0;
       const size_t gridHeight = m_currentWorld->grid.size();
@@ -779,9 +783,9 @@ void WorldManager::initializeWorldResources() {
           }
         }
       }
-      WORLD_MANAGER_DEBUG(std::format("Spawned {} harvestables of {} at {} obstacles",
-                                      spawned, handle.toString(),
-                                      HammerEngine::obstacleTypeToString(targetObstacle)));
+      WORLD_MANAGER_INFO(std::format("Spawned {} harvestables of {} at {} obstacles",
+                                     spawned, handle.toString(),
+                                     HammerEngine::obstacleTypeToString(targetObstacle)));
     };
 
     // Helper for biome-based resources (for things without tile obstacles)
@@ -789,7 +793,12 @@ void WorldManager::initializeWorldResources() {
                                         HammerEngine::Biome targetBiome,
                                         int count, int yieldMin, int yieldMax,
                                         float respawnTime) {
-      if (!handle.isValid() || count <= 0) return;
+      if (!handle.isValid()) {
+        WORLD_MANAGER_ERROR(std::format("Invalid resource handle for biome {}",
+                                        HammerEngine::biomeToString(targetBiome)));
+        return;
+      }
+      if (count <= 0) return;
 
       int spawned = 0;
       const size_t gridHeight = m_currentWorld->grid.size();
@@ -818,10 +827,10 @@ void WorldManager::initializeWorldResources() {
           }
         }
       }
-      WORLD_MANAGER_DEBUG(std::format("Spawned {} harvestables of type {} ({}) in {} biome",
-                                      spawned, handle.toString(),
-                                      HammerEngine::harvestTypeToString(HammerEngine::getHarvestTypeForResource(handle.toString())),
-                                      HammerEngine::biomeToString(targetBiome)));
+      WORLD_MANAGER_INFO(std::format("Spawned {} harvestables of type {} ({}) in {} biome",
+                                     spawned, handle.toString(),
+                                     HammerEngine::harvestTypeToString(HammerEngine::getHarvestTypeForResource(handle.toString())),
+                                     HammerEngine::biomeToString(targetBiome)));
     };
 
     // Helper for high-elevation resources
@@ -829,7 +838,12 @@ void WorldManager::initializeWorldResources() {
                                             float minElevation, int count,
                                             int yieldMin, int yieldMax,
                                             float respawnTime) {
-      if (!handle.isValid() || count <= 0) return;
+      if (!handle.isValid()) {
+        WORLD_MANAGER_ERROR(std::format("Invalid resource handle for elevation >= {}",
+                                        minElevation));
+        return;
+      }
+      if (count <= 0) return;
 
       int spawned = 0;
       const size_t gridHeight = m_currentWorld->grid.size();
@@ -840,6 +854,8 @@ void WorldManager::initializeWorldResources() {
         for (size_t x = 0; x < gridWidth && spawned < count; ++x) {
           const auto& tile = m_currentWorld->grid[y][x];
           if (tile.isWater || tile.elevation < minElevation) continue;
+          // Skip tiles with obstacles (those are handled by spawnHarvestablesAtObstacles)
+          if (tile.obstacleType != HammerEngine::ObstacleType::NONE) continue;
 
           // Skip some tiles for natural distribution
           if ((x + y * 11) % 12 != 0) continue;
@@ -856,9 +872,9 @@ void WorldManager::initializeWorldResources() {
           }
         }
       }
-      WORLD_MANAGER_DEBUG(std::format("Spawned {} high-elevation harvestables of type {} ({})",
-                                      spawned, handle.toString(),
-                                      HammerEngine::harvestTypeToString(HammerEngine::getHarvestTypeForResource(handle.toString()))));
+      WORLD_MANAGER_INFO(std::format("Spawned {} high-elevation harvestables of type {} ({})",
+                                     spawned, handle.toString(),
+                                     HammerEngine::harvestTypeToString(HammerEngine::getHarvestTypeForResource(handle.toString()))));
     };
 
     // Basic resources - spawn AT tile obstacles for visual coherence
@@ -919,6 +935,13 @@ void WorldManager::initializeWorldResources() {
       auto voidSilkHandle = resourceMgr.getHandleById("void_silk");
       spawnHarvestablesInBiome(voidSilkHandle, HammerEngine::Biome::SWAMP,
                                std::max(1, swampTiles / 60), 1, 1, 200.0f);
+    }
+
+    // Mountain biome gets extra stone deposits
+    if (mountainTiles > 0) {
+      auto mountainStoneHandle = resourceMgr.getHandleById("stone");
+      spawnHarvestablesInBiome(mountainStoneHandle, HammerEngine::Biome::MOUNTAIN,
+                               std::max(1, mountainTiles / 25), 2, 5, 90.0f);
     }
 
     // High elevation resources
