@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
 #include "events/HarvestResourceEvent.hpp"
+#include "events/ResourceChangeEvent.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/WorldResourceManager.hpp"
@@ -223,12 +224,49 @@ void HarvestController::completeHarvest() {
     // Try to add directly to player inventory
     uint32_t playerInvIdx = player->getInventoryIndex();
     bool addedToInventory = false;
+    int oldQuantity = 0;
+
+    HARVEST_DEBUG(std::format("Player inventory index: {}", playerInvIdx));
 
     if (playerInvIdx != INVALID_INVENTORY_INDEX) {
+        // Get old quantity for the resource before adding (for ResourceChangeEvent)
+        auto contentsBefore = edm.getInventoryResources(playerInvIdx);
+        for (const auto& [handle, qty] : contentsBefore) {
+            if (handle == harvestData.yieldResource) {
+                oldQuantity = qty;
+                break;
+            }
+        }
+
         addedToInventory = edm.addToInventory(playerInvIdx, harvestData.yieldResource, yield);
+        HARVEST_DEBUG(std::format("addToInventory returned: {}", addedToInventory));
+
+        // Fire ResourceChangeEvent for UI updates (only if added to inventory)
+        if (addedToInventory) {
+            int newQuantity = oldQuantity + yield;
+            auto resourceChangeEvent = std::make_shared<ResourceChangeEvent>(
+                player->getHandle(),
+                harvestData.yieldResource,
+                oldQuantity,
+                newQuantity,
+                "harvested"
+            );
+            EventManager::Instance().dispatchEvent(resourceChangeEvent);
+            HARVEST_DEBUG(std::format("Fired ResourceChangeEvent: {} -> {} (+{})",
+                                     oldQuantity, newQuantity, yield));
+        }
+
+        // Debug: Check inventory contents after adding
+        auto contents = edm.getInventoryResources(playerInvIdx);
+        HARVEST_DEBUG(std::format("Inventory now has {} resource types", contents.size()));
+        for (const auto& [handle, qty] : contents) {
+            HARVEST_DEBUG(std::format("  - {} x{}", handle.toString(), qty));
+        }
+    } else {
+        HARVEST_WARN("Player has no valid inventory index!");
     }
 
-    // If inventory full, spawn as dropped item
+    // If inventory full or no inventory, spawn as dropped item
     if (!addedToInventory) {
         // Spawn slightly offset from harvestable position
         Vector2D spawnPos = hot.transform.position;
@@ -241,7 +279,7 @@ void HarvestController::completeHarvest() {
                                  HammerEngine::harvestTypeToString(m_currentType),
                                  harvestData.yieldResource.toString(), yield));
     } else {
-        HARVEST_INFO(std::format("Completed {} - {} x{}",
+        HARVEST_INFO(std::format("Completed {} - {} x{} (added to inventory)",
                                  HammerEngine::harvestTypeToString(m_currentType),
                                  harvestData.yieldResource.toString(), yield));
     }

@@ -6,14 +6,31 @@
 #include "controllers/world/ItemController.hpp"
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
+#include "entities/Resource.hpp"
+#include "events/ResourceChangeEvent.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
+#include "managers/UIManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include <format>
 
 void ItemController::subscribe() {
-    // No event subscriptions needed - purely on-demand queries
-    ITEM_DEBUG("ItemController subscribed");
+    if (checkAlreadySubscribed()) {
+        return;
+    }
+
+    auto& eventMgr = EventManager::Instance();
+
+    // Subscribe to ResourceChangeEvent for inventory UI synchronization
+    auto token = eventMgr.registerHandlerWithToken(
+        EventTypeId::ResourceChange,
+        [this](const EventData& data) { onResourceChange(data); }
+    );
+    addHandlerToken(token);
+
     setSubscribed(true);
+    ITEM_DEBUG("ItemController subscribed to ResourceChangeEvent");
 }
 
 bool ItemController::attemptPickup() {
@@ -69,4 +86,49 @@ bool ItemController::attemptPickup() {
     ITEM_INFO(std::format("Picked up {} x{}", itemData.resourceHandle.toString(), itemData.quantity));
 
     return true;
+}
+
+void ItemController::onResourceChange(const EventData& data) {
+    // Cast to ResourceChangeEvent to get details
+    const auto* event = dynamic_cast<const ResourceChangeEvent*>(data.event.get());
+    if (!event) {
+        return;
+    }
+
+    // Only process if this is for the player's inventory
+    auto player = mp_player.lock();
+    if (!player || event->getOwnerHandle() != player->getHandle()) {
+        return;
+    }
+
+    auto& ui = UIManager::Instance();
+
+    // Mark inventory UI bindings as dirty for refresh
+    ui.markBindingDirty(INVENTORY_STATUS_ID);
+    ui.markBindingDirty(INVENTORY_LIST_ID);
+
+    // Add event log notification for inventory changes
+    int delta = event->getQuantityChange();
+    if (delta != 0) {
+        // Get resource display name from ResourceTemplateManager
+        const auto& rtm = ResourceTemplateManager::Instance();
+        auto resourceHandle = event->getResourceHandle();
+        auto resourceTemplate = rtm.getResourceTemplate(resourceHandle);
+
+        // Format notification message using resource name or handle string
+        std::string notification;
+        if (resourceTemplate) {
+            const auto& resourceName = resourceTemplate->getName();
+            notification = delta > 0
+                ? std::format("+{} {}", delta, resourceName)
+                : std::format("{} {}", delta, resourceName);
+        } else {
+            notification = delta > 0
+                ? std::format("+{} {}", delta, resourceHandle.toString())
+                : std::format("{} {}", delta, resourceHandle.toString());
+        }
+
+        ui.addEventLogEntry(EVENT_LOG_ID, notification);
+        ITEM_DEBUG(std::format("Inventory changed: {}", notification));
+    }
 }

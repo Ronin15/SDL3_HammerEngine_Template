@@ -12,7 +12,6 @@
 #include "events/WeatherEvent.hpp"
 #include "gameStates/GameState.hpp"
 #include "managers/EventManager.hpp"
-#include "utils/ResourceHandle.hpp"
 #include <memory>
 #include <string>
 
@@ -69,13 +68,6 @@ private:
   std::unique_ptr<HammerEngine::GPUSceneRenderer> m_gpuSceneRenderer{nullptr};
 #endif
 
-  // Resource handles resolved at initialization (resource handle system
-  // compliance)
-  HammerEngine::ResourceHandle m_goldHandle;
-  HammerEngine::ResourceHandle m_healthPotionHandle;
-  HammerEngine::ResourceHandle m_ironOreHandle;
-  HammerEngine::ResourceHandle m_woodHandle;
-
   // Track whether world has been loaded (prevents re-entering LoadingState)
   bool m_worldLoaded{false};
 
@@ -100,12 +92,6 @@ private:
   // Inventory UI methods
   void initializeInventoryUI();
   void toggleInventoryDisplay();
-  void addDemoResource(HammerEngine::ResourceHandle resourceHandle,
-                       int quantity);
-  void removeDemoResource(HammerEngine::ResourceHandle resourceHandle,
-                          int quantity);
-  void
-  initializeResourceHandles(); // Resolve names to handles during initialization
 
   // Camera management methods
   void initializeCamera();

@@ -8,12 +8,15 @@
 
 /**
  * @file ItemController.hpp
- * @brief Controller for item pickup interactions
+ * @brief Controller for item pickup and inventory UI synchronization
  *
- * ItemController handles on-demand item pickup when player presses E:
- * - Dropped item pickup via WRM spatial query
+ * ItemController handles:
+ * - On-demand item pickup when player presses E (via WRM spatial query)
+ * - Inventory UI synchronization via ResourceChangeEvent subscription
+ * - Event log notifications for inventory changes
  *
  * NO per-frame polling - queries only when interaction is attempted.
+ * UI updates are event-driven via ResourceChangeEvent.
  *
  * NOTE: Harvesting has been moved to HarvestController for progress-based
  * harvesting with type-specific durations.
@@ -22,7 +25,9 @@
  */
 
 #include "controllers/ControllerBase.hpp"
+#include "managers/EventManager.hpp"
 #include <memory>
+#include <string>
 
 // Forward declarations
 class Player;
@@ -63,8 +68,24 @@ public:
     // Configuration constants
     static constexpr float PICKUP_RADIUS = 32.0f;
 
+    // UI component IDs for inventory binding refresh
+    static constexpr const char* INVENTORY_STATUS_ID = "gameplay_inventory_status";
+    static constexpr const char* INVENTORY_LIST_ID = "gameplay_inventory_list";
+    static constexpr const char* EVENT_LOG_ID = "gameplay_event_log";
+
 private:
+    /**
+     * @brief Handle ResourceChangeEvent for inventory UI synchronization
+     * @param data Event data containing resource change info
+     *
+     * Marks inventory UI bindings as dirty and adds event log notification.
+     */
+    void onResourceChange(const EventData& data);
+
     std::weak_ptr<Player> mp_player;
+
+    // Cached resource name for event log (avoids per-event allocation)
+    std::string m_resourceNameBuffer;
 };
 
 #endif // ITEM_CONTROLLER_HPP

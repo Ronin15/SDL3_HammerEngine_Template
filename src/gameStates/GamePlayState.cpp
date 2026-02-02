@@ -77,9 +77,6 @@ bool GamePlayState::enter() {
     // Local references for init-only managers (not cached as members)
     auto &gameTimeMgr = GameTimeManager::Instance();
 
-    // Initialize resource handles first
-    initializeResourceHandles();
-
     // Create player and position at screen center
     mp_Player = std::make_shared<Player>();
     mp_Player->ensurePhysicsBodyRegistered();
@@ -710,23 +707,6 @@ void GamePlayState::handleInput() {
   }
 #endif
 
-  // Resource addition demo keys
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
-    addDemoResource(m_goldHandle, 10);
-  }
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
-    addDemoResource(m_healthPotionHandle, 1);
-  }
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
-    addDemoResource(m_ironOreHandle, 5);
-  }
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
-    addDemoResource(m_woodHandle, 3);
-  }
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
-    removeDemoResource(m_goldHandle, 5);
-  }
-
   // Mouse input for world interaction
   if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
     Vector2D const mousePos = inputMgr.getMousePosition();
@@ -877,67 +857,6 @@ void GamePlayState::toggleInventoryDisplay() {
   ui.setComponentVisible("gameplay_inventory_title", m_inventoryVisible);
   ui.setComponentVisible("gameplay_inventory_status", m_inventoryVisible);
   ui.setComponentVisible("gameplay_inventory_list", m_inventoryVisible);
-}
-
-void GamePlayState::addDemoResource(HammerEngine::ResourceHandle resourceHandle,
-                                    int quantity) {
-  if (!mp_Player) {
-    return;
-  }
-
-  if (!resourceHandle.isValid()) {
-    return;
-  }
-
-  mp_Player->addToInventory(resourceHandle, quantity);
-
-  // Mark inventory UI bindings dirty so they refresh
-  auto &ui = UIManager::Instance();
-  ui.markBindingDirty("gameplay_inventory_status");
-  ui.markBindingDirty("gameplay_inventory_list");
-}
-
-void GamePlayState::removeDemoResource(
-    HammerEngine::ResourceHandle resourceHandle, int quantity) {
-  if (!mp_Player) {
-    return;
-  }
-
-  if (!resourceHandle.isValid()) {
-    return;
-  }
-
-  mp_Player->removeFromInventory(resourceHandle, quantity);
-
-  // Mark inventory UI bindings dirty so they refresh
-  auto &ui = UIManager::Instance();
-  ui.markBindingDirty("gameplay_inventory_status");
-  ui.markBindingDirty("gameplay_inventory_list");
-}
-
-void GamePlayState::initializeResourceHandles() {
-  // Resolve resource names to handles once during initialization (resource
-  // handle system compliance)
-  const auto &templateManager = ResourceTemplateManager::Instance();
-
-  // Only perform name-based lookups during initialization, not at runtime
-  auto goldResource = templateManager.getResourceByName("gold");
-  m_goldHandle =
-      goldResource ? goldResource->getHandle() : HammerEngine::ResourceHandle();
-
-  auto healthPotionResource =
-      templateManager.getResourceByName("health_potion");
-  m_healthPotionHandle = healthPotionResource
-                             ? healthPotionResource->getHandle()
-                             : HammerEngine::ResourceHandle();
-
-  auto ironOreResource = templateManager.getResourceByName("iron_ore");
-  m_ironOreHandle = ironOreResource ? ironOreResource->getHandle()
-                                    : HammerEngine::ResourceHandle();
-
-  auto woodResource = templateManager.getResourceByName("wood");
-  m_woodHandle =
-      woodResource ? woodResource->getHandle() : HammerEngine::ResourceHandle();
 }
 
 void GamePlayState::setupTestVillage() {
