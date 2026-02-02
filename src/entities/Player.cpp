@@ -419,9 +419,9 @@ void Player::setPosition(const Vector2D &position) {
 }
 
 void Player::initializeInventory() {
-  // Create EDM inventory with 50 slots
+  // Create EDM inventory with 20 slots (forces meaningful inventory decisions)
   auto &edm = EntityDataManager::Instance();
-  m_inventoryIndex = edm.createInventory(50, true);  // 50 slots, world-tracked
+  m_inventoryIndex = edm.createInventory(20, true);  // 20 slots, world-tracked
 
   if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
     PLAYER_ERROR("Failed to create player inventory");

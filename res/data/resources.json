@@ -135,7 +135,7 @@
       "type": "RawResource",
       "description": "Raw iron ore that can be smelted into iron bars.",
       "value": 10,
-      "maxStackSize": 100,
+      "maxStackSize": 20,
       "consumable": false,
       "textureId": "iron_ore"
     },
@@ -146,7 +146,7 @@
       "type": "RawResource",
       "description": "Precious gold ore that can be smelted into gold bars.",
       "value": 50,
-      "maxStackSize": 100,
+      "maxStackSize": 20,
       "consumable": false,
       "textureId": "gold_ore"
     },
@@ -157,7 +157,7 @@
       "type": "RawResource",
       "description": "Common copper ore that can be smelted into copper bars.",
       "value": 5,
-      "maxStackSize": 100,
+      "maxStackSize": 20,
       "consumable": false,
       "textureId": "copper_ore"
     },
@@ -168,7 +168,7 @@
       "type": "RawResource",
       "description": "A rare and precious metal ore that shimmers with silver light.",
       "value": 75,
-      "maxStackSize": 100,
+      "maxStackSize": 15,
       "consumable": false,
       "textureId": "mithril_ore"
     },
@@ -179,7 +179,7 @@
       "type": "RawResource",
       "description": "Rough limestone that can be cut into building stone.",
       "value": 8,
-      "maxStackSize": 100,
+      "maxStackSize": 25,
       "consumable": false,
       "textureId": "limestone"
     },
@@ -190,7 +190,7 @@
       "type": "RawResource",
       "description": "Combustible coal used as fuel for smelting.",
       "value": 5,
-      "maxStackSize": 100,
+      "maxStackSize": 25,
       "consumable": false,
       "textureId": "coal"
     },
@@ -201,7 +201,7 @@
       "type": "RawResource",
       "description": "An uncut emerald that can be refined into a precious gem.",
       "value": 100,
-      "maxStackSize": 50,
+      "maxStackSize": 10,
       "consumable": false,
       "textureId": "rough_emerald"
     },
@@ -212,7 +212,7 @@
       "type": "RawResource",
       "description": "An uncut ruby that can be refined into a precious gem.",
       "value": 120,
-      "maxStackSize": 50,
+      "maxStackSize": 10,
       "consumable": false,
       "textureId": "rough_ruby"
     },
@@ -223,7 +223,7 @@
       "type": "RawResource",
       "description": "An uncut sapphire that can be refined into a precious gem.",
       "value": 110,
-      "maxStackSize": 50,
+      "maxStackSize": 10,
       "consumable": false,
       "textureId": "rough_sapphire"
     },
@@ -234,7 +234,7 @@
       "type": "RawResource",
       "description": "An uncut diamond that can be refined into a precious gem.",
       "value": 200,
-      "maxStackSize": 50,
+      "maxStackSize": 5,
       "consumable": false,
       "textureId": "rough_diamond"
     },
@@ -381,7 +381,7 @@
       "type": "RawResource",
       "description": "Basic wood logs useful for crafting and construction.",
       "value": 5,
-      "maxStackSize": 200,
+      "maxStackSize": 25,
       "consumable": false,
       "textureId": "wood_icon"
     },

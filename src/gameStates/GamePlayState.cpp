@@ -740,11 +740,22 @@ void GamePlayState::initializeInventoryUI() {
   // Create inventory panel (initially hidden) matching EventDemoState layout
   // Using TOP_RIGHT positioning - UIManager handles all resize repositioning
   constexpr int inventoryWidth = 280;
-  constexpr int inventoryHeight = 400;
   constexpr int panelMarginRight = 20; // 20px from right edge
   constexpr int panelMarginTop = 170;  // 170px from top
   constexpr int childInset = 10;       // Children are 10px inside panel
   constexpr int childWidth = inventoryWidth - (childInset * 2); // 260px
+  constexpr int headerHeight = 110;    // Title + status label area
+  constexpr int itemHeight = 20;       // Height per inventory item row
+  constexpr int bottomPadding = 15;    // Padding below list
+
+  // Calculate inventory panel size based on slot count
+  uint32_t invIdx = mp_Player->getInventoryIndex();
+  const auto& invData = EntityDataManager::Instance().getInventoryData(invIdx);
+  int slotCount = static_cast<int>(invData.maxSlots);
+
+  // Calculate list and panel heights dynamically
+  int listHeight = slotCount * itemHeight;
+  int inventoryHeight = headerHeight + listHeight + bottomPadding;
 
   // Initial position (will be auto-repositioned by UIManager)
   int inventoryX = windowWidth - inventoryWidth - panelMarginRight;
@@ -770,21 +781,21 @@ void GamePlayState::initializeInventoryUI() {
   // Status label: 75px below panel top
   ui.createLabel("gameplay_inventory_status",
                  {inventoryX + childInset, inventoryY + 75, childWidth, 25},
-                 "Capacity: 0/50");
+                 "Capacity: 0/20");
   ui.setComponentVisible("gameplay_inventory_status", false);
   ui.setComponentPositioning("gameplay_inventory_status",
                              {UIPositionMode::TOP_RIGHT,
                               panelMarginRight + childInset,
                               panelMarginTop + 75, childWidth, 25});
 
-  // Inventory list: 110px below panel top
+  // Inventory list: 110px below panel top, height based on slot count
   ui.createList("gameplay_inventory_list",
-                {inventoryX + childInset, inventoryY + 110, childWidth, 270});
+                {inventoryX + childInset, inventoryY + 110, childWidth, listHeight});
   ui.setComponentVisible("gameplay_inventory_list", false);
   ui.setComponentPositioning("gameplay_inventory_list",
                              {UIPositionMode::TOP_RIGHT,
                               panelMarginRight + childInset,
-                              panelMarginTop + 110, childWidth, 270});
+                              panelMarginTop + 110, childWidth, listHeight});
 
   // --- DATA BINDING SETUP ---
   // Bind the inventory capacity label to a function that gets the data
