@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Helper script to build and run Controller tests (Registry, Weather, DayNight)
+# Helper script to build and run Controller tests (all controller tests)
 
 # Set up colored output
 RED='\033[0;31m'
@@ -15,6 +15,12 @@ RUN_ALL=true
 RUN_REGISTRY=false
 RUN_WEATHER=false
 RUN_DAYNIGHT=false
+RUN_HARVEST=false
+RUN_NPCRENDER=false
+RUN_ITEM=false
+RUN_RESOURCERENDER=false
+RUN_SOCIAL=false
+RUN_TRADE=false
 
 for arg in "$@"; do
   case $arg in
@@ -26,11 +32,17 @@ for arg in "$@"; do
       echo -e "${BLUE}Controller Test Runner${NC}"
       echo -e "Usage: ./run_controller_tests.sh [options]"
       echo -e "\nOptions:"
-      echo -e "  --verbose      Run tests with verbose output"
-      echo -e "  --registry     Run only ControllerRegistry tests"
-      echo -e "  --weather      Run only WeatherController tests"
-      echo -e "  --daynight     Run only DayNightController tests"
-      echo -e "  --help         Show this help message"
+      echo -e "  --verbose         Run tests with verbose output"
+      echo -e "  --registry        Run only ControllerRegistry tests"
+      echo -e "  --weather         Run only WeatherController tests"
+      echo -e "  --daynight        Run only DayNightController tests"
+      echo -e "  --harvest         Run only HarvestController tests"
+      echo -e "  --npcrender       Run only NPCRenderController tests"
+      echo -e "  --item            Run only ItemController tests"
+      echo -e "  --resourcerender  Run only ResourceRenderController tests"
+      echo -e "  --social          Run only SocialController tests"
+      echo -e "  --trade           Run only TradeController tests"
+      echo -e "  --help            Show this help message"
       exit 0
       ;;
     --registry)
@@ -46,6 +58,36 @@ for arg in "$@"; do
     --daynight)
       RUN_ALL=false
       RUN_DAYNIGHT=true
+      shift
+      ;;
+    --harvest)
+      RUN_ALL=false
+      RUN_HARVEST=true
+      shift
+      ;;
+    --npcrender)
+      RUN_ALL=false
+      RUN_NPCRENDER=true
+      shift
+      ;;
+    --item)
+      RUN_ALL=false
+      RUN_ITEM=true
+      shift
+      ;;
+    --resourcerender)
+      RUN_ALL=false
+      RUN_RESOURCERENDER=true
+      shift
+      ;;
+    --social)
+      RUN_ALL=false
+      RUN_SOCIAL=true
+      shift
+      ;;
+    --trade)
+      RUN_ALL=false
+      RUN_TRADE=true
       shift
       ;;
   esac
@@ -66,6 +108,30 @@ fi
 
 if [ "$RUN_ALL" = true ] || [ "$RUN_DAYNIGHT" = true ]; then
   EXECUTABLES+=("day_night_controller_tests")
+fi
+
+if [ "$RUN_ALL" = true ] || [ "$RUN_HARVEST" = true ]; then
+  EXECUTABLES+=("harvest_controller_tests")
+fi
+
+if [ "$RUN_ALL" = true ] || [ "$RUN_NPCRENDER" = true ]; then
+  EXECUTABLES+=("npc_render_controller_tests")
+fi
+
+if [ "$RUN_ALL" = true ] || [ "$RUN_ITEM" = true ]; then
+  EXECUTABLES+=("item_controller_tests")
+fi
+
+if [ "$RUN_ALL" = true ] || [ "$RUN_RESOURCERENDER" = true ]; then
+  EXECUTABLES+=("resource_render_controller_tests")
+fi
+
+if [ "$RUN_ALL" = true ] || [ "$RUN_SOCIAL" = true ]; then
+  EXECUTABLES+=("social_controller_tests")
+fi
+
+if [ "$RUN_ALL" = true ] || [ "$RUN_TRADE" = true ]; then
+  EXECUTABLES+=("trade_controller_tests")
 fi
 
 # Get the directory where this script is located and find project root
@@ -200,8 +266,8 @@ if [ "$FINAL_RESULT" -ne 0 ]; then
   exit $FINAL_RESULT
 else
   echo -e "\n${GREEN}All controller tests completed successfully!${NC}"
-  echo -e "${GREEN}✓ ControllerRegistry tests${NC}"
-  echo -e "${GREEN}✓ WeatherController tests${NC}"
-  echo -e "${GREEN}✓ DayNightController tests${NC}"
+  for EXEC in "${EXECUTABLES[@]}"; do
+    echo -e "${GREEN}✓ ${EXEC}${NC}"
+  done
   exit 0
 fi
