@@ -45,18 +45,19 @@ You run things and report results. Other agents handle other concerns:
 
 ### **Test Execution**
 ```bash
-# Full test suite (use sparingly - 68+ tests)
-./run_all_tests.sh --core-only --errors-only
+# Direct test execution (PREFERRED - fast feedback)
+./bin/debug/<test_executable>                        # Run all tests in executable
+./bin/debug/<test_executable> --list_content         # List available tests
+./bin/debug/<test_executable> --run_test="TestCase*" # Run specific test
+./bin/debug/entity_data_manager_tests                # Example: Run EDM tests
+./bin/debug/ai_manager_edm_integration_tests         # Example: AI-EDM integration
 
-# Targeted tests (preferred)
+# Test scripts (use for comprehensive validation - slower)
+./tests/test_scripts/run_all_tests.sh --core-only --errors-only
 ./tests/test_scripts/run_ai_optimization_tests.sh
 ./tests/test_scripts/run_save_tests.sh --verbose
 ./tests/test_scripts/run_thread_tests.sh
 ./tests/test_scripts/run_collision_tests.sh
-
-# Individual test binaries
-./bin/debug/SaveManagerTests --run_test="TestSaveAndLoad*"
-./bin/debug/ai_optimization_tests
 ```
 
 ### **Benchmark Execution**
