@@ -423,6 +423,13 @@ inline std::mutex Logger::s_logMutex{};
 #define HARVEST_INFO(msg) HAMMER_INFO("HarvestController", msg)
 #define HARVEST_DEBUG(msg) HAMMER_DEBUG("HarvestController", msg)
 
+#define RESOURCE_RENDER_CRITICAL(msg) HAMMER_CRITICAL("ResourceRenderController", msg)
+#define RESOURCE_RENDER_ERROR(msg) HAMMER_ERROR("ResourceRenderController", msg)
+#define RESOURCE_RENDER_WARN(msg) HAMMER_WARN("ResourceRenderController", msg)
+#define RESOURCE_RENDER_INFO(msg) HAMMER_INFO("ResourceRenderController", msg)
+#define RESOURCE_RENDER_DEBUG(msg) HAMMER_DEBUG("ResourceRenderController", msg)
+#define RESOURCE_RENDER_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "ResourceRenderController", msg)
+
 // Conditional logging macros for common systems
 // Use these when an if-block contains ONLY logging (eliminates condition overhead in release)
 #define GAMEENGINE_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "GameEngine", msg)

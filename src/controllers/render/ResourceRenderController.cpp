@@ -4,6 +4,7 @@
  */
 
 #include "controllers/render/ResourceRenderController.hpp"
+#include "core/Logger.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include "utils/Camera.hpp"
@@ -280,6 +281,7 @@ void ResourceRenderController::clearAll() {
 #ifdef USE_SDL3_GPU
 void ResourceRenderController::recordGPUDroppedItems(const HammerEngine::GPUSceneContext& ctx,
                                                       const HammerEngine::Camera& camera) {
+    RESOURCE_RENDER_WARN_IF(!ctx.spriteBatch, "recordGPUDroppedItems: ctx.spriteBatch is null");
     if (!ctx.spriteBatch) { return; }
 
     auto& edm = EntityDataManager::Instance();
@@ -332,6 +334,7 @@ void ResourceRenderController::recordGPUDroppedItems(const HammerEngine::GPUScen
 
 void ResourceRenderController::recordGPUContainers(const HammerEngine::GPUSceneContext& ctx,
                                                     const HammerEngine::Camera& camera) {
+    RESOURCE_RENDER_WARN_IF(!ctx.spriteBatch, "recordGPUContainers: ctx.spriteBatch is null");
     if (!ctx.spriteBatch) { return; }
 
     auto& edm = EntityDataManager::Instance();
@@ -386,6 +389,7 @@ void ResourceRenderController::recordGPUContainers(const HammerEngine::GPUSceneC
 
 void ResourceRenderController::recordGPUHarvestables(const HammerEngine::GPUSceneContext& ctx,
                                                       const HammerEngine::Camera& camera) {
+    RESOURCE_RENDER_WARN_IF(!ctx.spriteBatch, "recordGPUHarvestables: ctx.spriteBatch is null");
     if (!ctx.spriteBatch) { return; }
 
     auto& edm = EntityDataManager::Instance();

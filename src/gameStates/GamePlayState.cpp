@@ -1278,6 +1278,13 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   // Record NPCs to sprite batch (atlas-based)
   m_npcRenderCtrl.recordGPU(ctx);
 
+  // Record world resources to sprite batch (dropped items, harvestables, containers)
+  if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>()) {
+    resourceCtrl->recordGPUDroppedItems(ctx, *m_camera);
+    resourceCtrl->recordGPUHarvestables(ctx, *m_camera);
+    resourceCtrl->recordGPUContainers(ctx, *m_camera);
+  }
+
   // End sprite batch recording before switching to entity batch
   m_gpuSceneRenderer->endSpriteBatch();
 
@@ -1320,7 +1327,7 @@ void GamePlayState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
     return;
   }
 
-  // Render world tiles (sprite batch)
+  // Render world tiles (sprite batch) - includes world tiles, NPCs, and world resources
   m_gpuSceneRenderer->renderScene(gpuRenderer, scenePass);
 
   // Render player (entity batch)

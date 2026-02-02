@@ -995,7 +995,7 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     auto& renderData = m_itemRenderData[itemIndex];
     renderData.clear();
 
-    // Get atlas texture (single texture for all items)
+    // Get atlas texture for SDL_Renderer path (GPU path uses SpriteBatch directly)
     renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
 
     // Get atlas coords and animation data from resource template
@@ -1012,11 +1012,8 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
         if (resource->getAnimSpeed() > 0) {
             renderData.animSpeedMs = static_cast<uint16_t>(resource->getAnimSpeed());
         }
-    }
-
-    // Fallback if no atlas texture
-    if (!renderData.cachedTexture) {
-        ENTITY_WARN(std::format("createDroppedItem: Atlas texture not found for resource {}",
+    } else {
+        ENTITY_WARN(std::format("createDroppedItem: No resource template found for {}",
                                 resourceHandle.toString()));
     }
 
