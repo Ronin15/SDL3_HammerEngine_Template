@@ -93,8 +93,12 @@ float TimestepManager::getUpdateDeltaTime() const {
 
 double TimestepManager::getInterpolationAlpha() const {
     if (m_fixedTimestep > 0.0f) {
-        double alpha = m_accumulator / m_fixedTimestep;
-        return std::clamp(alpha, 0.0, 1.0);  // Prevent extrapolation during frame drops
+        double rawAlpha = m_accumulator / m_fixedTimestep;
+        // Smooth alpha to reduce jitter from frame timing variations
+        // More noticeable at high zoom levels where small variations are magnified
+        // Using 0.7/0.3 blend provides smoothing while maintaining responsiveness
+        m_smoothedAlpha = m_smoothedAlpha * 0.7 + rawAlpha * 0.3;
+        return std::clamp(m_smoothedAlpha, 0.0, 1.0);
     }
     return 1.0; // Default to 1.0 to avoid division by zero
 }
@@ -139,6 +143,7 @@ void TimestepManager::setFixedTimestep(float timestep) {
 
 void TimestepManager::reset() {
     m_accumulator = 0.0;
+    m_smoothedAlpha = 0.0;
     m_firstFrame = true;
     m_shouldRender = true;
     m_currentFPS = 0.0f;
