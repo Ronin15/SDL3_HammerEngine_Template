@@ -7,6 +7,16 @@
 #include "managers/EntityDataManager.hpp"
 #include <cmath>
 
+// Static thread-local RNG pool for memory optimization and thread safety
+thread_local std::uniform_real_distribution<float> IdleBehavior::s_angleDistribution{0.0f, 2.0f * M_PI};
+thread_local std::uniform_real_distribution<float> IdleBehavior::s_radiusDistribution{0.0f, 1.0f};
+thread_local std::uniform_real_distribution<float> IdleBehavior::s_frequencyVariation{0.5f, 1.5f};
+
+std::mt19937& IdleBehavior::getSharedRNG() {
+  static thread_local std::mt19937 rng{std::random_device{}()};
+  return rng;
+}
+
 IdleBehavior::IdleBehavior(IdleMode mode, float idleRadius)
     : m_idleMode(mode), m_idleRadius(idleRadius) {
   // Entity state now stored in EDM BehaviorData - no local allocation needed
@@ -225,8 +235,8 @@ void IdleBehavior::updateOccasionalTurn(BehaviorContext &ctx) const {
   idle.turnTimer += ctx.deltaTime;
 
   if (m_turnFrequency > 0.0f && idle.turnTimer >= idle.turnInterval) {
-    // Change facing direction
-    idle.currentAngle = m_angleDistribution(m_rng);
+    // Change facing direction (using thread-safe shared RNG)
+    idle.currentAngle = s_angleDistribution(getSharedRNG());
     idle.turnTimer = 0.0f;
     idle.turnInterval = getRandomTurnInterval();
 
@@ -261,17 +271,19 @@ void IdleBehavior::updateLightFidget(BehaviorContext &ctx) const {
   // Keep velocity applied for smooth animation
   // CollisionManager handles overlap resolution
 
-  // Handle turning
+  // Handle turning (using thread-safe shared RNG)
   if (m_turnFrequency > 0.0f && idle.turnTimer >= idle.turnInterval) {
-    idle.currentAngle = m_angleDistribution(m_rng);
+    idle.currentAngle = s_angleDistribution(getSharedRNG());
     idle.turnTimer = 0.0f;
     idle.turnInterval = getRandomTurnInterval();
   }
 }
 
 Vector2D IdleBehavior::generateRandomOffset() const {
-  float angle = m_angleDistribution(m_rng);
-  float radius = m_radiusDistribution(m_rng) * m_idleRadius;
+  // Using thread-safe shared RNG
+  auto& rng = getSharedRNG();
+  float angle = s_angleDistribution(rng);
+  float radius = s_radiusDistribution(rng) * m_idleRadius;
 
   return Vector2D(radius * std::cos(angle), radius * std::sin(angle));
 }
@@ -281,7 +293,7 @@ float IdleBehavior::getRandomMovementInterval() const {
     return std::numeric_limits<float>::max();
 
   float const baseInterval = 1.0f / m_movementFrequency; // Convert to seconds
-  float variation = m_frequencyVariation(m_rng);
+  float variation = s_frequencyVariation(getSharedRNG());
 
   return baseInterval * variation;
 }
@@ -291,7 +303,7 @@ float IdleBehavior::getRandomTurnInterval() const {
     return std::numeric_limits<float>::max();
 
   float const baseInterval = 1.0f / m_turnFrequency; // Convert to seconds
-  float variation = m_frequencyVariation(m_rng);
+  float variation = s_frequencyVariation(getSharedRNG());
 
   return baseInterval * variation;
 }

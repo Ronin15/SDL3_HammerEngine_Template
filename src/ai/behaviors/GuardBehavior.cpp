@@ -12,6 +12,15 @@
 #include <algorithm>
 #include <cmath>
 
+// Static thread-local RNG pool for memory optimization and thread safety
+thread_local std::uniform_real_distribution<float> GuardBehavior::s_angleDistribution{0.0f, 2.0f * M_PI};
+thread_local std::uniform_real_distribution<float> GuardBehavior::s_radiusDistribution{0.3f, 1.0f};
+
+std::mt19937& GuardBehavior::getSharedRNG() {
+  static thread_local std::mt19937 rng{std::random_device{}()};
+  return rng;
+}
+
 GuardBehavior::GuardBehavior(const Vector2D &guardPosition, float guardRadius,
                              float alertRadius)
     : m_guardMode(GuardMode::STATIC_GUARD), m_guardPosition(guardPosition),
@@ -1055,11 +1064,12 @@ Vector2D GuardBehavior::getNextPatrolWaypoint(const BehaviorData &data) const {
 
 Vector2D GuardBehavior::generateRoamTarget() const {
   Vector2D target;
+  auto& rng = getSharedRNG();
 
   if (m_useCircularArea) {
-    // Generate random point within circular area
-    float angle = m_angleDistribution(m_rng);
-    float radius = m_radiusDistribution(m_rng) * m_areaRadius;
+    // Generate random point within circular area (using thread-safe shared RNG)
+    float angle = s_angleDistribution(rng);
+    float radius = s_radiusDistribution(rng) * m_areaRadius;
 
     target = m_areaCenter +
              Vector2D(radius * std::cos(angle), radius * std::sin(angle));
@@ -1070,7 +1080,7 @@ Vector2D GuardBehavior::generateRoamTarget() const {
     std::uniform_real_distribution<float> yDist(m_areaTopLeft.getY(),
                                                 m_areaBottomRight.getY());
 
-    target = Vector2D(xDist(m_rng), yDist(m_rng));
+    target = Vector2D(xDist(rng), yDist(rng));
   }
 
   return target;

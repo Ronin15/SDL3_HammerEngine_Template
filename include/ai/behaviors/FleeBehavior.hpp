@@ -83,7 +83,7 @@ private:
   float m_fleeSpeed{4.0f};
   float m_detectionRange{400.0f};
   float m_safeDistance{600.0f};
-  float m_panicDuration{3.0f}; // 3 seconds of panic by default
+  float m_panicDuration{10.0f}; // 10 seconds of panic by default
 
   // Stamina system
   bool m_useStamina{false};
@@ -100,11 +100,11 @@ private:
   float m_zigzagAngle{45.0f};  // Degrees
   float m_zigzagInterval{0.5f}; // Seconds between direction changes
 
-  // Random number generation
-  mutable std::mt19937 m_rng{std::random_device{}()};
-  mutable std::uniform_real_distribution<float> m_angleVariation{
-      -0.5f, 0.5f}; // Radians
-  mutable std::uniform_real_distribution<float> m_panicVariation{0.8f, 1.2f};
+  // Shared RNG optimization - use thread-local static RNG pool
+  // instead of per-instance RNG to reduce memory overhead and ensure thread safety
+  static std::mt19937& getSharedRNG();
+  static thread_local std::uniform_real_distribution<float> s_angleVariation;
+  static thread_local std::uniform_real_distribution<float> s_panicVariation;
 
   // PATHFINDING CONSOLIDATION: All pathfinding now uses PathfindingScheduler pathway
   // (removed m_useAsyncPathfinding flag as it's no longer needed)

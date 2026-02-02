@@ -9,6 +9,17 @@
 #include "managers/EntityDataManager.hpp"
 #include <algorithm>
 
+// Static thread-local RNG pool for memory optimization and thread safety
+thread_local std::uniform_real_distribution<float> AttackBehavior::s_damageRoll{0.0f, 1.0f};
+thread_local std::uniform_real_distribution<float> AttackBehavior::s_criticalRoll{0.0f, 1.0f};
+thread_local std::uniform_real_distribution<float> AttackBehavior::s_specialRoll{0.0f, 1.0f};
+thread_local std::uniform_real_distribution<float> AttackBehavior::s_angleVariation{-0.5f, 0.5f};
+
+std::mt19937& AttackBehavior::getSharedRNG() {
+  static thread_local std::mt19937 rng{std::random_device{}()};
+  return rng;
+}
+
 AttackBehavior::AttackBehavior(float attackRange, float attackDamage,
                                float attackSpeed)
     : m_attackRange(attackRange), m_attackDamage(attackDamage),
@@ -610,12 +621,13 @@ float AttackBehavior::calculateDamage(const BehaviorData &data) const {
   const auto &attack = data.state.attack;
   float baseDamage = m_attackDamage;
 
-  // Apply damage variation
-  float variation = (m_damageRoll(m_rng) - 0.5f) * 2.0f * m_damageVariation;
+  // Apply damage variation (using thread-safe shared RNG)
+  auto& rng = getSharedRNG();
+  float variation = (s_damageRoll(rng) - 0.5f) * 2.0f * m_damageVariation;
   baseDamage *= (1.0f + variation);
 
   // Check for critical hit
-  if (m_criticalRoll(m_rng) < m_criticalHitChance) {
+  if (s_criticalRoll(rng) < m_criticalHitChance) {
     baseDamage *= m_criticalHitMultiplier;
   }
 
@@ -1198,8 +1210,8 @@ void AttackBehavior::updatePositioning(size_t edmIndex, BehaviorData &data,
 
 void AttackBehavior::updateAttacking(size_t edmIndex, BehaviorData &data,
                                      const Vector2D &targetPos) {
-  // Execute the attack
-  if (m_specialRoll(m_rng) < m_specialAttackChance &&
+  // Execute the attack (using thread-safe shared RNG)
+  if (s_specialRoll(getSharedRNG()) < m_specialAttackChance &&
       data.state.attack.specialAttackReady) {
     executeSpecialAttack(edmIndex, targetPos, data);
   } else if (m_comboAttacks) {

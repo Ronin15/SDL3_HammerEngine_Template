@@ -12,6 +12,15 @@
 #include <algorithm>
 #include <cmath>
 
+// Static thread-local RNG pool for memory optimization and thread safety
+thread_local std::uniform_real_distribution<float> FleeBehavior::s_angleVariation{-0.5f, 0.5f};
+thread_local std::uniform_real_distribution<float> FleeBehavior::s_panicVariation{0.8f, 1.2f};
+
+std::mt19937& FleeBehavior::getSharedRNG() {
+  static thread_local std::mt19937 rng{std::random_device{}()};
+  return rng;
+}
+
 FleeBehavior::FleeBehavior(float fleeSpeed, float detectionRange,
                            float safeDistance)
     : m_fleeSpeed(fleeSpeed), m_detectionRange(detectionRange),
@@ -27,7 +36,7 @@ FleeBehavior::FleeBehavior(FleeMode mode, float fleeSpeed, float detectionRange)
   switch (mode) {
   case FleeMode::PANIC_FLEE:
     m_fleeSpeed = fleeSpeed * 1.2f; // Faster in panic
-    m_panicDuration = 2000.0f;      // 2 seconds of panic
+    m_panicDuration = 10.0f;        // 10 seconds of panic
     break;
   case FleeMode::STRATEGIC_RETREAT:
     m_fleeSpeed = fleeSpeed * 0.8f; // Slower, more calculated
@@ -55,7 +64,7 @@ FleeBehavior::FleeBehavior(const HammerEngine::FleeBehaviorConfig &config,
   switch (mode) {
   case FleeMode::PANIC_FLEE:
     m_fleeSpeed = config.fleeSpeed * 1.2f; // Faster in panic
-    m_panicDuration = 2.0f;                // 2 seconds of panic
+    m_panicDuration = 10.0f;               // 10 seconds of panic
     break;
   case FleeMode::STRATEGIC_RETREAT:
     m_fleeSpeed = config.fleeSpeed * 0.8f; // Slower, more calculated
@@ -187,10 +196,10 @@ void FleeBehavior::executeLogic(BehaviorContext &ctx) {
       flee.fleeTimer = 0.0f;
       flee.lastThreatPosition = threatPos;
 
-      // Determine if this should trigger panic
+      // Determine if this should trigger panic (using thread-safe shared RNG)
       if (m_fleeMode == FleeMode::PANIC_FLEE) {
         flee.isInPanic = true;
-        flee.panicTimer = m_panicDuration * m_panicVariation(m_rng);
+        flee.panicTimer = m_panicDuration * s_panicVariation(getSharedRNG());
       }
     }
 
@@ -368,8 +377,8 @@ Vector2D FleeBehavior::calculateFleeDirection(const Vector2D &entityPos,
     if (flee.fleeDirection.length() > 0.001f) {
       fleeDir = flee.fleeDirection;
     } else {
-      // Random direction
-      float angle = m_angleVariation(m_rng) * 2.0f * M_PI;
+      // Random direction (using thread-safe shared RNG)
+      float angle = s_angleVariation(getSharedRNG()) * 2.0f * M_PI;
       fleeDir = Vector2D(std::cos(angle), std::sin(angle));
     }
   }
@@ -485,8 +494,8 @@ void FleeBehavior::updatePanicFlee(BehaviorContext &ctx,
       flee.fleeDirection.length() < 0.001f) {
     flee.fleeDirection = calculateFleeDirection(currentPos, threatPos, data);
 
-    // Add more randomness to panic movement for world-scale escape
-    float randomAngle = m_angleVariation(m_rng) * 0.8f; // Increased randomness
+    // Add more randomness to panic movement for world-scale escape (using thread-safe shared RNG)
+    float randomAngle = s_angleVariation(getSharedRNG()) * 0.8f; // Increased randomness
     float cos_a = std::cos(randomAngle);
     float sin_a = std::sin(randomAngle);
 

@@ -148,12 +148,11 @@ private:
   static constexpr float INVESTIGATING_THRESHOLD = 5.0f; // 5 seconds
   static constexpr float HOSTILE_THRESHOLD = 1.0f;       // 1 second in sight
 
-  // Random number generation
-  mutable std::mt19937 m_rng{std::random_device{}()};
-  mutable std::uniform_real_distribution<float> m_angleDistribution{
-      0.0f, 2.0f * M_PI};
-  mutable std::uniform_real_distribution<float> m_radiusDistribution{0.3f,
-                                                                      1.0f};
+  // Shared RNG optimization - use thread-local static RNG pool
+  // instead of per-instance RNG to reduce memory overhead and ensure thread safety
+  static std::mt19937& getSharedRNG();
+  static thread_local std::uniform_real_distribution<float> s_angleDistribution;
+  static thread_local std::uniform_real_distribution<float> s_radiusDistribution;
 
   // Reusable buffers to avoid per-frame allocations
   mutable std::vector<EntityHandle> m_nearbyBuffer;  // Reused for threat detection

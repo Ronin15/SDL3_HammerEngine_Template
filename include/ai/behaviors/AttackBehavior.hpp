@@ -186,12 +186,13 @@ private:
   static constexpr float COMBO_FINISHER_MULTIPLIER = 2.0f; // 2x damage/knockback for combo finishers
   static constexpr float CHARGE_DISTANCE_THRESHOLD_MULT = 1.5f; // Charge when > 150% of optimal range
 
-  // Random number generation
-  mutable std::mt19937 m_rng{std::random_device{}()};
-  mutable std::uniform_real_distribution<float> m_damageRoll{0.0f, 1.0f};
-  mutable std::uniform_real_distribution<float> m_criticalRoll{0.0f, 1.0f};
-  mutable std::uniform_real_distribution<float> m_specialRoll{0.0f, 1.0f};
-  mutable std::uniform_real_distribution<float> m_angleVariation{-0.5f, 0.5f};
+  // Shared RNG optimization - use thread-local static RNG pool
+  // instead of per-instance RNG to reduce memory overhead and ensure thread safety
+  static std::mt19937& getSharedRNG();
+  static thread_local std::uniform_real_distribution<float> s_damageRoll;
+  static thread_local std::uniform_real_distribution<float> s_criticalRoll;
+  static thread_local std::uniform_real_distribution<float> s_specialRoll;
+  static thread_local std::uniform_real_distribution<float> s_angleVariation;
 
   // Explicit target for NPC-vs-NPC combat now stored in EDM BehaviorData::state.attack
   // (explicitTarget, hasExplicitTarget) - ensures thread-safe per-entity state

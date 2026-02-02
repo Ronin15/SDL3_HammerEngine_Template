@@ -51,14 +51,12 @@ private:
   float m_movementFrequency{3.0f}; // Seconds between movements
   float m_turnFrequency{5.0f};     // Seconds between turns
 
-  // Random number generation
-  mutable std::mt19937 m_rng{std::random_device{}()};
-  mutable std::uniform_real_distribution<float> m_angleDistribution{
-      0.0f, 2.0f * M_PI};
-  mutable std::uniform_real_distribution<float> m_radiusDistribution{0.0f,
-                                                                     1.0f};
-  mutable std::uniform_real_distribution<float> m_frequencyVariation{0.5f,
-                                                                     1.5f};
+  // Shared RNG optimization - use thread-local static RNG pool
+  // instead of per-instance RNG to reduce memory overhead and ensure thread safety
+  static std::mt19937& getSharedRNG();
+  static thread_local std::uniform_real_distribution<float> s_angleDistribution;
+  static thread_local std::uniform_real_distribution<float> s_radiusDistribution;
+  static thread_local std::uniform_real_distribution<float> s_frequencyVariation;
 
   // Helper methods (all entity state stored in EDM BehaviorData via ctx.behaviorData)
   void initializeIdleState(const Vector2D& position, BehaviorData& data) const;

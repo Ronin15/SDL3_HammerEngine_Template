@@ -98,9 +98,6 @@ private:
   void updateCamera(float deltaTime);
   // Camera auto-manages world bounds; no state-level setup needed
 
-  // Test village setup (spawns merchant NPCs, guards, and wandering villagers)
-  void setupTestVillage();
-
   // Day/night visual overlay state (updated via TimePeriodChangedEvent)
   // Current interpolated values (what's actually rendered)
   float m_dayNightOverlayR{0.0f};
