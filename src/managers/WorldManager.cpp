@@ -133,8 +133,11 @@ bool WorldManager::loadNewWorld(
     // Set new world
     m_currentWorld = std::move(newWorld);
 
-    // Register world with WorldResourceManager
-    WorldResourceManager::Instance().createWorld(m_currentWorld->worldId);
+    // Register world with WorldResourceManager and set as active immediately
+    // (Must set active BEFORE initializing resources so spatial queries work)
+    auto& wrm = WorldResourceManager::Instance();
+    wrm.createWorld(m_currentWorld->worldId);
+    wrm.setActiveWorld(m_currentWorld->worldId);
 
     // Initialize world resources based on world data
     initializeWorldResources();
@@ -748,25 +751,23 @@ void WorldManager::initializeWorldResources() {
     // Helper to spawn harvestables AT tiles with matching obstacles
     // This ensures EDM harvestable position = tile obstacle position
     // When harvested, both EDM entity and tile obstacle are updated together
+    // EVERY obstacle gets a harvestable for visual/gameplay coherence
     auto spawnHarvestablesAtObstacles = [&](HammerEngine::ResourceHandle handle,
                                             HammerEngine::ObstacleType targetObstacle,
-                                            int count, int yieldMin, int yieldMax,
+                                            int yieldMin, int yieldMax,
                                             float respawnTime) {
-      if (!handle.isValid() || count <= 0) return;
+      if (!handle.isValid()) return;
 
       int spawned = 0;
       const size_t gridHeight = m_currentWorld->grid.size();
       if (gridHeight == 0) return;
       const size_t gridWidth = m_currentWorld->grid[0].size();
 
-      // Spawn harvestables at tiles that have the matching obstacle
-      for (size_t y = 0; y < gridHeight && spawned < count; ++y) {
-        for (size_t x = 0; x < gridWidth && spawned < count; ++x) {
+      // Spawn harvestables at ALL tiles that have the matching obstacle
+      for (size_t y = 0; y < gridHeight; ++y) {
+        for (size_t x = 0; x < gridWidth; ++x) {
           const auto& tile = m_currentWorld->grid[y][x];
           if (tile.obstacleType != targetObstacle) continue;
-
-          // Skip some obstacles for controlled density (every ~5 obstacles)
-          if ((x + y * 7) % 5 != 0) continue;
 
           Vector2D pos(static_cast<float>(x) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
                        static_cast<float>(y) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
@@ -860,37 +861,48 @@ void WorldManager::initializeWorldResources() {
                                       HammerEngine::harvestTypeToString(HammerEngine::getHarvestTypeForResource(handle.toString()))));
     };
 
-    // Calculate target harvestable counts based on tile counts
-    const int baseCount = std::max(5, totalTiles / 100);
-
     // Basic resources - spawn AT tile obstacles for visual coherence
     // When harvested, both EDM entity and tile obstacle are updated
+    // All obstacles of matching type get harvestables (no count limit)
     auto woodHandle = resourceMgr.getHandleById("wood");
-    spawnHarvestablesAtObstacles(woodHandle, HammerEngine::ObstacleType::TREE,
-                                 baseCount + forestTiles / 20, 1, 3, 60.0f);
+    spawnHarvestablesAtObstacles(woodHandle, HammerEngine::ObstacleType::TREE, 1, 3, 60.0f);
 
-    // Stone from rock obstacles
     auto stoneHandle = resourceMgr.getHandleById("stone");
-    spawnHarvestablesAtObstacles(stoneHandle, HammerEngine::ObstacleType::ROCK,
-                                 baseCount + mountainTiles / 30, 1, 3, 90.0f);
+    spawnHarvestablesAtObstacles(stoneHandle, HammerEngine::ObstacleType::ROCK, 1, 3, 90.0f);
 
-    // Ore deposits - spawn at their specific deposit obstacles
+    // Ore deposits
     auto ironHandle = resourceMgr.getHandleById("iron_ore");
-    spawnHarvestablesAtObstacles(ironHandle, HammerEngine::ObstacleType::IRON_DEPOSIT,
-                                 baseCount + mountainTiles / 25, 1, 2, 90.0f);
+    spawnHarvestablesAtObstacles(ironHandle, HammerEngine::ObstacleType::IRON_DEPOSIT, 2, 5, 90.0f);
 
-    // Gold ore - at gold deposit obstacles
     auto goldHandle = resourceMgr.getHandleById("gold_ore");
-    spawnHarvestablesAtObstacles(goldHandle, HammerEngine::ObstacleType::GOLD_DEPOSIT,
-                                 std::max(1, mountainTiles / 40), 1, 2, 120.0f);
+    spawnHarvestablesAtObstacles(goldHandle, HammerEngine::ObstacleType::GOLD_DEPOSIT, 1, 3, 150.0f);
 
-    // Rare resources
-    if (mountainTiles > 0) {
-      auto mithrilHandle = resourceMgr.getHandleById("mithril_ore");
-      spawnHarvestablesInBiome(mithrilHandle, HammerEngine::Biome::MOUNTAIN,
-                               std::max(1, mountainTiles / 50), 1, 1, 180.0f);
-    }
+    auto coalHandle = resourceMgr.getHandleById("coal");
+    spawnHarvestablesAtObstacles(coalHandle, HammerEngine::ObstacleType::COAL_DEPOSIT, 3, 6, 75.0f);
 
+    auto copperHandle = resourceMgr.getHandleById("copper_ore");
+    spawnHarvestablesAtObstacles(copperHandle, HammerEngine::ObstacleType::COPPER_DEPOSIT, 2, 4, 60.0f);
+
+    auto mithrilHandle = resourceMgr.getHandleById("mithril_ore");
+    spawnHarvestablesAtObstacles(mithrilHandle, HammerEngine::ObstacleType::MITHRIL_DEPOSIT, 1, 2, 300.0f);
+
+    auto limestoneHandle = resourceMgr.getHandleById("limestone");
+    spawnHarvestablesAtObstacles(limestoneHandle, HammerEngine::ObstacleType::LIMESTONE_DEPOSIT, 2, 4, 120.0f);
+
+    // Gem deposits
+    auto emeraldHandle = resourceMgr.getHandleById("rough_emerald");
+    spawnHarvestablesAtObstacles(emeraldHandle, HammerEngine::ObstacleType::EMERALD_DEPOSIT, 1, 2, 180.0f);
+
+    auto rubyHandle = resourceMgr.getHandleById("rough_ruby");
+    spawnHarvestablesAtObstacles(rubyHandle, HammerEngine::ObstacleType::RUBY_DEPOSIT, 1, 2, 180.0f);
+
+    auto sapphireHandle = resourceMgr.getHandleById("rough_sapphire");
+    spawnHarvestablesAtObstacles(sapphireHandle, HammerEngine::ObstacleType::SAPPHIRE_DEPOSIT, 1, 2, 180.0f);
+
+    auto diamondHandle = resourceMgr.getHandleById("rough_diamond");
+    spawnHarvestablesAtObstacles(diamondHandle, HammerEngine::ObstacleType::DIAMOND_DEPOSIT, 1, 1, 360.0f);
+
+    // Rare biome-based resources (no tile obstacles - for resources without visual tiles)
     if (forestTiles > 0) {
       auto enchantedWoodHandle = resourceMgr.getHandleById("enchanted_wood");
       spawnHarvestablesInBiome(enchantedWoodHandle, HammerEngine::Biome::FOREST,

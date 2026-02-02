@@ -249,8 +249,8 @@ bool AdvancedAIDemoState::enter() {
     m_controllers.add<CombatController>(m_player);
     m_controllers.subscribeAll();
 
-    // Create NPCs with optimized counts for behavior showcasing
-    createAdvancedNPCs();
+    // Spawn test village with merchants, guards, and villagers
+    setupTestVillage();
 
     // Create advanced HUD UI (matches EventDemoState spacing pattern)
     auto &ui = UIManager::Instance();
@@ -656,6 +656,154 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in createAdvancedNPCs()");
   }
+}
+
+void AdvancedAIDemoState::setupTestVillage() {
+  if (!m_player) {
+    GAMESTATE_WARN("Cannot setup test village: no player");
+    return;
+  }
+
+  auto& edm = EntityDataManager::Instance();
+  auto& aiMgr = AIManager::Instance();
+
+  Vector2D playerPos = m_player->getPosition();
+
+  // Village center is offset from player to give them room to approach
+  Vector2D villageCenter = playerPos + Vector2D(200.0f, 0.0f);
+
+  GAMESTATE_INFO(std::format("Setting up test village at ({:.0f}, {:.0f})",
+                            villageCenter.getX(), villageCenter.getY()));
+
+  // Random race selection for village diversity
+  static thread_local std::mt19937 rng{std::random_device{}()};
+  static constexpr const char* friendlyRaces[] = {"Human", "Elf", "Dwarf"};
+  std::uniform_int_distribution<size_t> raceDist(0, 2);
+  auto getRandomFriendlyRace = [&]() { return friendlyRaces[raceDist(rng)]; };
+
+  // ========================================================================
+  // MERCHANTS - Arranged in a semi-circle for easy access
+  // ========================================================================
+  struct MerchantSpawn {
+    const char* npcClass;
+    Vector2D offset;
+  };
+
+  std::vector<MerchantSpawn> merchants = {
+      {"Blacksmith",      Vector2D(-80.0f, -60.0f)},   // Top-left
+      {"Armourer",        Vector2D(80.0f, -60.0f)},    // Top-right
+      {"Alchemist",       Vector2D(-120.0f, 20.0f)},   // Left
+      {"GeneralMerchant", Vector2D(120.0f, 20.0f)},    // Right
+      {"Innkeeper",       Vector2D(-60.0f, 80.0f)},    // Bottom-left
+      {"TavernKeeper",    Vector2D(60.0f, 80.0f)},     // Bottom-right
+      {"Jeweler",         Vector2D(0.0f, -100.0f)},    // Top-center
+  };
+
+  int merchantCount = 0;
+  for (const auto& spawn : merchants) {
+    Vector2D pos = villageCenter + spawn.offset;
+    const char* race = getRandomFriendlyRace();
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, race, spawn.npcClass);
+    if (handle.isValid()) {
+      // Merchants stay idle at their posts
+      aiMgr.assignBehavior(handle, "Idle");
+      merchantCount++;
+      GAMESTATE_DEBUG(std::format("Spawned {} {} at ({:.0f}, {:.0f})",
+                                 race, spawn.npcClass, pos.getX(), pos.getY()));
+    }
+  }
+
+  // ========================================================================
+  // GUARDS - Patrolling the village perimeter
+  // ========================================================================
+  std::vector<Vector2D> guardOffsets = {
+      Vector2D(-180.0f, -120.0f),  // NW corner
+      Vector2D(180.0f, -120.0f),   // NE corner
+      Vector2D(-180.0f, 140.0f),   // SW corner
+      Vector2D(180.0f, 140.0f),    // SE corner
+      Vector2D(0.0f, -160.0f),     // North entrance
+      Vector2D(0.0f, 180.0f),      // South entrance
+  };
+
+  int guardCount = 0;
+  for (const auto& offset : guardOffsets) {
+    Vector2D pos = villageCenter + offset;
+    const char* race = getRandomFriendlyRace();
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, race, "Guard");
+    if (handle.isValid()) {
+      // Guards use Guard behavior (stationary but alert)
+      aiMgr.assignBehavior(handle, "Guard");
+      guardCount++;
+    }
+  }
+
+  // ========================================================================
+  // WANDERING VILLAGERS - Farmer, Miner, Woodcutter around the edges
+  // ========================================================================
+  struct VillagerSpawn {
+    const char* npcClass;
+    Vector2D offset;
+    const char* behavior;
+  };
+
+  std::vector<VillagerSpawn> villagers = {
+      {"Farmer",     Vector2D(-250.0f, 50.0f),  "Wander"},
+      {"Farmer",     Vector2D(250.0f, 30.0f),   "Wander"},
+      {"Miner",      Vector2D(-200.0f, -180.0f), "Wander"},
+      {"Woodcutter", Vector2D(220.0f, -150.0f),  "Wander"},
+      {"Woodcutter", Vector2D(-180.0f, 200.0f),  "Wander"},
+  };
+
+  int villagerCount = 0;
+  for (const auto& spawn : villagers) {
+    Vector2D pos = villageCenter + spawn.offset;
+    const char* race = getRandomFriendlyRace();
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, race, spawn.npcClass);
+    if (handle.isValid()) {
+      aiMgr.assignBehavior(handle, spawn.behavior);
+      villagerCount++;
+    }
+  }
+
+  // ========================================================================
+  // COMBAT NPCs - A few hostile NPCs for testing combat
+  // ========================================================================
+  std::vector<Vector2D> hostileOffsets = {
+      Vector2D(-350.0f, 0.0f),     // West of village
+      Vector2D(350.0f, -50.0f),    // East of village
+      Vector2D(0.0f, -300.0f),     // North of village
+  };
+
+  int hostileCount = 0;
+  const char* hostileClasses[] = {"Warrior", "Rogue", "Ranger"};
+  for (size_t i = 0; i < hostileOffsets.size(); ++i) {
+    Vector2D pos = villageCenter + hostileOffsets[i];
+    // Orcs spawn as Neutral (faction 2) - they become Enemy when they attack
+    EntityHandle handle = edm.createNPCWithRaceClass(
+        pos, "Orc", hostileClasses[i % 3], Sex::Unknown, 2);
+    if (handle.isValid()) {
+      // Orcs with Attack behavior will attack, becoming enemies
+      aiMgr.assignBehavior(handle, "Attack");
+      hostileCount++;
+    }
+  }
+
+  // Add an Orc Mage for ranged combat testing - Neutral until they attack
+  {
+    Vector2D pos = villageCenter + Vector2D(300.0f, 200.0f);
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, "Orc", "Mage", Sex::Unknown, 2);
+    if (handle.isValid()) {
+      aiMgr.assignBehavior(handle, "Attack");
+      hostileCount++;
+    }
+  }
+
+  // ========================================================================
+  // SUMMARY
+  // ========================================================================
+  GAMESTATE_INFO(std::format("Test village spawned: {} merchants, {} guards, "
+                            "{} villagers, {} hostile NPCs",
+                            merchantCount, guardCount, villagerCount, hostileCount));
 }
 
 void AdvancedAIDemoState::initializeCamera() {

@@ -93,9 +93,6 @@ bool GamePlayState::enter() {
     // Set player handle in AIManager for collision culling reference point
     AIManager::Instance().setPlayerHandle(mp_Player->getHandle());
 
-    // Spawn test village with merchants, guards, and villagers
-    setupTestVillage();
-
     // Initialize the inventory UI
     initializeInventoryUI();
 

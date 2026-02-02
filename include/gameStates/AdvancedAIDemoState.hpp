@@ -60,6 +60,7 @@ private:
     // Methods
     void setupAdvancedAIBehaviors();
     void createAdvancedNPCs();
+    void setupTestVillage();  // Spawns merchant NPCs, guards, and villagers
     void initializeCamera();
     void updateCamera(float deltaTime);
 
