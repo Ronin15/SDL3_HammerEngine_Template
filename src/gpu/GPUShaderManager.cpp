@@ -99,19 +99,34 @@ bool GPUShaderManager::hasShader(const std::string& name) const {
 
 SDL_GPUShader* GPUShaderManager::loadSPIRV(const std::string& path,
                                            SDL_GPUShaderStage stage,
-                                           const ShaderInfo& info) {
+                                           const ShaderInfo& info)
+{
     // Read binary file
     std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
+    if (!file.is_open())
+    {
         GAMEENGINE_ERROR(std::format("Failed to open shader file: {}", path));
         return nullptr;
     }
 
-    std::streamsize size = file.tellg();
+    std::streampos pos = file.tellg();
+    if (pos == std::streampos(-1))
+    {
+        GAMEENGINE_ERROR(std::format("Failed to get file size for shader: {}", path));
+        return nullptr;
+    }
+    std::streamsize size = static_cast<std::streamsize>(pos);
+
     file.seekg(0, std::ios::beg);
+    if (!file)
+    {
+        GAMEENGINE_ERROR(std::format("Failed to seek in shader file: {}", path));
+        return nullptr;
+    }
 
     std::vector<uint8_t> buffer(static_cast<size_t>(size));
-    if (!file.read(reinterpret_cast<char*>(buffer.data()), size)) {
+    if (!file.read(reinterpret_cast<char*>(buffer.data()), size))
+    {
         GAMEENGINE_ERROR(std::format("Failed to read shader file: {}", path));
         return nullptr;
     }
@@ -139,20 +154,42 @@ SDL_GPUShader* GPUShaderManager::loadSPIRV(const std::string& path,
 SDL_GPUShader* GPUShaderManager::loadMSL(const std::string& path,
                                           SDL_GPUShaderStage stage,
                                           const ShaderInfo& info,
-                                          const std::string& entryPoint) {
-    // Read text file
-    std::ifstream file(path);
-    if (!file.is_open()) {
+                                          const std::string& entryPoint)
+{
+    // Read text file as binary to get exact byte count (matches SPIR-V pattern)
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file.is_open())
+    {
         GAMEENGINE_ERROR(std::format("Failed to open shader file: {}", path));
         return nullptr;
     }
 
-    std::string source((std::istreambuf_iterator<char>(file)),
-                        std::istreambuf_iterator<char>());
+    std::streampos pos = file.tellg();
+    if (pos == std::streampos(-1))
+    {
+        GAMEENGINE_ERROR(std::format("Failed to get file size for shader: {}", path));
+        return nullptr;
+    }
+    std::streamsize size = static_cast<std::streamsize>(pos);
+
+    file.seekg(0, std::ios::beg);
+    if (!file)
+    {
+        GAMEENGINE_ERROR(std::format("Failed to seek in shader file: {}", path));
+        return nullptr;
+    }
+
+    // Use vector<uint8_t> so buffer lives until after SDL_CreateGPUShader completes
+    std::vector<uint8_t> buffer(static_cast<size_t>(size));
+    if (!file.read(reinterpret_cast<char*>(buffer.data()), size))
+    {
+        GAMEENGINE_ERROR(std::format("Failed to read shader file: {}", path));
+        return nullptr;
+    }
 
     SDL_GPUShaderCreateInfo createInfo{};
-    createInfo.code = reinterpret_cast<const uint8_t*>(source.c_str());
-    createInfo.code_size = source.size();
+    createInfo.code = buffer.data();
+    createInfo.code_size = buffer.size();
     createInfo.entrypoint = entryPoint.c_str();
     createInfo.format = SDL_GPU_SHADERFORMAT_MSL;
     createInfo.stage = stage;
@@ -163,7 +200,8 @@ SDL_GPUShader* GPUShaderManager::loadMSL(const std::string& path,
 
     SDL_GPUShader* shader = SDL_CreateGPUShader(m_device, &createInfo);
 
-    if (!shader) {
+    if (!shader)
+    {
         GAMEENGINE_ERROR(std::format("Failed to create MSL shader {}: {}", path, SDL_GetError()));
     }
 

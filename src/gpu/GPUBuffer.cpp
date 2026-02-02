@@ -82,18 +82,41 @@ SDL_GPUBufferBinding GPUBuffer::asBinding(uint32_t offset) const {
     return binding;
 }
 
-SDL_GPUBufferRegion GPUBuffer::asRegion(uint32_t offset, uint32_t size) const {
-    if (!m_buffer) {
+SDL_GPUBufferRegion GPUBuffer::asRegion(uint32_t offset, uint32_t size) const
+{
+    if (!m_buffer)
+    {
         GAMEENGINE_WARN("GPUBuffer::asRegion() called on invalid buffer");
     }
-    if (offset > m_size) {
+    if (offset > m_size)
+    {
         GAMEENGINE_WARN(std::format("GPUBuffer::asRegion() offset {} exceeds buffer size {}", offset, m_size));
         offset = m_size;
     }
+
     SDL_GPUBufferRegion region{};
     region.buffer = m_buffer;
     region.offset = offset;
-    region.size = (size == 0) ? (m_size - offset) : size;
+
+    if (size == 0)
+    {
+        region.size = m_size - offset;
+    }
+    else
+    {
+        // Validate that offset + size doesn't exceed buffer size
+        if (offset + size > m_size)
+        {
+            GAMEENGINE_WARN(std::format("GPUBuffer::asRegion() region [{}, {}] exceeds buffer size {}, clamping",
+                            offset, offset + size, m_size));
+            region.size = m_size - offset;
+        }
+        else
+        {
+            region.size = size;
+        }
+    }
+
     return region;
 }
 

@@ -230,14 +230,17 @@ void GPURenderer::beginFrame() {
         // Cancel the command buffer to avoid resource leak
         SDL_CancelGPUCommandBuffer(m_commandBuffer);
         m_commandBuffer = nullptr;
+        m_copyPass = nullptr;  // Clear stale copy pass pointer
         return;
     }
     profiler.endRender(RenderPhase::GPUSwapchain);
 
-    if (!m_swapchainTexture) {
+    if (!m_swapchainTexture)
+    {
         // Window minimized or not visible - cancel command buffer and skip frame
         SDL_CancelGPUCommandBuffer(m_commandBuffer);
         m_commandBuffer = nullptr;
+        m_copyPass = nullptr;  // Clear stale copy pass pointer
         return;
     }
 
@@ -703,23 +706,30 @@ bool GPURenderer::createPipelines() {
     return true;
 }
 
-bool GPURenderer::createSceneTexture() {
+bool GPURenderer::createSceneTexture()
+{
     // Create scene texture at viewport size (matching SDL_Renderer approach)
     // Zoom is handled in the composite shader, not by rendering at larger scale
     uint32_t sceneWidth = m_viewportWidth;
     uint32_t sceneHeight = m_viewportHeight;
 
-    m_sceneTexture = std::make_unique<GPUTexture>(
+    // Create new texture first, validate before replacing old one
+    auto newTexture = std::make_unique<GPUTexture>(
         m_device,
         sceneWidth, sceneHeight,
         SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
         SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER
     );
 
-    if (!m_sceneTexture->isValid()) {
+    if (!newTexture->isValid())
+    {
         GAMEENGINE_ERROR(std::format("Failed to create scene texture {}x{}", sceneWidth, sceneHeight));
+        // Old m_sceneTexture remains valid if it existed
         return false;
     }
+
+    // Success - now safe to replace the old texture
+    m_sceneTexture = std::move(newTexture);
 
     GAMEENGINE_DEBUG(std::format("Scene texture created: {}x{}", sceneWidth, sceneHeight));
     return true;
