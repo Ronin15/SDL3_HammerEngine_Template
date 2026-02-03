@@ -1275,7 +1275,8 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
       continue; // Entity marked inactive
     }
 
-    AIBehavior *behavior = m_storage.behaviors[storageIdx].get();
+    // Copy shared_ptr to keep behavior alive if it switches mid-execution
+    std::shared_ptr<AIBehavior> behavior = m_storage.behaviors[storageIdx];
     if (!behavior) {
       continue;
     }

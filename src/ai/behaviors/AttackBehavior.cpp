@@ -346,7 +346,7 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
       EntityHandle handle = edm.getHandle(ctx.edmIndex);
       if (handle.isValid() && aiMgr.hasBehavior("Flee")) {
         aiMgr.assignBehavior(handle, "Flee");
-        AI_DEBUG("Attacker switched to Flee - too afraid to continue fighting");
+        return; // this behavior is destroyed - exit immediately
       }
     } else {
       changeState(data, AttackState::RETREATING);

@@ -755,16 +755,19 @@ void GuardBehavior::handleThreatDetection(BehaviorContext &ctx,
             auto attackBehavior = std::dynamic_pointer_cast<AttackBehavior>(
                 attackTemplate->clone());
             if (attackBehavior) {
-              // Use direct assignment first (this initializes EDM BehaviorData)
+              // Copy threat handle and edmIndex before switch (this behavior gets destroyed)
+              EntityHandle targetThreat = threat;
+              size_t targetEdmIndex = ctx.edmIndex;
+              // Assign behavior (destroys this GuardBehavior)
               aiMgr.assignBehaviorDirect(handle, attackBehavior);
-              // Now set the explicit target in EDM (requires valid edmIndex)
-              attackBehavior->setTarget(ctx.edmIndex, threat);
-              AI_INFO("Guard transitioned to Attack behavior - engaging NPC threat");
+              // Set target using copied values, then return immediately
+              attackBehavior->setTarget(targetEdmIndex, targetThreat);
+              return; // this is destroyed - exit immediately
             }
           } else {
             // Fallback: assign without target (will attack player)
             aiMgr.assignBehavior(handle, "Attack");
-            AI_INFO("Guard transitioned to Attack behavior - engaging threat");
+            return; // this is destroyed - exit immediately
           }
         }
       } else {
@@ -829,10 +832,12 @@ void GuardBehavior::handleInvestigation(BehaviorContext &ctx) {
               auto attackBehavior = std::dynamic_pointer_cast<AttackBehavior>(
                   attackTemplate->clone());
               if (attackBehavior) {
+                // Copy handle before behavior switch (m_nearbyBuffer destroyed with GuardBehavior)
+                EntityHandle targetHandle = handle;
                 // Assign behavior first (initializes EDM BehaviorData)
                 aiMgr.assignBehaviorDirect(guardHandle, attackBehavior);
                 // Now set the explicit target in EDM
-                attackBehavior->setTarget(ctx.edmIndex, handle);
+                attackBehavior->setTarget(ctx.edmIndex, targetHandle);
                 return;
               }
             }
