@@ -97,7 +97,7 @@ For each modified file:
 Based on changed systems, run:
 - AI changes → `./tests/test_scripts/run_thread_safe_ai_tests.sh`
 - Collision → `./tests/test_scripts/run_collision_tests.sh`
-- All systems → `./run_all_tests.sh --core-only`
+- All systems → `./tests/test_scripts/run_all_tests.sh --core-only`
 
 Document:
 - Tests run

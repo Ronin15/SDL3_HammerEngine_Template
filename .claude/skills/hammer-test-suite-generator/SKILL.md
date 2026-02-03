@@ -786,8 +786,8 @@ Tests for <SystemName> functionality and performance.
 ./tests/test_scripts/run_<system>_benchmark.sh --verbose
 
 # All tests (included in master runner)
-./run_all_tests.sh --core-only
-./run_all_tests.sh --benchmarks-only
+./tests/test_scripts/run_all_tests.sh --core-only
+./tests/test_scripts/run_all_tests.sh --benchmarks-only
 ```
 
 ## Test Results
@@ -908,11 +908,11 @@ ls -lh bin/debug/<system>_benchmark  # if benchmark created
 ./tests/test_scripts/run_<system>_tests.sh --verbose
 
 # As part of full suite
-./run_all_tests.sh --core-only
+./tests/test_scripts/run_all_tests.sh --core-only
 
 # Benchmarks
 ./tests/test_scripts/run_<system>_benchmark.sh
-./run_all_tests.sh --benchmarks-only
+./tests/test_scripts/run_all_tests.sh --benchmarks-only
 ```
 
 ## Verification

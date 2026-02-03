@@ -74,7 +74,7 @@ timeout 60s ./bin/debug/SDL3_Template > /tmp/app_log.txt 2>&1
 
 **Command:**
 ```bash
-./run_all_tests.sh --core-only --errors-only
+./tests/test_scripts/run_all_tests.sh --core-only --errors-only
 ```
 
 **Working Directory:** `$PROJECT_ROOT/`
@@ -215,7 +215,7 @@ This Skill is designed to be run:
 - Run with AddressSanitizer:
   ```bash
   cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug \
-    -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address" \
+    -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address -fno-omit-frame-pointer -g" \
     -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" \
     -DUSE_MOLD_LINKER=OFF && ninja -C build
   ```

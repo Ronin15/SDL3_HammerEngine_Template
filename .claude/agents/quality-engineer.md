@@ -84,7 +84,7 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
 
 # Build with AddressSanitizer
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug \
-  -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address" \
+  -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address -fno-omit-frame-pointer -g" \
   -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF && ninja -C build
 
 # Check for warnings
