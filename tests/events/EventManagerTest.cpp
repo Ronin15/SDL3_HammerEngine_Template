@@ -18,10 +18,16 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "collisions/CollisionInfo.hpp"
+#include "events/CameraEvent.hpp"
+#include "events/CollisionObstacleChangedEvent.hpp"
+#include "events/DamageEvent.hpp"
 #include "events/Event.hpp"
 #include "events/ParticleEffectEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
+#include "events/WorldEvent.hpp"
+#include "events/WorldTriggerEvent.hpp"
+#include "collisions/TriggerTag.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "utils/ResourceHandle.hpp"
@@ -577,3 +583,494 @@ BOOST_FIXTURE_TEST_CASE(DynamicThreadingControl, EventManagerFixture) {
   EventManager::Instance().enableThreading(false);
 }
 #endif // NDEBUG
+
+// ==================== Additional Trigger Method Tests ====================
+
+BOOST_FIXTURE_TEST_CASE(TriggerWorldUnloaded_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> worldHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::World, [&worldHandlerCalled](const EventData &data) {
+        if (data.event) worldHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerWorldUnloaded("test_world",
+                                                           EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(worldHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerTileChanged_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> worldHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::World, [&worldHandlerCalled](const EventData &data) {
+        if (data.event) worldHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerTileChanged(10, 20, "biome_change",
+                                                         EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(worldHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerWorldGenerated_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> worldHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::World, [&worldHandlerCalled](const EventData &data) {
+        if (data.event) worldHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerWorldGenerated("new_world", 200, 200, 1.5f,
+                                                            EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(worldHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerStaticCollidersReady_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> worldHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::World, [&worldHandlerCalled](const EventData &data) {
+        if (data.event) worldHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerStaticCollidersReady(100, 25,
+                                                                  EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(worldHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerCameraModeChanged_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> cameraHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Camera, [&cameraHandlerCalled](const EventData &data) {
+        if (data.event) cameraHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerCameraModeChanged(1, 0,
+                                                               EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(cameraHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerCameraShakeStarted_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> cameraHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Camera, [&cameraHandlerCalled](const EventData &data) {
+        if (data.event) cameraHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerCameraShakeStarted(0.5f, 1.0f,
+                                                                EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(cameraHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerCameraShakeEnded_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> cameraHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Camera, [&cameraHandlerCalled](const EventData &data) {
+        if (data.event) cameraHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerCameraShakeEnded(EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(cameraHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerCameraZoomChanged_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> cameraHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Camera, [&cameraHandlerCalled](const EventData &data) {
+        if (data.event) cameraHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerCameraZoomChanged(2.0f, 1.0f,
+                                                               EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(cameraHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerCollisionObstacleChanged_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> obstacleHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::CollisionObstacleChanged, [&obstacleHandlerCalled](const EventData &data) {
+        if (data.event) obstacleHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerCollisionObstacleChanged(
+      Vector2D(100.0f, 200.0f), 64.0f, "tree_removed",
+      EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(obstacleHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerDamage_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> combatHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Combat, [&combatHandlerCalled](const EventData &data) {
+        if (data.event) combatHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerDamage(EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(combatHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerWorldTrigger_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> triggerHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::WorldTrigger, [&triggerHandlerCalled](const EventData &data) {
+        if (data.event) triggerHandlerCalled.store(true);
+      });
+
+  WorldTriggerEvent event(1, 2, HammerEngine::TriggerTag::Portal, Vector2D(100.0f, 200.0f), TriggerPhase::Enter);
+  bool ok = EventManager::Instance().triggerWorldTrigger(event,
+                                                          EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(triggerHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+// ==================== Additional Event Pool Recycling Tests ====================
+
+BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_ResourceChangeEvents, EventManagerFixture) {
+  EventPtr firstResource = nullptr;
+  EventPtr secondResource = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::ResourceChange, [&](const EventData &data) {
+        if (!firstResource) firstResource = data.event;
+        else secondResource = data.event;
+      });
+
+  HammerEngine::ResourceHandle testResource(1, 1);
+  EventManager::Instance().triggerResourceChange(TEST_PLAYER_HANDLE, testResource, 0, 10, "test",
+                                                  EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerResourceChange(TEST_PLAYER_HANDLE, testResource, 10, 20, "test",
+                                                  EventManager::DispatchMode::Immediate);
+
+  BOOST_CHECK(firstResource != nullptr);
+  BOOST_CHECK(secondResource != nullptr);
+  BOOST_CHECK_EQUAL(firstResource.get(), secondResource.get()); // Same pooled event reused
+}
+
+BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_CollisionObstacleChangedEvents, EventManagerFixture) {
+  EventPtr firstObstacle = nullptr;
+  EventPtr secondObstacle = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::CollisionObstacleChanged, [&](const EventData &data) {
+        if (!firstObstacle) firstObstacle = data.event;
+        else secondObstacle = data.event;
+      });
+
+  EventManager::Instance().triggerCollisionObstacleChanged(Vector2D(0, 0), 64.0f, "added",
+                                                            EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerCollisionObstacleChanged(Vector2D(100, 100), 32.0f, "removed",
+                                                            EventManager::DispatchMode::Immediate);
+
+  BOOST_CHECK(firstObstacle != nullptr);
+  BOOST_CHECK(secondObstacle != nullptr);
+  BOOST_CHECK_EQUAL(firstObstacle.get(), secondObstacle.get()); // Same pooled event reused
+}
+
+BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_DamageEvents, EventManagerFixture) {
+  EventPtr firstDamage = nullptr;
+  EventPtr secondDamage = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::Combat, [&](const EventData &data) {
+        if (!firstDamage) firstDamage = data.event;
+        else secondDamage = data.event;
+      });
+
+  EventManager::Instance().triggerDamage(EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerDamage(EventManager::DispatchMode::Immediate);
+
+  BOOST_CHECK(firstDamage != nullptr);
+  BOOST_CHECK(secondDamage != nullptr);
+  BOOST_CHECK_EQUAL(firstDamage.get(), secondDamage.get()); // Same pooled event reused
+}
+
+// ==================== Additional API Coverage Tests ====================
+
+BOOST_FIXTURE_TEST_CASE(DrainAllDeferredEvents_ProcessesAllEvents, EventManagerFixture) {
+  std::atomic<int> handlerCallCount{0};
+
+  EventManager::Instance().registerHandler(
+      EventTypeId::Weather,
+      [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
+
+  // Queue multiple deferred events
+  for (int i = 0; i < 5; ++i) {
+    EventManager::Instance().changeWeather("Test", 1.0f);
+  }
+
+  // Should have pending events
+  BOOST_CHECK_GT(EventManager::Instance().getPendingEventCount(), 0);
+
+  // Drain all events (used in testing for deterministic processing)
+  EventManager::Instance().drainAllDeferredEvents();
+
+  // All events should be processed
+  BOOST_CHECK_EQUAL(EventManager::Instance().getPendingEventCount(), 0);
+  BOOST_CHECK_GE(handlerCallCount.load(), 5);
+}
+
+BOOST_FIXTURE_TEST_CASE(EnqueueBatch_ProcessesAllEventsInBatch, EventManagerFixture) {
+  std::atomic<int> handlerCallCount{0};
+
+  EventManager::Instance().registerHandler(
+      EventTypeId::Custom,
+      [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
+
+  // Create a batch of deferred events
+  std::vector<EventManager::DeferredEvent> batch;
+  for (int i = 0; i < 10; ++i) {
+    EventData data;
+    data.event = std::make_shared<MockEvent>("BatchEvent");
+    data.typeId = EventTypeId::Custom;
+    data.setActive(true);
+    batch.push_back(EventManager::DeferredEvent{EventTypeId::Custom, std::move(data)});
+  }
+
+  // Enqueue the batch
+  EventManager::Instance().enqueueBatch(std::move(batch));
+
+  // Process all events
+  EventManager::Instance().drainAllDeferredEvents();
+
+  // All batch events should be processed
+  BOOST_CHECK_GE(handlerCallCount.load(), 10);
+}
+
+BOOST_FIXTURE_TEST_CASE(GetHandlerCount_ReturnsCorrectCount, EventManagerFixture) {
+  // Initially no handlers
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 0);
+
+  // Add handlers
+  auto tok1 = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Weather, [](const EventData &) {});
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 1);
+
+  auto tok2 = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Weather, [](const EventData &) {});
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 2);
+
+  // Remove one handler
+  EventManager::Instance().removeHandler(tok1);
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 1);
+
+  // Remove remaining handler
+  EventManager::Instance().removeHandler(tok2);
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 0);
+}
+
+BOOST_FIXTURE_TEST_CASE(RemoveHandlers_ClearsAllForType, EventManagerFixture) {
+  // Add multiple handlers for Weather
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [](const EventData &) {});
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [](const EventData &) {});
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [](const EventData &) {});
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 3);
+
+  // Also add a handler for a different type (Camera - not internally registered)
+  EventManager::Instance().registerHandler(EventTypeId::Camera, [](const EventData &) {});
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Camera), 1);
+
+  // Remove all Weather handlers
+  EventManager::Instance().removeHandlers(EventTypeId::Weather);
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 0);
+
+  // Camera handler should still exist
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Camera), 1);
+}
+
+BOOST_FIXTURE_TEST_CASE(GlobalPause_BlocksUpdateProcessing, EventManagerFixture) {
+  std::atomic<int> handlerCallCount{0};
+
+  EventManager::Instance().registerHandler(
+      EventTypeId::Weather,
+      [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
+
+  // Queue a deferred event
+  EventManager::Instance().changeWeather("Test", 1.0f);
+  BOOST_CHECK_GT(EventManager::Instance().getPendingEventCount(), 0);
+
+  // Enable global pause
+  EventManager::Instance().setGlobalPause(true);
+  BOOST_CHECK(EventManager::Instance().isGloballyPaused());
+
+  // Update should not process events while paused
+  EventManager::Instance().update();
+  BOOST_CHECK_EQUAL(handlerCallCount.load(), 0);
+  BOOST_CHECK_GT(EventManager::Instance().getPendingEventCount(), 0); // Still pending
+
+  // Disable global pause
+  EventManager::Instance().setGlobalPause(false);
+  BOOST_CHECK(!EventManager::Instance().isGloballyPaused());
+
+  // Now update should process events
+  EventManager::Instance().update();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  BOOST_CHECK_GE(handlerCallCount.load(), 1);
+}
+
+BOOST_FIXTURE_TEST_CASE(MultipleHandlers_AllExecutedInOrder, EventManagerFixture) {
+  std::vector<int> callOrder;
+  std::mutex orderMutex;
+
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
+    std::lock_guard<std::mutex> lock(orderMutex);
+    callOrder.push_back(1);
+  });
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
+    std::lock_guard<std::mutex> lock(orderMutex);
+    callOrder.push_back(2);
+  });
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
+    std::lock_guard<std::mutex> lock(orderMutex);
+    callOrder.push_back(3);
+  });
+
+  // Trigger event with immediate dispatch for deterministic order
+  EventManager::Instance().changeWeather("Test", 1.0f, EventManager::DispatchMode::Immediate);
+
+  // All three handlers should be called
+  BOOST_CHECK_EQUAL(callOrder.size(), 3);
+  // They should be called in registration order
+  BOOST_CHECK_EQUAL(callOrder[0], 1);
+  BOOST_CHECK_EQUAL(callOrder[1], 2);
+  BOOST_CHECK_EQUAL(callOrder[2], 3);
+}
+
+BOOST_FIXTURE_TEST_CASE(HandlerException_DoesNotStopOtherHandlers, EventManagerFixture) {
+  std::atomic<int> handlerCallCount{0};
+
+  // First handler - throws exception
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [](const EventData &) {
+    throw std::runtime_error("Test exception");
+  });
+
+  // Second handler - should still be called
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
+    handlerCallCount.fetch_add(1);
+  });
+
+  // Third handler - should still be called
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
+    handlerCallCount.fetch_add(1);
+  });
+
+  // Trigger event - exception in first handler should not stop others
+  EventManager::Instance().changeWeather("Test", 1.0f, EventManager::DispatchMode::Immediate);
+
+  // Second and third handlers should still have been called
+  BOOST_CHECK_GE(handlerCallCount.load(), 2);
+}
+
+// ==================== Edge Case Tests ====================
+
+BOOST_FIXTURE_TEST_CASE(NullEventDispatch_ReturnsFalse, EventManagerFixture) {
+  // Dispatching a null event should return false
+  bool result = EventManager::Instance().dispatchEvent(nullptr, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(!result);
+
+  result = EventManager::Instance().dispatchEvent(nullptr, EventManager::DispatchMode::Deferred);
+  BOOST_CHECK(!result);
+}
+
+BOOST_FIXTURE_TEST_CASE(Reinitialize_WorksAfterClean, EventManagerFixture) {
+  // Clean the manager
+  EventManager::Instance().clean();
+  BOOST_CHECK(!EventManager::Instance().isInitialized());
+
+  // Re-initialize should work
+  BOOST_CHECK(EventManager::Instance().init());
+  BOOST_CHECK(EventManager::Instance().isInitialized());
+
+  // Should be fully functional
+  std::atomic<bool> handlerCalled{false};
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
+    handlerCalled.store(true);
+  });
+
+  EventManager::Instance().changeWeather("Test", 1.0f, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(handlerCalled.load());
+}
+
+BOOST_FIXTURE_TEST_CASE(DoubleInit_WarnsAndSucceeds, EventManagerFixture) {
+  // First init (from fixture) should succeed
+  BOOST_CHECK(EventManager::Instance().isInitialized());
+
+  // Second init should also return true (with warning logged)
+  BOOST_CHECK(EventManager::Instance().init());
+  BOOST_CHECK(EventManager::Instance().isInitialized());
+}
+
+BOOST_FIXTURE_TEST_CASE(IdempotentClean_SafeMultipleCalls, EventManagerFixture) {
+  // Clean multiple times - should be safe
+  EventManager::Instance().clean();
+  BOOST_CHECK(!EventManager::Instance().isInitialized());
+
+  // Second clean should also be safe (no crash)
+  EventManager::Instance().clean();
+  BOOST_CHECK(!EventManager::Instance().isInitialized());
+
+  // Third clean should also be safe
+  EventManager::Instance().clean();
+  BOOST_CHECK(!EventManager::Instance().isInitialized());
+
+  // Re-init should still work
+  BOOST_CHECK(EventManager::Instance().init());
+  BOOST_CHECK(EventManager::Instance().isInitialized());
+}
+
+BOOST_FIXTURE_TEST_CASE(PriorityOrdering_HighPriorityFirst, EventManagerFixture) {
+  std::vector<uint32_t> processingOrder;
+  std::mutex orderMutex;
+
+  // Register handlers that record the event priority
+  EventManager::Instance().registerHandler(EventTypeId::Collision, [&](const EventData &data) {
+    std::lock_guard<std::mutex> lock(orderMutex);
+    processingOrder.push_back(data.priority);
+  });
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &data) {
+    std::lock_guard<std::mutex> lock(orderMutex);
+    processingOrder.push_back(data.priority);
+  });
+
+  // Trigger events with different priorities (Collision is CRITICAL, Weather uses LOW by default)
+  // Queue them in reverse priority order to test sorting
+  EventManager::Instance().changeWeather("Test", 1.0f); // LOW priority
+  HammerEngine::CollisionInfo info{};
+  EventManager::Instance().triggerCollision(info); // CRITICAL priority
+
+  // Process deferred events
+  EventManager::Instance().update();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  // Should have processed both events
+  BOOST_CHECK_GE(processingOrder.size(), 2);
+
+  // CRITICAL (1000) should come before LOW (200) due to priority sorting
+  if (processingOrder.size() >= 2) {
+    BOOST_CHECK_GE(processingOrder[0], processingOrder[1]);
+  }
+}
