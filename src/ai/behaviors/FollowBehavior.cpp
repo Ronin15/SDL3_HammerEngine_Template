@@ -148,6 +148,22 @@ void FollowBehavior::executeLogic(BehaviorContext &ctx) {
   auto &follow = data.state.follow;
   auto &pathData = *ctx.pathData;
 
+  // Combat awareness: Switch to FleeBehavior when attacked
+  // FleeBehavior handles proper pathfinding, will return to Follow when safe
+  if (isUnderRecentAttack(ctx, 2.0f)) {
+    // Update fear state before fleeing
+    if (ctx.memoryData) {
+      ctx.memoryData->emotions.fear = std::min(1.0f, ctx.memoryData->emotions.fear + 0.3f);
+    }
+    auto& aiMgr = AIManager::Instance();
+    auto& edm = EntityDataManager::Instance();
+    EntityHandle handle = edm.getHandle(ctx.edmIndex);
+    if (handle.isValid() && aiMgr.hasBehavior("Flee")) {
+      aiMgr.assignBehavior(handle, "Flee");
+      return; // FleeBehavior takes over, will return to Follow when fear subsides
+    }
+  }
+
   // Use cached player info from context (lock-free, cached once per frame)
   if (!ctx.playerValid) {
     // No target, stop following

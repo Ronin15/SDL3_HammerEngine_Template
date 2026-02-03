@@ -551,6 +551,9 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     size_t index = getIndex(handle);
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
 
+    // Initialize memory data for emotional states and personality
+    initMemoryData(index);
+
     // Set up CharacterData with computed stats (race base × class multiplier)
     auto& charData = m_characterData[typeIndex];
     charData.category = CreatureCategory::NPC;
@@ -567,6 +570,7 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     charData.priority = classInfo.basePriority;
     charData.faction = (factionOverride != 0xFF) ? factionOverride : classInfo.defaultFaction;
     charData.emotionalResilience = classInfo.emotionalResilience;
+    charData.mass = raceInfo.sizeMultiplier * raceInfo.sizeMultiplier;  // Mass scales with area
 
     // Apply faction-based collision layers
     applyFactionCollision(index, charData.faction);
@@ -678,6 +682,9 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
     size_t index = getIndex(handle);
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
 
+    // Initialize memory data for emotional states and personality
+    initMemoryData(index);
+
     // Set up CharacterData
     auto& charData = m_characterData[typeIndex];
     charData.category = CreatureCategory::Monster;
@@ -693,6 +700,7 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
     charData.moveSpeed = typeInfo.baseMoveSpeed * variantInfo.moveSpeedMult;
     charData.priority = variantInfo.basePriority;
     charData.faction = (factionOverride != 0xFF) ? factionOverride : typeInfo.defaultFaction;
+    charData.mass = typeInfo.sizeMultiplier * typeInfo.sizeMultiplier;  // Mass scales with area
 
     applyFactionCollision(index, charData.faction);
 
@@ -775,6 +783,9 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
     size_t index = getIndex(handle);
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
 
+    // Initialize memory data for emotional states and personality
+    initMemoryData(index);
+
     // Set up CharacterData
     auto& charData = m_characterData[typeIndex];
     charData.category = CreatureCategory::Animal;
@@ -790,6 +801,7 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
     charData.moveSpeed = speciesInfo.baseMoveSpeed * roleInfo.moveSpeedMult;
     charData.priority = roleInfo.basePriority;
     charData.faction = (factionOverride != 0xFF) ? factionOverride : roleInfo.defaultFaction;
+    charData.mass = speciesInfo.sizeMultiplier * speciesInfo.sizeMultiplier;  // Mass scales with area
 
     applyFactionCollision(index, charData.faction);
 
@@ -2792,6 +2804,7 @@ void EntityDataManager::updateEmotionalDecay(size_t index, float deltaTime, floa
 
     data.emotions.decay(decayRate, deltaTime);
     data.lastDecayTime += deltaTime;
+    data.lastCombatTime += deltaTime;  // Enable delta-based combat timing for isUnderRecentAttack()
 }
 
 void EntityDataManager::modifyEmotions(size_t index, float aggression, float fear,

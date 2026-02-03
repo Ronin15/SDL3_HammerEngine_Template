@@ -64,6 +64,8 @@ void ChaseBehavior::init(EntityHandle handle) {
   chase.lastKnownTargetPos = hotData.transform.position;
   chase.currentDirection = Vector2D{0, 0};
   chase.lastStallPosition = Vector2D{0, 0};
+  chase.hasExplicitTarget = false;
+  chase.explicitTarget = EntityHandle{};
 
   // Check if player is valid and in range
   const auto &aiMgr = AIManager::Instance();
@@ -80,6 +82,44 @@ void ChaseBehavior::init(EntityHandle handle) {
 
 EntityHandle ChaseBehavior::getTargetHandle() const {
   return AIManager::Instance().getPlayerHandle();
+}
+
+// Explicit target for NPC-vs-NPC chase
+void ChaseBehavior::setTarget(size_t edmIndex, EntityHandle target) {
+  auto& edm = EntityDataManager::Instance();
+  if (edmIndex != SIZE_MAX && edm.hasBehaviorData(edmIndex)) {
+    auto& chase = edm.getBehaviorData(edmIndex).state.chase;
+    chase.explicitTarget = target;
+    chase.hasExplicitTarget = target.isValid();
+  }
+}
+
+void ChaseBehavior::clearTarget(size_t edmIndex) {
+  auto& edm = EntityDataManager::Instance();
+  if (edmIndex != SIZE_MAX && edm.hasBehaviorData(edmIndex)) {
+    auto& chase = edm.getBehaviorData(edmIndex).state.chase;
+    chase.explicitTarget = EntityHandle{};
+    chase.hasExplicitTarget = false;
+  }
+}
+
+EntityHandle ChaseBehavior::getTarget(size_t edmIndex) const {
+  auto& edm = EntityDataManager::Instance();
+  if (edmIndex != SIZE_MAX && edm.hasBehaviorData(edmIndex)) {
+    const auto& chase = edm.getBehaviorData(edmIndex).state.chase;
+    if (chase.hasExplicitTarget) {
+      return chase.explicitTarget;
+    }
+  }
+  return EntityHandle{};
+}
+
+bool ChaseBehavior::hasExplicitTarget(size_t edmIndex) const {
+  auto& edm = EntityDataManager::Instance();
+  if (edmIndex != SIZE_MAX && edm.hasBehaviorData(edmIndex)) {
+    return edm.getBehaviorData(edmIndex).state.chase.hasExplicitTarget;
+  }
+  return false;
 }
 
 bool ChaseBehavior::checkLineOfSight(EntityHandle handle,
@@ -159,9 +199,51 @@ void ChaseBehavior::executeLogic(BehaviorContext &ctx) {
     data.lastCrowdAnalysis = 0.0f;
   }
 
-  // Use cached player info from context (lock-free, cached once per frame)
-  if (!ctx.playerValid) {
-    // No target available - clean exit from chase state
+  // Target priority: explicit target > memory lastTarget > player
+  // This enables NPC-vs-NPC chase and memory-based target tracking
+  Vector2D entityPos = ctx.transform.position;
+  Vector2D targetPos;
+  bool targetValid = false;
+
+  // 1. Check for explicit target (set via setTarget())
+  if (chase.hasExplicitTarget && chase.explicitTarget.isValid()) {
+    auto& edm = EntityDataManager::Instance();
+    size_t targetIdx = edm.getIndex(chase.explicitTarget);
+    if (targetIdx != SIZE_MAX && edm.getHotDataByIndex(targetIdx).isAlive()) {
+      targetPos = edm.getHotDataByIndex(targetIdx).transform.position;
+      targetValid = true;
+    } else {
+      // Explicit target no longer valid - clear it
+      chase.hasExplicitTarget = false;
+      chase.explicitTarget = EntityHandle{};
+    }
+  }
+
+  // 2. Check memory for lastTarget (e.g., who we were attacking or who attacked us)
+  if (!targetValid && ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
+    auto& edm = EntityDataManager::Instance();
+    size_t targetIdx = edm.getIndex(ctx.memoryData->lastTarget);
+    if (targetIdx != SIZE_MAX && edm.getHotDataByIndex(targetIdx).isAlive()) {
+      targetPos = edm.getHotDataByIndex(targetIdx).transform.position;
+      targetValid = true;
+    }
+  }
+
+  // 3. Check memory for lastAttacker (chase who attacked us)
+  if (!targetValid && ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
+    auto& edm = EntityDataManager::Instance();
+    size_t attackerIdx = edm.getIndex(ctx.memoryData->lastAttacker);
+    if (attackerIdx != SIZE_MAX && edm.getHotDataByIndex(attackerIdx).isAlive()) {
+      targetPos = edm.getHotDataByIndex(attackerIdx).transform.position;
+      targetValid = true;
+    }
+  }
+
+  // No automatic player fallback - chase only happens when there's a reason
+  // If player should be chased, it must be set via setTarget() or via memory
+
+  // No valid target - exit chase state
+  if (!targetValid) {
     if (chase.isChasing) {
       ctx.transform.velocity = Vector2D(0, 0);
       chase.isChasing = false;
@@ -169,9 +251,6 @@ void ChaseBehavior::executeLogic(BehaviorContext &ctx) {
     }
     return;
   }
-
-  Vector2D entityPos = ctx.transform.position;
-  Vector2D targetPos = ctx.playerPosition;
   float const distanceSquared = (targetPos - entityPos).lengthSquared();
 
   float const maxRangeSquared = m_maxRange * m_maxRange;

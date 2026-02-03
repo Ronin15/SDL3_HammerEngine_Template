@@ -96,6 +96,18 @@ void WanderBehavior::executeLogic(BehaviorContext &ctx) {
     return;
   }
 
+  // Combat awareness: Switch to FleeBehavior when attacked
+  // FleeBehavior handles proper pathfinding, bravery scaling, threat tracking
+  if (isUnderRecentAttack(ctx, 2.0f)) {
+    auto& aiMgr = AIManager::Instance();
+    auto& edm = EntityDataManager::Instance();
+    EntityHandle handle = edm.getHandle(ctx.edmIndex);
+    if (handle.isValid() && aiMgr.hasBehavior("Flee")) {
+      aiMgr.assignBehavior(handle, "Flee");
+      return; // FleeBehavior takes over
+    }
+  }
+
   // Update all timers (including EDM path timers) - pass pathData directly
   updateTimers(data, ctx.deltaTime, ctx.pathData);
 

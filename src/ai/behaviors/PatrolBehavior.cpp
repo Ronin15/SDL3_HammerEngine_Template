@@ -96,6 +96,24 @@ void PatrolBehavior::executeLogic(BehaviorContext &ctx) {
     return;
   }
 
+  // Combat awareness: Switch to FleeBehavior when attacked
+  // Alert nearby guards via emotional state before fleeing
+  if (isUnderRecentAttack(ctx, 1.5f)) {
+    // Set emotional state for alert propagation (other guards check suspicion)
+    if (ctx.memoryData) {
+      ctx.memoryData->emotions.suspicion = 1.0f; // Max alert
+      ctx.memoryData->emotions.fear = 0.5f; // Moderate fear
+    }
+    // Switch to FleeBehavior for proper pathfinding and threat tracking
+    auto& aiMgr = AIManager::Instance();
+    auto& edm = EntityDataManager::Instance();
+    EntityHandle handle = edm.getHandle(ctx.edmIndex);
+    if (handle.isValid() && aiMgr.hasBehavior("Flee")) {
+      aiMgr.assignBehavior(handle, "Flee");
+      return; // FleeBehavior takes over
+    }
+  }
+
   // Ensure waypoint index is valid
   if (m_currentWaypoint >= m_waypoints.size()) {
     m_currentWaypoint = 0;

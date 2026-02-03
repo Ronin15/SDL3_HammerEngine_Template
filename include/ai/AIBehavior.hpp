@@ -168,6 +168,22 @@ protected:
 
   // Common utility functions for behaviors
 
+  // Combat awareness - behaviors can check if under attack and respond emergently
+  /**
+   * @brief Check if entity was recently attacked (within threshold seconds)
+   * @param ctx BehaviorContext with memoryData
+   * @param thresholdSeconds Time window to consider "recent" (default 1.0s)
+   * @return true if lastCombatTime < threshold and has valid attacker
+   */
+  bool isUnderRecentAttack(const BehaviorContext& ctx, float thresholdSeconds = 1.0f) const;
+
+  /**
+   * @brief Get the handle of the last entity that attacked this one
+   * @param ctx BehaviorContext with memoryData
+   * @return EntityHandle of attacker, or invalid handle if none
+   */
+  EntityHandle getLastAttacker(const BehaviorContext& ctx) const;
+
   // Vector and angle utilities
   Vector2D normalizeDirection(const Vector2D &vector) const;
   float calculateAngleToTarget(const Vector2D &from, const Vector2D &to) const;

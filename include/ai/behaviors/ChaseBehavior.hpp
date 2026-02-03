@@ -41,6 +41,13 @@ public:
   bool isChasing() const;
   bool hasLineOfSight() const;
 
+  // Explicit target for NPC-vs-NPC chase (stored in EDM BehaviorData)
+  // Priority: explicit target > memory lastTarget > player
+  void setTarget(size_t edmIndex, EntityHandle target);
+  void clearTarget(size_t edmIndex);
+  [[nodiscard]] EntityHandle getTarget(size_t edmIndex) const;
+  [[nodiscard]] bool hasExplicitTarget(size_t edmIndex) const;
+
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
 

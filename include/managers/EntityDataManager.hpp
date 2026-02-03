@@ -206,6 +206,7 @@ struct CharacterData {
     float attackDamage{10.0f};
     float attackRange{50.0f};
     float moveSpeed{100.0f};   // Base movement speed
+    float mass{1.0f};          // Physical mass (affects knockback resistance)
 
     // Identity (creature composition)
     CreatureCategory category{CreatureCategory::NPC};  // NPC, Monster, or Animal
@@ -1020,7 +1021,7 @@ struct BehaviorData {
             uint8_t _pad;
         } flee;
 
-        struct { // ChaseState (~64 bytes)
+        struct { // ChaseState (~80 bytes)
             Vector2D lastKnownTargetPos;      // Last known target position
             Vector2D currentDirection;         // Current movement direction
             Vector2D lastStallPosition;        // Position when stall was detected
@@ -1035,7 +1036,9 @@ struct BehaviorData {
             int cachedChaserCount;             // Cached number of chasers nearby
             bool isChasing;                    // Currently in chase mode
             bool hasLineOfSight;               // Has line of sight to target
-            uint8_t _pad[2];                   // Padding for alignment
+            bool hasExplicitTarget;            // NPC-vs-NPC chase: explicit target set
+            uint8_t _pad[1];                   // Padding for alignment
+            EntityHandle explicitTarget;       // NPC-vs-NPC chase: overrides player targeting
         } chase;
 
         struct { // AttackState (~140 bytes)

@@ -319,8 +319,16 @@ void AttackBehavior::executeLogic(BehaviorContext &ctx) {
   // Update state timer
   updateStateTimer(data);
 
-  // Check for retreat conditions
-  if (shouldRetreat(ctx.edmIndex) &&
+  // Check for berserker state - very aggressive entities fight to death
+  bool berserkerMode = false;
+  if (ctx.memoryData && ctx.memoryData->isValid()) {
+    float aggression = ctx.memoryData->emotions.aggression;
+    float personalAggression = ctx.memoryData->personality.aggression;
+    berserkerMode = (aggression > 0.8f && personalAggression > 0.7f);
+  }
+
+  // Check for retreat conditions (berserkers never retreat)
+  if (!berserkerMode && shouldRetreat(ctx.edmIndex) &&
       attack.currentState != static_cast<uint8_t>(AttackState::RETREATING)) {
     // Very high fear + low bravery = full flee, not just tactical retreat
     bool shouldFlee = false;
@@ -829,7 +837,19 @@ void AttackBehavior::executeAttack(size_t edmIndex, const Vector2D &targetPos,
   Vector2D entityPos = edm.getHotDataByIndex(edmIndex).transform.position;
 
   // Calculate damage
-  float const damage = calculateDamage(data);
+  float damage = calculateDamage(data);
+
+  // Personality-based damage scaling
+  if (edm.hasMemoryData(edmIndex)) {
+    const auto& memData = edm.getMemoryData(edmIndex);
+    if (memData.isValid()) {
+      // Personality aggression: +10% to +30% damage
+      float personalityBonus = 1.0f + (memData.personality.aggression * 0.2f);
+      // Emotional aggression: +0% to +20% damage
+      float emotionalBonus = 1.0f + (memData.emotions.aggression * 0.2f);
+      damage *= personalityBonus * emotionalBonus;
+    }
+  }
 
   // Calculate knockback
   Vector2D knockback = calculateKnockbackVector(entityPos, targetPos);
@@ -841,6 +861,12 @@ void AttackBehavior::executeAttack(size_t edmIndex, const Vector2D &targetPos,
   // Apply damage via handle-based system
   EntityHandle targetHandle = getTargetHandle();
   applyDamageToTarget(targetHandle, damage, knockback, attackerHandle);
+
+  // Track who we attacked in memory (for ChaseBehavior target fallback)
+  if (edm.hasMemoryData(edmIndex)) {
+    auto& memData = edm.getMemoryData(edmIndex);
+    memData.lastTarget = targetHandle;
+  }
 
   // Update attack state
   attack.attackTimer = 0.0f;

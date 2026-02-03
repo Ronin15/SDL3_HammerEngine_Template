@@ -110,14 +110,22 @@ bool AIManager::init() {
           // Apply health damage
           charData.health = std::max(0.0f, charData.health - damageEvent->getDamage());
 
-          // Apply knockback
-          hotData.transform.velocity = hotData.transform.velocity + damageEvent->getKnockback();
+          // Populate event data for downstream consumers
+          damageEvent->setRemainingHealth(charData.health);
+          damageEvent->setWasLethal(charData.health <= 0.0f);
 
-          // Update victim's memory (enables AI threat detection)
-          if (attackerHandle.isValid() && edm.hasMemoryData(idx)) {
-            auto& memData = edm.getMemoryData(idx);
-            memData.lastAttacker = attackerHandle;
-            memData.lastCombatTime = 0.0f;
+          // Apply knockback (scaled by inverse mass - heavier entities resist more)
+          float knockbackScale = 1.0f / std::max(0.1f, charData.mass);
+          hotData.transform.velocity = hotData.transform.velocity + damageEvent->getKnockback() * knockbackScale;
+
+          // Update victim's memory with full combat tracking (personality-scaled fear, encounter count)
+          if (attackerHandle.isValid()) {
+            edm.recordCombatEvent(idx, attackerHandle, targetHandle,
+                                  damageEvent->getDamage(), true, 0.0f);
+            // Override lastCombatTime for delta semantics (behaviors check < threshold)
+            if (edm.hasMemoryData(idx)) {
+              edm.getMemoryData(idx).lastCombatTime = 0.0f;
+            }
           }
 
           // Death handling (EDM lifecycle) - O(1) per damage event

@@ -21,6 +21,19 @@ std::mt19937 &getThreadLocalRNG() {
 
 AIBehavior::~AIBehavior() = default;
 
+// Combat awareness helpers - let behaviors decide their own response to attacks
+bool AIBehavior::isUnderRecentAttack(const BehaviorContext& ctx, float thresholdSeconds) const {
+  if (!ctx.memoryData) return false;
+  // lastCombatTime is set to 0.0f when attacked, increments with deltaTime
+  return ctx.memoryData->lastCombatTime < thresholdSeconds &&
+         ctx.memoryData->lastAttacker.isValid();
+}
+
+EntityHandle AIBehavior::getLastAttacker(const BehaviorContext& ctx) const {
+  if (!ctx.memoryData) return EntityHandle{};
+  return ctx.memoryData->lastAttacker;
+}
+
 PathfinderManager &AIBehavior::pathfinder() const {
   // Static reference cached on first use - eliminates repeated Instance() calls
   static PathfinderManager &pf = PathfinderManager::Instance();

@@ -4,6 +4,7 @@
  */
 
 #include "ai/behaviors/IdleBehavior.hpp"
+#include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include <cmath>
 
@@ -77,6 +78,18 @@ void IdleBehavior::executeLogic(BehaviorContext &ctx) {
   if (!data.isInitialized()) {
     initializeIdleState(ctx.transform.position, data);
     data.setInitialized(true);
+  }
+
+  // Combat awareness: Switch to FleeBehavior when attacked
+  // FleeBehavior handles proper pathfinding, bravery scaling, threat tracking
+  if (isUnderRecentAttack(ctx, 2.0f)) {
+    auto& aiMgr = AIManager::Instance();
+    auto& edm = EntityDataManager::Instance();
+    EntityHandle handle = edm.getHandle(ctx.edmIndex);
+    if (handle.isValid() && aiMgr.hasBehavior("Flee")) {
+      aiMgr.assignBehavior(handle, "Flee");
+      return; // FleeBehavior takes over
+    }
   }
 
   // Execute behavior based on current mode

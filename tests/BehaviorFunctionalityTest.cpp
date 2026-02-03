@@ -366,50 +366,62 @@ BOOST_AUTO_TEST_CASE(TestWanderBehavior) {
 }
 
 BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
-    // Create fresh entity and player for this test
-    auto entity = TestNPC::create(200.0f, 200.0f);
-    auto testPlayer = TestNPC::create(500.0f, 500.0f);
+    // Test: NPC chases an opponent who attacked them (memory-based targeting)
+    // This tests emergent chase behavior where NPCs remember and pursue threats
+    auto chaser = TestNPC::create(200.0f, 200.0f);
+    auto opponent = TestNPC::create(500.0f, 500.0f);  // The attacker
+
+    auto& edm = EntityDataManager::Instance();
+    EntityHandle chaserHandle = chaser->getHandle();
+    EntityHandle opponentHandle = opponent->getHandle();
 
     // EDM-CENTRIC: Set collision layers directly on EDM hot data
     {
-        auto& edm = EntityDataManager::Instance();
-        size_t entityIdx = edm.getIndex(entity->getHandle());
-        if (entityIdx != SIZE_MAX) {
-            auto& hot = edm.getHotDataByIndex(entityIdx);
+        size_t chaserIdx = edm.getIndex(chaserHandle);
+        if (chaserIdx != SIZE_MAX) {
+            auto& hot = edm.getHotDataByIndex(chaserIdx);
             hot.collisionLayers = CollisionLayer::Layer_Enemy;
             hot.collisionMask = 0xFFFF;
             hot.setCollisionEnabled(true);
         }
-        size_t playerIdx = edm.getIndex(testPlayer->getHandle());
-        if (playerIdx != SIZE_MAX) {
-            auto& hot = edm.getHotDataByIndex(playerIdx);
-            hot.collisionLayers = CollisionLayer::Layer_Player;
+        size_t opponentIdx = edm.getIndex(opponentHandle);
+        if (opponentIdx != SIZE_MAX) {
+            auto& hot = edm.getHotDataByIndex(opponentIdx);
+            hot.collisionLayers = CollisionLayer::Layer_Enemy;
             hot.collisionMask = 0xFFFF;
             hot.setCollisionEnabled(true);
         }
     }
 
-    // Phase 2 EDM Migration: Use EntityHandle-based API for player reference
-    EntityHandle playerHandle = testPlayer->getHandle();
-    AIManager::Instance().setPlayerHandle(playerHandle);
-
-    Vector2D initialPos = entity->getPosition();
-    Vector2D playerPos = testPlayer->getPosition();
-    entity->resetUpdateCount();
+    Vector2D initialPos = chaser->getPosition();
+    Vector2D opponentPos = opponent->getPosition();
+    chaser->resetUpdateCount();
 
     // Debug world bounds
     float worldW, worldH;
     PathfinderManager::Instance().getCachedWorldBounds(worldW, worldH);
     BOOST_TEST_MESSAGE("World bounds: " << worldW << " x " << worldH);
-    BOOST_TEST_MESSAGE("Entity size: 32 x 32");  // NPC default collision size
+    BOOST_TEST_MESSAGE("Chaser size: 32 x 32");
 
-    BOOST_TEST_MESSAGE("Initial entity pos: (" << initialPos.getX() << ", " << initialPos.getY() << ")");
-    BOOST_TEST_MESSAGE("Player pos: (" << playerPos.getX() << ", " << playerPos.getY() << ")");
-    BOOST_TEST_MESSAGE("Initial distance: " << (initialPos - playerPos).length());
+    BOOST_TEST_MESSAGE("Initial chaser pos: (" << initialPos.getX() << ", " << initialPos.getY() << ")");
+    BOOST_TEST_MESSAGE("Opponent pos: (" << opponentPos.getX() << ", " << opponentPos.getY() << ")");
+    BOOST_TEST_MESSAGE("Initial distance: " << (initialPos - opponentPos).length());
 
-    // Phase 2 EDM Migration: Use EntityHandle-based API
-    EntityHandle handle = entity->getHandle();
-    AIManager::Instance().registerEntity(handle, "Chase");
+    // Register chaser with Chase behavior
+    AIManager::Instance().registerEntity(chaserHandle, "Chase");
+
+    // Set up memory context: opponent attacked the chaser, so chaser pursues
+    // This simulates the damage handler setting lastAttacker when damage is applied
+    {
+        size_t chaserIdx = edm.getIndex(chaserHandle);
+        if (chaserIdx != SIZE_MAX) {
+            edm.initMemoryData(chaserIdx);
+            auto& memData = edm.getMemoryData(chaserIdx);
+            memData.lastAttacker = opponentHandle;  // Opponent attacked us - chase them!
+            memData.lastCombatTime = 0.0f;          // Just happened
+            memData.setValid(true);
+        }
+    }
 
     // Track movement progress to verify pathfinding works
     int significantMovementCount = 0;
@@ -425,7 +437,7 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
         CollisionManager::Instance().update(testDeltaTime); // Apply position updates from AIManager
 
         // Track movement progress
-        Vector2D pos = entity->getPosition();
+        Vector2D pos = chaser->getPosition();
         float stepDistance = (pos - lastPos).length();
         totalDistanceMoved += stepDistance; // Track ALL movement
         if (stepDistance > 0.1f) { // Count frames with movement
@@ -435,31 +447,31 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
 
         // Sample positions periodically
         if (i % 10 == 0) {
-            Vector2D vel = entity->getVelocity();
+            Vector2D vel = chaser->getVelocity();
             BOOST_TEST_MESSAGE("Update " << i << ": pos=(" << pos.getX() << ", " << pos.getY() << ") vel=(" << vel.getX() << ", " << vel.getY() << ") moved=" << totalDistanceMoved);
         }
     }
 
-    // Verify actual movement occurred and entity got closer
-    Vector2D currentPos = entity->getPosition();
-    Vector2D currentVel = entity->getVelocity();
-    float initialDistanceToPlayer = (initialPos - playerPos).length();
-    float currentDistanceToPlayer = (currentPos - playerPos).length();
+    // Verify actual movement occurred and chaser got closer to opponent
+    Vector2D currentPos = chaser->getPosition();
+    Vector2D currentVel = chaser->getVelocity();
+    float initialDistanceToOpponent = (initialPos - opponentPos).length();
+    float currentDistanceToOpponent = (currentPos - opponentPos).length();
 
-    BOOST_TEST_MESSAGE("Final entity pos: (" << currentPos.getX() << ", " << currentPos.getY() << ")");
+    BOOST_TEST_MESSAGE("Final chaser pos: (" << currentPos.getX() << ", " << currentPos.getY() << ")");
     BOOST_TEST_MESSAGE("Final velocity: (" << currentVel.getX() << ", " << currentVel.getY() << ")");
-    BOOST_TEST_MESSAGE("Initial distance: " << initialDistanceToPlayer << " -> Final distance: " << currentDistanceToPlayer);
+    BOOST_TEST_MESSAGE("Initial distance: " << initialDistanceToOpponent << " -> Final distance: " << currentDistanceToOpponent);
     BOOST_TEST_MESSAGE("Total distance moved: " << totalDistanceMoved << " over " << significantMovementCount << " steps");
-    BOOST_TEST_MESSAGE("Update count: " << entity->getUpdateCount());
+    BOOST_TEST_MESSAGE("Update count: " << chaser->getUpdateCount());
 
-    // Enhanced assertions: verify actual movement and progress
-    BOOST_CHECK_GT(totalDistanceMoved, 5.0f); // Entity must have actually moved (not just set velocity)
-    BOOST_CHECK_LT(currentDistanceToPlayer, initialDistanceToPlayer); // Must get closer to target
-    BOOST_CHECK_GT(entity->getUpdateCount(), 0);
+    // Enhanced assertions: verify actual movement and progress toward opponent
+    BOOST_CHECK_GT(totalDistanceMoved, 5.0f); // Chaser must have actually moved
+    BOOST_CHECK_LT(currentDistanceToOpponent, initialDistanceToOpponent); // Must get closer to who attacked them
+    BOOST_CHECK_GT(chaser->getUpdateCount(), 0);
 
-    // Clean up - Phase 2 EDM Migration: Use EntityHandle-based API
-    AIManager::Instance().unassignBehavior(handle);
-    AIManager::Instance().unregisterEntity(handle);
+    // Clean up
+    AIManager::Instance().unassignBehavior(chaserHandle);
+    AIManager::Instance().unregisterEntity(chaserHandle);
 }
 
 BOOST_AUTO_TEST_CASE(TestFleeBehavior) {

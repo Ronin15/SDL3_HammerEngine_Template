@@ -713,9 +713,14 @@ void EventManager::enqueueBatch(std::vector<DeferredEvent>&& events) const {
   std::lock_guard<std::mutex> lock(m_dispatchMutex);
 
   // Drop oldest events if we'd exceed the queue limit
+  size_t droppedCount = 0;
   while (m_pendingDispatch.size() + events.size() > m_maxDispatchQueue &&
          !m_pendingDispatch.empty()) {
     m_pendingDispatch.pop_front();
+    ++droppedCount;
+  }
+  if (droppedCount > 0) {
+    EVENT_WARN(std::format("Queue overflow: dropped {} events", droppedCount));
   }
 
   // Bulk insert all events
