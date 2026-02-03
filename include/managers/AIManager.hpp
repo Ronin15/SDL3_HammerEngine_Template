@@ -21,7 +21,7 @@
  * - Scales to 10k+ entities while maintaining 60+ FPS
  */
 
-#include "ai/AIBehavior.hpp"
+#include "ai/BehaviorConfig.hpp"
 #include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -149,48 +149,31 @@ public:
   bool isShutdown() const { return m_isShutdown; }
 
   /**
-   * @brief Registers a behavior template for use by AI entities
-   * @param name Unique name identifier for the behavior
-   * @param behavior Shared pointer to the behavior template to register
-   */
-  void registerBehavior(const std::string &name,
-                        std::shared_ptr<AIBehavior> behavior);
-
-  /**
-   * @brief Registers all standard behavior types (Idle, Wander, Chase, Guard, Attack, Flee, Follow)
-   * @details Called by GameEngine after init(). GameStates don't need to register behaviors manually.
+   * @brief Registers all standard behavior types (Idle, Wander, Chase, Guard, Attack, Flee, Follow, Patrol)
+   * @details Called by GameEngine after init(). Sets up m_behaviorTypeMap for name->type lookup.
    */
   void registerDefaultBehaviors();
 
   /**
-   * @brief Checks if a behavior template is registered
+   * @brief Checks if a behavior name is registered
    * @param name Name of the behavior to check
-   * @return true if behavior is registered, false otherwise
+   * @return true if behavior name is known, false otherwise
    */
   bool hasBehavior(const std::string &name) const;
 
   /**
-   * @brief Retrieves a registered behavior template
-   * @param name Name of the behavior to retrieve
-   * @return Shared pointer to behavior template, or nullptr if not found
-   */
-  std::shared_ptr<AIBehavior> getBehavior(const std::string &name) const;
-
-  /**
-   * @brief Assigns a behavior to an entity immediately
+   * @brief Assigns a behavior to an entity by name
+   * @param handle Entity to assign behavior to
+   * @param behaviorName Name of the behavior (e.g., "Idle", "Attack")
    */
   void assignBehavior(EntityHandle handle, const std::string &behaviorName);
 
   /**
-   * @brief Assigns a pre-configured behavior to an entity (skips clone)
+   * @brief Assigns a behavior to an entity with custom config
    * @param handle Entity to assign behavior to
-   * @param behavior Pre-configured behavior instance (will NOT be cloned)
-   *
-   * Use this when the behavior has been configured with target-specific data
-   * (e.g., AttackBehavior with setTarget()) that would be lost by cloning.
+   * @param config Behavior configuration (includes type)
    */
-  void assignBehaviorDirect(EntityHandle handle,
-                            std::shared_ptr<AIBehavior> behavior);
+  void assignBehavior(EntityHandle handle, const HammerEngine::BehaviorConfigData& config);
 
   /**
    * @brief Removes behavior assignment from an entity
@@ -273,8 +256,7 @@ private:
   // AIManager stores AI-specific data (behaviors, priorities) + cached EDM indices
   struct EntityStorage {
     std::vector<AIEntityData::HotData> hotData;
-    std::vector<EntityHandle> handles;  // 8 bytes each (vs 16 byte shared_ptr)
-    std::vector<std::shared_ptr<AIBehavior>> behaviors;
+    std::vector<EntityHandle> handles;  // 8 bytes each
     std::vector<float> lastUpdateTimes;
     std::vector<size_t> edmIndices;  // Cached for O(1) batch access
 
@@ -282,7 +264,6 @@ private:
     void reserve(size_t capacity) {
       hotData.reserve(capacity);
       handles.reserve(capacity);
-      behaviors.reserve(capacity);
       lastUpdateTimes.reserve(capacity);
       edmIndices.reserve(capacity);
     }
@@ -290,18 +271,11 @@ private:
 
   EntityStorage m_storage;
   std::unordered_map<EntityHandle, size_t> m_handleToIndex;
-  std::unordered_map<std::string, std::shared_ptr<AIBehavior>>
-      m_behaviorTemplates;
   std::unordered_map<std::string, BehaviorType> m_behaviorTypeMap;
 
   // Reverse mapping: EDM index -> dense storage index for O(1) lookup in processBatch
   // SIZE_MAX = no behavior assigned. Much cheaper than shared_ptr (8 bytes vs 16, no atomic ops)
   std::vector<size_t> m_edmToStorageIndex;
-
-  // Shared behaviors indexed by BehaviorType for O(1) lookup in processBatch
-  // Each behavior instance handles multiple entities via internal m_entityStates map
-  std::array<std::shared_ptr<AIBehavior>, static_cast<size_t>(BehaviorType::COUNT)>
-      m_behaviorsByType{};
 
   // NOTE: Behavior caches removed - they were duplicates of the primary maps:
   // - m_behaviorCache duplicated m_behaviorTemplates (same O(1) lookup)

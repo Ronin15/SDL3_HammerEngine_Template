@@ -36,6 +36,7 @@
  *   EventManager → GameStateManager → AIManager → CollisionManager → BackgroundSimManager
  */
 
+#include "ai/BehaviorConfig.hpp"
 #include "collisions/CollisionBody.hpp"
 #include "collisions/TriggerTag.hpp"
 #include "entities/Entity.hpp"
@@ -2141,6 +2142,21 @@ public:
     [[nodiscard]] const BehaviorData& getBehaviorData(size_t index) const;
 
     /**
+     * @brief Get behavior config by EDM index
+     * @param index EDM index from getActiveIndices()
+     * @return BehaviorConfigData for the entity (read-only during execution)
+     */
+    [[nodiscard]] HammerEngine::BehaviorConfigData& getBehaviorConfig(size_t index);
+    [[nodiscard]] const HammerEngine::BehaviorConfigData& getBehaviorConfig(size_t index) const;
+
+    /**
+     * @brief Set behavior config for an entity
+     * @param index EDM index
+     * @param config The behavior config to set
+     */
+    void setBehaviorConfig(size_t index, const HammerEngine::BehaviorConfigData& config);
+
+    /**
      * @brief Check if behavior data exists and is valid for an entity
      * @param index EDM index
      * @return true if behavior data exists and is valid
@@ -2437,6 +2453,10 @@ private:
     // Behavior data (indexed by edmIndex, pre-allocated alongside hotData)
     std::vector<BehaviorData> m_behaviorData;
 
+    // Behavior config (indexed by edmIndex, pre-allocated alongside behaviorData)
+    // Config is read-only during behavior execution - set once when behavior assigned
+    std::vector<HammerEngine::BehaviorConfigData> m_behaviorConfig;
+
     // NPC Memory data (indexed by edmIndex, pre-allocated alongside hotData)
     // Persists across behavior changes unlike BehaviorData
     std::vector<NPCMemoryData> m_memoryData;
@@ -2594,6 +2614,21 @@ inline BehaviorData& EntityDataManager::getBehaviorData(size_t index) {
 inline const BehaviorData& EntityDataManager::getBehaviorData(size_t index) const {
     assert(index < m_behaviorData.size() && "BehaviorData index out of bounds");
     return m_behaviorData[index];
+}
+
+inline HammerEngine::BehaviorConfigData& EntityDataManager::getBehaviorConfig(size_t index) {
+    assert(index < m_behaviorConfig.size() && "BehaviorConfig index out of bounds");
+    return m_behaviorConfig[index];
+}
+
+inline const HammerEngine::BehaviorConfigData& EntityDataManager::getBehaviorConfig(size_t index) const {
+    assert(index < m_behaviorConfig.size() && "BehaviorConfig index out of bounds");
+    return m_behaviorConfig[index];
+}
+
+inline void EntityDataManager::setBehaviorConfig(size_t index, const HammerEngine::BehaviorConfigData& config) {
+    assert(index < m_behaviorConfig.size() && "BehaviorConfig index out of bounds");
+    m_behaviorConfig[index] = config;
 }
 
 inline PathData& EntityDataManager::getPathData(size_t index) {

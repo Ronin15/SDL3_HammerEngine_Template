@@ -6,8 +6,86 @@
 #ifndef BEHAVIOR_CONFIG_HPP
 #define BEHAVIOR_CONFIG_HPP
 
+#include <cstdint>
+
+// Forward declare BehaviorType from EntityDataManager
+enum class BehaviorType : uint8_t;
+
 namespace HammerEngine
 {
+
+/**
+ * Configuration for IdleBehavior
+ *
+ * Controls idle animation modes: stationary, subtle swaying, occasional turns,
+ * or light fidgeting movements.
+ */
+struct IdleBehaviorConfig
+{
+    enum class IdleMode : uint8_t {
+        STATIONARY = 0,      // Completely still
+        SUBTLE_SWAY = 1,     // Small swaying motion
+        OCCASIONAL_TURN = 2, // Turn around occasionally
+        LIGHT_FIDGET = 3     // Small random movements
+    };
+
+    IdleMode mode{IdleMode::SUBTLE_SWAY};
+    float idleRadius{20.0f};           // Movement radius for sway/fidget modes
+    float movementFrequency{3.0f};     // Seconds between movements
+    float turnFrequency{5.0f};         // Seconds between turns
+
+    /**
+     * Create stationary configuration (completely still)
+     */
+    static IdleBehaviorConfig createStationary()
+    {
+        IdleBehaviorConfig config;
+        config.mode = IdleMode::STATIONARY;
+        config.idleRadius = 0.0f;
+        config.movementFrequency = 0.0f;
+        config.turnFrequency = 0.0f;
+        return config;
+    }
+
+    /**
+     * Create subtle sway configuration
+     */
+    static IdleBehaviorConfig createSubtleSway()
+    {
+        IdleBehaviorConfig config;
+        config.mode = IdleMode::SUBTLE_SWAY;
+        config.idleRadius = 30.0f;
+        config.movementFrequency = 2.0f;
+        config.turnFrequency = 8.0f;
+        return config;
+    }
+
+    /**
+     * Create occasional turn configuration (rotation only)
+     */
+    static IdleBehaviorConfig createOccasionalTurn()
+    {
+        IdleBehaviorConfig config;
+        config.mode = IdleMode::OCCASIONAL_TURN;
+        config.idleRadius = 0.0f;
+        config.movementFrequency = 0.0f;
+        config.turnFrequency = 4.0f;
+        return config;
+    }
+
+    /**
+     * Create light fidget configuration
+     */
+    static IdleBehaviorConfig createLightFidget()
+    {
+        IdleBehaviorConfig config;
+        config.mode = IdleMode::LIGHT_FIDGET;
+        config.idleRadius = 50.0f;
+        config.movementFrequency = 1.5f;
+        config.turnFrequency = 3.0f;
+        return config;
+    }
+};
 
 /**
  * Configuration for WanderBehavior
@@ -338,6 +416,110 @@ struct AttackBehaviorConfig
         return config;
     }
 };
+
+// ============================================================================
+// BEHAVIOR CONFIG DATA UNION
+// ============================================================================
+
+/**
+ * @brief Unified behavior configuration storage (data-oriented design)
+ *
+ * Stores the configuration for any behavior type in a single union.
+ * Config is read-only during behavior execution - set once when behavior assigned.
+ * Paired with BehaviorData (state) in EDM for complete behavior storage.
+ *
+ * Usage:
+ *   auto config = BehaviorConfigData::makeWander({.speed = 50.0f});
+ *   edm.setBehaviorConfig(edmIndex, config);
+ */
+struct BehaviorConfigData {
+    BehaviorType type{static_cast<BehaviorType>(0xFF)};  // BehaviorType::None
+    uint8_t _pad[3]{};
+
+    union ConfigUnion {
+        ConfigUnion() : raw{} {}
+
+        IdleBehaviorConfig idle;
+        WanderBehaviorConfig wander;
+        ChaseBehaviorConfig chase;
+        PatrolBehaviorConfig patrol;
+        GuardBehaviorConfig guard;
+        AttackBehaviorConfig attack;
+        FleeBehaviorConfig flee;
+        FollowBehaviorConfig follow;
+
+        uint8_t raw[384];  // Sized to accommodate largest config (AttackBehaviorConfig)
+    } config;
+
+    BehaviorConfigData() = default;
+
+    // Factory methods for type-safe construction
+    static BehaviorConfigData makeIdle(const IdleBehaviorConfig& cfg = {});
+    static BehaviorConfigData makeWander(const WanderBehaviorConfig& cfg = {});
+    static BehaviorConfigData makeChase(const ChaseBehaviorConfig& cfg = {});
+    static BehaviorConfigData makePatrol(const PatrolBehaviorConfig& cfg = {});
+    static BehaviorConfigData makeGuard(const GuardBehaviorConfig& cfg = {});
+    static BehaviorConfigData makeAttack(const AttackBehaviorConfig& cfg = {});
+    static BehaviorConfigData makeFlee(const FleeBehaviorConfig& cfg = {});
+    static BehaviorConfigData makeFollow(const FollowBehaviorConfig& cfg = {});
+};
+
+// Inline factory implementations (avoid link-time dependencies)
+inline BehaviorConfigData BehaviorConfigData::makeIdle(const IdleBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = static_cast<BehaviorType>(7);  // BehaviorType::Idle
+    data.config.idle = cfg;
+    return data;
+}
+
+inline BehaviorConfigData BehaviorConfigData::makeWander(const WanderBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = static_cast<BehaviorType>(0);  // BehaviorType::Wander
+    data.config.wander = cfg;
+    return data;
+}
+
+inline BehaviorConfigData BehaviorConfigData::makeChase(const ChaseBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = static_cast<BehaviorType>(4);  // BehaviorType::Chase
+    data.config.chase = cfg;
+    return data;
+}
+
+inline BehaviorConfigData BehaviorConfigData::makePatrol(const PatrolBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = static_cast<BehaviorType>(2);  // BehaviorType::Patrol
+    data.config.patrol = cfg;
+    return data;
+}
+
+inline BehaviorConfigData BehaviorConfigData::makeGuard(const GuardBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = static_cast<BehaviorType>(1);  // BehaviorType::Guard
+    data.config.guard = cfg;
+    return data;
+}
+
+inline BehaviorConfigData BehaviorConfigData::makeAttack(const AttackBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = static_cast<BehaviorType>(5);  // BehaviorType::Attack
+    data.config.attack = cfg;
+    return data;
+}
+
+inline BehaviorConfigData BehaviorConfigData::makeFlee(const FleeBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = static_cast<BehaviorType>(6);  // BehaviorType::Flee
+    data.config.flee = cfg;
+    return data;
+}
+
+inline BehaviorConfigData BehaviorConfigData::makeFollow(const FollowBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = static_cast<BehaviorType>(3);  // BehaviorType::Follow
+    data.config.follow = cfg;
+    return data;
+}
 
 } // namespace HammerEngine
 

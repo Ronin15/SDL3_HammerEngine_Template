@@ -71,6 +71,9 @@ bool EntityDataManager::init() {
         // Behavior data (indexed by edmIndex, pre-allocated alongside hotData)
         m_behaviorData.reserve(CHARACTER_CAPACITY);
 
+        // Behavior config (indexed by edmIndex, pre-allocated alongside behaviorData)
+        m_behaviorConfig.reserve(CHARACTER_CAPACITY);
+
         // NPC Memory data (indexed by edmIndex, pre-allocated alongside hotData)
         m_memoryData.reserve(CHARACTER_CAPACITY);
 
@@ -297,10 +300,11 @@ size_t EntityDataManager::allocateSlot() {
         m_hotData.emplace_back();
         m_entityIds.emplace_back(0);
         m_generations.emplace_back(0);
-        // Pre-allocate PathData, WaypointSlot, BehaviorData, MemoryData to match - avoids concurrent resize during AI processing
+        // Pre-allocate PathData, WaypointSlot, BehaviorData, BehaviorConfig, MemoryData to match - avoids concurrent resize during AI processing
         m_pathData.emplace_back();
         m_waypointSlots.emplace_back();  // Per-entity waypoint slot (256 bytes)
         m_behaviorData.emplace_back();
+        m_behaviorConfig.emplace_back(); // Behavior config (read-only during execution)
         m_memoryData.emplace_back();     // NPC memory data
     }
 
