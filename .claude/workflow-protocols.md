@@ -66,7 +66,7 @@
 ## Build Status
 - **Debug Build:** ✅/❌ [`cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug` then `ninja -C build` status]
 - **Release Build:** ✅/❌ [`cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release` then `ninja -C build` status]
-- **Test Results:** [`./run_all_tests.sh --core-only --errors-only` output summary]
+- **Test Results:** [`./tests/test_scripts/run_all_tests.sh --core-only --errors-only` output summary]
 - **Compilation Warnings:** [count and severity]
 - **Application Test:** [`timeout 25s ./bin/debug/SDL3_Template` behavior validation]
 

@@ -675,7 +675,7 @@ All benchmark tests are located in:
 
 Run full suite:
 ```bash
-./run_all_tests.sh --benchmarks-only
+./tests/test_scripts/run_all_tests.sh --benchmarks-only
 ```
 
 ## Appendix D: Baseline History
@@ -900,7 +900,7 @@ Compact trend indicators:
 
 **If no benchmark data found:**
 - Report: "No benchmark data available. Run benchmarks first:"
-- Show command: `./run_all_tests.sh --benchmarks-only`
+- Show command: `./tests/test_scripts/run_all_tests.sh --benchmarks-only`
 
 **If baseline missing:**
 - Note in report: "No baseline for comparison. This will serve as baseline."

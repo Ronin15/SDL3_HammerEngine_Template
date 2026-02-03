@@ -32,7 +32,7 @@
 ## Build Status
 - **Debug Build:** ✅ `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug` then `ninja -C build` - Clean compilation
 - **Release Build:** ✅ `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release` then `ninja -C build` - Clean compilation
-- **Test Results:** `./run_all_tests.sh --core-only --errors-only` - Basic weapon creation/destruction tests pass
+- **Test Results:** `./tests/test_scripts/run_all_tests.sh --core-only --errors-only` - Basic weapon creation/destruction tests pass
 - **Application Test:** `timeout 25s ./bin/debug/SDL3_Template` - Basic functionality validated
 - **Compilation Warnings:** 0
 
@@ -196,10 +196,10 @@ Feature ready for production use. Excellent integration with existing systems wh
 - **Pattern:** Followed RAII principles with smart_ptr texture management
 
 ## Build Status
-- **Debug + AddressSanitizer Build:** ✅ `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address"` then `ninja -C build` - No leaks detected
+- **Debug + AddressSanitizer Build:** ✅ `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address -fno-omit-frame-pointer -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF` then `ninja -C build` - No leaks detected
 - **Extended Test:** `timeout 25s ./bin/debug/SDL3_Template` run multiple times over 2 hours - stable memory usage
 - **Memory Analysis:** `./tests/valgrind/quick_memory_check.sh` - <1MB growth over 2 hours (within normal bounds)
-- **Test Suite:** `./run_all_tests.sh --core-only --errors-only` - All tests pass
+- **Test Suite:** `./tests/test_scripts/run_all_tests.sh --core-only --errors-only` - All tests pass
 
 ## Next Steps for system-optimizer
 - [ ] Review particle system memory patterns across all managers
