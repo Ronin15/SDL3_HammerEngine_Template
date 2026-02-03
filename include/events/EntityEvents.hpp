@@ -73,6 +73,14 @@ enum class EntityEventType : uint8_t {
 class DamageEvent : public Event {
 public:
     /**
+     * @brief Default constructor for pool allocation
+     */
+    DamageEvent()
+        : m_name("DamageEvent")
+        , m_eventType(EntityEventType::DamageIntent) {
+    }
+
+    /**
      * @brief Construct a damage event
      * @param eventType DamageIntent or DamageApplied
      * @param source EntityHandle of damage source (attacker)
@@ -91,6 +99,24 @@ public:
     }
 
     ~DamageEvent() override = default;
+
+    /**
+     * @brief Configure event for pool reuse
+     * @param source EntityHandle of damage source (attacker)
+     * @param target EntityHandle of damage target
+     * @param damage Damage amount
+     * @param knockback Knockback force vector
+     */
+    void configure(EntityHandle source, EntityHandle target,
+                   float damage, const Vector2D& knockback) {
+        m_eventType = EntityEventType::DamageIntent;
+        m_source = source;
+        m_target = target;
+        m_damage = damage;
+        m_knockback = knockback;
+        m_remainingHealth = 0.0f;
+        m_wasLethal = false;
+    }
 
     // Core event methods (immediate events, minimal implementation)
     void update() override {}

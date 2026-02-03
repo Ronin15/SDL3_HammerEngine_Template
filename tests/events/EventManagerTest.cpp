@@ -20,7 +20,7 @@
 #include "collisions/CollisionInfo.hpp"
 #include "events/CameraEvent.hpp"
 #include "events/CollisionObstacleChangedEvent.hpp"
-#include "events/DamageEvent.hpp"
+#include "events/EntityEvents.hpp"
 #include "events/Event.hpp"
 #include "events/ParticleEffectEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"

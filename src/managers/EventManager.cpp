@@ -10,7 +10,7 @@
 #include "events/CameraEvent.hpp"
 #include "events/CollisionEvent.hpp"
 #include "events/CollisionObstacleChangedEvent.hpp"
-#include "events/DamageEvent.hpp"
+#include "events/EntityEvents.hpp"
 #include "events/Event.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/ParticleEffectEvent.hpp"

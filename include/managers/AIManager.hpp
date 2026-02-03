@@ -25,6 +25,7 @@
 #include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
 #include <array>
 #include <atomic>
 #include <future>
@@ -369,7 +370,8 @@ private:
 
   // Process batch of Active tier entities using EDM indices directly
   // No tier check needed - getActiveIndices() already filters to Active tier
-  void processBatch(const std::vector<size_t>& activeIndices,
+  // Returns collected damage events from this batch's thread-local buffer
+  std::vector<EventManager::DeferredEvent> processBatch(const std::vector<size_t>& activeIndices,
                     size_t start, size_t end,
                     float deltaTime,
                     float worldWidth, float worldHeight,

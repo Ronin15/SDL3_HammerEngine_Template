@@ -15,8 +15,10 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
+#include "events/EntityEvents.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "utils/SIMDMath.hpp"
 #include <array>
@@ -78,6 +80,52 @@ bool AIManager::init() {
 
     // Register default behaviors (Idle, Wander, Chase, Guard, Attack, Flee, Follow)
     registerDefaultBehaviors();
+
+    // Register damage handler for deferred damage application (thread-safe)
+    // DamageEvents are queued during parallel batch processing and applied here
+    // Responsibilities:
+    //   - Apply damage to health (EDM data)
+    //   - Apply knockback to velocity (EDM data)
+    //   - Update victim's memory for threat detection (EDM data)
+    //   - Mark dead + queue destruction if health <= 0 (EDM lifecycle)
+    // NOT handled here:
+    //   - Combat responses (AI system determines in processBatch)
+    EventManager::Instance().registerHandler(EventTypeId::Combat,
+        [](const EventData& data) {
+          if (!data.isActive() || !data.event) return;
+
+          auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(data.event);
+          if (!damageEvent) return;
+
+          auto& edm = EntityDataManager::Instance();
+          EntityHandle targetHandle = damageEvent->getTarget();
+          EntityHandle attackerHandle = damageEvent->getSource();
+
+          size_t idx = edm.getIndex(targetHandle);
+          if (idx == SIZE_MAX) return;
+
+          auto& hotData = edm.getHotDataByIndex(idx);
+          auto& charData = edm.getCharacterData(targetHandle);
+
+          // Apply health damage
+          charData.health = std::max(0.0f, charData.health - damageEvent->getDamage());
+
+          // Apply knockback
+          hotData.transform.velocity = hotData.transform.velocity + damageEvent->getKnockback();
+
+          // Update victim's memory (enables AI threat detection)
+          if (attackerHandle.isValid() && edm.hasMemoryData(idx)) {
+            auto& memData = edm.getMemoryData(idx);
+            memData.lastAttacker = attackerHandle;
+            memData.lastCombatTime = 0.0f;
+          }
+
+          // Death handling (EDM lifecycle) - O(1) per damage event
+          if (charData.health <= 0.0f && hotData.isAlive()) {
+            hotData.flags &= ~EntityHotData::FLAG_ALIVE;
+            edm.destroyEntity(targetHandle);
+          }
+        });
 
     // No NPCSpawn handler in AIManager: state owns creation; AI manages
     // behavior only.
@@ -361,21 +409,24 @@ void AIManager::update(float deltaTime) {
         if (batchCount <= 1) {
           actualWasThreaded = false;
           actualBatchCount = 1;
-          processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
+          auto damageEvents = processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
                        worldWidth, worldHeight, cachedPlayerHandle,
                        cachedPlayerPosition, cachedPlayerVelocity,
                        cachedPlayerValid);
+
+          // Submit damage events (single-batch path)
+          if (!damageEvents.empty()) {
+            EventManager::Instance().enqueueBatch(std::move(damageEvents));
+          }
         } else {
           actualWasThreaded = true;
           actualBatchCount = batchCount;
           size_t entitiesPerBatch = entityCount / batchCount;
           size_t remainingEntities = entityCount % batchCount;
 
-          // Submit batches using futures for parallel processing
-          // Reuse m_batchFutures vector (clear keeps capacity, avoids
-          // allocations)
-          m_batchFutures.clear();
-          m_batchFutures.reserve(batchCount);
+          // Submit batches using futures that return damage events
+          std::vector<std::future<std::vector<EventManager::DeferredEvent>>> batchFutures;
+          batchFutures.reserve(batchCount);
 
           for (size_t i = 0; i < batchCount; ++i) {
             size_t start = i * entitiesPerBatch;
@@ -386,51 +437,64 @@ void AIManager::update(float deltaTime) {
               end += remainingEntities;
             }
 
-            // Submit each batch with future for completion tracking
-            // processBatch acquires shared_lock internally for thread-safe read
-            // access
-            m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+            // Submit each batch - processBatch returns damage events directly
+            batchFutures.push_back(threadSystem.enqueueTaskWithResult(
                 [this, start, end, deltaTime, worldWidth, worldHeight,
                  cachedPlayerHandle, cachedPlayerPosition, cachedPlayerVelocity,
-                 cachedPlayerValid]() -> void {
+                 cachedPlayerValid]() -> std::vector<EventManager::DeferredEvent> {
                   try {
-                    processBatch(m_activeIndicesBuffer, start, end, deltaTime,
+                    return processBatch(m_activeIndicesBuffer, start, end, deltaTime,
                                  worldWidth, worldHeight, cachedPlayerHandle,
                                  cachedPlayerPosition, cachedPlayerVelocity,
                                  cachedPlayerValid);
                   } catch (const std::exception &e) {
                     AI_ERROR(
                         std::format("Exception in AI batch: {}", e.what()));
+                    return {};
                   } catch (...) {
                     AI_ERROR("Unknown exception in AI batch");
+                    return {};
                   }
                 },
                 HammerEngine::TaskPriority::High, "AI_Batch"));
           }
 
-          // Batches execute in parallel via ThreadSystem
+          // Wait for all batches and collect damage events (lock-free collection)
+          std::vector<EventManager::DeferredEvent> allDamageEvents;
+          for (auto& future : batchFutures) {
+            if (future.valid()) {
+              auto batchEvents = future.get();
+              if (!batchEvents.empty()) {
+                allDamageEvents.insert(allDamageEvents.end(),
+                                       std::make_move_iterator(batchEvents.begin()),
+                                       std::make_move_iterator(batchEvents.end()));
+              }
+            }
+          }
+
+          // Submit all accumulated damage events to EventManager (single submission per frame)
+          if (!allDamageEvents.empty()) {
+            EventManager::Instance().enqueueBatch(std::move(allDamageEvents));
+          }
         }
     } else {
       // Single-threaded processing (threading disabled in config)
       actualWasThreaded = false;
       actualBatchCount = 1;
-      processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth,
+      auto damageEvents = processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth,
                    worldHeight, cachedPlayerHandle, cachedPlayerPosition,
                    cachedPlayerVelocity, cachedPlayerValid);
+
+      // Submit damage events (single-threaded path)
+      if (!damageEvents.empty()) {
+        EventManager::Instance().enqueueBatch(std::move(damageEvents));
+      }
     }
 
     // Process lock-free message queue
     processMessageQueue();
 
     currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-
-    // Wait for async batches to complete (required for accurate timing)
-    // Batches execute in parallel - we wait for all to finish before measuring
-    for (auto &future : m_batchFutures) {
-      if (future.valid()) {
-        future.get();
-      }
-    }
 
     // Measure completion time for adaptive tuning (after all batches complete)
     auto endTime = std::chrono::high_resolution_clock::now();
@@ -1073,7 +1137,8 @@ AIManager::inferBehaviorType(const std::string &behaviorName) const {
   return (it != m_behaviorTypeMap.end()) ? it->second : BehaviorType::Custom;
 }
 
-void AIManager::processBatch(const std::vector<size_t> &activeIndices,
+std::vector<EventManager::DeferredEvent> AIManager::processBatch(
+                             const std::vector<size_t> &activeIndices,
                              size_t start, size_t end, float deltaTime,
                              float worldWidth, float worldHeight,
                              EntityHandle playerHandle,
@@ -1268,6 +1333,9 @@ void AIManager::processBatch(const std::vector<size_t> &activeIndices,
     m_totalBehaviorExecutions.fetch_add(batchExecutions,
                                         std::memory_order_relaxed);
   }
+
+  // Return collected damage events from this batch's thread-local buffer (lock-free)
+  return AttackBehavior::collectDeferredDamageEvents();
 }
 
 uint64_t AIManager::getCurrentTimeNanos() {
