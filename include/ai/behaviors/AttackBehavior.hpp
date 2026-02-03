@@ -11,6 +11,7 @@
 #include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
@@ -106,6 +107,15 @@ public:
 
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
+
+  /**
+   * @brief Collect deferred damage events from thread-local buffer
+   * @return Vector of accumulated damage events (moved from thread-local storage)
+   * @details Called at end of each batch in AIManager::processBatch().
+   *          Returns events accumulated during parallel processing for later
+   *          submission to EventManager (lock-free collection).
+   */
+  static std::vector<EventManager::DeferredEvent> collectDeferredDamageEvents();
 
 
 

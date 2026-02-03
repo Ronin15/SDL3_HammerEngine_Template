@@ -5,9 +5,14 @@
 
 #include "ai/behaviors/AttackBehavior.hpp"
 #include "core/Logger.hpp"
+#include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
 #include <algorithm>
+
+// Thread-local buffer for deferred damage events (avoids cross-entity writes during parallel batch processing)
+thread_local std::vector<EventManager::DeferredEvent> t_deferredDamageEvents;
 
 // Static thread-local RNG pool for memory optimization and thread safety
 thread_local std::uniform_real_distribution<float> AttackBehavior::s_damageRoll{0.0f, 1.0f};
@@ -921,63 +926,28 @@ void AttackBehavior::applyDamageToTarget(EntityHandle targetHandle,
     return;
   }
 
-  auto &edm = EntityDataManager::Instance();
-  size_t idx = edm.getIndex(targetHandle);
-  if (idx == SIZE_MAX) {
-    return;
-  }
-
   // Scale knockback for visual effect
   Vector2D scaledKnockback = knockback * 0.1f;
 
-  // Apply damage and knockback via EDM
-  auto &hotData = edm.getHotDataByIndex(idx);
-  auto &charData = edm.getCharacterData(targetHandle);
+  // Create DamageEvent and add to thread-local buffer for deferred processing
+  // This avoids cross-entity writes during parallel batch processing (race condition fix)
+  auto damageEvent = std::make_shared<DamageEvent>(
+      EntityEventType::DamageIntent, attackerHandle, targetHandle,
+      damage, scaledKnockback);
 
-  charData.health = std::max(0.0f, charData.health - damage);
-  hotData.transform.velocity = hotData.transform.velocity + scaledKnockback;
+  EventData data;
+  data.typeId = EventTypeId::Combat;
+  data.setActive(true);
+  data.priority = EventPriority::HIGH;
+  data.event = damageEvent;
 
-  // Record attacker in victim's memory (enables guards to detect threats)
-  // Note: This modifies the VICTIM's memory data from the ATTACKER's batch.
-  // Safe because: victim entities in attack range are typically not in the same
-  // batch as their attackers (different spatial positions). Concurrent writes
-  // to the same memData from different batches would be a race, but this is
-  // extremely rare in practice.
-  if (attackerHandle.isValid() && edm.hasMemoryData(idx)) {
-    auto &memData = edm.getMemoryData(idx);
-    memData.lastAttacker = attackerHandle;
-    memData.lastCombatTime = 0.0f;  // Mark as recent
-  }
+  t_deferredDamageEvents.push_back({EventTypeId::Combat, std::move(data)});
+}
 
-  // Combat response for NPC-vs-NPC attacks (when target is NPC, not player)
-  // Faction values: 0 = Friendly, 1 = Enemy, 2 = Neutral
-  if (targetHandle.getKind() == EntityKind::NPC && charData.faction != 1) {
-    // Friendly (0) or Neutral (2) NPC was attacked - they should flee
-    AIManager::Instance().assignBehavior(targetHandle, "Flee");
-
-    // Alert guards that a friendly is under attack (immediate delivery)
-    AI_DEBUG("Friendly NPC attacked - broadcasting friendly_under_attack");
-    AIManager::Instance().broadcastMessage("friendly_under_attack", true);
-  }
-
-  // Check for death - destroy entity immediately
-  if (charData.health <= 0.0f && hotData.isAlive()) {
-    hotData.flags &= ~EntityHotData::FLAG_ALIVE;  // No longer alive
-
-    // Clear target if this was our explicit target (they're dead now)
-    // Target state is in attacker's BehaviorData
-    size_t attackerIdx = edm.getIndex(attackerHandle);
-    if (attackerIdx != SIZE_MAX && edm.hasBehaviorData(attackerIdx)) {
-      auto& attackerAttack = edm.getBehaviorData(attackerIdx).state.attack;
-      if (attackerAttack.hasExplicitTarget && attackerAttack.explicitTarget == targetHandle) {
-        attackerAttack.hasExplicitTarget = false;
-        attackerAttack.explicitTarget = EntityHandle{};
-      }
-    }
-
-    // Queue entity for destruction
-    edm.destroyEntity(targetHandle);
-  }
+std::vector<EventManager::DeferredEvent> AttackBehavior::collectDeferredDamageEvents() {
+  std::vector<EventManager::DeferredEvent> result = std::move(t_deferredDamageEvents);
+  t_deferredDamageEvents.clear();
+  return result;
 }
 
 void AttackBehavior::applyAreaOfEffectDamage(const Vector2D & /*entityPos*/,
