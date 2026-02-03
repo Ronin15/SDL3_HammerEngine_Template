@@ -6,7 +6,6 @@
 #include "events/WeatherEvent.hpp"
 #include "managers/GameTimeManager.hpp"
 #include "core/Logger.hpp"
-#include "managers/ParticleManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "world/WorldData.hpp"
 #include "utils/Vector2D.hpp"
@@ -172,34 +171,10 @@ void WeatherEvent::execute() {
   m_inTransition = true;
   m_transitionProgress = 0.0f;
 
-  // Apply this weather type to the game world
-  // In a real implementation, this would interact with rendering systems
+  // Log weather change - actual ParticleManager triggering is done by handlers
+  // (events are data carriers, handlers do the work)
   EVENT_INFO(std::format("Weather changing to: {} (Intensity: {:.2f}, Visibility: {:.2f})",
                          getWeatherTypeString(), m_params.intensity, m_params.visibility));
-
-  // Always trigger ParticleManager for weather changes (including Clear
-  // weather)
-  try {
-    if (ParticleManager::Instance().isInitialized()) {
-      // For Clear weather, we just clear effects
-      if (m_weatherType == WeatherType::Clear) {
-        EVENT_INFO("Clearing weather effects");
-      } else if (!m_params.particleEffect.empty()) {
-        EVENT_INFO(std::format("Starting particle effect: {}", m_params.particleEffect));
-      }
-
-      // Always call ParticleManager - it handles Clear weather internally
-      ParticleManager::Instance().triggerWeatherEffect(
-          getWeatherTypeString(), m_params.intensity, m_params.transitionTime);
-      EVENT_INFO(std::format("ParticleManager triggered for weather: {}", getWeatherTypeString()));
-    } else {
-      EVENT_WARN("ParticleManager not initialized - particle effects disabled");
-    }
-  } catch (const std::exception& e) {
-    EVENT_ERROR(std::format("Exception in ParticleManager::triggerWeatherEffect: {}", e.what()));
-  } catch (...) {
-    EVENT_ERROR("Unknown exception in ParticleManager::triggerWeatherEffect");
-  }
 
   // Play sound effects if specified
   EVENT_INFO_IF(!m_params.soundEffect.empty(),

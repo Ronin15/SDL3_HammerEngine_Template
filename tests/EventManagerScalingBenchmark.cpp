@@ -276,7 +276,7 @@ struct EventManagerScalingFixture {
                 switch (i % 3) {
                     case 0: EventManager::Instance().changeWeather("Rainy", 1.0f); break;
                     case 1: EventManager::Instance().spawnNPC("TestNPC", 100.0f, 100.0f); break;
-                    case 2: EventManager::Instance().changeScene("TestScene", "fade", 1.0f); break;
+                    case 2: EventManager::Instance().triggerParticleEffect("Fire", 50.0f, 50.0f); break;
                 }
             }
 
@@ -370,8 +370,8 @@ struct EventManagerScalingFixture {
                                 "", {}, false, EventManager::DispatchMode::Deferred);
                             break;
                         case 2:
-                            EventManager::Instance().changeScene("Scene", "fade", 1.0f,
-                                EventManager::DispatchMode::Deferred);
+                            EventManager::Instance().triggerParticleEffect("Fire", 50.0f, 50.0f,
+                                1.0f, -1.0f, "", EventManager::DispatchMode::Deferred);
                             break;
                     }
                 }
@@ -495,6 +495,108 @@ BOOST_AUTO_TEST_CASE(ConcurrencyTest) {
     fixture.runConcurrencyTest(numThreads, eventsPerThread);  // 4000 total events
 }
 
+// High-scale threading verification test
+BOOST_AUTO_TEST_CASE(ThreadingVerificationTest) {
+    EventManagerScalingFixture fixture;
+
+    if (g_shutdownInProgress.load()) {
+        BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
+        return;
+    }
+
+    std::cout << "\n===== THREADING VERIFICATION TEST =====" << std::endl;
+    std::cout << "Testing with heavy handlers to trigger WorkerBudget threading threshold (0.9ms)\n" << std::endl;
+
+    fixture.cleanup();
+
+    // Register handlers that do some actual work (simulate real game handlers)
+    auto handlerCallCount = std::make_shared<std::atomic<int>>(0);
+    volatile int workSink = 0;  // Prevent optimization
+
+    // Heavy handler that simulates real work (e.g., updating UI, game state)
+    auto heavyHandler = [handlerCallCount, &workSink](const EventData&) {
+        ++(*handlerCallCount);
+        // Simulate realistic handler work - ~1-2 microseconds per call
+        int sum = 0;
+        for (int i = 0; i < 100; ++i) {
+            sum += i * i;
+        }
+        workSink = sum;
+    };
+
+    // Register multiple handlers per type (realistic game scenario)
+    for (int i = 0; i < 5; ++i) {
+        EventManager::Instance().registerHandler(EventTypeId::Weather, heavyHandler);
+        EventManager::Instance().registerHandler(EventTypeId::NPCSpawn, heavyHandler);
+        EventManager::Instance().registerHandler(EventTypeId::ParticleEffect, heavyHandler);
+    }
+
+    // Queue a large batch of deferred events
+    const int totalEvents = 50000;
+    std::cout << "Queueing " << totalEvents << " deferred events..." << std::endl;
+
+    auto startQueue = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < totalEvents; ++i) {
+        switch (i % 3) {
+            case 0:
+                EventManager::Instance().changeWeather("Storm", 1.0f,
+                    EventManager::DispatchMode::Deferred);
+                break;
+            case 1:
+                EventManager::Instance().spawnNPC("NPC", 0.0f, 0.0f, 1, 0.0f,
+                    "", {}, false, EventManager::DispatchMode::Deferred);
+                break;
+            case 2:
+                EventManager::Instance().triggerParticleEffect("Fire", 50.0f, 50.0f,
+                    1.0f, -1.0f, "", EventManager::DispatchMode::Deferred);
+                break;
+        }
+    }
+    auto endQueue = std::chrono::high_resolution_clock::now();
+    double queueTimeMs = std::chrono::duration<double, std::milli>(endQueue - startQueue).count();
+    std::cout << "Queue time: " << std::fixed << std::setprecision(2) << queueTimeMs << " ms" << std::endl;
+
+    // Drain the queue over multiple frames
+    std::cout << "\nDraining queue (watching for MULTI-THREADED messages)..." << std::endl;
+    auto startDrain = std::chrono::high_resolution_clock::now();
+
+    int frameCount = 0;
+    int prevCount = 0;
+    int stableFrames = 0;
+
+    while (frameCount < 500 && stableFrames < 10) {
+        EventManager::Instance().update();
+        frameCount++;
+
+        int currentCount = handlerCallCount->load();
+        if (currentCount == prevCount) {
+            stableFrames++;
+        } else {
+            stableFrames = 0;
+            prevCount = currentCount;
+        }
+    }
+
+    auto endDrain = std::chrono::high_resolution_clock::now();
+    double drainTimeMs = std::chrono::duration<double, std::milli>(endDrain - startDrain).count();
+
+    int processedHandlerCalls = handlerCallCount->load();
+    // Each event triggers 5 handlers per type
+    int expectedHandlerCalls = totalEvents * 5;
+
+    std::cout << "\nResults:" << std::endl;
+    std::cout << "  Drain time: " << std::fixed << std::setprecision(2) << drainTimeMs << " ms" << std::endl;
+    std::cout << "  Frames: " << frameCount << std::endl;
+    std::cout << "  Handler calls: " << processedHandlerCalls << " (expected ~" << expectedHandlerCalls << ")" << std::endl;
+    std::cout << "  Events/sec: " << std::setprecision(0)
+              << (totalEvents / drainTimeMs) * 1000.0 << std::endl;
+
+    // Verify we processed events
+    BOOST_CHECK(processedHandlerCalls > 0);
+
+    fixture.cleanup();
+}
+
 // Extreme scale test
 BOOST_AUTO_TEST_CASE(ExtremeScaleTest) {
     EventManagerScalingFixture fixture;
@@ -581,7 +683,7 @@ BOOST_AUTO_TEST_CASE(TestThreadingThreshold) {
                 switch (i % 3) {
                     case 0: EventManager::Instance().changeWeather("Rainy", 1.0f); break;
                     case 1: EventManager::Instance().spawnNPC("TestNPC", 100.0f, 100.0f); break;
-                    case 2: EventManager::Instance().changeScene("TestScene", "fade", 1.0f); break;
+                    case 2: EventManager::Instance().triggerParticleEffect("Fire", 50.0f, 50.0f); break;
                 }
             }
 
@@ -739,4 +841,174 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
     }
 
     std::cout << std::endl;
+}
+
+// ---------------------------------------------------------------------------
+// Batch Enqueue vs Single Enqueue Performance Test
+// ---------------------------------------------------------------------------
+BOOST_AUTO_TEST_CASE(BatchEnqueuePerformanceTest)
+{
+    if (g_shutdownInProgress.load()) {
+        BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
+        return;
+    }
+
+    std::cout << "\n===== BATCH ENQUEUE vs SINGLE ENQUEUE BENCHMARK =====" << std::endl;
+    std::cout << "Simulates AI combat workers enqueueing damage events\n" << std::endl;
+
+    auto& eventMgr = EventManager::Instance();
+    eventMgr.clean();
+    eventMgr.init();
+
+    // Register a simple handler
+    std::atomic<int> handlerCalls{0};
+    eventMgr.registerHandler(EventTypeId::Custom,
+        [&handlerCalls](const EventData&) { ++handlerCalls; });
+
+    const int numWorkers = 10;
+    const int eventsPerWorker = 1000;
+    const int totalEvents = numWorkers * eventsPerWorker;
+    const int numRuns = 5;
+
+    std::cout << "Config: " << numWorkers << " workers, " << eventsPerWorker
+              << " events/worker = " << totalEvents << " total events\n" << std::endl;
+
+    std::cout << std::setw(25) << "Method"
+              << std::setw(12) << "Time (ms)"
+              << std::setw(15) << "Events/sec"
+              << std::setw(10) << "Locks" << std::endl;
+    std::cout << std::string(62, '-') << std::endl;
+
+    // Pre-create events outside timing (to isolate lock overhead)
+    std::vector<std::shared_ptr<MockEvent>> preCreatedEvents;
+    preCreatedEvents.reserve(totalEvents);
+    for (int i = 0; i < totalEvents; ++i) {
+        preCreatedEvents.push_back(std::make_shared<MockEvent>("DamageEvent"));
+    }
+
+    // Test 1: Single enqueue (one lock per event) - WITH event creation
+    double singleWithCreation = 0.0;
+    {
+        std::vector<double> durations;
+        for (int run = 0; run < numRuns; ++run) {
+            auto startTime = std::chrono::high_resolution_clock::now();
+
+            auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+            std::atomic<int> workersComplete{0};
+
+            for (int w = 0; w < numWorkers; ++w) {
+                threadSystem.enqueueTask([&eventMgr, &workersComplete, eventsPerWorker]() {
+                    for (int i = 0; i < eventsPerWorker; ++i) {
+                        auto event = std::make_shared<MockEvent>("DamageEvent");
+                        eventMgr.dispatchEvent(event, EventManager::DispatchMode::Deferred);
+                    }
+                    workersComplete.fetch_add(1);
+                });
+            }
+
+            while (workersComplete.load() < numWorkers) {
+                std::this_thread::sleep_for(std::chrono::microseconds(50));
+            }
+
+            auto endTime = std::chrono::high_resolution_clock::now();
+            durations.push_back(std::chrono::duration<double, std::milli>(endTime - startTime).count());
+            eventMgr.update();
+        }
+
+        singleWithCreation = std::accumulate(durations.begin(), durations.end(), 0.0) / durations.size();
+        std::cout << std::setw(25) << "Single + alloc"
+                  << std::setw(12) << std::fixed << std::setprecision(2) << singleWithCreation
+                  << std::setw(15) << std::setprecision(0) << (totalEvents / singleWithCreation) * 1000.0
+                  << std::setw(10) << totalEvents << std::endl;
+    }
+
+    // Test 2: Single enqueue - PRE-CREATED events (isolate lock overhead)
+    double singleNoAlloc = 0.0;
+    {
+        std::vector<double> durations;
+        for (int run = 0; run < numRuns; ++run) {
+            auto startTime = std::chrono::high_resolution_clock::now();
+
+            auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+            std::atomic<int> workersComplete{0};
+
+            for (int w = 0; w < numWorkers; ++w) {
+                int startIdx = w * eventsPerWorker;
+                threadSystem.enqueueTask([&eventMgr, &workersComplete, &preCreatedEvents, startIdx, eventsPerWorker]() {
+                    for (int i = 0; i < eventsPerWorker; ++i) {
+                        eventMgr.dispatchEvent(preCreatedEvents[startIdx + i], EventManager::DispatchMode::Deferred);
+                    }
+                    workersComplete.fetch_add(1);
+                });
+            }
+
+            while (workersComplete.load() < numWorkers) {
+                std::this_thread::sleep_for(std::chrono::microseconds(50));
+            }
+
+            auto endTime = std::chrono::high_resolution_clock::now();
+            durations.push_back(std::chrono::duration<double, std::milli>(endTime - startTime).count());
+            eventMgr.update();
+        }
+
+        singleNoAlloc = std::accumulate(durations.begin(), durations.end(), 0.0) / durations.size();
+        std::cout << std::setw(25) << "Single (no alloc)"
+                  << std::setw(12) << std::fixed << std::setprecision(2) << singleNoAlloc
+                  << std::setw(15) << std::setprecision(0) << (totalEvents / singleNoAlloc) * 1000.0
+                  << std::setw(10) << totalEvents << std::endl;
+    }
+
+    // Test 3: Batch enqueue - PRE-CREATED events (isolate lock overhead)
+    double batchNoAlloc = 0.0;
+    {
+        std::vector<double> durations;
+        for (int run = 0; run < numRuns; ++run) {
+            auto startTime = std::chrono::high_resolution_clock::now();
+
+            auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+            std::atomic<int> workersComplete{0};
+
+            for (int w = 0; w < numWorkers; ++w) {
+                int startIdx = w * eventsPerWorker;
+                threadSystem.enqueueTask([&eventMgr, &workersComplete, &preCreatedEvents, startIdx, eventsPerWorker]() {
+                    std::vector<EventManager::DeferredEvent> localBatch;
+                    localBatch.reserve(eventsPerWorker);
+
+                    for (int i = 0; i < eventsPerWorker; ++i) {
+                        EventData data;
+                        data.event = preCreatedEvents[startIdx + i];
+                        localBatch.push_back(EventManager::DeferredEvent{EventTypeId::Custom, std::move(data)});
+                    }
+
+                    eventMgr.enqueueBatch(std::move(localBatch));
+                    workersComplete.fetch_add(1);
+                });
+            }
+
+            while (workersComplete.load() < numWorkers) {
+                std::this_thread::sleep_for(std::chrono::microseconds(50));
+            }
+
+            auto endTime = std::chrono::high_resolution_clock::now();
+            durations.push_back(std::chrono::duration<double, std::milli>(endTime - startTime).count());
+            eventMgr.update();
+        }
+
+        batchNoAlloc = std::accumulate(durations.begin(), durations.end(), 0.0) / durations.size();
+        std::cout << std::setw(25) << "Batch (no alloc)"
+                  << std::setw(12) << std::fixed << std::setprecision(2) << batchNoAlloc
+                  << std::setw(15) << std::setprecision(0) << (totalEvents / batchNoAlloc) * 1000.0
+                  << std::setw(10) << numWorkers << std::endl;
+    }
+
+    std::cout << "\n--- Analysis ---" << std::endl;
+    std::cout << "Allocation overhead: " << std::fixed << std::setprecision(2)
+              << (singleWithCreation - singleNoAlloc) << "ms ("
+              << std::setprecision(0) << ((singleWithCreation - singleNoAlloc) / singleWithCreation * 100) << "% of total)" << std::endl;
+    std::cout << "Lock overhead (single): " << std::fixed << std::setprecision(2) << singleNoAlloc << "ms" << std::endl;
+    std::cout << "Lock overhead (batch):  " << std::fixed << std::setprecision(2) << batchNoAlloc << "ms" << std::endl;
+    std::cout << "Batch speedup: " << std::setprecision(2) << (singleNoAlloc / batchNoAlloc) << "x" << std::endl;
+
+    eventMgr.clean();
+    eventMgr.init();
 }

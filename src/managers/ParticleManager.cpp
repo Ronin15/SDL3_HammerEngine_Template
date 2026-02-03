@@ -9,6 +9,7 @@
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/SoundManager.hpp"
 #include "events/ParticleEffectEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "utils/SIMDMath.hpp"
@@ -555,27 +556,82 @@ bool ParticleManager::init() {
     m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false;
 
-    // Register EventManager handler for ParticleEffect events
+    // Register EventManager handlers with token storage for proper cleanup
+    // Events are data carriers; handlers do the actual work
     {
       auto &eventMgr = EventManager::Instance();
-      eventMgr.registerHandler(EventTypeId::ParticleEffect, [](const EventData &data) {
-        if (!data.isActive() || !data.event) return;
-        auto pe = std::dynamic_pointer_cast<ParticleEffectEvent>(data.event);
-        if (pe) {
-          pe->execute();
-        }
-      });
-      // Register handler for Weather events to drive weather effects
-      eventMgr.registerHandler(EventTypeId::Weather, [](const EventData &data) {
-        if (!data.isActive() || !data.event) return;
-        auto we = std::dynamic_pointer_cast<WeatherEvent>(data.event);
-        if (we) {
-          const auto &wp = we->getWeatherParams();
-          PARTICLE_INFO(std::format("Weather handler: {}, intensity={:.2f}, transition={:.2f}s",
-                                    we->getWeatherTypeString(), wp.intensity, wp.transitionTime));
-          we->execute();
-        }
-      });
+      m_eventHandlerTokens.clear();
+
+      // ParticleEffect handler - extracts event data and triggers effects directly
+      auto peToken = eventMgr.registerHandlerWithToken(
+          EventTypeId::ParticleEffect, [](const EventData &data) {
+            if (!data.isActive() || !data.event) return;
+            auto pe = std::dynamic_pointer_cast<ParticleEffectEvent>(data.event);
+            if (!pe) return;
+
+            auto &particleMgr = ParticleManager::Instance();
+            if (!particleMgr.isInitialized() || particleMgr.isShutdown()) {
+              PARTICLE_ERROR(std::format("ParticleManager not available for effect: {}",
+                                         pe->getEffectName()));
+              return;
+            }
+
+            // Extract data from event and trigger effect
+            const Vector2D &pos = pe->getPosition();
+            float intensity = pe->getIntensity();
+            float duration = pe->getDuration();
+            const std::string &groupTag = pe->getGroupTag();
+            const std::string &soundEffect = pe->getSoundEffect();
+
+            uint32_t effectId = 0;
+            if (duration == -1.0f) {
+              // Independent effect (infinite duration until manually stopped)
+              effectId = particleMgr.playIndependentEffect(
+                  pe->getEffectType(), pos, intensity, duration, groupTag, soundEffect);
+            } else {
+              // Regular effect with duration
+              effectId = particleMgr.playEffect(pe->getEffectType(), pos, intensity);
+            }
+
+            // Play sound effect if specified
+            if (!soundEffect.empty()) {
+              try {
+                SoundManager &soundMgr = SoundManager::Instance();
+                soundMgr.playSFX(soundEffect, 0, 100);
+              } catch (const std::exception &e) {
+                PARTICLE_ERROR(std::format("Sound effect failed: {}", e.what()));
+              }
+            }
+
+            if (effectId != 0) {
+              PARTICLE_INFO(std::format("ParticleEffect '{}' triggered at ({}, {}) intensity={} -> ID: {}",
+                                        pe->getEffectName(), pos.getX(), pos.getY(), intensity, effectId));
+            }
+          });
+      m_eventHandlerTokens.push_back(peToken);
+
+      // Weather handler - extracts event data and triggers weather effects directly
+      auto weatherToken = eventMgr.registerHandlerWithToken(
+          EventTypeId::Weather, [](const EventData &data) {
+            if (!data.isActive() || !data.event) return;
+            auto we = std::dynamic_pointer_cast<WeatherEvent>(data.event);
+            if (!we) return;
+
+            auto &particleMgr = ParticleManager::Instance();
+            if (!particleMgr.isInitialized() || particleMgr.isShutdown()) {
+              PARTICLE_WARN("ParticleManager not initialized - weather effects disabled");
+              return;
+            }
+
+            const auto &wp = we->getWeatherParams();
+            PARTICLE_INFO(std::format("Weather handler: {}, intensity={:.2f}, transition={:.2f}s",
+                                      we->getWeatherTypeString(), wp.intensity, wp.transitionTime));
+
+            // Trigger weather effect directly (events are data carriers, handlers do the work)
+            particleMgr.triggerWeatherEffect(
+                we->getWeatherTypeString(), wp.intensity, wp.transitionTime);
+          });
+      m_eventHandlerTokens.push_back(weatherToken);
     }
 
     PARTICLE_INFO("ParticleManager initialized successfully");
@@ -612,6 +668,15 @@ void ParticleManager::clean() {
         future.wait();
       }
     }
+  }
+
+  // Remove event handlers using stored tokens
+  if (EventManager::Instance().isInitialized()) {
+    auto &eventMgr = EventManager::Instance();
+    for (const auto &token : m_eventHandlerTokens) {
+      eventMgr.removeHandler(token);
+    }
+    m_eventHandlerTokens.clear();
   }
 
   // Clear all storage - no locks needed for lock-free storage

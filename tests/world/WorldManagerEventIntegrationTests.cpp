@@ -32,7 +32,7 @@ BOOST_GLOBAL_FIXTURE(GlobalThreadSystemFixture);
 
 BOOST_AUTO_TEST_SUITE(WorldManagerEventIntegrationTests)
 
-// New: Verify WorldLoadedEvent payload matches WorldManager dimensions
+// Verify WorldLoadedEvent payload matches WorldManager dimensions
 BOOST_AUTO_TEST_CASE(TestWorldLoadedEventPayload) {
     // ThreadSystem is initialized by global fixture
 
@@ -84,7 +84,7 @@ BOOST_AUTO_TEST_CASE(TestWorldLoadedEventPayload) {
     // DON'T clean ThreadSystem - let it persist for subsequent tests like EventManager tests do
 }
 
-// New: End-to-end harvest integration via EventManager -> WorldManager
+// End-to-end harvest integration via EventManager trigger -> WorldManager handler
 BOOST_AUTO_TEST_CASE(TestHarvestResourceIntegration) {
     BOOST_REQUIRE(WorldManager::Instance().init());
     BOOST_REQUIRE(EventManager::Instance().init());
@@ -112,10 +112,9 @@ BOOST_AUTO_TEST_CASE(TestHarvestResourceIntegration) {
         if (changed) { tileChangedCount.fetch_add(1); }
     });
 
-    // Create and execute a HarvestResourceEvent via EventManager
-    auto harvest = std::make_shared<HarvestResourceEvent>(1, targetX, targetY, "");
-    BOOST_REQUIRE(EventManager::Instance().registerEvent("harvest_test", harvest));
-    BOOST_CHECK(EventManager::Instance().executeEvent("harvest_test"));
+    // Dispatch harvest event directly (dispatch-only architecture)
+    auto harvestEvent = std::make_shared<HarvestResourceEvent>(1, targetX, targetY, "test_harvest");
+    EventManager::Instance().dispatchEvent(harvestEvent);
 
     // Allow processing with event pumping
     auto start = std::chrono::steady_clock::now();
@@ -140,34 +139,36 @@ BOOST_AUTO_TEST_CASE(TestHarvestResourceIntegration) {
  */
 BOOST_AUTO_TEST_CASE(TestBasicWorldManagerEventIntegration) {
     WORLD_MANAGER_INFO("Starting basic WorldManager event integration test");
-    
+
     // Initialize managers
     bool worldInit = WorldManager::Instance().init();
     bool eventInit = EventManager::Instance().init();
-    
+
     BOOST_REQUIRE(worldInit);
     BOOST_REQUIRE(eventInit);
-    
+
     // Verify both managers are working
     BOOST_CHECK(WorldManager::Instance().isInitialized());
     BOOST_CHECK(EventManager::Instance().isInitialized());
-    
-    // Test event creation without world generation to avoid hanging
-    bool eventCreated = EventManager::Instance().createWorldLoadedEvent(
-        "test_event", "test_world", 10, 10);
-    BOOST_CHECK(eventCreated);
-    
-    // Verify event was created
-    auto event = EventManager::Instance().getEvent("test_event");
-    BOOST_CHECK(event != nullptr);
-    
-    // Process events (should not hang on simple event)
+
+    // Test trigger method works (dispatch-only architecture)
+    std::atomic<bool> handlerCalled{false};
+    EventManager::Instance().registerHandler(EventTypeId::World, [&](const EventData& data){
+        if (data.event) handlerCalled.store(true);
+    });
+
+    // Trigger a world loaded event via the dispatch hub
+    EventManager::Instance().triggerWorldLoaded("test_world", 10, 10);
+
+    // Process events
     EventManager::Instance().update();
-    
+
+    BOOST_CHECK(handlerCalled.load());
+
     // Clean up
     WorldManager::Instance().clean();
     EventManager::Instance().clean();
-    
+
     WORLD_MANAGER_INFO("Basic WorldManager event integration test completed successfully");
 }
 
@@ -177,11 +178,11 @@ BOOST_AUTO_TEST_CASE(TestBasicWorldManagerEventIntegration) {
  */
 BOOST_AUTO_TEST_CASE(TestSimpleWorldGeneration) {
     WORLD_MANAGER_INFO("Starting simple world generation test");
-    
+
     // Initialize managers
     BOOST_REQUIRE(WorldManager::Instance().init());
     BOOST_REQUIRE(EventManager::Instance().init());
-    
+
     // Generate a very small world to minimize processing time
     WorldGenerationConfig config{};
     config.width = 5;  // Very small to avoid hanging
@@ -191,80 +192,73 @@ BOOST_AUTO_TEST_CASE(TestSimpleWorldGeneration) {
     config.humidityFrequency = 0.1f;
     config.waterLevel = 0.3f;
     config.mountainLevel = 0.7f;
-    
+
     WORLD_MANAGER_INFO("Generating 5x5 world...");
     bool generateResult = WorldManager::Instance().loadNewWorld(config);
-    
+
     BOOST_REQUIRE(generateResult);
     WORLD_MANAGER_INFO("World generation completed");
-    
+
     // Single event processing call (no loop to avoid hanging)
     EventManager::Instance().update();
     WORLD_MANAGER_INFO("Event processing completed");
-    
+
     // Verify world is active
     BOOST_CHECK(WorldManager::Instance().hasActiveWorld());
-    
+
     // Clean up
     WorldManager::Instance().clean();
     EventManager::Instance().clean();
-    
+
     WORLD_MANAGER_INFO("Simple world generation test completed successfully");
 }
 
 /**
- * @brief Test event creation and processing without world operations
- * Focuses purely on event system functionality
+ * @brief Test event dispatch and handler processing
+ * Focuses purely on event system functionality using trigger methods
  */
-BOOST_AUTO_TEST_CASE(TestEventCreationAndProcessing) {
-    WORLD_MANAGER_INFO("Starting event creation and processing test");
-    
+BOOST_AUTO_TEST_CASE(TestEventDispatchAndProcessing) {
+    WORLD_MANAGER_INFO("Starting event dispatch and processing test");
+
     // Initialize only EventManager to avoid WorldManager complexity
     BOOST_REQUIRE(EventManager::Instance().init());
-    
+
     std::atomic<int> eventCount{0};
-    
+
     // Register handlers for different event types
-    EventManager::Instance().registerHandler(EventTypeId::World, 
+    EventManager::Instance().registerHandler(EventTypeId::World,
         [&eventCount](const EventData& eventData) {
             if (eventData.isActive()) {
                 eventCount.fetch_add(1, std::memory_order_relaxed);
             }
         });
-    
-    // Create several world events
-    bool event1 = EventManager::Instance().createWorldLoadedEvent(
-        "world_loaded_1", "test_world_1", 10, 10);
-    bool event2 = EventManager::Instance().createTileChangedEvent(
-        "tile_changed_1", 5, 5, "biome_change");
-    bool event3 = EventManager::Instance().createWorldGeneratedEvent(
-        "world_generated_1", "test_world_2", 20, 20, 1.5f);
-    
-    BOOST_CHECK(event1);
-    BOOST_CHECK(event2);
-    BOOST_CHECK(event3);
-    
+
+    // Dispatch world events via trigger methods (dispatch-only architecture)
+    EventManager::Instance().triggerWorldLoaded("test_world_1", 10, 10);
+    EventManager::Instance().triggerTileChanged(5, 5, "biome_change");
+    EventManager::Instance().triggerWorldGenerated("test_world_2", 20, 20, 1.5f);
+
     // Process events with timeout
     auto startTime = std::chrono::steady_clock::now();
     const auto timeout = std::chrono::seconds(2);
-    
+
     while (std::chrono::steady_clock::now() - startTime < timeout) {
         EventManager::Instance().update();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        
+
         // Break when we've processed enough events
         if (eventCount.load() >= 3) {
             break;
         }
     }
-    
+
     // Verify events were processed
-    BOOST_CHECK_GE(eventCount.load(), 0); // At least some events should be processed
-    
+    BOOST_CHECK_GE(eventCount.load(), 3);
+
     // Clean up
     EventManager::Instance().clean();
-    
-    WORLD_MANAGER_INFO("Event creation and processing test completed successfully");
+
+    WORLD_MANAGER_INFO("Event dispatch and processing test completed successfully");
 }
 
 BOOST_AUTO_TEST_SUITE_END()

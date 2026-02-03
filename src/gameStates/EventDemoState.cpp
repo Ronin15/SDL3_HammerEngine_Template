@@ -12,7 +12,7 @@
 #include "core/Logger.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
-#include "events/SceneChangeEvent.hpp"
+// SceneChangeEvent removed - legacy feature
 #include "events/WeatherEvent.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "managers/AIManager.hpp"
@@ -357,7 +357,6 @@ bool EventDemoState::exit() {
   ParticleManager &particleMgr = ParticleManager::Instance();
   UIManager &ui = UIManager::Instance();
   WorldManager &worldMgr = WorldManager::Instance();
-  EventManager &eventMgr = EventManager::Instance();
 
   try {
     if (m_transitioningToLoading) {
@@ -379,8 +378,7 @@ bool EventDemoState::exit() {
       // Unregister our specific handlers via tokens
       unregisterEventHandlers();
 
-      // Remove all events from EventManager
-      eventMgr.clearAllEvents();
+      // Note: Dispatch-only architecture has no stored events to clear
 
       // Clean up managers (same as full exit)
       // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
@@ -439,8 +437,7 @@ bool EventDemoState::exit() {
     // Unregister our specific handlers via tokens
     unregisterEventHandlers();
 
-    // Remove all events from EventManager
-    eventMgr.clearAllEvents();
+    // Note: Dispatch-only architecture has no stored events to clear
 
     // Use manager prepareForStateTransition methods for deterministic cleanup
     // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
@@ -670,11 +667,7 @@ void EventDemoState::setupEventSystem() {
           onNPCSpawned(data);
       }));
 
-  m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
-      EventTypeId::SceneChange, [this](const EventData &data) {
-        if (data.isActive())
-          onSceneChanged("scene_changed");
-      }));
+  // SceneChange handler removed - legacy feature
 
   m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
       EventTypeId::ResourceChange, [this](const EventData &data) {
@@ -716,12 +709,7 @@ void EventDemoState::handleInput() {
     }
   }
 
-  // [3] Scene Transition
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_3) &&
-      (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
-    triggerSceneTransitionDemo();
-    m_lastEventTriggerTime = m_totalDemoTime;
-  }
+  // [3] Reserved (scene transitions removed - legacy feature)
 
   // [4] Mass NPC Spawn with varied behaviors
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
@@ -849,25 +837,7 @@ void EventDemoState::triggerNPCSpawnDemo() {
   addLogEntry(std::format("Spawned: {}", npcType));
 }
 
-void EventDemoState::triggerSceneTransitionDemo() {
-  std::string sceneName = m_sceneNames[m_currentSceneIndex];
-  m_currentSceneIndex = (m_currentSceneIndex + 1) % m_sceneNames.size();
-
-  // Use EventManager hub to change scenes
-  std::vector<TransitionType> transitions = {
-      TransitionType::Fade, TransitionType::Slide, TransitionType::Dissolve,
-      TransitionType::Wipe};
-  TransitionType t = transitions[m_currentSceneIndex % transitions.size()];
-  const char *transitionName = (t == TransitionType::Fade)       ? "fade"
-                               : (t == TransitionType::Slide)    ? "slide"
-                               : (t == TransitionType::Dissolve) ? "dissolve"
-                                                                 : "wipe";
-
-  EventManager::Instance().changeScene(sceneName, transitionName, 2.0f,
-                           EventManager::DispatchMode::Deferred);
-
-  addLogEntry(std::format("Scene: {} ({})", sceneName, transitionName));
-}
+// triggerSceneTransitionDemo() removed - legacy feature
 
 void EventDemoState::triggerResourceDemo() {
   if (!m_player) {
@@ -1075,69 +1045,41 @@ void EventDemoState::triggerMassNPCSpawnDemo() {
 }
 
 void EventDemoState::triggerConvenienceMethodsDemo() {
-  addLogEntry("Convenience methods demo");
+  addLogEntry("Trigger methods demo");
 
   m_convenienceDemoCounter++;
 
   // Cache EventManager reference for multiple calls
   auto &eventMgr = EventManager::Instance();
 
-  bool success1 = eventMgr.createWeatherEvent(
-      std::format("conv_fog_{}", m_convenienceDemoCounter), "Foggy", 0.7f,
-      2.5f);
-  bool success2 = eventMgr.createWeatherEvent(
-      std::format("conv_storm_{}", m_convenienceDemoCounter), "Stormy", 0.9f,
-      1.5f);
-  bool success3 = eventMgr.createSceneChangeEvent(
-      std::format("conv_dungeon_{}", m_convenienceDemoCounter), "DungeonDemo",
-      "dissolve", 2.0f);
-  bool success4 = eventMgr.createSceneChangeEvent(
-      std::format("conv_town_{}", m_convenienceDemoCounter), "TownDemo",
-      "slide", 1.0f);
-  bool success5 = eventMgr.createNPCSpawnEvent(
-      std::format("conv_guards_{}", m_convenienceDemoCounter), "Guard", 2,
-      30.0f);
-  bool success6 = eventMgr.createNPCSpawnEvent(
-      std::format("conv_merchants_{}", m_convenienceDemoCounter),
-      "GeneralMerchant", 1, 15.0f);
+  // Demonstrate trigger methods (dispatch-only architecture)
+  // Weather change
+  eventMgr.changeWeather("Foggy", 2.5f, EventManager::DispatchMode::Deferred);
+  m_currentWeather = WeatherType::Foggy;
 
-  int const successCount =
-      success1 + success2 + success3 + success4 + success5 + success6;
-  if (successCount == 6) {
-    addLogEntry("Created 6 events successfully");
+  // Spawn NPCs via trigger
+  Vector2D playerPos = m_player ? m_player->getPosition() : Vector2D(400, 300);
+  eventMgr.spawnNPC("Guard", playerPos.getX() + 100, playerPos.getY());
+  eventMgr.spawnNPC("GeneralMerchant", playerPos.getX() - 100, playerPos.getY());
 
-    // Trigger via EventManager for demonstration
-    eventMgr.changeWeather("Foggy", 2.5f,
-                           EventManager::DispatchMode::Deferred);
-
-    m_currentWeather = WeatherType::Foggy;
-    addLogEntry("Weather: Foggy (demo)");
-  } else {
-    addLogEntry(std::format("Created {}/6 events", successCount));
-  }
+  addLogEntry("Triggered: Foggy weather + 2 NPCs");
 }
 
 void EventDemoState::resetAllEvents() {
   cleanupSpawnedNPCs();
 
-  // Cache EventManager reference for multiple calls
-  auto &eventMgr = EventManager::Instance();
-
-  // Remove all events from EventManager
-  eventMgr.clearAllEvents();
-
   // Trigger clear weather via EventManager
-  eventMgr.changeWeather("Clear", 1.0f, EventManager::DispatchMode::Deferred);
+  EventManager::Instance().changeWeather("Clear", 1.0f,
+                                         EventManager::DispatchMode::Deferred);
 
   m_currentWeather = WeatherType::Clear;
 
   m_currentWeatherIndex = 0;
   m_currentNPCTypeIndex = 0;
-  m_currentSceneIndex = 0;
 
   m_lastEventTriggerTime = 0.0f;
 
-  addLogEntry("Events cleared");
+  addLogEntry("Demo reset");
 }
 
 void EventDemoState::onWeatherChanged(const std::string &message) {
@@ -1159,9 +1101,7 @@ void EventDemoState::onNPCSpawned(const EventData &data) {
   addLogEntry(std::format("NPC Spawn Event: {} x{}", typeLabel, params.count));
 }
 
-void EventDemoState::onSceneChanged(const std::string &message) {
-  addLogEntry(std::format("Scene: {}", message));
-}
+// onSceneChanged() removed - legacy feature
 
 void EventDemoState::onResourceChanged(const EventData &data) {
   // Extract ResourceChangeEvent from EventData

@@ -67,7 +67,6 @@ private:
   // Event demonstration methods (manual triggers only)
   void triggerWeatherDemo();
   void triggerNPCSpawnDemo();
-  void triggerSceneTransitionDemo();
   void triggerResourceDemo();
   void triggerMassNPCSpawnDemo();
   void triggerConvenienceMethodsDemo();
@@ -76,7 +75,6 @@ private:
   // Event handler methods
   void onWeatherChanged(const std::string &message);
   void onNPCSpawned(const EventData &data);
-  void onSceneChanged(const std::string &message);
   void onResourceChanged(const EventData &data);
 
   // Controllers (owned by ControllerRegistry, following GamePlayState pattern)
@@ -132,12 +130,6 @@ private:
   std::vector<std::string> m_npcTypes{"Guard", "Farmer", "GeneralMerchant",
                                       "Warrior"};
   size_t m_currentNPCTypeIndex{0};
-
-  // Scene transition demo variables
-  std::vector<std::string> m_sceneNames{"Forest", "Village", "Castle",
-                                        "Dungeon"};
-  size_t m_currentSceneIndex{0};
-
 
   // Event trigger debouncing
   float m_totalDemoTime{0.0f};

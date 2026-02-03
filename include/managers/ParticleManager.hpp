@@ -22,6 +22,7 @@
  * - Thread-safe design with minimal lock contention
  */
 
+#include "managers/EventManager.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <array>
@@ -79,7 +80,6 @@ constexpr bool operator!=(const AlignedAllocator<T1, A1> &,
 
 // Forward declarations
 class TextureManager;
-class EventManager;
 
 namespace HammerEngine {
 struct WorkerBudget;
@@ -941,6 +941,9 @@ private:
   std::atomic<bool> m_useThreading{true};
   std::atomic<bool> m_useWorkerBudget{true};
   // Threading threshold now managed by WorkerBudget adaptive system
+
+  // Event handler tokens for proper cleanup
+  std::vector<EventManager::HandlerToken> m_eventHandlerTokens;
 
 
   std::atomic<size_t> m_activeCount{0};

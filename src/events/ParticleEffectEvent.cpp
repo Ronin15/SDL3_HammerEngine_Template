@@ -6,7 +6,6 @@
 #include "events/ParticleEffectEvent.hpp"
 #include "core/Logger.hpp"
 #include "managers/ParticleManager.hpp"
-#include "managers/SoundManager.hpp"
 #include <format>
 
 ParticleEffectEvent::ParticleEffectEvent(const std::string &name,
@@ -36,17 +35,7 @@ ParticleEffectEvent::ParticleEffectEvent(const std::string &name,
 void ParticleEffectEvent::update() {
   // Update cooldown timer if applicable
   updateCooldown(0.016f); // Assume ~60 FPS for cooldown updates
-
-  // Check if effect is still active (for finite duration effects)
-  if (m_effectId != 0 && m_duration > 0.0f) {
-    // Note: Duration tracking is handled by ParticleManager internally
-    // We just need to check if our effect is still valid
-    const ParticleManager &particleMgr = ParticleManager::Instance();
-    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-      // Effect lifetime is managed by ParticleManager
-      // No additional tracking needed here
-    }
-  }
+  // Effect lifetime is managed by ParticleManager internally
 }
 
 void ParticleEffectEvent::execute() {
@@ -63,64 +52,17 @@ void ParticleEffectEvent::execute() {
     return;
   }
 
-  // Get ParticleManager instance
-  ParticleManager &particleMgr = ParticleManager::Instance();
+  // Mark as executed - actual effect creation is done by handlers
+  // (events are data carriers, handlers do the work)
+  m_hasExecuted = true;
 
-  // Check if ParticleManager is available
-  if (!particleMgr.isInitialized() || particleMgr.isShutdown()) {
-    EVENT_ERROR(std::format("ParticleEffectEvent::execute() - ParticleManager not "
-                "available for effect: {}", getEffectName()));
-    return;
+  // Start cooldown if configured
+  if (getCooldown() > 0.0f) {
+    startCooldown();
   }
 
-  try {
-    // Trigger the particle effect
-    if (m_duration == -1.0f) {
-      // Independent effect (infinite duration until manually stopped)
-      m_effectId = particleMgr.playIndependentEffect(m_effectType, m_position,
-                                                     m_intensity, m_duration,
-                                                     m_groupTag, m_soundEffect);
-    } else {
-      // Regular effect with duration
-      m_effectId =
-          particleMgr.playEffect(m_effectType, m_position, m_intensity);
-    }
-
-    // Trigger sound effect if specified
-    if (!m_soundEffect.empty()) {
-      try {
-        SoundManager &soundMgr = SoundManager::Instance();
-        // Use SoundManager's playSFX method with proper volume range (0-128)
-        soundMgr.playSFX(m_soundEffect, 0, 100); // loops=0, volume=100
-      } catch (const std::exception &e) {
-        EVENT_ERROR(std::format("ParticleEffectEvent::execute() - Sound effect failed: {}",
-                    e.what()));
-        // Continue execution even if sound fails
-      }
-    }
-
-    if (m_effectId != 0) {
-      EVENT_INFO(std::format("ParticleEffectEvent '{}' triggered effect '{}' at ({}, {}) with intensity {} -> Effect ID: {}",
-                 m_name, getEffectName(), m_position.getX(), m_position.getY(), m_intensity, m_effectId));
-
-      m_hasExecuted = true;
-
-      // Start cooldown if configured
-      if (getCooldown() > 0.0f) {
-        startCooldown();
-      }
-    } else {
-      EVENT_ERROR(std::format(
-          "ParticleEffectEvent::execute() - Failed to trigger effect: {} at position ({}, {})",
-          getEffectName(), m_position.getX(), m_position.getY()));
-    }
-
-  } catch (const std::exception &e) {
-    EVENT_ERROR(std::format("ParticleEffectEvent::execute() - Exception: {}",
-                e.what()));
-  } catch (...) {
-    EVENT_ERROR("ParticleEffectEvent::execute() - Unknown exception occurred");
-  }
+  EVENT_DEBUG(std::format("ParticleEffectEvent '{}' marked as executed at ({}, {})",
+                          m_name, m_position.getX(), m_position.getY()));
 }
 
 void ParticleEffectEvent::reset() {
