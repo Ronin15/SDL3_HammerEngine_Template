@@ -485,7 +485,7 @@ public:
 private:
   EventManager(); // Constructor pre-allocates handler vectors
 
-  // Shutdown state
+  // Shutdown state (main thread access only - game loop guarantees sequential updates)
   bool m_isShutdown{false};
   ~EventManager();
   EventManager(const EventManager &) = delete;

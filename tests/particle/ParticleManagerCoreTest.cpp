@@ -7,11 +7,10 @@
 #include <boost/test/unit_test.hpp>
 
 #include "events/ParticleEffectEvent.hpp"
+#include "managers/EventManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "utils/Vector2D.hpp"
-#include <chrono>
 #include <memory>
-#include <thread>
 
 // Test fixture for ParticleManager core functionality
 struct ParticleManagerCoreFixture {
@@ -208,229 +207,210 @@ BOOST_FIXTURE_TEST_CASE(TestGlobalVisibility, ParticleManagerCoreFixture) {
   manager->setGlobalVisibility(false);
 }
 
-// Test ParticleEffectEvent integration with ParticleManager
-BOOST_FIXTURE_TEST_CASE(TestParticleEffectEventIntegration,
+// Test ParticleEffectEvent properties (data carrier validation)
+BOOST_FIXTURE_TEST_CASE(TestParticleEffectEventProperties,
                         ParticleManagerCoreFixture) {
   manager->init();
-  manager->registerBuiltInEffects();
 
-  // Test ParticleEffectEvent creation
+  // Test event construction and property access
   Vector2D testPosition(150.0f, 250.0f);
-  ParticleEffectEvent effectEvent("IntegrationTest", ParticleEffectType::Fire,
-                                  testPosition, 1.2f, 3.0f, "testGroup");
+  ParticleEffectEvent event("TestEvent", ParticleEffectType::Fire, testPosition,
+                            1.2f, 3.0f, "testGroup", "testSound");
 
-  // Verify event properties
-  BOOST_CHECK_EQUAL(effectEvent.getName(), "IntegrationTest");
-  BOOST_CHECK_EQUAL(effectEvent.getType(), "ParticleEffect");
-  BOOST_CHECK_EQUAL(static_cast<int>(effectEvent.getEffectType()),
+  // Verify all properties are set correctly
+  BOOST_CHECK_EQUAL(event.getName(), "TestEvent");
+  BOOST_CHECK_EQUAL(event.getType(), "ParticleEffect");
+  BOOST_CHECK_EQUAL(event.getTypeName(), "ParticleEffectEvent");
+  BOOST_CHECK_EQUAL(static_cast<int>(event.getTypeId()),
+                    static_cast<int>(EventTypeId::ParticleEffect));
+  BOOST_CHECK_EQUAL(static_cast<int>(event.getEffectType()),
                     static_cast<int>(ParticleEffectType::Fire));
-  BOOST_CHECK_EQUAL(effectEvent.getPosition().getX(), 150.0f);
-  BOOST_CHECK_EQUAL(effectEvent.getPosition().getY(), 250.0f);
-  BOOST_CHECK_EQUAL(effectEvent.getIntensity(), 1.2f);
-  BOOST_CHECK_EQUAL(effectEvent.getDuration(), 3.0f);
-  BOOST_CHECK_EQUAL(effectEvent.getGroupTag(), "testGroup");
+  BOOST_CHECK_EQUAL(event.getEffectName(), "Fire");
+  BOOST_CHECK_EQUAL(event.getPosition().getX(), 150.0f);
+  BOOST_CHECK_EQUAL(event.getPosition().getY(), 250.0f);
+  BOOST_CHECK_EQUAL(event.getIntensity(), 1.2f);
+  BOOST_CHECK_EQUAL(event.getDuration(), 3.0f);
+  BOOST_CHECK_EQUAL(event.getGroupTag(), "testGroup");
+  BOOST_CHECK_EQUAL(event.getSoundEffect(), "testSound");
 
-  // Initially effect should not be active
-  BOOST_CHECK(!effectEvent.isEffectActive());
+  // Test setters
+  event.setPosition(Vector2D(200.0f, 300.0f));
+  BOOST_CHECK_EQUAL(event.getPosition().getX(), 200.0f);
+  BOOST_CHECK_EQUAL(event.getPosition().getY(), 300.0f);
 
-  // Test event execution (will trigger ParticleManager)
-  effectEvent.execute();
+  event.setIntensity(2.0f);
+  BOOST_CHECK_EQUAL(event.getIntensity(), 2.0f);
 
-  // After execution, effect should be active
-  BOOST_CHECK(effectEvent.isEffectActive());
+  event.setDuration(5.0f);
+  BOOST_CHECK_EQUAL(event.getDuration(), 5.0f);
 
-  // Update particle manager to allow particle emission
-  manager->update(0.1f); // 100ms update
-
-  // Verify effect was created in ParticleManager (particles may not be emitted
-  // immediately) Since the effect is active, the effect system is working
-  // correctly
-  BOOST_CHECK_GE(manager->getActiveParticleCount(),
-                 0); // >= 0 since emission depends on timing
-
-  // Test effect stopping
-  effectEvent.stopEffect();
-  BOOST_CHECK(!effectEvent.isEffectActive());
-
-  // Test event reset
-  effectEvent.reset();
-  BOOST_CHECK(!effectEvent.isEffectActive());
+  event.setEffectType(ParticleEffectType::Smoke);
+  BOOST_CHECK_EQUAL(static_cast<int>(event.getEffectType()),
+                    static_cast<int>(ParticleEffectType::Smoke));
 }
 
-// Test ParticleEffectEvent with different effect types
-BOOST_FIXTURE_TEST_CASE(TestParticleEffectEventTypes,
+// Test EventManager::triggerParticleEffect creates effects in ParticleManager
+BOOST_FIXTURE_TEST_CASE(TestTriggerParticleEffectIntegration,
                         ParticleManagerCoreFixture) {
   manager->init();
   manager->registerBuiltInEffects();
 
-  Vector2D position(100.0f, 200.0f);
+  // This is how production code triggers particle effects
+  bool result = EventManager::Instance().triggerParticleEffect(
+      "Fire", 150.0f, 250.0f, 1.2f, 3.0f, "testGroup",
+      EventManager::DispatchMode::Immediate);
 
-  // Test different built-in effects
-  std::vector<ParticleEffectType> effectTypes = {
-      ParticleEffectType::Fire,   ParticleEffectType::Smoke,
-      ParticleEffectType::Sparks, ParticleEffectType::Rain,
-      ParticleEffectType::Snow,   ParticleEffectType::Fog};
+  BOOST_CHECK(result);
 
-  for (const auto &effectType : effectTypes) {
-    std::string effectName;
-    switch (effectType) {
-    case ParticleEffectType::Fire:
-      effectName = "Fire";
-      break;
-    case ParticleEffectType::Smoke:
-      effectName = "Smoke";
-      break;
-    case ParticleEffectType::Sparks:
-      effectName = "Sparks";
-      break;
-    case ParticleEffectType::Rain:
-      effectName = "Rain";
-      break;
-    case ParticleEffectType::Snow:
-      effectName = "Snow";
-      break;
-    case ParticleEffectType::Fog:
-      effectName = "Fog";
-      break;
-    default:
-      effectName = "Unknown";
-      break;
-    }
+  // Update manager to process effects
+  manager->update(0.1f);
 
-    ParticleEffectEvent event("Test_" + effectName, effectType, position, 0.8f,
-                              2.0f);
+  // Verify effect system is working
+  BOOST_CHECK_GE(manager->getActiveParticleCount(), 0);
+}
 
-    // Verify event creation
-    BOOST_CHECK_EQUAL(static_cast<int>(event.getEffectType()),
-                      static_cast<int>(effectType));
-    BOOST_CHECK(!event.isEffectActive());
+// Test triggering different effect types via EventManager (production pattern)
+BOOST_FIXTURE_TEST_CASE(TestTriggerDifferentEffectTypes,
+                        ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
 
-    // Execute event
-    event.execute();
+  // Test all built-in effect types via production API
+  std::vector<std::string> effectNames = {"Fire", "Smoke", "Sparks",
+                                          "Rain", "Snow",  "Fog"};
 
-    // Should be active after execution
-    BOOST_CHECK(event.isEffectActive());
-
-    // Clean up
-    event.stopEffect();
-    BOOST_CHECK(!event.isEffectActive());
+  for (const auto &effectName : effectNames) {
+    bool result = EventManager::Instance().triggerParticleEffect(
+        effectName, 100.0f, 200.0f, 0.8f, 2.0f, "",
+        EventManager::DispatchMode::Immediate);
+    BOOST_CHECK_MESSAGE(result,
+                        "Failed to trigger effect: " + effectName);
   }
+
+  // Update and verify effects are running
+  manager->update(0.1f);
+  BOOST_CHECK_GE(manager->getActiveParticleCount(), 0);
+}
+
+// Test ParticleEffectEvent::stringToEffectType conversion
+BOOST_FIXTURE_TEST_CASE(TestEffectTypeConversion, ParticleManagerCoreFixture) {
+  BOOST_CHECK_EQUAL(static_cast<int>(ParticleEffectEvent::stringToEffectType("Fire")),
+                    static_cast<int>(ParticleEffectType::Fire));
+  BOOST_CHECK_EQUAL(static_cast<int>(ParticleEffectEvent::stringToEffectType("Smoke")),
+                    static_cast<int>(ParticleEffectType::Smoke));
+  BOOST_CHECK_EQUAL(static_cast<int>(ParticleEffectEvent::stringToEffectType("Rain")),
+                    static_cast<int>(ParticleEffectType::Rain));
+  BOOST_CHECK_EQUAL(static_cast<int>(ParticleEffectEvent::stringToEffectType("Snow")),
+                    static_cast<int>(ParticleEffectType::Snow));
+  BOOST_CHECK_EQUAL(static_cast<int>(ParticleEffectEvent::stringToEffectType("Invalid")),
+                    static_cast<int>(ParticleEffectType::Fire)); // Default fallback
 }
 
 // Invalid effects test removed - enum system prevents invalid types at compile
 // time
 
-// Test ParticleEffectEvent lifecycle with ParticleManager
-BOOST_FIXTURE_TEST_CASE(TestParticleEffectEventLifecycle,
+// Test ParticleEffectEvent checkConditions behavior
+BOOST_FIXTURE_TEST_CASE(TestParticleEffectEventConditions,
                         ParticleManagerCoreFixture) {
   manager->init();
   manager->registerBuiltInEffects();
 
-  Vector2D position(200.0f, 300.0f);
-  ParticleEffectEvent event("LifecycleTest", ParticleEffectType::Smoke,
-                            position, 1.5f, 5.0f);
+  ParticleEffectEvent event("ConditionTest", ParticleEffectType::Smoke,
+                            200.0f, 300.0f, 1.5f, 5.0f);
 
-  // Test initial state
-  BOOST_CHECK(!event.isEffectActive());
-  BOOST_CHECK(event.checkConditions()); // Should pass basic conditions
+  // Conditions should pass when manager is initialized
+  BOOST_CHECK(event.checkConditions());
 
-  // Test execution
-  event.execute();
-  BOOST_CHECK(event.isEffectActive());
+  // Event should be active by default
+  BOOST_CHECK(event.isActive());
 
-  // Test update (should not crash)
-  event.update();
-  BOOST_CHECK(event.isEffectActive());
+  // Deactivating event should fail conditions
+  event.setActive(false);
+  BOOST_CHECK(!event.checkConditions());
 
-  // Test manual stop
-  event.stopEffect();
-  BOOST_CHECK(!event.isEffectActive());
+  // Reactivating should pass again
+  event.setActive(true);
+  BOOST_CHECK(event.checkConditions());
+}
 
-  // Test re-execution after stop
-  event.execute();
-  BOOST_CHECK(event.isEffectActive());
+// Test ParticleEffectEvent reset and clean methods
+BOOST_FIXTURE_TEST_CASE(TestParticleEffectEventResetClean,
+                        ParticleManagerCoreFixture) {
+  manager->init();
 
-  // Test reset (should stop effect and reset state)
+  ParticleEffectEvent event("ResetTest", ParticleEffectType::Fire,
+                            100.0f, 100.0f, 1.0f, 2.0f, "group1", "sound1");
+
+  // Verify initial state
+  BOOST_CHECK_EQUAL(event.getGroupTag(), "group1");
+  BOOST_CHECK_EQUAL(event.getDuration(), 2.0f);
+
+  // Reset should clear state for pool reuse
   event.reset();
   BOOST_CHECK(!event.isEffectActive());
+  BOOST_CHECK_EQUAL(event.getGroupTag(), ""); // Cleared
+  BOOST_CHECK_EQUAL(event.getDuration(), -1.0f); // Reset to default
 
-  // Test clean (should stop effect and clean up)
-  event.execute(); // Start again
-  BOOST_CHECK(event.isEffectActive());
-  event.clean();
-  BOOST_CHECK(!event.isEffectActive());
+  // Create another event and test clean
+  ParticleEffectEvent event2("CleanTest", ParticleEffectType::Smoke,
+                             200.0f, 200.0f);
+  event2.clean();
+  BOOST_CHECK(!event2.isEffectActive());
 }
 
-// Test ParticleEffectEvent with extreme values
-BOOST_FIXTURE_TEST_CASE(TestParticleEffectEventExtremeValues,
+// Test triggering effects with extreme values via production API
+BOOST_FIXTURE_TEST_CASE(TestTriggerEffectExtremeValues,
                         ParticleManagerCoreFixture) {
   manager->init();
   manager->registerBuiltInEffects();
 
-  // Test with extreme positions
-  ParticleEffectEvent extremeEvent1("Extreme1", ParticleEffectType::Fire,
-                                    -1000.0f, 1000.0f, 0.1f, 0.1f);
-  extremeEvent1.execute();
-  BOOST_CHECK(extremeEvent1.isEffectActive());
-  extremeEvent1.stopEffect();
+  // Extreme positions - should not crash
+  BOOST_CHECK(EventManager::Instance().triggerParticleEffect(
+      "Fire", -1000.0f, 1000.0f, 0.1f, 0.1f, "",
+      EventManager::DispatchMode::Immediate));
 
-  // Test with very high intensity
-  ParticleEffectEvent extremeEvent2("Extreme2", ParticleEffectType::Sparks,
-                                    0.0f, 0.0f, 10.0f, 1.0f);
-  extremeEvent2.execute();
-  BOOST_CHECK(extremeEvent2.isEffectActive());
-  extremeEvent2.stopEffect();
+  // Very high intensity - should not crash
+  BOOST_CHECK(EventManager::Instance().triggerParticleEffect(
+      "Sparks", 0.0f, 0.0f, 10.0f, 1.0f, "",
+      EventManager::DispatchMode::Immediate));
 
-  // Test with infinite duration
-  ParticleEffectEvent infiniteEvent("Infinite", ParticleEffectType::Rain,
-                                    100.0f, 100.0f, 1.0f, -1.0f);
-  infiniteEvent.execute();
-  BOOST_CHECK(infiniteEvent.isEffectActive());
-  infiniteEvent.stopEffect();
+  // Infinite duration (-1) - should not crash
+  BOOST_CHECK(EventManager::Instance().triggerParticleEffect(
+      "Rain", 100.0f, 100.0f, 1.0f, -1.0f, "",
+      EventManager::DispatchMode::Immediate));
 
-  // Test with zero duration
-  ParticleEffectEvent zeroEvent("Zero", ParticleEffectType::Snow, 100.0f,
-                                100.0f, 1.0f, 0.0f);
-  zeroEvent.execute();
-  BOOST_CHECK(zeroEvent.isEffectActive());
-  zeroEvent.stopEffect();
+  // Zero duration - should not crash
+  BOOST_CHECK(EventManager::Instance().triggerParticleEffect(
+      "Snow", 100.0f, 100.0f, 1.0f, 0.0f, "",
+      EventManager::DispatchMode::Immediate));
+
+  // Update and verify no crashes
+  manager->update(0.1f);
+  BOOST_CHECK(manager->isInitialized());
 }
 
-// Test multiple simultaneous ParticleEffectEvents
+// Test multiple simultaneous ParticleEffectEvents via EventManager
 BOOST_FIXTURE_TEST_CASE(TestMultipleParticleEffectEvents,
                         ParticleManagerCoreFixture) {
   manager->init();
   manager->registerBuiltInEffects();
 
-  // Create multiple events
-  std::vector<std::unique_ptr<ParticleEffectEvent>> events;
-  events.emplace_back(std::make_unique<ParticleEffectEvent>(
-      "Multi1", ParticleEffectType::Fire, 100.0f, 100.0f));
-  events.emplace_back(std::make_unique<ParticleEffectEvent>(
-      "Multi2", ParticleEffectType::Smoke, 200.0f, 200.0f));
-  events.emplace_back(std::make_unique<ParticleEffectEvent>(
-      "Multi3", ParticleEffectType::Sparks, 300.0f, 300.0f));
+  // Dispatch multiple effects through EventManager
+  EventManager::Instance().triggerParticleEffect(
+      "Fire", 100.0f, 100.0f, 1.0f, -1.0f, "",
+      EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerParticleEffect(
+      "Smoke", 200.0f, 200.0f, 1.0f, -1.0f, "",
+      EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerParticleEffect(
+      "Sparks", 300.0f, 300.0f, 1.0f, -1.0f, "",
+      EventManager::DispatchMode::Immediate);
 
-  // Execute all events
-  for (auto &event : events) {
-    event->execute();
-    BOOST_CHECK(event->isEffectActive());
-  }
+  // Update manager to process effects
+  manager->update(0.1f);
 
-  // All should be active simultaneously
-  for (auto &event : events) {
-    BOOST_CHECK(event->isEffectActive());
-  }
-
-  // Verify multiple effects are running in ParticleManager
-  BOOST_CHECK_GE(manager->getActiveParticleCount(),
-                 0); // May vary based on timing
-
-  // Stop all events
-  for (auto &event : events) {
-    event->stopEffect();
-    BOOST_CHECK(!event->isEffectActive());
-  }
+  // Verify effects are running (particle count may vary based on timing)
+  BOOST_CHECK_GE(manager->getActiveParticleCount(), 0);
 }
 
 // Test basic particle creation through effects

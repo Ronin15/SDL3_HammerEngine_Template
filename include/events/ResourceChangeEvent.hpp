@@ -76,6 +76,16 @@ public:
     return m_oldQuantity > 0 && m_newQuantity == 0;
   }
 
+  // Pooling support - set all fields for reuse
+  void set(EntityHandle ownerHandle, HammerEngine::ResourceHandle resourceHandle,
+           int oldQuantity, int newQuantity, const std::string &changeReason) {
+    m_ownerHandle = ownerHandle;
+    m_resourceHandle = resourceHandle;
+    m_oldQuantity = oldQuantity;
+    m_newQuantity = newQuantity;
+    m_changeReason = changeReason;
+  }
+
 private:
   EntityHandle m_ownerHandle; // Handle of entity that owns the inventory
   HammerEngine::ResourceHandle

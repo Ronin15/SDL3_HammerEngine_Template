@@ -84,6 +84,10 @@ bool EventManager::init() {
   m_npcSpawnPool.setCreator([]() {
     return std::make_shared<NPCSpawnEvent>("trigger_npc_spawn", SpawnParameters{});
   });
+  m_resourceChangePool.setCreator([]() {
+    return std::make_shared<ResourceChangeEvent>(
+        EntityHandle{}, HammerEngine::ResourceHandle{}, 0, 0, "");
+  });
 
   // Hot-path event pools
   m_collisionPool.setCreator([]() {
@@ -294,7 +298,11 @@ bool EventManager::removeHandler(const HandlerToken &token) {
     auto &entries = it->second;
     for (size_t i = 0; i < entries.size(); ++i) {
       if (entries[i].id == token.id) {
-        entries[i] = HandlerEntry(); // Mark as invalid
+        // Swap-and-pop: O(1) removal without leaving holes
+        if (i != entries.size() - 1) {
+          entries[i] = std::move(entries.back());
+        }
+        entries.pop_back();
         return true;
       }
     }
@@ -309,7 +317,11 @@ bool EventManager::removeHandler(const HandlerToken &token) {
         entries.begin(), entries.end(),
         [&token](const HandlerEntry &entry) { return entry.id == token.id; });
     if (it != entries.end()) {
-      *it = HandlerEntry(); // Mark as invalid
+      // Swap-and-pop: O(1) removal without leaving holes
+      if (it != entries.end() - 1) {
+        *it = std::move(entries.back());
+      }
+      entries.pop_back();
       return true;
     }
     return false;
@@ -438,11 +450,19 @@ bool EventManager::triggerResourceChange(
     EntityHandle ownerHandle, HammerEngine::ResourceHandle resourceHandle,
     int oldQuantity, int newQuantity, const std::string &changeReason,
     DispatchMode mode) const {
+  auto resourceEvent = m_resourceChangePool.acquire();
+  if (resourceEvent) {
+    resourceEvent->set(ownerHandle, resourceHandle, oldQuantity, newQuantity,
+                       changeReason);
+  } else {
+    resourceEvent = std::make_shared<ResourceChangeEvent>(
+        ownerHandle, resourceHandle, oldQuantity, newQuantity, changeReason);
+  }
+
   EventData eventData;
   eventData.typeId = EventTypeId::ResourceChange;
   eventData.setActive(true);
-  eventData.event = std::make_shared<ResourceChangeEvent>(
-      ownerHandle, resourceHandle, oldQuantity, newQuantity, changeReason);
+  eventData.event = resourceEvent;
 
   return dispatchEvent(EventTypeId::ResourceChange, eventData, mode,
                        "triggerResourceChange");
