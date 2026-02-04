@@ -271,6 +271,12 @@ void AIManager::update(float deltaTime) {
     return;
   }
 
+  // Early exit if no AI-managed entities (e.g., just player with no NPCs)
+  // This avoids all setup overhead when there's no behavior work to do
+  if (m_storage.hotData.empty()) {
+    return;
+  }
+
   // NOTE: We do NOT wait for previous frame's batches here - they can overlap
   // with current frame The critical sync happens in GameEngine before
   // CollisionManager to ensure collision data is ready This allows better frame
@@ -1171,6 +1177,9 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
       }
     }
 
+    // Pre-fetch CharacterData to avoid repeated getCharacterDataByIndex() calls in behaviors
+    const CharacterData* characterData = &edm.getCharacterDataByIndex(edmIdx);
+
     // Get behavior config from EDM
     const auto& config = edm.getBehaviorConfig(edmIdx);
     if (config.type == BehaviorType::None) {
@@ -1188,8 +1197,8 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
       BehaviorContext ctx(
           transform, edmHotData, m_storage.handles[storageIdx].getId(), edmIdx,
           deltaTime, playerHandle, playerPos, playerVel, playerValid,
-          behaviorData, pathData, memoryData, 0.0f, 0.0f, worldWidth, worldHeight, true,
-          gameTime);
+          behaviorData, pathData, memoryData, characterData,
+          0.0f, 0.0f, worldWidth, worldHeight, true, gameTime);
       Behaviors::execute(ctx, config);
 
       batchTransforms[batchCount] = &transform;
