@@ -564,7 +564,6 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             // Use lastTargetPosition for retreat direction if available
             if (attack.lastTargetPosition.lengthSquared() > 0.01f) {
                 targetPos = attack.lastTargetPosition;
-                hasTarget = true;  // Allow retreat movement logic to work
             } else {
                 // No known target position - just stop but stay in RETREATING state
                 return;

@@ -18,7 +18,7 @@
 #include <random>
 
 HarvestController::HarvestController(std::shared_ptr<Player> player)
-    : mp_player(std::move(player))
+    : mp_player(player)
 {
     m_harvestableIndicesBuffer.reserve(32);
 }

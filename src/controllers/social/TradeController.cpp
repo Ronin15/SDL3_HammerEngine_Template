@@ -24,7 +24,7 @@ namespace {
 
 TradeController::TradeController(std::shared_ptr<Player> player,
                                  SocialController* socialController)
-    : mp_player(std::move(player))
+    : mp_player(player)
     , mp_socialController(socialController) {}
 
 void TradeController::subscribe() {

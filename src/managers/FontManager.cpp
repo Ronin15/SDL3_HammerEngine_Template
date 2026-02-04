@@ -805,7 +805,7 @@ void FontManager::processPendingTextUploads(SDL_GPUCopyPass* copyPass) {
     return;
   }
 
-  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+  const auto& gpuDevice = HammerEngine::GPUDevice::Instance();
   if (!gpuDevice.isInitialized()) {
     FONT_ERROR("GPU text upload: GPUDevice not initialized");
     return;
@@ -924,7 +924,7 @@ void FontManager::drawTextGPU(const std::string& text, const std::string& fontID
   SDL_BindGPUFragmentSamplers(pass, 0, &texSampler, 1);
 
   // Upload vertices using a small transfer buffer
-  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+  const auto& gpuDevice = HammerEngine::GPUDevice::Instance();
   HammerEngine::GPUTransferBuffer vertexTransfer(
       gpuDevice.get(), SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, sizeof(vertices));
 

@@ -24,7 +24,7 @@ bool GPURenderer::init() {
         return true;
     }
 
-    auto& gpuDevice = GPUDevice::Instance();
+    const auto& gpuDevice = GPUDevice::Instance();
     if (!gpuDevice.isInitialized()) {
         GAMEENGINE_ERROR("GPURenderer::init: GPUDevice not initialized");
         return false;
