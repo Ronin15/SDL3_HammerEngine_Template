@@ -560,11 +560,29 @@ void AIManager::registerDefaultBehaviors() {
     {"Flee", BehaviorType::Flee},
     {"Follow", BehaviorType::Follow}
   };
-  AI_INFO("Behavior system ready (data-oriented, switch dispatch)");
+
+  // Register named preset configs (variants of base behaviors)
+  m_presetConfigs["SmallWander"] = HammerEngine::BehaviorConfigData::makeWander(
+      HammerEngine::WanderBehaviorConfig::createSmallWander());
+  m_presetConfigs["LargeWander"] = HammerEngine::BehaviorConfigData::makeWander(
+      HammerEngine::WanderBehaviorConfig::createLargeWander());
+  m_presetConfigs["EventWander"] = HammerEngine::BehaviorConfigData::makeWander(
+      HammerEngine::WanderBehaviorConfig::createEventWander());
+  m_presetConfigs["RandomPatrol"] = HammerEngine::BehaviorConfigData::makePatrol(
+      HammerEngine::PatrolBehaviorConfig::createRandomPatrol());
+  m_presetConfigs["CirclePatrol"] = HammerEngine::BehaviorConfigData::makePatrol(
+      HammerEngine::PatrolBehaviorConfig::createCirclePatrol());
+  m_presetConfigs["EventTarget"] = HammerEngine::BehaviorConfigData::makeChase(
+      HammerEngine::ChaseBehaviorConfig::createEventTarget());
+
+  AI_INFO("Behavior system ready (8 types + 6 presets)");
 }
 
 bool AIManager::hasBehavior(const std::string &name) const {
-  // Data-oriented: check if behavior type name is known
+  // Check preset configs first, then base behavior types
+  if (m_presetConfigs.find(name) != m_presetConfigs.end()) {
+    return true;
+  }
   auto it = m_behaviorTypeMap.find(name);
   return it != m_behaviorTypeMap.end();
 }
@@ -576,7 +594,15 @@ void AIManager::assignBehavior(EntityHandle handle,
     return;
   }
 
-  // Look up behavior type from name
+  // Check for preset config first (SmallWander, LargeWander, etc.)
+  auto presetIt = m_presetConfigs.find(behaviorName);
+  if (presetIt != m_presetConfigs.end()) {
+    // Use preset config directly via the config-based overload
+    assignBehavior(handle, presetIt->second);
+    return;
+  }
+
+  // Fall back to default config for base behavior types
   auto typeIt = m_behaviorTypeMap.find(behaviorName);
   if (typeIt == m_behaviorTypeMap.end()) {
     AI_ERROR(std::format("Unknown behavior name: {}", behaviorName));

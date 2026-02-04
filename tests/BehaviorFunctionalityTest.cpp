@@ -670,6 +670,9 @@ BOOST_AUTO_TEST_CASE(TestAttackMessageRetreat) {
     size_t idx = edm.getIndex(handle);
     BOOST_REQUIRE(idx != SIZE_MAX);
 
+    // Set faction to enemy (1) so attack behavior will target player
+    edm.setFaction(handle, 1);
+
     aiMgr.assignBehavior(handle, "Attack");
     updateAI(0.016f);
 

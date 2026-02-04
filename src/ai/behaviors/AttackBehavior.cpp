@@ -284,12 +284,27 @@ void executeAttackAction(size_t edmIndex, const Vector2D& targetPos, BehaviorDat
 
     Vector2D knockback = calculateKnockbackVector(entityPos, targetPos) * config.knockbackForce;
     EntityHandle attackerHandle = edm.getHandle(edmIndex);
-    EntityHandle targetHandle = AIManager::Instance().getPlayerHandle();
 
-    // Check for explicit target
+    // Resolve target handle: explicit > memory lastTarget > memory lastAttacker > player (if hostile)
+    EntityHandle targetHandle{};
     if (attack.hasExplicitTarget && attack.explicitTarget.isValid()) {
         targetHandle = attack.explicitTarget;
+    } else if (edm.hasMemoryData(edmIndex)) {
+        const auto& memData = edm.getMemoryData(edmIndex);
+        if (memData.lastTarget.isValid()) {
+            targetHandle = memData.lastTarget;
+        } else if (memData.lastAttacker.isValid()) {
+            targetHandle = memData.lastAttacker;
+        }
     }
+    // Fall back to player only if entity is hostile (faction 1)
+    if (!targetHandle.isValid()) {
+        const auto& charData = edm.getCharacterDataByIndex(edmIndex);
+        if (charData.faction == 1) {
+            targetHandle = AIManager::Instance().getPlayerHandle();
+        }
+    }
+    if (!targetHandle.isValid()) return;  // No valid target
 
     applyDamageToTarget(targetHandle, damage, knockback, attackerHandle);
 
@@ -467,13 +482,13 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     // Process any pending messages before main logic
     processAttackMessages(data, config);
 
-    // Determine target position
+    // Target priority: explicit > memory lastTarget > memory lastAttacker > player (if hostile)
     Vector2D targetPos;
     bool hasTarget = false;
+    auto& edm = EntityDataManager::Instance();
 
     // Check explicit target first
     if (attack.hasExplicitTarget && attack.explicitTarget.isValid()) {
-        auto& edm = EntityDataManager::Instance();
         size_t targetIdx = edm.getIndex(attack.explicitTarget);
         if (targetIdx != SIZE_MAX) {
             const auto& targetHot = edm.getHotDataByIndex(targetIdx);
@@ -488,20 +503,38 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
         }
     }
 
-    // Fall back to player
-    if (!hasTarget && ctx.playerValid) {
-        targetPos = ctx.playerPosition;
-        hasTarget = true;
+    // Check memory lastTarget
+    if (!hasTarget && ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
+        size_t targetIdx = edm.getIndex(ctx.memoryData->lastTarget);
+        if (targetIdx != SIZE_MAX && edm.getHotDataByIndex(targetIdx).isAlive()) {
+            targetPos = edm.getHotDataByIndex(targetIdx).transform.position;
+            hasTarget = true;
+        }
     }
 
-    // Neutral entities become enemy when attacking
-    if (hasTarget && ctx.edmIndex != SIZE_MAX) {
-        auto& edm = EntityDataManager::Instance();
-        const auto& charData = edm.getCharacterDataByIndex(ctx.edmIndex);
-        if (charData.faction == 2) {
-            edm.setFaction(edm.getHandle(ctx.edmIndex), 1);
-            AIManager::Instance().broadcastMessage("player_under_attack", true);
+    // Check memory lastAttacker
+    if (!hasTarget && ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
+        size_t attackerIdx = edm.getIndex(ctx.memoryData->lastAttacker);
+        if (attackerIdx != SIZE_MAX && edm.getHotDataByIndex(attackerIdx).isAlive()) {
+            targetPos = edm.getHotDataByIndex(attackerIdx).transform.position;
+            hasTarget = true;
         }
+    }
+
+    // Only fall back to player if entity is hostile (faction 1)
+    if (!hasTarget && ctx.playerValid && ctx.edmIndex != SIZE_MAX) {
+        const auto& charData = edm.getCharacterDataByIndex(ctx.edmIndex);
+        if (charData.faction == 1) {  // Enemy faction
+            targetPos = ctx.playerPosition;
+            hasTarget = true;
+        }
+    }
+
+    // No valid target - idle until one is assigned
+    if (!hasTarget) {
+        attack.hasTarget = false;
+        ctx.transform.velocity = Vector2D(0, 0);
+        return;
     }
 
     Vector2D entityPos = ctx.transform.position;
@@ -687,9 +720,24 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             if (s_specialRoll(s_rng) < config.specialAttackChance && attack.specialAttackReady) {
                 float specialDamage = calculateDamage(data, config) * SPECIAL_ATTACK_MULTIPLIER;
                 Vector2D knockback = calculateKnockbackVector(entityPos, targetPos) * config.knockbackForce * SPECIAL_ATTACK_MULTIPLIER;
-                EntityHandle targetHandle = attack.hasExplicitTarget ? attack.explicitTarget : AIManager::Instance().getPlayerHandle();
+                // Resolve target: explicit > memory lastTarget > memory lastAttacker > player (if hostile)
                 auto& edm = EntityDataManager::Instance();
-                applyDamageToTarget(targetHandle, specialDamage, knockback, edm.getHandle(ctx.edmIndex));
+                EntityHandle targetHandle{};
+                if (attack.hasExplicitTarget && attack.explicitTarget.isValid()) {
+                    targetHandle = attack.explicitTarget;
+                } else if (ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
+                    targetHandle = ctx.memoryData->lastTarget;
+                } else if (ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
+                    targetHandle = ctx.memoryData->lastAttacker;
+                } else {
+                    const auto& charData = edm.getCharacterDataByIndex(ctx.edmIndex);
+                    if (charData.faction == 1) {
+                        targetHandle = AIManager::Instance().getPlayerHandle();
+                    }
+                }
+                if (targetHandle.isValid()) {
+                    applyDamageToTarget(targetHandle, specialDamage, knockback, edm.getHandle(ctx.edmIndex));
+                }
                 attack.specialAttackReady = false;
             } else {
                 executeAttackAction(ctx.edmIndex, targetPos, data, config);

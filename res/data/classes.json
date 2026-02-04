@@ -234,6 +234,24 @@
             ]
         },
         {
+            "id": "Villager",
+            "name": "Villager",
+            "healthMult": 0.8,
+            "staminaMult": 1.0,
+            "moveSpeedMult": 1.0,
+            "attackDamageMult": 0.3,
+            "attackRangeMult": 0.5,
+            "suggestedBehavior": "Wander",
+            "basePriority": 1,
+            "defaultFaction": 0,
+            "isMerchant": false,
+            "emotionalResilience": 0.3,
+            "startingItems": [
+                {"id": "bread", "quantity": 2},
+                {"id": "gold_coins", "quantity": 10}
+            ]
+        },
+        {
             "id": "Farmer",
             "name": "Farmer",
             "healthMult": 0.9,

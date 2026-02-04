@@ -118,6 +118,38 @@ struct WanderBehaviorConfig
     // Stuck detection
     float stallSpeed = 0.5f;                      // Speed threshold (px/s) to consider entity stalled
     float stallTimeout = 0.6f;                    // Seconds without progress before triggering unstuck
+
+    // Factory methods for common presets
+    static WanderBehaviorConfig createSmallWander()
+    {
+        WanderBehaviorConfig config;
+        config.changeDirectionIntervalMin = 1000.0f;  // Faster changes
+        config.changeDirectionIntervalMax = 3000.0f;
+        config.minGoalChangeDistance = 80.0f;         // Smaller goals
+        config.pathRefreshInterval = 10.0f;
+        return config;
+    }
+
+    static WanderBehaviorConfig createLargeWander()
+    {
+        WanderBehaviorConfig config;
+        config.changeDirectionIntervalMin = 8000.0f;  // Slower changes
+        config.changeDirectionIntervalMax = 15000.0f;
+        config.minGoalChangeDistance = 500.0f;        // Larger goals
+        config.pathRefreshInterval = 45.0f;
+        return config;
+    }
+
+    static WanderBehaviorConfig createEventWander(float areaRadius = 300.0f)
+    {
+        WanderBehaviorConfig config;
+        config.changeDirectionIntervalMin = 2000.0f;
+        config.changeDirectionIntervalMax = 5000.0f;
+        config.minGoalChangeDistance = areaRadius * 0.5f;
+        config.worldPaddingMargin = areaRadius;       // Constrain to area
+        config.edgeThreshold = areaRadius * 0.8f;
+        return config;
+    }
 };
 
 /**
@@ -148,6 +180,15 @@ struct ChaseBehaviorConfig
     // Line-of-sight
     float losCheckInterval = 0.5f;                // Seconds between LOS checks
     float catchRadius = 20.0f;                    // Distance to consider target "caught"
+
+    // Factory method for event targeting
+    static ChaseBehaviorConfig createEventTarget()
+    {
+        ChaseBehaviorConfig config;
+        config.pathRefreshInterval = 5.0f;        // Fast updates for event
+        config.catchRadius = 50.0f;               // Larger arrival radius
+        return config;
+    }
 };
 
 /**
@@ -177,6 +218,24 @@ struct PatrolBehaviorConfig
 
     // Boundary padding
     float boundaryPadding = 80.0f;                // Keep patrol paths this far from world edges
+
+    // Factory methods for common presets
+    static PatrolBehaviorConfig createRandomPatrol()
+    {
+        PatrolBehaviorConfig config;
+        config.randomWaypointGenerationAttempts = 100;  // More attempts for variety
+        config.waypointCooldown = 1.5f;                 // Longer pause at points
+        return config;
+    }
+
+    static PatrolBehaviorConfig createCirclePatrol(float radius = 200.0f)
+    {
+        PatrolBehaviorConfig config;
+        config.waypointReachedRadius = radius * 0.15f;  // Scale with circle size
+        config.waypointCooldown = 0.5f;                 // Quick transitions
+        config.boundaryPadding = radius * 0.1f;
+        return config;
+    }
 };
 
 /**

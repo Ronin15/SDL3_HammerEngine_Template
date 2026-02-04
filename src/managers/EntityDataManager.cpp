@@ -582,9 +582,12 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     // Set up NPCRenderData from race info
     auto& renderData = m_npcRenderData[typeIndex];
     renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
+#ifndef USE_SDL3_GPU
+    // Only error in SDL_Renderer path - GPU path uses SpriteBatch with GPU textures
     if (!renderData.cachedTexture) {
         ENTITY_ERROR("createNPCWithRaceClass: Atlas texture not loaded");
     }
+#endif
 
     // Check for unmapped texture (atlasX and atlasY both 0) - use debug texture as fallback
     if (raceInfo.atlasX == 0 && raceInfo.atlasY == 0) {

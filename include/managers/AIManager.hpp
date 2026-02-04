@@ -266,6 +266,9 @@ private:
   std::unordered_map<EntityHandle, size_t> m_handleToIndex;
   std::unordered_map<std::string, BehaviorType> m_behaviorTypeMap;
 
+  // Named preset configs (SmallWander, LargeWander, etc.) - checked before m_behaviorTypeMap
+  std::unordered_map<std::string, HammerEngine::BehaviorConfigData> m_presetConfigs;
+
   // Reverse mapping: EDM index -> dense storage index for O(1) lookup in processBatch
   // SIZE_MAX = no behavior assigned. Much cheaper than shared_ptr (8 bytes vs 16, no atomic ops)
   std::vector<size_t> m_edmToStorageIndex;
