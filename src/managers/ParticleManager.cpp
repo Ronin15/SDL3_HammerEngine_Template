@@ -2462,11 +2462,14 @@ void ParticleManager::updateParticleRange(
   const size_t flagsSize = particles.flags.size();
   const size_t colorsSize = particles.colors.size();
   const size_t effectTypesSize = particles.effectTypes.size();
-  
+  const size_t prevPosXSize = particles.prevPosX.size();
+  const size_t prevPosYSize = particles.prevPosY.size();
+
   // BOUNDS SAFETY: Find minimum consistent size across all vectors
+  // CRITICAL: Include prevPosX/Y - SIMD physics writes to them
   const size_t safeSize = std::min({positionsSize, velocitiesSize, accelerationsSize,
                                    livesSize, maxLivesSize, sizesSize, flagsSize,
-                                   colorsSize, effectTypesSize});
+                                   colorsSize, effectTypesSize, prevPosXSize, prevPosYSize});
   
   // Ensure we don't exceed the actual safe particle buffer size
   endIdx = std::min(endIdx, safeSize);
