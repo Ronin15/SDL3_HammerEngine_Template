@@ -305,7 +305,7 @@ struct AttackBehaviorConfig
 
     // Combat parameters
     float attackSpeed = 1.0f;                     // Attacks per second
-    float movementSpeed = 2.0f;                   // Movement speed during combat (px/frame)
+    float movementSpeed = 55.0f;                  // Movement speed during combat (px/s)
     float attackCooldown = 1.0f;                  // Seconds between attacks
     float recoveryTime = 0.5f;                    // Seconds to recover after attack
 
@@ -348,7 +348,7 @@ struct AttackBehaviorConfig
         config.optimalRangeMultiplier = 0.8f;
         config.minimumRangeMultiplier = 0.3f;
         config.attackSpeed = 1.2f;
-        config.movementSpeed = 2.5f;
+        config.movementSpeed = 60.0f;
         config.attackDamage = 10.0f;
         return config;
     }
@@ -364,7 +364,7 @@ struct AttackBehaviorConfig
         config.optimalRangeMultiplier = 0.7f;
         config.minimumRangeMultiplier = 0.4f;
         config.attackSpeed = 0.8f;
-        config.movementSpeed = 2.0f;
+        config.movementSpeed = 50.0f;
         config.attackDamage = 8.0f;
         return config;
     }
@@ -380,7 +380,7 @@ struct AttackBehaviorConfig
         config.optimalRangeMultiplier = 1.0f;    // Optimal range is max range for charge
         config.minimumRangeMultiplier = 0.0f;    // No minimum for charge
         config.attackSpeed = 0.5f;
-        config.movementSpeed = 3.5f;
+        config.movementSpeed = 80.0f;
         config.attackDamage = 15.0f;
         config.chargeDamageMultiplier = 2.0f;
         return config;
@@ -397,7 +397,7 @@ struct AttackBehaviorConfig
         config.optimalRangeMultiplier = 0.6f;
         config.minimumRangeMultiplier = 0.3f;
         config.attackSpeed = 2.0f;
-        config.movementSpeed = 1.5f;
+        config.movementSpeed = 40.0f;
         config.criticalHitChance = 0.3f;
         config.attackDamage = 12.0f;
         return config;
@@ -414,7 +414,7 @@ struct AttackBehaviorConfig
         config.optimalRangeMultiplier = 0.8f;
         config.minimumRangeMultiplier = 0.3f;
         config.attackSpeed = 1.0f;
-        config.movementSpeed = 2.2f;
+        config.movementSpeed = 55.0f;
         config.teamwork = true;
         config.flankingEnabled = true;
         config.attackDamage = 10.0f;
@@ -432,7 +432,7 @@ struct AttackBehaviorConfig
         config.optimalRangeMultiplier = 0.8f;
         config.minimumRangeMultiplier = 0.3f;
         config.attackSpeed = 1.5f;
-        config.movementSpeed = 3.0f;
+        config.movementSpeed = 70.0f;
         config.retreatThreshold = 0.8f;          // Retreat early
         config.attackDamage = 8.0f;
         return config;
@@ -449,7 +449,7 @@ struct AttackBehaviorConfig
         config.optimalRangeMultiplier = 0.8f;
         config.minimumRangeMultiplier = 0.3f;
         config.attackSpeed = 1.8f;
-        config.movementSpeed = 2.8f;
+        config.movementSpeed = 65.0f;
         config.aggression = 1.0f;               // Maximum aggression
         config.retreatThreshold = 0.1f;         // Almost never retreat
         config.comboAttacks = true;
