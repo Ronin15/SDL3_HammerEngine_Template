@@ -771,7 +771,7 @@ const GPUTextData* FontManager::renderTextGPU(const std::string& text, const std
   auto& gpuDevice = HammerEngine::GPUDevice::Instance();
   SDL_GPUDevice* device = gpuDevice.get();
 
-  // Create GPU texture
+  // Create GPU texture (empty - will be uploaded in processPendingTextUploads)
   gpuData->texture = std::make_unique<HammerEngine::GPUTexture>(
       device,
       static_cast<uint32_t>(surface->w),
@@ -786,52 +786,89 @@ const GPUTextData* FontManager::renderTextGPU(const std::string& text, const std
     return nullptr;
   }
 
-  // Upload texture data immediately using a transfer buffer
-  uint32_t dataSize = static_cast<uint32_t>(surface->pitch * surface->h);
-  HammerEngine::GPUTransferBuffer transferBuf(device, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, dataSize);
-
-  if (!transferBuf.isValid()) {
-    FONT_ERROR("Failed to create transfer buffer for text upload");
-    SDL_DestroySurface(surface);
-    return nullptr;
-  }
-
-  // Copy pixel data to transfer buffer
-  void* mapped = transferBuf.map(false);
-  if (mapped) {
-    std::memcpy(mapped, surface->pixels, dataSize);
-    transferBuf.unmap();
-  }
-
-  // Upload using a one-time command buffer
-  SDL_GPUCommandBuffer* cmdBuf = SDL_AcquireGPUCommandBuffer(device);
-  if (cmdBuf) {
-    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmdBuf);
-    if (copyPass) {
-      SDL_GPUTextureTransferInfo src{};
-      src.transfer_buffer = transferBuf.get();
-      src.offset = 0;
-      src.pixels_per_row = static_cast<uint32_t>(surface->w);
-      src.rows_per_layer = static_cast<uint32_t>(surface->h);
-
-      SDL_GPUTextureRegion dst{};
-      dst.texture = gpuData->texture->get();
-      dst.w = static_cast<uint32_t>(surface->w);
-      dst.h = static_cast<uint32_t>(surface->h);
-      dst.d = 1;
-
-      SDL_UploadToGPUTexture(copyPass, &src, &dst, false);
-      SDL_EndGPUCopyPass(copyPass);
-    }
-    SDL_SubmitGPUCommandBuffer(cmdBuf);
-  }
-
-  SDL_DestroySurface(surface);
+  // Queue surface for upload in main copy pass (avoids per-text GPU stalls)
+  m_pendingTextUploads.push_back(PendingTextUpload{
+      key,
+      std::unique_ptr<SDL_Surface, void(*)(SDL_Surface*)>(surface, SDL_DestroySurface),
+      static_cast<uint32_t>(surface->w),
+      static_cast<uint32_t>(surface->h)
+  });
 
   // Cache and return
   GPUTextData* result = gpuData.get();
   m_gpuTextCache[key] = std::move(gpuData);
   return result;
+}
+
+void FontManager::processPendingTextUploads(SDL_GPUCopyPass* copyPass) {
+  if (!copyPass || m_pendingTextUploads.empty()) {
+    return;
+  }
+
+  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+  if (!gpuDevice.isInitialized()) {
+    FONT_ERROR("GPU text upload: GPUDevice not initialized");
+    return;
+  }
+
+  for (auto& pending : m_pendingTextUploads) {
+    auto cacheIt = m_gpuTextCache.find(pending.key);
+    if (cacheIt == m_gpuTextCache.end() || !cacheIt->second->texture) {
+      FONT_WARN("GPU text upload: texture not found in cache");
+      continue;
+    }
+
+    SDL_Surface* surface = pending.surface.get();
+    if (!surface) {
+      FONT_WARN("GPU text upload: null surface");
+      continue;
+    }
+
+    // Create transfer buffer for upload
+    uint32_t dataSize = static_cast<uint32_t>(surface->pitch * surface->h);
+    HammerEngine::GPUTransferBuffer transferBuffer(
+        gpuDevice.get(),
+        SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        dataSize
+    );
+
+    if (!transferBuffer.isValid()) {
+      FONT_ERROR("GPU text upload: failed to create transfer buffer");
+      continue;
+    }
+
+    // Map and copy pixel data
+    void* mapped = transferBuffer.map(false);
+    if (!mapped) {
+      FONT_ERROR("GPU text upload: failed to map transfer buffer");
+      continue;
+    }
+
+    std::memcpy(mapped, surface->pixels, dataSize);
+    transferBuffer.unmap();
+
+    // Set up transfer info
+    SDL_GPUTextureTransferInfo srcInfo{};
+    srcInfo.transfer_buffer = transferBuffer.get();
+    srcInfo.offset = 0;
+    srcInfo.pixels_per_row = pending.width;
+    srcInfo.rows_per_layer = pending.height;
+
+    SDL_GPUTextureRegion dstRegion{};
+    dstRegion.texture = cacheIt->second->texture->get();
+    dstRegion.x = 0;
+    dstRegion.y = 0;
+    dstRegion.z = 0;
+    dstRegion.w = pending.width;
+    dstRegion.h = pending.height;
+    dstRegion.d = 1;
+
+    // Upload to GPU (batched with other uploads in same copy pass)
+    SDL_UploadToGPUTexture(copyPass, &srcInfo, &dstRegion, false);
+  }
+
+  // Clear pending uploads (surfaces freed by unique_ptr destructors)
+  m_pendingTextUploads.clear();
 }
 
 void FontManager::drawTextGPU(const std::string& text, const std::string& fontID,
@@ -848,8 +885,8 @@ void FontManager::drawTextGPU(const std::string& text, const std::string& fontID
   }
 
   // Calculate centered position
-  float dstX = static_cast<float>(x - textData->width / 2);
-  float dstY = static_cast<float>(y - textData->height / 2);
+  float dstX = static_cast<float>(x) - static_cast<float>(textData->width) * 0.5f;
+  float dstY = static_cast<float>(y) - static_cast<float>(textData->height) * 0.5f;
   float dstW = static_cast<float>(textData->width);
   float dstH = static_cast<float>(textData->height);
 

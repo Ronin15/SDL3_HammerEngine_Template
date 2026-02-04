@@ -252,6 +252,13 @@ class FontManager {
                                     SDL_Color color);
 
   /**
+   * @brief Process pending text texture uploads in the main copy pass
+   * @param copyPass Active GPU copy pass from the main render loop
+   * @note Call this from GPURenderer::beginScenePass() alongside TextureManager uploads
+   */
+  void processPendingTextUploads(SDL_GPUCopyPass* copyPass);
+
+  /**
    * @brief Draw text using GPU renderer to the swapchain
    * @param text Text string to draw
    * @param fontID Unique identifier of the font to use
@@ -313,6 +320,15 @@ class FontManager {
 #ifdef USE_SDL3_GPU
   // GPU text cache for SDL3_GPU rendering
   std::unordered_map<TextCacheKey, std::unique_ptr<GPUTextData>, TextCacheKeyHash> m_gpuTextCache{};
+
+  // Pending text uploads - processed in main copy pass to avoid per-text GPU stalls
+  struct PendingTextUpload {
+    TextCacheKey key;
+    std::unique_ptr<SDL_Surface, void(*)(SDL_Surface*)> surface;
+    uint32_t width;
+    uint32_t height;
+  };
+  std::vector<PendingTextUpload> m_pendingTextUploads{};
 #endif
 
   // Delete copy constructor and assignment operator

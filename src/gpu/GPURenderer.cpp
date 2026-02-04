@@ -4,6 +4,7 @@
 #include "gpu/GPURenderer.hpp"
 #include "gpu/GPUShaderManager.hpp"
 #include "managers/TextureManager.hpp"
+#include "managers/FontManager.hpp"
 #include "core/Logger.hpp"
 #include "utils/FrameProfiler.hpp"
 #include "utils/ResourcePath.hpp"
@@ -279,6 +280,7 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
         // Process pending texture uploads
         profiler.beginRender(RenderPhase::GPUUpload);
         TextureManager::Instance().processPendingUploads(m_copyPass);
+        FontManager::Instance().processPendingTextUploads(m_copyPass);
 
         // End vertex pool frames (unmaps buffers for upload)
         // Use SpriteBatch count if available, otherwise use pending count from direct writes
