@@ -8,6 +8,17 @@ allowed-tools: [Bash, Read, Write, Grep]
 
 This Skill is **critical** for SDL3 HammerEngine's performance requirements. The engine must maintain 10,000+ entity support at 60+ FPS with minimal CPU usage. This Skill detects performance regressions before they reach production.
 
+## Cross-Platform Considerations
+
+**IMPORTANT:** Absolute performance numbers vary significantly across platforms (CPU, memory, OS).
+Regression detection should always compare against **platform-specific baselines**, not hard-coded
+absolute values. Example outputs in this document show representative values from one platform.
+
+**Baseline Strategy:**
+- Each platform maintains its own baseline in `test_results/baseline/`
+- Compare percentage change from baseline, not absolute numbers
+- Thresholds (>15% = CRITICAL, etc.) apply universally across platforms
+
 ## Performance Requirements (from CLAUDE.md)
 
 - **AI System:** 10,000+ entities at 60+ FPS with <6% CPU
@@ -66,7 +77,7 @@ All paths below are relative to project root.
    - Script: `./tests/test_scripts/run_ai_benchmark.sh`
    - Tests: Entity scaling (100-10000), threading comparison, behavior mix
    - Metrics: Entity updates/sec, time per update, threading speedup
-   - Target: 100K+ updates/sec at 10000 entities
+   - Target: Compare against platform baseline (no regression >15%)
    - Duration: ~3 minutes
    - **Status: CRITICAL - Engine core performance benchmark**
 
@@ -106,21 +117,24 @@ All paths below are relative to project root.
    - Script: `./tests/test_scripts/run_simd_benchmark.sh`
    - Tests: SIMD vs scalar performance across AI, Collision, Particle operations
    - Metrics: Speedup factor (scalar time / SIMD time), platform detection (SSE2/AVX2/NEON)
-   - Target: SIMD ≥1.0x (must be faster than scalar)
+   - Target: SIMD ≥1.0x in Release builds (Debug may show SIMD slower due to no optimization)
    - Duration: ~1 minute
+   - **Note:** Debug builds lack -O3 optimization, so SIMD intrinsic overhead may exceed benefit.
+     Run in Release mode for accurate SIMD performance measurement.
 
 8. **Integrated System Benchmark** (`./bin/debug/integrated_system_benchmark`) **[REQUIRED]**
    - Script: `./tests/test_scripts/run_integrated_benchmark.sh`
    - Tests: Realistic game simulation (10K AI + 5K particles), scaling 1K-20K entities
    - Metrics: Frame time avg/P95/P99, frame drop %, max sustainable entity count, coordination overhead
-   - Target: <16.67ms average (60 FPS), <5% frame drops, <2ms coordination overhead
+   - Target (Release): <16.67ms average (60 FPS), <5% frame drops, <2ms coordination overhead
+   - Target (Debug): ~5K entities @ 60 FPS (Debug overhead significant)
    - Duration: ~3 minutes
 
 9. **Background Simulation Benchmark** (`./bin/debug/background_simulation_manager_benchmark`) **[REQUIRED]**
    - Script: `./tests/test_scripts/run_background_simulation_manager_benchmark.sh`
    - Tests: Background tier entity scaling (100-10K), threading threshold, adaptive tuning
    - Metrics: Update time, throughput (entities/ms), batch count, threading mode
-   - Target: Sub-linear scaling, efficient threading crossover (~500 entities)
+   - Target: Sub-linear scaling, ~50K+ items/ms throughput (EDM architecture)
    - Duration: ~2 minutes
 
 10. **Adaptive Threading Analysis** (`./bin/debug/adaptive_threading_analysis`) **[REQUIRED]**
@@ -260,27 +274,32 @@ grep -E "Entity updates per second:|Threading mode:|Threading threshold" \
 cat test_results/ai_scaling_current.txt | grep -A 5 "SCALABILITY SUMMARY"
 ```
 
-**Example Output:**
+**Example Output (EDM Architecture - values are platform-specific):**
 ```
 --- AI Entity Scaling ---
   Entities   Time (ms)   Updates/sec   Threading     Status
-       100        0.85        117647       single          OK
-       500        1.23        406504       multi           OK
-      1000        1.89        529100       multi           OK
-      2000        3.21        623053       multi           OK
-      5000        7.12        702247       multi           OK
-     10000       13.45        743494       multi           OK
+       100        0.02       4998406      single        OK
+       500        0.10       7740798      single        OK
+      1000        0.18      11275361      single        OK
+      2000        0.43      13993477      single        OK
+      5000        0.30     100413620       multi        OK
+     10000        0.30     201148289       multi        OK
 
 SCALABILITY SUMMARY:
-Entity updates per second: 743494 (at 10000 entities)
+Entity updates per second: 201148289 (at 10000 entities)
 Threading mode: WorkerBudget Multi-threaded
 ```
+
+**Note:** The EDM architecture (pure data-driven behaviors) achieves ~200M+ updates/sec due to:
+- No behavior class instances or virtual dispatch
+- Contiguous EDM arrays with excellent cache locality
+- Free-function dispatch via `Behaviors::execute(ctx, config)`
 
 **Baseline Key Format:** `Entity_<count>_UpdatesPerSec`
 
 **Key Metrics:**
 - **Updates/sec:** Primary performance metric (higher is better)
-- **Threading threshold:** Currently 500 entities (single-threaded below, multi above)
+- **Threading threshold:** Adaptive via WorkerBudget (typically 2000-5000 entities for multi-threading benefit)
 - **Scaling efficiency:** Updates/sec should increase sub-linearly with entity count
 
 #### Collision Scaling Metrics
@@ -527,34 +546,35 @@ grep -A 5 "THREADING RECOMMENDATION" test_results/bgsim_benchmark_current.txt
 grep -A 10 "ADAPTIVE TUNING SUMMARY" test_results/bgsim_benchmark_current.txt
 ```
 
-**Example Output:**
+**Example Output (EDM Architecture - values are platform-specific):**
 ```
 ===== BACKGROUND SIMULATION SCALING TEST =====
-    Entities     Avg (ms)     Min (ms)     Max (ms)    Threaded    Batches
-         100        0.015        0.012        0.021          no          1
-         500        0.045        0.038        0.058         yes          4
-        1000        0.082        0.071        0.098         yes          8
-        5000        0.312        0.285        0.356         yes         10
-       10000        0.598        0.542        0.678         yes         10
+    Entities       Avg (ms)       Min (ms)       Max (ms)    Threaded   Batches
+         100          0.003          0.002          0.003          no         1
+         500          0.011          0.011          0.011          no         1
+        1000          0.022          0.020          0.029          no         1
+        2500          0.051          0.050          0.055          no         1
+        5000          0.115          0.111          0.131          no         1
+        7500          0.169          0.151          0.228          no         1
+       10000          0.204          0.200          0.212          no         1
 
 === THREADING RECOMMENDATION ===
-Single throughput: 6500.00 items/ms
-Multi throughput:  8200.00 items/ms
-Batch multiplier:  1.25
-Optimal crossover detected: 500 entities
+Single throughput: 51733.15 items/ms
+Multi throughput:  0.00 items/ms
+Batch multiplier:  1.00
 
 === ADAPTIVE TUNING SUMMARY ===
 Batch sizing:       PASS
-Throughput tracking: PASS
-Final batch count:  10
-Mode preference:    MULTI
 ```
+
+**Note:** With EDM architecture, background simulation is so fast (~50K items/ms) that threading
+overhead exceeds the benefit. Single-threaded processing handles 10K entities in ~0.2ms.
 
 **Key Metrics:**
 - **Update time:** Should scale sub-linearly with entity count
-- **Threading mode:** Should enable above crossover threshold (~500)
+- **Threading mode:** Adaptive via WorkerBudget (may stay single-threaded if fast enough)
 - **Batches:** WorkerBudget batch sizing effectiveness
-- **Throughput:** Single vs multi items/ms
+- **Throughput:** Single throughput ~50K+ items/ms expected with EDM architecture
 
 #### Adaptive Threading Analysis Metrics
 
@@ -740,12 +760,26 @@ def classify_change(metric_name, baseline, current, is_lower_better=False):
    - **Impact:** System-wide performance degradation
 
 **SIMD Benchmark Regression Detection:**
+
+*Note: SIMD benchmarks should be run in Release mode for accurate results. Debug mode lacks
+-O3 optimization, causing SIMD intrinsic overhead to exceed benefit (expected behavior).*
+
+**Release Mode:**
 - 🔴 CRITICAL: SIMD slower than scalar (speedup < 1.0x) for AI Distance or Particle Physics
 - 🔴 CRITICAL: Platform shows "Scalar (no SIMD)" - SIMD not compiling correctly
 - 🟠 WARNING: Speedup <2.0x for AI Distance (expect 3-4x)
 - ⚪ STABLE: Speedup within ±20% of baseline
 
+**Debug Mode:**
+- ⚪ EXPECTED: SIMD may be slower than scalar (no optimization)
+- 🔴 CRITICAL: Platform shows "Scalar (no SIMD)" - SIMD not compiling correctly
+
 **Integrated System Regression Detection:**
+
+*Note: Targets below are for Release builds. Debug builds have significant overhead;
+expect ~5K max sustainable entities @ 60 FPS in Debug mode.*
+
+**Release Mode:**
 - 🔴 CRITICAL: Average frame time >16.67ms (below 60 FPS) at 10K entities
 - 🔴 CRITICAL: Frame drop % >10% at standard load
 - 🟠 WARNING: P95 >20ms or coordination overhead >2ms
@@ -753,22 +787,34 @@ def classify_change(metric_name, baseline, current, is_lower_better=False):
 - 🟡 MINOR: Sustained performance degradation >5% over 50s
 - ⚪ STABLE: All metrics within targets
 
+**Debug Mode:**
+- ⚪ EXPECTED: ~5K max sustainable entities @ 60 FPS
+- 🔴 CRITICAL: Coordination overhead >2ms (should still be low)
+- 🟠 WARNING: Max sustainable entities <3K @ 60 FPS
+
 **Background Simulation Regression Detection:**
-- 🔴 CRITICAL: Threading not enabling above 500 entities
+- 🔴 CRITICAL: Update time regression >50% from baseline
 - 🔴 CRITICAL: Adaptive tuning failing (batch sizing not converging)
-- 🟠 WARNING: Update time >1ms at 10K entities
-- 🟡 MINOR: Throughput <5000 items/ms in multi-threaded mode
-- ⚪ STABLE: Sub-linear scaling maintained
+- 🟠 WARNING: Throughput regression >25% from baseline
+- 🟡 MINOR: Sub-linear scaling not maintained
+- ⚪ STABLE: Performance within ±15% of baseline
+
+**Note:** With EDM architecture, background simulation is extremely fast. Threading may not be
+beneficial as single-threaded processing is often faster than threading overhead. WBM adapts correctly.
 
 **Adaptive Threading Analysis Regression Detection:**
+
+*Note: With EDM architecture, single-threaded processing is extremely fast. WBM correctly
+staying in SINGLE mode even at high entity counts is expected behavior when threading
+overhead exceeds benefit. The key is that WBM learns and adapts correctly.*
+
 - 🔴 CRITICAL: WBM not learning throughput (stays at 0.0 items/ms after 1000 frames)
-- 🔴 CRITICAL: Mode switching broken (stays MULTI at 50 entities, or SINGLE at 2000 entities)
 - 🔴 CRITICAL: MIN_WORKLOAD boundary not enforced (MULTI returned for <100 entities)
-- 🟠 WARNING: Throughput ratio inverted (Single faster than Multi at high counts like 1500+)
+- 🔴 CRITICAL: Mode switching broken (stays MULTI at 50 entities - should force SINGLE below MIN_WORKLOAD)
 - 🟠 WARNING: Batch multiplier outside valid range [0.4, 2.0]
 - 🟡 MINOR: Batch multiplier not stabilizing (>10% change in last 500 frames)
-- 🟡 MINOR: Natural crossover point shifted significantly from baseline
-- ⚪ STABLE: All validations pass, throughput learning working, bidirectional switching correct
+- ⚪ STABLE: WBM learns throughput, respects MIN_WORKLOAD, adapts mode based on measured performance
+- ⚪ EXPECTED: SINGLE mode dominating in isolated benchmarks (EDM overhead too low for threading benefit)
 
 ### Step 6: Generate Report
 
@@ -791,31 +837,34 @@ def classify_change(metric_name, baseline, current, is_lower_better=False):
 
 ## 📊 Performance Summary
 
-### AI System - Entity Scaling
+### AI System - Entity Scaling (EDM Architecture)
 
 **Purpose:** Tests AIManager performance with production behaviors
 
 | Entities | Baseline | Current | Change | Threading | Status |
 |----------|----------|---------|--------|-----------|--------|
-| 100 | 120K/s | 117K/s | -2.5% | single | ⚪ Stable |
-| 500 | 410K/s | 406K/s | -1.0% | multi | ⚪ Stable |
-| 1000 | 535K/s | 529K/s | -1.1% | multi | ⚪ Stable |
-| 2000 | 630K/s | 623K/s | -1.1% | multi | ⚪ Stable |
-| 5000 | 710K/s | 702K/s | -1.1% | multi | ⚪ Stable |
-| 10000 | 750K/s | 743K/s | -0.9% | multi | ⚪ Stable |
+| 100 | 5.0M/s | 4.8M/s | -4.0% | single | ⚪ Stable |
+| 500 | 7.8M/s | 7.7M/s | -1.3% | single | ⚪ Stable |
+| 1000 | 11.0M/s | 10.8M/s | -1.8% | single | ⚪ Stable |
+| 2000 | 15.0M/s | 14.0M/s | -6.7% | single | 🟡 Minor |
+| 5000 | 100M/s | 100M/s | +0.0% | multi | ⚪ Stable |
+| 10000 | 200M/s | 207M/s | +3.5% | multi | 🟢 Improved |
 
 **Status:** ⚪ **STABLE**
-- All metrics within acceptable variance (<6%)
-- Scaling efficiency maintained across entity counts
-- Threading speedup consistent above threshold
+- All metrics within acceptable variance
+- EDM architecture achieves ~200M+ updates/sec at 10K entities
+- Threading beneficial above ~5K entities
 
 **Threading Mode Comparison:**
 | Entities | Single (ms) | Multi (ms) | Speedup |
 |----------|-------------|------------|---------|
-| 500 | 2.45 | 1.23 | 1.99x |
-| 1000 | 4.12 | 1.89 | 2.18x |
-| 2000 | 7.85 | 3.21 | 2.44x |
-| 5000 | 18.50 | 7.12 | 2.60x |
+| 500 | 0.10 | 0.10 | 1.0x |
+| 1000 | 0.18 | 0.17 | 1.1x |
+| 2000 | 0.35 | 0.34 | 1.0x |
+| 5000 | 0.86 | 0.30 | 2.9x |
+
+**Note:** With EDM architecture, single-threaded processing is so fast that threading
+overhead only becomes beneficial at higher entity counts (~5K+).
 
 ---
 
@@ -977,14 +1026,14 @@ def classify_change(metric_name, baseline, current, is_lower_better=False):
 
 | Entities | Baseline (ms) | Current (ms) | Change | Threaded | Batches | Status |
 |----------|---------------|--------------|--------|----------|---------|--------|
-| 100 | 0.016 | 0.015 | -6% | no | 1 | ⚪ Stable |
-| 500 | 0.048 | 0.045 | -6% | yes | 4 | ⚪ Stable |
-| 1000 | 0.085 | 0.082 | -4% | yes | 8 | ⚪ Stable |
-| 5000 | 0.320 | 0.312 | -3% | yes | 10 | ⚪ Stable |
-| 10000 | 0.615 | 0.598 | -3% | yes | 10 | ⚪ Stable |
+| 100 | 0.003 | 0.003 | 0% | no | 1 | ⚪ Stable |
+| 500 | 0.011 | 0.011 | 0% | no | 1 | ⚪ Stable |
+| 1000 | 0.022 | 0.022 | 0% | no | 1 | ⚪ Stable |
+| 5000 | 0.115 | 0.115 | 0% | no | 1 | ⚪ Stable |
+| 10000 | 0.204 | 0.204 | 0% | no | 1 | ⚪ Stable |
 
 **Status:** ⚪ **STABLE**
-- Threading threshold: 500 entities (correct crossover)
+- Single-threaded throughput: ~50K items/ms (threading overhead not beneficial)
 - Sub-linear scaling maintained
 - WorkerBudget adaptive tuning: PASS
 
