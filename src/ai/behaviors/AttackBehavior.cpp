@@ -241,12 +241,11 @@ void moveToPosition(size_t edmIndex, const Vector2D& targetPos, float speed) {
     }
 }
 
-bool shouldRetreat(size_t edmIndex, float retreatThreshold, float aggression) {
-    if (edmIndex == SIZE_MAX) return false;
+bool shouldRetreat(size_t edmIndex, const CharacterData* charData, float retreatThreshold, float aggression) {
+    if (edmIndex == SIZE_MAX || !charData) return false;
 
     auto& edm = EntityDataManager::Instance();
-    const auto& charData = edm.getCharacterDataByIndex(edmIndex);
-    float healthRatio = charData.health / charData.maxHealth;
+    float healthRatio = charData->health / charData->maxHealth;
 
     float effectiveThreshold = retreatThreshold;
     if (edm.hasMemoryData(edmIndex)) {
@@ -263,7 +262,7 @@ bool shouldRetreat(size_t edmIndex, float retreatThreshold, float aggression) {
 }
 
 void executeAttackAction(size_t edmIndex, const Vector2D& targetPos, BehaviorData& data,
-                         const HammerEngine::AttackBehaviorConfig& config) {
+                         const HammerEngine::AttackBehaviorConfig& config, const CharacterData* charData) {
     if (edmIndex == SIZE_MAX) return;
 
     auto& edm = EntityDataManager::Instance();
@@ -297,12 +296,9 @@ void executeAttackAction(size_t edmIndex, const Vector2D& targetPos, BehaviorDat
             targetHandle = memData.lastAttacker;
         }
     }
-    // Fall back to player only if entity is hostile (faction 1)
-    if (!targetHandle.isValid()) {
-        const auto& charData = edm.getCharacterDataByIndex(edmIndex);
-        if (charData.faction == 1) {
-            targetHandle = AIManager::Instance().getPlayerHandle();
-        }
+    // Fall back to player only if entity is hostile (faction 1) - use pre-fetched charData
+    if (!targetHandle.isValid() && charData && charData->faction == 1) {
+        targetHandle = AIManager::Instance().getPlayerHandle();
     }
     if (!targetHandle.isValid()) return;  // No valid target
 
@@ -365,6 +361,7 @@ bool applyRangedPositioning(size_t edmIndex, const Vector2D& entityPos, const Ve
 bool applyChargePositioning(size_t edmIndex, const Vector2D& entityPos, const Vector2D& targetPos,
                             BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
     auto& attack = data.state.attack;
+    auto& edm = EntityDataManager::Instance();
     float chargeDistance = config.attackRange * CHARGE_DISTANCE_THRESHOLD_MULT;
 
     // If far enough for a charge, start charging
@@ -372,9 +369,10 @@ bool applyChargePositioning(size_t edmIndex, const Vector2D& entityPos, const Ve
         attack.isCharging = true;
     }
 
-    // During charge, move at 2x speed toward target
+    // During charge, move at 2x speed toward target using direct velocity (faster than moveToPosition)
     if (attack.isCharging) {
-        moveToPosition(edmIndex, targetPos, data.moveSpeed * CHARGE_SPEED_MULTIPLIER);
+        Vector2D chargeDir = normalizeDir(targetPos - entityPos);
+        edm.getHotDataByIndex(edmIndex).transform.velocity = chargeDir * (data.moveSpeed * CHARGE_SPEED_MULTIPLIER);
         return true;
     }
 
@@ -389,12 +387,14 @@ bool applyHitAndRunPositioning(size_t edmIndex, const Vector2D& entityPos, const
     auto& attack = data.state.attack;
     auto& edm = EntityDataManager::Instance();
 
-    // After recovering, force retreat
+    // After recovering, force retreat - scale speed by optimal range preference
     if (attack.currentState == static_cast<uint8_t>(AttackState::RECOVERING) ||
         attack.currentState == static_cast<uint8_t>(AttackState::COOLDOWN)) {
 
         Vector2D retreatDir = normalizeDir(entityPos - targetPos);
-        Vector2D retreatVelocity = retreatDir * (data.moveSpeed * RETREAT_SPEED_MULTIPLIER * 1.2f);
+        // Retreat faster for longer-range configurations (optimalRangeMultiplier closer to 1.0)
+        float rangeScaling = 1.0f + (config.optimalRangeMultiplier - 0.5f) * 0.4f;
+        Vector2D retreatVelocity = retreatDir * (data.moveSpeed * RETREAT_SPEED_MULTIPLIER * rangeScaling);
         edm.getHotDataByIndex(edmIndex).transform.velocity = retreatVelocity;
         return true;
     }
@@ -521,13 +521,10 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
         }
     }
 
-    // Only fall back to player if entity is hostile (faction 1)
-    if (!hasTarget && ctx.playerValid && ctx.edmIndex != SIZE_MAX) {
-        const auto& charData = edm.getCharacterDataByIndex(ctx.edmIndex);
-        if (charData.faction == 1) {  // Enemy faction
-            targetPos = ctx.playerPosition;
-            hasTarget = true;
-        }
+    // Only fall back to player if entity is hostile (faction 1) - use pre-fetched characterData
+    if (!hasTarget && ctx.playerValid && ctx.characterData && ctx.characterData->faction == 1) {
+        targetPos = ctx.playerPosition;
+        hasTarget = true;
     }
 
     // No valid target - idle until one is assigned
@@ -600,7 +597,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
 
     // Check retreat conditions (respects berserker mode's low threshold)
     if (!berserkerMode && attackMode != AttackMode::BERSERKER &&
-        shouldRetreat(ctx.edmIndex, effectiveRetreatThreshold, config.aggression) &&
+        shouldRetreat(ctx.edmIndex, ctx.characterData, effectiveRetreatThreshold, config.aggression) &&
         attack.currentState != static_cast<uint8_t>(AttackState::RETREATING)) {
 
         bool shouldFlee = false;
@@ -729,18 +726,16 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
                     targetHandle = ctx.memoryData->lastTarget;
                 } else if (ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
                     targetHandle = ctx.memoryData->lastAttacker;
-                } else {
-                    const auto& charData = edm.getCharacterDataByIndex(ctx.edmIndex);
-                    if (charData.faction == 1) {
-                        targetHandle = AIManager::Instance().getPlayerHandle();
-                    }
+                } else if (ctx.characterData && ctx.characterData->faction == 1) {
+                    // Hostile entity - fall back to player
+                    targetHandle = AIManager::Instance().getPlayerHandle();
                 }
                 if (targetHandle.isValid()) {
                     applyDamageToTarget(targetHandle, specialDamage, knockback, edm.getHandle(ctx.edmIndex));
                 }
                 attack.specialAttackReady = false;
             } else {
-                executeAttackAction(ctx.edmIndex, targetPos, data, config);
+                executeAttackAction(ctx.edmIndex, targetPos, data, config, ctx.characterData);
             }
             changeState(data, AttackState::RECOVERING);
             break;
@@ -760,7 +755,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             constexpr float MIN_RETREAT_TIME = 0.5f;
             if (attack.stateChangeTimer >= MIN_RETREAT_TIME) {
                 if (attack.targetDistance > config.attackRange * 2.0f ||
-                    !shouldRetreat(ctx.edmIndex, config.retreatThreshold, config.aggression)) {
+                    !shouldRetreat(ctx.edmIndex, ctx.characterData, config.retreatThreshold, config.aggression)) {
                     attack.isRetreating = false;
                     changeState(data, AttackState::SEEKING);
                 }

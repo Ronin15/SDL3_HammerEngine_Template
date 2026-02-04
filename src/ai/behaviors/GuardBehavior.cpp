@@ -265,7 +265,7 @@ void moveToPosition(BehaviorContext& ctx, EntityDataManager& edm, const Vector2D
     }
 }
 
-// Detect threats in range - EDM passed to avoid Instance() calls
+// Detect threats in range - single-pass to reduce EDM lookups
 EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, float detectionRange, float fieldOfView) {
     if (!ctx.behaviorData) return EntityHandle{};
 
@@ -276,14 +276,18 @@ EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, float de
     if (s_nearbyBuffer.capacity() < 32) s_nearbyBuffer.reserve(32);
     AIManager::Instance().queryHandlesInRadius(ctx.transform.position, detectionRange, s_nearbyBuffer, true);
 
-    // Check for enemy faction NPCs
+    // Single-pass: check both enemy faction and friendly attackers
+    // Enemy faction takes priority (returns immediately)
+    EntityHandle friendlyAttacker{};
+
     for (const auto& handle : s_nearbyBuffer) {
         if (!handle.isValid()) continue;
         size_t idx = edm.getIndex(handle);
         if (idx == SIZE_MAX) continue;
 
         const auto& charData = edm.getCharacterDataByIndex(idx);
-        if (charData.faction == 1) { // Enemy
+
+        if (charData.faction == 1) { // Enemy - highest priority
             Vector2D threatPos = edm.getHotDataByIndex(idx).transform.position;
 
             // Check FOV if limited
@@ -293,40 +297,33 @@ EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, float de
                 float halfFOV = (fieldOfView * static_cast<float>(M_PI) / 180.0f) * 0.5f;
                 if (angleDiff > halfFOV) continue;
             }
-            return handle;
+            return handle; // Return immediately on enemy
         }
-    }
-
-    // Check friendly NPCs' attackers
-    for (const auto& handle : s_nearbyBuffer) {
-        if (!handle.isValid()) continue;
-        size_t idx = edm.getIndex(handle);
-        if (idx == SIZE_MAX) continue;
-
-        const auto& charData = edm.getCharacterDataByIndex(idx);
-        if (charData.faction == 0) { // Friendly
+        else if (charData.faction == 0 && !friendlyAttacker.isValid()) { // Friendly - record attacker
             const auto& memData = edm.getMemoryData(idx);
             if (memData.lastAttacker.isValid()) {
-                return memData.lastAttacker;
+                friendlyAttacker = memData.lastAttacker;
             }
         }
     }
 
-    // Check player for enemy guards
-    if (ctx.playerValid && ctx.edmIndex != SIZE_MAX) {
-        const auto& guardCharData = edm.getCharacterDataByIndex(ctx.edmIndex);
-        if (guardCharData.faction == 1) {
-            Vector2D threatPos = ctx.playerPosition;
-            float distance = (ctx.transform.position - threatPos).length();
-            if (distance <= detectionRange) {
-                if (fieldOfView < 360.0f) {
-                    float angleToThreat = calculateAngle(ctx.transform.position, threatPos);
-                    float angleDiff = std::abs(normalizeAngle(angleToThreat - guard.currentHeading));
-                    float halfFOV = (fieldOfView * static_cast<float>(M_PI) / 180.0f) * 0.5f;
-                    if (angleDiff > halfFOV) return EntityHandle{};
-                }
-                return ctx.playerHandle;
+    // Return friendly's attacker if found (lower priority than direct enemy)
+    if (friendlyAttacker.isValid()) {
+        return friendlyAttacker;
+    }
+
+    // Check player for enemy guards - use pre-fetched characterData
+    if (ctx.playerValid && ctx.characterData && ctx.characterData->faction == 1) {
+        Vector2D threatPos = ctx.playerPosition;
+        float distance = (ctx.transform.position - threatPos).length();
+        if (distance <= detectionRange) {
+            if (fieldOfView < 360.0f) {
+                float angleToThreat = calculateAngle(ctx.transform.position, threatPos);
+                float angleDiff = std::abs(normalizeAngle(angleToThreat - guard.currentHeading));
+                float halfFOV = (fieldOfView * static_cast<float>(M_PI) / 180.0f) * 0.5f;
+                if (angleDiff > halfFOV) return EntityHandle{};
             }
+            return ctx.playerHandle;
         }
     }
 

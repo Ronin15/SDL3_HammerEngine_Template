@@ -51,6 +51,7 @@ struct BehaviorContext {
     BehaviorData* behaviorData{nullptr};  // nullptr if entity has no behavior data initialized
     PathData* pathData{nullptr};          // nullptr if entity has no path data
     NPCMemoryData* memoryData{nullptr};   // nullptr if entity has no memory data
+    const CharacterData* characterData{nullptr};  // Pre-fetched to avoid repeated getCharacterDataByIndex()
 
     // World bounds cached once per frame - avoids WorldManager::Instance() calls in behaviors
     float worldMinX{0.0f};
@@ -68,11 +69,12 @@ struct BehaviorContext {
     BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt,
                     EntityHandle pHandle, const Vector2D& pPos, const Vector2D& pVel, bool pValid,
                     BehaviorData* bData, PathData* pData, NPCMemoryData* mData,
+                    const CharacterData* cData,
                     float wMinX, float wMinY, float wMaxX, float wMaxY, bool wBoundsValid,
                     float gTime)
         : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt),
           playerHandle(pHandle), playerPosition(pPos), playerVelocity(pVel), playerValid(pValid),
-          behaviorData(bData), pathData(pData), memoryData(mData),
+          behaviorData(bData), pathData(pData), memoryData(mData), characterData(cData),
           worldMinX(wMinX), worldMinY(wMinY), worldMaxX(wMaxX), worldMaxY(wMaxY),
           worldBoundsValid(wBoundsValid), gameTime(gTime) {}
 };
