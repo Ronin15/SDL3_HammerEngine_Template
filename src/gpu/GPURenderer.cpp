@@ -112,13 +112,13 @@ bool GPURenderer::init() {
     }
 
     // Initialize sprite batches
-    if (!m_spriteBatch.init(m_device)) {
+    if (!m_spriteBatch.init(m_device, "SpriteBatch")) {
         GAMEENGINE_ERROR("GPURenderer: failed to init sprite batch");
         cleanupPartialInit();
         return false;
     }
 
-    if (!m_entityBatch.init(m_device)) {
+    if (!m_entityBatch.init(m_device, "EntityBatch")) {
         GAMEENGINE_ERROR("GPURenderer: failed to init entity batch");
         cleanupPartialInit();
         return false;

@@ -10,7 +10,7 @@
 
 namespace HammerEngine {
 
-bool SpriteBatch::init(SDL_GPUDevice* device) {
+bool SpriteBatch::init(SDL_GPUDevice* device, const char* name) {
     if (!device) {
         GAMEENGINE_ERROR("SpriteBatch::init: null device");
         return false;
@@ -84,8 +84,8 @@ bool SpriteBatch::init(SDL_GPUDevice* device) {
     SDL_SubmitGPUCommandBuffer(cmd);
 
     m_initialized = true;
-    GAMEENGINE_INFO(std::format("SpriteBatch initialized: max {} sprites, {} KB index buffer",
-                    MAX_SPRITES, indexBufferSize / 1024));
+    GAMEENGINE_INFO(std::format("{} initialized: max {} sprites, {} KB index buffer",
+                    name, MAX_SPRITES, indexBufferSize / 1024));
     return true;
 }
 
