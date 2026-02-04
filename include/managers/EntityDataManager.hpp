@@ -986,9 +986,11 @@ struct BehaviorData {
             float currentHeading;
             float roamTimer;
             float escalationMultiplier{1.0f};  // Suspicion-based threshold multiplier (lower = faster)
+            float cachedDetectionRange{0.0f};  // Cached detection range (recomputed on mode change)
             uint32_t currentPatrolIndex;
             uint8_t currentAlertLevel;  // 0=Calm, 1=Suspicious, 2=Alert, 3=Combat
             uint8_t currentMode;
+            uint8_t lastCachedMode{255};       // Track mode for cache invalidation
             bool hasActiveThreat;
             bool isInvestigating;
             bool returningToPost;
