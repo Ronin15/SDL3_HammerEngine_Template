@@ -40,7 +40,7 @@ void updateTimers(BehaviorData& data, float deltaTime, PathData* pathData) {
     }
 }
 
-bool handleStartDelay(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfig& config) {
+bool handleStartDelay(BehaviorContext& ctx) {
     if (!ctx.behaviorData) return false;
     auto& data = *ctx.behaviorData;
     auto& wander = data.state.wander;
@@ -307,7 +307,7 @@ void executeWander(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfi
 
     updateTimers(data, ctx.deltaTime, ctx.pathData);
 
-    if (!handleStartDelay(ctx, config)) return;
+    if (!handleStartDelay(ctx)) return;
 
     if (data.state.wander.movementStarted) {
         handleMovement(ctx, config);
