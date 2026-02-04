@@ -199,6 +199,16 @@ namespace {
             constexpr size_t sampleInterval = 60; // Sample every second
             constexpr float deltaTime = 1.0f / 60.0f;
 
+            // Warmup frames (REQUIRED - longer than runFrameBenchmark's 16 frames)
+            // Without warmup, first segment appears artificially fast due to:
+            // - WorkerBudget learning throughput (~1s to converge)
+            // - Thread pool warming up
+            // - Particle system ramping up
+            // 120 frames = 2 seconds ensures full WorkerBudget convergence
+            for (size_t i = 0; i < 120; ++i) {
+                updateAllManagers(deltaTime);
+            }
+
             std::vector<double> segmentAverages;
 
             for (size_t segment = 0; segment < totalFrames / sampleInterval; ++segment) {
@@ -219,7 +229,7 @@ namespace {
                 double segmentAverage = std::accumulate(segmentTimes.begin(), segmentTimes.end(), 0.0) / segmentTimes.size();
                 segmentAverages.push_back(segmentAverage);
 
-                std::cout << "Segment " << (segment + 1) << " (t=" << ((segment + 1) * 5)
+                std::cout << "Segment " << (segment + 1) << " (t=" << (segment + 1)
                          << "s): " << std::fixed << std::setprecision(2)
                          << segmentAverage << "ms average" << std::endl;
             }
@@ -231,8 +241,8 @@ namespace {
             double degradationPercent = (degradation / firstSegment) * 100.0;
 
             std::cout << "\nDegradation Analysis:" << std::endl;
-            std::cout << "  First 5s average: " << firstSegment << "ms" << std::endl;
-            std::cout << "  Last 5s average: " << lastSegment << "ms" << std::endl;
+            std::cout << "  First segment average: " << firstSegment << "ms" << std::endl;
+            std::cout << "  Last segment average: " << lastSegment << "ms" << std::endl;
             std::cout << "  Degradation: " << degradation << "ms ("
                      << degradationPercent << "%)" << std::endl;
 
