@@ -35,6 +35,7 @@ constexpr float DEFAULT_FIELD_OF_VIEW = 360.0f;
 constexpr float DEFAULT_ATTACK_ENGAGE_RANGE = 80.0f;
 constexpr float PATH_TTL = 5.0f;
 constexpr float NAV_RADIUS = 18.0f;
+constexpr float THREAT_DETECTION_INTERVAL = 0.25f;  // Only check for threats 4x per second
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -450,10 +451,18 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         pathData.pathRequestCooldown -= ctx.deltaTime;
     }
 
-    // Detect threats - use mode-specific detection range
-    float detectionRange = DEFAULT_THREAT_DETECTION_RANGE * getModeAlertRadius(guard.currentMode, config);
-    EntityHandle threat = detectThreat(ctx, detectionRange, DEFAULT_FIELD_OF_VIEW);
-    bool threatPresent = threat.isValid();
+    // Detect threats - throttled to reduce performance impact
+    // Only check every THREAT_DETECTION_INTERVAL seconds, or if we already have an active threat
+    EntityHandle threat{};
+    bool threatPresent = false;
+    if (guard.hasActiveThreat || guard.threatSightingTimer >= THREAT_DETECTION_INTERVAL) {
+        float detectionRange = DEFAULT_THREAT_DETECTION_RANGE * getModeAlertRadius(guard.currentMode, config);
+        threat = detectThreat(ctx, detectionRange, DEFAULT_FIELD_OF_VIEW);
+        threatPresent = threat.isValid();
+        if (!threatPresent) {
+            guard.threatSightingTimer = 0.0f;  // Reset timer when no threat found
+        }
+    }
 
     // Update alert level
     updateAlertLevel(data, threatPresent, threat, guard.escalationMultiplier);
@@ -506,32 +515,16 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
             guard.isInvestigating = false;
             guard.returningToPost = true;
         } else {
-            // At HOSTILE level, scan for threats while investigating
+            // At HOSTILE level, check last known threat position for attack opportunity
+            // (Main threat detection above handles new threat discovery - no need for second scan)
             if (guard.currentAlertLevel >= 3) {
-                auto& edm = EntityDataManager::Instance();
-                s_nearbyBuffer.clear();
-                AIManager::Instance().queryHandlesInRadius(ctx.transform.position, DEFAULT_THREAT_DETECTION_RANGE * 2.0f,
-                                                           s_nearbyBuffer, true);
-
-                for (const auto& handle : s_nearbyBuffer) {
-                    if (!handle.isValid()) continue;
-                    size_t idx = edm.getIndex(handle);
-                    if (idx == SIZE_MAX) continue;
-
-                    const auto& charData = edm.getCharacterDataByIndex(idx);
-                    if (charData.faction == 1) {
-                        float distance = (ctx.transform.position - edm.getHotDataByIndex(idx).transform.position).length();
-                        if (distance <= DEFAULT_ATTACK_ENGAGE_RANGE * 2.0f) {
-                            // Transfer target to Attack behavior before switching
-                            edm.initBehaviorData(ctx.edmIndex, BehaviorType::Attack);
-                            auto& attackData = edm.getBehaviorData(ctx.edmIndex);
-                            attackData.state.attack.hasExplicitTarget = true;
-                            attackData.state.attack.explicitTarget = handle;
-
-                            switchBehavior(ctx.edmIndex, BehaviorType::Attack);
-                            return;
-                        }
-                    }
+                float distToThreat = (ctx.transform.position - guard.lastKnownThreatPosition).length();
+                if (distToThreat <= DEFAULT_ATTACK_ENGAGE_RANGE) {
+                    // Close enough to attack - switch to Attack behavior
+                    auto& edm = EntityDataManager::Instance();
+                    edm.initBehaviorData(ctx.edmIndex, BehaviorType::Attack);
+                    switchBehavior(ctx.edmIndex, BehaviorType::Attack);
+                    return;
                 }
             }
 
