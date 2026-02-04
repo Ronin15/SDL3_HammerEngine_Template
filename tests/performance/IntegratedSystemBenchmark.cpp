@@ -26,9 +26,6 @@
 #include "utils/Vector2D.hpp"
 #include "events/Event.hpp"
 #include "events/WorldEvent.hpp"
-#include "ai/behaviors/WanderBehavior.hpp"
-#include "ai/behaviors/GuardBehavior.hpp"
-#include "ai/behaviors/IdleBehavior.hpp"
 
 // Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
 class BenchmarkNPC {
@@ -312,19 +309,7 @@ namespace {
 
             m_testEntities.reserve(aiEntityCount);
 
-            // Register production behaviors (realistic workload)
-            // WanderBehavior(WanderMode mode, float speed)
-            aiMgr.registerBehavior("Wander", std::make_shared<WanderBehavior>(
-                WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f));
-
-            // GuardBehavior(const Vector2D& guardPosition, float guardRadius, float alertRadius)
-            aiMgr.registerBehavior("Guard", std::make_shared<GuardBehavior>(
-                Vector2D(2500.0f, 2500.0f), 200.0f, 300.0f));
-
-            // IdleBehavior(IdleMode mode, float idleRadius)
-            aiMgr.registerBehavior("Idle", std::make_shared<IdleBehavior>(
-                IdleBehavior::IdleMode::LIGHT_FIDGET, 20.0f));
-
+            // Use standard data-oriented behavior names (no registration needed)
             const std::vector<std::string> behaviorNames = {"Wander", "Guard", "Idle"};
 
             // Create AI entities distributed across tier zones for realistic testing
@@ -356,7 +341,7 @@ namespace {
                 auto entity = BenchmarkNPC::create(static_cast<int>(i), pos);
                 m_testEntities.push_back(entity);
 
-                // Assign behavior - distribute across types
+                // Assign behavior - distribute across types using data-oriented API
                 std::string behaviorName = behaviorNames[i % behaviorNames.size()];
                 aiMgr.registerEntity(entity->getHandle(), behaviorName);
             }
@@ -378,10 +363,6 @@ namespace {
         void setupAIOnly(size_t entityCount) {
             auto& aiMgr = AIManager::Instance();
             m_testEntities.reserve(entityCount);
-
-            // Register production behavior
-            aiMgr.registerBehavior("Wander", std::make_shared<WanderBehavior>(
-                WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f));
 
             // Distribute entities across tier zones (same as setupRealisticScenario)
             std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
@@ -406,6 +387,7 @@ namespace {
                 auto entity = BenchmarkNPC::create(static_cast<int>(i), pos);
                 m_testEntities.push_back(entity);
 
+                // Use data-oriented behavior API with standard behavior name
                 aiMgr.registerEntity(entity->getHandle(), "Wander");
             }
 

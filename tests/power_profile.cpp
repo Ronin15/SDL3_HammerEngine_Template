@@ -21,7 +21,6 @@
 #include "managers/EntityDataManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
-#include "ai/behaviors/WanderBehavior.hpp"
 
 // Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
 class BenchmarkNPC {

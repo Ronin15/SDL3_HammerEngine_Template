@@ -4,8 +4,6 @@
  */
 
 #include "gameStates/AIDemoState.hpp"
-#include "ai/behaviors/PatrolBehavior.hpp"
-#include "ai/behaviors/WanderBehavior.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/LoadingState.hpp"
@@ -268,9 +266,6 @@ bool AIDemoState::enter() {
       m_worldWidth = gameEngine.getLogicalWidth();
       m_worldHeight = gameEngine.getLogicalHeight();
     }
-
-    // Texture has to be loaded by NPC or Player can't be loaded here
-    setupAIBehaviors();
 
     // Create player first (the chase behavior will need it)
     m_player = std::make_shared<Player>();
@@ -634,68 +629,6 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   }
 }
 
-void AIDemoState::setupAIBehaviors() {
-  GAMESTATE_INFO("AIDemoState: Setting up custom AI behavior variants...");
-  // Default behaviors (Idle, Wander, Chase, Guard, Attack, Flee, Follow)
-  // are registered by AIManager::registerDefaultBehaviors()
-  // This function registers demo-specific custom variants only
-  AIManager &aiMgr = AIManager::Instance();
-
-  // Custom wander variants for demo
-  if (!aiMgr.hasBehavior("SmallWander")) {
-    auto smallWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::SMALL_AREA, 45.0f);
-    aiMgr.registerBehavior("SmallWander", std::move(smallWanderBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered SmallWander behavior");
-  }
-
-  if (!aiMgr.hasBehavior("LargeWander")) {
-    auto largeWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::LARGE_AREA, 75.0f);
-    aiMgr.registerBehavior("LargeWander", std::move(largeWanderBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered LargeWander behavior");
-  }
-
-  if (!aiMgr.hasBehavior("EventWander")) {
-    auto eventWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::EVENT_TARGET, 52.5f);
-    aiMgr.registerBehavior("EventWander", std::move(eventWanderBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered EventWander behavior");
-  }
-
-  if (!aiMgr.hasBehavior("Patrol")) {
-    auto patrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::RANDOM_AREA, 75.0f, false);
-    aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered Patrol behavior (random area)");
-  }
-
-  if (!aiMgr.hasBehavior("RandomPatrol")) {
-    auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::RANDOM_AREA, 85.0f, false);
-    aiMgr.registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered RandomPatrol behavior");
-  }
-
-  if (!aiMgr.hasBehavior("CirclePatrol")) {
-    auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::CIRCULAR_AREA, 90.0f, false);
-    aiMgr.registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered CirclePatrol behavior");
-  }
-
-  if (!aiMgr.hasBehavior("EventTarget")) {
-    auto eventTargetBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::EVENT_TARGET, 95.0f, false);
-    aiMgr.registerBehavior("EventTarget", std::move(eventTargetBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered EventTarget behavior");
-  }
-
-  // Chase behavior will be set up after player is created in enter() method
-  // This ensures the player reference is available for behaviors to use
-
-  GAMESTATE_INFO("AIDemoState: AI behaviors setup complete.");
-}
 
 void AIDemoState::initializeCamera() {
   const auto &gameEngine = GameEngine::Instance();

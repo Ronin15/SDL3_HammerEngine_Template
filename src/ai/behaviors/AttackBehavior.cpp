@@ -4,7 +4,7 @@
  */
 
 #include "ai/BehaviorExecutors.hpp"
-#include "ai/AIBehavior.hpp"
+#include "ai/BehaviorExecutors.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"

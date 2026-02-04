@@ -4,7 +4,7 @@
  */
 
 #include "ai/BehaviorExecutors.hpp"
-#include "ai/AIBehavior.hpp"  // For BehaviorContext full definition
+#include "ai/BehaviorExecutors.hpp"  // For BehaviorContext full definition
 #include "managers/EntityDataManager.hpp"
 #include <cmath>
 #include <random>

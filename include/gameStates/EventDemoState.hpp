@@ -163,9 +163,6 @@ private:
   void logResourceAnalytics(HammerEngine::ResourceHandle handle, int oldQty,
                             int newQty, const std::string &source);
 
-  // AI behavior integration methods
-  void setupAIBehaviors();
-  
   // Camera management methods
   void initializeCamera();
   void updateCamera(float deltaTime);

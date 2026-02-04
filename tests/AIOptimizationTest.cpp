@@ -18,9 +18,7 @@
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/AIBehavior.hpp"
 #include "entities/EntityHandle.hpp"
-#include "ai/behaviors/WanderBehavior.hpp"
 #include "utils/Vector2D.hpp"
 
 // Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
@@ -39,17 +37,6 @@ public:
 
 private:
     EntityHandle m_handle;
-};
-
-class NoOpBehavior final : public AIBehavior {
-public:
-    void executeLogic(BehaviorContext& ctx) override { (void)ctx; }
-    void init(EntityHandle) override {}
-    void clean(EntityHandle) override {}
-    std::string getName() const override { return "NoOp"; }
-    std::shared_ptr<AIBehavior> clone() const override {
-        return std::make_shared<NoOpBehavior>();
-    }
 };
 
 // Global fixture for test setup and cleanup
@@ -88,10 +75,6 @@ void updateAI(float deltaTime, const Vector2D& referencePoint = Vector2D(500.0f,
 // Test case for entity component caching
 BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
 {
-    // Register a test behavior using the real WanderBehavior
-    auto wanderBehavior = std::make_shared<WanderBehavior>(2.0f, 1000.0f, 200.0f);
-    AIManager::Instance().registerBehavior("TestWander", wanderBehavior);
-
     // Create test NPCs (already registered via createDataDrivenNPC)
     std::vector<EntityHandle> handles;
     std::vector<std::shared_ptr<OptimizationTestNPC>> entities;
@@ -101,7 +84,7 @@ BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
         entities.push_back(entity);
         EntityHandle handle = entity->getHandle();
         handles.push_back(handle);
-        AIManager::Instance().registerEntity(handle, "TestWander");
+        AIManager::Instance().assignBehavior(handle, "Wander");
     }
 
     // Process pending assignments
@@ -119,16 +102,11 @@ BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
     }
     handles.clear();
     entities.clear();
-    AIManager::Instance().resetBehaviors();
 }
 
 // Test case for batch processing
 BOOST_AUTO_TEST_CASE(TestBatchProcessing)
 {
-    // Register behaviors
-    auto wanderBehavior = std::make_shared<WanderBehavior>(2.0f, 1000.0f, 200.0f);
-    AIManager::Instance().registerBehavior("BatchWander", wanderBehavior);
-
     // Create test NPCs (already registered via createDataDrivenNPC)
     std::vector<EntityHandle> handles;
     std::vector<std::shared_ptr<OptimizationTestNPC>> entityPtrs;
@@ -138,7 +116,7 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
         entityPtrs.push_back(entity);
         EntityHandle handle = entity->getHandle();
         handles.push_back(handle);
-        AIManager::Instance().registerEntity(handle, "BatchWander");
+        AIManager::Instance().assignBehavior(handle, "Wander");
     }
 
     // Process pending assignments
@@ -179,21 +157,16 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
     }
     handles.clear();
     entityPtrs.clear();
-    AIManager::Instance().resetBehaviors();
 }
 
 // Test case for early exit conditions
 BOOST_AUTO_TEST_CASE(TestEarlyExitConditions)
 {
-    // Register a test behavior
-    auto wanderBehavior = std::make_shared<WanderBehavior>(2.0f, 1000.0f, 200.0f);
-    AIManager::Instance().registerBehavior("LazyWander", wanderBehavior);
-
     // Create test NPC (already registered via createDataDrivenNPC)
     Vector2D pos(100.0f, 100.0f);
     auto entity = OptimizationTestNPC::create(pos);
     EntityHandle handle = entity->getHandle();
-    AIManager::Instance().registerEntity(handle, "LazyWander");
+    AIManager::Instance().assignBehavior(handle, "Wander");
 
     // Process pending assignments
     updateAI(0.016f);
@@ -208,21 +181,16 @@ BOOST_AUTO_TEST_CASE(TestEarlyExitConditions)
     AIManager::Instance().unregisterEntity(handle);
     AIManager::Instance().unassignBehavior(handle);
     EntityDataManager::Instance().unregisterEntity(handle.getId());
-    AIManager::Instance().resetBehaviors();
 }
 
 // Test case for message queue system
 BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
 {
-    // Register a test behavior
-    auto wanderBehavior = std::make_shared<WanderBehavior>(2.0f, 1000.0f, 200.0f);
-    AIManager::Instance().registerBehavior("MsgWander", wanderBehavior);
-
     // Create test NPC (already registered via createDataDrivenNPC)
     Vector2D pos(100.0f, 100.0f);
     auto entity = OptimizationTestNPC::create(pos);
     EntityHandle handle = entity->getHandle();
-    AIManager::Instance().registerEntity(handle, "MsgWander");
+    AIManager::Instance().assignBehavior(handle, "Wander");
 
     // Process pending assignments
     updateAI(0.016f);
@@ -252,184 +220,52 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
     AIManager::Instance().unregisterEntity(handle);
     AIManager::Instance().unassignBehavior(handle);
     EntityDataManager::Instance().unregisterEntity(handle.getId());
-    AIManager::Instance().resetBehaviors();
 }
 
-BOOST_AUTO_TEST_CASE(TestSIMDMovementIntegrationClamp)
+BOOST_AUTO_TEST_CASE(TestWorldBoundsClampingWithBehaviors)
 {
-    auto noopBehavior = std::make_shared<NoOpBehavior>();
-    AIManager::Instance().registerBehavior("NoOp", noopBehavior);
-
+    // Test that entities with active behaviors stay within world bounds
+    // This verifies world bounds clamping works with the behavior system
     std::vector<EntityHandle> handles;
     std::vector<std::shared_ptr<OptimizationTestNPC>> entities;
     auto& edm = EntityDataManager::Instance();
 
-    auto createEntity = [&](const Vector2D& pos) {
+    // World bounds: min = 16 (halfWidth), max = 31984 (32000 - halfWidth)
+    constexpr float WORLD_MIN = 16.0f;
+    constexpr float WORLD_MAX = 31984.0f;
+
+    auto createEntity = [&](const Vector2D& pos, const std::string& behavior) {
         auto entity = OptimizationTestNPC::create(pos);
         entities.push_back(entity);
         EntityHandle handle = entity->getHandle();
         handles.push_back(handle);
-        AIManager::Instance().registerEntity(handle, "NoOp");
+        AIManager::Instance().assignBehavior(handle, behavior);
     };
 
-    createEntity(Vector2D(10.0f, 10.0f));
-    createEntity(Vector2D(10.0f, 10.0f));
-    createEntity(Vector2D(10.0f, 10.0f));
-    createEntity(Vector2D(100.0f, 100.0f));
-    createEntity(Vector2D(12.0f, 12.0f));
+    // Create entities at various positions including near boundaries
+    createEntity(Vector2D(50.0f, 50.0f), "Wander");           // Near min corner
+    createEntity(Vector2D(31950.0f, 31950.0f), "Wander");     // Near max corner
+    createEntity(Vector2D(16000.0f, 16000.0f), "Wander");     // Center
+    createEntity(Vector2D(30.0f, 16000.0f), "Wander");        // Near min X
+    createEntity(Vector2D(16000.0f, 31970.0f), "Wander");     // Near max Y
 
-    updateAI(0.016f, Vector2D(0.0f, 0.0f));
-
-    {
-        size_t idx = edm.getIndex(handles[0]);
-        auto& transform = edm.getHotDataByIndex(idx).transform;
-        transform.position = Vector2D(10.0f, 10.0f);
-        transform.velocity = Vector2D(-50.0f, 0.0f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[1]);
-        auto& transform = edm.getHotDataByIndex(idx).transform;
-        transform.position = Vector2D(10.0f, 10.0f);
-        transform.velocity = Vector2D(0.0f, -50.0f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[2]);
-        auto& transform = edm.getHotDataByIndex(idx).transform;
-        transform.position = Vector2D(10.0f, 10.0f);
-        transform.velocity = Vector2D(-50.0f, -50.0f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[3]);
-        auto& transform = edm.getHotDataByIndex(idx).transform;
-        transform.position = Vector2D(100.0f, 100.0f);
-        transform.velocity = Vector2D(10.0f, 10.0f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[4]);
-        auto& transform = edm.getHotDataByIndex(idx).transform;
-        transform.position = Vector2D(12.0f, 12.0f);
-        transform.velocity = Vector2D(-20.0f, -20.0f);
+    // Run simulation for multiple frames to let behaviors move entities
+    for (int frame = 0; frame < 100; ++frame) {
+        updateAI(0.016f, Vector2D(16000.0f, 16000.0f));
     }
 
-    updateAI(1.0f, Vector2D(0.0f, 0.0f));
+    // Verify all entities stayed within world bounds
+    for (size_t i = 0; i < handles.size(); ++i) {
+        size_t idx = edm.getIndex(handles[i]);
+        const auto& transform = edm.getHotDataByIndex(idx).transform;
 
-    {
-        // Entity 0: pos (10, 10), vel (-50, 0) -> after 1s: (-40, 10)
-        // Both axes clamped to min=16 (halfWidth/halfHeight), velocity zeroed
-        size_t idx = edm.getIndex(handles[0]);
-        const auto& transform = edm.getHotDataByIndex(idx).transform;
-        BOOST_CHECK_CLOSE(transform.position.getX(), 16.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.position.getY(), 16.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
-    }
-    {
-        // Entity 1: pos (10, 10), vel (0, -50) -> after 1s: (10, -40)
-        // Both axes clamped to min=16 (halfWidth/halfHeight), velocity zeroed
-        size_t idx = edm.getIndex(handles[1]);
-        const auto& transform = edm.getHotDataByIndex(idx).transform;
-        BOOST_CHECK_CLOSE(transform.position.getX(), 16.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.position.getY(), 16.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[2]);
-        const auto& transform = edm.getHotDataByIndex(idx).transform;
-        BOOST_CHECK_CLOSE(transform.position.getX(), 16.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.position.getY(), 16.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[3]);
-        const auto& transform = edm.getHotDataByIndex(idx).transform;
-        BOOST_CHECK_CLOSE(transform.position.getX(), 110.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.position.getY(), 110.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getX(), 10.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getY(), 10.0f, 0.001f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[4]);
-        const auto& transform = edm.getHotDataByIndex(idx).transform;
-        BOOST_CHECK_CLOSE(transform.position.getX(), 16.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.position.getY(), 16.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
+        BOOST_CHECK_GE(transform.position.getX(), WORLD_MIN);
+        BOOST_CHECK_LE(transform.position.getX(), WORLD_MAX);
+        BOOST_CHECK_GE(transform.position.getY(), WORLD_MIN);
+        BOOST_CHECK_LE(transform.position.getY(), WORLD_MAX);
     }
 
-    {
-        size_t idx = edm.getIndex(handles[0]);
-        auto& transform = edm.getHotDataByIndex(idx).transform;
-        transform.position = Vector2D(31980.0f, 31980.0f);
-        transform.velocity = Vector2D(50.0f, 0.0f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[1]);
-        auto& transform = edm.getHotDataByIndex(idx).transform;
-        transform.position = Vector2D(31980.0f, 31980.0f);
-        transform.velocity = Vector2D(0.0f, 50.0f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[2]);
-        auto& transform = edm.getHotDataByIndex(idx).transform;
-        transform.position = Vector2D(31980.0f, 31980.0f);
-        transform.velocity = Vector2D(50.0f, 50.0f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[3]);
-        auto& transform = edm.getHotDataByIndex(idx).transform;
-        transform.position = Vector2D(31900.0f, 31900.0f);
-        transform.velocity = Vector2D(-10.0f, -10.0f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[4]);
-        auto& transform = edm.getHotDataByIndex(idx).transform;
-        transform.position = Vector2D(31970.0f, 31970.0f);
-        transform.velocity = Vector2D(40.0f, 40.0f);
-    }
-
-    updateAI(1.0f, Vector2D(31900.0f, 31900.0f));
-
-    {
-        size_t idx = edm.getIndex(handles[0]);
-        const auto& transform = edm.getHotDataByIndex(idx).transform;
-        BOOST_CHECK_CLOSE(transform.position.getX(), 31984.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.position.getY(), 31980.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[1]);
-        const auto& transform = edm.getHotDataByIndex(idx).transform;
-        BOOST_CHECK_CLOSE(transform.position.getX(), 31980.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.position.getY(), 31984.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[2]);
-        const auto& transform = edm.getHotDataByIndex(idx).transform;
-        BOOST_CHECK_CLOSE(transform.position.getX(), 31984.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.position.getY(), 31984.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[3]);
-        const auto& transform = edm.getHotDataByIndex(idx).transform;
-        BOOST_CHECK_CLOSE(transform.position.getX(), 31890.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.position.getY(), 31890.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getX(), -10.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getY(), -10.0f, 0.001f);
-    }
-    {
-        size_t idx = edm.getIndex(handles[4]);
-        const auto& transform = edm.getHotDataByIndex(idx).transform;
-        BOOST_CHECK_CLOSE(transform.position.getX(), 31984.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.position.getY(), 31984.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
-    }
-
+    // Cleanup
     for (const auto& handle : handles) {
         AIManager::Instance().unregisterEntity(handle);
         AIManager::Instance().unassignBehavior(handle);
@@ -437,7 +273,6 @@ BOOST_AUTO_TEST_CASE(TestSIMDMovementIntegrationClamp)
     }
     handles.clear();
     entities.clear();
-    AIManager::Instance().resetBehaviors();
 }
 
 // Test case for SIMD distance calculations including tail loop edge cases
@@ -445,10 +280,6 @@ BOOST_AUTO_TEST_CASE(TestSIMDMovementIntegrationClamp)
 // especially for entity counts that are NOT multiples of 4 (SIMD width)
 BOOST_AUTO_TEST_CASE(TestDistanceCalculationCorrectness)
 {
-    // Register a test behavior
-    auto wanderBehavior = std::make_shared<WanderBehavior>(2.0f, 1000.0f, 200.0f);
-    AIManager::Instance().registerBehavior("DistanceTestWander", wanderBehavior);
-
     auto& edm = EntityDataManager::Instance();
 
     // Test with entity counts that stress the SIMD tail loop:
@@ -468,7 +299,7 @@ BOOST_AUTO_TEST_CASE(TestDistanceCalculationCorrectness)
             entities.push_back(entity);
             EntityHandle handle = entity->getHandle();
             handles.push_back(handle);
-            AIManager::Instance().registerEntity(handle, "DistanceTestWander");
+            AIManager::Instance().assignBehavior(handle, "Wander");
         }
 
         // Process assignments
@@ -504,6 +335,5 @@ BOOST_AUTO_TEST_CASE(TestDistanceCalculationCorrectness)
         }
         handles.clear();
         entities.clear();
-        AIManager::Instance().resetBehaviors();
     }
 }

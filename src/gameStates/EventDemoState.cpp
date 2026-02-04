@@ -4,8 +4,6 @@
  */
 
 #include "gameStates/EventDemoState.hpp"
-#include "ai/behaviors/PatrolBehavior.hpp"
-#include "ai/behaviors/WanderBehavior.hpp"
 #include "controllers/world/DayNightController.hpp"
 #include "controllers/world/WeatherController.hpp"
 #include "core/GameEngine.hpp"
@@ -150,9 +148,6 @@ bool EventDemoState::enter() {
     gameTimeMgr.enableAutoWeather(true);
     gameTimeMgr.setWeatherCheckInterval(4.0f);
     gameTimeMgr.setTimeScale(60.0f);
-
-    // Setup AI behaviors for integration demo
-    setupAIBehaviors();
 
     // Add initial log entry
     addLogEntry("Event Demo System Initialized");
@@ -1133,67 +1128,6 @@ void EventDemoState::onResourceChanged(const EventData &data) {
     GAMESTATE_ERROR(
         std::format("Error in resource change handler: {}", e.what()));
   }
-}
-
-void EventDemoState::setupAIBehaviors() {
-  GAMESTATE_INFO(
-      "EventDemoState: Setting up custom AI behavior variants...");
-  // Default behaviors (Idle, Wander, Chase, Guard, Attack, Flee, Follow)
-  // are registered by AIManager::registerDefaultBehaviors()
-  // This function registers demo-specific custom variants only
-  AIManager &aiMgr = AIManager::Instance();
-
-  // Custom wander variants for demo
-  if (!aiMgr.hasBehavior("SmallWander")) {
-    auto smallWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::SMALL_AREA, 45.0f);
-    aiMgr.registerBehavior("SmallWander", std::move(smallWanderBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered SmallWander behavior");
-  }
-
-  if (!aiMgr.hasBehavior("LargeWander")) {
-    auto largeWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::LARGE_AREA, 75.0f);
-    aiMgr.registerBehavior("LargeWander", std::move(largeWanderBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered LargeWander behavior");
-  }
-
-  if (!aiMgr.hasBehavior("EventWander")) {
-    auto eventWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::EVENT_TARGET, 52.5f);
-    aiMgr.registerBehavior("EventWander", std::move(eventWanderBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered EventWander behavior");
-  }
-
-  if (!aiMgr.hasBehavior("Patrol")) {
-    auto patrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 56.25f, true);
-    aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered Patrol behavior");
-  }
-
-  if (!aiMgr.hasBehavior("RandomPatrol")) {
-    auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::RANDOM_AREA, 63.75f, false);
-    aiMgr.registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered RandomPatrol behavior");
-  }
-
-  if (!aiMgr.hasBehavior("CirclePatrol")) {
-    auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::CIRCULAR_AREA, 67.5f, false);
-    aiMgr.registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered CirclePatrol behavior");
-  }
-
-  if (!aiMgr.hasBehavior("EventTarget")) {
-    auto eventTargetBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::EVENT_TARGET, 71.25f, false);
-    aiMgr.registerBehavior("EventTarget", std::move(eventTargetBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered EventTarget behavior");
-  }
-
-  GAMESTATE_DEBUG("Custom AI behavior variants configured for demo");
 }
 
 void EventDemoState::addLogEntry(const std::string &entry) {

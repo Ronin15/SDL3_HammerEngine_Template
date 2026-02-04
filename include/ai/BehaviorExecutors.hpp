@@ -24,13 +24,54 @@
  */
 
 #include "ai/BehaviorConfig.hpp"
-#include "managers/EntityDataManager.hpp"  // For BehaviorType, BehaviorContext
+#include "managers/EntityDataManager.hpp"  // For BehaviorType, BehaviorData, PathData, etc.
 #include "managers/EventManager.hpp"       // For EventManager::DeferredEvent
 #include <vector>
 
-// Forward declarations
-struct BehaviorContext;
-struct BehaviorData;
+/**
+ * @brief Context passed to behavior execution functions
+ *
+ * Provides lock-free access to entity state during behavior execution.
+ * Pre-populated by AIManager before each behavior update.
+ */
+struct BehaviorContext {
+    TransformData& transform;      // Direct read/write access (lock-free)
+    EntityHotData& hotData;        // Entity metadata (halfWidth, halfHeight, etc.)
+    EntityHandle::IDType entityId; // For staggering calculations
+    size_t edmIndex;               // EDM index for vector-based state storage (contention-free)
+    float deltaTime;
+
+    // Player info cached once per update batch - avoids lock contention in behaviors
+    EntityHandle playerHandle;     // Cached player handle (no lock needed)
+    Vector2D playerPosition;       // Cached player position (no lock needed)
+    Vector2D playerVelocity;       // Cached player velocity (for movement detection)
+    bool playerValid{false};       // Whether player is valid this frame
+
+    // Pre-fetched EDM data - avoids repeated Instance() calls in behaviors
+    BehaviorData* behaviorData{nullptr};  // nullptr if entity has no behavior data initialized
+    PathData* pathData{nullptr};          // nullptr if entity has no path data
+    NPCMemoryData* memoryData{nullptr};   // nullptr if entity has no memory data
+
+    // World bounds cached once per frame - avoids WorldManager::Instance() calls in behaviors
+    float worldMinX{0.0f};
+    float worldMinY{0.0f};
+    float worldMaxX{0.0f};
+    float worldMaxY{0.0f};
+    bool worldBoundsValid{false};         // Whether world bounds are available
+
+    BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt)
+        : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt) {}
+
+    BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt,
+                    EntityHandle pHandle, const Vector2D& pPos, const Vector2D& pVel, bool pValid,
+                    BehaviorData* bData, PathData* pData, NPCMemoryData* mData,
+                    float wMinX, float wMinY, float wMaxX, float wMaxY, bool wBoundsValid)
+        : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt),
+          playerHandle(pHandle), playerPosition(pPos), playerVelocity(pVel), playerValid(pValid),
+          behaviorData(bData), pathData(pData), memoryData(mData),
+          worldMinX(wMinX), worldMinY(wMinY), worldMaxX(wMaxX), worldMaxY(wMaxY),
+          worldBoundsValid(wBoundsValid) {}
+};
 
 namespace Behaviors {
 

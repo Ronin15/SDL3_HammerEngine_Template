@@ -56,61 +56,6 @@ private:
     int m_id;
 };
 
-// Test behavior
-class IntegrationTestBehavior : public AIBehavior {
-public:
-    IntegrationTestBehavior(const std::string& name) : m_name(name) {}
-
-    // Lock-free hot path (required by pure virtual)
-    void executeLogic(BehaviorContext& ctx) override {
-        // Test behavior: minimal implementation for BehaviorContext path
-        // The test primarily validates threading/registration, not behavior logic
-        m_updateCount++;
-
-        // Occasionally send a message (very infrequently)
-        if (m_updateCount % 500 == 0) {
-            AIManager::Instance().broadcastMessage("test_message");
-        }
-        (void)ctx;
-    }
-
-    void init(EntityHandle handle) override {
-        if (!handle.isValid()) return;
-        m_initialized = true;
-    }
-
-    void clean(EntityHandle handle) override {
-        if (!handle.isValid()) return;
-
-        // Avoid using shared_from_this() on the entity
-        // Just mark as uninitialized
-        m_initialized = false;
-    }
-
-    std::string getName() const override {
-        return m_name;
-    }
-
-    std::shared_ptr<AIBehavior> clone() const override {
-        auto cloned = std::make_shared<IntegrationTestBehavior>(m_name);
-        cloned->setActive(m_active);
-        return cloned;
-    }
-
-    void onMessage(EntityHandle /* handle */, const std::string& /* message */) override {
-        m_messageCount++;
-    }
-
-    int getUpdateCount() const { return m_updateCount.load(); }
-    int getMessageCount() const { return m_messageCount.load(); }
-
-private:
-    std::string m_name;
-    std::atomic<bool> m_initialized{false};
-    std::atomic<int> m_updateCount{0};
-    std::atomic<int> m_messageCount{0};
-};
-
 // Global test fixture for setting up and tearing down the system once for all tests
 struct GlobalTestFixture {
     GlobalTestFixture() {
@@ -121,7 +66,7 @@ struct GlobalTestFixture {
         AIManager::Instance().init();
         #ifndef NDEBUG
         AIManager::Instance().enableThreading(true);
-#endif
+        #endif
     }
 
     ~GlobalTestFixture() {
@@ -136,18 +81,17 @@ struct GlobalTestFixture {
 // Individual test fixture
 struct AIIntegrationTestFixture {
     AIIntegrationTestFixture() {
-        // Create test behaviors
-        for (int i = 0; i < NUM_BEHAVIORS; ++i) {
-            behaviors.push_back(std::make_shared<IntegrationTestBehavior>("Behavior" + std::to_string(i)));
-            AIManager::Instance().registerBehavior("Behavior" + std::to_string(i), behaviors.back());
-        }
+        // Standard behavior names available: "Idle", "Wander", "Chase", "Patrol", "Guard", "Attack", "Flee", "Follow"
+        behaviorNames = {"Idle", "Wander", "Chase", "Patrol", "Guard"};
 
-        // Create test entities
+        // Create test entities with different behaviors
         for (int i = 0; i < NUM_ENTITIES; ++i) {
             auto entity = IntegrationTestNPC::create(i, Vector2D(i * 10.0f, i * 10.0f));
             entities.push_back(entity);
-            int behaviorIdx = i % NUM_BEHAVIORS;
-            AIManager::Instance().registerEntity(entity->getHandle(), "Behavior" + std::to_string(behaviorIdx));
+
+            // Assign standard behavior
+            int behaviorIdx = i % behaviorNames.size();
+            AIManager::Instance().assignBehavior(entity->getHandle(), behaviorNames[behaviorIdx]);
         }
 
         // Process queued assignments (need tier indices for update to work)
@@ -163,20 +107,17 @@ struct AIIntegrationTestFixture {
         // Unregister entities
         for (auto& entity : entities) {
             if (entity) {
-                AIManager::Instance().unregisterEntity(entity->getHandle());
                 AIManager::Instance().unassignBehavior(entity->getHandle());
             }
         }
         entities.clear();
-        behaviors.clear();
-        AIManager::Instance().resetBehaviors();
+        behaviorNames.clear();
     }
 
-    static constexpr int NUM_BEHAVIORS = 5;
     static constexpr int NUM_ENTITIES = 20;
     static constexpr int NUM_UPDATES = 10;
 
-    std::vector<std::shared_ptr<IntegrationTestBehavior>> behaviors;
+    std::vector<std::string> behaviorNames;
     std::vector<std::shared_ptr<IntegrationTestNPC>> entities;
 };
 
@@ -203,8 +144,8 @@ BOOST_AUTO_TEST_CASE(TestConcurrentUpdates) {
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
 
-    // Verify behaviors were executed (DOD pattern: AIManager calls behavior->executeLogic(),
-    // not entity->update(), so we check AIManager's behavior execution count)
+    // Verify behaviors were executed (data-oriented pattern: AIManager processes behavior data
+    // via executeLogic(), which operates on EntityDataManager data)
     size_t finalCount = AIManager::Instance().getBehaviorUpdateCount();
     bool behaviorsExecuted = (finalCount > initialCount);
 
@@ -212,8 +153,8 @@ BOOST_AUTO_TEST_CASE(TestConcurrentUpdates) {
         "Expected behavior executions to increase. Initial: " << initialCount
         << ", Final: " << finalCount);
 
-    // Note: In DOD architecture, AIManager doesn't call Entity::update().
-    // Instead, it calls behavior->executeLogic(ctx) which operates on EntityDataManager data.
+    // Note: In data-oriented architecture, AIManager processes behavior data directly
+    // via executeLogic(ctx), which operates on EntityDataManager SoA data.
     // The getBehaviorUpdateCount() tracks these executions.
 }
 
@@ -224,7 +165,7 @@ BOOST_AUTO_TEST_CASE(TestConcurrentAssignmentAndUpdate) {
     auto entity = entities[0];
 
     // Queue a behavior assignment and process it
-    AIManager::Instance().assignBehavior(entity->getHandle(), "Behavior0");
+    AIManager::Instance().assignBehavior(entity->getHandle(), "Wander");
     updateAI(0.016f);
 
     // Success criteria is simply not crashing
@@ -242,6 +183,42 @@ BOOST_AUTO_TEST_CASE(TestMessageDelivery) {
 
     // Send message immediately
     AIManager::Instance().sendMessageToEntity(testEntity->getHandle(), "test_message", true);
+
+    // Success if we get here without crashing
+    BOOST_CHECK(true);
+}
+
+// Test behavior switching
+BOOST_AUTO_TEST_CASE(TestBehaviorSwitching) {
+    BOOST_REQUIRE(!entities.empty());
+    auto entity = entities[0];
+
+    // Switch between different behaviors
+    AIManager::Instance().assignBehavior(entity->getHandle(), "Idle");
+    updateAI(0.016f);
+
+    AIManager::Instance().assignBehavior(entity->getHandle(), "Chase");
+    updateAI(0.016f);
+
+    AIManager::Instance().assignBehavior(entity->getHandle(), "Patrol");
+    updateAI(0.016f);
+
+    // Success if we get here without crashing
+    BOOST_CHECK(true);
+}
+
+// Test multiple entities with same behavior
+BOOST_AUTO_TEST_CASE(TestMultipleSameBehavior) {
+    // Assign all entities the same behavior
+    for (auto& entity : entities) {
+        AIManager::Instance().assignBehavior(entity->getHandle(), "Wander");
+    }
+
+    // Process multiple updates
+    for (int i = 0; i < 5; ++i) {
+        updateAI(0.016f);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
 
     // Success if we get here without crashing
     BOOST_CHECK(true);

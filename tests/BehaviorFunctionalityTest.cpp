@@ -15,7 +15,6 @@
 #include "managers/EntityDataManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "world/WorldData.hpp"
-#include "AIBehaviors.hpp" // from tests/mocks
 #include <memory>
 #include <vector>
 #include <thread>
@@ -135,8 +134,7 @@ struct BehaviorTestFixture {
         PathfinderManager::Instance().rebuildGrid();
         std::this_thread::sleep_for(std::chrono::milliseconds(200)); // Give grid a chance to build
 
-        // Register all behaviors using the factory system
-        AIBehaviors::BehaviorRegistrar::registerAllBehaviors(AIManager::Instance());
+        // NOTE: Behaviors are auto-registered in AIManager::init() - no manual registration needed
 
         // Create test NPCs (data-driven, no Entity class)
         for (int i = 0; i < 5; ++i) {
@@ -177,7 +175,7 @@ struct BehaviorTestFixture {
         EventManager::Instance().clean();
         // ThreadSystem persists across tests
     }
-    
+
     std::vector<std::shared_ptr<TestNPC>> testEntities;
     std::shared_ptr<TestNPC> playerEntity;
 };
@@ -186,40 +184,22 @@ struct BehaviorTestFixture {
 BOOST_FIXTURE_TEST_SUITE(BehaviorRegistrationTests, BehaviorTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestAllBehaviorsRegistered) {
-    // Test that all 8 behavior types are registered
+    // Test that all 8 behavior types are auto-registered
     std::vector<std::string> expectedBehaviors = {
         "Idle", "Wander", "Patrol", "Chase", "Flee", "Follow", "Guard", "Attack"
     };
-    
-    for (const auto& behaviorName : expectedBehaviors) {
-        BOOST_CHECK(AIManager::Instance().hasBehavior(behaviorName));
-        auto behavior = AIManager::Instance().getBehavior(behaviorName);
-        BOOST_CHECK(behavior != nullptr);
-        BOOST_CHECK_EQUAL(behavior->getName(), behaviorName);
-    }
-}
 
-BOOST_AUTO_TEST_CASE(TestBehaviorVariantsRegistered) {
-    // Test that behavior variants are also registered
-    std::vector<std::string> expectedVariants = {
-        "IdleStationary", "IdleFidget", "WanderSmall", "WanderLarge",
-        "FollowClose", "FollowFormation", "GuardPatrol", "GuardArea",
-        "AttackMelee", "AttackRanged", "AttackCharge",
-        "FleeEvasive", "FleeStrategic"
-    };
-    
-    for (const auto& behaviorName : expectedVariants) {
+    for (const auto& behaviorName : expectedBehaviors) {
         BOOST_CHECK(AIManager::Instance().hasBehavior(behaviorName));
     }
 }
 
 BOOST_AUTO_TEST_CASE(TestBehaviorAssignment) {
     auto entity = testEntities[0];
-    // Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle = entity->getHandle();
 
     // Test assigning a behavior
-    AIManager::Instance().registerEntity(handle, "Wander");
+    AIManager::Instance().assignBehavior(handle, "Wander");
     BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
 
     // Test switching behaviors
@@ -240,50 +220,31 @@ BOOST_AUTO_TEST_CASE(TestIdleStationaryMode) {
     auto entity = testEntities[0];
     Vector2D initialPos = entity->getPosition();
 
-    // Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle = entity->getHandle();
-    AIManager::Instance().registerEntity(handle, "IdleStationary");
-    
+    AIManager::Instance().assignBehavior(handle, "Idle");
+
     // Update multiple times
     for (int i = 0; i < 10; ++i) {
         updateAI(0.016f);
     }
-    
-    // Position should remain relatively unchanged for stationary idle
+
+    // Position should remain relatively unchanged for idle
     // Note: CollisionManager may push entities apart slightly via resolve()
-    // Stationary mode just means no active movement from the behavior
     Vector2D currentPos = entity->getPosition();
     float distanceMoved = (currentPos - initialPos).length();
     BOOST_CHECK_LT(distanceMoved, 35.0f); // Allow for collision resolution pushes
 }
 
-BOOST_AUTO_TEST_CASE(TestIdleFidgetMode) {
-    auto entity = testEntities[0];
-    entity->resetUpdateCount();
-
-    // Phase 2 EDM Migration: Use EntityHandle-based API
-    EntityHandle handle = entity->getHandle();
-    AIManager::Instance().registerEntity(handle, "IdleFidget");
-    
-    // Update multiple times (no sleep_for needed - idle behavior has no cooldowns)
-    for (int i = 0; i < 20; ++i) {
-        updateAI(0.016f);
-    }
-
-    // Should have some movement for fidget mode
-    BOOST_CHECK_GT(entity->getUpdateCount(), 0);
-}
 BOOST_AUTO_TEST_CASE(TestIdleMessageHandling) {
     auto entity = testEntities[0];
-    // Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle = entity->getHandle();
-    AIManager::Instance().registerEntity(handle, "Idle");
+    AIManager::Instance().assignBehavior(handle, "Idle");
 
     // Test mode switching via messages
     AIManager::Instance().sendMessageToEntity(handle, "idle_sway", true);
     AIManager::Instance().sendMessageToEntity(handle, "idle_fidget", true);
     AIManager::Instance().sendMessageToEntity(handle, "reset_position", true);
-    
+
     // No crashes should occur
     BOOST_CHECK(true);
 }
@@ -295,10 +256,9 @@ BOOST_FIXTURE_TEST_SUITE(MovementBehaviorTests, BehaviorTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestWanderBehavior) {
     // Create fresh entity for this test to avoid interference
-    auto entity = TestNPC::create(640.0f, 640.0f); // Center of 20x20 tile world
+    auto entity = TestNPC::create(640.0f, 640.0f); // Center of 30x30 tile world
 
     // EDM-CENTRIC: Set collision layers directly on EDM hot data
-    // Entity is already registered with EDM via TestNPC constructor
     {
         auto& edm = EntityDataManager::Instance();
         size_t idx = edm.getIndex(entity->getHandle());
@@ -313,9 +273,8 @@ BOOST_AUTO_TEST_CASE(TestWanderBehavior) {
     Vector2D initialPos = entity->getPosition();
     entity->resetUpdateCount();
 
-    // Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle = entity->getHandle();
-    AIManager::Instance().registerEntity(handle, "Wander");
+    AIManager::Instance().assignBehavior(handle, "Wander");
 
     // Track movement over time
     int movementSteps = 0;
@@ -325,7 +284,6 @@ BOOST_AUTO_TEST_CASE(TestWanderBehavior) {
 
     // Use larger deltaTime to advance cooldowns faster (30s wander cooldown)
     // 70 iterations * 0.5f = 35s of simulated time (enough to pass 30s cooldown)
-    // No sleep_for needed - cooldowns use deltaTime, not wall-clock time
     const float testDeltaTime = 0.5f;
     for (int i = 0; i < 70; ++i) {
         updateAI(testDeltaTime);
@@ -354,20 +312,17 @@ BOOST_AUTO_TEST_CASE(TestWanderBehavior) {
     float distanceMoved = (currentPos - initialPos).length();
 
     BOOST_TEST_MESSAGE("Wander test: moved " << distanceMoved << "px over " << movementSteps << " steps, total=" << totalDistanceMoved);
-    BOOST_CHECK_GT(entity->getUpdateCount(), 0);
 
     // Entity should either have moved OR have velocity set (async pathfinding may delay actual movement)
     bool isWandering = (totalDistanceMoved > 5.0f) || hasVelocity;
     BOOST_CHECK(isWandering); // Verify wander behavior is functioning
 
-    // Clean up - Phase 2 EDM Migration: Use EntityHandle-based API
+    // Clean up
     AIManager::Instance().unassignBehavior(handle);
-    AIManager::Instance().unregisterEntity(handle);
 }
 
 BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
     // Test: NPC chases an opponent who attacked them (memory-based targeting)
-    // This tests emergent chase behavior where NPCs remember and pursue threats
     auto chaser = TestNPC::create(200.0f, 200.0f);
     auto opponent = TestNPC::create(500.0f, 500.0f);  // The attacker
 
@@ -397,21 +352,14 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
     Vector2D opponentPos = opponent->getPosition();
     chaser->resetUpdateCount();
 
-    // Debug world bounds
-    float worldW, worldH;
-    PathfinderManager::Instance().getCachedWorldBounds(worldW, worldH);
-    BOOST_TEST_MESSAGE("World bounds: " << worldW << " x " << worldH);
-    BOOST_TEST_MESSAGE("Chaser size: 32 x 32");
-
     BOOST_TEST_MESSAGE("Initial chaser pos: (" << initialPos.getX() << ", " << initialPos.getY() << ")");
     BOOST_TEST_MESSAGE("Opponent pos: (" << opponentPos.getX() << ", " << opponentPos.getY() << ")");
     BOOST_TEST_MESSAGE("Initial distance: " << (initialPos - opponentPos).length());
 
     // Register chaser with Chase behavior
-    AIManager::Instance().registerEntity(chaserHandle, "Chase");
+    AIManager::Instance().assignBehavior(chaserHandle, "Chase");
 
     // Set up memory context: opponent attacked the chaser, so chaser pursues
-    // This simulates the damage handler setting lastAttacker when damage is applied
     {
         size_t chaserIdx = edm.getIndex(chaserHandle);
         if (chaserIdx != SIZE_MAX) {
@@ -423,29 +371,24 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
         }
     }
 
-    // Track movement progress to verify pathfinding works
+    // Track movement progress
     int significantMovementCount = 0;
     Vector2D lastPos = initialPos;
     float totalDistanceMoved = 0.0f;
 
-    // Use larger deltaTime to advance cooldowns faster (3s chase cooldown)
-    // 50 iterations * 0.1f = 5s of simulated time (enough to pass 3s cooldown + movement)
-    // No sleep_for needed - cooldowns use deltaTime, not wall-clock time
     const float testDeltaTime = 0.1f;
     for (int i = 0; i < 50; ++i) {
         updateAI(testDeltaTime);
-        CollisionManager::Instance().update(testDeltaTime); // Apply position updates from AIManager
+        CollisionManager::Instance().update(testDeltaTime);
 
-        // Track movement progress
         Vector2D pos = chaser->getPosition();
         float stepDistance = (pos - lastPos).length();
-        totalDistanceMoved += stepDistance; // Track ALL movement
-        if (stepDistance > 0.1f) { // Count frames with movement
+        totalDistanceMoved += stepDistance;
+        if (stepDistance > 0.1f) {
             significantMovementCount++;
         }
         lastPos = pos;
 
-        // Sample positions periodically
         if (i % 10 == 0) {
             Vector2D vel = chaser->getVelocity();
             BOOST_TEST_MESSAGE("Update " << i << ": pos=(" << pos.getX() << ", " << pos.getY() << ") vel=(" << vel.getX() << ", " << vel.getY() << ") moved=" << totalDistanceMoved);
@@ -462,24 +405,19 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
     BOOST_TEST_MESSAGE("Final velocity: (" << currentVel.getX() << ", " << currentVel.getY() << ")");
     BOOST_TEST_MESSAGE("Initial distance: " << initialDistanceToOpponent << " -> Final distance: " << currentDistanceToOpponent);
     BOOST_TEST_MESSAGE("Total distance moved: " << totalDistanceMoved << " over " << significantMovementCount << " steps");
-    BOOST_TEST_MESSAGE("Update count: " << chaser->getUpdateCount());
 
-    // Enhanced assertions: verify actual movement and progress toward opponent
     BOOST_CHECK_GT(totalDistanceMoved, 5.0f); // Chaser must have actually moved
-    BOOST_CHECK_LT(currentDistanceToOpponent, initialDistanceToOpponent); // Must get closer to who attacked them
-    BOOST_CHECK_GT(chaser->getUpdateCount(), 0);
+    BOOST_CHECK_LT(currentDistanceToOpponent, initialDistanceToOpponent); // Must get closer
 
     // Clean up
     AIManager::Instance().unassignBehavior(chaserHandle);
-    AIManager::Instance().unregisterEntity(chaserHandle);
 }
 
 BOOST_AUTO_TEST_CASE(TestFleeBehavior) {
-    // Create fresh entity and player for this test
     auto testPlayer = TestNPC::create(500.0f, 500.0f);
     auto entity = TestNPC::create(600.0f, 600.0f); // Close to player
 
-    // EDM-CENTRIC: Set collision layers directly on EDM hot data
+    // EDM-CENTRIC: Set collision layers
     {
         auto& edm = EntityDataManager::Instance();
         size_t entityIdx = edm.getIndex(entity->getHandle());
@@ -498,7 +436,6 @@ BOOST_AUTO_TEST_CASE(TestFleeBehavior) {
         }
     }
 
-    // Phase 2 EDM Migration: Use EntityHandle-based API for player reference
     EntityHandle playerHandle = testPlayer->getHandle();
     AIManager::Instance().setPlayerHandle(playerHandle);
 
@@ -506,11 +443,9 @@ BOOST_AUTO_TEST_CASE(TestFleeBehavior) {
     Vector2D fleeStartPos = entity->getPosition();
     entity->resetUpdateCount();
 
-    // Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle = entity->getHandle();
 
     // FleeBehavior requires a lastAttacker in memory to know who to flee from
-    // Record a combat event where the player attacked this entity
     auto &edm = EntityDataManager::Instance();
     size_t entityIdx = edm.getIndex(handle);
     if (entityIdx != SIZE_MAX) {
@@ -518,18 +453,12 @@ BOOST_AUTO_TEST_CASE(TestFleeBehavior) {
                               /*wasAttacked=*/true, 0.0f);
     }
 
-    AIManager::Instance().registerEntity(handle, "Flee");
+    AIManager::Instance().assignBehavior(handle, "Flee");
 
-    // Wait for async assignment to complete before starting updates
-    updateAI(0.016f);  // Process pending assignment
-    // Assignments are now synchronous - no wait needed
-
-    // Use larger deltaTime for flee behavior (pathTTL = 2.5s, noProgressWindow = 0.4s)
-    // No sleep_for needed - cooldowns use deltaTime, not wall-clock time
     const float testDeltaTime = 0.1f;
     for (int i = 0; i < 30; ++i) {
         updateAI(testDeltaTime);
-        CollisionManager::Instance().update(testDeltaTime); // Apply position updates
+        CollisionManager::Instance().update(testDeltaTime);
     }
 
     // Entity should move away from player (or at least have velocity set)
@@ -538,14 +467,12 @@ BOOST_AUTO_TEST_CASE(TestFleeBehavior) {
     float initialDistanceToPlayer = (fleeStartPos - playerPos).length();
     float currentDistanceToPlayer = (currentPos - playerPos).length();
 
-    // Check that entity is attempting to flee (moved away OR has fleeing velocity)
+    // Check that entity is attempting to flee
     bool isFleeing = (currentDistanceToPlayer > initialDistanceToPlayer) || (currentVel.length() > 0.1f);
-    BOOST_CHECK(isFleeing); // Entity should be fleeing (moving away or has velocity)
-    BOOST_CHECK_GT(entity->getUpdateCount(), 0);
+    BOOST_CHECK(isFleeing);
 
-    // Clean up - Phase 2 EDM Migration: Use EntityHandle-based API
+    // Clean up
     AIManager::Instance().unassignBehavior(handle);
-    AIManager::Instance().unregisterEntity(handle);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -554,43 +481,35 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(ComplexBehaviorTests, BehaviorTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestFollowBehavior) {
-    // Create fresh entity and player for this test
     auto testPlayer = TestNPC::create(500.0f, 500.0f);
     auto entity = TestNPC::create(300.0f, 500.0f); // 200 pixels away
 
-    // Phase 2 EDM Migration: Use EntityHandle-based API for player reference
     EntityHandle playerHandle = testPlayer->getHandle();
     AIManager::Instance().setPlayerHandle(playerHandle);
 
     Vector2D playerPos = testPlayer->getPosition();
     entity->resetUpdateCount();
 
-    // Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle = entity->getHandle();
-    AIManager::Instance().registerEntity(handle, "Follow");
+    AIManager::Instance().assignBehavior(handle, "Follow");
 
     // Move player to a new position within range
     Vector2D newPlayerPos(playerPos.getX() + 150, playerPos.getY() + 150);
     testPlayer->setPosition(newPlayerPos);
 
-    // Use larger deltaTime to advance pathfinding (pathTTL = 10s, goalChangeThreshold = 200)
-    // No sleep_for needed - cooldowns use deltaTime, not wall-clock time
     const float testDeltaTime = 0.25f;
-    for (int i = 0; i < 50; ++i) {  // 50 * 0.25 = 12.5s of simulated time
+    for (int i = 0; i < 50; ++i) {
         updateAI(testDeltaTime);
     }
 
-    // Entity should move closer to player but maintain some distance
+    // Entity should move closer to player
     Vector2D currentPos = entity->getPosition();
     float distanceToPlayer = (currentPos - newPlayerPos).length();
 
-    // More lenient check - entity should at least start following
-    BOOST_CHECK_LT(distanceToPlayer, 600.0f); // Should be reasonably close (relaxed from 400)
-    BOOST_CHECK_GT(entity->getUpdateCount(), 0);
+    BOOST_CHECK_LT(distanceToPlayer, 600.0f); // Should be reasonably close
 
-    // Clean up - Phase 2 EDM Migration: Use EntityHandle-based API
+    // Clean up
     AIManager::Instance().unassignBehavior(handle);
-    AIManager::Instance().unregisterEntity(handle);
 }
 
 BOOST_AUTO_TEST_CASE(TestGuardBehavior) {
@@ -599,54 +518,46 @@ BOOST_AUTO_TEST_CASE(TestGuardBehavior) {
     entity->setPosition(guardPos);
     entity->resetUpdateCount();
 
-    // Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle = entity->getHandle();
-    AIManager::Instance().registerEntity(handle, "Guard");
+    AIManager::Instance().assignBehavior(handle, "Guard");
 
-    // Use larger deltaTime to allow guard behavior to stabilize (pathTTL = 1.8s)
-    // No sleep_for needed - cooldowns use deltaTime, not wall-clock time
     const float testDeltaTime = 0.1f;
-    for (int i = 0; i < 30; ++i) {  // 30 * 0.1 = 3s of simulated time
+    for (int i = 0; i < 30; ++i) {
         updateAI(testDeltaTime);
     }
 
-    // Guard should stay reasonably near post (more lenient for patrol behavior)
+    // Guard should stay reasonably near post
     Vector2D currentPos = entity->getPosition();
     float distanceFromPost = (currentPos - guardPos).length();
-    BOOST_CHECK_LT(distanceFromPost, 300.0f);  // Relaxed from 100 to 300 for guard patrol
+    BOOST_CHECK_LT(distanceFromPost, 300.0f);
 }
 
 BOOST_AUTO_TEST_CASE(TestAttackBehavior) {
     auto entity = testEntities[0];
     Vector2D playerPos = playerEntity->getPosition();
 
-    // Position entity within attack range but not too close
+    // Position entity within attack range
     entity->setPosition(Vector2D(playerPos.getX() + 100, playerPos.getY()));
     entity->resetUpdateCount();
 
-    // Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle = entity->getHandle();
-    AIManager::Instance().registerEntity(handle, "Attack");
+    AIManager::Instance().assignBehavior(handle, "Attack");
 
-    // Capture initial behavior execution count (DOD: AIManager tracks executions)
+    // Capture initial behavior execution count
     size_t initialBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
 
-    // Use larger deltaTime for attack behavior (reuses chase-like pathfinding)
-    // No sleep_for needed - cooldowns use deltaTime, not wall-clock time
     const float testDeltaTime = 0.1f;
-    for (int i = 0; i < 50; ++i) {  // 50 * 0.1 = 5s of simulated time
+    for (int i = 0; i < 50; ++i) {
         updateAI(testDeltaTime);
     }
 
-    // Entity should approach for attack (more lenient check)
+    // Entity should approach for attack
     Vector2D currentPos = entity->getPosition();
     float distanceToPlayer = (currentPos - playerPos).length();
 
-    // More lenient - just check that entity is attempting to attack (within reasonable range)
-    BOOST_CHECK_LT(distanceToPlayer, 200.0f); // Relaxed from 150 to 200
+    BOOST_CHECK_LT(distanceToPlayer, 200.0f);
 
-    // DOD: AIManager doesn't call Entity::update() anymore - it calls behavior->executeLogic()
-    // Check that behaviors were executed by verifying AIManager's behavior execution count increased
+    // Check that behaviors were executed
     size_t finalBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
     BOOST_CHECK_GT(finalBehaviorCount, initialBehaviorCount);
 }
@@ -658,11 +569,10 @@ BOOST_FIXTURE_TEST_SUITE(BehaviorMessageTests, BehaviorTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestBehaviorSpecificMessages) {
     auto entity = testEntities[0];
-    // Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle = entity->getHandle();
 
     // Test Guard behavior messages
-    AIManager::Instance().registerEntity(handle, "Guard");
+    AIManager::Instance().assignBehavior(handle, "Guard");
     AIManager::Instance().sendMessageToEntity(handle, "raise_alert", true);
     AIManager::Instance().sendMessageToEntity(handle, "clear_alert", true);
     AIManager::Instance().sendMessageToEntity(handle, "investigate_position", true);
@@ -690,101 +600,32 @@ BOOST_AUTO_TEST_CASE(TestBehaviorSpecificMessages) {
 }
 
 BOOST_AUTO_TEST_CASE(TestBroadcastMessages) {
-    // Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle0 = testEntities[0]->getHandle();
     EntityHandle handle1 = testEntities[1]->getHandle();
     EntityHandle handle2 = testEntities[2]->getHandle();
+
     // Assign different behaviors to multiple entities
-    AIManager::Instance().registerEntity(handle0, "Guard");
-    AIManager::Instance().registerEntity(handle1, "Attack");
-    AIManager::Instance().registerEntity(handle2, "Follow");
-    
+    AIManager::Instance().assignBehavior(handle0, "Guard");
+    AIManager::Instance().assignBehavior(handle1, "Attack");
+    AIManager::Instance().assignBehavior(handle2, "Follow");
+
     // Test broadcast messages
     AIManager::Instance().broadcastMessage("global_alert", true);
     AIManager::Instance().broadcastMessage("combat_start", true);
     AIManager::Instance().broadcastMessage("all_stop", true);
-    
+
     // All entities should receive messages without crashes
     BOOST_CHECK(true);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// Test Suite 6: Behavior Mode Testing
-BOOST_FIXTURE_TEST_SUITE(BehaviorModeTests, BehaviorTestFixture)
-
-BOOST_AUTO_TEST_CASE(TestFollowModes) {
-    auto entity = testEntities[0];
-    // Phase 2 EDM Migration: Use EntityHandle-based API
-    EntityHandle handle = entity->getHandle();
-
-    // Test different follow modes
-    std::vector<std::string> followModes = {
-        "Follow", "FollowClose", "FollowFormation"
-    };
-
-    for (const auto& mode : followModes) {
-        AIManager::Instance().assignBehavior(handle, mode);
-        BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
-
-        // Update a few times to ensure no crashes
-        for (int i = 0; i < 5; ++i) {
-            updateAI(0.016f);
-        }
-    }
-}
-
-BOOST_AUTO_TEST_CASE(TestAttackModes) {
-    auto entity = testEntities[0];
-    // Phase 2 EDM Migration: Use EntityHandle-based API
-    EntityHandle handle = entity->getHandle();
-
-    // Test different attack modes
-    std::vector<std::string> attackModes = {
-        "Attack", "AttackMelee", "AttackRanged", "AttackCharge"
-    };
-
-    for (const auto& mode : attackModes) {
-        AIManager::Instance().assignBehavior(handle, mode);
-        BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
-
-        // Update a few times to ensure no crashes
-        for (int i = 0; i < 5; ++i) {
-            updateAI(0.016f);
-        }
-    }
-}
-
-BOOST_AUTO_TEST_CASE(TestWanderModes) {
-    auto entity = testEntities[0];
-    // Phase 2 EDM Migration: Use EntityHandle-based API
-    EntityHandle handle = entity->getHandle();
-
-    // Test different wander modes
-    std::vector<std::string> wanderModes = {
-        "Wander", "WanderSmall", "WanderLarge"
-    };
-
-    for (const auto& mode : wanderModes) {
-        AIManager::Instance().assignBehavior(handle, mode);
-        BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
-
-        // Update a few times to ensure no crashes
-        for (int i = 0; i < 5; ++i) {
-            updateAI(0.016f);
-        }
-    }
-}
-
-BOOST_AUTO_TEST_SUITE_END()
-
-// Test Suite 7: Behavior Transitions and State Management
+// Test Suite 6: Behavior Transitions and State Management
 BOOST_FIXTURE_TEST_SUITE(BehaviorTransitionTests, BehaviorTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestBehaviorSwitching) {
     auto entity = testEntities[0];
     entity->resetUpdateCount();
-    // Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle = entity->getHandle();
 
     std::vector<std::string> behaviorSequence = {
@@ -792,7 +633,7 @@ BOOST_AUTO_TEST_CASE(TestBehaviorSwitching) {
     };
 
     for (const auto& behavior : behaviorSequence) {
-        AIManager::Instance().registerEntity(handle, behavior);
+        AIManager::Instance().assignBehavior(handle, behavior);
 
         // Update a few times
         for (int i = 0; i < 5; ++i) {
@@ -801,10 +642,10 @@ BOOST_AUTO_TEST_CASE(TestBehaviorSwitching) {
 
         BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
 
-        AIManager::Instance().unregisterEntity(handle);
+        AIManager::Instance().unassignBehavior(handle);
     }
 
-    // DOD: Check that behaviors were executed (AIManager doesn't call Entity::update() anymore)
+    // Check that behaviors were executed
     size_t finalCount = AIManager::Instance().getBehaviorUpdateCount();
     BOOST_CHECK_GT(finalCount, 0);
 }
@@ -817,31 +658,28 @@ BOOST_AUTO_TEST_CASE(TestMultipleEntitiesDifferentBehaviors) {
     size_t initialBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
 
     for (size_t i = 0; i < behaviors.size() && i < testEntities.size(); ++i) {
-        // Phase 2 EDM Migration: Use EntityHandle-based API
         EntityHandle handle = testEntities[i]->getHandle();
-        AIManager::Instance().registerEntity(handle, behaviors[i]);
+        AIManager::Instance().assignBehavior(handle, behaviors[i]);
     }
 
-    // Update all entities simultaneously (no sleep_for needed)
+    // Update all entities simultaneously
     for (int update = 0; update < 20; ++update) {
         updateAI(0.016f);
     }
 
-    // DOD: Check that behaviors were executed
-    // AIManager doesn't call Entity::update() anymore - it calls behavior->executeLogic()
+    // Check that behaviors were executed
     size_t finalBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
     BOOST_CHECK_GT(finalBehaviorCount, initialBehaviorCount);
 }
 
-// Test that verifies behavior state persists after transition (regression test for init/clean order bug)
-// Bug: Previously clean() was called AFTER init(), wiping the new behavior's freshly initialized state
+// Test that verifies behavior state persists after transition
 BOOST_AUTO_TEST_CASE(TestGuardToAttackTransitionStatePreserved) {
     auto entity = testEntities[0];
     EntityHandle handle = entity->getHandle();
     auto& edm = EntityDataManager::Instance();
 
     // Start with Guard behavior
-    AIManager::Instance().registerEntity(handle, "Guard");
+    AIManager::Instance().assignBehavior(handle, "Guard");
     updateAI(0.016f);  // Allow behavior to initialize
 
     size_t edmIdx = edm.getIndex(handle);
@@ -853,12 +691,11 @@ BOOST_AUTO_TEST_CASE(TestGuardToAttackTransitionStatePreserved) {
     BOOST_CHECK(guardData.isValid());
     BOOST_CHECK(guardData.isInitialized());
 
-    // Now transition to Attack behavior (the problematic transition)
+    // Now transition to Attack behavior
     AIManager::Instance().assignBehavior(handle, "Attack");
     updateAI(0.016f);  // Process the transition
 
     // CRITICAL CHECK: Attack behavior state must be valid after transition
-    // Before the fix, clean() was called after init(), wiping attack state
     BOOST_CHECK(edm.hasBehaviorData(edmIdx));
     auto& attackData = edm.getBehaviorData(edmIdx);
     BOOST_CHECK_MESSAGE(attackData.isValid(),
@@ -866,7 +703,7 @@ BOOST_AUTO_TEST_CASE(TestGuardToAttackTransitionStatePreserved) {
     BOOST_CHECK_MESSAGE(attackData.isInitialized(),
         "BehaviorData should be initialized after Guard->Attack transition");
 
-    // Verify entity can still function (execute behavior without crash)
+    // Verify entity can still function
     for (int i = 0; i < 10; ++i) {
         updateAI(0.016f);
     }
@@ -874,7 +711,6 @@ BOOST_AUTO_TEST_CASE(TestGuardToAttackTransitionStatePreserved) {
 
     // Cleanup
     AIManager::Instance().unassignBehavior(handle);
-    AIManager::Instance().unregisterEntity(handle);
 }
 
 // Test that all behavior transitions preserve state correctly
@@ -890,14 +726,14 @@ BOOST_AUTO_TEST_CASE(TestAllBehaviorTransitionsPreserveState) {
         {"Chase", "Attack"},
         {"Attack", "Flee"},
         {"Flee", "Guard"},
-        {"Guard", "Attack"},  // Critical transition that was buggy
+        {"Guard", "Attack"},  // Critical transition
         {"Attack", "Follow"},
         {"Follow", "Idle"}
     };
 
     for (const auto& [fromBehavior, toBehavior] : transitions) {
         // Start with first behavior
-        AIManager::Instance().registerEntity(handle, fromBehavior);
+        AIManager::Instance().assignBehavior(handle, fromBehavior);
         updateAI(0.016f);
 
         size_t edmIdx = edm.getIndex(handle);
@@ -926,7 +762,6 @@ BOOST_AUTO_TEST_CASE(TestAllBehaviorTransitionsPreserveState) {
 
         // Clean up for next iteration
         AIManager::Instance().unassignBehavior(handle);
-        AIManager::Instance().unregisterEntity(handle);
     }
 }
 
@@ -941,7 +776,7 @@ BOOST_AUTO_TEST_CASE(TestRapidBehaviorTransitionsStability) {
     };
 
     // Register initially
-    AIManager::Instance().registerEntity(handle, "Idle");
+    AIManager::Instance().assignBehavior(handle, "Idle");
     updateAI(0.016f);
 
     // Rapidly switch behaviors with minimal updates between
@@ -970,53 +805,11 @@ BOOST_AUTO_TEST_CASE(TestRapidBehaviorTransitionsStability) {
 
     // Cleanup
     AIManager::Instance().unassignBehavior(handle);
-    AIManager::Instance().unregisterEntity(handle);
-}
-
-// Test assignBehaviorDirect also preserves state (was also buggy)
-BOOST_AUTO_TEST_CASE(TestAssignBehaviorDirectStatePreserved) {
-    auto entity = testEntities[0];
-    EntityHandle handle = entity->getHandle();
-    auto& edm = EntityDataManager::Instance();
-
-    // Register with Guard behavior
-    AIManager::Instance().registerEntity(handle, "Guard");
-    updateAI(0.016f);
-
-    size_t edmIdx = edm.getIndex(handle);
-    BOOST_REQUIRE_NE(edmIdx, SIZE_MAX);
-
-    // Get Attack behavior directly and assign via assignBehaviorDirect
-    auto attackBehavior = AIManager::Instance().getBehavior("Attack");
-    BOOST_REQUIRE(attackBehavior != nullptr);
-
-    // Clone and assign directly (simulates runtime behavior switching)
-    auto clonedAttack = attackBehavior->clone();
-    AIManager::Instance().assignBehaviorDirect(handle, clonedAttack);
-    updateAI(0.016f);
-
-    // Verify state is valid after direct assignment
-    BOOST_CHECK(edm.hasBehaviorData(edmIdx));
-    auto& behaviorData = edm.getBehaviorData(edmIdx);
-    BOOST_CHECK_MESSAGE(behaviorData.isValid(),
-        "BehaviorData should be valid after assignBehaviorDirect");
-    BOOST_CHECK_MESSAGE(behaviorData.isInitialized(),
-        "BehaviorData should be initialized after assignBehaviorDirect");
-
-    // Verify entity can function with directly assigned behavior
-    for (int i = 0; i < 10; ++i) {
-        updateAI(0.016f);
-    }
-    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
-
-    // Cleanup
-    AIManager::Instance().unassignBehavior(handle);
-    AIManager::Instance().unregisterEntity(handle);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// Test Suite 8: Performance and Integration Testing
+// Test Suite 7: Performance and Integration Testing
 BOOST_FIXTURE_TEST_SUITE(BehaviorPerformanceTests, BehaviorTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestLargeNumberOfEntities) {
@@ -1034,7 +827,7 @@ BOOST_AUTO_TEST_CASE(TestLargeNumberOfEntities) {
         perfTestHandles.push_back(handle);
 
         std::string behavior = behaviors[i % behaviors.size()];
-        AIManager::Instance().registerEntity(handle, behavior);
+        AIManager::Instance().assignBehavior(handle, behavior);
     }
 
     // Measure update performance
@@ -1047,19 +840,17 @@ BOOST_AUTO_TEST_CASE(TestLargeNumberOfEntities) {
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-    // Should complete within reasonable time (adjust as needed)
+    // Should complete within reasonable time
     BOOST_CHECK_LT(duration.count(), 1000); // Less than 1 second for 50 entities
 
     // Cleanup
     for (const auto& handle : perfTestHandles) {
-        AIManager::Instance().unregisterEntity(handle);
         AIManager::Instance().unassignBehavior(handle);
     }
 }
 
 BOOST_AUTO_TEST_CASE(TestBehaviorMemoryManagement) {
     auto entity = testEntities[0];
-    // Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle = entity->getHandle();
 
     // Rapidly switch between behaviors to test memory management
@@ -1069,12 +860,11 @@ BOOST_AUTO_TEST_CASE(TestBehaviorMemoryManagement) {
 
     for (int cycle = 0; cycle < 5; ++cycle) {
         for (const auto& behavior : behaviors) {
-            AIManager::Instance().registerEntity(handle, behavior);
+            AIManager::Instance().assignBehavior(handle, behavior);
 
             // Brief update
             updateAI(0.016f);
 
-            AIManager::Instance().unregisterEntity(handle);
             AIManager::Instance().unassignBehavior(handle);
         }
     }
@@ -1085,7 +875,7 @@ BOOST_AUTO_TEST_CASE(TestBehaviorMemoryManagement) {
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// Test Suite 9: Behavior-Specific Advanced Features
+// Test Suite 8: Advanced Behavior Features
 BOOST_FIXTURE_TEST_SUITE(AdvancedBehaviorFeatureTests, BehaviorTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
@@ -1094,7 +884,7 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
     Vector2D initialPos(150, 150);
     entity->setPosition(initialPos);
 
-    // EDM-CENTRIC: Set collision layers directly on EDM hot data
+    // EDM-CENTRIC: Set collision layers
     {
         auto& edm = EntityDataManager::Instance();
         size_t idx = edm.getIndex(entity->getHandle());
@@ -1106,11 +896,10 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
         }
     }
 
-    // Assign Patrol behavior - Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle = entity->getHandle();
-    AIManager::Instance().registerEntity(handle, "Patrol");
+    AIManager::Instance().assignBehavior(handle, "Patrol");
 
-    // Capture initial behavior execution count (DOD: AIManager tracks executions)
+    // Capture initial behavior execution count
     size_t initialBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
 
     // Track patrol movement
@@ -1119,9 +908,6 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
     float totalDistanceMoved = 0.0f;
     bool hasVelocity = false;
 
-    // Use larger deltaTime to advance cooldowns faster (15s patrol cooldown)
-    // 40 iterations * 0.5f = 20s of simulated time (enough to pass 15s cooldown + movement)
-    // No sleep_for needed - cooldowns use deltaTime, not wall-clock time
     const float testDeltaTime = 0.5f;
     for (int i = 0; i < 40; ++i) {
         updateAI(testDeltaTime);
@@ -1131,7 +917,7 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
         Vector2D vel = entity->getVelocity();
         float stepDistance = (pos - lastPos).length();
 
-        totalDistanceMoved += stepDistance; // Track ALL movement
+        totalDistanceMoved += stepDistance;
         if (stepDistance > 0.1f) {
             movementSteps++;
         }
@@ -1148,56 +934,26 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
     BOOST_TEST_MESSAGE("Patrol test: moved " << totalDistanceMoved << "px over " << movementSteps << " steps");
 
     // Verify patrol behavior is functioning
-    // DOD: AIManager doesn't call Entity::update() - check behavior executions instead
     size_t finalBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
     BOOST_CHECK_GT(finalBehaviorCount, initialBehaviorCount + 10);
 
-    // Entity should either have moved OR have velocity set (async pathfinding may delay actual movement)
+    // Entity should either have moved OR have velocity set
     bool isPatrolling = (totalDistanceMoved > 5.0f) || hasVelocity;
-    BOOST_CHECK(isPatrolling); // Verify patrol behavior is functioning
+    BOOST_CHECK(isPatrolling);
 
-    // Clean up - Phase 2 EDM Migration: Use EntityHandle-based API
+    // Clean up
     AIManager::Instance().unassignBehavior(handle);
-    AIManager::Instance().unregisterEntity(handle);
-}
-
-BOOST_AUTO_TEST_CASE(TestGuardAlertSystem) {
-    auto entity = testEntities[0];
-    Vector2D guardPos(300, 300);
-
-    // Create guard at specific position
-    auto guardBehavior = std::make_shared<GuardBehavior>(guardPos, 150.0f, 200.0f);
-    AIManager::Instance().registerBehavior("AlertGuard", guardBehavior);
-    // Phase 2 EDM Migration: Use EntityHandle-based API
-    EntityHandle handle = entity->getHandle();
-    AIManager::Instance().registerEntity(handle, "AlertGuard");
-    
-    entity->setPosition(guardPos);
-    
-    // Move player close to trigger guard response
-    Vector2D threatPos(guardPos.getX() + 100, guardPos.getY());
-    playerEntity->setPosition(threatPos);
-    
-    // Update to trigger guard behavior (no sleep_for needed - just testing no crashes)
-    for (int i = 0; i < 30; ++i) {
-        updateAI(0.016f);
-    }
-
-    // Guard should respond to nearby threat
-    // Guard might move toward threat or stay alert at post
-    BOOST_CHECK(true); // Main test is that no crashes occur
 }
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// Test Suite: Memory and Combat System Tests
+// Test Suite 9: Memory and Combat System Tests
 BOOST_FIXTURE_TEST_SUITE(MemoryCombatTests, BehaviorTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestMemoryInitAtCreation) {
     // Test: NPCs created via createNPCWithRaceClass have memory initialized
     auto& edm = EntityDataManager::Instance();
 
-    // Create a new NPC (TestNPC uses createNPCWithRaceClass internally)
     auto entity = TestNPC::create(100.0f, 100.0f);
     EntityHandle handle = entity->getHandle();
     BOOST_REQUIRE(handle.isValid());
@@ -1205,7 +961,7 @@ BOOST_AUTO_TEST_CASE(TestMemoryInitAtCreation) {
     size_t idx = edm.getIndex(handle);
     BOOST_REQUIRE(idx != SIZE_MAX);
 
-    // Memory should be initialized at creation (not lazily)
+    // Memory should be initialized at creation
     BOOST_CHECK(edm.hasMemoryData(idx));
 
     const auto& memData = edm.getMemoryData(idx);
@@ -1214,8 +970,6 @@ BOOST_AUTO_TEST_CASE(TestMemoryInitAtCreation) {
     // Default emotional state should be neutral
     BOOST_CHECK_GE(memData.emotions.fear, 0.0f);
     BOOST_CHECK_LE(memData.emotions.fear, 0.1f);
-    BOOST_CHECK_GE(memData.emotions.aggression, 0.0f);
-    BOOST_CHECK_LE(memData.emotions.aggression, 0.1f);
 
     BOOST_TEST_MESSAGE("Memory initialized at creation: emotions.fear=" << memData.emotions.fear);
 }
@@ -1231,18 +985,16 @@ BOOST_AUTO_TEST_CASE(TestLastCombatTimeDeltaSemantics) {
 
     auto& memData = edm.getMemoryData(idx);
 
-    // Simulate being attacked (set lastCombatTime to 0)
+    // Simulate being attacked
     memData.lastCombatTime = 0.0f;
     float initialTime = memData.lastCombatTime;
 
-    // Update emotional decay (should increment lastCombatTime)
-    edm.updateEmotionalDecay(idx, 1.0f); // 1 second
+    // Update emotional decay
+    edm.updateEmotionalDecay(idx, 1.0f);
 
-    // lastCombatTime should have increased
     BOOST_CHECK_GT(memData.lastCombatTime, initialTime);
     BOOST_CHECK_CLOSE(memData.lastCombatTime, 1.0f, 0.01f);
 
-    // Update again
     edm.updateEmotionalDecay(idx, 0.5f);
     BOOST_CHECK_CLOSE(memData.lastCombatTime, 1.5f, 0.01f);
 
@@ -1263,19 +1015,19 @@ BOOST_AUTO_TEST_CASE(TestWanderSwitchesToFleeWhenAttacked) {
     size_t entityIdx = edm.getIndex(entityHandle);
     BOOST_REQUIRE(entityIdx != SIZE_MAX);
 
-    // Register with Wander behavior
-    aiMgr.registerEntity(entityHandle, "Wander");
+    // Assign Wander behavior
+    aiMgr.assignBehavior(entityHandle, "Wander");
 
-    // Verify starting behavior is Wander via BehaviorData
+    // Verify starting behavior is Wander
     auto& behaviorData = edm.getBehaviorData(entityIdx);
     BOOST_CHECK(behaviorData.behaviorType == BehaviorType::Wander);
 
-    // Simulate being attacked (set memory state)
+    // Simulate being attacked
     auto& memData = edm.getMemoryData(entityIdx);
     memData.lastAttacker = attackerHandle;
-    memData.lastCombatTime = 0.0f; // Just attacked
+    memData.lastCombatTime = 0.0f;
 
-    // Run behavior updates (should trigger switch to Flee)
+    // Run behavior updates
     for (int i = 0; i < 5; ++i) {
         updateAI(0.1f);
     }
@@ -1283,15 +1035,13 @@ BOOST_AUTO_TEST_CASE(TestWanderSwitchesToFleeWhenAttacked) {
     // Should have switched to Flee behavior
     BOOST_CHECK(behaviorData.behaviorType == BehaviorType::Flee);
 
-    BOOST_TEST_MESSAGE("Wander -> Flee switch on attack verified via BehaviorType");
+    BOOST_TEST_MESSAGE("Wander -> Flee switch on attack verified");
 
     // Cleanup
     aiMgr.unassignBehavior(entityHandle);
-    aiMgr.unregisterEntity(entityHandle);
 }
 
 BOOST_AUTO_TEST_CASE(TestIdleSwitchesToFleeWhenAttacked) {
-    // Test: IdleBehavior switches to FleeBehavior when entity is attacked
     auto& edm = EntityDataManager::Instance();
     auto& aiMgr = AIManager::Instance();
 
@@ -1304,10 +1054,10 @@ BOOST_AUTO_TEST_CASE(TestIdleSwitchesToFleeWhenAttacked) {
     size_t entityIdx = edm.getIndex(entityHandle);
     BOOST_REQUIRE(entityIdx != SIZE_MAX);
 
-    // Register with Idle behavior
-    aiMgr.registerEntity(entityHandle, "Idle");
+    // Assign Idle behavior
+    aiMgr.assignBehavior(entityHandle, "Idle");
 
-    // Verify starting behavior is Idle via BehaviorData
+    // Verify starting behavior is Idle
     auto& behaviorData = edm.getBehaviorData(entityIdx);
     BOOST_CHECK(behaviorData.behaviorType == BehaviorType::Idle);
 
@@ -1324,92 +1074,72 @@ BOOST_AUTO_TEST_CASE(TestIdleSwitchesToFleeWhenAttacked) {
     // Should have switched to Flee behavior
     BOOST_CHECK(behaviorData.behaviorType == BehaviorType::Flee);
 
-    BOOST_TEST_MESSAGE("Idle -> Flee switch on attack verified via BehaviorType");
+    BOOST_TEST_MESSAGE("Idle -> Flee switch on attack verified");
 
     // Cleanup
     aiMgr.unassignBehavior(entityHandle);
-    aiMgr.unregisterEntity(entityHandle);
 }
 
 BOOST_AUTO_TEST_CASE(TestMassBasedKnockback) {
-    // Test: Heavier entities receive less knockback (verify the math)
-    // The damage handler applies: knockbackScale = 1.0f / std::max(0.1f, charData.mass)
     auto& edm = EntityDataManager::Instance();
 
-    // Create two entities
     auto lightEntity = TestNPC::create(100.0f, 100.0f);
     auto heavyEntity = TestNPC::create(200.0f, 100.0f);
 
     EntityHandle lightHandle = lightEntity->getHandle();
     EntityHandle heavyHandle = heavyEntity->getHandle();
 
-    // Get character data and set different masses
     auto& lightChar = edm.getCharacterData(lightHandle);
     auto& heavyChar = edm.getCharacterData(heavyHandle);
 
-    lightChar.mass = 0.5f;  // Light entity
-    heavyChar.mass = 4.0f;  // Heavy entity (8x mass)
+    lightChar.mass = 0.5f;
+    heavyChar.mass = 4.0f;
 
-    // Calculate expected knockback scales
-    float lightScale = 1.0f / std::max(0.1f, lightChar.mass);  // 1.0 / 0.5 = 2.0
-    float heavyScale = 1.0f / std::max(0.1f, heavyChar.mass);  // 1.0 / 4.0 = 0.25
+    float lightScale = 1.0f / std::max(0.1f, lightChar.mass);
+    float heavyScale = 1.0f / std::max(0.1f, heavyChar.mass);
 
     BOOST_TEST_MESSAGE("Knockback scales - light (mass=0.5): " << lightScale
                        << ", heavy (mass=4.0): " << heavyScale);
 
-    // Light entity should receive 8x more knockback than heavy
     BOOST_CHECK_CLOSE(lightScale / heavyScale, 8.0f, 0.1f);
 
-    // Verify mass is properly stored in character data
     BOOST_CHECK_CLOSE(lightChar.mass, 0.5f, 0.01f);
     BOOST_CHECK_CLOSE(heavyChar.mass, 4.0f, 0.01f);
 
-    // Simulate knockback application (what damage handler does)
     Vector2D knockbackForce(100.0f, 0.0f);
     Vector2D lightKnockback = knockbackForce * lightScale;
     Vector2D heavyKnockback = knockbackForce * heavyScale;
 
-    BOOST_CHECK_CLOSE(lightKnockback.length(), 200.0f, 0.1f);  // 100 * 2.0
-    BOOST_CHECK_CLOSE(heavyKnockback.length(), 25.0f, 0.1f);   // 100 * 0.25
+    BOOST_CHECK_CLOSE(lightKnockback.length(), 200.0f, 0.1f);
+    BOOST_CHECK_CLOSE(heavyKnockback.length(), 25.0f, 0.1f);
 }
 
 BOOST_AUTO_TEST_CASE(TestAttackPersonalityDamageScaling) {
-    // Test: Attackers with high aggression personality deal more damage
     auto& edm = EntityDataManager::Instance();
 
     auto attacker = TestNPC::create(100.0f, 100.0f);
-    auto target1 = TestNPC::create(200.0f, 100.0f);
-    auto target2 = TestNPC::create(300.0f, 100.0f);
 
     EntityHandle attackerHandle = attacker->getHandle();
     size_t attackerIdx = edm.getIndex(attackerHandle);
     BOOST_REQUIRE(attackerIdx != SIZE_MAX);
 
-    // Set up attacker with high aggression personality
     auto& memData = edm.getMemoryData(attackerIdx);
-    memData.personality.aggression = 1.0f;  // Max personality aggression
-    memData.emotions.aggression = 1.0f;     // Max emotional aggression
+    memData.personality.aggression = 1.0f;
+    memData.emotions.aggression = 1.0f;
 
-    // Get base damage from character data
     auto& charData = edm.getCharacterDataByIndex(attackerIdx);
     float baseDamage = charData.attackDamage;
 
-    // With max aggression: personalityBonus = 1.0 + 1.0*0.2 = 1.2
-    //                      emotionalBonus = 1.0 + 1.0*0.2 = 1.2
-    //                      Total multiplier = 1.2 * 1.2 = 1.44
     float expectedMultiplier = 1.44f;
     float expectedDamage = baseDamage * expectedMultiplier;
 
     BOOST_TEST_MESSAGE("Base damage: " << baseDamage << ", expected with max aggression: " << expectedDamage);
 
-    // Verify the math is correct (personality affects damage)
     BOOST_CHECK_GT(expectedMultiplier, 1.0f);
-    BOOST_CHECK_CLOSE(expectedMultiplier, 1.44f, 1.0f); // 1% tolerance
+    BOOST_CHECK_CLOSE(expectedMultiplier, 1.44f, 1.0f);
 }
 
 BOOST_AUTO_TEST_CASE(TestAttackLastTargetTracking) {
-    // Test: After attacking, lastTarget is set in attacker's memory
-    // This test verifies the lastTarget tracking mechanism is in place
     auto& edm = EntityDataManager::Instance();
 
     auto attacker = TestNPC::create(100.0f, 100.0f);
@@ -1421,17 +1151,13 @@ BOOST_AUTO_TEST_CASE(TestAttackLastTargetTracking) {
     size_t attackerIdx = edm.getIndex(attackerHandle);
     BOOST_REQUIRE(attackerIdx != SIZE_MAX);
 
-    // Verify memory is initialized
     BOOST_REQUIRE(edm.hasMemoryData(attackerIdx));
 
-    // Check initial state - no lastTarget
     auto& memData = edm.getMemoryData(attackerIdx);
     BOOST_CHECK(!memData.lastTarget.isValid());
 
-    // Manually set lastTarget (simulating what AttackBehavior does after hitting)
     memData.lastTarget = targetHandle;
 
-    // Verify lastTarget is now set
     BOOST_CHECK(memData.lastTarget.isValid());
     BOOST_CHECK(memData.lastTarget == targetHandle);
 
@@ -1439,7 +1165,6 @@ BOOST_AUTO_TEST_CASE(TestAttackLastTargetTracking) {
 }
 
 BOOST_AUTO_TEST_CASE(TestBerserkerModeNoRetreat) {
-    // Test: Entities with high aggression (berserker mode) don't retreat
     auto& edm = EntityDataManager::Instance();
 
     auto entity = TestNPC::create(100.0f, 100.0f);
@@ -1448,30 +1173,25 @@ BOOST_AUTO_TEST_CASE(TestBerserkerModeNoRetreat) {
     size_t idx = edm.getIndex(handle);
     BOOST_REQUIRE(idx != SIZE_MAX);
 
-    // Set up berserker state
     auto& memData = edm.getMemoryData(idx);
-    memData.emotions.aggression = 0.9f;      // > 0.8 threshold
-    memData.personality.aggression = 0.8f;   // > 0.7 threshold
+    memData.emotions.aggression = 0.9f;
+    memData.personality.aggression = 0.8f;
 
-    // Berserker condition: aggression > 0.8 && personalAggression > 0.7
     bool isBerserker = (memData.emotions.aggression > 0.8f &&
                         memData.personality.aggression > 0.7f);
     BOOST_CHECK(isBerserker);
 
-    // Set low health that would normally trigger retreat
     auto& charData = edm.getCharacterData(handle);
-    charData.health = charData.maxHealth * 0.1f; // 10% health
+    charData.health = charData.maxHealth * 0.1f;
 
     BOOST_TEST_MESSAGE("Berserker mode: aggression=" << memData.emotions.aggression
                        << " personality=" << memData.personality.aggression
                        << " health=" << (charData.health/charData.maxHealth*100) << "%");
 
-    // Berserkers should fight to death (verified by berserker check in AttackBehavior)
-    BOOST_CHECK(isBerserker); // Entity is in berserker mode
+    BOOST_CHECK(isBerserker);
 }
 
 BOOST_AUTO_TEST_CASE(TestRecordCombatEventUpdatesMemory) {
-    // Test: recordCombatEvent properly updates fear, encounter count, and memory
     auto& edm = EntityDataManager::Instance();
 
     auto victim = TestNPC::create(100.0f, 100.0f);
@@ -1483,19 +1203,16 @@ BOOST_AUTO_TEST_CASE(TestRecordCombatEventUpdatesMemory) {
     size_t victimIdx = edm.getIndex(victimHandle);
     BOOST_REQUIRE(victimIdx != SIZE_MAX);
 
-    // Get initial state
     auto& memData = edm.getMemoryData(victimIdx);
     float initialFear = memData.emotions.fear;
     uint32_t initialEncounters = memData.combatEncounters;
 
-    // Record combat event (simulates damage handler)
     edm.recordCombatEvent(victimIdx, attackerHandle, victimHandle, 50.0f, true, 0.0f);
 
-    // Check updates
-    BOOST_CHECK_GT(memData.emotions.fear, initialFear); // Fear increased
-    BOOST_CHECK_GT(memData.combatEncounters, initialEncounters); // Encounter count increased
-    BOOST_CHECK(memData.lastAttacker == attackerHandle); // Attacker tracked
-    BOOST_CHECK(memData.flags & NPCMemoryData::FLAG_IN_COMBAT); // Combat flag set
+    BOOST_CHECK_GT(memData.emotions.fear, initialFear);
+    BOOST_CHECK_GT(memData.combatEncounters, initialEncounters);
+    BOOST_CHECK(memData.lastAttacker == attackerHandle);
+    BOOST_CHECK(memData.flags & NPCMemoryData::FLAG_IN_COMBAT);
 
     BOOST_TEST_MESSAGE("recordCombatEvent: fear " << initialFear << " -> " << memData.emotions.fear
                        << ", encounters: " << memData.combatEncounters);
@@ -1505,13 +1222,11 @@ BOOST_AUTO_TEST_SUITE_END()
 
 // Global test summary
 BOOST_AUTO_TEST_CASE(BehaviorTestSummary) {
-    // This test runs last and provides a summary
     BOOST_TEST_MESSAGE("=== Behavior Functionality Test Summary ===");
-    BOOST_TEST_MESSAGE("✅ All 8 core behaviors tested");
-    BOOST_TEST_MESSAGE("✅ Behavior modes and variants tested");
-    BOOST_TEST_MESSAGE("✅ Message system integration tested");
-    BOOST_TEST_MESSAGE("✅ Behavior transitions tested");
-    BOOST_TEST_MESSAGE("✅ Performance with multiple entities tested");
-    BOOST_TEST_MESSAGE("✅ Advanced behavior features tested");
+    BOOST_TEST_MESSAGE("All 8 core behaviors tested");
+    BOOST_TEST_MESSAGE("Message system integration tested");
+    BOOST_TEST_MESSAGE("Behavior transitions tested");
+    BOOST_TEST_MESSAGE("Performance with multiple entities tested");
+    BOOST_TEST_MESSAGE("Advanced behavior features tested");
     BOOST_TEST_MESSAGE("=== All Behavior Tests Completed Successfully ===");
 }

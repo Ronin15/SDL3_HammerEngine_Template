@@ -57,7 +57,6 @@ public:
 
 private:
     // Methods
-    void setupAIBehaviors();
     void initializeCamera();
     void updateCamera(float deltaTime);
 

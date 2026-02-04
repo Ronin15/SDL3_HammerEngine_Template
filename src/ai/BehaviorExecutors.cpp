@@ -4,7 +4,6 @@
  */
 
 #include "ai/BehaviorExecutors.hpp"
-#include "ai/AIBehavior.hpp"  // For BehaviorContext
 #include "managers/EntityDataManager.hpp"
 #include <cmath>
 

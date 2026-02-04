@@ -54,25 +54,18 @@ constexpr size_t ASSIGNMENT_QUEUE_RESERVE =
  * Hot data (frequently accessed) is separated from cold data for better cache
  * performance
  *
- * NOTE: Position data is now owned by EntityDataManager (Phase 2 of Entity System Overhaul).
- * AIManager reads positions from Entity::getPosition() which will eventually
- * redirect to EntityDataManager in Phase 4.
+ * NOTE: All entity data is now owned by EntityDataManager.
+ * Behavior config and state are stored in EDM's BehaviorConfigData and BehaviorData.
  */
 struct AIEntityData {
   // Hot data - accessed every frame
-  // Position/distance removed: EntityDataManager is the single source of truth
-  // priority/behaviorType removed: CharacterData/BehaviorData in EDM are source of truth
   struct HotData {
     bool active;           // Active flag (1 byte)
     uint8_t padding[7];    // Pad to 8 bytes for alignment
   };
 
-  // Cold data - accessed occasionally
-  EntityPtr entity;
-  std::shared_ptr<AIBehavior> behavior;
-  float lastUpdateTime;
-
-  AIEntityData() : entity(nullptr), behavior(nullptr), lastUpdateTime(0.0f) {}
+  // Cold data removed - behaviors are now data in EDM
+  AIEntityData() = default;
 };
 
 /**

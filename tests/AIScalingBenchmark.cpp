@@ -37,63 +37,7 @@
 #include "core/WorkerBudget.hpp"
 #include "core/Logger.hpp"
 
-// Production AI behaviors
-#include "ai/behaviors/WanderBehavior.hpp"
-#include "ai/behaviors/GuardBehavior.hpp"
-#include "ai/behaviors/PatrolBehavior.hpp"
-#include "ai/behaviors/FollowBehavior.hpp"
-#include "ai/behaviors/ChaseBehavior.hpp"
-
 namespace {
-
-/**
- * Synthetic benchmark behavior - NO shared state for contention-free threading.
- * Each entity's state is stored in the BehaviorContext/transform, not in a shared map.
- * This isolates the threading overhead from behavior state contention.
- */
-class SyntheticBehavior : public AIBehavior {
-public:
-    SyntheticBehavior() = default;
-
-    void init(EntityHandle) override {}
-    void clean(EntityHandle) override {}
-
-    std::string getName() const override { return "Synthetic"; }
-
-    std::shared_ptr<AIBehavior> clone() const override {
-        return std::make_shared<SyntheticBehavior>();
-    }
-
-    void onMessage(EntityHandle, const std::string&) override {}
-
-    // NO shared state access - pure computation on context data
-    void executeLogic(BehaviorContext& ctx) override {
-        // Simulate realistic AI work without shared state:
-        // 1. Direction calculation (local computation only)
-        float angle = static_cast<float>(ctx.entityId % 628) * 0.01f;  // Deterministic per entity
-        float dx = std::cos(angle);
-        float dy = std::sin(angle);
-
-        // 2. Normalization
-        float len = std::sqrt(dx * dx + dy * dy);
-        if (len > 0.001f) {
-            dx /= len;
-            dy /= len;
-        }
-
-        // 3. Boundary avoidance (local calculation)
-        float px = ctx.transform.position.getX();
-        float py = ctx.transform.position.getY();
-        if (px < 500.0f) dx += 0.5f;
-        if (px > 9500.0f) dx -= 0.5f;
-        if (py < 500.0f) dy += 0.5f;
-        if (py > 9500.0f) dy -= 0.5f;
-
-        // 4. Apply velocity directly to context (no shared state write)
-        float speed = 100.0f;
-        ctx.transform.velocity = Vector2D(dx * speed, dy * speed);
-    }
-};
 
 // Test fixture for AI scaling benchmarks
 class AIScalingFixture {
@@ -113,9 +57,6 @@ public:
             // Set simulation radii for headless testing
             BackgroundSimulationManager::Instance().setActiveRadius(50000.0f);
             BackgroundSimulationManager::Instance().setBackgroundRadius(100000.0f);
-
-            // Register production behaviors once
-            registerProductionBehaviors();
 
             s_initialized = true;
         }
@@ -256,30 +197,6 @@ public:
     }
 
 private:
-    void registerProductionBehaviors() {
-        auto& aim = AIManager::Instance();
-
-        // Register all production behaviors
-        auto wander = std::make_shared<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 100.0f);
-        aim.registerBehavior("Wander", wander);
-
-        auto guard = std::make_shared<GuardBehavior>(Vector2D(5000.0f, 5000.0f), 500.0f);
-        aim.registerBehavior("Guard", guard);
-
-        std::vector<Vector2D> waypoints = {
-            Vector2D(4000.0f, 5000.0f),
-            Vector2D(6000.0f, 5000.0f)
-        };
-        auto patrol = std::make_shared<PatrolBehavior>(waypoints, 100.0f, true);
-        aim.registerBehavior("Patrol", patrol);
-
-        auto follow = std::make_shared<FollowBehavior>(2.5f, 200.0f, 400.0f);
-        aim.registerBehavior("Follow", follow);
-
-        auto chase = std::make_shared<ChaseBehavior>(100.0f, 500.0f, 50.0f);
-        aim.registerBehavior("Chase", chase);
-    }
-
     std::mt19937 m_rng;
     std::vector<EntityHandle> m_handles;
     static bool s_initialized;
@@ -450,21 +367,17 @@ BOOST_AUTO_TEST_CASE(ThreadingModeComparison)
 }
 
 // ---------------------------------------------------------------------------
-// Synthetic Behavior Threading Test (No shared state - pure threading test)
+// Idle Behavior Threading Test (Simple behavior - pure threading test)
 // ---------------------------------------------------------------------------
-BOOST_AUTO_TEST_CASE(SyntheticBehaviorThreading)
+BOOST_AUTO_TEST_CASE(IdleBehaviorThreading)
 {
-    std::cout << "--- Synthetic Behavior Threading (No Shared State) ---\n";
-    std::cout << "Testing threading overhead without behavior state map contention\n";
+    std::cout << "--- Idle Behavior Threading ---\n";
+    std::cout << "Testing threading overhead with simple behavior\n";
     std::cout << "(Threading uses adaptive threshold from WorkerBudget)\n";
     std::cout << std::setw(10) << "Entities"
               << std::setw(14) << "Single (ms)"
               << std::setw(14) << "Multi (ms)"
               << std::setw(10) << "Speedup\n";
-
-    // Register synthetic behavior (no shared state)
-    auto synthetic = std::make_shared<SyntheticBehavior>();
-    AIManager::Instance().registerBehavior("Synthetic", synthetic);
 
     std::vector<size_t> entityCounts = {500, 1000, 2000, 5000, 10000};
 
@@ -477,7 +390,7 @@ BOOST_AUTO_TEST_CASE(SyntheticBehaviorThreading)
         #ifndef NDEBUG
         AIManager::Instance().enableThreading(false);
         #endif
-        createEntitiesWithBehaviors(count, worldSize, {"Synthetic"});
+        createEntitiesWithBehaviors(count, worldSize, {"Idle"});
         setupWorld(worldSize);
         double singleMs = runBenchmark(iterations);
         cleanup();
@@ -487,7 +400,7 @@ BOOST_AUTO_TEST_CASE(SyntheticBehaviorThreading)
         #ifndef NDEBUG
         AIManager::Instance().enableThreading(true);
         #endif
-        createEntitiesWithBehaviors(count, worldSize, {"Synthetic"});
+        createEntitiesWithBehaviors(count, worldSize, {"Idle"});
         setupWorld(worldSize);
         double multiMs = runBenchmark(iterations);
         cleanup();

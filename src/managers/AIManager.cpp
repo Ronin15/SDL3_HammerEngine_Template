@@ -223,35 +223,22 @@ void AIManager::prepareForStateTransition() {
     }
   }
 
-  // Clean up all entities safely
+  // Clean up all entities safely (behaviors are data in EDM, no cleanup needed)
   {
     std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
-    // Clean all behaviors
-    size_t cleanedCount = 0;
-    for (size_t i = 0; i < m_storage.size(); ++i) {
-      if (m_storage.behaviors[i] && m_storage.handles[i].isValid()) {
-        try {
-          m_storage.behaviors[i]->clean(m_storage.handles[i]);
-          cleanedCount++;
-        } catch (const std::exception &e) {
-          AI_ERROR(std::format("Exception cleaning behavior: {}", e.what()));
-        }
-      }
-    }
-
-    AI_INFO_IF(cleanedCount > 0,
-               std::format("Cleaned {} AI behaviors", cleanedCount));
+    size_t entityCount = m_storage.size();
 
     // Clear all storage completely
     m_storage.hotData.clear();
     m_storage.handles.clear();
-    m_storage.behaviors.clear();
     m_storage.lastUpdateTimes.clear();
     m_storage.edmIndices.clear(); // Clear EDM indices to prevent stale data
     m_handleToIndex.clear();
     m_edmToStorageIndex.clear(); // Clear EDM-to-storage reverse mapping
 
+    AI_INFO_IF(entityCount > 0,
+               std::format("Cleaned {} AI entities", entityCount));
     AI_DEBUG("Cleaned up all entities for state transition");
   }
 
@@ -743,14 +730,16 @@ void AIManager::unassignBehavior(EntityHandle handle) {
       // Mark as inactive
       m_storage.hotData[index].active = false;
 
-      if (m_storage.behaviors[index]) {
-        m_storage.behaviors[index]->clean(handle);
-      }
-
-      // Clear from EDM-to-storage reverse mapping
+      // Clear behavior config in EDM
       size_t edmIndex = m_storage.edmIndices[index];
-      if (edmIndex < m_edmToStorageIndex.size()) {
-        m_edmToStorageIndex[edmIndex] = SIZE_MAX;
+      if (edmIndex != SIZE_MAX) {
+        auto& edm = EntityDataManager::Instance();
+        edm.setBehaviorConfig(edmIndex, HammerEngine::BehaviorConfigData{});
+
+        // Clear from EDM-to-storage reverse mapping
+        if (edmIndex < m_edmToStorageIndex.size()) {
+          m_edmToStorageIndex[edmIndex] = SIZE_MAX;
+        }
       }
     }
   }
@@ -764,8 +753,15 @@ bool AIManager::hasBehavior(EntityHandle handle) const {
 
   auto it = m_handleToIndex.find(handle);
   if (it != m_handleToIndex.end() && it->second < m_storage.size()) {
-    return m_storage.hotData[it->second].active &&
-           m_storage.behaviors[it->second] != nullptr;
+    if (!m_storage.hotData[it->second].active) return false;
+
+    // Check if entity has a valid behavior config in EDM
+    size_t edmIndex = m_storage.edmIndices[it->second];
+    if (edmIndex != SIZE_MAX) {
+      const auto& edm = EntityDataManager::Instance();
+      const auto& config = edm.getBehaviorConfig(edmIndex);
+      return config.type != BehaviorType::None;
+    }
   }
 
   return false;
@@ -872,20 +868,11 @@ void AIManager::resetBehaviors() {
   std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
   std::unique_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
 
-  // Clean up all behaviors
-  for (size_t i = 0; i < m_storage.size(); ++i) {
-    if (m_storage.behaviors[i] && m_storage.handles[i].isValid()) {
-      m_storage.behaviors[i]->clean(m_storage.handles[i]);
-    }
-  }
-
-  // Clear all data
+  // Clear all data (behaviors are data in EDM, no cleanup needed)
   m_storage.hotData.clear();
   m_storage.handles.clear();
-  m_storage.behaviors.clear();
   m_storage.lastUpdateTimes.clear();
-  m_storage.edmIndices.clear(); // BUGFIX: Must clear edmIndices to prevent
-                                // stale index pollution
+  m_storage.edmIndices.clear();
   m_handleToIndex.clear();
   m_edmToStorageIndex.clear(); // Clear EDM-to-storage reverse mapping
 
@@ -902,7 +889,7 @@ void AIManager::enableThreading(bool enable) {
 
 size_t AIManager::getBehaviorCount() const {
   std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
-  return m_behaviorTemplates.size();
+  return m_behaviorTypeMap.size();  // Number of registered behavior types
 }
 
 size_t AIManager::getBehaviorUpdateCount() const {
@@ -915,74 +902,53 @@ size_t AIManager::getTotalAssignmentCount() const {
 
 void AIManager::sendMessageToEntity(EntityHandle handle,
                                     const std::string &message,
-                                    bool immediate) {
+                                    bool /*immediate*/) {
+  // Data-oriented: Messages are queued for processing via EDM memory data
+  // Behaviors can check memory data during execution
   if (!handle.isValid() || message.empty())
     return;
 
-  if (immediate) {
-    std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-    auto it = m_handleToIndex.find(handle);
-    if (it != m_handleToIndex.end() && it->second < m_storage.size()) {
-      if (m_storage.behaviors[it->second]) {
-        m_storage.behaviors[it->second]->onMessage(handle, message);
-      }
-    }
-  } else {
-    // Use lock-free queue for non-immediate messages
-    // Check capacity to prevent overflow (2 relaxed loads, ~1ns)
-    size_t pending = m_messageWriteIndex.load(std::memory_order_relaxed) -
-                     m_messageReadIndex.load(std::memory_order_relaxed);
-    if (pending >= MESSAGE_QUEUE_SIZE) {
-      return; // Queue full - silently drop (pathological case: 60K+ msg/sec)
-    }
-
-    size_t writeIndex =
-        m_messageWriteIndex.fetch_add(1, std::memory_order_relaxed) %
-        MESSAGE_QUEUE_SIZE;
-    auto &msg = m_lockFreeMessages[writeIndex];
-
-    msg.target = handle;
-    // SAFETY: Use safer string copy with explicit bounds checking
-    size_t copyLen = std::min(message.length(), sizeof(msg.message) - 1);
-    message.copy(msg.message, copyLen);
-    msg.message[copyLen] = '\0';
-    msg.ready.store(true, std::memory_order_release);
+  // Use lock-free queue for messages
+  size_t pending = m_messageWriteIndex.load(std::memory_order_relaxed) -
+                   m_messageReadIndex.load(std::memory_order_relaxed);
+  if (pending >= MESSAGE_QUEUE_SIZE) {
+    return; // Queue full - silently drop
   }
+
+  size_t writeIndex =
+      m_messageWriteIndex.fetch_add(1, std::memory_order_relaxed) %
+      MESSAGE_QUEUE_SIZE;
+  auto &msg = m_lockFreeMessages[writeIndex];
+
+  msg.target = handle;
+  size_t copyLen = std::min(message.length(), sizeof(msg.message) - 1);
+  message.copy(msg.message, copyLen);
+  msg.message[copyLen] = '\0';
+  msg.ready.store(true, std::memory_order_release);
 }
 
-void AIManager::broadcastMessage(const std::string &message, bool immediate) {
+void AIManager::broadcastMessage(const std::string &message,
+                                 bool /*immediate*/) {
+  // Data-oriented: Broadcast messages are queued
   if (message.empty())
     return;
 
-  if (immediate) {
-    std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-
-    for (size_t i = 0; i < m_storage.size(); ++i) {
-      if (m_storage.hotData[i].active && m_storage.behaviors[i]) {
-        m_storage.behaviors[i]->onMessage(m_storage.handles[i], message);
-      }
-    }
-  } else {
-    // Queue broadcast for processing in next update
-    // Check capacity to prevent overflow (2 relaxed loads, ~1ns)
-    size_t pending = m_messageWriteIndex.load(std::memory_order_relaxed) -
-                     m_messageReadIndex.load(std::memory_order_relaxed);
-    if (pending >= MESSAGE_QUEUE_SIZE) {
-      return; // Queue full - silently drop (pathological case: 60K+ msg/sec)
-    }
-
-    size_t writeIndex =
-        m_messageWriteIndex.fetch_add(1, std::memory_order_relaxed) %
-        MESSAGE_QUEUE_SIZE;
-    auto &msg = m_lockFreeMessages[writeIndex];
-
-    msg.target = EntityHandle{}; // Invalid handle for broadcast
-    // SAFETY: Use safer string copy with explicit bounds checking
-    size_t copyLen = std::min(message.length(), sizeof(msg.message) - 1);
-    message.copy(msg.message, copyLen);
-    msg.message[copyLen] = '\0';
-    msg.ready.store(true, std::memory_order_release);
+  size_t pending = m_messageWriteIndex.load(std::memory_order_relaxed) -
+                   m_messageReadIndex.load(std::memory_order_relaxed);
+  if (pending >= MESSAGE_QUEUE_SIZE) {
+    return; // Queue full - silently drop
   }
+
+  size_t writeIndex =
+      m_messageWriteIndex.fetch_add(1, std::memory_order_relaxed) %
+      MESSAGE_QUEUE_SIZE;
+  auto &msg = m_lockFreeMessages[writeIndex];
+
+  msg.target = EntityHandle{}; // Invalid handle for broadcast
+  size_t copyLen = std::min(message.length(), sizeof(msg.message) - 1);
+  message.copy(msg.message, copyLen);
+  msg.message[copyLen] = '\0';
+  msg.ready.store(true, std::memory_order_release);
 }
 
 void AIManager::processMessageQueue() {
