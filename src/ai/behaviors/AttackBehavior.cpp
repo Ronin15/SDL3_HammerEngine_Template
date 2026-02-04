@@ -58,6 +58,17 @@ enum class AttackState : uint8_t {
     COOLDOWN = 6
 };
 
+// Attack mode enumeration (matches uint8_t attackMode in EDM AttackState)
+enum class AttackMode : uint8_t {
+    MELEE = 0,
+    RANGED = 1,
+    CHARGE = 2,
+    AMBUSH = 3,
+    COORDINATED = 4,
+    HIT_AND_RUN = 5,
+    BERSERKER = 6
+};
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -83,6 +94,60 @@ void updateTimers(BehaviorData& data, float deltaTime) {
         attack.comboTimer -= deltaTime;
     }
     attack.strafeTimer += deltaTime;
+}
+
+// Process pending messages for Attack behavior
+void processAttackMessages(BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
+    auto& attack = data.state.attack;
+
+    for (uint8_t i = 0; i < data.pendingMessageCount; ++i) {
+        uint8_t msgId = data.pendingMessages[i].messageId;
+        uint8_t param = data.pendingMessages[i].param;
+
+        switch (msgId) {
+            case BehaviorMessage::ATTACK_TARGET:
+                // param could encode target info if needed
+                (void)param;
+                break;
+
+            case BehaviorMessage::RETREAT:
+                // Force retreat state
+                attack.currentState = static_cast<uint8_t>(AttackState::RETREATING);
+                attack.isRetreating = true;
+                attack.stateChangeTimer = 0.0f;
+                break;
+
+            case BehaviorMessage::STOP_ATTACK:
+                // Return to seeking state
+                attack.currentState = static_cast<uint8_t>(AttackState::SEEKING);
+                attack.isRetreating = false;
+                attack.hasExplicitTarget = false;
+                attack.explicitTarget = EntityHandle{};
+                attack.stateChangeTimer = 0.0f;
+                break;
+
+            case BehaviorMessage::ENABLE_COMBO:
+                attack.comboEnabled = true;
+                break;
+
+            case BehaviorMessage::DISABLE_COMBO:
+                attack.comboEnabled = false;
+                attack.currentCombo = 0;
+                attack.attacksInCombo = 0;
+                break;
+
+            case BehaviorMessage::BERSERK:
+                // Enter berserker mode - half cooldowns, max aggression
+                attack.attackMode = static_cast<uint8_t>(AttackMode::BERSERKER);
+                attack.comboEnabled = true;
+                break;
+
+            default:
+                break;
+        }
+    }
+    data.pendingMessageCount = 0;
+    (void)config;
 }
 
 void changeState(BehaviorData& data, AttackState newState) {
@@ -248,6 +313,95 @@ void executeAttackAction(size_t edmIndex, const Vector2D& targetPos, BehaviorDat
     }
 }
 
+// ============================================================================
+// MODE-SPECIFIC POSITIONING FUNCTIONS
+// ============================================================================
+
+/**
+ * @brief Apply ranged attack positioning (kiting behavior)
+ * @return true if we should skip normal positioning, false to continue
+ */
+bool applyRangedPositioning(size_t edmIndex, const Vector2D& entityPos, const Vector2D& targetPos,
+                            BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
+    auto& attack = data.state.attack;
+    float optimalRange = config.attackRange * config.optimalRangeMultiplier;
+    float minimumRange = config.attackRange * config.minimumRangeMultiplier;
+
+    // Ranged units kite: back off if too close
+    if (attack.targetDistance < minimumRange && minimumRange > 0.0f) {
+        Vector2D direction = normalizeDir(entityPos - targetPos);
+        Vector2D backoffPos = targetPos + direction * (optimalRange * 0.8f);
+        moveToPosition(edmIndex, backoffPos, config.movementSpeed);
+        return true;
+    }
+
+    // Move closer if too far
+    if (attack.targetDistance > config.attackRange) {
+        moveToPosition(edmIndex, targetPos, config.movementSpeed);
+        return true;
+    }
+
+    return false; // Use normal positioning
+}
+
+/**
+ * @brief Apply charge attack positioning (rush attacks)
+ */
+bool applyChargePositioning(size_t edmIndex, const Vector2D& entityPos, const Vector2D& targetPos,
+                            BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
+    auto& attack = data.state.attack;
+    float chargeDistance = config.attackRange * CHARGE_DISTANCE_THRESHOLD_MULT;
+
+    // If far enough for a charge, start charging
+    if (attack.targetDistance > chargeDistance && !attack.isCharging) {
+        attack.isCharging = true;
+    }
+
+    // During charge, move at 2x speed toward target
+    if (attack.isCharging) {
+        moveToPosition(edmIndex, targetPos, config.movementSpeed * CHARGE_SPEED_MULTIPLIER);
+        return true;
+    }
+
+    return false; // Use normal positioning
+}
+
+/**
+ * @brief Apply hit-and-run positioning (frequent retreats)
+ */
+bool applyHitAndRunPositioning(size_t edmIndex, const Vector2D& entityPos, const Vector2D& targetPos,
+                               BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
+    auto& attack = data.state.attack;
+    auto& edm = EntityDataManager::Instance();
+
+    // After recovering, force retreat
+    if (attack.currentState == static_cast<uint8_t>(AttackState::RECOVERING) ||
+        attack.currentState == static_cast<uint8_t>(AttackState::COOLDOWN)) {
+
+        Vector2D retreatDir = normalizeDir(entityPos - targetPos);
+        Vector2D retreatVelocity = retreatDir * (config.movementSpeed * RETREAT_SPEED_MULTIPLIER * 1.2f);
+        edm.getHotDataByIndex(edmIndex).transform.velocity = retreatVelocity;
+        return true;
+    }
+
+    return false; // Use normal positioning
+}
+
+/**
+ * @brief Apply berserker mode modifiers (no retreat, fast attacks)
+ */
+void applyBerserkerModifiers(BehaviorData& data, float& effectiveRetreatThreshold,
+                             float& effectiveCooldown) {
+    auto& attack = data.state.attack;
+    (void)attack;  // Used for potential future state checks
+
+    // Berserkers almost never retreat
+    effectiveRetreatThreshold = 0.1f;
+
+    // Half cooldown
+    effectiveCooldown *= 0.5f;
+}
+
 } // anonymous namespace
 
 namespace Behaviors {
@@ -267,6 +421,7 @@ void initAttack(size_t edmIndex, const HammerEngine::AttackBehaviorConfig& confi
     attack.retreatPosition = Vector2D(0, 0);
     attack.strafeVector = Vector2D(0, 0);
     attack.currentState = 0; // SEEKING
+    attack.attackMode = 0;   // MELEE by default
     attack.attackTimer = 0.0f;
     attack.stateChangeTimer = 0.0f;
     attack.damageTimer = 0.0f;
@@ -292,6 +447,7 @@ void initAttack(size_t edmIndex, const HammerEngine::AttackBehaviorConfig& confi
     attack.circleStrafing = false;
     attack.flanking = false;
     attack.hasExplicitTarget = false;
+    attack.comboEnabled = false;
     attack.explicitTarget = EntityHandle{};
 
     data.setInitialized(true);
@@ -303,6 +459,9 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
 
     auto& data = *ctx.behaviorData;
     auto& attack = data.state.attack;
+
+    // Process any pending messages before main logic
+    processAttackMessages(data, config);
 
     // Determine target position
     Vector2D targetPos;
@@ -364,10 +523,24 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     } else {
         attack.hasTarget = false;
         attack.inCombat = false;
-        if (attack.currentState != static_cast<uint8_t>(AttackState::SEEKING)) {
-            changeState(data, AttackState::SEEKING);
+
+        // Don't override message-triggered states like RETREATING
+        // RETREATING can continue without a target (using lastTargetPosition)
+        if (attack.currentState == static_cast<uint8_t>(AttackState::RETREATING)) {
+            // Use lastTargetPosition for retreat direction if available
+            if (attack.lastTargetPosition.lengthSquared() > 0.01f) {
+                targetPos = attack.lastTargetPosition;
+                hasTarget = true;  // Allow retreat movement logic to work
+            } else {
+                // No known target position - just stop but stay in RETREATING state
+                return;
+            }
+        } else {
+            if (attack.currentState != static_cast<uint8_t>(AttackState::SEEKING)) {
+                changeState(data, AttackState::SEEKING);
+            }
+            return;
         }
-        return;
     }
 
     // Check for berserker mode
@@ -378,8 +551,19 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
         berserkerMode = (aggression > 0.8f && personalAggression > 0.7f);
     }
 
-    // Check retreat conditions
-    if (!berserkerMode && shouldRetreat(ctx.edmIndex, config.retreatThreshold, config.aggression) &&
+    // Determine attack mode and apply mode-specific modifiers
+    AttackMode attackMode = static_cast<AttackMode>(attack.attackMode);
+    float effectiveRetreatThreshold = config.retreatThreshold;
+    float effectiveCooldown = config.attackCooldown;
+
+    // Apply berserker mode modifiers
+    if (berserkerMode || attackMode == AttackMode::BERSERKER) {
+        applyBerserkerModifiers(data, effectiveRetreatThreshold, effectiveCooldown);
+    }
+
+    // Check retreat conditions (respects berserker mode's low threshold)
+    if (!berserkerMode && attackMode != AttackMode::BERSERKER &&
+        shouldRetreat(ctx.edmIndex, effectiveRetreatThreshold, config.aggression) &&
         attack.currentState != static_cast<uint8_t>(AttackState::RETREATING)) {
 
         bool shouldFlee = false;
@@ -412,7 +596,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     } else if (currentState == AttackState::RECOVERING && timeInState > config.recoveryTime) {
         changeState(data, AttackState::COOLDOWN);
         currentState = AttackState::COOLDOWN;
-    } else if (currentState == AttackState::COOLDOWN && timeInState > config.attackCooldown) {
+    } else if (currentState == AttackState::COOLDOWN && timeInState > effectiveCooldown) {
         attack.canAttack = true;
         changeState(data, attack.hasTarget ? AttackState::APPROACHING : AttackState::SEEKING);
         currentState = static_cast<AttackState>(attack.currentState);
@@ -436,6 +620,25 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
         case AttackState::POSITIONING: {
             float distToTarget = attack.targetDistance;
             Vector2D direction = normalizeDir(entityPos - targetPos);
+
+            // Apply mode-specific positioning
+            bool modeHandled = false;
+            switch (attackMode) {
+                case AttackMode::RANGED:
+                    modeHandled = applyRangedPositioning(ctx.edmIndex, entityPos, targetPos, data, config);
+                    break;
+                case AttackMode::CHARGE:
+                    modeHandled = applyChargePositioning(ctx.edmIndex, entityPos, targetPos, data, config);
+                    break;
+                case AttackMode::HIT_AND_RUN:
+                    modeHandled = applyHitAndRunPositioning(ctx.edmIndex, entityPos, targetPos, data, config);
+                    break;
+                default:
+                    // MELEE, AMBUSH, COORDINATED, BERSERKER use standard positioning
+                    break;
+            }
+
+            if (modeHandled) break;
 
             // Enforce minimum range - back off if too close
             if (distToTarget < minimumRange && minimumRange > 0.0f) {
@@ -500,9 +703,15 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             Vector2D retreatVelocity = retreatDir * (config.movementSpeed * RETREAT_SPEED_MULTIPLIER);
             edm.getHotDataByIndex(ctx.edmIndex).transform.velocity = retreatVelocity;
 
-            if (attack.targetDistance > config.attackRange * 2.0f || !shouldRetreat(ctx.edmIndex, config.retreatThreshold, config.aggression)) {
-                attack.isRetreating = false;
-                changeState(data, AttackState::SEEKING);
+            // Don't exit retreat immediately - require minimum time in state
+            // This prevents message-triggered retreats from being instantly cancelled
+            constexpr float MIN_RETREAT_TIME = 0.5f;
+            if (attack.stateChangeTimer >= MIN_RETREAT_TIME) {
+                if (attack.targetDistance > config.attackRange * 2.0f ||
+                    !shouldRetreat(ctx.edmIndex, config.retreatThreshold, config.aggression)) {
+                    attack.isRetreating = false;
+                    changeState(data, AttackState::SEEKING);
+                }
             }
             break;
         }

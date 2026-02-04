@@ -77,6 +77,44 @@ struct BehaviorContext {
           worldBoundsValid(wBoundsValid), gameTime(gTime) {}
 };
 
+// ============================================================================
+// BEHAVIOR MESSAGE IDs
+// ============================================================================
+
+/**
+ * @brief Message IDs for behavior-specific commands
+ *
+ * These can be queued via queueBehaviorMessage() and processed at the start
+ * of each behavior's execute function via processPendingMessages().
+ */
+namespace BehaviorMessage {
+    // Attack messages (1-9)
+    constexpr uint8_t ATTACK_TARGET = 1;     // Force attack on explicit target
+    constexpr uint8_t RETREAT = 2;           // Force retreat state
+    constexpr uint8_t STOP_ATTACK = 3;       // Return to SEEKING state
+    constexpr uint8_t ENABLE_COMBO = 4;      // Enable combo attack system
+    constexpr uint8_t DISABLE_COMBO = 5;     // Disable combo attack system
+    constexpr uint8_t HEAL = 6;              // Heal the entity
+    constexpr uint8_t BERSERK = 7;           // Enter berserker mode
+
+    // Flee messages (10-19)
+    constexpr uint8_t PANIC = 10;            // Force panic state
+    constexpr uint8_t CALM_DOWN = 11;        // Exit panic state
+    constexpr uint8_t STOP_FLEEING = 12;     // Stop fleeing completely
+    constexpr uint8_t RECOVER_STAMINA = 13;  // Reset stamina to max
+
+    // Guard messages (20-29)
+    constexpr uint8_t GO_ON_DUTY = 20;       // Enable guard duty
+    constexpr uint8_t GO_OFF_DUTY = 21;      // Disable guard duty
+    constexpr uint8_t RAISE_ALERT = 22;      // Force HOSTILE alert level
+    constexpr uint8_t CLEAR_ALERT = 23;      // Reset to CALM alert level
+    constexpr uint8_t INVESTIGATE_POSITION = 24; // Investigate a position (param=x, y encoded)
+    constexpr uint8_t RETURN_TO_POST = 25;   // Force return to assigned position
+    constexpr uint8_t SET_PATROL_MODE = 26;  // Set to PATROL_GUARD mode
+    constexpr uint8_t SET_STATIC_MODE = 27;  // Set to STATIC_GUARD mode
+    constexpr uint8_t SET_ROAM_MODE = 28;    // Set to ROAMING_GUARD mode
+}
+
 namespace Behaviors {
 
 // ============================================================================
@@ -286,6 +324,27 @@ float calculateAngleToTarget(const Vector2D& from, const Vector2D& to);
  * @return Default BehaviorConfigData for that type
  */
 HammerEngine::BehaviorConfigData getDefaultConfig(BehaviorType type);
+
+// ============================================================================
+// MESSAGE QUEUE FUNCTIONS
+// ============================================================================
+
+/**
+ * @brief Queue a message for an entity's behavior
+ * @param edmIndex Entity's index in EDM
+ * @param messageId BehaviorMessage::* constant
+ * @param param Optional parameter (behavior-specific)
+ *
+ * Messages are processed at the start of each behavior's execute function.
+ * If the queue is full (4 messages), the message is silently dropped.
+ */
+void queueBehaviorMessage(size_t edmIndex, uint8_t messageId, uint8_t param = 0);
+
+/**
+ * @brief Clear all pending messages for an entity
+ * @param edmIndex Entity's index in EDM
+ */
+void clearPendingMessages(size_t edmIndex);
 
 // ============================================================================
 // DAMAGE EVENT COLLECTION (thread-local buffer for lock-free combat)

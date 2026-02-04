@@ -927,6 +927,16 @@ struct BehaviorData {
     int cachedNearbyCount{0};
     Vector2D cachedClusterCenter;
 
+    // Pending message queue (8 bytes: 4 messages max)
+    // Each message: messageId (1 byte) + param encoded as uint8 (1 byte) = 2 bytes
+    struct PendingMessage {
+        uint8_t messageId{0};   // BehaviorMessage::* constant
+        uint8_t param{0};       // Optional parameter (behavior-specific)
+    };
+    PendingMessage pendingMessages[4];
+    uint8_t pendingMessageCount{0};
+    uint8_t _msgPad[3]{};       // Padding for alignment
+
     static constexpr uint8_t FLAG_VALID = 0x01;
     static constexpr uint8_t FLAG_INITIALIZED = 0x02;
 
@@ -961,7 +971,7 @@ struct BehaviorData {
             uint8_t _pad[3];
         } idle;
 
-        struct { // GuardState (~112 bytes)
+        struct { // GuardState (~176 bytes with patrol waypoints)
             Vector2D assignedPosition;
             Vector2D lastKnownThreatPosition;
             Vector2D investigationTarget;
@@ -985,6 +995,15 @@ struct BehaviorData {
             bool onDuty;
             bool alertRaised;
             bool helpCalled;
+
+            // Patrol waypoint system (64 bytes for 8 waypoints)
+            // Note: MAX_PATROL_WAYPOINTS = 8 (defined as global constant)
+            Vector2D patrolWaypoints[8];
+            uint8_t patrolWaypointCount{0};
+            uint8_t currentPatrolWaypointIndex{0};
+            bool reversePatrol{false};       // Ping-pong patrol (A->B->A instead of A->B->A->B)
+            bool patrolForward{true};        // Current direction in ping-pong mode
+            uint8_t _guardPad[4];            // Padding for alignment
         } guard;
 
         struct { // FollowState (~72 bytes)
@@ -1003,7 +1022,7 @@ struct BehaviorData {
             bool isStopped;
         } follow;
 
-        struct { // FleeState (~80 bytes)
+        struct { // FleeState (~136 bytes with safe zones)
             Vector2D lastThreatPosition;
             Vector2D fleeDirection;
             Vector2D lastKnownSafeDirection;
@@ -1020,6 +1039,14 @@ struct BehaviorData {
             bool isInPanic;
             bool hasValidThreat;
             uint8_t _pad;
+
+            // Safe zone system (48 bytes for 4 safe zones + count)
+            // Each zone: center (8 bytes) + radius (4 bytes) + active (1 byte) = ~13 bytes
+            // MAX_SAFE_ZONES = 4, stored inline
+            Vector2D safeZoneCenters[4];      // 32 bytes: Center positions of safe zones
+            float safeZoneRadii[4];           // 16 bytes: Radii of safe zones
+            uint8_t safeZoneCount{0};         // Number of active safe zones (0-4)
+            uint8_t _fleePad[7];              // Padding for alignment
         } flee;
 
         struct { // ChaseState (~80 bytes)
@@ -1063,6 +1090,7 @@ struct BehaviorData {
             int attacksInCombo;
             int strafeDirectionInt;
             uint8_t currentState;  // 0=Seeking, 1=Approaching, 2=Attacking, 3=Recovering, 4=Retreating, 5=Circling
+            uint8_t attackMode;    // 0=Melee, 1=Ranged, 2=Charge, 3=Ambush, 4=Coordinated, 5=HitAndRun, 6=Berserker
             bool inCombat;
             bool hasTarget;
             bool isCharging;
@@ -1073,11 +1101,11 @@ struct BehaviorData {
             bool circleStrafing;
             bool flanking;
             bool hasExplicitTarget;    // NPC-vs-NPC combat: explicit target set
-            uint8_t _pad[1];
+            bool comboEnabled;         // Whether combo attacks are enabled
             EntityHandle explicitTarget;  // NPC-vs-NPC combat: overrides player targeting
         } attack;
 
-        uint8_t raw[160]; // Ensure union is large enough (attack state grew for explicitTarget)
+        uint8_t raw[192]; // Ensure union is large enough (guard state grew for patrol waypoints)
     };
 
     StateUnion state;
@@ -1111,8 +1139,8 @@ struct BehaviorData {
     }
 };
 
-// Ensure BehaviorData fits in ~200 bytes (3 cache lines)
-static_assert(sizeof(BehaviorData) <= 200, "BehaviorData exceeds 200 bytes");
+// Ensure BehaviorData fits in ~256 bytes (4 cache lines) - grew for patrol waypoints
+static_assert(sizeof(BehaviorData) <= 256, "BehaviorData exceeds 256 bytes");
 
 // ============================================================================
 // NPC MEMORY SYSTEM

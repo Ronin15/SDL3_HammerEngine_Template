@@ -19,17 +19,81 @@ thread_local std::mt19937 s_rng{std::random_device{}()};
 thread_local std::uniform_real_distribution<float> s_angleVariation{-0.5f, 0.5f};
 thread_local std::uniform_real_distribution<float> s_panicVariation{0.8f, 1.2f};
 
-constexpr float DEFAULT_MAX_STAMINA = 100.0f;
-constexpr float DEFAULT_STAMINA_DRAIN = 10.0f;
-constexpr float DEFAULT_STAMINA_RECOVERY = 5.0f;
-constexpr float DEFAULT_PANIC_DURATION = 5.0f;
-constexpr float DEFAULT_ZIGZAG_INTERVAL = 0.5f;
-constexpr float DEFAULT_ZIGZAG_ANGLE = 30.0f;
+// Note: All flee config values now come from FleeBehaviorConfig passed to functions
+// No default constants needed - config is always available during execution
+
+constexpr size_t MAX_SAFE_ZONES = 4;  // Matches FleeState array size
+
+// Process pending messages for Flee behavior
+void processFleeMessages(BehaviorData& data, const HammerEngine::FleeBehaviorConfig& config) {
+    auto& flee = data.state.flee;
+
+    for (uint8_t i = 0; i < data.pendingMessageCount; ++i) {
+        uint8_t msgId = data.pendingMessages[i].messageId;
+
+        switch (msgId) {
+            case BehaviorMessage::PANIC:
+                // Force panic state
+                flee.isInPanic = true;
+                flee.panicTimer = config.panicDuration;
+                break;
+
+            case BehaviorMessage::CALM_DOWN:
+                // Exit panic state
+                flee.isInPanic = false;
+                flee.panicTimer = 0.0f;
+                break;
+
+            case BehaviorMessage::STOP_FLEEING:
+                // Stop fleeing completely
+                flee.isFleeing = false;
+                flee.isInPanic = false;
+                flee.panicTimer = 0.0f;
+                flee.hasValidThreat = false;
+                break;
+
+            case BehaviorMessage::RECOVER_STAMINA:
+                // Reset stamina to max
+                flee.currentStamina = config.maxStamina;
+                break;
+
+            default:
+                break;
+        }
+    }
+    data.pendingMessageCount = 0;
+}
 
 Vector2D normalizeVector(const Vector2D& direction) {
     float magnitude = direction.length();
     if (magnitude < 0.001f) return Vector2D(1, 0);
     return direction / magnitude;
+}
+
+/**
+ * @brief Find the nearest safe zone center from current position
+ * @return Vector2D of nearest safe zone center, or zero vector if no safe zones
+ */
+Vector2D findNearestSafeZone(const BehaviorContext& ctx) {
+    if (!ctx.behaviorData) return Vector2D{0, 0};
+
+    const auto& flee = ctx.behaviorData->state.flee;
+    if (flee.safeZoneCount == 0) return Vector2D{0, 0};
+
+    Vector2D currentPos = ctx.transform.position;
+    Vector2D nearest{0, 0};
+    float minDistSq = std::numeric_limits<float>::max();
+
+    for (uint8_t i = 0; i < flee.safeZoneCount && i < MAX_SAFE_ZONES; ++i) {
+        Vector2D toZone = flee.safeZoneCenters[i] - currentPos;
+        float distSq = toZone.lengthSquared();
+        if (distSq < minDistSq) {
+            minDistSq = distSq;
+            nearest = flee.safeZoneCenters[i];
+        }
+    }
+
+    return nearest;
 }
 
 Vector2D avoidBoundaries(const Vector2D& position, const Vector2D& direction, float padding) {
@@ -78,29 +142,30 @@ Vector2D calculateFleeDirection(const Vector2D& entityPos, const Vector2D& threa
     return normalizeVector(fleeDir);
 }
 
-float calculateFleeSpeedModifier(const BehaviorData& data, bool useStamina) {
+float calculateFleeSpeedModifier(const BehaviorData& data, const HammerEngine::FleeBehaviorConfig& config) {
     const auto& flee = data.state.flee;
     float modifier = 1.0f;
 
-    if (flee.isInPanic) modifier *= 1.3f;
+    if (flee.isInPanic) modifier *= config.panicSpeedMultiplier;
     modifier *= (1.0f + flee.fearBoost * 0.4f);
 
-    if (useStamina) {
-        float staminaRatio = flee.currentStamina / DEFAULT_MAX_STAMINA;
+    if (config.useStamina) {
+        float staminaRatio = flee.currentStamina / config.maxStamina;
         modifier *= (0.3f + 0.7f * staminaRatio);
     }
 
     return modifier;
 }
 
-void updateStamina(BehaviorData& data, float deltaTime, bool fleeing) {
+void updateStamina(BehaviorData& data, float deltaTime, bool fleeing,
+                   const HammerEngine::FleeBehaviorConfig& config) {
     auto& flee = data.state.flee;
     if (fleeing) {
-        flee.currentStamina -= DEFAULT_STAMINA_DRAIN * deltaTime;
+        flee.currentStamina -= config.staminaDrain * deltaTime;
         flee.currentStamina = std::max(0.0f, flee.currentStamina);
     } else {
-        flee.currentStamina += DEFAULT_STAMINA_RECOVERY * deltaTime;
-        flee.currentStamina = std::min(DEFAULT_MAX_STAMINA, flee.currentStamina);
+        flee.currentStamina += config.staminaRecovery * deltaTime;
+        flee.currentStamina = std::min(config.maxStamina, flee.currentStamina);
     }
 }
 
@@ -184,7 +249,7 @@ void updatePanicFlee(BehaviorContext& ctx, const Vector2D& threatPos,
         flee.directionChangeTimer = 0.0f;
     }
 
-    float speedModifier = calculateFleeSpeedModifier(data, false);
+    float speedModifier = calculateFleeSpeedModifier(data, config);
     ctx.transform.velocity = flee.fleeDirection * config.fleeSpeed * speedModifier;
 }
 
@@ -216,7 +281,7 @@ void updateStrategicRetreat(BehaviorContext& ctx, const Vector2D& threatPos,
     Vector2D dest = PathfinderManager::Instance().clampToWorldBounds(
         currentPos + flee.fleeDirection * retreatDistance, 100.0f);
 
-    float speedModifier = calculateFleeSpeedModifier(data, false);
+    float speedModifier = calculateFleeSpeedModifier(data, config) * config.strategicSpeedMultiplier;
     if (!tryFollowPathToGoal(ctx, dest, config.fleeSpeed * speedModifier)) {
         ctx.transform.velocity = flee.fleeDirection * config.fleeSpeed * speedModifier;
     }
@@ -229,14 +294,14 @@ void updateEvasiveManeuver(BehaviorContext& ctx, const Vector2D& threatPos,
     auto& flee = data.state.flee;
     Vector2D currentPos = ctx.transform.position;
 
-    if (flee.zigzagTimer > DEFAULT_ZIGZAG_INTERVAL) {
+    if (flee.zigzagTimer > config.zigzagInterval) {
         flee.zigzagDirection *= -1;
         flee.zigzagTimer = 0.0f;
     }
 
     Vector2D baseFleeDir = calculateFleeDirection(currentPos, threatPos, data, config.worldPadding);
 
-    float zigzagAngleRad = (DEFAULT_ZIGZAG_ANGLE * static_cast<float>(M_PI) / 180.0f) * flee.zigzagDirection;
+    float zigzagAngleRad = (config.zigzagAngle * static_cast<float>(M_PI) / 180.0f) * flee.zigzagDirection;
     float cos_z = std::cos(zigzagAngleRad);
     float sin_z = std::sin(zigzagAngleRad);
 
@@ -245,7 +310,7 @@ void updateEvasiveManeuver(BehaviorContext& ctx, const Vector2D& threatPos,
 
     flee.fleeDirection = normalizeVector(zigzagDir);
 
-    float speedModifier = calculateFleeSpeedModifier(data, false);
+    float speedModifier = calculateFleeSpeedModifier(data, config);
     ctx.transform.velocity = flee.fleeDirection * config.fleeSpeed * speedModifier;
 }
 
@@ -267,10 +332,19 @@ void updateSeekCover(BehaviorContext& ctx, const Vector2D& threatPos,
     }
 
     flee.fleeDirection = calculateFleeDirection(currentPos, threatPos, data, config.worldPadding);
+
+    // Check for nearby safe zones and blend flee direction toward them
+    Vector2D safeZoneTarget = findNearestSafeZone(ctx);
+    if (safeZoneTarget.lengthSquared() > 0.01f) {
+        Vector2D toSafeZone = (safeZoneTarget - currentPos).normalized();
+        // Blend 40% flee direction, 60% toward safe zone
+        flee.fleeDirection = (flee.fleeDirection * 0.4f + toSafeZone * 0.6f).normalized();
+    }
+
     Vector2D dest = PathfinderManager::Instance().clampToWorldBounds(
         currentPos + flee.fleeDirection * coverDistance, 100.0f);
 
-    float speedModifier = calculateFleeSpeedModifier(data, false);
+    float speedModifier = calculateFleeSpeedModifier(data, config);
     if (!tryFollowPathToGoal(ctx, dest, config.fleeSpeed * speedModifier)) {
         ctx.transform.velocity = flee.fleeDirection * config.fleeSpeed * speedModifier;
     }
@@ -293,7 +367,7 @@ void initFlee(size_t edmIndex, const HammerEngine::FleeBehaviorConfig& config) {
     flee.fleeTimer = 0.0f;
     flee.directionChangeTimer = 0.0f;
     flee.panicTimer = 0.0f;
-    flee.currentStamina = DEFAULT_MAX_STAMINA;
+    flee.currentStamina = config.maxStamina;
     flee.zigzagTimer = 0.0f;
     flee.navRadius = 18.0f;
     flee.backoffTimer = 0.0f;
@@ -302,9 +376,9 @@ void initFlee(size_t edmIndex, const HammerEngine::FleeBehaviorConfig& config) {
     flee.isInPanic = false;
     flee.hasValidThreat = false;
     flee.fearBoost = 0.0f;
+    flee.safeZoneCount = 0;  // No safe zones by default
 
     data.setInitialized(true);
-    (void)config;
 }
 
 void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& config) {
@@ -313,6 +387,9 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
     auto& data = *ctx.behaviorData;
     auto& flee = data.state.flee;
     auto& pathData = *ctx.pathData;
+
+    // Process any pending messages before main logic
+    processFleeMessages(data, config);
 
     // Update timers
     flee.fleeTimer += ctx.deltaTime;
@@ -355,7 +432,7 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
             flee.isInPanic = false;
             flee.hasValidThreat = false;
         }
-        updateStamina(data, ctx.deltaTime, false);
+        updateStamina(data, ctx.deltaTime, false, config);
         return;
     }
 
@@ -369,7 +446,7 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
             flee.fleeTimer = 0.0f;
             flee.lastThreatPosition = threatPos;
             flee.isInPanic = true;
-            flee.panicTimer = DEFAULT_PANIC_DURATION * s_panicVariation(s_rng);
+            flee.panicTimer = config.panicDuration * s_panicVariation(s_rng);
         }
         flee.hasValidThreat = true;
         flee.lastThreatPosition = threatPos;
@@ -406,7 +483,7 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
                 updateStrategicRetreat(ctx, threatPos, config);
             }
         }
-        updateStamina(data, ctx.deltaTime, true);
+        updateStamina(data, ctx.deltaTime, true, config);
     }
 }
 

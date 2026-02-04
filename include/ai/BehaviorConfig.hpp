@@ -197,6 +197,23 @@ struct FleeBehaviorConfig
     float pathTTL = 2.5f;                         // Path time-to-live in seconds
     float noProgressWindow = 0.4f;                // Seconds without progress before repath
     float goalChangeThreshold = 180.0f;           // Distance threat must move to trigger repath
+
+    // Stamina system
+    float maxStamina = 100.0f;                    // Maximum stamina pool
+    float staminaDrain = 10.0f;                   // Stamina drain per second while fleeing
+    float staminaRecovery = 5.0f;                 // Stamina recovery per second when not fleeing
+    bool useStamina = true;                       // Whether stamina affects flee speed
+
+    // Panic settings
+    float panicDuration = 5.0f;                   // Duration of panic mode in seconds
+    float panicSpeedMultiplier = 1.3f;            // Speed multiplier during panic
+
+    // Zigzag/evasive settings
+    float zigzagInterval = 0.5f;                  // Seconds between zigzag direction changes
+    float zigzagAngle = 30.0f;                    // Angle of zigzag deviation in degrees
+
+    // Strategic retreat
+    float strategicSpeedMultiplier = 0.8f;        // Speed multiplier for strategic retreat
 };
 
 /**
@@ -235,7 +252,7 @@ struct FollowBehaviorConfig
 struct GuardBehaviorConfig
 {
     // Movement parameters
-    float guardSpeed = 45.0f;                     // Speed when returning to guard position
+    float guardSpeed = 45.0f;                     // Base speed when guarding
 
     // Guard parameters
     float guardRadius = 50.0f;                    // Radius around guard position to patrol
@@ -247,6 +264,30 @@ struct GuardBehaviorConfig
 
     // Stall recovery
     float stallSpeedMultiplier = 0.5f;            // Fraction of guard speed to trigger stall
+
+    // Mode-specific speed multipliers (applied to guardSpeed)
+    float staticSpeedMultiplier = 1.0f;           // Speed when static (usually 0 movement)
+    float patrolSpeedMultiplier = 1.5f;           // Speed when patrolling waypoints
+    float areaSpeedMultiplier = 1.2f;             // Speed when guarding an area
+    float roamingSpeedMultiplier = 1.8f;          // Speed when roaming freely
+    float alertSpeedMultiplier = 2.5f;            // Speed when in alert mode
+
+    // Alert radius multipliers (affect detection range)
+    float staticAlertRadiusMultiplier = 1.5f;     // Detection range when static
+    float patrolAlertRadiusMultiplier = 1.8f;     // Detection range when patrolling
+    float areaAlertRadiusMultiplier = 2.0f;       // Detection range when area guarding
+    float roamingAlertRadiusMultiplier = 1.6f;    // Detection range when roaming
+    float alertModeAlertRadiusMultiplier = 2.5f;  // Detection range in alert mode
+
+    // Investigation and alert
+    float investigationTime = 10.0f;              // Seconds to investigate before giving up
+    float alertDecayTime = 15.0f;                 // Seconds for alert level to decay one level
+    float returnToPostTime = 5.0f;                // Delay before returning to post after all-clear
+
+    // Help call system
+    bool canCallForHelp = false;                  // Whether guard can call nearby guards
+    float helpCallRadius = 300.0f;                // Radius to call for help
+    int guardGroupId = 0;                         // Group ID for coordinated response
 };
 
 /**

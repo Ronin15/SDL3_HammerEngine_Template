@@ -14,6 +14,7 @@
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "ai/BehaviorExecutors.hpp"
 #include "core/ThreadSystem.hpp"
 #include "world/WorldData.hpp"
 #include <memory>
@@ -368,7 +369,7 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
             edm.initMemoryData(chaserIdx);
             auto& memData = edm.getMemoryData(chaserIdx);
             memData.lastAttacker = opponentHandle;  // Opponent attacked us - chase them!
-            memData.lastCombatTime = 0.0f;          // Just happened
+            memData.lastCombatTime = GameTimeManager::Instance().getTotalGameTimeSeconds();  // Just happened
             memData.setValid(true);
         }
     }
@@ -618,6 +619,449 @@ BOOST_AUTO_TEST_CASE(TestBroadcastMessages) {
 
     // All entities should receive messages without crashes
     BOOST_CHECK(true);
+}
+
+// ============================================================================
+// QUEUE-BASED MESSAGE SYSTEM TESTS
+// ============================================================================
+
+// Test basic message queue operations (no AI update)
+BOOST_AUTO_TEST_CASE(TestMessageQueueBasicOperations) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle handle = entity->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.assignBehavior(handle, "Attack");
+
+    // Verify initial state
+    auto& behaviorData = edm.getBehaviorData(idx);
+    BOOST_CHECK(behaviorData.pendingMessageCount == 0);
+
+    // Queue a message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RETREAT);
+    BOOST_CHECK(behaviorData.pendingMessageCount == 1);
+    BOOST_CHECK(behaviorData.pendingMessages[0].messageId == BehaviorMessage::RETREAT);
+
+    // Queue another message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::ENABLE_COMBO, 42);
+    BOOST_CHECK(behaviorData.pendingMessageCount == 2);
+    BOOST_CHECK(behaviorData.pendingMessages[1].messageId == BehaviorMessage::ENABLE_COMBO);
+    BOOST_CHECK(behaviorData.pendingMessages[1].param == 42);
+
+    // Clear messages
+    Behaviors::clearPendingMessages(idx);
+    BOOST_CHECK(behaviorData.pendingMessageCount == 0);
+
+    BOOST_TEST_MESSAGE("Basic message queue operations verified");
+    aiMgr.unassignBehavior(handle);
+}
+
+BOOST_AUTO_TEST_CASE(TestAttackMessageRetreat) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    // Create attacker close to player so it has a valid target
+    auto entity = TestNPC::create(450.0f, 450.0f);  // Near player at 500,500
+    EntityHandle handle = entity->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.assignBehavior(handle, "Attack");
+    updateAI(0.016f);
+
+    idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Verify attack behavior was assigned and has target
+    BOOST_CHECK(edm.getBehaviorData(idx).behaviorType == BehaviorType::Attack);
+    BOOST_CHECK_MESSAGE(edm.getBehaviorData(idx).state.attack.hasTarget == true,
+        "Attack should have target (player nearby)");
+
+    // Queue RETREAT message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RETREAT);
+    BOOST_CHECK(edm.getBehaviorData(idx).pendingMessageCount == 1);
+
+    // Run update to process the message
+    updateAI(0.016f);
+
+    idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Message should have been processed (queue cleared)
+    BOOST_CHECK(edm.getBehaviorData(idx).pendingMessageCount == 0);
+
+    // Verify isRetreating is true (message effect persisted through execution)
+    BOOST_CHECK_MESSAGE(edm.getBehaviorData(idx).state.attack.isRetreating == true,
+        "isRetreating should be true after RETREAT message");
+
+    BOOST_TEST_MESSAGE("Attack RETREAT message verified");
+    aiMgr.unassignBehavior(handle);
+}
+
+BOOST_AUTO_TEST_CASE(TestAttackMessageStopAttack) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    // Create attacker close to player
+    auto entity = TestNPC::create(450.0f, 450.0f);
+    EntityHandle handle = entity->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.assignBehavior(handle, "Attack");
+    updateAI(0.016f);
+
+    idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // First set retreat state via message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RETREAT);
+    updateAI(0.016f);
+
+    idx = edm.getIndex(handle);
+    BOOST_CHECK(edm.getBehaviorData(idx).state.attack.isRetreating == true);
+
+    // Now queue STOP_ATTACK message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::STOP_ATTACK);
+    updateAI(0.016f);
+
+    idx = edm.getIndex(handle);
+
+    // Verify isRetreating is false and explicit target is cleared
+    BOOST_CHECK(edm.getBehaviorData(idx).state.attack.isRetreating == false);
+    BOOST_CHECK(edm.getBehaviorData(idx).state.attack.hasExplicitTarget == false);
+
+    BOOST_TEST_MESSAGE("Attack STOP_ATTACK message verified");
+    aiMgr.unassignBehavior(handle);
+}
+
+BOOST_AUTO_TEST_CASE(TestAttackMessageComboToggle) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(450.0f, 450.0f);
+    EntityHandle handle = entity->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.assignBehavior(handle, "Attack");
+    updateAI(0.016f);
+
+    idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Initially combo should be disabled
+    BOOST_CHECK(edm.getBehaviorData(idx).state.attack.comboEnabled == false);
+
+    // Queue ENABLE_COMBO message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::ENABLE_COMBO);
+    updateAI(0.016f);
+
+    idx = edm.getIndex(handle);
+    BOOST_CHECK(edm.getBehaviorData(idx).state.attack.comboEnabled == true);
+
+    // Queue DISABLE_COMBO message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::DISABLE_COMBO);
+    updateAI(0.016f);
+
+    idx = edm.getIndex(handle);
+    BOOST_CHECK(edm.getBehaviorData(idx).state.attack.comboEnabled == false);
+
+    BOOST_TEST_MESSAGE("Attack combo toggle messages verified");
+    aiMgr.unassignBehavior(handle);
+}
+
+BOOST_AUTO_TEST_CASE(TestAttackMessageBerserk) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(450.0f, 450.0f);
+    EntityHandle handle = entity->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.assignBehavior(handle, "Attack");
+    updateAI(0.016f);
+
+    idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Initially should be MELEE mode (0)
+    BOOST_CHECK(edm.getBehaviorData(idx).state.attack.attackMode == 0);
+
+    // Queue BERSERK message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::BERSERK);
+    updateAI(0.016f);
+
+    idx = edm.getIndex(handle);
+
+    // Verify berserker mode (6) and combo enabled
+    BOOST_CHECK(edm.getBehaviorData(idx).state.attack.attackMode == 6); // BERSERKER
+    BOOST_CHECK(edm.getBehaviorData(idx).state.attack.comboEnabled == true);
+
+    BOOST_TEST_MESSAGE("Attack BERSERK message verified");
+    aiMgr.unassignBehavior(handle);
+}
+
+BOOST_AUTO_TEST_CASE(TestFleeMessagePanic) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle handle = entity->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.assignBehavior(handle, "Flee");
+    updateAI(0.016f);
+
+    auto& behaviorData = edm.getBehaviorData(idx);
+
+    // Initially not in panic
+    BOOST_CHECK(behaviorData.state.flee.isInPanic == false);
+
+    // Queue PANIC message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::PANIC);
+    updateAI(0.016f);
+
+    // Verify in panic state
+    BOOST_CHECK(behaviorData.state.flee.isInPanic == true);
+    BOOST_CHECK(behaviorData.state.flee.panicTimer > 0.0f);
+
+    BOOST_TEST_MESSAGE("Flee PANIC message verified");
+    aiMgr.unassignBehavior(handle);
+}
+
+BOOST_AUTO_TEST_CASE(TestFleeMessageCalmDown) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle handle = entity->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.assignBehavior(handle, "Flee");
+    updateAI(0.016f);
+
+    auto& behaviorData = edm.getBehaviorData(idx);
+
+    // First put in panic
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::PANIC);
+    updateAI(0.016f);
+    BOOST_CHECK(behaviorData.state.flee.isInPanic == true);
+
+    // Queue CALM_DOWN message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::CALM_DOWN);
+    updateAI(0.016f);
+
+    // Verify not in panic
+    BOOST_CHECK(behaviorData.state.flee.isInPanic == false);
+    BOOST_CHECK(behaviorData.state.flee.panicTimer == 0.0f);
+
+    BOOST_TEST_MESSAGE("Flee CALM_DOWN message verified");
+    aiMgr.unassignBehavior(handle);
+}
+
+BOOST_AUTO_TEST_CASE(TestFleeMessageRecoverStamina) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle handle = entity->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.assignBehavior(handle, "Flee");
+    updateAI(0.016f);
+
+    auto& behaviorData = edm.getBehaviorData(idx);
+
+    // Manually drain stamina
+    behaviorData.state.flee.currentStamina = 10.0f;
+
+    // Queue RECOVER_STAMINA message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RECOVER_STAMINA);
+    updateAI(0.016f);
+
+    // Verify stamina recovered to max (100.0f default)
+    BOOST_CHECK(behaviorData.state.flee.currentStamina == 100.0f);
+
+    BOOST_TEST_MESSAGE("Flee RECOVER_STAMINA message verified");
+    aiMgr.unassignBehavior(handle);
+}
+
+BOOST_AUTO_TEST_CASE(TestGuardMessageDutyToggle) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle handle = entity->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.assignBehavior(handle, "Guard");
+    updateAI(0.016f);
+
+    auto& behaviorData = edm.getBehaviorData(idx);
+
+    // Initially on duty
+    BOOST_CHECK(behaviorData.state.guard.onDuty == true);
+
+    // Queue GO_OFF_DUTY message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::GO_OFF_DUTY);
+    updateAI(0.016f);
+
+    // Verify off duty
+    BOOST_CHECK(behaviorData.state.guard.onDuty == false);
+
+    // Queue GO_ON_DUTY message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::GO_ON_DUTY);
+    updateAI(0.016f);
+
+    // Verify on duty
+    BOOST_CHECK(behaviorData.state.guard.onDuty == true);
+
+    BOOST_TEST_MESSAGE("Guard duty toggle messages verified");
+    aiMgr.unassignBehavior(handle);
+}
+
+BOOST_AUTO_TEST_CASE(TestGuardMessageAlertControl) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle handle = entity->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.assignBehavior(handle, "Guard");
+    updateAI(0.016f);
+
+    auto& behaviorData = edm.getBehaviorData(idx);
+
+    // Initially CALM (0)
+    BOOST_CHECK(behaviorData.state.guard.currentAlertLevel == 0);
+
+    // Queue RAISE_ALERT message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);
+    updateAI(0.016f);
+
+    // Verify HOSTILE (3)
+    BOOST_CHECK(behaviorData.state.guard.currentAlertLevel == 3);
+
+    // Queue CLEAR_ALERT message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::CLEAR_ALERT);
+    updateAI(0.016f);
+
+    // Verify back to CALM (0)
+    BOOST_CHECK(behaviorData.state.guard.currentAlertLevel == 0);
+
+    BOOST_TEST_MESSAGE("Guard alert control messages verified");
+    aiMgr.unassignBehavior(handle);
+}
+
+BOOST_AUTO_TEST_CASE(TestGuardMessageModeChange) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle handle = entity->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.assignBehavior(handle, "Guard");
+    updateAI(0.016f);
+
+    auto& behaviorData = edm.getBehaviorData(idx);
+
+    // Initially STATIC_GUARD (0)
+    BOOST_CHECK(behaviorData.state.guard.currentMode == 0);
+
+    // Queue SET_PATROL_MODE message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::SET_PATROL_MODE);
+    updateAI(0.016f);
+    BOOST_CHECK(behaviorData.state.guard.currentMode == 1); // PATROL_GUARD
+
+    // Queue SET_ROAM_MODE message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::SET_ROAM_MODE);
+    updateAI(0.016f);
+    BOOST_CHECK(behaviorData.state.guard.currentMode == 3); // ROAMING_GUARD
+
+    // Queue SET_STATIC_MODE message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::SET_STATIC_MODE);
+    updateAI(0.016f);
+    BOOST_CHECK(behaviorData.state.guard.currentMode == 0); // STATIC_GUARD
+
+    BOOST_TEST_MESSAGE("Guard mode change messages verified");
+    aiMgr.unassignBehavior(handle);
+}
+
+BOOST_AUTO_TEST_CASE(TestMessageQueueOverflow) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle handle = entity->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.assignBehavior(handle, "Guard");
+    updateAI(0.016f);
+
+    auto& behaviorData = edm.getBehaviorData(idx);
+
+    // Queue more than 4 messages (max queue size)
+    for (int i = 0; i < 10; ++i) {
+        Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);
+    }
+
+    // Only first 4 should be queued
+    BOOST_CHECK(behaviorData.pendingMessageCount == 4);
+
+    // Process messages - should not crash
+    updateAI(0.016f);
+
+    // Queue should be cleared after processing
+    BOOST_CHECK(behaviorData.pendingMessageCount == 0);
+
+    BOOST_TEST_MESSAGE("Message queue overflow handling verified");
+    aiMgr.unassignBehavior(handle);
+}
+
+BOOST_AUTO_TEST_CASE(TestClearPendingMessages) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle handle = entity->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.assignBehavior(handle, "Guard");
+    updateAI(0.016f);
+
+    auto& behaviorData = edm.getBehaviorData(idx);
+
+    // Queue some messages
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::SET_PATROL_MODE);
+    BOOST_CHECK(behaviorData.pendingMessageCount == 2);
+
+    // Clear messages without processing
+    Behaviors::clearPendingMessages(idx);
+    BOOST_CHECK(behaviorData.pendingMessageCount == 0);
+
+    // Verify guard state unchanged (messages were cleared, not processed)
+    BOOST_CHECK(behaviorData.state.guard.currentAlertLevel == 0); // Still CALM
+    BOOST_CHECK(behaviorData.state.guard.currentMode == 0); // Still STATIC
+
+    BOOST_TEST_MESSAGE("Clear pending messages verified");
+    aiMgr.unassignBehavior(handle);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -1024,10 +1468,12 @@ BOOST_AUTO_TEST_CASE(TestWanderSwitchesToFleeWhenAttacked) {
     auto& behaviorData = edm.getBehaviorData(entityIdx);
     BOOST_CHECK(behaviorData.behaviorType == BehaviorType::Wander);
 
-    // Simulate being attacked
+    // Simulate being attacked - set lastCombatTime=0 to indicate "just happened"
+    // (delta-based semantics: starts at 0, increments each frame via emotional decay)
     auto& memData = edm.getMemoryData(entityIdx);
+    memData.setValid(true);  // Mark memory as valid so isUnderRecentAttack() can read it
     memData.lastAttacker = attackerHandle;
-    memData.lastCombatTime = 0.0f;
+    memData.lastCombatTime = 0.0f;  // Delta semantics: 0 = just happened
 
     // Run behavior updates
     for (int i = 0; i < 5; ++i) {
@@ -1063,10 +1509,12 @@ BOOST_AUTO_TEST_CASE(TestIdleSwitchesToFleeWhenAttacked) {
     auto& behaviorData = edm.getBehaviorData(entityIdx);
     BOOST_CHECK(behaviorData.behaviorType == BehaviorType::Idle);
 
-    // Simulate being attacked
+    // Simulate being attacked - set lastCombatTime=0 to indicate "just happened"
+    // (delta-based semantics: starts at 0, increments each frame via emotional decay)
     auto& memData = edm.getMemoryData(entityIdx);
+    memData.setValid(true);  // Mark memory as valid so isUnderRecentAttack() can read it
     memData.lastAttacker = attackerHandle;
-    memData.lastCombatTime = 0.0f;
+    memData.lastCombatTime = 0.0f;  // Delta semantics: 0 = just happened
 
     // Run behavior updates
     for (int i = 0; i < 5; ++i) {

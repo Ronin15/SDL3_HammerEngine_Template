@@ -29,8 +29,6 @@ thread_local std::vector<EntityHandle> s_nearbyBuffer;
 
 constexpr float SUSPICIOUS_THRESHOLD = 2.0f;
 constexpr float INVESTIGATING_THRESHOLD = 4.0f;
-constexpr float DEFAULT_INVESTIGATION_TIME = 10.0f;
-constexpr float DEFAULT_ALERT_DECAY_TIME = 15.0f;
 constexpr float DEFAULT_ROAM_INTERVAL = 6.0f;
 constexpr float DEFAULT_THREAT_DETECTION_RANGE = 150.0f;
 constexpr float DEFAULT_FIELD_OF_VIEW = 360.0f;
@@ -38,12 +36,94 @@ constexpr float DEFAULT_ATTACK_ENGAGE_RANGE = 80.0f;
 constexpr float PATH_TTL = 5.0f;
 constexpr float NAV_RADIUS = 18.0f;
 
-// Future feature: Guards call nearby guards for help when under attack
-[[maybe_unused]] constexpr float DEFAULT_HELP_CALL_RADIUS = 300.0f;
-
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * @brief Get mode-specific speed based on guard mode
+ */
+float getModeSpeed(uint8_t currentMode, const HammerEngine::GuardBehaviorConfig& config) {
+    switch (currentMode) {
+        case 0: return config.guardSpeed * config.staticSpeedMultiplier;   // STATIC_GUARD
+        case 1: return config.guardSpeed * config.patrolSpeedMultiplier;   // PATROL_GUARD
+        case 2: return config.guardSpeed * config.areaSpeedMultiplier;     // AREA_GUARD
+        case 3: return config.guardSpeed * config.roamingSpeedMultiplier;  // ROAMING_GUARD
+        case 4: return config.guardSpeed * config.alertSpeedMultiplier;    // ALERT_GUARD
+        default: return config.guardSpeed;
+    }
+}
+
+/**
+ * @brief Get mode-specific detection range multiplier
+ */
+float getModeAlertRadius(uint8_t currentMode, const HammerEngine::GuardBehaviorConfig& config) {
+    switch (currentMode) {
+        case 0: return config.staticAlertRadiusMultiplier;
+        case 1: return config.patrolAlertRadiusMultiplier;
+        case 2: return config.areaAlertRadiusMultiplier;
+        case 3: return config.roamingAlertRadiusMultiplier;
+        case 4: return config.alertModeAlertRadiusMultiplier;
+        default: return 1.0f;
+    }
+}
+
+// Process pending messages for Guard behavior
+void processGuardMessages(BehaviorData& data, const HammerEngine::GuardBehaviorConfig& config) {
+    auto& guard = data.state.guard;
+
+    for (uint8_t i = 0; i < data.pendingMessageCount; ++i) {
+        uint8_t msgId = data.pendingMessages[i].messageId;
+
+        switch (msgId) {
+            case BehaviorMessage::GO_ON_DUTY:
+                guard.onDuty = true;
+                break;
+
+            case BehaviorMessage::GO_OFF_DUTY:
+                guard.onDuty = false;
+                break;
+
+            case BehaviorMessage::RAISE_ALERT:
+                // Force HOSTILE alert level (3)
+                guard.currentAlertLevel = 3;
+                guard.alertTimer = 0.0f;
+                guard.alertDecayTimer = 0.0f;
+                break;
+
+            case BehaviorMessage::CLEAR_ALERT:
+                // Reset to CALM alert level (0)
+                guard.currentAlertLevel = 0;
+                guard.alertTimer = 0.0f;
+                guard.alertDecayTimer = 0.0f;
+                guard.helpCalled = false;
+                break;
+
+            case BehaviorMessage::RETURN_TO_POST:
+                // Force return to assigned position
+                guard.currentAlertLevel = 0;
+                guard.alertTimer = 0.0f;
+                break;
+
+            case BehaviorMessage::SET_PATROL_MODE:
+                guard.currentMode = 1;  // PATROL_GUARD
+                break;
+
+            case BehaviorMessage::SET_STATIC_MODE:
+                guard.currentMode = 0;  // STATIC_GUARD
+                break;
+
+            case BehaviorMessage::SET_ROAM_MODE:
+                guard.currentMode = 3;  // ROAMING_GUARD
+                break;
+
+            default:
+                break;
+        }
+    }
+    data.pendingMessageCount = 0;
+    (void)config;
+}
 
 float normalizeAngle(float angle) {
     while (angle > static_cast<float>(M_PI)) angle -= 2.0f * static_cast<float>(M_PI);
@@ -64,6 +144,54 @@ Vector2D generateRoamTarget(const Vector2D& center, float radius) {
     float angle = s_angleDistribution(s_rng);
     float dist = s_radiusDistribution(s_rng) * radius;
     return center + Vector2D(dist * std::cos(angle), dist * std::sin(angle));
+}
+
+/**
+ * @brief Get the next patrol waypoint, handling ping-pong vs loop mode
+ */
+Vector2D getNextPatrolWaypoint(BehaviorData& data) {
+    auto& guard = data.state.guard;
+
+    if (guard.patrolWaypointCount == 0) {
+        return guard.assignedPosition;
+    }
+
+    return guard.patrolWaypoints[guard.currentPatrolWaypointIndex];
+}
+
+/**
+ * @brief Advance to the next patrol waypoint
+ */
+void advancePatrolWaypoint(BehaviorData& data) {
+    auto& guard = data.state.guard;
+
+    if (guard.patrolWaypointCount == 0) return;
+
+    if (guard.reversePatrol) {
+        // Ping-pong mode: go forward then backward
+        if (guard.patrolForward) {
+            if (guard.currentPatrolWaypointIndex + 1 >= guard.patrolWaypointCount) {
+                guard.patrolForward = false;
+                if (guard.currentPatrolWaypointIndex > 0) {
+                    guard.currentPatrolWaypointIndex--;
+                }
+            } else {
+                guard.currentPatrolWaypointIndex++;
+            }
+        } else {
+            if (guard.currentPatrolWaypointIndex == 0) {
+                guard.patrolForward = true;
+                if (guard.patrolWaypointCount > 1) {
+                    guard.currentPatrolWaypointIndex++;
+                }
+            } else {
+                guard.currentPatrolWaypointIndex--;
+            }
+        }
+    } else {
+        // Loop mode: wrap around
+        guard.currentPatrolWaypointIndex = (guard.currentPatrolWaypointIndex + 1) % guard.patrolWaypointCount;
+    }
 }
 
 // Move entity using pathfinding or direct movement
@@ -289,6 +417,10 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
     auto& data = *ctx.behaviorData;
     auto& guard = data.state.guard;
 
+    // Process any pending messages before main logic
+    // (messages like GO_ON_DUTY need to be processed even when off duty)
+    processGuardMessages(data, config);
+
     if (!guard.onDuty) return;
 
     // Update timers
@@ -318,8 +450,9 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         pathData.pathRequestCooldown -= ctx.deltaTime;
     }
 
-    // Detect threats
-    EntityHandle threat = detectThreat(ctx, DEFAULT_THREAT_DETECTION_RANGE, DEFAULT_FIELD_OF_VIEW);
+    // Detect threats - use mode-specific detection range
+    float detectionRange = DEFAULT_THREAT_DETECTION_RANGE * getModeAlertRadius(guard.currentMode, config);
+    EntityHandle threat = detectThreat(ctx, detectionRange, DEFAULT_FIELD_OF_VIEW);
     bool threatPresent = threat.isValid();
 
     // Update alert level
@@ -349,7 +482,12 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
                 case 4: { // ALARM
                     float distance = (ctx.transform.position - threatPos).length();
                     if (distance <= DEFAULT_ATTACK_ENGAGE_RANGE) {
-                        // Switch to Attack behavior
+                        // Transfer target to Attack behavior before switching
+                        edm.initBehaviorData(ctx.edmIndex, BehaviorType::Attack);
+                        auto& attackData = edm.getBehaviorData(ctx.edmIndex);
+                        attackData.state.attack.hasExplicitTarget = true;
+                        attackData.state.attack.explicitTarget = threat;
+
                         switchBehavior(ctx.edmIndex, BehaviorType::Attack);
                         return;
                     } else {
@@ -364,7 +502,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         }
     } else if (guard.isInvestigating) {
         // Continue investigation
-        if (guard.investigationTimer > DEFAULT_INVESTIGATION_TIME && guard.currentAlertLevel < 3) {
+        if (guard.investigationTimer > config.investigationTime && guard.currentAlertLevel < 3) {
             guard.isInvestigating = false;
             guard.returningToPost = true;
         } else {
@@ -384,6 +522,12 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
                     if (charData.faction == 1) {
                         float distance = (ctx.transform.position - edm.getHotDataByIndex(idx).transform.position).length();
                         if (distance <= DEFAULT_ATTACK_ENGAGE_RANGE * 2.0f) {
+                            // Transfer target to Attack behavior before switching
+                            edm.initBehaviorData(ctx.edmIndex, BehaviorType::Attack);
+                            auto& attackData = edm.getBehaviorData(ctx.edmIndex);
+                            attackData.state.attack.hasExplicitTarget = true;
+                            attackData.state.attack.explicitTarget = handle;
+
                             switchBehavior(ctx.edmIndex, BehaviorType::Attack);
                             return;
                         }
@@ -405,11 +549,13 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
             guard.currentAlertLevel = 0; // CALM
         }
     } else {
-        // Normal guard behavior based on mode
+        // Normal guard behavior based on mode - use mode-specific speeds
+        float modeSpeed = getModeSpeed(guard.currentMode, config);
+
         switch (guard.currentMode) {
             case 0: // STATIC_GUARD
                 if (!isAtPosition(ctx.transform.position, guard.assignedPosition, 10.0f)) {
-                    moveToPosition(ctx, guard.assignedPosition, config.guardSpeed);
+                    moveToPosition(ctx, guard.assignedPosition, modeSpeed);
                 }
                 if (guard.positionCheckTimer > 2.0f) {
                     guard.currentHeading += 0.5f;
@@ -419,24 +565,42 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
                 break;
 
             case 1: // PATROL_GUARD
+                // If waypoints are set, follow them; otherwise fall back to roaming
+                if (guard.patrolWaypointCount > 0) {
+                    Vector2D waypointTarget = getNextPatrolWaypoint(data);
+                    if (isAtPosition(ctx.transform.position, waypointTarget)) {
+                        advancePatrolWaypoint(data);
+                        waypointTarget = getNextPatrolWaypoint(data);
+                    }
+                    moveToPosition(ctx, waypointTarget, modeSpeed);
+                } else {
+                    // Fallback to roaming if no waypoints set
+                    if (guard.roamTimer <= 0.0f || isAtPosition(ctx.transform.position, guard.roamTarget)) {
+                        guard.roamTarget = generateRoamTarget(guard.assignedPosition, config.guardRadius);
+                        guard.roamTimer = DEFAULT_ROAM_INTERVAL;
+                    }
+                    moveToPosition(ctx, guard.roamTarget, modeSpeed);
+                }
+                break;
+
             case 2: // AREA_GUARD
             case 3: // ROAMING_GUARD
                 if (guard.roamTimer <= 0.0f || isAtPosition(ctx.transform.position, guard.roamTarget)) {
                     guard.roamTarget = generateRoamTarget(guard.assignedPosition, config.guardRadius);
                     guard.roamTimer = DEFAULT_ROAM_INTERVAL;
                 }
-                moveToPosition(ctx, guard.roamTarget, config.guardSpeed);
+                moveToPosition(ctx, guard.roamTarget, modeSpeed);
                 break;
 
             case 4: // ALERT_GUARD
                 if (guard.currentAlertLevel >= 2) {
                     if (guard.lastKnownThreatPosition.length() > 0) {
-                        moveToPosition(ctx, guard.lastKnownThreatPosition, config.guardSpeed * 1.5f);
+                        moveToPosition(ctx, guard.lastKnownThreatPosition, modeSpeed);
                     }
                 } else if (guard.roamTimer <= 0.0f || isAtPosition(ctx.transform.position, guard.roamTarget)) {
                     guard.roamTarget = generateRoamTarget(guard.assignedPosition, config.guardRadius);
                     guard.roamTimer = DEFAULT_ROAM_INTERVAL;
-                    moveToPosition(ctx, guard.roamTarget, config.guardSpeed);
+                    moveToPosition(ctx, guard.roamTarget, modeSpeed);
                 }
                 break;
 
@@ -446,7 +610,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
     }
 
     // Handle alert decay
-    if (guard.currentAlertLevel > 0 && guard.alertDecayTimer > DEFAULT_ALERT_DECAY_TIME) {
+    if (guard.currentAlertLevel > 0 && guard.alertDecayTimer > config.alertDecayTime) {
         guard.currentAlertLevel--;
         guard.alertDecayTimer = 0.0f;
     }

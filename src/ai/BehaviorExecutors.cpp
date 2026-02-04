@@ -145,10 +145,10 @@ bool isUnderRecentAttack(const BehaviorContext& ctx, float thresholdSeconds) {
     const auto& memory = *ctx.memoryData;
     if (!memory.isValid() || !memory.lastAttacker.isValid()) return false;
 
-    // Compare elapsed time since last combat against threshold
-    // lastCombatTime stores the absolute game time when combat occurred
-    float elapsed = ctx.gameTime - memory.lastCombatTime;
-    return elapsed >= 0.0f && elapsed < thresholdSeconds;
+    // Delta-based timing: lastCombatTime starts at 0 when combat occurs and
+    // increments each frame via updateEmotionalDecay(). Combat is "recent"
+    // if elapsed time is less than threshold.
+    return memory.lastCombatTime < thresholdSeconds;
 }
 
 EntityHandle getLastAttacker(const BehaviorContext& ctx) {
@@ -166,6 +166,26 @@ float calculateAngleToTarget(const Vector2D& from, const Vector2D& to) {
     float dx = to.getX() - from.getX();
     float dy = to.getY() - from.getY();
     return std::atan2(dy, dx);
+}
+
+// ============================================================================
+// MESSAGE QUEUE FUNCTIONS
+// ============================================================================
+
+void queueBehaviorMessage(size_t edmIndex, uint8_t messageId, uint8_t param) {
+    auto& edm = EntityDataManager::Instance();
+    auto& data = edm.getBehaviorData(edmIndex);
+    if (data.pendingMessageCount < 4) {
+        data.pendingMessages[data.pendingMessageCount].messageId = messageId;
+        data.pendingMessages[data.pendingMessageCount].param = param;
+        data.pendingMessageCount++;
+    }
+}
+
+void clearPendingMessages(size_t edmIndex) {
+    auto& edm = EntityDataManager::Instance();
+    auto& data = edm.getBehaviorData(edmIndex);
+    data.pendingMessageCount = 0;
 }
 
 } // namespace Behaviors
