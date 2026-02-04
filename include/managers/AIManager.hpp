@@ -343,7 +343,8 @@ private:
                     float deltaTime,
                     float worldWidth, float worldHeight,
                     EntityHandle playerHandle, const Vector2D& playerPos,
-                    const Vector2D& playerVel, bool playerValid);
+                    const Vector2D& playerVel, bool playerValid,
+                    float gameTime);
   static uint64_t getCurrentTimeNanos();
 
   // Lock-free message queue

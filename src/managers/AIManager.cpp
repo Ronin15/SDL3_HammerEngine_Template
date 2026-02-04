@@ -13,6 +13,7 @@
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "utils/SIMDMath.hpp"
 #include <array>
@@ -341,6 +342,9 @@ void AIManager::update(float deltaTime) {
       }
     }
 
+    // OPTIMIZATION: Cache game time ONCE per frame for combat timing comparisons
+    float cachedGameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
+
     // Determine threading strategy using adaptive threshold from WorkerBudget
     // WorkerBudget is the AUTHORITATIVE source - no manager overrides
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
@@ -385,7 +389,7 @@ void AIManager::update(float deltaTime) {
           auto damageEvents = processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
                        worldWidth, worldHeight, cachedPlayerHandle,
                        cachedPlayerPosition, cachedPlayerVelocity,
-                       cachedPlayerValid);
+                       cachedPlayerValid, cachedGameTime);
 
           // Submit damage events (single-batch path)
           if (!damageEvents.empty()) {
@@ -414,12 +418,12 @@ void AIManager::update(float deltaTime) {
             batchFutures.push_back(threadSystem.enqueueTaskWithResult(
                 [this, start, end, deltaTime, worldWidth, worldHeight,
                  cachedPlayerHandle, cachedPlayerPosition, cachedPlayerVelocity,
-                 cachedPlayerValid]() -> std::vector<EventManager::DeferredEvent> {
+                 cachedPlayerValid, cachedGameTime]() -> std::vector<EventManager::DeferredEvent> {
                   try {
                     return processBatch(m_activeIndicesBuffer, start, end, deltaTime,
                                  worldWidth, worldHeight, cachedPlayerHandle,
                                  cachedPlayerPosition, cachedPlayerVelocity,
-                                 cachedPlayerValid);
+                                 cachedPlayerValid, cachedGameTime);
                   } catch (const std::exception &e) {
                     AI_ERROR(
                         std::format("Exception in AI batch: {}", e.what()));
@@ -456,7 +460,7 @@ void AIManager::update(float deltaTime) {
       actualBatchCount = 1;
       auto damageEvents = processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth,
                    worldHeight, cachedPlayerHandle, cachedPlayerPosition,
-                   cachedPlayerVelocity, cachedPlayerValid);
+                   cachedPlayerVelocity, cachedPlayerValid, cachedGameTime);
 
       // Submit damage events (single-threaded path)
       if (!damageEvents.empty()) {
@@ -987,7 +991,8 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
                              float worldWidth, float worldHeight,
                              EntityHandle playerHandle,
                              const Vector2D &playerPos,
-                             const Vector2D &playerVel, bool playerValid) {
+                             const Vector2D &playerVel, bool playerValid,
+                             float gameTime) {
   // Process batch of Active tier entities using EDM indices directly
   // No tier check needed - getActiveIndices() already filters to Active tier
   size_t batchExecutions = 0;
@@ -1157,7 +1162,8 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
       BehaviorContext ctx(
           transform, edmHotData, m_storage.handles[storageIdx].getId(), edmIdx,
           deltaTime, playerHandle, playerPos, playerVel, playerValid,
-          behaviorData, pathData, memoryData, 0.0f, 0.0f, worldWidth, worldHeight, true);
+          behaviorData, pathData, memoryData, 0.0f, 0.0f, worldWidth, worldHeight, true,
+          gameTime);
       Behaviors::execute(ctx, config);
 
       batchTransforms[batchCount] = &transform;

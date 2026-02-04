@@ -754,19 +754,23 @@ void EventManager::processBatchSingleThreaded(size_t start, size_t end) const {
 void EventManager::drainDispatchQueueWithBudget() {
   auto startTime = std::chrono::high_resolution_clock::now();
 
-  // Extract all pending events - no lock needed, EventManager has sole access
-  // during its update window (game loop guarantees sequential manager updates)
-  const size_t pendingCount = m_pendingDispatch.size();
-  if (pendingCount == 0) {
-    return;
-  }
+  // Extract all pending events under lock - worker threads may be enqueueing
+  // events concurrently (e.g., WorldManager::loadNewWorld on worker thread)
+  {
+    std::lock_guard<std::mutex> lock(m_dispatchMutex);
+    const size_t pendingCount = m_pendingDispatch.size();
+    if (pendingCount == 0) {
+      return;
+    }
 
-  m_localDispatchBuffer.clear();
-  m_localDispatchBuffer.reserve(pendingCount);
-  for (size_t i = 0; i < pendingCount; ++i) {
-    m_localDispatchBuffer.push_back(std::move(m_pendingDispatch.front()));
-    m_pendingDispatch.pop_front();
+    m_localDispatchBuffer.clear();
+    m_localDispatchBuffer.reserve(pendingCount);
+    for (size_t i = 0; i < pendingCount; ++i) {
+      m_localDispatchBuffer.push_back(std::move(m_pendingDispatch.front()));
+      m_pendingDispatch.pop_front();
+    }
   }
+  // Lock released - process events without holding lock
 
   const size_t eventCount = m_localDispatchBuffer.size();
 

@@ -113,6 +113,7 @@ struct WanderBehaviorConfig
     // Pathfinding parameters
     float pathRequestCooldown = 30.0f;            // Seconds between pathfinding requests (reduces load)
     float minGoalChangeDistance = 200.0f;         // Minimum distance change to justify new path request
+    float pathRefreshInterval = 25.0f;            // Seconds before path recalculation (TTL)
 
     // Stuck detection
     float stallSpeed = 0.5f;                      // Speed threshold (px/s) to consider entity stalled

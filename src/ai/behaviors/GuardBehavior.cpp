@@ -30,15 +30,16 @@ thread_local std::vector<EntityHandle> s_nearbyBuffer;
 constexpr float SUSPICIOUS_THRESHOLD = 2.0f;
 constexpr float INVESTIGATING_THRESHOLD = 4.0f;
 constexpr float DEFAULT_INVESTIGATION_TIME = 10.0f;
-constexpr float DEFAULT_RETURN_TO_POST_TIME = 5.0f;
 constexpr float DEFAULT_ALERT_DECAY_TIME = 15.0f;
 constexpr float DEFAULT_ROAM_INTERVAL = 6.0f;
 constexpr float DEFAULT_THREAT_DETECTION_RANGE = 150.0f;
 constexpr float DEFAULT_FIELD_OF_VIEW = 360.0f;
 constexpr float DEFAULT_ATTACK_ENGAGE_RANGE = 80.0f;
-constexpr float DEFAULT_HELP_CALL_RADIUS = 300.0f;
 constexpr float PATH_TTL = 5.0f;
 constexpr float NAV_RADIUS = 18.0f;
+
+// Future feature: Guards call nearby guards for help when under attack
+[[maybe_unused]] constexpr float DEFAULT_HELP_CALL_RADIUS = 300.0f;
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -48,12 +49,6 @@ float normalizeAngle(float angle) {
     while (angle > static_cast<float>(M_PI)) angle -= 2.0f * static_cast<float>(M_PI);
     while (angle < -static_cast<float>(M_PI)) angle += 2.0f * static_cast<float>(M_PI);
     return angle;
-}
-
-Vector2D normalizeDir(const Vector2D& v) {
-    float len = v.length();
-    if (len < 0.0001f) return Vector2D(0, 0);
-    return v * (1.0f / len);
 }
 
 float calculateAngle(const Vector2D& from, const Vector2D& to) {

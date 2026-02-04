@@ -34,12 +34,15 @@ constexpr float COMBAT_ENTER_RANGE_MULT = 1.2f;
 constexpr float COMBAT_EXIT_RANGE_MULT = 2.0f;
 constexpr float COMBO_DAMAGE_PER_LEVEL = 0.15f;
 constexpr float COMBO_TIMEOUT = 2.0f;
-constexpr float COMBO_FINISHER_MULTIPLIER = 1.8f;
 constexpr float SPECIAL_ATTACK_MULTIPLIER = 1.5f;
-constexpr float CHARGE_SPEED_MULTIPLIER = 2.0f;
 constexpr float RETREAT_SPEED_MULTIPLIER = 1.3f;
-constexpr float CHARGE_DISTANCE_THRESHOLD_MULT = 1.5f;
 constexpr float STRAFE_INTERVAL = 3.0f;
+
+// Future features: Charge attacks and combo finishers
+// Config support exists (chargeDamageMultiplier, etc.) but state machine integration pending
+[[maybe_unused]] constexpr float COMBO_FINISHER_MULTIPLIER = 1.8f;
+[[maybe_unused]] constexpr float CHARGE_SPEED_MULTIPLIER = 2.0f;
+[[maybe_unused]] constexpr float CHARGE_DISTANCE_THRESHOLD_MULT = 1.5f;
 constexpr float FEAR_FLEE_THRESHOLD = 0.7f;
 constexpr float BRAVERY_FLEE_THRESHOLD = 0.3f;
 constexpr float BRAVERY_RETREAT_FACTOR = 0.3f;
@@ -431,7 +434,35 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             break;
 
         case AttackState::POSITIONING: {
+            float distToTarget = attack.targetDistance;
             Vector2D direction = normalizeDir(entityPos - targetPos);
+
+            // Enforce minimum range - back off if too close
+            if (distToTarget < minimumRange && minimumRange > 0.0f) {
+                Vector2D backoffPos = targetPos + direction * (minimumRange + 10.0f);
+                moveToPosition(ctx.edmIndex, backoffPos, config.movementSpeed * 0.8f);
+                break;
+            }
+
+            // Circle strafing if enabled and within optimal range
+            if (config.circleStrafe && distToTarget <= optimalRange * 1.2f) {
+                attack.strafeTimer += ctx.deltaTime;
+                if (attack.strafeTimer > STRAFE_INTERVAL) {
+                    attack.strafeTimer = 0.0f;
+                    // Alternate strafe direction
+                    attack.circleStrafing = !attack.circleStrafing;
+                }
+
+                // Calculate perpendicular strafe direction
+                Vector2D perpendicular(-direction.getY(), direction.getX());
+                float strafeSign = attack.circleStrafing ? 1.0f : -1.0f;
+                Vector2D strafePos = targetPos + direction * optimalRange +
+                                    perpendicular * (config.strafeRadius * strafeSign * 0.5f);
+                moveToPosition(ctx.edmIndex, strafePos, config.movementSpeed);
+                break;
+            }
+
+            // Standard optimal positioning
             if (config.preferredAttackAngle != 0.0f) {
                 direction = rotateVector(direction, config.preferredAttackAngle);
             }

@@ -9,6 +9,7 @@
 #include "managers/AIManager.hpp"
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
@@ -100,6 +101,7 @@ struct BehaviorTestFixture {
         HammerEngine::ThreadSystem::Instance().init();
 
         // Initialize managers in proper order (matches CollisionPathfindingIntegrationTests)
+        GameTimeManager::Instance().init();  // Required for combat timing in behaviors
         EventManager::Instance().init();
         WorldManager::Instance().init();
         EntityDataManager::Instance().init();

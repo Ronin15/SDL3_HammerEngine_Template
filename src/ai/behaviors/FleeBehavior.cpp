@@ -387,11 +387,24 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
     }
 
     if (flee.isFleeing) {
-        // Default to panic flee (most common mode)
         if (flee.isInPanic) {
+            // Panic mode - always use panic flee
             updatePanicFlee(ctx, threatPos, config);
         } else {
-            updateStrategicRetreat(ctx, threatPos, config);
+            // Select tactical mode based on crowd density
+            int nearbyCount = AIInternal::CountNearbyEntities(
+                ctx.entityId, ctx.transform.position, 100.0f);
+
+            if (nearbyCount > 3) {
+                // High crowd - evasive zigzag to avoid collision with others
+                updateEvasiveManeuver(ctx, threatPos, config);
+            } else if (nearbyCount > 1) {
+                // Medium crowd - seek cover/distance
+                updateSeekCover(ctx, threatPos, config);
+            } else {
+                // Low/no crowd - direct strategic retreat
+                updateStrategicRetreat(ctx, threatPos, config);
+            }
         }
         updateStamina(data, ctx.deltaTime, true);
     }

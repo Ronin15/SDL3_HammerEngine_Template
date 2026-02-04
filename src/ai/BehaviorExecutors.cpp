@@ -143,13 +143,12 @@ bool isUnderRecentAttack(const BehaviorContext& ctx, float thresholdSeconds) {
     if (!ctx.memoryData) return false;
 
     const auto& memory = *ctx.memoryData;
-    if (!memory.isValid()) return false;
+    if (!memory.isValid() || !memory.lastAttacker.isValid()) return false;
 
-    // Check if lastCombatTime is within threshold
-    // lastCombatTime stores the game time when combat occurred
-    // We check if the time elapsed since then is less than threshold
-    return memory.lastCombatTime > 0.0f &&
-           memory.lastAttacker.isValid();
+    // Compare elapsed time since last combat against threshold
+    // lastCombatTime stores the absolute game time when combat occurred
+    float elapsed = ctx.gameTime - memory.lastCombatTime;
+    return elapsed >= 0.0f && elapsed < thresholdSeconds;
 }
 
 EntityHandle getLastAttacker(const BehaviorContext& ctx) {

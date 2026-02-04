@@ -59,18 +59,22 @@ struct BehaviorContext {
     float worldMaxY{0.0f};
     bool worldBoundsValid{false};         // Whether world bounds are available
 
+    // Game time cached once per frame - for combat timing comparisons (e.g., isUnderRecentAttack)
+    float gameTime{0.0f};
+
     BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt)
         : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt) {}
 
     BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt,
                     EntityHandle pHandle, const Vector2D& pPos, const Vector2D& pVel, bool pValid,
                     BehaviorData* bData, PathData* pData, NPCMemoryData* mData,
-                    float wMinX, float wMinY, float wMaxX, float wMaxY, bool wBoundsValid)
+                    float wMinX, float wMinY, float wMaxX, float wMaxY, bool wBoundsValid,
+                    float gTime)
         : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt),
           playerHandle(pHandle), playerPosition(pPos), playerVelocity(pVel), playerValid(pValid),
           behaviorData(bData), pathData(pData), memoryData(mData),
           worldMinX(wMinX), worldMinY(wMinY), worldMaxX(wMaxX), worldMaxY(wMaxY),
-          worldBoundsValid(wBoundsValid) {}
+          worldBoundsValid(wBoundsValid), gameTime(gTime) {}
 };
 
 namespace Behaviors {

@@ -131,7 +131,7 @@ void handlePathfinding(const BehaviorContext& ctx, const Vector2D& dest,
     bool needsNewPath = false;
     if (!skipRefresh) {
         needsNewPath = !pathData.hasPath || pathData.navIndex >= pathData.pathLength ||
-                       pathData.pathUpdateTimer > 25.0f;
+                       pathData.pathUpdateTimer > config.pathRefreshInterval;
     }
 
     bool stuckOnObstacle = pathData.progressTimer > 0.8f;
@@ -264,6 +264,9 @@ void handleMovement(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConf
 namespace Behaviors {
 
 void initWander(size_t edmIndex, const HammerEngine::WanderBehaviorConfig& config) {
+    // Config used in executeWander(), not needed for state initialization
+    (void)config;
+
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Wander);
     auto& data = edm.getBehaviorData(edmIndex);
