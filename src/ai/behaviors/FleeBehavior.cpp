@@ -425,9 +425,12 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
     if (ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
         auto& edm = EntityDataManager::Instance();
         size_t attackerIdx = edm.getIndex(ctx.memoryData->lastAttacker);
-        if (attackerIdx != SIZE_MAX && edm.getHotDataByIndex(attackerIdx).isAlive()) {
-            threatPos = edm.getHotDataByIndex(attackerIdx).transform.position;
-            threatValid = true;
+        if (attackerIdx != SIZE_MAX) {
+            const auto& attackerHot = edm.getHotDataByIndex(attackerIdx);
+            if (attackerHot.isAlive()) {
+                threatPos = attackerHot.transform.position;
+                threatValid = true;
+            }
         }
     }
 

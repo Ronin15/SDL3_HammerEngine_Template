@@ -102,34 +102,42 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
     Vector2D entityPos = ctx.transform.position;
     Vector2D targetPos;
     bool targetValid = false;
+    auto& edm = EntityDataManager::Instance();
 
     if (chase.hasExplicitTarget && chase.explicitTarget.isValid()) {
-        auto& edm = EntityDataManager::Instance();
         size_t targetIdx = edm.getIndex(chase.explicitTarget);
-        if (targetIdx != SIZE_MAX && edm.getHotDataByIndex(targetIdx).isAlive()) {
-            targetPos = edm.getHotDataByIndex(targetIdx).transform.position;
-            targetValid = true;
-        } else {
+        if (targetIdx != SIZE_MAX) {
+            const auto& targetHot = edm.getHotDataByIndex(targetIdx);
+            if (targetHot.isAlive()) {
+                targetPos = targetHot.transform.position;
+                targetValid = true;
+            }
+        }
+        if (!targetValid) {
             chase.hasExplicitTarget = false;
             chase.explicitTarget = EntityHandle{};
         }
     }
 
     if (!targetValid && ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
-        auto& edm = EntityDataManager::Instance();
         size_t targetIdx = edm.getIndex(ctx.memoryData->lastTarget);
-        if (targetIdx != SIZE_MAX && edm.getHotDataByIndex(targetIdx).isAlive()) {
-            targetPos = edm.getHotDataByIndex(targetIdx).transform.position;
-            targetValid = true;
+        if (targetIdx != SIZE_MAX) {
+            const auto& targetHot = edm.getHotDataByIndex(targetIdx);
+            if (targetHot.isAlive()) {
+                targetPos = targetHot.transform.position;
+                targetValid = true;
+            }
         }
     }
 
     if (!targetValid && ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
-        auto& edm = EntityDataManager::Instance();
         size_t attackerIdx = edm.getIndex(ctx.memoryData->lastAttacker);
-        if (attackerIdx != SIZE_MAX && edm.getHotDataByIndex(attackerIdx).isAlive()) {
-            targetPos = edm.getHotDataByIndex(attackerIdx).transform.position;
-            targetValid = true;
+        if (attackerIdx != SIZE_MAX) {
+            const auto& attackerHot = edm.getHotDataByIndex(attackerIdx);
+            if (attackerHot.isAlive()) {
+                targetPos = attackerHot.transform.position;
+                targetValid = true;
+            }
         }
     }
 

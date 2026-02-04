@@ -66,9 +66,12 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
     if (ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
         auto& edm = EntityDataManager::Instance();
         size_t targetIdx = edm.getIndex(ctx.memoryData->lastTarget);
-        if (targetIdx != SIZE_MAX && edm.getHotDataByIndex(targetIdx).isAlive()) {
-            targetPos = edm.getHotDataByIndex(targetIdx).transform.position;
-            targetValid = true;
+        if (targetIdx != SIZE_MAX) {
+            const auto& targetHot = edm.getHotDataByIndex(targetIdx);
+            if (targetHot.isAlive()) {
+                targetPos = targetHot.transform.position;
+                targetValid = true;
+            }
         }
     }
 
