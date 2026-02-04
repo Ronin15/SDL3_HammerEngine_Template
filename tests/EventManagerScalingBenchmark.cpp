@@ -897,7 +897,7 @@ BOOST_AUTO_TEST_CASE(BatchEnqueuePerformanceTest)
             std::atomic<int> workersComplete{0};
 
             for (int w = 0; w < numWorkers; ++w) {
-                threadSystem.enqueueTask([&eventMgr, &workersComplete, eventsPerWorker]() {
+                threadSystem.enqueueTask([&eventMgr, &workersComplete]() {
                     for (int i = 0; i < eventsPerWorker; ++i) {
                         auto event = std::make_shared<MockEvent>("DamageEvent");
                         eventMgr.dispatchEvent(event, EventManager::DispatchMode::Deferred);
@@ -934,7 +934,7 @@ BOOST_AUTO_TEST_CASE(BatchEnqueuePerformanceTest)
 
             for (int w = 0; w < numWorkers; ++w) {
                 int startIdx = w * eventsPerWorker;
-                threadSystem.enqueueTask([&eventMgr, &workersComplete, &preCreatedEvents, startIdx, eventsPerWorker]() {
+                threadSystem.enqueueTask([&eventMgr, &workersComplete, &preCreatedEvents, startIdx]() {
                     for (int i = 0; i < eventsPerWorker; ++i) {
                         eventMgr.dispatchEvent(preCreatedEvents[startIdx + i], EventManager::DispatchMode::Deferred);
                     }
@@ -970,7 +970,7 @@ BOOST_AUTO_TEST_CASE(BatchEnqueuePerformanceTest)
 
             for (int w = 0; w < numWorkers; ++w) {
                 int startIdx = w * eventsPerWorker;
-                threadSystem.enqueueTask([&eventMgr, &workersComplete, &preCreatedEvents, startIdx, eventsPerWorker]() {
+                threadSystem.enqueueTask([&eventMgr, &workersComplete, &preCreatedEvents, startIdx]() {
                     std::vector<EventManager::DeferredEvent> localBatch;
                     localBatch.reserve(eventsPerWorker);
 
