@@ -54,6 +54,10 @@ void initPatrol(size_t edmIndex, const HammerEngine::PatrolBehaviorConfig& confi
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Patrol);
     auto& data = edm.getBehaviorData(edmIndex);
+
+    // Cache moveSpeed from CharacterData (one-time cost)
+    data.moveSpeed = edm.getCharacterDataByIndex(edmIndex).moveSpeed;
+
     auto& guard = data.state.guard;  // Patrol uses guard state
     auto& hotData = edm.getHotDataByIndex(edmIndex);
 
@@ -142,22 +146,22 @@ void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfi
 
             if (dist > 0.001f) {
                 Vector2D direction = toWaypoint / dist;
-                ctx.transform.velocity = direction * config.moveSpeed;
+                ctx.transform.velocity = direction * data.moveSpeed;
             }
         } else {
             // Direct movement fallback
             Vector2D direction = (currentWaypoint - currentPos).normalized();
-            ctx.transform.velocity = direction * config.moveSpeed;
+            ctx.transform.velocity = direction * data.moveSpeed;
         }
     } else {
         // No pathData - direct movement
         Vector2D direction = (currentWaypoint - currentPos).normalized();
-        ctx.transform.velocity = direction * config.moveSpeed;
+        ctx.transform.velocity = direction * data.moveSpeed;
     }
 
     // Stall detection
     float speedSq = ctx.transform.velocity.lengthSquared();
-    float stallThreshold = config.moveSpeed * config.stallSpeedMultiplier;
+    float stallThreshold = data.moveSpeed * config.stallSpeedMultiplier;
     if (speedSq < stallThreshold * stallThreshold) {
         data.separationTimer += ctx.deltaTime;
         if (data.separationTimer > config.advanceWaypointDelay) {

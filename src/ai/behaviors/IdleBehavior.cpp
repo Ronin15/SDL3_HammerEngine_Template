@@ -114,6 +114,9 @@ void initIdle(size_t edmIndex, const HammerEngine::IdleBehaviorConfig& config) {
     auto& data = edm.getBehaviorData(edmIndex);
     auto& hotData = edm.getHotDataByIndex(edmIndex);
 
+    // Cache moveSpeed from CharacterData (one-time cost)
+    data.moveSpeed = edm.getCharacterDataByIndex(edmIndex).moveSpeed;
+
     initializeIdleState(hotData.transform.position, data, config);
     data.setInitialized(true);
 }

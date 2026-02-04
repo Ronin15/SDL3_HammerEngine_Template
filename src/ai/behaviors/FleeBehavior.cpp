@@ -23,6 +23,7 @@ thread_local std::uniform_real_distribution<float> s_panicVariation{0.8f, 1.2f};
 // No default constants needed - config is always available during execution
 
 constexpr size_t MAX_SAFE_ZONES = 4;  // Matches FleeState array size
+constexpr float FLEE_SPEED_MULT = 1.3f;  // Urgent movement multiplier
 
 // Process pending messages for Flee behavior
 void processFleeMessages(BehaviorData& data, const HammerEngine::FleeBehaviorConfig& config) {
@@ -250,7 +251,7 @@ void updatePanicFlee(BehaviorContext& ctx, const Vector2D& threatPos,
     }
 
     float speedModifier = calculateFleeSpeedModifier(data, config);
-    ctx.transform.velocity = flee.fleeDirection * config.fleeSpeed * speedModifier;
+    ctx.transform.velocity = flee.fleeDirection * data.moveSpeed * FLEE_SPEED_MULT * speedModifier;
 }
 
 void updateStrategicRetreat(BehaviorContext& ctx, const Vector2D& threatPos,
@@ -282,8 +283,8 @@ void updateStrategicRetreat(BehaviorContext& ctx, const Vector2D& threatPos,
         currentPos + flee.fleeDirection * retreatDistance, 100.0f);
 
     float speedModifier = calculateFleeSpeedModifier(data, config) * config.strategicSpeedMultiplier;
-    if (!tryFollowPathToGoal(ctx, dest, config.fleeSpeed * speedModifier)) {
-        ctx.transform.velocity = flee.fleeDirection * config.fleeSpeed * speedModifier;
+    if (!tryFollowPathToGoal(ctx, dest, data.moveSpeed * FLEE_SPEED_MULT * speedModifier)) {
+        ctx.transform.velocity = flee.fleeDirection * data.moveSpeed * FLEE_SPEED_MULT * speedModifier;
     }
 }
 
@@ -311,7 +312,7 @@ void updateEvasiveManeuver(BehaviorContext& ctx, const Vector2D& threatPos,
     flee.fleeDirection = normalizeVector(zigzagDir);
 
     float speedModifier = calculateFleeSpeedModifier(data, config);
-    ctx.transform.velocity = flee.fleeDirection * config.fleeSpeed * speedModifier;
+    ctx.transform.velocity = flee.fleeDirection * data.moveSpeed * FLEE_SPEED_MULT * speedModifier;
 }
 
 void updateSeekCover(BehaviorContext& ctx, const Vector2D& threatPos,
@@ -345,8 +346,8 @@ void updateSeekCover(BehaviorContext& ctx, const Vector2D& threatPos,
         currentPos + flee.fleeDirection * coverDistance, 100.0f);
 
     float speedModifier = calculateFleeSpeedModifier(data, config);
-    if (!tryFollowPathToGoal(ctx, dest, config.fleeSpeed * speedModifier)) {
-        ctx.transform.velocity = flee.fleeDirection * config.fleeSpeed * speedModifier;
+    if (!tryFollowPathToGoal(ctx, dest, data.moveSpeed * FLEE_SPEED_MULT * speedModifier)) {
+        ctx.transform.velocity = flee.fleeDirection * data.moveSpeed * FLEE_SPEED_MULT * speedModifier;
     }
 }
 
@@ -358,6 +359,10 @@ void initFlee(size_t edmIndex, const HammerEngine::FleeBehaviorConfig& config) {
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Flee);
     auto& data = edm.getBehaviorData(edmIndex);
+
+    // Cache moveSpeed from CharacterData (one-time cost)
+    data.moveSpeed = edm.getCharacterDataByIndex(edmIndex).moveSpeed;
+
     auto& flee = data.state.flee;
     auto& hotData = edm.getHotDataByIndex(edmIndex);
 

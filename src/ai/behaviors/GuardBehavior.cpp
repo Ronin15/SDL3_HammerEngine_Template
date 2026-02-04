@@ -37,21 +37,26 @@ constexpr float PATH_TTL = 5.0f;
 constexpr float NAV_RADIUS = 18.0f;
 constexpr float THREAT_DETECTION_INTERVAL = 0.25f;  // Only check for threats 4x per second
 
+// Speed multipliers for urgent guard movement
+constexpr float GUARD_ALERT_SPEED_MULT = 1.2f;   // Investigating suspicious activity
+constexpr float GUARD_PURSUIT_SPEED_MULT = 1.5f; // Pursuing hostile threat (alert level >= 4)
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
 /**
  * @brief Get mode-specific speed based on guard mode
+ * @param baseSpeed Entity's base movement speed (from CharacterData)
  */
-float getModeSpeed(uint8_t currentMode, const HammerEngine::GuardBehaviorConfig& config) {
+float getModeSpeed(uint8_t currentMode, float baseSpeed, const HammerEngine::GuardBehaviorConfig& config) {
     switch (currentMode) {
-        case 0: return config.guardSpeed * config.staticSpeedMultiplier;   // STATIC_GUARD
-        case 1: return config.guardSpeed * config.patrolSpeedMultiplier;   // PATROL_GUARD
-        case 2: return config.guardSpeed * config.areaSpeedMultiplier;     // AREA_GUARD
-        case 3: return config.guardSpeed * config.roamingSpeedMultiplier;  // ROAMING_GUARD
-        case 4: return config.guardSpeed * config.alertSpeedMultiplier;    // ALERT_GUARD
-        default: return config.guardSpeed;
+        case 0: return baseSpeed * config.staticSpeedMultiplier;   // STATIC_GUARD
+        case 1: return baseSpeed * config.patrolSpeedMultiplier;   // PATROL_GUARD
+        case 2: return baseSpeed * config.areaSpeedMultiplier;     // AREA_GUARD
+        case 3: return baseSpeed * config.roamingSpeedMultiplier;  // ROAMING_GUARD
+        case 4: return baseSpeed * config.alertSpeedMultiplier;    // ALERT_GUARD
+        default: return baseSpeed;
     }
 }
 
@@ -377,6 +382,10 @@ void initGuard(size_t edmIndex, const HammerEngine::GuardBehaviorConfig& config)
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Guard);
     auto& data = edm.getBehaviorData(edmIndex);
+
+    // Cache moveSpeed from CharacterData (one-time cost)
+    data.moveSpeed = edm.getCharacterDataByIndex(edmIndex).moveSpeed;
+
     auto& guard = data.state.guard;
     auto& hotData = edm.getHotDataByIndex(edmIndex);
 
@@ -491,7 +500,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
                     guard.isInvestigating = true;
                     guard.investigationTarget = threatPos;
                     guard.investigationTimer = 0.0f;
-                    moveToPosition(ctx, edm, threatPos, config.guardSpeed);
+                    moveToPosition(ctx, edm, threatPos, data.moveSpeed);
                     break;
 
                 case 3: // HOSTILE
@@ -507,7 +516,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
                         switchBehavior(ctx.edmIndex, BehaviorType::Attack);
                         return;
                     } else {
-                        float speed = (guard.currentAlertLevel >= 4) ? config.guardSpeed * 1.5f : config.guardSpeed * 1.2f;
+                        float speed = (guard.currentAlertLevel >= 4) ? data.moveSpeed * GUARD_PURSUIT_SPEED_MULT : data.moveSpeed * GUARD_ALERT_SPEED_MULT;
                         moveToPosition(ctx, edm, threatPos, speed);
                     }
                     break;
@@ -535,21 +544,21 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
             }
 
             if (!isAtPosition(ctx.transform.position, guard.investigationTarget)) {
-                float speed = (guard.currentAlertLevel >= 3) ? config.guardSpeed * 1.5f : config.guardSpeed;
+                float speed = (guard.currentAlertLevel >= 3) ? data.moveSpeed * GUARD_PURSUIT_SPEED_MULT : data.moveSpeed;
                 moveToPosition(ctx, edm, guard.investigationTarget, speed);
             }
         }
     } else if (guard.returningToPost) {
         // Return to assigned position
         if (!isAtPosition(ctx.transform.position, guard.assignedPosition)) {
-            moveToPosition(ctx, edm, guard.assignedPosition, config.guardSpeed);
+            moveToPosition(ctx, edm, guard.assignedPosition, data.moveSpeed);
         } else {
             guard.returningToPost = false;
             guard.currentAlertLevel = 0; // CALM
         }
     } else {
         // Normal guard behavior based on mode - use mode-specific speeds
-        float modeSpeed = getModeSpeed(guard.currentMode, config);
+        float modeSpeed = getModeSpeed(guard.currentMode, data.moveSpeed, config);
 
         switch (guard.currentMode) {
             case 0: // STATIC_GUARD

@@ -49,7 +49,7 @@ bool handleStartDelay(BehaviorContext& ctx, const HammerEngine::WanderBehaviorCo
     if (wander.directionChangeTimer < wander.startDelay) return false;
 
     wander.movementStarted = true;
-    ctx.transform.velocity = wander.currentDirection * config.speed;
+    ctx.transform.velocity = wander.currentDirection * data.moveSpeed;
     return true;
 }
 
@@ -157,12 +157,14 @@ void handlePathfinding(const BehaviorContext& ctx, const Vector2D& dest,
 
 void chooseNewDirection(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfig& config) {
     if (!ctx.behaviorData) return;
-    auto& wander = ctx.behaviorData->state.wander;
+    auto& data = *ctx.behaviorData;
+    auto& wander = data.state.wander;
     float angle = s_angleDistribution(s_rng);
     wander.currentDirection = Vector2D(std::cos(angle), std::sin(angle));
     if (wander.movementStarted) {
-        ctx.transform.velocity = wander.currentDirection * config.speed;
+        ctx.transform.velocity = wander.currentDirection * data.moveSpeed;
     }
+    (void)config;  // Config no longer used for speed
 }
 
 void handleMovement(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfig& config) {
@@ -186,7 +188,7 @@ void handleMovement(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConf
     handlePathfinding(ctx, dest, config);
 
     if (!ctx.pathData) {
-        ctx.transform.velocity = wander.currentDirection * config.speed;
+        ctx.transform.velocity = wander.currentDirection * data.moveSpeed;
         return;
     }
     auto& pathData = *ctx.pathData;
@@ -208,14 +210,14 @@ void handleMovement(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConf
 
         if (dist > 0.001f) {
             Vector2D direction = toWaypoint / dist;
-            ctx.transform.velocity = direction * config.speed;
+            ctx.transform.velocity = direction * data.moveSpeed;
         }
     } else {
-        ctx.transform.velocity = wander.currentDirection * config.speed;
+        ctx.transform.velocity = wander.currentDirection * data.moveSpeed;
     }
 
     float speedSq = ctx.transform.velocity.lengthSquared();
-    const float stallSpeed = std::max(config.stallSpeed, config.speed * 0.5f);
+    const float stallSpeed = std::max(config.stallSpeed, data.moveSpeed * 0.5f);
     const float stallSpeedSq = stallSpeed * stallSpeed;
     const float stallSeconds = config.stallTimeout;
 
@@ -237,7 +239,7 @@ void handleMovement(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConf
         wander.directionChangeTimer = 0.0f;
     }
 
-    const float jitterThresholdSq = (config.speed * 1.5f) * (config.speed * 1.5f);
+    const float jitterThresholdSq = (data.moveSpeed * 1.5f) * (data.moveSpeed * 1.5f);
     if (speedSq < jitterThresholdSq && speedSq >= stallSpeedSq) {
         float jitter = (s_angleDistribution(s_rng) - static_cast<float>(M_PI)) * 0.1f;
         Vector2D dir = wander.currentDirection;
@@ -246,7 +248,7 @@ void handleMovement(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConf
         if (rotated.lengthSquared() > 0.000001f) {
             rotated.normalize();
             wander.currentDirection = rotated;
-            ctx.transform.velocity = wander.currentDirection * config.speed;
+            ctx.transform.velocity = wander.currentDirection * data.moveSpeed;
         }
     }
 
@@ -270,6 +272,10 @@ void initWander(size_t edmIndex, const HammerEngine::WanderBehaviorConfig& confi
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Wander);
     auto& data = edm.getBehaviorData(edmIndex);
+
+    // Cache moveSpeed from CharacterData (one-time cost)
+    data.moveSpeed = edm.getCharacterDataByIndex(edmIndex).moveSpeed;
+
     auto& wander = data.state.wander;
 
     wander.directionChangeTimer = 0.0f;

@@ -331,13 +331,13 @@ bool applyRangedPositioning(size_t edmIndex, const Vector2D& entityPos, const Ve
     if (attack.targetDistance < minimumRange && minimumRange > 0.0f) {
         Vector2D direction = normalizeDir(entityPos - targetPos);
         Vector2D backoffPos = targetPos + direction * (optimalRange * 0.8f);
-        moveToPosition(edmIndex, backoffPos, config.movementSpeed);
+        moveToPosition(edmIndex, backoffPos, data.moveSpeed);
         return true;
     }
 
     // Move closer if too far
     if (attack.targetDistance > config.attackRange) {
-        moveToPosition(edmIndex, targetPos, config.movementSpeed);
+        moveToPosition(edmIndex, targetPos, data.moveSpeed);
         return true;
     }
 
@@ -359,7 +359,7 @@ bool applyChargePositioning(size_t edmIndex, const Vector2D& entityPos, const Ve
 
     // During charge, move at 2x speed toward target
     if (attack.isCharging) {
-        moveToPosition(edmIndex, targetPos, config.movementSpeed * CHARGE_SPEED_MULTIPLIER);
+        moveToPosition(edmIndex, targetPos, data.moveSpeed * CHARGE_SPEED_MULTIPLIER);
         return true;
     }
 
@@ -379,7 +379,7 @@ bool applyHitAndRunPositioning(size_t edmIndex, const Vector2D& entityPos, const
         attack.currentState == static_cast<uint8_t>(AttackState::COOLDOWN)) {
 
         Vector2D retreatDir = normalizeDir(entityPos - targetPos);
-        Vector2D retreatVelocity = retreatDir * (config.movementSpeed * RETREAT_SPEED_MULTIPLIER * 1.2f);
+        Vector2D retreatVelocity = retreatDir * (data.moveSpeed * RETREAT_SPEED_MULTIPLIER * 1.2f);
         edm.getHotDataByIndex(edmIndex).transform.velocity = retreatVelocity;
         return true;
     }
@@ -414,6 +414,10 @@ void initAttack(size_t edmIndex, const HammerEngine::AttackBehaviorConfig& confi
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Attack);
     auto& data = edm.getBehaviorData(edmIndex);
+
+    // Cache moveSpeed from CharacterData (one-time cost)
+    data.moveSpeed = edm.getCharacterDataByIndex(edmIndex).moveSpeed;
+
     auto& attack = data.state.attack;
 
     attack.lastTargetPosition = Vector2D(0, 0);
@@ -613,7 +617,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             if (attack.targetDistance <= optimalRange) {
                 changeState(data, AttackState::POSITIONING);
             } else {
-                moveToPosition(ctx.edmIndex, targetPos, config.movementSpeed);
+                moveToPosition(ctx.edmIndex, targetPos, data.moveSpeed);
             }
             break;
 
@@ -643,7 +647,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             // Enforce minimum range - back off if too close
             if (distToTarget < minimumRange && minimumRange > 0.0f) {
                 Vector2D backoffPos = targetPos + direction * (minimumRange + 10.0f);
-                moveToPosition(ctx.edmIndex, backoffPos, config.movementSpeed * 0.8f);
+                moveToPosition(ctx.edmIndex, backoffPos, data.moveSpeed * 0.8f);
                 break;
             }
 
@@ -661,7 +665,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
                 float strafeSign = attack.circleStrafing ? 1.0f : -1.0f;
                 Vector2D strafePos = targetPos + direction * optimalRange +
                                     perpendicular * (config.strafeRadius * strafeSign * 0.5f);
-                moveToPosition(ctx.edmIndex, strafePos, config.movementSpeed);
+                moveToPosition(ctx.edmIndex, strafePos, data.moveSpeed);
                 break;
             }
 
@@ -672,7 +676,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             Vector2D optimalPos = targetPos + direction * optimalRange;
 
             if ((entityPos - optimalPos).length() > 15.0f) {
-                moveToPosition(ctx.edmIndex, optimalPos, config.movementSpeed);
+                moveToPosition(ctx.edmIndex, optimalPos, data.moveSpeed);
             } else if (attack.canAttack) {
                 changeState(data, AttackState::ATTACKING);
             }
@@ -700,7 +704,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
         case AttackState::RETREATING: {
             auto& edm = EntityDataManager::Instance();
             Vector2D retreatDir = normalizeDir(entityPos - targetPos);
-            Vector2D retreatVelocity = retreatDir * (config.movementSpeed * RETREAT_SPEED_MULTIPLIER);
+            Vector2D retreatVelocity = retreatDir * (data.moveSpeed * RETREAT_SPEED_MULTIPLIER);
             edm.getHotDataByIndex(ctx.edmIndex).transform.velocity = retreatVelocity;
 
             // Don't exit retreat immediately - require minimum time in state

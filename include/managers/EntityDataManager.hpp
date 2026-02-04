@@ -918,6 +918,9 @@ struct BehaviorData {
     uint8_t flags{0};
     uint8_t _pad[2]{};
 
+    // Cached from CharacterData at init (avoids typeLocalIndex indirection every frame)
+    float moveSpeed{0.0f};  // 0 = uninitialized, set from CharacterData in initXxx()
+
     // Common separation state (used by most behaviors)
     float separationTimer{0.0f};
     Vector2D lastSepVelocity;

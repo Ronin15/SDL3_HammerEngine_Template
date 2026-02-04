@@ -22,6 +22,10 @@ void initFollow(size_t edmIndex, const HammerEngine::FollowBehaviorConfig& confi
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Follow);
     auto& data = edm.getBehaviorData(edmIndex);
+
+    // Cache moveSpeed from CharacterData (one-time cost)
+    data.moveSpeed = edm.getCharacterDataByIndex(edmIndex).moveSpeed;
+
     auto& follow = data.state.follow;
     auto& hotData = edm.getHotDataByIndex(edmIndex);
 
@@ -150,7 +154,7 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
 
             if (dist > 0.001f) {
                 Vector2D direction = toWaypoint / dist;
-                float speed = config.followSpeed;
+                float speed = data.moveSpeed;
 
                 // Speed adjustment based on distance
                 if (distanceToTarget > config.catchupRange) {
@@ -165,19 +169,19 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
         } else {
             // Direct movement fallback
             Vector2D direction = (desiredPos - currentPos).normalized();
-            ctx.transform.velocity = direction * config.followSpeed;
-            follow.currentSpeed = config.followSpeed;
+            ctx.transform.velocity = direction * data.moveSpeed;
+            follow.currentSpeed = data.moveSpeed;
         }
     } else {
         // No pathData - direct movement
         Vector2D direction = (desiredPos - currentPos).normalized();
-        ctx.transform.velocity = direction * config.followSpeed;
-        follow.currentSpeed = config.followSpeed;
+        ctx.transform.velocity = direction * data.moveSpeed;
+        follow.currentSpeed = data.moveSpeed;
     }
 
     // Stall detection
     float speedSq = ctx.transform.velocity.lengthSquared();
-    float stallThreshold = config.followSpeed * config.stallSpeedMultiplier;
+    float stallThreshold = data.moveSpeed * config.stallSpeedMultiplier;
     if (speedSq < stallThreshold * stallThreshold) {
         data.separationTimer += ctx.deltaTime;
         if (data.separationTimer > config.stallTimeout) {
