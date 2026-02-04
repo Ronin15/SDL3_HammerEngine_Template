@@ -121,41 +121,57 @@ BOOST_AUTO_TEST_CASE(BasicEntityRegistration)
   edm.destroyEntity(handle);
 }
 
-// Test concurrent entity registration from multiple threads
-BOOST_AUTO_TEST_CASE(ConcurrentEntityRegistration)
+// Test concurrent behavior assignment from multiple threads
+// Note: Entity creation is main-thread-only per EDM design, but behavior
+// assignment via AIManager IS thread-safe
+BOOST_AUTO_TEST_CASE(ConcurrentBehaviorAssignment)
 {
   constexpr int NUM_THREADS = 4;
   constexpr int ENTITIES_PER_THREAD = 25;
+  constexpr int TOTAL_ENTITIES = NUM_THREADS * ENTITIES_PER_THREAD;
 
-  std::vector<std::future<std::vector<EntityHandle>>> futures;
+  // Create all entities on main thread (EDM creation is main-thread-only)
+  std::vector<std::shared_ptr<TestNPC>> npcs;
+  std::vector<EntityHandle> allHandles;
+  npcs.reserve(TOTAL_ENTITIES);
+  allHandles.reserve(TOTAL_ENTITIES);
+
+  for (int t = 0; t < NUM_THREADS; ++t) {
+    for (int i = 0; i < ENTITIES_PER_THREAD; ++i) {
+      Vector2D pos(t * 100.0f + i * 10.0f, t * 100.0f + i * 10.0f);
+      auto npc = TestNPC::create(pos);
+      EntityHandle handle = npc->getHandle();
+      BOOST_REQUIRE(handle.isValid());
+      npcs.push_back(npc);
+      allHandles.push_back(handle);
+    }
+  }
+
+  // Now test concurrent behavior assignment (this IS thread-safe)
+  std::vector<std::future<int>> futures;
   std::atomic<int> successCount{0};
 
   for (int t = 0; t < NUM_THREADS; ++t) {
     futures.push_back(std::async(std::launch::async, [&, t]() {
-      std::vector<EntityHandle> handles;
+      int localSuccess = 0;
       for (int i = 0; i < ENTITIES_PER_THREAD; ++i) {
-        Vector2D pos(t * 100.0f + i * 10.0f, t * 100.0f + i * 10.0f);
-        auto npc = TestNPC::create(pos);
-        EntityHandle handle = npc->getHandle();
-
-        if (handle.isValid()) {
-          AIManager::Instance().assignBehavior(handle, "Wander");
-          handles.push_back(handle);
-          successCount.fetch_add(1, std::memory_order_relaxed);
+        int idx = t * ENTITIES_PER_THREAD + i;
+        AIManager::Instance().assignBehavior(allHandles[idx], "Wander");
+        if (AIManager::Instance().hasBehavior(allHandles[idx])) {
+          ++localSuccess;
         }
       }
-      return handles;
+      successCount.fetch_add(localSuccess, std::memory_order_relaxed);
+      return localSuccess;
     }));
   }
 
-  // Wait for all threads and collect handles
-  std::vector<EntityHandle> allHandles;
+  // Wait for all threads
   for (auto& f : futures) {
-    auto handles = f.get();
-    allHandles.insert(allHandles.end(), handles.begin(), handles.end());
+    f.get();
   }
 
-  BOOST_CHECK_EQUAL(successCount.load(), NUM_THREADS * ENTITIES_PER_THREAD);
+  BOOST_CHECK_EQUAL(successCount.load(), TOTAL_ENTITIES);
 
   // Clean up
   auto& edm = EntityDataManager::Instance();

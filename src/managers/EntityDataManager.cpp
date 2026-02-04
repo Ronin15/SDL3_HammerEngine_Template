@@ -443,6 +443,8 @@ uint32_t EntityDataManager::allocateCharacterSlot() {
 EntityHandle EntityDataManager::createNPC(const Vector2D& position,
                                           float halfWidth,
                                           float halfHeight) {
+    // Thread safety: Lock for entire creation (may be called from worker thread)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
 
     size_t index = allocateSlot();
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
@@ -951,6 +953,9 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
         quantity = MAX_STACK_SIZE;
     }
 
+    // Thread safety: Lock for entire creation (may be called from worker thread)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
+
     // Allocate in STATIC pool (resources don't move, not in tier system)
     size_t index;
     if (!m_freeStaticSlots.empty()) {
@@ -1083,6 +1088,9 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
         lockLevel = 10;
     }
 
+    // Thread safety: Lock for entire creation (may be called from worker thread)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
+
     // Auto-create inventory for this container
     uint32_t inventoryIndex = createInventory(maxSlots, false);  // Containers not world-tracked by default
     if (inventoryIndex == INVALID_INVENTORY_INDEX) {
@@ -1205,6 +1213,9 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
         respawnTime = 0.0f;
     }
 
+    // Thread safety: Lock for entire creation (called from worker thread during world load)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
+
     // Allocate in STATIC pool (resources don't move, not in tier system)
     size_t index;
     if (!m_freeStaticSlots.empty()) {
@@ -1300,6 +1311,8 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
                                                  EntityHandle owner,
                                                  float damage,
                                                  float lifetime) {
+    // Thread safety: Lock for entire creation (may be called from worker thread)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
 
     size_t index = allocateSlot();
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
@@ -1364,6 +1377,8 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
                                                  EntityHandle owner,
                                                  float damage,
                                                  float duration) {
+    // Thread safety: Lock for entire creation (may be called from worker thread)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
 
     size_t index = allocateSlot();
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
@@ -1421,6 +1436,8 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
 EntityHandle EntityDataManager::createStaticBody(const Vector2D& position,
                                                   float halfWidth,
                                                   float halfHeight) {
+    // Thread safety: Lock for entire creation (may be called from worker thread)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
 
     // Allocate slot in static storage (separate from dynamic m_hotData)
     size_t index;
@@ -1467,6 +1484,9 @@ EntityHandle EntityDataManager::createTrigger(const Vector2D& position,
                                                float halfHeight,
                                                HammerEngine::TriggerTag tag,
                                                HammerEngine::TriggerType type) {
+    // Thread safety: Lock for entire creation (may be called from worker thread)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
+
     // Allocate slot in static storage (triggers don't move)
     size_t index;
     if (!m_freeStaticSlots.empty()) {

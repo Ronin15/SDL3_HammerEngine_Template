@@ -2521,7 +2521,8 @@ private:
     mutable bool m_triggerDetectionDirty{true};
 
     // Kind indices (per-kind dirty flags to avoid full rebuild when querying single kind)
-    // NOTE: Entity creation/destruction is main-thread-only, so these don't need atomics.
+    // NOTE: Entity creation is protected by m_creationMutex (safe from worker threads).
+    // Destruction uses m_destructionMutex. These dirty flags don't need atomics.
     std::array<std::vector<size_t>, static_cast<size_t>(EntityKind::COUNT)> m_kindIndices;
     mutable std::array<bool, static_cast<size_t>(EntityKind::COUNT)> m_kindIndicesDirty{};
 
@@ -2562,8 +2563,9 @@ private:
     std::vector<uint8_t> m_generations;
     std::vector<uint8_t> m_staticGenerations;
 
-    // Thread safety (destruction queue only - structural ops are main-thread-only)
-    std::mutex m_destructionMutex;
+    // Thread safety for entity operations
+    std::mutex m_destructionMutex;  // Protects destruction queue
+    std::mutex m_creationMutex;     // Protects entity creation (allocateSlot + vector growth)
 
     // ========================================================================
     // CREATURE COMPOSITION REGISTRIES
