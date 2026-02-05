@@ -6,6 +6,7 @@
 #include "core/TimestepManager.hpp"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 
 TimestepManager::TimestepManager(float targetFPS, float fixedTimestep)
     : m_targetFPS(targetFPS)
