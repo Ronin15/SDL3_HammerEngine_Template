@@ -130,6 +130,7 @@ private:
     // Simplified timing pattern (eliminates accumulator drift)
     double m_accumulator;                // Frame timing accumulator
     static constexpr double MAX_ACCUMULATOR = 0.25; // Max delta clamp for VSync mode
+    static constexpr double DELTA_SNAP_TOLERANCE = 0.10; // Snap delta within 10% of timestep multiple
     
     // Frame statistics
     uint32_t m_lastFrameTimeMs;         // Last frame duration in milliseconds (for getFrameTimeMs())

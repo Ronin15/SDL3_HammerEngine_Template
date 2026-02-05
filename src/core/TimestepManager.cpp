@@ -63,6 +63,17 @@ void TimestepManager::startFrame() {
     } else {
         // VSync: Clamp delta to prevent spiral of death, then add to accumulator
         deltaTime = std::min(deltaTime, MAX_ACCUMULATOR);
+
+        // Snap delta to nearest multiple of fixedTimestep when within tolerance.
+        // Prevents accumulator drift from VSync jitter when display rate is
+        // near a multiple of the update rate (e.g., 60Hz display / 60Hz update).
+        // At mismatched rates (e.g., 144Hz / 60Hz), deltas are too far to snap.
+        double nearestMultiple = std::round(deltaTime / m_fixedTimestep) * m_fixedTimestep;
+        if (nearestMultiple > 0.0 &&
+            std::abs(deltaTime - nearestMultiple) < m_fixedTimestep * DELTA_SNAP_TOLERANCE) {
+            deltaTime = nearestMultiple;
+        }
+
         m_accumulator += deltaTime;
     }
     
