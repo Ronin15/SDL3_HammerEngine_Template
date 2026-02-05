@@ -2399,16 +2399,14 @@ void CollisionManager::resolve(const CollisionInfo &collision) {
     store4_aligned(resultA, posA);
     store4_aligned(resultB, posB);
 
-    // Write positions back to EDM
-    // Update both position AND previousPosition to make collision push instantaneous
-    // (no interpolation from pre-collision position - prevents jitter for stationary entities)
+    // Write corrected positions back to EDM — preserve previousPosition from
+    // storePositionForInterpolation() so render interpolation smoothly
+    // transitions from pre-movement to post-correction position
     transformA.position.setX(resultA[0]);
     transformA.position.setY(resultA[1]);
-    transformA.previousPosition = transformA.position;
 
     transformB.position.setX(resultB[0]);
     transformB.position.setY(resultB[1]);
-    transformB.previousPosition = transformB.position;
 
     // Cancel velocity components pointing into collision for both bodies
     // This prevents vibration from repeated collision/resolution cycles
@@ -2455,11 +2453,11 @@ void CollisionManager::resolve(const CollisionInfo &collision) {
     alignas(16) float result[4];
     store4_aligned(result, pos);
 
-    // Write position back to EDM
-    // Update both position AND previousPosition to make collision push instantaneous
+    // Write corrected position back to EDM — preserve previousPosition from
+    // storePositionForInterpolation() so render interpolation smoothly
+    // transitions from pre-movement to post-correction position
     transform.position.setX(result[0]);
     transform.position.setY(result[1]);
-    transform.previousPosition = transform.position;
 
     // Cancel velocity in collision direction to prevent vibration
     // Project velocity onto normal: v_normal = (v . n) * n
