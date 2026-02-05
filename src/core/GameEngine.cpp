@@ -351,9 +351,26 @@ bool GameEngine::init(std::string_view title) {
   // VSync handling - different for GPU vs SDL_Renderer
 #ifdef USE_SDL3_GPU
   if (m_gpuRendering) {
-    // GPU rendering uses swapchain present mode for VSync
-    // SDL3_GPU handles this automatically
-    GAMEENGINE_INFO("GPU rendering: VSync handled by swapchain");
+    // GPU rendering: configure swapchain present mode based on VSync setting
+    auto& gpuDev = HammerEngine::GPUDevice::Instance();
+    SDL_GPUPresentMode presentMode = vsyncRequested
+        ? SDL_GPU_PRESENTMODE_VSYNC
+        : SDL_GPU_PRESENTMODE_MAILBOX;
+
+    bool swapchainOk = SDL_SetGPUSwapchainParameters(
+        gpuDev.get(), gpuDev.getWindow(),
+        SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode);
+
+    if (swapchainOk) {
+      GAMEENGINE_INFO(std::format("GPU rendering: present mode {}",
+                                  vsyncRequested ? "VSYNC" : "MAILBOX"));
+    } else {
+      GAMEENGINE_WARN(std::format("Failed to set GPU present mode: {} — defaulting to VSYNC",
+                                  SDL_GetError()));
+    }
+
+    // Software frame limiting needed when VSync is off
+    m_timestepManager->setSoftwareFrameLimiting(!vsyncRequested);
   } else {
 #endif
     // Attempt to set VSync based on user preference
@@ -1382,14 +1399,60 @@ void GameEngine::clean() {
 }
 
 bool GameEngine::setVSyncEnabled(bool enable) {
+  m_vsyncRequested = enable;
+  GAMEENGINE_INFO(
+      std::format("{} VSync...", enable ? "Enabling" : "Disabling"));
+
+#ifdef USE_SDL3_GPU
+  if (m_gpuRendering) {
+    auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+    if (!gpuDevice.isInitialized()) {
+      GAMEENGINE_ERROR("Cannot set VSync - GPU device not initialized");
+      return false;
+    }
+
+    // VSYNC blocks until vblank; MAILBOX presents latest frame at vblank without blocking
+    SDL_GPUPresentMode presentMode = enable
+        ? SDL_GPU_PRESENTMODE_VSYNC
+        : SDL_GPU_PRESENTMODE_MAILBOX;
+
+    bool success = SDL_SetGPUSwapchainParameters(
+        gpuDevice.get(), gpuDevice.getWindow(),
+        SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode);
+
+    if (!success) {
+      GAMEENGINE_ERROR(std::format("Failed to {} VSync on GPU swapchain: {}",
+                                   enable ? "enable" : "disable",
+                                   SDL_GetError()));
+      if (m_timestepManager) {
+        m_timestepManager->setSoftwareFrameLimiting(true);
+        GAMEENGINE_INFO("Falling back to software frame limiting");
+      }
+      return false;
+    }
+
+    // Configure software frame limiting: needed when VSync is off
+    if (m_timestepManager) {
+      m_timestepManager->setSoftwareFrameLimiting(!enable);
+    }
+
+    GAMEENGINE_INFO(std::format("GPU VSync {} (present mode: {})",
+                                enable ? "enabled" : "disabled",
+                                enable ? "VSYNC" : "MAILBOX"));
+
+    // Save VSync setting to SettingsManager for persistence
+    auto &settings = HammerEngine::SettingsManager::Instance();
+    settings.set("graphics", "vsync", enable);
+    settings.saveToFile(HammerEngine::ResourcePath::resolve("res/settings.json"));
+
+    return true;
+  }
+#endif
+
   if (!mp_renderer) {
     GAMEENGINE_ERROR("Cannot set VSync - renderer not initialized");
     return false;
   }
-
-  m_vsyncRequested = enable;
-  GAMEENGINE_INFO(
-      std::format("{} VSync...", enable ? "Enabling" : "Disabling"));
 
   // Attempt to set VSync
   bool vsyncSetSuccessfully =
@@ -1512,7 +1575,19 @@ int GameEngine::getOptimalDisplayIndex() const {
 }
 
 bool GameEngine::verifyVSyncState(bool requested) {
-  // Verify VSync state matches requested setting
+#ifdef USE_SDL3_GPU
+  if (m_gpuRendering) {
+    // GPU path: SDL3 GPU API doesn't provide swapchain present mode query,
+    // so trust the result of SDL_SetGPUSwapchainParameters() from setVSyncEnabled().
+    // Configure software frame limiting: needed when VSync is off
+    if (m_timestepManager) {
+      m_timestepManager->setSoftwareFrameLimiting(!requested);
+    }
+    return requested;
+  }
+#endif
+
+  // SDL_Renderer path: verify VSync state matches requested setting
   int vsyncState = 0;
   bool vsyncVerified = false;
 

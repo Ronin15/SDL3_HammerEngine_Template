@@ -51,31 +51,26 @@ void TimestepManager::startFrame() {
     double deltaTime = deltaTimeMs / 1000.0;
     m_lastDeltaSeconds = deltaTime;  // Store high precision for FPS calculation
 
-    // Mode-aware accumulator handling:
-    // VSync mode: Normal accumulator pattern - add delta (clamped to prevent spiral)
-    //             Allows catch-up updates under load, uses interpolation for smoothness
-    // Software mode: Force exactly one update per frame by setting accumulator = timestep
-    //                Since we control timing via SDL_DelayPrecise, no catch-up needed
-    //                This eliminates timing jitter causing 0-update or 2-update frames
-    if (m_usingSoftwareFrameLimiting) {
-        // Set to exactly one timestep - guarantees one update, alpha = 0 after
-        m_accumulator = m_fixedTimestep;
-    } else {
-        // VSync: Clamp delta to prevent spiral of death, then add to accumulator
-        deltaTime = std::min(deltaTime, MAX_ACCUMULATOR);
+    // Unified accumulator for both VSync and software frame limiting:
+    // Clamp delta to prevent spiral of death, snap to nearest timestep multiple
+    // to prevent accumulator drift from timing jitter, then add to accumulator.
+    // Software mode: SDL_DelayPrecise in limitFrameRate() handles frame pacing,
+    //                so accumulator naturally gets ~1 timestep per frame.
+    // VSync mode:    Swapchain present or SDL_RenderPresent handles pacing.
+    // Both modes benefit from delta snapping to prevent drift at matching rates.
+    deltaTime = std::min(deltaTime, MAX_ACCUMULATOR);
 
-        // Snap delta to nearest multiple of fixedTimestep when within tolerance.
-        // Prevents accumulator drift from VSync jitter when display rate is
-        // near a multiple of the update rate (e.g., 60Hz display / 60Hz update).
-        // At mismatched rates (e.g., 144Hz / 60Hz), deltas are too far to snap.
-        double nearestMultiple = std::round(deltaTime / m_fixedTimestep) * m_fixedTimestep;
-        if (nearestMultiple > 0.0 &&
-            std::abs(deltaTime - nearestMultiple) < m_fixedTimestep * DELTA_SNAP_TOLERANCE) {
-            deltaTime = nearestMultiple;
-        }
-
-        m_accumulator += deltaTime;
+    // Snap delta to nearest multiple of fixedTimestep when within tolerance.
+    // Prevents accumulator drift from VSync/timing jitter when display rate is
+    // near a multiple of the update rate (e.g., 60Hz display / 60Hz update).
+    // At mismatched rates (e.g., 144Hz / 60Hz), deltas are too far to snap.
+    double nearestMultiple = std::round(deltaTime / m_fixedTimestep) * m_fixedTimestep;
+    if (nearestMultiple > 0.0 &&
+        std::abs(deltaTime - nearestMultiple) < m_fixedTimestep * DELTA_SNAP_TOLERANCE) {
+        deltaTime = nearestMultiple;
     }
+
+    m_accumulator += deltaTime;
     
     // Always render once per frame
     m_shouldRender = true;
