@@ -73,7 +73,6 @@ private:
   void resetAllEvents();
 
   // Event handler methods
-  void onWeatherChanged(const std::string &message);
   void onNPCSpawned(const EventData &data);
   void onResourceChanged(const EventData &data);
 
@@ -186,9 +185,6 @@ private:
   // Cached NPC count (updated in update(), used in render())
   size_t m_cachedNPCCount{0};
 
-  // Lazy-cached weather string (computed only when underlying enum changes)
-  WeatherType m_lastCachedWeather{WeatherType::Custom};  // Initialize to invalid to force first compute
-  std::string m_cachedWeatherStr{};
 };
 
 #endif // EVENT_DEMO_STATE_HPP

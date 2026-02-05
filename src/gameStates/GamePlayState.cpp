@@ -35,7 +35,6 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
-#include <random>
 
 #ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"

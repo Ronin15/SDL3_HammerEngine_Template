@@ -58,8 +58,6 @@ public:
 
 private:
     // Methods
-    void setupAdvancedAIBehaviors();
-    void createAdvancedNPCs();
     void setupTestVillage();  // Spawns merchant NPCs, guards, and villagers
     void initializeCamera();
     void updateCamera(float deltaTime);
@@ -78,16 +76,6 @@ private:
     // GPU scene renderer for coordinated GPU rendering
     std::unique_ptr<HammerEngine::GPUSceneRenderer> m_gpuSceneRenderer{nullptr};
 #endif
-
-    std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
-
-    // Advanced demo settings optimized for behavior showcasing
-    int m_idleNPCCount{4};      // Small group for idle demonstration
-    int m_fleeNPCCount{7};      // Enough to show fleeing patterns
-    int m_followNPCCount{5};    // Moderate group for following behavior
-    int m_guardNPCCount{8};     // Strategic positions for guarding
-    int m_attackNPCCount{6};    // Combat-focused group
-    int m_totalNPCCount{30};    // Total optimized for advanced behavior showcase
 
     float m_worldWidth{800.0f};
     float m_worldHeight{600.0f};
@@ -109,7 +97,6 @@ private:
 
     // AI pause state
     bool m_aiPaused{false};
-    bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit
 
     // Status display optimization - zero per-frame allocations (C++20 type-safe)
     std::string m_statusBuffer{};

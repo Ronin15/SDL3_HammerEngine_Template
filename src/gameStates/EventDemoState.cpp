@@ -10,7 +10,6 @@
 #include "core/Logger.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
-// SceneChangeEvent removed - legacy feature
 #include "events/WeatherEvent.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "managers/AIManager.hpp"
@@ -651,18 +650,10 @@ void EventDemoState::setupEventSystem() {
 
   // Register event handlers using token-based API for easy removal
   m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
-      EventTypeId::Weather, [this](const EventData &data) {
-        if (data.isActive())
-          onWeatherChanged("weather_changed");
-      }));
-
-  m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
       EventTypeId::NPCSpawn, [this](const EventData &data) {
         if (data.isActive())
           onNPCSpawned(data);
       }));
-
-  // SceneChange handler removed - legacy feature
 
   m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
       EventTypeId::ResourceChange, [this](const EventData &data) {
@@ -703,8 +694,6 @@ void EventDemoState::handleInput() {
       addLogEntry("NPC limit (R to reset)");
     }
   }
-
-  // [3] Reserved (scene transitions removed - legacy feature)
 
   // [4] Mass NPC Spawn with varied behaviors
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
@@ -779,13 +768,6 @@ void EventDemoState::handleInput() {
     mp_stateManager->changeState("MainMenuState");
   }
 
-  // Mouse input for world interaction
-  if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
-    Vector2D const mousePos = inputMgr.getMousePosition();
-    if (!ui.isClickOnUI(mousePos)) {
-      (void)m_camera->screenToWorld(mousePos);
-    }
-  }
 }
 
 void EventDemoState::triggerWeatherDemo() {
@@ -831,8 +813,6 @@ void EventDemoState::triggerNPCSpawnDemo() {
   EventManager::Instance().spawnNPC(npcType, spawnX, spawnY);
   addLogEntry(std::format("Spawned: {}", npcType));
 }
-
-// triggerSceneTransitionDemo() removed - legacy feature
 
 void EventDemoState::triggerResourceDemo() {
   if (!m_player) {
@@ -1077,11 +1057,6 @@ void EventDemoState::resetAllEvents() {
   addLogEntry("Demo reset");
 }
 
-void EventDemoState::onWeatherChanged(const std::string &message) {
-  // Weather handler triggered - message logged via GAMESTATE_DEBUG
-  (void)message;
-}
-
 void EventDemoState::onNPCSpawned(const EventData &data) {
   // NPCSpawnEvent::execute() handles the actual spawning
   // This handler just logs the event for the demo UI
@@ -1095,8 +1070,6 @@ void EventDemoState::onNPCSpawned(const EventData &data) {
                               ? "Random" : params.npcType;
   addLogEntry(std::format("NPC Spawn Event: {} x{}", typeLabel, params.count));
 }
-
-// onSceneChanged() removed - legacy feature
 
 void EventDemoState::onResourceChanged(const EventData &data) {
   // Extract ResourceChangeEvent from EventData
@@ -1337,10 +1310,6 @@ void EventDemoState::updateCamera(float deltaTime) {
     m_camera->update(deltaTime);
   }
 }
-
-// Removed setupCameraForWorld(): camera manages world bounds itself
-// Removed applyCameraTransformation(): unified single-read pattern used in
-// render()
 
 void EventDemoState::toggleInventoryDisplay() {
   auto &ui = UIManager::Instance();

@@ -9,10 +9,8 @@
 #include "managers/SoundManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/TextureManager.hpp"
-#include "managers/UIManager.hpp"
 #include "managers/GameStateManager.hpp"
 #include <algorithm>
-#include <format>
 
 #ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"

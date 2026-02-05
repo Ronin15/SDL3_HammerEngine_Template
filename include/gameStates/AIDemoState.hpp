@@ -66,8 +66,6 @@ private:
     // Player entity
     PlayerPtr m_player{};
 
-    std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
-
     // Demo settings
     float m_worldWidth{800.0f};
     float m_worldHeight{600.0f};
@@ -97,8 +95,6 @@ private:
 
     // AI pause state
     bool m_aiPaused{false};
-    bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit
-
     // Status display optimization - zero per-frame allocations (C++20 type-safe)
     std::string m_statusBuffer{};
     float m_lastDisplayedFPS{-1.0f};

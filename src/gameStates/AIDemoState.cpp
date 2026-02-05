@@ -20,8 +20,6 @@
 #include "utils/Camera.hpp"
 #include "utils/FrameProfiler.hpp"
 #include "utils/WorldRenderPipeline.hpp"
-#include "world/WorldData.hpp"
-
 #ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
 #include "gpu/SpriteBatch.hpp"

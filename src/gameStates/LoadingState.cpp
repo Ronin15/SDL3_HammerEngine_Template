@@ -12,7 +12,6 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
-#include "utils/WorldRenderPipeline.hpp"
 
 #ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"

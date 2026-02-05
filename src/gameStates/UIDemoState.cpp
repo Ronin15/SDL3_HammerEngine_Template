@@ -15,8 +15,7 @@
 #endif
 
 #include <array>
-#include <sstream>
-#include <iomanip>
+#include <format>
 
 // UIExampleState Implementation
 UIExampleState::UIExampleState() {
@@ -261,14 +260,13 @@ void UIExampleState::updateProgressBar(float deltaTime) {
 
 
 void UIExampleState::updateSliderLabel(float value) {
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(2) << "Slider: " << value;
-    UIManager::Instance().setText("uiexample_slider_label", oss.str());
+    UIManager::Instance().setText("uiexample_slider_label",
+                                  std::format("Slider: {:.2f}", value));
 }
 
 void UIExampleState::updateInputLabel(const std::string& text) {
-    std::string labelText = "Input: " + (text.empty() ? "(empty)" : text);
-    UIManager::Instance().setText("uiexample_input_label", labelText);
+    UIManager::Instance().setText("uiexample_input_label",
+                                  std::format("Input: {}", text.empty() ? "(empty)" : text));
 }
 
 void UIExampleState::applyDarkTheme(bool dark) {

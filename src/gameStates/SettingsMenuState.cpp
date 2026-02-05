@@ -413,9 +413,6 @@ void SettingsMenuState::updateTabVisibility() {
     ui.setComponentVisible("settings_showfps_label", false);
     ui.setComponentVisible("settings_showfps_checkbox", false);
     ui.setComponentVisible("settings_resolution_label", false);
-    ui.setComponentVisible("settings_buffer_label", false);
-    ui.setComponentVisible("settings_buffer_button", false);
-    ui.setComponentVisible("settings_buffer_info", false);
 
     // Audio
     ui.setComponentVisible("settings_master_volume_label", false);
@@ -446,9 +443,6 @@ void SettingsMenuState::updateTabVisibility() {
             ui.setComponentVisible("settings_showfps_label", true);
             ui.setComponentVisible("settings_showfps_checkbox", true);
             ui.setComponentVisible("settings_resolution_label", true);
-            ui.setComponentVisible("settings_buffer_label", true);
-            ui.setComponentVisible("settings_buffer_button", true);
-            ui.setComponentVisible("settings_buffer_info", true);
             break;
 
         case SettingsTab::Audio:

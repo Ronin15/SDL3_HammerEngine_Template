@@ -13,7 +13,6 @@
 #include "managers/EntityDataManager.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
-#include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -239,11 +238,6 @@ bool AdvancedAIDemoState::enter() {
     // Explicitly cast PlayerPtr to EntityPtr to ensure proper conversion
     EntityPtr playerAsEntity = std::static_pointer_cast<Entity>(m_player);
     aiMgr.setPlayerHandle(playerAsEntity->getHandle());
-
-    // Setup advanced AI behaviors AFTER world is initialized and player is set
-    // This ensures Guard behavior uses correct world dimensions and Follow has
-    // player target
-    setupAdvancedAIBehaviors();
 
     // Register CombatController (follows GamePlayState pattern)
     m_controllers.add<CombatController>(m_player);
@@ -552,9 +546,7 @@ void AdvancedAIDemoState::render(SDL_Renderer *renderer,
     if (m_player) {
       m_player->render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
 
-      // TODO: Player health bar rendering using m_player->getHealth() /
-      // m_player->getMaxHealth()
-    }
+}
   }
 
   // ========== END SCENE (composite with zoom) ==========
@@ -587,75 +579,6 @@ void AdvancedAIDemoState::render(SDL_Renderer *renderer,
     }
   }
   ui.render(renderer);
-}
-
-void AdvancedAIDemoState::setupAdvancedAIBehaviors() {
-  // Default behaviors (Idle, Flee, Follow, Guard, Attack, Wander, Chase)
-  // are now registered by AIManager::registerDefaultBehaviors()
-  GAMESTATE_INFO("AdvancedAIDemoState: Using default AI behaviors from AIManager");
-}
-
-void AdvancedAIDemoState::createAdvancedNPCs() {
-  // TODO: Make an event for advanced NPC's
-  //  Cache AIManager reference for better performance
-  AIManager &aiMgr = AIManager::Instance();
-  EntityDataManager &edm = EntityDataManager::Instance();
-
-  try {
-    // Random number generation for positioning near player
-    std::random_device rd;
-    std::mt19937 gen(rd());
-
-    // Player is at world center - spawn NPCs in a reasonable radius around
-    // player
-    Vector2D playerPos = m_player->getPosition();
-    float spawnRadius =
-        400.0f; // Spawn within ~400 pixels of player (visible on screen)
-    std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
-    std::uniform_real_distribution<float> radiusDist(100.0f, spawnRadius);
-
-    // Create NPCs with optimized counts for behavior demonstration
-    for (int i = 0; i < m_totalNPCCount; ++i) {
-      try {
-        // Create NPC with strategic positioning near player for behavior
-        // showcase
-        Vector2D position;
-
-        // Position all NPCs in a circle around the player for easy visibility
-        float angle = angleDist(gen);
-        float distance = radiusDist(gen);
-
-        position = Vector2D(playerPos.getX() + distance * std::cos(angle),
-                            playerPos.getY() + distance * std::sin(angle));
-
-        // Create NPC using race/class composition system
-        // EDM auto-registers with AIManager using class's suggestedBehavior
-        EntityHandle handle = edm.createNPCWithRaceClass(position, "Human", "Guard");
-
-        if (!handle.isValid()) {
-          GAMESTATE_ERROR(std::format("Failed to create data-driven NPC {}", i));
-          continue;
-        }
-
-        // Default to Idle behavior (user can switch with number keys)
-        aiMgr.assignBehavior(handle, "Idle");
-
-      } catch (const std::exception &e) {
-        GAMESTATE_ERROR(
-            std::format("Exception creating advanced NPC {}: {}", i, e.what()));
-        continue;
-      }
-    }
-
-    GAMESTATE_INFO(
-        std::format("AdvancedAIDemoState: Created {} NPCs",
-                    edm.getEntityCount(EntityKind::NPC)));
-  } catch (const std::exception &e) {
-    GAMESTATE_ERROR(
-        std::format("Exception in createAdvancedNPCs(): {}", e.what()));
-  } catch (...) {
-    GAMESTATE_ERROR("Unknown exception in createAdvancedNPCs()");
-  }
 }
 
 void AdvancedAIDemoState::setupTestVillage() {
