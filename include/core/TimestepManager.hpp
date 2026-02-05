@@ -145,10 +145,6 @@ private:
     mutable bool m_usingSoftwareFrameLimiting = false;
     mutable bool m_explicitlySet = false;
 
-    // Smoothed alpha for interpolation (reduces jitter from frame timing variations)
-    mutable double m_smoothedAlpha = 0.0;
-
-    
     // Helper methods
     void updateFPS();
     void limitFrameRate() const;
