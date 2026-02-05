@@ -579,6 +579,9 @@ bool FontManager::reloadFontsForDisplay(const std::string& fontPath, int windowW
   m_textCache.clear();
 #ifdef USE_SDL3_GPU
   m_gpuTextCache.clear();
+  m_pendingTextUploads.clear();
+
+  // Keep text vertex buffer (can be reused for new fonts)
 #endif
   m_fontsLoaded.store(false, std::memory_order_release);
 
@@ -702,6 +705,13 @@ void FontManager::clean() {
 #ifdef USE_SDL3_GPU
   // Clear GPU text cache (must be done before GPU device shutdown)
   m_gpuTextCache.clear();
+  m_pendingTextUploads.clear();
+
+  // Release text vertex buffer
+  if (m_textVertexBuffer) {
+    SDL_ReleaseGPUBuffer(HammerEngine::GPUDevice::Instance().get(), m_textVertexBuffer);
+    m_textVertexBuffer = nullptr;
+  }
 #endif
 
   // Clear display tracking
@@ -865,6 +875,9 @@ void FontManager::processPendingTextUploads(SDL_GPUCopyPass* copyPass) {
 
     // Upload to GPU (batched with other uploads in same copy pass)
     SDL_UploadToGPUTexture(copyPass, &srcInfo, &dstRegion, false);
+
+    // Mark as uploaded so drawTextGPU can use it
+    cacheIt->second->uploaded = true;
   }
 
   // Clear pending uploads (surfaces freed by unique_ptr destructors)
@@ -881,6 +894,11 @@ void FontManager::drawTextGPU(const std::string& text, const std::string& fontID
 
   const GPUTextData* textData = renderTextGPU(text, fontID, color);
   if (!textData || !textData->texture || !textData->texture->isValid()) {
+    return;
+  }
+
+  // Skip if texture not uploaded yet (will be ready next frame)
+  if (!textData->uploaded) {
     return;
   }
 
@@ -923,23 +941,64 @@ void FontManager::drawTextGPU(const std::string& text, const std::string& fontID
   texSampler.sampler = gpuRenderer.getLinearSampler();
   SDL_BindGPUFragmentSamplers(pass, 0, &texSampler, 1);
 
-  // Upload vertices using a small transfer buffer
+  // Lazy-init text vertex buffer (4 vertices, reused for all text draws)
   const auto& gpuDevice = HammerEngine::GPUDevice::Instance();
-  HammerEngine::GPUTransferBuffer vertexTransfer(
-      gpuDevice.get(), SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, sizeof(vertices));
+  if (!m_textVertexBuffer) {
+    SDL_GPUBufferCreateInfo bufferInfo{};
+    bufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+    bufferInfo.size = sizeof(HammerEngine::SpriteVertex) * 4;
+    m_textVertexBuffer = SDL_CreateGPUBuffer(gpuDevice.get(), &bufferInfo);
 
-  if (vertexTransfer.isValid()) {
-    void* mapped = vertexTransfer.map(false);
-    if (mapped) {
-      std::memcpy(mapped, vertices, sizeof(vertices));
-      vertexTransfer.unmap();
+    if (!m_textVertexBuffer) {
+      FONT_ERROR(std::format("Failed to create text vertex buffer: {}", SDL_GetError()));
+      return;
     }
   }
 
-  // For text, we use immediate drawing with the sprite batch index buffer
-  // Bind the vertex buffer from sprite pool (it has our vertices)
+  // Upload vertex data to GPU (one-shot command buffer + copy pass)
+  HammerEngine::GPUTransferBuffer vertexTransfer(
+      gpuDevice.get(), SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, sizeof(vertices));
+
+  if (!vertexTransfer.isValid()) {
+    FONT_ERROR("Failed to create vertex transfer buffer for text");
+    return;
+  }
+
+  void* mapped = vertexTransfer.map(false);
+  if (!mapped) {
+    FONT_ERROR("Failed to map vertex transfer buffer for text");
+    return;
+  }
+
+  std::memcpy(mapped, vertices, sizeof(vertices));
+  vertexTransfer.unmap();
+
+  // Create one-shot command buffer to upload vertices
+  SDL_GPUCommandBuffer* uploadCmd = SDL_AcquireGPUCommandBuffer(gpuDevice.get());
+  if (!uploadCmd) {
+    FONT_ERROR("Failed to acquire command buffer for text vertex upload");
+    return;
+  }
+
+  SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmd);
+  if (!copyPass) {
+    FONT_ERROR("Failed to begin copy pass for text vertex upload");
+    return;
+  }
+
+  SDL_GPUTransferBufferLocation src = vertexTransfer.asLocation(0);
+  SDL_GPUBufferRegion dst{};
+  dst.buffer = m_textVertexBuffer;
+  dst.offset = 0;
+  dst.size = sizeof(vertices);
+
+  SDL_UploadToGPUBuffer(copyPass, &src, &dst, false);
+  SDL_EndGPUCopyPass(copyPass);
+  SDL_SubmitGPUCommandBuffer(uploadCmd);
+
+  // Bind our text vertex buffer (not the sprite pool)
   SDL_GPUBufferBinding vertexBinding{};
-  vertexBinding.buffer = gpuRenderer.getSpriteVertexPool().getGPUBuffer();
+  vertexBinding.buffer = m_textVertexBuffer;
   vertexBinding.offset = 0;
   SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
 

@@ -60,7 +60,9 @@ struct BehaviorContext {
     float worldMaxY{0.0f};
     bool worldBoundsValid{false};         // Whether world bounds are available
 
-    // Game time cached once per frame - for combat timing comparisons (e.g., isUnderRecentAttack)
+    // Game time cached once per frame - absolute time for memory timestamps, encounter logging,
+    // and future combat timing comparisons. Not currently consumed by behaviors but available
+    // for systems that need absolute time (e.g., MemoryEntry timestamps).
     float gameTime{0.0f};
 
     BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt)
@@ -339,12 +341,19 @@ HammerEngine::BehaviorConfigData getDefaultConfig(BehaviorType type);
  *
  * Messages are processed at the start of each behavior's execute function.
  * If the queue is full (4 messages), the message is silently dropped.
+ *
+ * @note THREAD SAFETY: Must be called from the main thread between AI update
+ *       batches (e.g., from event handlers, scripts, CombatController).
+ *       Messages are consumed at the start of behavior execution in worker threads.
+ *       The game loop's sequential manager updates guarantee happens-before ordering.
+ *       DO NOT call from worker threads during AI batch processing.
  */
 void queueBehaviorMessage(size_t edmIndex, uint8_t messageId, uint8_t param = 0);
 
 /**
  * @brief Clear all pending messages for an entity
  * @param edmIndex Entity's index in EDM
+ * @note Same thread safety contract as queueBehaviorMessage().
  */
 void clearPendingMessages(size_t edmIndex);
 

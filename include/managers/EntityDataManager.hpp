@@ -1121,11 +1121,13 @@ struct BehaviorData {
     void clear() noexcept {
         behaviorType = BehaviorType::None;
         flags = 0;
+        moveSpeed = 0.0f;
         separationTimer = 0.0f;
         lastSepVelocity = Vector2D{};
         lastCrowdAnalysis = 0.0f;
         cachedNearbyCount = 0;
         cachedClusterCenter = Vector2D{};
+        pendingMessageCount = 0;
         state = StateUnion{};
     }
 

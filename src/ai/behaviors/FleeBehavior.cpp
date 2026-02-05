@@ -24,6 +24,7 @@ thread_local std::uniform_real_distribution<float> s_panicVariation{0.8f, 1.2f};
 
 constexpr size_t MAX_SAFE_ZONES = 4;  // Matches FleeState array size
 constexpr float FLEE_SPEED_MULT = 1.3f;  // Urgent movement multiplier
+constexpr float CROWD_ANALYSIS_INTERVAL = 0.25f;  // Refresh cached nearby count every 0.25s
 
 // Process pending messages for Flee behavior
 void processFleeMessages(BehaviorData& data, const HammerEngine::FleeBehaviorConfig& config) {
@@ -46,7 +47,10 @@ void processFleeMessages(BehaviorData& data, const HammerEngine::FleeBehaviorCon
                 break;
 
             case BehaviorMessage::STOP_FLEEING:
-                // Stop fleeing completely
+                // Clear immediate flee state. The behavior's memory-driven threat
+                // re-evaluation will resume fleeing if the threat is still present.
+                // Callers should resolve the threat (kill attacker, clear memory)
+                // before sending this message for lasting effect.
                 flee.isFleeing = false;
                 flee.isInPanic = false;
                 flee.panicTimer = 0.0f;
@@ -266,9 +270,10 @@ void updateStrategicRetreat(BehaviorContext& ctx, const Vector2D& threatPos,
         flee.directionChangeTimer = 0.0f;
     }
 
-    float baseRetreatDistance = 800.0f;
-    int nearbyCount = AIInternal::CountNearbyEntities(ctx.entityId, currentPos, 100.0f);
+    // Use cached nearby count (refreshed by main executeFlee countdown timer)
+    int nearbyCount = data.cachedNearbyCount;
 
+    float baseRetreatDistance = 800.0f;
     float retreatDistance = baseRetreatDistance;
     if (nearbyCount > 2) {
         retreatDistance = baseRetreatDistance * 1.8f;
@@ -322,9 +327,10 @@ void updateSeekCover(BehaviorContext& ctx, const Vector2D& threatPos,
     auto& flee = data.state.flee;
     Vector2D currentPos = ctx.transform.position;
 
-    float baseCoverDistance = 720.0f;
-    int nearbyCount = AIInternal::CountNearbyEntities(ctx.entityId, currentPos, 90.0f);
+    // Use cached nearby count (refreshed by main executeFlee countdown timer)
+    int nearbyCount = data.cachedNearbyCount;
 
+    float baseCoverDistance = 720.0f;
     float coverDistance = baseCoverDistance;
     if (nearbyCount > 2) {
         coverDistance = baseCoverDistance * 1.6f;
@@ -402,7 +408,11 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
     if (flee.panicTimer > 0.0f) flee.panicTimer -= ctx.deltaTime;
     flee.zigzagTimer += ctx.deltaTime;
     if (flee.backoffTimer > 0.0f) flee.backoffTimer -= ctx.deltaTime;
-    data.lastCrowdAnalysis += ctx.deltaTime;
+
+    // Countdown timer for cached crowd analysis (decrements to trigger refresh)
+    if (data.lastCrowdAnalysis > 0.0f) {
+        data.lastCrowdAnalysis -= ctx.deltaTime;
+    }
 
     // Cache fear from emotions
     if (ctx.memoryData && ctx.memoryData->isValid()) {
@@ -472,13 +482,19 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
     }
 
     if (flee.isFleeing) {
+        // Refresh cached nearby count using countdown timer pattern
+        if (data.lastCrowdAnalysis <= 0.0f) {
+            data.cachedNearbyCount = AIInternal::CountNearbyEntities(
+                ctx.entityId, ctx.transform.position, 100.0f);
+            data.lastCrowdAnalysis = CROWD_ANALYSIS_INTERVAL;
+        }
+
         if (flee.isInPanic) {
             // Panic mode - always use panic flee
             updatePanicFlee(ctx, threatPos, config);
         } else {
-            // Select tactical mode based on crowd density
-            int nearbyCount = AIInternal::CountNearbyEntities(
-                ctx.entityId, ctx.transform.position, 100.0f);
+            // Select tactical mode based on cached crowd density
+            int nearbyCount = data.cachedNearbyCount;
 
             if (nearbyCount > 3) {
                 // High crowd - evasive zigzag to avoid collision with others

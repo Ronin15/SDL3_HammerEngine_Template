@@ -36,6 +36,7 @@ constexpr float DEFAULT_ATTACK_ENGAGE_RANGE = 80.0f;
 constexpr float PATH_TTL = 5.0f;
 constexpr float NAV_RADIUS = 18.0f;
 constexpr float THREAT_DETECTION_INTERVAL = 0.25f;  // Only check for threats 4x per second
+constexpr float CALM_POLL_INTERVAL = 2.0f;  // Calm guards poll less frequently (every 2 seconds)
 
 // Speed multipliers for urgent guard movement
 constexpr float GUARD_ALERT_SPEED_MULT = 1.2f;   // Investigating suspicious activity
@@ -463,19 +464,24 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         guard.lastCachedMode = guard.currentMode;
     }
 
-    // Detect threats - EVENT-DRIVEN for calm guards, polling only when alerted
-    // Calm guards (level 0) rely on RAISE_ALERT messages - no polling
-    // Alerted guards (level > 0) poll to track threats they're already aware of
+    // Detect threats - reduced-rate polling for calm guards, frequent polling when alerted
+    // Calm guards (level 0) poll every 2 seconds for ambient awareness
+    // Alerted guards (level > 0) poll every 0.25s to track active threats
     EntityHandle threat{};
     bool threatPresent = false;
-    bool shouldPoll = guard.hasActiveThreat ||
-                      (guard.currentAlertLevel > 0 && guard.threatSightingTimer >= THREAT_DETECTION_INTERVAL);
+    bool shouldPoll = false;
+    if (guard.currentAlertLevel == 0) {
+        // Calm guards - reduced-rate polling
+        shouldPoll = (guard.threatSightingTimer >= CALM_POLL_INTERVAL);
+    } else {
+        // Alerted guards - frequent polling
+        shouldPoll = (guard.threatSightingTimer >= THREAT_DETECTION_INTERVAL);
+    }
+
     if (shouldPoll) {
         threat = detectThreat(ctx, edm, guard.cachedDetectionRange, DEFAULT_FIELD_OF_VIEW);
         threatPresent = threat.isValid();
-        if (!threatPresent) {
-            guard.threatSightingTimer = 0.0f;  // Reset timer when no threat found
-        }
+        guard.threatSightingTimer = 0.0f;  // Reset timer after polling
     }
 
     // Update alert level
@@ -504,13 +510,12 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
                 case 4: { // ALARM
                     float distance = (ctx.transform.position - threatPos).length();
                     if (distance <= DEFAULT_ATTACK_ENGAGE_RANGE) {
-                        // Transfer target to Attack behavior before switching
-                        edm.initBehaviorData(ctx.edmIndex, BehaviorType::Attack);
+                        // Switch to Attack behavior first (clears old state)
+                        switchBehavior(ctx.edmIndex, BehaviorType::Attack);
+                        // THEN set explicit target (after switchBehavior has initialized clean state)
                         auto& attackData = edm.getBehaviorData(ctx.edmIndex);
                         attackData.state.attack.hasExplicitTarget = true;
                         attackData.state.attack.explicitTarget = threat;
-
-                        switchBehavior(ctx.edmIndex, BehaviorType::Attack);
                         return;
                     } else {
                         float speed = (guard.currentAlertLevel >= 4) ? data.moveSpeed * GUARD_PURSUIT_SPEED_MULT : data.moveSpeed * GUARD_ALERT_SPEED_MULT;
@@ -533,9 +538,10 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
             if (guard.currentAlertLevel >= 3) {
                 float distToThreat = (ctx.transform.position - guard.lastKnownThreatPosition).length();
                 if (distToThreat <= DEFAULT_ATTACK_ENGAGE_RANGE) {
-                    // Close enough to attack - switch to Attack behavior
-                    edm.initBehaviorData(ctx.edmIndex, BehaviorType::Attack);
+                    // Switch to Attack behavior first (clears old state)
                     switchBehavior(ctx.edmIndex, BehaviorType::Attack);
+                    // Attack behavior will auto-acquire nearest threat - no explicit target available from investigation
+                    // (investigation only has lastKnownThreatPosition, not a valid EntityHandle)
                     return;
                 }
             }

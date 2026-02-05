@@ -28,6 +28,7 @@ struct GPUTextData {
     std::unique_ptr<HammerEngine::GPUTexture> texture;
     int width{0};
     int height{0};
+    bool uploaded{false};  // Set to true after processPendingTextUploads completes upload
 };
 #endif
 
@@ -318,7 +319,9 @@ class FontManager {
   std::string m_lastFontPath{};
 
 #ifdef USE_SDL3_GPU
-  // GPU text cache for SDL3_GPU rendering
+  // GPU text cache - main thread only (rendering is main-thread per project conventions)
+  // No mutex needed: all access from renderTextGPU, drawTextGPU, processPendingTextUploads,
+  // and reloadFontsForDisplay executes on the main thread.
   std::unordered_map<TextCacheKey, std::unique_ptr<GPUTextData>, TextCacheKeyHash> m_gpuTextCache{};
 
   // Pending text uploads - processed in main copy pass to avoid per-text GPU stalls
@@ -329,6 +332,9 @@ class FontManager {
     uint32_t height;
   };
   std::vector<PendingTextUpload> m_pendingTextUploads{};
+
+  // Dedicated vertex buffer for text rendering (4 vertices per quad)
+  SDL_GPUBuffer* m_textVertexBuffer{nullptr};
 #endif
 
   // Delete copy constructor and assignment operator
