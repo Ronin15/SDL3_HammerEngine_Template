@@ -287,8 +287,9 @@ void ResourceRenderController::recordGPUDroppedItems(const HammerEngine::GPUScen
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Query visible items using camera viewport
-    Vector2D cameraCenter = camera.getPosition();
+    // Query visible items using rendered camera center (not camera.getPosition()
+    // which lags in Follow mode due to blend factor)
+    Vector2D cameraCenter = ctx.cameraCenter;
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
                                     viewport.height * viewport.height) * 0.5f;
@@ -340,8 +341,9 @@ void ResourceRenderController::recordGPUContainers(const HammerEngine::GPUSceneC
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Query visible containers using camera viewport
-    Vector2D cameraCenter = camera.getPosition();
+    // Query visible containers using rendered camera center (not camera.getPosition()
+    // which lags in Follow mode due to blend factor)
+    Vector2D cameraCenter = ctx.cameraCenter;
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
                                     viewport.height * viewport.height) * 0.5f;
@@ -395,8 +397,9 @@ void ResourceRenderController::recordGPUHarvestables(const HammerEngine::GPUScen
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Query visible harvestables using camera viewport
-    Vector2D cameraCenter = camera.getPosition();
+    // Query visible harvestables using rendered camera center (not camera.getPosition()
+    // which lags in Follow mode due to blend factor)
+    Vector2D cameraCenter = ctx.cameraCenter;
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
                                     viewport.height * viewport.height) * 0.5f;

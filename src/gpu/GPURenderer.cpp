@@ -330,7 +330,7 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
     m_currentPass = SDL_BeginGPURenderPass(m_commandBuffer, &colorTarget, 1, nullptr);
 
     // Set viewport to match scene texture dimensions
-    // Scene texture is 3x viewport for zoom headroom
+    // Scene texture matches viewport dimensions (zoom handled by composite shader)
     uint32_t sceneW = m_sceneTexture->getWidth();
     uint32_t sceneH = m_sceneTexture->getHeight();
 
