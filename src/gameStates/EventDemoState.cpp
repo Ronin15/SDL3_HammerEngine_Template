@@ -669,7 +669,6 @@ void EventDemoState::handleInput() {
   // Get manager references at function start
   const InputManager &inputMgr = InputManager::Instance();
   ParticleManager &particleMgr = ParticleManager::Instance();
-  const UIManager &ui = UIManager::Instance();
   EntityDataManager &edm = EntityDataManager::Instance();
 
   // Manual event triggers (keys 1-6)
