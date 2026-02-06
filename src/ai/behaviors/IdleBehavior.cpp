@@ -138,6 +138,12 @@ void executeIdle(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& c
         return;
     }
 
+    // Aggression-driven engagement: hostile NPCs with high aggression proactively chase
+    if (shouldEngageEnemy(ctx)) {
+        switchBehavior(ctx.edmIndex, BehaviorType::Chase);
+        return;
+    }
+
     // Execute behavior based on current mode
     switch (static_cast<HammerEngine::IdleBehaviorConfig::IdleMode>(config.mode)) {
     case HammerEngine::IdleBehaviorConfig::IdleMode::STATIONARY:

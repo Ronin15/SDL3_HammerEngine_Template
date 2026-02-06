@@ -117,6 +117,13 @@ Always `reserve()` when size known.
 
 ## EDM (EntityDataManager) Patterns
 
+**EDM is pure data storage** — it stores, retrieves, and aggregates entity state. AI decision logic (personality-scaled emotions, distance-based intensity, threat evaluation) belongs in the AI layer (`Behaviors::` namespace in `BehaviorExecutors.hpp/.cpp`).
+
+- `EDM::recordCombatEvent()` — records stats (lastAttacker, damage totals, flags, memory entry). No emotion math.
+- `Behaviors::processCombatEvent()` — wraps EDM data call + applies personality-scaled emotion changes.
+- `Behaviors::processWitnessedCombat()` — distance falloff + composure-modulated emotions + memory entry via `EDM::addMemory()`.
+- Emotional contagion runs as a main-thread pre-pass in `AIManager::update()`, not in EDM.
+
 Behaviors access EDM via context: `ctx.behaviorData` (state), `ctx.pathData` (navigation). Both pre-fetched in `processBatch()`.
 
 **CRITICAL:** Data surviving between frames (paths, timers) MUST use EDM, never local variables:

@@ -4,6 +4,7 @@
  */
 
 #include "controllers/combat/CombatController.hpp"
+#include "ai/BehaviorExecutors.hpp"
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
 #include "events/CombatEvent.hpp"
@@ -180,11 +181,10 @@ void CombatController::performAttack(Player *player) {
     // Apply damage directly to CharacterData
     charData.health = std::max(0.0f, charData.health - attackDamage);
 
-    // Record combat event in NPC's memory (they were attacked by player)
+    // Record combat event + apply personality-scaled emotions via AI layer
     float gameTime = gameTimeMgr.getTotalGameTimeSeconds();
-    edm.recordCombatEvent(idx, playerHandle, handle, attackDamage,
-                          /*wasAttacked=*/true, gameTime);
-    // lastCombatTime now set to 0.0f inside recordCombatEvent (delta semantics)
+    Behaviors::processCombatEvent(idx, playerHandle, handle, attackDamage,
+                                  /*wasAttacked=*/true, gameTime);
 
     // Combat response: Non-hostile entities flee when attacked
     if (charData.faction != 1) { // Friendly (0) or Neutral (2)

@@ -155,12 +155,43 @@ bool shouldFleeFromFear(const BehaviorContext& ctx) {
     if (!ctx.memoryData || !ctx.memoryData->isValid()) return false;
     float fear = ctx.memoryData->emotions.fear;
     float bravery = ctx.memoryData->personality.bravery;
+
+    // Crowd courage: nearby allies boost effective bravery
+    if (ctx.behaviorData) {
+        int nearbyCount = ctx.behaviorData->cachedNearbyCount;
+        float crowdBoost = std::min(0.3f, nearbyCount * 0.05f);  // Up to +0.3 from 6+ allies
+        bravery = std::min(1.0f, bravery + crowdBoost);
+    }
+
     return (fear > 0.7f && bravery < 0.3f);
 }
 
 bool isOnAlert(const BehaviorContext& ctx, float suspicionThreshold) {
     if (!ctx.memoryData || !ctx.memoryData->isValid()) return false;
     return ctx.memoryData->emotions.suspicion > suspicionThreshold;
+}
+
+bool shouldEngageEnemy(const BehaviorContext& ctx) {
+    if (!ctx.memoryData || !ctx.memoryData->isValid()) return false;
+    if (!ctx.characterData) return false;
+
+    // Only hostile-faction NPCs proactively engage
+    if (ctx.characterData->faction != 1) return false;
+
+    float aggression = ctx.memoryData->emotions.aggression;
+    float personalAggression = ctx.memoryData->personality.aggression;
+
+    // Need meaningful aggression to proactively attack
+    if (aggression + personalAggression < 0.8f) return false;
+
+    // Check if player is valid and within reasonable range
+    if (ctx.playerValid) {
+        float distSq = Vector2D::distanceSquared(ctx.transform.position, ctx.playerPosition);
+        constexpr float ENGAGE_RANGE_SQ = 300.0f * 300.0f;
+        if (distSq < ENGAGE_RANGE_SQ) return true;
+    }
+
+    return false;
 }
 
 EntityHandle getLastAttacker(const BehaviorContext& ctx) {
@@ -178,6 +209,72 @@ float calculateAngleToTarget(const Vector2D& from, const Vector2D& to) {
     float dx = to.getX() - from.getX();
     float dy = to.getY() - from.getY();
     return std::atan2(dy, dx);
+}
+
+// ============================================================================
+// COMBAT EVENT PROCESSING
+// ============================================================================
+
+void processCombatEvent(size_t index, EntityHandle attacker, EntityHandle target,
+                        float damage, bool wasAttacked, float gameTime) {
+    auto& edm = EntityDataManager::Instance();
+
+    // Record pure data in EDM
+    edm.recordCombatEvent(index, attacker, target, damage, wasAttacked, gameTime);
+
+    // Apply personality-scaled emotional response
+    if (!edm.hasMemoryData(index)) return;
+    auto& memData = edm.getMemoryData(index);
+
+    float classResilience = edm.getCharacterDataByIndex(index).emotionalResilience;
+    float effectiveResilience = memData.personality.getEffectiveResilience(classResilience);
+    float emotionScale = 1.0f - effectiveResilience;
+
+    if (wasAttacked) {
+        float fearScale = emotionScale * (1.0f - memData.personality.bravery * 0.5f);
+        float fearIncrease = (damage / 100.0f) * fearScale;
+        edm.modifyEmotions(index, 0.0f, fearIncrease, 0.0f, 0.0f);
+    } else {
+        float aggressionScale = emotionScale * (1.0f + memData.personality.aggression * 0.5f);
+        float aggressionIncrease = (damage / 150.0f) * aggressionScale;
+        edm.modifyEmotions(index, aggressionIncrease, 0.0f, 0.0f, 0.0f);
+    }
+}
+
+void processWitnessedCombat(size_t witnessIndex, EntityHandle attacker,
+                            const Vector2D& combatLocation,
+                            float gameTime, bool wasDeath) {
+    auto& edm = EntityDataManager::Instance();
+
+    if (!edm.hasMemoryData(witnessIndex)) return;
+    auto& memData = edm.getMemoryData(witnessIndex);
+
+    // Distance-based intensity falloff
+    constexpr float MAX_WITNESS_RANGE_SQ = 500.0f * 500.0f;
+    Vector2D witnessPos = edm.getHotDataByIndex(witnessIndex).transform.position;
+    float distSq = Vector2D::distanceSquared(witnessPos, combatLocation);
+    if (distSq > MAX_WITNESS_RANGE_SQ) return;
+
+    float intensity = 1.0f - (distSq / MAX_WITNESS_RANGE_SQ);
+
+    // Personality modulation: composure reduces emotional impact
+    float emotionScale = intensity * (1.0f - memData.personality.composure * 0.5f);
+
+    // Apply emotions via EDM
+    float fearDelta = (wasDeath ? 0.3f : 0.15f) * emotionScale;
+    float suspicionDelta = 0.2f * emotionScale;
+    edm.modifyEmotions(witnessIndex, 0.0f, fearDelta, 0.0f, suspicionDelta);
+
+    // Create and store memory entry
+    MemoryEntry mem;
+    mem.subject = attacker;
+    mem.location = combatLocation;
+    mem.timestamp = gameTime;
+    mem.value = intensity * 100.0f;
+    mem.type = wasDeath ? MemoryType::WitnessedDeath : MemoryType::WitnessedCombat;
+    mem.importance = static_cast<uint8_t>(std::min(255.0f, (wasDeath ? 200.0f : 100.0f) * intensity));
+    mem.flags = MemoryEntry::FLAG_VALID;
+    edm.addMemory(witnessIndex, mem, false);
 }
 
 // ============================================================================

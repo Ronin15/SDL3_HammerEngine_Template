@@ -1351,6 +1351,7 @@ struct alignas(64) NPCMemoryData {
     uint16_t memoryCount{0};         // 2 bytes: Total memories (inline + overflow)
     uint16_t locationCount{0};       // 2 bytes: Locations stored (0-4)
     float lastDecayTime{0.0f};       // 4 bytes: Last emotional decay update
+    float lastContagionTime{100.0f}; // 4 bytes: Cooldown for emotional contagion (high = no immediate spread)
     uint8_t flags{0};                // 1 byte: State flags
     uint8_t nextInlineSlot{0};       // 1 byte: Next slot to write (circular)
     uint8_t combatEncounters{0};     // 1 byte: Number of combat encounters
@@ -1384,6 +1385,7 @@ struct alignas(64) NPCMemoryData {
         memoryCount = 0;
         locationCount = 0;
         lastDecayTime = 0.0f;
+        lastContagionTime = 100.0f;
         flags = 0;
         nextInlineSlot = 0;
         combatEncounters = 0;
@@ -2302,18 +2304,6 @@ public:
     void recordCombatEvent(size_t index, EntityHandle attacker,
                            EntityHandle target, float damage, bool wasAttacked,
                            float gameTime);
-
-    /**
-     * @brief Record that an NPC witnessed nearby combat
-     * @param witnessIndex EDM index of the witness
-     * @param attacker Handle of the attacker entity
-     * @param combatLocation World position where combat occurred
-     * @param gameTime Current game time for memory timestamp
-     * @param wasDeath true if the witnessed combat was lethal
-     */
-    void recordWitnessedCombat(size_t witnessIndex, EntityHandle attacker,
-                               const Vector2D& combatLocation,
-                               float gameTime, bool wasDeath = false);
 
     /**
      * @brief Add a location to history

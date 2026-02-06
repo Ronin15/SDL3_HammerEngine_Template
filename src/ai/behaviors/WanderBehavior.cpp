@@ -305,6 +305,12 @@ void executeWander(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfi
         return;
     }
 
+    // Aggression-driven engagement: hostile NPCs with high aggression proactively chase
+    if (shouldEngageEnemy(ctx)) {
+        switchBehavior(ctx.edmIndex, BehaviorType::Chase);
+        return;
+    }
+
     updateTimers(data, ctx.deltaTime, ctx.pathData);
 
     if (!handleStartDelay(ctx)) return;

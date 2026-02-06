@@ -449,6 +449,29 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         guard.escalationMultiplier = 1.0f;
     }
 
+    // Witness memory-driven alert escalation
+    if (guard.currentAlertLevel == 0 && ctx.memoryData && ctx.memoryData->isValid()) {
+        for (size_t i = 0; i < NPCMemoryData::INLINE_MEMORY_COUNT; ++i) {
+            const auto& mem = ctx.memoryData->memories[i];
+            if (!mem.isValid()) continue;
+            if (mem.type != MemoryType::WitnessedCombat &&
+                mem.type != MemoryType::WitnessedDeath) continue;
+
+            float memAge = ctx.gameTime - mem.timestamp;
+            if (memAge > 10.0f) continue;
+
+            if (mem.type == MemoryType::WitnessedDeath) {
+                guard.currentAlertLevel = 2;  // INVESTIGATING
+            } else if (guard.currentAlertLevel < 1) {
+                guard.currentAlertLevel = 1;  // SUSPICIOUS
+            }
+            guard.lastKnownThreatPosition = mem.location;
+            guard.alertTimer = 0.0f;
+            guard.alertDecayTimer = 0.0f;
+            break;
+        }
+    }
+
     // Update path timers
     if (!ctx.pathData) return;
     auto& pathData = *ctx.pathData;

@@ -113,11 +113,10 @@ bool AIManager::init() {
           float knockbackScale = 1.0f / std::max(0.1f, charData.mass);
           hotData.transform.velocity = hotData.transform.velocity + damageEvent->getKnockback() * knockbackScale;
 
-          // Update victim's memory with full combat tracking (personality-scaled fear, encounter count)
+          // Record combat data and apply personality-scaled emotions
           if (attackerHandle.isValid()) {
-            edm.recordCombatEvent(idx, attackerHandle, targetHandle,
-                                  damageEvent->getDamage(), true, 0.0f);
-            // lastCombatTime now set to 0.0f inside recordCombatEvent (delta semantics)
+            Behaviors::processCombatEvent(idx, attackerHandle, targetHandle,
+                                          damageEvent->getDamage(), true, 0.0f);
           }
 
           // Notify nearby NPCs that witnessed this combat
@@ -126,9 +125,8 @@ bool AIManager::init() {
           auto activeSpan = edm.getActiveIndices();
           for (size_t witnessIdx : activeSpan) {
             if (witnessIdx == idx) continue;
-            if (!edm.hasMemoryData(witnessIdx)) continue;
-            edm.recordWitnessedCombat(witnessIdx, attackerHandle,
-                                       combatLocation, 0.0f, wasLethal);
+            Behaviors::processWitnessedCombat(witnessIdx, attackerHandle,
+                                               combatLocation, 0.0f, wasLethal);
           }
 
           // Death handling (EDM lifecycle) - O(1) per damage event
@@ -358,6 +356,49 @@ void AIManager::update(float deltaTime) {
 
     // OPTIMIZATION: Cache game time ONCE per frame for combat timing comparisons
     float cachedGameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
+
+    // Emotional contagion: high-fear NPCs spread fear to nearby NPCs
+    // Runs on main thread before batch processing to avoid data races
+    {
+      constexpr float CONTAGION_COOLDOWN = 2.0f;
+      constexpr float CONTAGION_RANGE_SQ = 200.0f * 200.0f;
+      constexpr float FEAR_THRESHOLD = 0.6f;
+
+      for (size_t sourceIdx : m_activeIndicesBuffer) {
+        if (!edm.hasMemoryData(sourceIdx)) continue;
+        auto& source = edm.getMemoryData(sourceIdx);
+        if (source.emotions.fear < FEAR_THRESHOLD) continue;
+
+        source.lastContagionTime += deltaTime;
+        if (source.lastContagionTime < CONTAGION_COOLDOWN) continue;
+        source.lastContagionTime = 0.0f;
+
+        Vector2D sourcePos = edm.getHotDataByIndex(sourceIdx).transform.position;
+
+        for (size_t idx : m_activeIndicesBuffer) {
+          if (idx == sourceIdx) continue;
+          if (!edm.hasMemoryData(idx)) continue;
+
+          float distSq = Vector2D::distanceSquared(
+              sourcePos, edm.getHotDataByIndex(idx).transform.position);
+          if (distSq > CONTAGION_RANGE_SQ) continue;
+
+          float intensity = 1.0f - (distSq / CONTAGION_RANGE_SQ);
+          auto& target = edm.getMemoryData(idx);
+
+          float resistance = target.personality.composure * 0.5f +
+                             target.personality.bravery * 0.3f;
+          float fearDelta = source.emotions.fear * 0.15f * intensity *
+                            (1.0f - resistance);
+          float suspicionDelta = 0.1f * intensity *
+                                 (1.0f - target.personality.composure * 0.5f);
+
+          target.emotions.fear = std::min(1.0f, target.emotions.fear + fearDelta);
+          target.emotions.suspicion =
+              std::min(1.0f, target.emotions.suspicion + suspicionDelta);
+        }
+      }
+    }
 
     // Determine threading strategy using adaptive threshold from WorkerBudget
     // WorkerBudget is the AUTHORITATIVE source - no manager overrides

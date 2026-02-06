@@ -2838,6 +2838,7 @@ void EntityDataManager::updateEmotionalDecay(size_t index, float deltaTime, floa
     if ((data.flags & NPCMemoryData::FLAG_IN_COMBAT) && data.lastCombatTime > COMBAT_TIMEOUT) {
         data.flags &= ~NPCMemoryData::FLAG_IN_COMBAT;
     }
+
 }
 
 void EntityDataManager::modifyEmotions(size_t index, float aggression, float fear,
@@ -2869,45 +2870,18 @@ void EntityDataManager::recordCombatEvent(size_t index, EntityHandle attacker,
         initMemoryData(index);
     }
 
-    // Get class resilience from CharacterData (typeLocalIndex lookup)
-    float classResilience = 0.5f;  // Default if no character data
-    if (index < m_hotData.size()) {
-        uint32_t typeIndex = m_hotData[index].typeLocalIndex;
-        if (typeIndex < m_characterData.size()) {
-            classResilience = m_characterData[typeIndex].emotionalResilience;
-        }
-    }
-
-    // Combined resilience from class + personality traits
-    float effectiveResilience = memData.personality.getEffectiveResilience(classResilience);
-    float emotionScale = 1.0f - effectiveResilience;  // High resilience = low emotion change
-
-    // Update aggregate stats
+    // Update aggregate stats (pure data)
     if (wasAttacked) {
         memData.lastAttacker = attacker;
         memData.totalDamageReceived += damage;
-
-        // Fear increases based on damage, scaled by resilience and bravery
-        // Bravery specifically reduces fear gain
-        float fearScale = emotionScale * (1.0f - memData.personality.bravery * 0.5f);
-        float fearIncrease = (damage / 100.0f) * fearScale;
-        memData.emotions.fear = std::min(1.0f, memData.emotions.fear + fearIncrease);
     } else {
         memData.lastTarget = target;
         memData.totalDamageDealt += damage;
-
-        // Aggression increases when dealing damage, scaled by resilience
-        // Personality aggression trait boosts the effect
-        float aggressionScale = emotionScale * (1.0f + memData.personality.aggression * 0.5f);
-        float aggressionIncrease = (damage / 150.0f) * aggressionScale;
-        memData.emotions.aggression = std::min(1.0f, memData.emotions.aggression + aggressionIncrease);
     }
 
-    auto& data = memData;  // Alias for rest of function
-
-    data.lastCombatTime = 0.0f;  // Delta semantics: starts at 0, incremented by updateEmotionalDecay
-    data.combatEncounters++;
-    data.flags |= NPCMemoryData::FLAG_IN_COMBAT;
+    memData.lastCombatTime = 0.0f;  // Delta semantics: starts at 0, incremented by updateEmotionalDecay
+    memData.combatEncounters++;
+    memData.flags |= NPCMemoryData::FLAG_IN_COMBAT;
 
     // Create memory entry
     MemoryEntry mem;
@@ -2922,48 +2896,6 @@ void EntityDataManager::recordCombatEvent(size_t index, EntityHandle attacker,
     mem.flags = MemoryEntry::FLAG_VALID;
 
     addMemory(index, mem, true);  // Use overflow for combat (important history)
-}
-
-void EntityDataManager::recordWitnessedCombat(size_t witnessIndex, EntityHandle attacker,
-                                               const Vector2D& combatLocation,
-                                               float gameTime, bool wasDeath) {
-    if (witnessIndex >= m_memoryData.size()) return;
-
-    auto& memData = m_memoryData[witnessIndex];
-    if (!memData.isValid()) return;
-
-    // Distance-based intensity falloff
-    constexpr float MAX_WITNESS_RANGE_SQ = 500.0f * 500.0f;
-    if (witnessIndex >= m_hotData.size()) return;
-
-    Vector2D witnessPos = m_hotData[witnessIndex].transform.position;
-    float distSq = Vector2D::distanceSquared(witnessPos, combatLocation);
-
-    if (distSq > MAX_WITNESS_RANGE_SQ) return;
-
-    // Intensity falls off with distance (1.0 at origin, 0.0 at max range)
-    float intensity = 1.0f - (distSq / MAX_WITNESS_RANGE_SQ);
-
-    // Personality modulation: composure reduces emotional impact
-    float emotionScale = intensity * (1.0f - memData.personality.composure * 0.5f);
-
-    // Emotional impact
-    float fearDelta = (wasDeath ? 0.3f : 0.15f) * emotionScale;
-    float suspicionDelta = 0.2f * emotionScale;
-    memData.emotions.fear = std::min(1.0f, memData.emotions.fear + fearDelta);
-    memData.emotions.suspicion = std::min(1.0f, memData.emotions.suspicion + suspicionDelta);
-
-    // Create memory entry
-    MemoryEntry mem;
-    mem.subject = attacker;
-    mem.location = combatLocation;
-    mem.timestamp = gameTime;
-    mem.value = intensity * 100.0f;
-    mem.type = wasDeath ? MemoryType::WitnessedDeath : MemoryType::WitnessedCombat;
-    mem.importance = static_cast<uint8_t>(std::min(255.0f, (wasDeath ? 200.0f : 100.0f) * intensity));
-    mem.flags = MemoryEntry::FLAG_VALID;
-
-    addMemory(witnessIndex, mem, false);  // No overflow for witnessed events
 }
 
 void EntityDataManager::addLocationToHistory(size_t index, const Vector2D& location) {

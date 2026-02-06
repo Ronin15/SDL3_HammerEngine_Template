@@ -316,6 +316,13 @@ bool shouldFleeFromFear(const BehaviorContext& ctx);
 bool isOnAlert(const BehaviorContext& ctx, float suspicionThreshold = 0.5f);
 
 /**
+ * @brief Check if hostile-faction entity should proactively engage an enemy
+ * @param ctx BehaviorContext with memoryData and characterData
+ * @return true if entity has high aggression and enemy is in range
+ */
+bool shouldEngageEnemy(const BehaviorContext& ctx);
+
+/**
  * @brief Get the handle of the last entity that attacked this one
  * @param ctx BehaviorContext with memoryData
  * @return EntityHandle of attacker, or invalid handle if none
@@ -343,6 +350,34 @@ float calculateAngleToTarget(const Vector2D& from, const Vector2D& to);
  * @return Default BehaviorConfigData for that type
  */
 HammerEngine::BehaviorConfigData getDefaultConfig(BehaviorType type);
+
+// ============================================================================
+// COMBAT EVENT PROCESSING (AI-layer wrappers for EDM data + emotion logic)
+// ============================================================================
+
+/**
+ * @brief Process a combat event: record data in EDM and apply personality-scaled emotions
+ * @param index EDM index of the entity involved in combat
+ * @param attacker Handle of the attacking entity
+ * @param target Handle of the target entity
+ * @param damage Damage amount
+ * @param wasAttacked true if this entity was the target
+ * @param gameTime Current game time for memory timestamp
+ */
+void processCombatEvent(size_t index, EntityHandle attacker, EntityHandle target,
+                        float damage, bool wasAttacked, float gameTime);
+
+/**
+ * @brief Process a witnessed combat event for a nearby NPC
+ * @param witnessIndex EDM index of the witness
+ * @param attacker Handle of the attacker entity
+ * @param combatLocation World position where combat occurred
+ * @param gameTime Current game time for memory timestamp
+ * @param wasDeath true if the witnessed combat was lethal
+ */
+void processWitnessedCombat(size_t witnessIndex, EntityHandle attacker,
+                            const Vector2D& combatLocation,
+                            float gameTime, bool wasDeath = false);
 
 // ============================================================================
 // MESSAGE QUEUE FUNCTIONS

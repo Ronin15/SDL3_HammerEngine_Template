@@ -1752,7 +1752,7 @@ BOOST_AUTO_TEST_CASE(TestRecordCombatEventUpdatesMemory) {
     float initialFear = memData.emotions.fear;
     uint32_t initialEncounters = memData.combatEncounters;
 
-    edm.recordCombatEvent(victimIdx, attackerHandle, victimHandle, 50.0f, true, 0.0f);
+    Behaviors::processCombatEvent(victimIdx, attackerHandle, victimHandle, 50.0f, true, 0.0f);
 
     BOOST_CHECK_GT(memData.emotions.fear, initialFear);
     BOOST_CHECK_GT(memData.combatEncounters, initialEncounters);

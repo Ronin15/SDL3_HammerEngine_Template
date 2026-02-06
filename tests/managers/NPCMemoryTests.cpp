@@ -6,7 +6,12 @@
 #define BOOST_TEST_MODULE NPCMemoryTests
 #include <boost/test/unit_test.hpp>
 
+#include "ai/BehaviorExecutors.hpp"
+#include "core/ThreadSystem.hpp"
+#include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <cmath>
@@ -26,12 +31,20 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
 class NPCMemoryTestFixture {
 public:
     NPCMemoryTestFixture() {
+        HammerEngine::ThreadSystem::Instance().init();
         edm = &EntityDataManager::Instance();
         edm->init();
+        CollisionManager::Instance().init();
+        PathfinderManager::Instance().init();
+        AIManager::Instance().init();
     }
 
     ~NPCMemoryTestFixture() {
+        AIManager::Instance().clean();
+        PathfinderManager::Instance().clean();
+        CollisionManager::Instance().clean();
         edm->clean();
+        HammerEngine::ThreadSystem::Instance().clean();
     }
 
 protected:
@@ -392,7 +405,7 @@ BOOST_AUTO_TEST_CASE(TestRecordCombatEventReceived) {
     auto [handle, index] = createTestNPC();
     EntityHandle attacker{999, EntityKind::Player, 1};
 
-    edm->recordCombatEvent(index, attacker, handle, 25.0f, true, 10.0f);
+    Behaviors::processCombatEvent(index, attacker, handle, 25.0f, true, 10.0f);
 
     auto& memData = edm->getMemoryData(index);
     BOOST_CHECK(memData.isValid());
@@ -407,7 +420,7 @@ BOOST_AUTO_TEST_CASE(TestRecordCombatEventDealt) {
     auto [handle, index] = createTestNPC();
     EntityHandle target{888, EntityKind::NPC, 1};
 
-    edm->recordCombatEvent(index, handle, target, 30.0f, false, 15.0f);
+    Behaviors::processCombatEvent(index, handle, target, 30.0f, false, 15.0f);
 
     auto& memData = edm->getMemoryData(index);
     BOOST_CHECK(memData.lastTarget == target);
@@ -657,8 +670,8 @@ BOOST_AUTO_TEST_CASE(TestResilienceAffectsFearGain) {
     EntityHandle attacker{999, EntityKind::NPC, 1};
     float damage = 50.0f;
 
-    edm->recordCombatEvent(guardIdx, attacker, EntityHandle{}, damage, true, 0.0f);
-    edm->recordCombatEvent(merchantIdx, attacker, EntityHandle{}, damage, true, 0.0f);
+    Behaviors::processCombatEvent(guardIdx, attacker, EntityHandle{}, damage, true, 0.0f);
+    Behaviors::processCombatEvent(merchantIdx, attacker, EntityHandle{}, damage, true, 0.0f);
 
     // Get resulting fear levels
     auto& guardMem = edm->getMemoryData(guardIdx);
@@ -682,13 +695,13 @@ BOOST_AUTO_TEST_CASE(TestBraveryAffectsFearGain) {
 
     // Record combat event
     EntityHandle attacker{999, EntityKind::NPC, 1};
-    edm->recordCombatEvent(index, attacker, EntityHandle{}, 30.0f, true, 0.0f);
+    Behaviors::processCombatEvent(index, attacker, EntityHandle{}, 30.0f, true, 0.0f);
     float cowardFear = memData.emotions.fear;
 
     // Reset and test with brave personality
     memData.emotions.fear = 0.0f;
     memData.personality.bravery = 0.9f;
-    edm->recordCombatEvent(index, attacker, EntityHandle{}, 30.0f, true, 1.0f);
+    Behaviors::processCombatEvent(index, attacker, EntityHandle{}, 30.0f, true, 1.0f);
     float braveFear = memData.emotions.fear;
 
     // Brave NPCs should gain less fear
