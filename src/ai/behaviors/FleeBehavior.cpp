@@ -449,8 +449,9 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
             flee.isFleeing = false;
             flee.isInPanic = false;
             flee.hasValidThreat = false;
+            // Was actively fleeing, threat gone — return to passive behavior
+            switchBehavior(ctx.edmIndex, BehaviorType::Idle);
         }
-        updateStamina(data, ctx.deltaTime, false, config);
         return;
     }
 

@@ -527,10 +527,14 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
         hasTarget = true;
     }
 
-    // No valid target - idle until one is assigned
+    // No valid target
     if (!hasTarget) {
         attack.hasTarget = false;
         ctx.transform.velocity = Vector2D(0, 0);
+        // Was actively fighting, target lost — return to passive behavior
+        if (attack.inCombat) {
+            switchBehavior(ctx.edmIndex, BehaviorType::Idle);
+        }
         return;
     }
 

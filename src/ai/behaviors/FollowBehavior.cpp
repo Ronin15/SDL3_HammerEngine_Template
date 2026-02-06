@@ -53,8 +53,16 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
     auto& data = *ctx.behaviorData;
     auto& follow = data.state.follow;
 
-    // Combat/fear awareness
-    if (isUnderRecentAttack(ctx, 2.0f) || shouldFleeFromFear(ctx)) {
+    // Combat reaction: brave+aggressive NPCs fight back, others flee
+    if (isUnderRecentAttack(ctx, 2.0f)) {
+        if (shouldRetaliate(ctx)) {
+            switchBehavior(ctx.edmIndex, BehaviorType::Chase);
+        } else {
+            switchBehavior(ctx.edmIndex, BehaviorType::Flee);
+        }
+        return;
+    }
+    if (shouldFleeFromFear(ctx)) {
         switchBehavior(ctx.edmIndex, BehaviorType::Flee);
         return;
     }

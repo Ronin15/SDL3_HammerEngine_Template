@@ -4,7 +4,6 @@
  */
 
 #include "ai/BehaviorExecutors.hpp"
-#include "ai/BehaviorExecutors.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
@@ -163,11 +162,20 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
             ctx.transform.velocity = Vector2D(0, 0);
             chase.isChasing = false;
             chase.hasLineOfSight = false;
+            // Was actively chasing, target lost — return to passive behavior
+            switchBehavior(ctx.edmIndex, BehaviorType::Idle);
         }
         return;
     }
 
     float distanceSquared = (targetPos - entityPos).lengthSquared();
+
+    // Caught target — transition to Attack
+    float catchRadiusSq = config.catchRadius * config.catchRadius;
+    if (distanceSquared <= catchRadiusSq) {
+        switchBehavior(ctx.edmIndex, BehaviorType::Attack);
+        return;
+    }
     float maxRangeSquared = DEFAULT_MAX_RANGE * DEFAULT_MAX_RANGE;
     float minRangeSquared = DEFAULT_MIN_RANGE * DEFAULT_MIN_RANGE;
 

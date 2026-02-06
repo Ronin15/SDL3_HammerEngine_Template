@@ -132,13 +132,21 @@ void executeIdle(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& c
         data.setInitialized(true);
     }
 
-    // Combat/fear awareness: flee when attacked or overwhelmed by fear
-    if (isUnderRecentAttack(ctx, 2.0f) || shouldFleeFromFear(ctx)) {
+    // Combat reaction: brave+aggressive NPCs fight back, others flee
+    if (isUnderRecentAttack(ctx, 2.0f)) {
+        if (shouldRetaliate(ctx)) {
+            switchBehavior(ctx.edmIndex, BehaviorType::Chase);
+        } else {
+            switchBehavior(ctx.edmIndex, BehaviorType::Flee);
+        }
+        return;
+    }
+    if (shouldFleeFromFear(ctx)) {
         switchBehavior(ctx.edmIndex, BehaviorType::Flee);
         return;
     }
 
-    // Aggression-driven engagement: hostile NPCs with high aggression proactively chase
+    // Proactive engagement: aggressive NPCs with known enemies nearby
     if (shouldEngageEnemy(ctx)) {
         switchBehavior(ctx.edmIndex, BehaviorType::Chase);
         return;

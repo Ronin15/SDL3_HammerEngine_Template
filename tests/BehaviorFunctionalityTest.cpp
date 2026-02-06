@@ -1576,10 +1576,13 @@ BOOST_AUTO_TEST_CASE(TestWanderSwitchesToFleeWhenAttacked) {
         updateAI(0.1f);
     }
 
-    // Should have switched to Flee behavior (re-fetch after updateAI to avoid stale ref)
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Flee);
+    // Should have switched to a combat response behavior (re-fetch after updateAI to avoid stale ref)
+    // Guards are brave+aggressive → retaliate (Chase). Cowardly NPCs → Flee.
+    auto responseType = edm.getBehaviorData(entityIdx).behaviorType;
+    BOOST_CHECK(responseType == BehaviorType::Chase || responseType == BehaviorType::Flee);
 
-    BOOST_TEST_MESSAGE("Wander -> Flee switch on attack verified");
+    BOOST_TEST_MESSAGE("Wander -> combat response on attack verified (type="
+                       << static_cast<int>(responseType) << ")");
 
     // Cleanup
     aiMgr.unassignBehavior(entityHandle);
@@ -1616,10 +1619,13 @@ BOOST_AUTO_TEST_CASE(TestIdleSwitchesToFleeWhenAttacked) {
         updateAI(0.1f);
     }
 
-    // Should have switched to Flee behavior (re-fetch after updateAI to avoid stale ref)
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Flee);
+    // Should have switched to a combat response behavior (re-fetch after updateAI to avoid stale ref)
+    // Guards are brave+aggressive → retaliate (Chase). Cowardly NPCs → Flee.
+    auto responseType = edm.getBehaviorData(entityIdx).behaviorType;
+    BOOST_CHECK(responseType == BehaviorType::Chase || responseType == BehaviorType::Flee);
 
-    BOOST_TEST_MESSAGE("Idle -> Flee switch on attack verified");
+    BOOST_TEST_MESSAGE("Idle -> combat response on attack verified (type="
+                       << static_cast<int>(responseType) << ")");
 
     // Cleanup
     aiMgr.unassignBehavior(entityHandle);

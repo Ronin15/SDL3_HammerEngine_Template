@@ -316,9 +316,21 @@ bool shouldFleeFromFear(const BehaviorContext& ctx);
 bool isOnAlert(const BehaviorContext& ctx, float suspicionThreshold = 0.5f);
 
 /**
- * @brief Check if hostile-faction entity should proactively engage an enemy
+ * @brief Check if entity should fight back against its attacker
+ * @param ctx BehaviorContext with memoryData
+ * @return true if brave + aggressive enough and attacker is alive
+ *
+ * Any faction. Checks bravery (with crowd courage), combined aggression,
+ * and verifies lastAttacker is still alive. Works for NPC-on-NPC and Player-on-NPC.
+ */
+bool shouldRetaliate(const BehaviorContext& ctx);
+
+/**
+ * @brief Check if entity should proactively engage an enemy
  * @param ctx BehaviorContext with memoryData and characterData
  * @return true if entity has high aggression and enemy is in range
+ *
+ * Checks lastAttacker from memory (any entity) and player (hostile faction only).
  */
 bool shouldEngageEnemy(const BehaviorContext& ctx);
 

@@ -171,12 +171,31 @@ bool isOnAlert(const BehaviorContext& ctx, float suspicionThreshold) {
     return ctx.memoryData->emotions.suspicion > suspicionThreshold;
 }
 
+bool shouldRetaliate(const BehaviorContext& ctx) {
+    if (!ctx.memoryData || !ctx.memoryData->isValid()) return false;
+    if (!ctx.memoryData->lastAttacker.isValid()) return false;
+
+    // Verify attacker is still alive
+    auto& edm = EntityDataManager::Instance();
+    size_t attackerIdx = edm.getIndex(ctx.memoryData->lastAttacker);
+    if (attackerIdx == SIZE_MAX) return false;
+    if (!edm.getHotDataByIndex(attackerIdx).isAlive()) return false;
+
+    float bravery = ctx.memoryData->personality.bravery;
+    float aggression = ctx.memoryData->emotions.aggression + ctx.memoryData->personality.aggression;
+
+    // Crowd courage: nearby allies boost effective bravery
+    if (ctx.behaviorData) {
+        float crowdBoost = std::min(0.3f, ctx.behaviorData->cachedNearbyCount * 0.05f);
+        bravery = std::min(1.0f, bravery + crowdBoost);
+    }
+
+    // Fight response: brave + aggressive NPCs retaliate
+    return (bravery > 0.4f && aggression > 0.6f);
+}
+
 bool shouldEngageEnemy(const BehaviorContext& ctx) {
     if (!ctx.memoryData || !ctx.memoryData->isValid()) return false;
-    if (!ctx.characterData) return false;
-
-    // Only hostile-faction NPCs proactively engage
-    if (ctx.characterData->faction != 1) return false;
 
     float aggression = ctx.memoryData->emotions.aggression;
     float personalAggression = ctx.memoryData->personality.aggression;
@@ -184,10 +203,22 @@ bool shouldEngageEnemy(const BehaviorContext& ctx) {
     // Need meaningful aggression to proactively attack
     if (aggression + personalAggression < 0.8f) return false;
 
-    // Check if player is valid and within reasonable range
-    if (ctx.playerValid) {
-        float distSq = Vector2D::distanceSquared(ctx.transform.position, ctx.playerPosition);
-        constexpr float ENGAGE_RANGE_SQ = 300.0f * 300.0f;
+    const Vector2D& myPos = ctx.transform.position;
+    constexpr float ENGAGE_RANGE_SQ = 300.0f * 300.0f;
+
+    // Check lastAttacker from memory — any entity (NPC or Player)
+    if (ctx.memoryData->lastAttacker.isValid()) {
+        auto& edm = EntityDataManager::Instance();
+        size_t idx = edm.getIndex(ctx.memoryData->lastAttacker);
+        if (idx != SIZE_MAX && edm.getHotDataByIndex(idx).isAlive()) {
+            float distSq = Vector2D::distanceSquared(myPos, edm.getHotDataByIndex(idx).transform.position);
+            if (distSq < ENGAGE_RANGE_SQ) return true;
+        }
+    }
+
+    // Hostile-faction NPCs also proactively target the player
+    if (ctx.characterData && ctx.characterData->faction == 1 && ctx.playerValid) {
+        float distSq = Vector2D::distanceSquared(myPos, ctx.playerPosition);
         if (distSq < ENGAGE_RANGE_SQ) return true;
     }
 
@@ -231,9 +262,13 @@ void processCombatEvent(size_t index, EntityHandle attacker, EntityHandle target
     float emotionScale = 1.0f - effectiveResilience;
 
     if (wasAttacked) {
+        // Fear scales inversely with bravery
         float fearScale = emotionScale * (1.0f - memData.personality.bravery * 0.5f);
         float fearIncrease = (damage / 100.0f) * fearScale;
-        edm.modifyEmotions(index, 0.0f, fearIncrease, 0.0f, 0.0f);
+        // Aggression scales with personality aggression + bravery (fight response)
+        float aggressionScale = emotionScale * (memData.personality.aggression * 0.5f + memData.personality.bravery * 0.3f);
+        float aggressionIncrease = (damage / 120.0f) * aggressionScale;
+        edm.modifyEmotions(index, aggressionIncrease, fearIncrease, 0.0f, 0.0f);
     } else {
         float aggressionScale = emotionScale * (1.0f + memData.personality.aggression * 0.5f);
         float aggressionIncrease = (damage / 150.0f) * aggressionScale;
