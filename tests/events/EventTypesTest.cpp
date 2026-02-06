@@ -774,7 +774,8 @@ BOOST_AUTO_TEST_CASE(TestEventTypeIdEnumValues) {
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Time), 12);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Combat), 13);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Entity), 14);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 15);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::BehaviorMessage), 15);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 16);
 }
 
 // Test ResourceChangeEvent

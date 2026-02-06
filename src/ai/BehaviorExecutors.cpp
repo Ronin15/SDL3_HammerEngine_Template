@@ -4,7 +4,10 @@
  */
 
 #include "ai/BehaviorExecutors.hpp"
+#include "events/EntityEvents.hpp"
+#include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
 #include <cmath>
 
 namespace Behaviors {
@@ -194,17 +197,18 @@ bool shouldRetaliate(const BehaviorContext& ctx) {
     return (bravery > 0.4f && aggression > 0.6f);
 }
 
-bool shouldEngageEnemy(const BehaviorContext& ctx) {
-    if (!ctx.memoryData || !ctx.memoryData->isValid()) return false;
+EntityHandle shouldEngageEnemy(const BehaviorContext& ctx) {
+    if (!ctx.memoryData || !ctx.memoryData->isValid()) return EntityHandle{};
 
     float aggression = ctx.memoryData->emotions.aggression;
     float personalAggression = ctx.memoryData->personality.aggression;
 
     // Need meaningful aggression to proactively attack
-    if (aggression + personalAggression < 0.8f) return false;
+    if (aggression + personalAggression < 0.8f) return EntityHandle{};
 
     const Vector2D& myPos = ctx.transform.position;
-    constexpr float ENGAGE_RANGE_SQ = 300.0f * 300.0f;
+    constexpr float ENGAGE_RANGE = 300.0f;
+    constexpr float ENGAGE_RANGE_SQ = ENGAGE_RANGE * ENGAGE_RANGE;
 
     // Check lastAttacker from memory — any entity (NPC or Player)
     if (ctx.memoryData->lastAttacker.isValid()) {
@@ -212,17 +216,37 @@ bool shouldEngageEnemy(const BehaviorContext& ctx) {
         size_t idx = edm.getIndex(ctx.memoryData->lastAttacker);
         if (idx != SIZE_MAX && edm.getHotDataByIndex(idx).isAlive()) {
             float distSq = Vector2D::distanceSquared(myPos, edm.getHotDataByIndex(idx).transform.position);
-            if (distSq < ENGAGE_RANGE_SQ) return true;
+            if (distSq < ENGAGE_RANGE_SQ) return ctx.memoryData->lastAttacker;
         }
     }
 
-    // Hostile-faction NPCs also proactively target the player
-    if (ctx.characterData && ctx.characterData->faction == 1 && ctx.playerValid) {
-        float distSq = Vector2D::distanceSquared(myPos, ctx.playerPosition);
-        if (distSq < ENGAGE_RANGE_SQ) return true;
+    // Scan for nearest different-faction entity (generic, no player hardcoding)
+    if (ctx.characterData) {
+        thread_local std::vector<EntityHandle> s_engageScanBuffer;
+        s_engageScanBuffer.clear();
+        AIManager::Instance().queryHandlesInRadius(myPos, ENGAGE_RANGE, s_engageScanBuffer, false);
+        auto& edm = EntityDataManager::Instance();
+
+        EntityHandle bestTarget{};
+        float bestDistSq = ENGAGE_RANGE_SQ;
+
+        for (const auto& handle : s_engageScanBuffer) {
+            size_t idx = edm.getIndex(handle);
+            if (idx == SIZE_MAX || idx == ctx.edmIndex) continue;
+            const auto& hot = edm.getHotDataByIndex(idx);
+            if (!hot.isAlive()) continue;
+            const auto& charData = edm.getCharacterDataByIndex(idx);
+            if (charData.faction == ctx.characterData->faction) continue;
+            float distSq = Vector2D::distanceSquared(myPos, hot.transform.position);
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                bestTarget = handle;
+            }
+        }
+        return bestTarget;
     }
 
-    return false;
+    return EntityHandle{};
 }
 
 EntityHandle getLastAttacker(const BehaviorContext& ctx) {
@@ -330,6 +354,30 @@ void clearPendingMessages(size_t edmIndex) {
     auto& edm = EntityDataManager::Instance();
     auto& data = edm.getBehaviorData(edmIndex);
     data.pendingMessageCount = 0;
+}
+
+// ============================================================================
+// DEFERRED BEHAVIOR MESSAGE FUNCTIONS
+// ============================================================================
+
+thread_local std::vector<EventManager::DeferredEvent> t_deferredMessageEvents;
+
+void deferBehaviorMessage(size_t targetEdmIndex, uint8_t messageId, uint8_t param) {
+    auto alertEvent = std::make_shared<AlertEvent>(targetEdmIndex, messageId, param);
+
+    EventData eventData;
+    eventData.typeId = EventTypeId::BehaviorMessage;
+    eventData.setActive(true);
+    eventData.priority = EventPriority::HIGH;
+    eventData.event = std::move(alertEvent);
+
+    t_deferredMessageEvents.push_back({EventTypeId::BehaviorMessage, std::move(eventData)});
+}
+
+std::vector<EventManager::DeferredEvent> collectDeferredMessageEvents() {
+    std::vector<EventManager::DeferredEvent> result = std::move(t_deferredMessageEvents);
+    t_deferredMessageEvents.clear();
+    return result;
 }
 
 } // namespace Behaviors

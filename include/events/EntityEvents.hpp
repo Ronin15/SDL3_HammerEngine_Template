@@ -327,4 +327,45 @@ private:
     Vector2D m_location;
 };
 
+// ============================================================================
+// ALERT EVENT (Behavior Messages via EventManager)
+// ============================================================================
+
+/**
+ * @brief Lightweight event for inter-entity behavior messages
+ *
+ * Used to route behavior messages (RAISE_ALERT, etc.) through EventManager
+ * for thread-safe delivery. Behaviors defer these during batch processing;
+ * EventManager handler delivers via queueBehaviorMessage on the main thread.
+ */
+class AlertEvent : public Event {
+public:
+    AlertEvent(size_t targetEdmIndex, uint8_t messageId, uint8_t param = 0)
+        : m_targetEdmIndex(targetEdmIndex)
+        , m_messageId(messageId)
+        , m_param(param) {}
+
+    ~AlertEvent() override = default;
+
+    void update() override {}
+    void execute() override {}
+    void reset() override {}
+    void clean() override {}
+
+    std::string getName() const override { return "AlertEvent"; }
+    std::string getType() const override { return "BehaviorMessage"; }
+    std::string getTypeName() const override { return "AlertEvent"; }
+    EventTypeId getTypeId() const override { return EventTypeId::BehaviorMessage; }
+    bool checkConditions() override { return true; }
+
+    [[nodiscard]] size_t getTargetEdmIndex() const { return m_targetEdmIndex; }
+    [[nodiscard]] uint8_t getMessageId() const { return m_messageId; }
+    [[nodiscard]] uint8_t getParam() const { return m_param; }
+
+private:
+    size_t m_targetEdmIndex;
+    uint8_t m_messageId;
+    uint8_t m_param;
+};
+
 #endif // ENTITY_EVENTS_HPP

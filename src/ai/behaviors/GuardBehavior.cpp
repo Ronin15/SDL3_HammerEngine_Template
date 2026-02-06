@@ -4,11 +4,9 @@
  */
 
 #include "ai/BehaviorExecutors.hpp"
-#include "ai/BehaviorExecutors.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include <algorithm>
 #include <cmath>
 #include <random>
 
@@ -31,7 +29,6 @@ constexpr float SUSPICIOUS_THRESHOLD = 2.0f;
 constexpr float INVESTIGATING_THRESHOLD = 4.0f;
 constexpr float DEFAULT_ROAM_INTERVAL = 6.0f;
 constexpr float DEFAULT_THREAT_DETECTION_RANGE = 150.0f;
-constexpr float DEFAULT_FIELD_OF_VIEW = 360.0f;
 constexpr float DEFAULT_ATTACK_ENGAGE_RANGE = 80.0f;
 constexpr float PATH_TTL = 5.0f;
 constexpr float NAV_RADIUS = 18.0f;
@@ -83,45 +80,11 @@ void processGuardMessages(BehaviorData& data, const HammerEngine::GuardBehaviorC
         uint8_t msgId = data.pendingMessages[i].messageId;
 
         switch (msgId) {
-            case BehaviorMessage::GO_ON_DUTY:
-                guard.onDuty = true;
-                break;
-
-            case BehaviorMessage::GO_OFF_DUTY:
-                guard.onDuty = false;
-                break;
-
             case BehaviorMessage::RAISE_ALERT:
                 // Force HOSTILE alert level (3)
                 guard.currentAlertLevel = 3;
                 guard.alertTimer = 0.0f;
                 guard.alertDecayTimer = 0.0f;
-                break;
-
-            case BehaviorMessage::CLEAR_ALERT:
-                // Reset to CALM alert level (0)
-                guard.currentAlertLevel = 0;
-                guard.alertTimer = 0.0f;
-                guard.alertDecayTimer = 0.0f;
-                guard.helpCalled = false;
-                break;
-
-            case BehaviorMessage::RETURN_TO_POST:
-                // Force return to assigned position
-                guard.currentAlertLevel = 0;
-                guard.alertTimer = 0.0f;
-                break;
-
-            case BehaviorMessage::SET_PATROL_MODE:
-                guard.currentMode = 1;  // PATROL_GUARD
-                break;
-
-            case BehaviorMessage::SET_STATIC_MODE:
-                guard.currentMode = 0;  // STATIC_GUARD
-                break;
-
-            case BehaviorMessage::SET_ROAM_MODE:
-                guard.currentMode = 3;  // ROAMING_GUARD
                 break;
 
             default:
@@ -267,15 +230,17 @@ void moveToPosition(BehaviorContext& ctx, EntityDataManager& edm, const Vector2D
 }
 
 // Detect threats in range - single-pass to reduce EDM lookups
-EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, float detectionRange, float fieldOfView) {
+// Returns threat handle and sets isEnemyFaction to avoid redundant lookup in updateAlertLevel
+EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, float detectionRange, bool& isEnemyFaction) {
+    isEnemyFaction = false;
     if (!ctx.behaviorData) return EntityHandle{};
-
-    const auto& guard = ctx.behaviorData->state.guard;
 
     // Query nearby entities
     s_nearbyBuffer.clear();
     if (s_nearbyBuffer.capacity() < 32) s_nearbyBuffer.reserve(32);
     AIManager::Instance().queryHandlesInRadius(ctx.transform.position, detectionRange, s_nearbyBuffer, true);
+
+    float detectionRangeSq = detectionRange * detectionRange;
 
     // Single-pass: check both enemy faction and friendly attackers
     // Enemy faction takes priority (returns immediately)
@@ -289,21 +254,15 @@ EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, float de
         const auto& charData = edm.getCharacterDataByIndex(idx);
 
         if (charData.faction == 1) { // Enemy - highest priority
-            Vector2D threatPos = edm.getHotDataByIndex(idx).transform.position;
-
-            // Check FOV if limited
-            if (fieldOfView < 360.0f) {
-                float angleToThreat = calculateAngle(ctx.transform.position, threatPos);
-                float angleDiff = std::abs(normalizeAngle(angleToThreat - guard.currentHeading));
-                float halfFOV = (fieldOfView * static_cast<float>(M_PI) / 180.0f) * 0.5f;
-                if (angleDiff > halfFOV) continue;
-            }
-            return handle; // Return immediately on enemy
+            isEnemyFaction = true;
+            return handle;
         }
         else if (charData.faction == 0 && !friendlyAttacker.isValid()) { // Friendly - record attacker
-            const auto& memData = edm.getMemoryData(idx);
-            if (memData.lastAttacker.isValid()) {
-                friendlyAttacker = memData.lastAttacker;
+            if (edm.hasMemoryData(idx)) {
+                const auto& memData = edm.getMemoryData(idx);
+                if (memData.lastAttacker.isValid()) {
+                    friendlyAttacker = memData.lastAttacker;
+                }
             }
         }
     }
@@ -315,15 +274,9 @@ EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, float de
 
     // Check player for enemy guards - use pre-fetched characterData
     if (ctx.playerValid && ctx.characterData && ctx.characterData->faction == 1) {
-        Vector2D threatPos = ctx.playerPosition;
-        float distance = (ctx.transform.position - threatPos).length();
-        if (distance <= detectionRange) {
-            if (fieldOfView < 360.0f) {
-                float angleToThreat = calculateAngle(ctx.transform.position, threatPos);
-                float angleDiff = std::abs(normalizeAngle(angleToThreat - guard.currentHeading));
-                float halfFOV = (fieldOfView * static_cast<float>(M_PI) / 180.0f) * 0.5f;
-                if (angleDiff > halfFOV) return EntityHandle{};
-            }
+        float distSq = Vector2D::distanceSquared(ctx.transform.position, ctx.playerPosition);
+        if (distSq <= detectionRangeSq) {
+            isEnemyFaction = true;
             return ctx.playerHandle;
         }
     }
@@ -331,23 +284,14 @@ EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, float de
     return EntityHandle{};
 }
 
-// Update alert level based on threat presence - EDM passed to avoid Instance() calls
-void updateAlertLevel(BehaviorData& data, EntityDataManager& edm, bool threatPresent, EntityHandle threat, float escalationMultiplier) {
+// Update alert level based on threat presence
+// isEnemyFaction is pre-computed by detectThreat to avoid redundant EDM lookup
+void updateAlertLevel(BehaviorData& data, bool threatPresent, bool isEnemyFaction, float escalationMultiplier) {
     auto& guard = data.state.guard;
 
     if (threatPresent) {
         guard.threatSightingTimer = 0.0f;
         guard.hasActiveThreat = true;
-
-        // Check if threat is enemy faction - immediate hostile response
-        bool isEnemyFaction = false;
-        if (threat.isValid()) {
-            size_t threatIdx = edm.getIndex(threat);
-            if (threatIdx != SIZE_MAX) {
-                const auto& charData = edm.getCharacterDataByIndex(threatIdx);
-                isEnemyFaction = (charData.faction == 1);
-            }
-        }
 
         if (isEnemyFaction) {
             guard.currentAlertLevel = 3; // HOSTILE
@@ -426,7 +370,6 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
     auto& edm = EntityDataManager::Instance();
 
     // Process any pending messages before main logic
-    // (messages like GO_ON_DUTY need to be processed even when off duty)
     processGuardMessages(data, config);
 
     if (!guard.onDuty) return;
@@ -449,8 +392,9 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         guard.escalationMultiplier = 1.0f;
     }
 
-    // Witness memory-driven alert escalation
-    if (guard.currentAlertLevel == 0 && ctx.memoryData && ctx.memoryData->isValid()) {
+    // Witness memory-driven alert escalation (throttled to calm poll interval)
+    if (guard.currentAlertLevel == 0 && guard.threatSightingTimer >= CALM_POLL_INTERVAL &&
+        ctx.memoryData && ctx.memoryData->isValid()) {
         for (size_t i = 0; i < NPCMemoryData::INLINE_MEMORY_COUNT; ++i) {
             const auto& mem = ctx.memoryData->memories[i];
             if (!mem.isValid()) continue;
@@ -492,23 +436,35 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
     // Alerted guards (level > 0) poll every 0.25s to track active threats
     EntityHandle threat{};
     bool threatPresent = false;
-    bool shouldPoll = false;
-    if (guard.currentAlertLevel == 0) {
-        // Calm guards - reduced-rate polling
-        shouldPoll = (guard.threatSightingTimer >= CALM_POLL_INTERVAL);
-    } else {
-        // Alerted guards - frequent polling
-        shouldPoll = (guard.threatSightingTimer >= THREAT_DETECTION_INTERVAL);
-    }
+    bool isEnemyFaction = false;
+    bool shouldPoll = (guard.currentAlertLevel == 0)
+        ? (guard.threatSightingTimer >= CALM_POLL_INTERVAL)
+        : (guard.threatSightingTimer >= THREAT_DETECTION_INTERVAL);
 
     if (shouldPoll) {
-        threat = detectThreat(ctx, edm, guard.cachedDetectionRange, DEFAULT_FIELD_OF_VIEW);
+        threat = detectThreat(ctx, edm, guard.cachedDetectionRange, isEnemyFaction);
         threatPresent = threat.isValid();
-        guard.threatSightingTimer = 0.0f;  // Reset timer after polling
+        guard.threatSightingTimer = 0.0f;
     }
 
-    // Update alert level
-    updateAlertLevel(data, edm, threatPresent, threat, guard.escalationMultiplier);
+    // Update alert level (isEnemyFaction pre-computed by detectThreat)
+    updateAlertLevel(data, threatPresent, isEnemyFaction, guard.escalationMultiplier);
+
+    // Call for help when first reaching HOSTILE
+    if (guard.currentAlertLevel >= 3 && !guard.helpCalled) {
+        guard.helpCalled = true;
+        thread_local std::vector<EntityHandle> s_helpBuffer;
+        s_helpBuffer.clear();
+        uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
+        AIManager::Instance().queryHandlesInRadius(
+            ctx.transform.position, 250.0f, s_helpBuffer, true);
+        for (const auto& handle : s_helpBuffer) {
+            size_t idx = edm.getIndex(handle);
+            if (idx == SIZE_MAX || idx == ctx.edmIndex) continue;
+            if (edm.getCharacterDataByIndex(idx).faction != myFaction) continue;
+            Behaviors::deferBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);
+        }
+    }
 
     if (threatPresent) {
         // Handle threat detection
@@ -628,7 +584,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
 
             case 4: // ALERT_GUARD
                 if (guard.currentAlertLevel >= 2) {
-                    if (guard.lastKnownThreatPosition.length() > 0) {
+                    if (guard.lastKnownThreatPosition.lengthSquared() > 0.0f) {
                         moveToPosition(ctx, edm, guard.lastKnownThreatPosition, modeSpeed);
                     }
                 } else if (guard.roamTimer <= 0.0f || isAtPosition(ctx.transform.position, guard.roamTarget)) {
@@ -645,8 +601,25 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
 
     // Handle alert decay
     if (guard.currentAlertLevel > 0 && guard.alertDecayTimer > config.alertDecayTime) {
+        uint8_t previousLevel = guard.currentAlertLevel;
         guard.currentAlertLevel--;
         guard.alertDecayTimer = 0.0f;
+
+        // When returning to CALM, signal nearby allies to calm down
+        if (guard.currentAlertLevel == 0 && previousLevel > 0) {
+            guard.helpCalled = false;
+            thread_local std::vector<EntityHandle> s_calmBuffer;
+            s_calmBuffer.clear();
+            uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
+            AIManager::Instance().queryHandlesInRadius(
+                ctx.transform.position, 250.0f, s_calmBuffer, true);
+            for (const auto& handle : s_calmBuffer) {
+                size_t idx = edm.getIndex(handle);
+                if (idx == SIZE_MAX || idx == ctx.edmIndex) continue;
+                if (edm.getCharacterDataByIndex(idx).faction != myFaction) continue;
+                Behaviors::deferBehaviorMessage(idx, BehaviorMessage::CALM_DOWN);
+            }
+        }
     }
 }
 

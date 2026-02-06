@@ -92,31 +92,16 @@ struct BehaviorContext {
  * of each behavior's execute function via processPendingMessages().
  */
 namespace BehaviorMessage {
-    // Attack messages (1-9)
+    // Attack messages
     constexpr uint8_t ATTACK_TARGET = 1;     // Force attack on explicit target
-    constexpr uint8_t RETREAT = 2;           // Force retreat state
-    constexpr uint8_t STOP_ATTACK = 3;       // Return to SEEKING state
-    constexpr uint8_t ENABLE_COMBO = 4;      // Enable combo attack system
-    constexpr uint8_t DISABLE_COMBO = 5;     // Disable combo attack system
-    constexpr uint8_t HEAL = 6;              // Heal the entity
-    constexpr uint8_t BERSERK = 7;           // Enter berserker mode
+    constexpr uint8_t RETREAT = 2;           // Allies retreat when nearby attacker retreats
 
-    // Flee messages (10-19)
-    constexpr uint8_t PANIC = 10;            // Force panic state
-    constexpr uint8_t CALM_DOWN = 11;        // Exit panic state
-    constexpr uint8_t STOP_FLEEING = 12;     // Stop fleeing completely
-    constexpr uint8_t RECOVER_STAMINA = 13;  // Reset stamina to max
+    // Flee messages
+    constexpr uint8_t PANIC = 10;            // Witness lethal combat — force flee
+    constexpr uint8_t CALM_DOWN = 11;        // Guard all-clear — reduce fear
 
-    // Guard messages (20-29)
-    constexpr uint8_t GO_ON_DUTY = 20;       // Enable guard duty
-    constexpr uint8_t GO_OFF_DUTY = 21;      // Disable guard duty
-    constexpr uint8_t RAISE_ALERT = 22;      // Force HOSTILE alert level
-    constexpr uint8_t CLEAR_ALERT = 23;      // Reset to CALM alert level
-    constexpr uint8_t INVESTIGATE_POSITION = 24; // Investigate a position (param=x, y encoded)
-    constexpr uint8_t RETURN_TO_POST = 25;   // Force return to assigned position
-    constexpr uint8_t SET_PATROL_MODE = 26;  // Set to PATROL_GUARD mode
-    constexpr uint8_t SET_STATIC_MODE = 27;  // Set to STATIC_GUARD mode
-    constexpr uint8_t SET_ROAM_MODE = 28;    // Set to ROAMING_GUARD mode
+    // Guard messages
+    constexpr uint8_t RAISE_ALERT = 22;      // Guard/civilian under attack — force HOSTILE
 }
 
 namespace Behaviors {
@@ -328,11 +313,11 @@ bool shouldRetaliate(const BehaviorContext& ctx);
 /**
  * @brief Check if entity should proactively engage an enemy
  * @param ctx BehaviorContext with memoryData and characterData
- * @return true if entity has high aggression and enemy is in range
+ * @return EntityHandle of target if entity has high aggression and enemy is in range, invalid otherwise
  *
- * Checks lastAttacker from memory (any entity) and player (hostile faction only).
+ * Checks lastAttacker from memory, then scans for nearest different-faction entity.
  */
-bool shouldEngageEnemy(const BehaviorContext& ctx);
+EntityHandle shouldEngageEnemy(const BehaviorContext& ctx);
 
 /**
  * @brief Get the handle of the last entity that attacked this one
@@ -431,6 +416,27 @@ void clearPendingMessages(size_t edmIndex);
  * during batch execution. Call this after processBatch to collect and dispatch.
  */
 std::vector<EventManager::DeferredEvent> collectDeferredDamageEvents();
+
+// ============================================================================
+// DEFERRED BEHAVIOR MESSAGE COLLECTION (thread-local buffer for inter-entity messages)
+// ============================================================================
+
+/**
+ * @brief Defer a behavior message for thread-safe delivery via EventManager
+ * @param targetEdmIndex Target entity's EDM index
+ * @param messageId BehaviorMessage::* constant
+ * @param param Optional parameter
+ *
+ * Safe to call from worker threads during batch processing. Creates an AlertEvent
+ * wrapped in a DeferredEvent. Collected after batch and dispatched via EventManager.
+ */
+void deferBehaviorMessage(size_t targetEdmIndex, uint8_t messageId, uint8_t param = 0);
+
+/**
+ * @brief Collect deferred behavior message events from thread-local buffer
+ * @return Vector of deferred events to dispatch (moved, buffer cleared)
+ */
+std::vector<EventManager::DeferredEvent> collectDeferredMessageEvents();
 
 } // namespace Behaviors
 

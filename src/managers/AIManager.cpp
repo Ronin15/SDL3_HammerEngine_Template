@@ -71,6 +71,7 @@ bool AIManager::init() {
     }
 
     m_initialized.store(true, std::memory_order_release);
+    m_globallyPaused.store(false, std::memory_order_release);
     m_isShutdown = false;
 
     // Register default behaviors (Idle, Wander, Chase, Guard, Attack, Flee, Follow)
@@ -122,11 +123,26 @@ bool AIManager::init() {
           // Notify nearby NPCs that witnessed this combat
           Vector2D combatLocation = hotData.transform.position;
           bool wasLethal = (charData.health <= 0.0f);
+          uint8_t victimFaction = edm.getCharacterDataByIndex(idx).faction;
           auto activeSpan = edm.getActiveIndices();
           for (size_t witnessIdx : activeSpan) {
             if (witnessIdx == idx) continue;
             Behaviors::processWitnessedCombat(witnessIdx, attackerHandle,
                                                combatLocation, 0.0f, wasLethal);
+
+            // PANIC: lethal combat witnessed — civilians of same faction panic
+            if (wasLethal) {
+              const auto& witnessHot = edm.getHotDataByIndex(witnessIdx);
+              float distSq = Vector2D::distanceSquared(combatLocation,
+                                                        witnessHot.transform.position);
+              if (distSq < 250.0f * 250.0f) {
+                const auto& witnessChar = edm.getCharacterDataByIndex(witnessIdx);
+                if (witnessChar.faction == victimFaction) {
+                  // Main thread — safe to call queueBehaviorMessage directly
+                  Behaviors::queueBehaviorMessage(witnessIdx, BehaviorMessage::PANIC);
+                }
+              }
+            }
           }
 
           // Death handling (EDM lifecycle) - O(1) per damage event
@@ -134,6 +150,17 @@ bool AIManager::init() {
             hotData.flags &= ~EntityHotData::FLAG_ALIVE;
             edm.destroyEntity(targetHandle);
           }
+        });
+
+    // BehaviorMessage handler: delivers deferred inter-entity messages on main thread
+    EventManager::Instance().registerHandler(EventTypeId::BehaviorMessage,
+        [](const EventData& data) {
+          if (!data.isActive() || !data.event) return;
+          auto alertEvent = std::dynamic_pointer_cast<AlertEvent>(data.event);
+          if (!alertEvent) return;
+          Behaviors::queueBehaviorMessage(alertEvent->getTargetEdmIndex(),
+                                           alertEvent->getMessageId(),
+                                           alertEvent->getParam());
         });
 
     // No NPCSpawn handler in AIManager: state owns creation; AI manages
@@ -1270,8 +1297,15 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
                                         std::memory_order_relaxed);
   }
 
-  // Return collected damage events from this batch's thread-local buffer (lock-free)
-  return Behaviors::collectDeferredDamageEvents();
+  // Collect all deferred events from this batch's thread-local buffers (lock-free)
+  auto damageEvents = Behaviors::collectDeferredDamageEvents();
+  auto messageEvents = Behaviors::collectDeferredMessageEvents();
+  if (!messageEvents.empty()) {
+    damageEvents.insert(damageEvents.end(),
+        std::make_move_iterator(messageEvents.begin()),
+        std::make_move_iterator(messageEvents.end()));
+  }
+  return damageEvents;
 }
 
 uint64_t AIManager::getCurrentTimeNanos() {

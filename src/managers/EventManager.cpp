@@ -980,6 +980,7 @@ std::string EventManager::getEventTypeName(EventTypeId typeId) const {
   case EventTypeId::Time: return "Time";
   case EventTypeId::Combat: return "Combat";
   case EventTypeId::Entity: return "Entity";
+  case EventTypeId::BehaviorMessage: return "BehaviorMessage";
   default: return "Unknown";
   }
 }

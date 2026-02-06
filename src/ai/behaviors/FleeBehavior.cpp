@@ -46,22 +46,6 @@ void processFleeMessages(BehaviorData& data, const HammerEngine::FleeBehaviorCon
                 flee.panicTimer = 0.0f;
                 break;
 
-            case BehaviorMessage::STOP_FLEEING:
-                // Clear immediate flee state. The behavior's memory-driven threat
-                // re-evaluation will resume fleeing if the threat is still present.
-                // Callers should resolve the threat (kill attacker, clear memory)
-                // before sending this message for lasting effect.
-                flee.isFleeing = false;
-                flee.isInPanic = false;
-                flee.panicTimer = 0.0f;
-                flee.hasValidThreat = false;
-                break;
-
-            case BehaviorMessage::RECOVER_STAMINA:
-                // Reset stamina to max
-                flee.currentStamina = config.maxStamina;
-                break;
-
             default:
                 break;
         }

@@ -4,13 +4,13 @@
  */
 
 #include "ai/BehaviorExecutors.hpp"
-#include "ai/BehaviorExecutors.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <random>
 
 namespace {
@@ -25,10 +25,13 @@ thread_local std::uniform_real_distribution<float> s_criticalRoll{0.0f, 1.0f};
 thread_local std::uniform_real_distribution<float> s_specialRoll{0.0f, 1.0f};
 thread_local std::uniform_real_distribution<float> s_angleVariation{-0.5f, 0.5f};
 thread_local std::vector<EventManager::DeferredEvent> t_deferredDamageEvents;
+thread_local std::vector<EntityHandle> s_scanBuffer;
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
+
+constexpr float SEEK_SCAN_RANGE = 300.0f;
 
 constexpr float COMBAT_ENTER_RANGE_MULT = 1.2f;
 constexpr float COMBAT_EXIT_RANGE_MULT = 2.0f;
@@ -85,6 +88,31 @@ Vector2D rotateVector(const Vector2D& v, float angle) {
     return Vector2D(v.getX() * c - v.getY() * s, v.getX() * s + v.getY() * c);
 }
 
+// Scan for nearest different-faction entity (fully generic, no player hardcoding)
+EntityHandle scanForNearestTarget(const Vector2D& pos, uint8_t myFaction, size_t myEdmIndex) {
+    s_scanBuffer.clear();
+    AIManager::Instance().queryHandlesInRadius(pos, SEEK_SCAN_RANGE, s_scanBuffer, false);
+    auto& edm = EntityDataManager::Instance();
+
+    EntityHandle bestTarget{};
+    float bestDistSq = std::numeric_limits<float>::max();
+
+    for (const auto& handle : s_scanBuffer) {
+        size_t idx = edm.getIndex(handle);
+        if (idx == SIZE_MAX || idx == myEdmIndex) continue;
+        const auto& hot = edm.getHotDataByIndex(idx);
+        if (!hot.isAlive()) continue;
+        const auto& charData = edm.getCharacterDataByIndex(idx);
+        if (charData.faction == myFaction) continue;
+        float distSq = Vector2D::distanceSquared(pos, hot.transform.position);
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestTarget = handle;
+        }
+    }
+    return bestTarget;
+}
+
 void updateTimers(BehaviorData& data, float deltaTime) {
     auto& attack = data.state.attack;
     attack.attackTimer += deltaTime;
@@ -115,31 +143,6 @@ void processAttackMessages(BehaviorData& data, const HammerEngine::AttackBehavio
                 attack.currentState = static_cast<uint8_t>(AttackState::RETREATING);
                 attack.isRetreating = true;
                 attack.stateChangeTimer = 0.0f;
-                break;
-
-            case BehaviorMessage::STOP_ATTACK:
-                // Return to seeking state
-                attack.currentState = static_cast<uint8_t>(AttackState::SEEKING);
-                attack.isRetreating = false;
-                attack.hasExplicitTarget = false;
-                attack.explicitTarget = EntityHandle{};
-                attack.stateChangeTimer = 0.0f;
-                break;
-
-            case BehaviorMessage::ENABLE_COMBO:
-                attack.comboEnabled = true;
-                break;
-
-            case BehaviorMessage::DISABLE_COMBO:
-                attack.comboEnabled = false;
-                attack.currentCombo = 0;
-                attack.attacksInCombo = 0;
-                break;
-
-            case BehaviorMessage::BERSERK:
-                // Enter berserker mode - half cooldowns, max aggression
-                attack.attackMode = static_cast<uint8_t>(AttackMode::BERSERKER);
-                attack.comboEnabled = true;
                 break;
 
             default:
@@ -284,7 +287,7 @@ void executeAttackAction(size_t edmIndex, const Vector2D& targetPos, BehaviorDat
     Vector2D knockback = calculateKnockbackVector(entityPos, targetPos) * config.knockbackForce;
     EntityHandle attackerHandle = edm.getHandle(edmIndex);
 
-    // Resolve target handle: explicit > memory lastTarget > memory lastAttacker > player (if hostile)
+    // Resolve target handle: explicit > memory lastTarget > memory lastAttacker > scan
     EntityHandle targetHandle{};
     if (attack.hasExplicitTarget && attack.explicitTarget.isValid()) {
         targetHandle = attack.explicitTarget;
@@ -296,13 +299,21 @@ void executeAttackAction(size_t edmIndex, const Vector2D& targetPos, BehaviorDat
             targetHandle = memData.lastAttacker;
         }
     }
-    // Fall back to player only if entity is hostile (faction 1) - use pre-fetched charData
-    if (!targetHandle.isValid() && charData && charData->faction == 1) {
-        targetHandle = AIManager::Instance().getPlayerHandle();
+    if (!targetHandle.isValid() && charData) {
+        targetHandle = scanForNearestTarget(entityPos, charData->faction, edmIndex);
     }
     if (!targetHandle.isValid()) return;  // No valid target
 
     applyDamageToTarget(targetHandle, damage, knockback, attackerHandle);
+
+    // Faction escalation: neutral attacker (faction > 1) attacking a friendly (faction 0)
+    // reveals them as hostile (faction 1), which also updates collision layers
+    if (charData && charData->faction > 1) {
+        size_t targetIdx = edm.getIndex(targetHandle);
+        if (targetIdx != SIZE_MAX && edm.getCharacterDataByIndex(targetIdx).faction == 0) {
+            edm.setFaction(edm.getHandle(edmIndex), 1);
+        }
+    }
 
     // Track who we attacked
     if (edm.hasMemoryData(edmIndex)) {
@@ -521,10 +532,20 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
         }
     }
 
-    // Only fall back to player if entity is hostile (faction 1) - use pre-fetched characterData
-    if (!hasTarget && ctx.playerValid && ctx.characterData && ctx.characterData->faction == 1) {
-        targetPos = ctx.playerPosition;
-        hasTarget = true;
+    // Scan for nearest different-faction entity (no player hardcoding)
+    if (!hasTarget && ctx.characterData) {
+        EntityHandle scannedTarget = scanForNearestTarget(
+            ctx.transform.position, ctx.characterData->faction, ctx.edmIndex);
+        if (scannedTarget.isValid()) {
+            size_t scanIdx = edm.getIndex(scannedTarget);
+            if (scanIdx != SIZE_MAX) {
+                targetPos = edm.getHotDataByIndex(scanIdx).transform.position;
+                hasTarget = true;
+                // Set as explicit target for subsequent frames
+                attack.hasExplicitTarget = true;
+                attack.explicitTarget = scannedTarget;
+            }
+        }
     }
 
     // No valid target
@@ -608,6 +629,20 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             float fear = ctx.memoryData->emotions.fear;
             float bravery = ctx.memoryData->personality.bravery;
             shouldFlee = (fear > FEAR_FLEE_THRESHOLD && bravery < BRAVERY_FLEE_THRESHOLD);
+        }
+
+        // Signal nearby same-faction allies to retreat
+        if (ctx.characterData) {
+            s_scanBuffer.clear();
+            AIManager::Instance().queryHandlesInRadius(
+                ctx.transform.position, 200.0f, s_scanBuffer, true);
+            auto& edm2 = EntityDataManager::Instance();
+            for (const auto& handle : s_scanBuffer) {
+                size_t idx = edm2.getIndex(handle);
+                if (idx == SIZE_MAX || idx == ctx.edmIndex) continue;
+                if (edm2.getCharacterDataByIndex(idx).faction != ctx.characterData->faction) continue;
+                Behaviors::deferBehaviorMessage(idx, BehaviorMessage::RETREAT);
+            }
         }
 
         if (shouldFlee) {
@@ -720,7 +755,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             if (s_specialRoll(s_rng) < config.specialAttackChance && attack.specialAttackReady) {
                 float specialDamage = calculateDamage(data, config) * SPECIAL_ATTACK_MULTIPLIER;
                 Vector2D knockback = calculateKnockbackVector(entityPos, targetPos) * config.knockbackForce * SPECIAL_ATTACK_MULTIPLIER;
-                // Resolve target: explicit > memory lastTarget > memory lastAttacker > player (if hostile)
+                // Resolve target: explicit > memory lastTarget > memory lastAttacker > scan
                 auto& edm = EntityDataManager::Instance();
                 EntityHandle targetHandle{};
                 if (attack.hasExplicitTarget && attack.explicitTarget.isValid()) {
@@ -729,9 +764,8 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
                     targetHandle = ctx.memoryData->lastTarget;
                 } else if (ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
                     targetHandle = ctx.memoryData->lastAttacker;
-                } else if (ctx.characterData && ctx.characterData->faction == 1) {
-                    // Hostile entity - fall back to player
-                    targetHandle = AIManager::Instance().getPlayerHandle();
+                } else if (ctx.characterData) {
+                    targetHandle = scanForNearestTarget(entityPos, ctx.characterData->faction, ctx.edmIndex);
                 }
                 if (targetHandle.isValid()) {
                     applyDamageToTarget(targetHandle, specialDamage, knockback, edm.getHandle(ctx.edmIndex));

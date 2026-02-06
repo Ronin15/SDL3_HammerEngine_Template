@@ -4,7 +4,7 @@
  */
 
 #include "ai/BehaviorExecutors.hpp"
-#include "ai/BehaviorExecutors.hpp"  // For BehaviorContext full definition
+#include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include <cmath>
 #include <random>
@@ -132,8 +132,48 @@ void executeIdle(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& c
         data.setInitialized(true);
     }
 
+    // Process pending behavior messages
+    for (uint8_t i = 0; i < data.pendingMessageCount; ++i) {
+        switch (data.pendingMessages[i].messageId) {
+            case BehaviorMessage::PANIC:
+                // Panic overrides everything — flee regardless of bravery
+                data.pendingMessageCount = 0;
+                switchBehavior(ctx.edmIndex, BehaviorType::Flee);
+                return;
+            case BehaviorMessage::CALM_DOWN:
+                // Clear fear so NPC doesn't re-trigger flee from residual emotion
+                if (ctx.memoryData && ctx.memoryData->isValid()) {
+                    ctx.memoryData->emotions.fear = std::max(0.0f, ctx.memoryData->emotions.fear - 0.5f);
+                }
+                break;
+            case BehaviorMessage::RAISE_ALERT:
+                if (ctx.memoryData && ctx.memoryData->personality.bravery < 0.4f) {
+                    data.pendingMessageCount = 0;
+                    switchBehavior(ctx.edmIndex, BehaviorType::Flee);
+                    return;
+                }
+                break;
+            default: break;
+        }
+    }
+    data.pendingMessageCount = 0;
+
     // Combat reaction: brave+aggressive NPCs fight back, others flee
     if (isUnderRecentAttack(ctx, 2.0f)) {
+        // Alert nearby allies before reacting
+        if (ctx.characterData) {
+            thread_local std::vector<EntityHandle> s_helpBuffer;
+            s_helpBuffer.clear();
+            AIManager::Instance().queryHandlesInRadius(
+                ctx.transform.position, 250.0f, s_helpBuffer, true);
+            auto& edm = EntityDataManager::Instance();
+            for (const auto& handle : s_helpBuffer) {
+                size_t idx = edm.getIndex(handle);
+                if (idx == SIZE_MAX || idx == ctx.edmIndex) continue;
+                if (edm.getCharacterDataByIndex(idx).faction != ctx.characterData->faction) continue;
+                Behaviors::deferBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);
+            }
+        }
         if (shouldRetaliate(ctx)) {
             switchBehavior(ctx.edmIndex, BehaviorType::Chase);
         } else {
@@ -147,8 +187,12 @@ void executeIdle(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& c
     }
 
     // Proactive engagement: aggressive NPCs with known enemies nearby
-    if (shouldEngageEnemy(ctx)) {
+    EntityHandle engageTarget = shouldEngageEnemy(ctx);
+    if (engageTarget.isValid()) {
         switchBehavior(ctx.edmIndex, BehaviorType::Chase);
+        auto& chaseData = EntityDataManager::Instance().getBehaviorData(ctx.edmIndex);
+        chaseData.state.chase.hasExplicitTarget = true;
+        chaseData.state.chase.explicitTarget = engageTarget;
         return;
     }
 

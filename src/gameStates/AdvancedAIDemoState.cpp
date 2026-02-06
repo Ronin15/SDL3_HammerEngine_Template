@@ -701,17 +701,16 @@ void AdvancedAIDemoState::setupTestVillage() {
   const char* hostileClasses[] = {"Warrior", "Rogue", "Ranger"};
   for (size_t i = 0; i < hostileOffsets.size(); ++i) {
     Vector2D pos = villageCenter + hostileOffsets[i];
-    // Orcs spawn as Neutral (faction 2) - they become Enemy when they attack
+    // Orcs spawn neutral (faction 2) — Attack behavior scans for nearest target dynamically
     EntityHandle handle = edm.createNPCWithRaceClass(
         pos, "Orc", hostileClasses[i % 3], Sex::Unknown, 2);
     if (handle.isValid()) {
-      // Orcs with Attack behavior will attack, becoming enemies
       aiMgr.assignBehavior(handle, "Attack");
       hostileCount++;
     }
   }
 
-  // Add an Orc Mage for ranged combat testing - Neutral until they attack
+  // Add an Orc Mage for ranged combat testing
   {
     Vector2D pos = villageCenter + Vector2D(300.0f, 200.0f);
     EntityHandle handle = edm.createNPCWithRaceClass(pos, "Orc", "Mage", Sex::Unknown, 2);
