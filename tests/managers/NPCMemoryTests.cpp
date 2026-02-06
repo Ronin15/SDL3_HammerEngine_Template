@@ -426,7 +426,7 @@ BOOST_AUTO_TEST_CASE(TestMultipleCombatEvents) {
     auto& memData = edm->getMemoryData(index);
     BOOST_CHECK(approxEqual(memData.totalDamageReceived, 45.0f));
     BOOST_CHECK_EQUAL(memData.combatEncounters, 3);
-    BOOST_CHECK(approxEqual(memData.lastCombatTime, 3.0f));
+    BOOST_CHECK(approxEqual(memData.lastCombatTime, 0.0f));  // Delta semantics: always reset to 0
 }
 
 BOOST_AUTO_TEST_SUITE_END()

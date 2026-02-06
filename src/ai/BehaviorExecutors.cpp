@@ -151,6 +151,18 @@ bool isUnderRecentAttack(const BehaviorContext& ctx, float thresholdSeconds) {
     return memory.lastCombatTime < thresholdSeconds;
 }
 
+bool shouldFleeFromFear(const BehaviorContext& ctx) {
+    if (!ctx.memoryData || !ctx.memoryData->isValid()) return false;
+    float fear = ctx.memoryData->emotions.fear;
+    float bravery = ctx.memoryData->personality.bravery;
+    return (fear > 0.7f && bravery < 0.3f);
+}
+
+bool isOnAlert(const BehaviorContext& ctx, float suspicionThreshold) {
+    if (!ctx.memoryData || !ctx.memoryData->isValid()) return false;
+    return ctx.memoryData->emotions.suspicion > suspicionThreshold;
+}
+
 EntityHandle getLastAttacker(const BehaviorContext& ctx) {
     if (!ctx.memoryData) return EntityHandle{};
     return ctx.memoryData->lastAttacker;

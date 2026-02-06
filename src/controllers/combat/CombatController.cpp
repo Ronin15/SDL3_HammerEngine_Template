@@ -184,10 +184,7 @@ void CombatController::performAttack(Player *player) {
     float gameTime = gameTimeMgr.getTotalGameTimeSeconds();
     edm.recordCombatEvent(idx, playerHandle, handle, attackDamage,
                           /*wasAttacked=*/true, gameTime);
-    // Override for delta semantics (behaviors check lastCombatTime < threshold)
-    if (edm.hasMemoryData(idx)) {
-        edm.getMemoryData(idx).lastCombatTime = 0.0f;
-    }
+    // lastCombatTime now set to 0.0f inside recordCombatEvent (delta semantics)
 
     // Combat response: Non-hostile entities flee when attacked
     if (charData.faction != 1) { // Friendly (0) or Neutral (2)

@@ -300,7 +300,7 @@ void executeWander(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfi
     auto& data = *ctx.behaviorData;
     if (!data.isValid()) return;
 
-    if (isUnderRecentAttack(ctx, 2.0f)) {
+    if (isUnderRecentAttack(ctx, 2.0f) || shouldFleeFromFear(ctx)) {
         switchBehavior(ctx.edmIndex, BehaviorType::Flee);
         return;
     }
@@ -311,6 +311,11 @@ void executeWander(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfi
 
     if (data.state.wander.movementStarted) {
         handleMovement(ctx, config);
+
+        // Cautious movement when suspicious
+        if (isOnAlert(ctx)) {
+            ctx.transform.velocity = ctx.transform.velocity * 0.7f;
+        }
     }
 }
 

@@ -2304,6 +2304,18 @@ public:
                            float gameTime);
 
     /**
+     * @brief Record that an NPC witnessed nearby combat
+     * @param witnessIndex EDM index of the witness
+     * @param attacker Handle of the attacker entity
+     * @param combatLocation World position where combat occurred
+     * @param gameTime Current game time for memory timestamp
+     * @param wasDeath true if the witnessed combat was lethal
+     */
+    void recordWitnessedCombat(size_t witnessIndex, EntityHandle attacker,
+                               const Vector2D& combatLocation,
+                               float gameTime, bool wasDeath = false);
+
+    /**
      * @brief Add a location to history
      * @param index EDM index
      * @param location Position to record

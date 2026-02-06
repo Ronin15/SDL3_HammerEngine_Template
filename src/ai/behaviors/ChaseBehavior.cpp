@@ -81,6 +81,23 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
     auto& data = *ctx.behaviorData;
     auto& chase = data.state.chase;
 
+    // Emotional modulation: fearful NPCs break off chase
+    if (ctx.memoryData && ctx.memoryData->isValid()) {
+        float fear = ctx.memoryData->emotions.fear;
+        float bravery = ctx.memoryData->personality.bravery;
+        if (fear > 0.7f && bravery < 0.3f) {
+            switchBehavior(ctx.edmIndex, BehaviorType::Flee);
+            return;
+        }
+    }
+
+    // Aggression speed modifier (up to +20%)
+    float emotionalSpeedMod = 1.0f;
+    if (ctx.memoryData && ctx.memoryData->isValid()) {
+        emotionalSpeedMod = 1.0f + ctx.memoryData->emotions.aggression * 0.2f;
+    }
+    float chaseSpeed = CHASE_SPEED_MULT * emotionalSpeedMod;
+
     // Crowd analysis cache
     data.lastCrowdAnalysis += ctx.deltaTime;
     float crowdCacheInterval = 3.0f + (static_cast<float>(ctx.entityId % 200) * 0.01f);
@@ -216,7 +233,7 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
 
                 if (following) {
                     Vector2D direction = toWaypoint / dist;
-                    ctx.transform.velocity = direction * data.moveSpeed * CHASE_SPEED_MULT;
+                    ctx.transform.velocity = direction * data.moveSpeed * chaseSpeed;
                     pathData.progressTimer = 0.0f;
 
                     chase.crowdCheckTimer += ctx.deltaTime;
@@ -230,11 +247,11 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
                         float lateralBias = ((float)(ctx.entityId % 3) - 1.0f) * 15.0f;
                         Vector2D adjustedTarget = targetPos + lateral * lateralBias;
                         Vector2D newDir = (adjustedTarget - entityPos).normalized();
-                        ctx.transform.velocity = newDir * data.moveSpeed * CHASE_SPEED_MULT;
+                        ctx.transform.velocity = newDir * data.moveSpeed * chaseSpeed;
                     }
                 } else {
                     Vector2D direction = (targetPos - entityPos).normalized();
-                    ctx.transform.velocity = direction * data.moveSpeed * CHASE_SPEED_MULT;
+                    ctx.transform.velocity = direction * data.moveSpeed * chaseSpeed;
                     pathData.progressTimer = 0.0f;
                 }
             } else {
@@ -248,7 +265,7 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
                     direction.normalize();
                 }
 
-                ctx.transform.velocity = direction * data.moveSpeed * CHASE_SPEED_MULT;
+                ctx.transform.velocity = direction * data.moveSpeed * chaseSpeed;
                 pathData.progressTimer = 0.0f;
             }
 
@@ -256,7 +273,7 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
 
             // Stall detection
             float currentSpeedSq = ctx.transform.velocity.lengthSquared();
-            float stallThreshold = std::max(1.0f, data.moveSpeed * CHASE_SPEED_MULT * config.stallSpeedMultiplier);
+            float stallThreshold = std::max(1.0f, data.moveSpeed * chaseSpeed * config.stallSpeedMultiplier);
             float stallThresholdSq = stallThreshold * stallThreshold;
             float stallTimeLimit = config.stallTimeout;
 
@@ -271,7 +288,7 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
                     Vector2D dir = (targetPos - entityPos).normalized();
                     float c = std::cos(jitter), s = std::sin(jitter);
                     Vector2D rotated(dir.getX() * c - dir.getY() * s, dir.getX() * s + dir.getY() * c);
-                    ctx.transform.velocity = rotated * data.moveSpeed * CHASE_SPEED_MULT;
+                    ctx.transform.velocity = rotated * data.moveSpeed * chaseSpeed;
                 }
             } else {
                 pathData.stallTimer = 0.0f;

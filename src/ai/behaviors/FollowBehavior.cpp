@@ -53,8 +53,8 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
     auto& data = *ctx.behaviorData;
     auto& follow = data.state.follow;
 
-    // Combat awareness
-    if (isUnderRecentAttack(ctx, 2.0f)) {
+    // Combat/fear awareness
+    if (isUnderRecentAttack(ctx, 2.0f) || shouldFleeFromFear(ctx)) {
         switchBehavior(ctx.edmIndex, BehaviorType::Flee);
         return;
     }

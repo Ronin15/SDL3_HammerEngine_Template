@@ -117,10 +117,18 @@ bool AIManager::init() {
           if (attackerHandle.isValid()) {
             edm.recordCombatEvent(idx, attackerHandle, targetHandle,
                                   damageEvent->getDamage(), true, 0.0f);
-            // Override lastCombatTime for delta semantics (behaviors check < threshold)
-            if (edm.hasMemoryData(idx)) {
-              edm.getMemoryData(idx).lastCombatTime = 0.0f;
-            }
+            // lastCombatTime now set to 0.0f inside recordCombatEvent (delta semantics)
+          }
+
+          // Notify nearby NPCs that witnessed this combat
+          Vector2D combatLocation = hotData.transform.position;
+          bool wasLethal = (charData.health <= 0.0f);
+          auto activeSpan = edm.getActiveIndices();
+          for (size_t witnessIdx : activeSpan) {
+            if (witnessIdx == idx) continue;
+            if (!edm.hasMemoryData(witnessIdx)) continue;
+            edm.recordWitnessedCombat(witnessIdx, attackerHandle,
+                                       combatLocation, 0.0f, wasLethal);
           }
 
           // Death handling (EDM lifecycle) - O(1) per damage event

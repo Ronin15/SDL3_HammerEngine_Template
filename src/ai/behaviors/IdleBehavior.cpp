@@ -132,8 +132,8 @@ void executeIdle(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& c
         data.setInitialized(true);
     }
 
-    // Combat awareness: Switch to FleeBehavior when attacked
-    if (isUnderRecentAttack(ctx, 2.0f)) {
+    // Combat/fear awareness: flee when attacked or overwhelmed by fear
+    if (isUnderRecentAttack(ctx, 2.0f) || shouldFleeFromFear(ctx)) {
         switchBehavior(ctx.edmIndex, BehaviorType::Flee);
         return;
     }

@@ -2832,6 +2832,12 @@ void EntityDataManager::updateEmotionalDecay(size_t index, float deltaTime, floa
     data.emotions.decay(decayRate, deltaTime);
     data.lastDecayTime += deltaTime;
     data.lastCombatTime += deltaTime;  // Enable delta-based combat timing for isUnderRecentAttack()
+
+    // Clear combat flag when enough time has passed since last event
+    constexpr float COMBAT_TIMEOUT = 5.0f;
+    if ((data.flags & NPCMemoryData::FLAG_IN_COMBAT) && data.lastCombatTime > COMBAT_TIMEOUT) {
+        data.flags &= ~NPCMemoryData::FLAG_IN_COMBAT;
+    }
 }
 
 void EntityDataManager::modifyEmotions(size_t index, float aggression, float fear,
@@ -2899,7 +2905,7 @@ void EntityDataManager::recordCombatEvent(size_t index, EntityHandle attacker,
 
     auto& data = memData;  // Alias for rest of function
 
-    data.lastCombatTime = gameTime;
+    data.lastCombatTime = 0.0f;  // Delta semantics: starts at 0, incremented by updateEmotionalDecay
     data.combatEncounters++;
     data.flags |= NPCMemoryData::FLAG_IN_COMBAT;
 
@@ -2916,6 +2922,48 @@ void EntityDataManager::recordCombatEvent(size_t index, EntityHandle attacker,
     mem.flags = MemoryEntry::FLAG_VALID;
 
     addMemory(index, mem, true);  // Use overflow for combat (important history)
+}
+
+void EntityDataManager::recordWitnessedCombat(size_t witnessIndex, EntityHandle attacker,
+                                               const Vector2D& combatLocation,
+                                               float gameTime, bool wasDeath) {
+    if (witnessIndex >= m_memoryData.size()) return;
+
+    auto& memData = m_memoryData[witnessIndex];
+    if (!memData.isValid()) return;
+
+    // Distance-based intensity falloff
+    constexpr float MAX_WITNESS_RANGE_SQ = 500.0f * 500.0f;
+    if (witnessIndex >= m_hotData.size()) return;
+
+    Vector2D witnessPos = m_hotData[witnessIndex].transform.position;
+    float distSq = Vector2D::distanceSquared(witnessPos, combatLocation);
+
+    if (distSq > MAX_WITNESS_RANGE_SQ) return;
+
+    // Intensity falls off with distance (1.0 at origin, 0.0 at max range)
+    float intensity = 1.0f - (distSq / MAX_WITNESS_RANGE_SQ);
+
+    // Personality modulation: composure reduces emotional impact
+    float emotionScale = intensity * (1.0f - memData.personality.composure * 0.5f);
+
+    // Emotional impact
+    float fearDelta = (wasDeath ? 0.3f : 0.15f) * emotionScale;
+    float suspicionDelta = 0.2f * emotionScale;
+    memData.emotions.fear = std::min(1.0f, memData.emotions.fear + fearDelta);
+    memData.emotions.suspicion = std::min(1.0f, memData.emotions.suspicion + suspicionDelta);
+
+    // Create memory entry
+    MemoryEntry mem;
+    mem.subject = attacker;
+    mem.location = combatLocation;
+    mem.timestamp = gameTime;
+    mem.value = intensity * 100.0f;
+    mem.type = wasDeath ? MemoryType::WitnessedDeath : MemoryType::WitnessedCombat;
+    mem.importance = static_cast<uint8_t>(std::min(255.0f, (wasDeath ? 200.0f : 100.0f) * intensity));
+    mem.flags = MemoryEntry::FLAG_VALID;
+
+    addMemory(witnessIndex, mem, false);  // No overflow for witnessed events
 }
 
 void EntityDataManager::addLocationToHistory(size_t index, const Vector2D& location) {

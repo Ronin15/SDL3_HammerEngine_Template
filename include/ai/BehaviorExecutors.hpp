@@ -301,6 +301,21 @@ void switchBehavior(size_t edmIndex, const HammerEngine::BehaviorConfigData& con
 bool isUnderRecentAttack(const BehaviorContext& ctx, float thresholdSeconds = 1.0f);
 
 /**
+ * @brief Check if entity should flee based on accumulated fear
+ * @param ctx BehaviorContext with memoryData
+ * @return true if fear exceeds threshold and bravery is low
+ */
+bool shouldFleeFromFear(const BehaviorContext& ctx);
+
+/**
+ * @brief Check if entity is on alert from suspicion
+ * @param ctx BehaviorContext with memoryData
+ * @param suspicionThreshold Suspicion level to consider "on alert" (default 0.5)
+ * @return true if suspicion exceeds threshold
+ */
+bool isOnAlert(const BehaviorContext& ctx, float suspicionThreshold = 0.5f);
+
+/**
  * @brief Get the handle of the last entity that attacked this one
  * @param ctx BehaviorContext with memoryData
  * @return EntityHandle of attacker, or invalid handle if none

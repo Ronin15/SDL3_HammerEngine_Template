@@ -83,8 +83,8 @@ void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfi
     auto& data = *ctx.behaviorData;
     auto& guard = data.state.guard;
 
-    // Combat awareness
-    if (isUnderRecentAttack(ctx, 2.0f)) {
+    // Combat/fear awareness
+    if (isUnderRecentAttack(ctx, 2.0f) || shouldFleeFromFear(ctx)) {
         switchBehavior(ctx.edmIndex, BehaviorType::Flee);
         return;
     }
@@ -157,6 +157,11 @@ void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfi
         // No pathData - direct movement
         Vector2D direction = (currentWaypoint - currentPos).normalized();
         ctx.transform.velocity = direction * data.moveSpeed;
+    }
+
+    // Cautious movement when suspicious
+    if (isOnAlert(ctx)) {
+        ctx.transform.velocity = ctx.transform.velocity * 0.7f;
     }
 
     // Stall detection
