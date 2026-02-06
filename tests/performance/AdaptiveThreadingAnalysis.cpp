@@ -392,22 +392,20 @@ BOOST_AUTO_TEST_CASE(ThreadingStateSummary) {
         {HammerEngine::SystemType::Pathfinding, "Pathfinding"},
     };
 
-    std::cout << "System       Threshold   Active    BatchMult   SingleTP     MultiTP" << std::endl;
-    std::cout << "-----------  ---------   ------    ---------   --------     -------" << std::endl;
+    std::cout << "System       Threshold   Active    BatchMult   MultiTP" << std::endl;
+    std::cout << "-----------  ---------   ------    ---------   -------" << std::endl;
 
     for (const auto& [sysType, name] : systems) {
         size_t threshold = budgetMgr.getLearnedThreshold(sysType);
         bool active = budgetMgr.isThresholdActive(sysType);
         float batchMult = budgetMgr.getBatchMultiplier(sysType);
-        double singleTP = budgetMgr.getExpectedThroughput(sysType, false);
         double multiTP = budgetMgr.getExpectedThroughput(sysType, true);
 
         std::cout << std::setw(11) << std::left << name
                   << "  " << std::setw(9) << std::right << threshold
                   << "   " << std::setw(6) << (active ? "true" : "false")
                   << "    " << std::setw(9) << std::fixed << std::setprecision(2) << batchMult
-                  << "   " << std::setw(8) << std::setprecision(0) << singleTP
-                  << "     " << std::setw(7) << multiTP << std::endl;
+                  << "   " << std::setw(7) << std::setprecision(0) << multiTP << std::endl;
     }
 
     std::cout << "\nConstants:" << std::endl;

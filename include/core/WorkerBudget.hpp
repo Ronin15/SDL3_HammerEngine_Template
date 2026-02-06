@@ -153,10 +153,10 @@ public:
                          bool wasThreaded, size_t batchCount, double totalTimeMs);
 
     /**
-     * @brief Get expected throughput for a mode (for debugging/logging)
+     * @brief Get expected throughput for multi-threaded mode (for debugging/logging)
      * @param system The system type
-     * @param threaded true for multi-threaded, false for single-threaded
-     * @return Smoothed throughput value (items per ms)
+     * @param threaded true for multi-threaded (false returns 0.0, single-threaded not tracked)
+     * @return Smoothed throughput value (items per ms) or 0.0 for single-threaded
      */
     double getExpectedThroughput(SystemType system, bool threaded) const;
 
@@ -205,13 +205,14 @@ private:
     /**
      * @brief Unified per-system tuning state
      *
+     * Two measurement purposes only:
+     * - Single-threaded: smoothedSingleTime for threshold learning (switch to multi)
+     * - Multi-threaded: multiSmoothedThroughput for batch multiplier hill-climbing
+     *
      * Threading decision via adaptive threshold learning:
      * - Single-threaded until completion time >= 1.0ms (learning phase)
      * - Once threshold learned, use multi-threading with hysteresis
      * - Re-learn when workload drops below threshold - 5%
-     *
-     * Batch tuning via hill-climbing to find optimal parallelism.
-     * Thread-safe via atomics.
      *
      * Cache line padding: Atomics are grouped by update pattern and padded
      * to 64-byte boundaries to prevent false sharing when different systems
@@ -225,16 +226,14 @@ private:
         std::atomic<int8_t> direction{1};                   // Hill-climb direction (1 byte)
         char _pad1[64 - 21];  // Pad to 64-byte boundary (43 bytes)
 
-        // ===== Cache line 2: Single-threaded path (written separately) =====
-        std::atomic<double> singleSmoothedThroughput{0.0};  // Items per ms when single-threaded (8 bytes)
+        // ===== Cache line 2: Single-threaded path (threshold learning only) =====
         std::atomic<double> smoothedSingleTime{0.0};        // EMA of single-threaded ms (8 bytes)
-        char _pad2[64 - 16];  // Pad to 64-byte boundary (48 bytes)
+        char _pad2[64 - 8];  // Pad to 64-byte boundary (56 bytes)
 
         // ===== Cache line 3: Mode state (written occasionally) =====
-        std::atomic<bool> lastWasThreaded{false};           // What mode was used last frame (1 byte)
         std::atomic<size_t> learnedThreshold{0};            // Entity count threshold (8 bytes)
         std::atomic<bool> thresholdActive{false};           // Above threshold flag (1 byte)
-        char _pad3[64 - 10];  // Pad to 64-byte boundary (54 bytes)
+        char _pad3[64 - 9];  // Pad to 64-byte boundary (55 bytes)
 
         // ===== Constants (read-only, no padding needed) =====
         static constexpr float MIN_MULTIPLIER = 0.4f;

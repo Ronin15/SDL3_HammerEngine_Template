@@ -217,14 +217,12 @@ BOOST_AUTO_TEST_CASE(PrintHeader)
 {
     const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
     double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
 
     std::cout << "\n=== AI Scaling Benchmark ===\n";
     std::cout << "Date: " << __DATE__ << " " << __TIME__ << "\n";
     std::cout << "System: " << std::thread::hardware_concurrency() << " hardware threads\n";
     std::cout << "WorkerBudget: " << budget.totalWorkers << " workers\n";
-    std::cout << "Single throughput: " << std::fixed << std::setprecision(2) << singleTP << " items/ms\n";
     std::cout << "Multi throughput:  " << std::fixed << std::setprecision(2) << multiTP << " items/ms\n";
     std::cout << std::endl;
 }
@@ -538,11 +536,9 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
     // PART 2: Throughput Tracking (replaces threshold adaptation)
     // =========================================================================
     std::cout << "\nPART 2: Throughput Tracking\n";
-    std::cout << "(Tracks single/multi throughput for mode selection)\n\n";
+    std::cout << "(Tracks multi throughput for batch tuning)\n\n";
 
-    double initialSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
     double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
-    std::cout << "Initial single throughput: " << std::fixed << std::setprecision(2) << initialSingleTP << " items/ms\n";
     std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms\n\n";
 
     constexpr size_t TRACKING_ENTITY_COUNT = 300;
@@ -557,7 +553,6 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
     std::cout << std::setw(8) << "Phase"
               << std::setw(12) << "Frames"
               << std::setw(14) << "Avg Time(ms)"
-              << std::setw(12) << "SingleTP"
               << std::setw(12) << "MultiTP"
               << std::setw(12) << "BatchMult\n";
 
@@ -573,29 +568,21 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
         double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
         double avgMs = totalMs / FRAMES_PER_PHASE;
 
-        double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
         double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
         float batchMultNow = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
 
         std::cout << std::setw(8) << (phase + 1)
                   << std::setw(12) << ((phase + 1) * FRAMES_PER_PHASE)
                   << std::setw(14) << std::fixed << std::setprecision(3) << avgMs
-                  << std::setw(12) << std::fixed << std::setprecision(2) << singleTP
                   << std::setw(12) << std::fixed << std::setprecision(2) << multiTP
                   << std::setw(12) << std::fixed << std::setprecision(2) << batchMultNow << "\n";
     }
 
-    double finalSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
     double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
     float finalBatchMultTP = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
 
-    std::string modePreferred = (finalMultiTP > finalSingleTP * 1.15) ? "MULTI" :
-                               (finalSingleTP > finalMultiTP * 1.15) ? "SINGLE" : "COMPARABLE";
-
-    std::cout << "\nFinal single throughput: " << std::fixed << std::setprecision(2) << finalSingleTP << " items/ms\n";
-    std::cout << "Final multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms\n";
+    std::cout << "\nFinal multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms\n";
     std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMultTP << "\n";
-    std::cout << "Mode preference:         " << modePreferred << "\n";
 
     cleanup();
 
@@ -614,9 +601,9 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
     }
 
     // Throughput tracking result
-    bool throughputCollected = (finalSingleTP > 0 || finalMultiTP > 0);
+    bool throughputCollected = (finalMultiTP > 0);
     if (throughputCollected) {
-        std::cout << "  Throughput tracking: PASS (data collected, mode=" << modePreferred << ")\n";
+        std::cout << "  Throughput tracking: PASS (data collected)\n";
     } else {
         std::cout << "  Throughput tracking: PASS (system initialized)\n";
     }
@@ -630,20 +617,18 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
 BOOST_AUTO_TEST_CASE(PrintSummary)
 {
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
     double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
     float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
 
     std::cout << "SUMMARY:\n";
     std::cout << "  AI batch processing: O(n) scaling with WorkerBudget\n";
-    std::cout << "  Single throughput: " << std::fixed << std::setprecision(2) << singleTP << " items/ms\n";
     std::cout << "  Multi throughput:  " << std::fixed << std::setprecision(2) << multiTP << " items/ms\n";
     std::cout << "  Batch multiplier:  " << std::fixed << std::setprecision(2) << batchMult << "\n";
     std::cout << "  Entity iteration: Active tier only (via getActiveIndices)\n";
     std::cout << "  Behavior execution: Type-indexed O(1) lookup\n";
     std::cout << "  WorkerBudget adaptive tuning:\n";
     std::cout << "    - Batch sizing: ~100 frames to converge via hill-climbing\n";
-    std::cout << "    - Throughput tracking: Both modes tracked, 15% threshold to switch\n";
+    std::cout << "    - Threshold learning: single-threaded time tracking for mode switch\n";
     std::cout << std::endl;
 }
 

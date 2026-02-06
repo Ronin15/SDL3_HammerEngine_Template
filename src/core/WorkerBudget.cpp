@@ -161,9 +161,7 @@ void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize
 
     auto& state = m_systemState[static_cast<size_t>(system)];
 
-    // ====== Smoothed Single-Threaded Time Tracking ======
-    // Update smoothed time when running single-threaded with meaningful workload
-    size_t threshold = state.learnedThreshold.load(std::memory_order_relaxed);
+    // ====== Single-threaded: threshold learning only ======
     if (!wasThreaded && workloadSize >= SystemTuningState::MIN_WORKLOAD) {
         double prevSmoothed = state.smoothedSingleTime.load(std::memory_order_relaxed);
         double newSmoothed;
@@ -175,9 +173,9 @@ void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize
         }
         state.smoothedSingleTime.store(newSmoothed, std::memory_order_relaxed);
 
-        // ====== Threshold Learning Detection ======
         // Learn threshold when SMOOTHED time exceeds limit (not instantaneous)
         // This prevents spike-triggered oscillation from per-frame variance
+        size_t threshold = state.learnedThreshold.load(std::memory_order_relaxed);
         if (threshold == 0 && newSmoothed >= SystemTuningState::LEARNING_TIME_THRESHOLD_MS) {
             state.learnedThreshold.store(workloadSize, std::memory_order_relaxed);
             state.thresholdActive.store(true, std::memory_order_relaxed);
@@ -190,12 +188,11 @@ void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize
 #endif
         }
     }
+    // ====== Multi-threaded: batch tuning only ======
+    else if (wasThreaded) {
+        double throughput = static_cast<double>(workloadSize) / totalTimeMs;
 
-    double throughput = static_cast<double>(workloadSize) / totalTimeMs;
-
-    // Update appropriate throughput tracker (kept for batch multiplier tuning)
-    if (wasThreaded) {
-        // Update multi-threaded throughput
+        // Update multi-threaded throughput (feeds batch multiplier hill-climbing)
         double prev = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
         double smoothed;
         if (prev <= 0.0) {
@@ -206,29 +203,11 @@ void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize
         }
         state.multiSmoothedThroughput.store(smoothed, std::memory_order_relaxed);
 
-        // Run batch tuning (only when multi-threaded)
-        // Use smoothed throughput to filter noise from frame-to-frame variance
+        // Run batch tuning hill-climb
         if (batchCount > 0) {
             updateBatchMultiplier(state, smoothed);
         }
-
-        // Reset frames counter for single-threaded sampling
-        // (we're in multi mode, so count frames until we sample single again)
-    } else {
-        // Update single-threaded throughput
-        double prev = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
-        double smoothed;
-        if (prev <= 0.0) {
-            smoothed = throughput;  // First sample
-        } else {
-            smoothed = prev * (1.0 - SystemTuningState::THROUGHPUT_SMOOTHING)
-                     + throughput * SystemTuningState::THROUGHPUT_SMOOTHING;
-        }
-        state.singleSmoothedThroughput.store(smoothed, std::memory_order_relaxed);
     }
-
-    // Update mode tracking (for batch multiplier tuning)
-    state.lastWasThreaded.store(wasThreaded, std::memory_order_relaxed);
 }
 
 void WorkerBudgetManager::updateBatchMultiplier(SystemTuningState& state, double throughput) {
@@ -268,11 +247,12 @@ void WorkerBudgetManager::updateBatchMultiplier(SystemTuningState& state, double
 }
 
 double WorkerBudgetManager::getExpectedThroughput(SystemType system, bool threaded) const {
-    const auto& state = m_systemState[static_cast<size_t>(system)];
     if (threaded) {
+        const auto& state = m_systemState[static_cast<size_t>(system)];
         return state.multiSmoothedThroughput.load(std::memory_order_relaxed);
     }
-    return state.singleSmoothedThroughput.load(std::memory_order_relaxed);
+    // Single-threaded throughput no longer tracked
+    return 0.0;
 }
 
 float WorkerBudgetManager::getBatchMultiplier(SystemType system) const {

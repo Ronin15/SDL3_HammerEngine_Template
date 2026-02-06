@@ -474,11 +474,6 @@ void AIManager::update(float deltaTime) {
       }
     }
 
-    // Process lock-free message queue
-    processMessageQueue();
-
-    currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-
     // Measure completion time for adaptive tuning (after all batches complete)
     auto endTime = std::chrono::high_resolution_clock::now();
     double totalUpdateTime =
@@ -490,6 +485,11 @@ void AIManager::update(float deltaTime) {
                                 entityCount, actualWasThreaded, actualBatchCount,
                                 totalUpdateTime);
     }
+
+    // Process lock-free message queue (AFTER timing — not entity batch work)
+    processMessageQueue();
+
+    currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
 
     // Periodic frame tracking (balanced frequency)
     if (currentFrame % 1800 == 0) {  // ~30 seconds at 60fps

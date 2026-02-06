@@ -722,10 +722,8 @@ BOOST_AUTO_TEST_CASE(TestThreadingThreshold) {
 
     std::cout << "\n=== EVENT THREADING RECOMMENDATION ===" << std::endl;
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, false);
     double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
     float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Event);
-    std::cout << "Single throughput: " << std::fixed << std::setprecision(2) << singleTP << " items/ms" << std::endl;
     std::cout << "Multi throughput:  " << std::fixed << std::setprecision(2) << multiTP << " items/ms" << std::endl;
     std::cout << "Batch multiplier:  " << std::fixed << std::setprecision(2) << batchMult << std::endl;
 
@@ -760,14 +758,12 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
 
     std::cout << "\n--- WorkerBudget Adaptive Tuning (Event) ---\n";
     std::cout << "Tests throughput tracking and mode selection\n";
-    std::cout << "(Tracks single/multi throughput for optimal mode selection)\n\n";
+    std::cout << "(Tracks multi throughput for batch tuning)\n\n";
 
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
     auto& eventMgr = EventManager::Instance();
 
-    double initialSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, false);
     double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
-    std::cout << "Initial single throughput: " << std::fixed << std::setprecision(2) << initialSingleTP << " items/ms\n";
     std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms\n\n";
 
     // Setup handlers
@@ -788,7 +784,6 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
     std::cout << std::setw(8) << "Phase"
               << std::setw(12) << "Frames"
               << std::setw(14) << "Avg Time(ms)"
-              << std::setw(14) << "SingleTP"
               << std::setw(14) << "MultiTP"
               << std::setw(12) << "BatchMult\n";
 
@@ -808,32 +803,24 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
         double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
         double avgMs = totalMs / FRAMES_PER_PHASE;
 
-        double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, false);
         double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
         float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Event);
 
         std::cout << std::setw(8) << (phase + 1)
                   << std::setw(12) << ((phase + 1) * FRAMES_PER_PHASE)
                   << std::setw(14) << std::fixed << std::setprecision(3) << avgMs
-                  << std::setw(14) << std::fixed << std::setprecision(2) << singleTP
                   << std::setw(14) << std::fixed << std::setprecision(2) << multiTP
                   << std::setw(12) << std::fixed << std::setprecision(2) << batchMult << "\n";
     }
 
-    double finalSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, false);
     double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
     float finalBatchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Event);
 
-    std::string modePreferred = (finalMultiTP > finalSingleTP * 1.15) ? "MULTI" :
-                               (finalSingleTP > finalMultiTP * 1.15) ? "SINGLE" : "COMPARABLE";
-
-    std::cout << "\nFinal single throughput: " << std::fixed << std::setprecision(2) << finalSingleTP << " items/ms\n";
-    std::cout << "Final multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms\n";
+    std::cout << "\nFinal multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms\n";
     std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMult << "\n";
-    std::cout << "Mode preference:         " << modePreferred << "\n";
 
     // Result - throughput tracking is working if we have any collected data
-    bool throughputCollected = (finalSingleTP > 0 || finalMultiTP > 0);
+    bool throughputCollected = (finalMultiTP > 0);
     if (throughputCollected) {
         std::cout << "Status: PASS (throughput tracking active)\n";
     } else {
