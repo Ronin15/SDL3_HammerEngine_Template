@@ -14,6 +14,7 @@
 #include <vector>
 #include <atomic>
 #include <mutex>
+#include <list>
 // filesystem is used in the implementation file
 
 #ifdef USE_SDL3_GPU
@@ -319,10 +320,28 @@ class FontManager {
   std::string m_lastFontPath{};
 
 #ifdef USE_SDL3_GPU
-  // GPU text cache - main thread only (rendering is main-thread per project conventions)
+  // GPU text cache with LRU eviction - main thread only (rendering is main-thread per project conventions)
   // No mutex needed: all access from renderTextGPU, drawTextGPU, processPendingTextUploads,
   // and reloadFontsForDisplay executes on the main thread.
-  std::unordered_map<TextCacheKey, std::unique_ptr<GPUTextData>, TextCacheKeyHash> m_gpuTextCache{};
+  //
+  // LRU Design: m_gpuLruList tracks access order (most-recent at front).
+  // m_gpuTextCache maps keys to {GPUTextData, LRU iterator} for O(1) lookup + eviction.
+  static constexpr size_t GPU_TEXT_CACHE_MAX_SIZE = 256;
+  static constexpr size_t GPU_TEXT_CACHE_EVICT_COUNT = 64;  // Evict 25% when full
+
+  // LRU list: front = most recently used, back = least recently used
+  std::list<TextCacheKey> m_gpuLruList{};
+
+  struct GPUCacheEntry {
+    std::unique_ptr<GPUTextData> data;
+    std::list<TextCacheKey>::iterator lruIterator;
+  };
+  std::unordered_map<TextCacheKey, GPUCacheEntry, TextCacheKeyHash> m_gpuTextCache{};
+
+  /**
+   * @brief Evict least-recently-used entries when cache exceeds max size
+   */
+  void evictGPUTextCache();
 
   // Pending text uploads - processed in main copy pass to avoid per-text GPU stalls
   struct PendingTextUpload {

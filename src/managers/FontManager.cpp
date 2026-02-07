@@ -579,6 +579,7 @@ bool FontManager::reloadFontsForDisplay(const std::string& fontPath, int windowW
   m_textCache.clear();
 #ifdef USE_SDL3_GPU
   m_gpuTextCache.clear();
+  m_gpuLruList.clear();
   m_pendingTextUploads.clear();
 
   // Keep text vertex buffer (can be reused for new fonts)
@@ -705,6 +706,7 @@ void FontManager::clean() {
 #ifdef USE_SDL3_GPU
   // Clear GPU text cache (must be done before GPU device shutdown)
   m_gpuTextCache.clear();
+  m_gpuLruList.clear();
   m_pendingTextUploads.clear();
 
   // Release text vertex buffer
@@ -735,11 +737,18 @@ const GPUTextData* FontManager::renderTextGPU(const std::string& text, const std
     return nullptr;
   }
 
-  // Check GPU cache first
+  // Check GPU cache first (O(1) lookup)
   TextCacheKey key = {text, fontID, color};
   auto cacheIt = m_gpuTextCache.find(key);
   if (cacheIt != m_gpuTextCache.end()) {
-    return cacheIt->second.get();
+    // Move to front of LRU list (most recently used)
+    m_gpuLruList.splice(m_gpuLruList.begin(), m_gpuLruList, cacheIt->second.lruIterator);
+    return cacheIt->second.data.get();
+  }
+
+  // Evict old entries if cache is full
+  if (m_gpuTextCache.size() >= GPU_TEXT_CACHE_MAX_SIZE) {
+    evictGPUTextCache();
   }
 
   auto fontIt = m_fontMap.find(fontID);
@@ -804,9 +813,10 @@ const GPUTextData* FontManager::renderTextGPU(const std::string& text, const std
       static_cast<uint32_t>(surface->h)
   });
 
-  // Cache and return
+  // Cache with LRU tracking (insert at front = most recently used)
   GPUTextData* result = gpuData.get();
-  m_gpuTextCache[key] = std::move(gpuData);
+  m_gpuLruList.push_front(key);
+  m_gpuTextCache[key] = GPUCacheEntry{std::move(gpuData), m_gpuLruList.begin()};
   return result;
 }
 
@@ -823,7 +833,7 @@ void FontManager::processPendingTextUploads(SDL_GPUCopyPass* copyPass) {
 
   for (auto& pending : m_pendingTextUploads) {
     auto cacheIt = m_gpuTextCache.find(pending.key);
-    if (cacheIt == m_gpuTextCache.end() || !cacheIt->second->texture) {
+    if (cacheIt == m_gpuTextCache.end() || !cacheIt->second.data->texture) {
       FONT_WARN("GPU text upload: texture not found in cache");
       continue;
     }
@@ -865,7 +875,7 @@ void FontManager::processPendingTextUploads(SDL_GPUCopyPass* copyPass) {
     srcInfo.rows_per_layer = pending.height;
 
     SDL_GPUTextureRegion dstRegion{};
-    dstRegion.texture = cacheIt->second->texture->get();
+    dstRegion.texture = cacheIt->second.data->texture->get();
     dstRegion.x = 0;
     dstRegion.y = 0;
     dstRegion.z = 0;
@@ -877,7 +887,7 @@ void FontManager::processPendingTextUploads(SDL_GPUCopyPass* copyPass) {
     SDL_UploadToGPUTexture(copyPass, &srcInfo, &dstRegion, false);
 
     // Mark as uploaded so drawTextGPU can use it
-    cacheIt->second->uploaded = true;
+    cacheIt->second.data->uploaded = true;
   }
 
   // Clear pending uploads (surfaces freed by unique_ptr destructors)
@@ -1014,6 +1024,20 @@ void FontManager::drawTextGPU(const std::string& text, const std::string& fontID
 
 void FontManager::clearGPUTextCache() {
   m_gpuTextCache.clear();
+  m_gpuLruList.clear();
   FONT_DEBUG("GPU text cache cleared");
+}
+
+void FontManager::evictGPUTextCache() {
+  // Evict least-recently-used entries from the back of the LRU list
+  size_t evicted = 0;
+  while (evicted < GPU_TEXT_CACHE_EVICT_COUNT && !m_gpuLruList.empty()) {
+    const auto& oldestKey = m_gpuLruList.back();
+    m_gpuTextCache.erase(oldestKey);
+    m_gpuLruList.pop_back();
+    ++evicted;
+  }
+  FONT_DEBUG(std::format("GPU text cache evicted {} entries, {} remaining",
+                         evicted, m_gpuTextCache.size()));
 }
 #endif
