@@ -550,10 +550,13 @@ void EventDemoState::update(float deltaTime) {
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
 
+#ifndef USE_SDL3_GPU
   // Prepare chunks via WorldRenderPipeline (predictive prefetching + dirty chunk updates)
+  // GPU path renders tiles directly from atlas coords each frame — no chunk textures needed
   if (m_renderPipeline && m_camera) {
     m_renderPipeline->prepareChunks(*m_camera, deltaTime);
   }
+#endif
 
   // AI Manager is updated globally by GameEngine for optimal performance
   // Entity updates are handled by AIManager::update() in GameEngine

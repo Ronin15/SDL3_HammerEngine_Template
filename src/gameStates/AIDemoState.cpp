@@ -544,10 +544,13 @@ void AIDemoState::update(float deltaTime) {
     // Update camera (follows player automatically)
     updateCamera(deltaTime);
 
+#ifndef USE_SDL3_GPU
     // Prepare chunks via WorldRenderPipeline (predictive prefetching + dirty chunk updates)
+    // GPU path renders tiles directly from atlas coords each frame — no chunk textures needed
     if (m_renderPipeline && m_camera) {
       m_renderPipeline->prepareChunks(*m_camera, deltaTime);
     }
+#endif
 
     // Update UI (moved from render path for consistent frame timing)
     if (!ui.isShutdown()) {

@@ -1425,6 +1425,11 @@ void HammerEngine::TileRenderer::invalidateChunk(int chunkX, int chunkY) {
 }
 
 void HammerEngine::TileRenderer::clearChunkCache() {
+  // Skip in GPU mode - GPU path renders tiles directly from atlas coords each frame,
+  // no chunk textures to invalidate
+  if (!m_gridInitialized) {
+    return;
+  }
   // Mark all chunks as dirty for re-rendering (e.g., on season change)
   m_cachePendingClear.store(true, std::memory_order_release);
   m_hasDirtyChunks = true;
