@@ -940,6 +940,9 @@ struct BehaviorData {
     uint8_t pendingMessageCount{0};
     uint8_t _msgPad[3]{};       // Padding for alignment
 
+    // Centralized engagement target (set by AIManager pre-pass, consumed by Idle/Wander)
+    EntityHandle pendingEngageTarget{};
+
     static constexpr uint8_t FLAG_VALID = 0x01;
     static constexpr uint8_t FLAG_INITIALIZED = 0x02;
 
@@ -1128,6 +1131,7 @@ struct BehaviorData {
         cachedNearbyCount = 0;
         cachedClusterCenter = Vector2D{};
         pendingMessageCount = 0;
+        pendingEngageTarget = EntityHandle{};
         state = StateUnion{};
     }
 

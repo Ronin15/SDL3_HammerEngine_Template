@@ -4,7 +4,6 @@
  */
 
 #include "ai/BehaviorExecutors.hpp"
-#include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include <cmath>
 #include <random>
@@ -159,21 +158,8 @@ void executeIdle(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& c
     data.pendingMessageCount = 0;
 
     // Combat reaction: brave+aggressive NPCs fight back, others flee
+    // (Ally alerting now handled centrally by damage event handler via RAISE_ALERT)
     if (isUnderRecentAttack(ctx, 2.0f)) {
-        // Alert nearby allies before reacting
-        if (ctx.characterData) {
-            thread_local std::vector<EntityHandle> s_helpBuffer;
-            s_helpBuffer.clear();
-            AIManager::Instance().queryHandlesInRadius(
-                ctx.transform.position, 250.0f, s_helpBuffer, true);
-            auto& edm = EntityDataManager::Instance();
-            for (const auto& handle : s_helpBuffer) {
-                size_t idx = edm.getIndex(handle);
-                if (idx == SIZE_MAX || idx == ctx.edmIndex) continue;
-                if (edm.getCharacterDataByIndex(idx).faction != ctx.characterData->faction) continue;
-                Behaviors::deferBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);
-            }
-        }
         if (shouldRetaliate(ctx)) {
             switchBehavior(ctx.edmIndex, BehaviorType::Chase);
         } else {
@@ -186,13 +172,14 @@ void executeIdle(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& c
         return;
     }
 
-    // Proactive engagement: aggressive NPCs with known enemies nearby
-    EntityHandle engageTarget = shouldEngageEnemy(ctx);
-    if (engageTarget.isValid()) {
+    // Centralized engagement: target pushed by AIManager pre-pass
+    if (data.pendingEngageTarget.isValid()) {
+        EntityHandle target = data.pendingEngageTarget;
+        data.pendingEngageTarget = EntityHandle{};
         switchBehavior(ctx.edmIndex, BehaviorType::Chase);
         auto& chaseData = EntityDataManager::Instance().getBehaviorData(ctx.edmIndex);
         chaseData.state.chase.hasExplicitTarget = true;
-        chaseData.state.chase.explicitTarget = engageTarget;
+        chaseData.state.chase.explicitTarget = target;
         return;
     }
 

@@ -25,7 +25,7 @@ thread_local std::uniform_real_distribution<float> s_criticalRoll{0.0f, 1.0f};
 thread_local std::uniform_real_distribution<float> s_specialRoll{0.0f, 1.0f};
 thread_local std::uniform_real_distribution<float> s_angleVariation{-0.5f, 0.5f};
 thread_local std::vector<EventManager::DeferredEvent> t_deferredDamageEvents;
-thread_local std::vector<EntityHandle> s_scanBuffer;
+thread_local std::vector<size_t> s_scanBuffer;
 
 // ============================================================================
 // CONSTANTS
@@ -91,15 +91,14 @@ Vector2D rotateVector(const Vector2D& v, float angle) {
 // Scan for nearest different-faction entity (fully generic, no player hardcoding)
 EntityHandle scanForNearestTarget(const Vector2D& pos, uint8_t myFaction, size_t myEdmIndex) {
     s_scanBuffer.clear();
-    AIManager::Instance().queryHandlesInRadius(pos, SEEK_SCAN_RANGE, s_scanBuffer, false);
+    AIManager::Instance().queryEdmIndicesInRadius(pos, SEEK_SCAN_RANGE, s_scanBuffer, false);
     auto& edm = EntityDataManager::Instance();
 
     EntityHandle bestTarget{};
     float bestDistSq = std::numeric_limits<float>::max();
 
-    for (const auto& handle : s_scanBuffer) {
-        size_t idx = edm.getIndex(handle);
-        if (idx == SIZE_MAX || idx == myEdmIndex) continue;
+    for (size_t idx : s_scanBuffer) {
+        if (idx == myEdmIndex) continue;
         const auto& hot = edm.getHotDataByIndex(idx);
         if (!hot.isAlive()) continue;
         const auto& charData = edm.getCharacterDataByIndex(idx);
@@ -107,7 +106,7 @@ EntityHandle scanForNearestTarget(const Vector2D& pos, uint8_t myFaction, size_t
         float distSq = Vector2D::distanceSquared(pos, hot.transform.position);
         if (distSq < bestDistSq) {
             bestDistSq = distSq;
-            bestTarget = handle;
+            bestTarget = edm.getHandle(idx);
         }
     }
     return bestTarget;
@@ -634,12 +633,11 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
         // Signal nearby same-faction allies to retreat
         if (ctx.characterData) {
             s_scanBuffer.clear();
-            AIManager::Instance().queryHandlesInRadius(
+            AIManager::Instance().queryEdmIndicesInRadius(
                 ctx.transform.position, 200.0f, s_scanBuffer, true);
             auto& edm2 = EntityDataManager::Instance();
-            for (const auto& handle : s_scanBuffer) {
-                size_t idx = edm2.getIndex(handle);
-                if (idx == SIZE_MAX || idx == ctx.edmIndex) continue;
+            for (size_t idx : s_scanBuffer) {
+                if (idx == ctx.edmIndex) continue;
                 if (edm2.getCharacterDataByIndex(idx).faction != ctx.characterData->faction) continue;
                 Behaviors::deferBehaviorMessage(idx, BehaviorMessage::RETREAT);
             }

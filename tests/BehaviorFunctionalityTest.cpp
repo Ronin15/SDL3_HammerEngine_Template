@@ -713,25 +713,16 @@ BOOST_AUTO_TEST_CASE(TestDeferredPipelineEndToEnd) {
 BOOST_AUTO_TEST_CASE(TestCivilianAttacked_NearbyGuardGoesHostile) {
     auto& edm = EntityDataManager::Instance();
     auto& aiMgr = AIManager::Instance();
-    auto& eventMgr = EventManager::Instance();
 
-    // Civilian and guard close together (within 250 radius for RAISE_ALERT)
+    // Civilian and guard close together
     auto civilian = TestNPC::create(200.0f, 200.0f);
     auto guard = TestNPC::create(250.0f, 250.0f);  // ~70 units away
-    auto attacker = TestNPC::create(180.0f, 200.0f);
 
     EntityHandle civilianHandle = civilian->getHandle();
     EntityHandle guardHandle = guard->getHandle();
-    EntityHandle attackerHandle = attacker->getHandle();
 
-    size_t civilianIdx = edm.getIndex(civilianHandle);
     size_t guardIdx = edm.getIndex(guardHandle);
-    BOOST_REQUIRE(civilianIdx != SIZE_MAX);
     BOOST_REQUIRE(guardIdx != SIZE_MAX);
-
-    // Attacker faction 2 (neutral) — guard can't detect via own threat scan,
-    // so guard goes HOSTILE only via the deferred RAISE_ALERT message
-    edm.setFaction(attackerHandle, 2);
 
     aiMgr.assignBehavior(civilianHandle, "Idle");
     aiMgr.assignBehavior(guardHandle, "Guard");
@@ -740,18 +731,11 @@ BOOST_AUTO_TEST_CASE(TestCivilianAttacked_NearbyGuardGoesHostile) {
     // Guard starts CALM
     BOOST_CHECK(edm.getBehaviorData(guardIdx).state.guard.currentAlertLevel == 0);
 
-    // Attacker hits civilian — sets lastCombatTime=0, lastAttacker=attackerHandle
-    edm.recordCombatEvent(civilianIdx, attackerHandle, civilianHandle, 10.0f, true, 0.0f);
+    // Simulate centralized witness notification: damage handler sends RAISE_ALERT
+    // directly to same-faction nearby allies (replaces old behavior-level deferral)
+    Behaviors::queueBehaviorMessage(guardIdx, BehaviorMessage::RAISE_ALERT);
 
-    // Frame 1: Civilian's Idle detects isUnderRecentAttack → defers RAISE_ALERT
-    // to nearby same-faction allies (including guard), then switches to Chase/Flee.
-    // After batch: deferred events collected and enqueued to EventManager.
-    updateAI(0.016f);
-
-    // EventManager delivers deferred RAISE_ALERT to guard's message queue
-    eventMgr.update();
-
-    // Frame 2: Guard processes RAISE_ALERT → alertLevel = 3
+    // Guard processes RAISE_ALERT → alertLevel = 3
     updateAI(0.016f);
 
     BOOST_CHECK_MESSAGE(edm.getBehaviorData(guardIdx).state.guard.currentAlertLevel == 3,
@@ -812,43 +796,27 @@ BOOST_AUTO_TEST_CASE(TestGuardCallsForHelp_NearbyGuardGoesHostile) {
 BOOST_AUTO_TEST_CASE(TestRaiseAlert_CowardFleesOnAlert) {
     auto& edm = EntityDataManager::Instance();
     auto& aiMgr = AIManager::Instance();
-    auto& eventMgr = EventManager::Instance();
 
-    // Coward civilian and attacked civilian near each other
+    // Coward civilian
     auto coward = TestNPC::create(200.0f, 200.0f);
-    auto civilian = TestNPC::create(220.0f, 220.0f);
-    auto attacker = TestNPC::create(180.0f, 200.0f);
 
     EntityHandle cowardHandle = coward->getHandle();
-    EntityHandle civilianHandle = civilian->getHandle();
-    EntityHandle attackerHandle = attacker->getHandle();
-
     size_t cowardIdx = edm.getIndex(cowardHandle);
-    size_t civilianIdx = edm.getIndex(civilianHandle);
     BOOST_REQUIRE(cowardIdx != SIZE_MAX);
-    BOOST_REQUIRE(civilianIdx != SIZE_MAX);
 
     // Set coward personality: low bravery (< 0.4 triggers flee on RAISE_ALERT)
     edm.getMemoryData(cowardIdx).personality.bravery = 0.2f;
-    // Attacker faction 2 (neutral) so coward doesn't react to attacker directly
-    edm.setFaction(attackerHandle, 2);
 
     aiMgr.assignBehavior(cowardHandle, "Wander");
-    aiMgr.assignBehavior(civilianHandle, "Idle");
     updateAI(0.016f);
 
     BOOST_CHECK(edm.getBehaviorData(cowardIdx).behaviorType == BehaviorType::Wander);
 
-    // Attacker hits civilian
-    edm.recordCombatEvent(civilianIdx, attackerHandle, civilianHandle, 10.0f, true, 0.0f);
+    // Simulate centralized witness notification: damage handler sends RAISE_ALERT
+    // directly to same-faction nearby witnesses (replaces old behavior-level deferral)
+    Behaviors::queueBehaviorMessage(cowardIdx, BehaviorMessage::RAISE_ALERT);
 
-    // Frame 1: Civilian defers RAISE_ALERT to nearby same-faction allies (coward)
-    updateAI(0.016f);
-
-    // EventManager delivers RAISE_ALERT to coward's queue
-    eventMgr.update();
-
-    // Frame 2: Coward processes RAISE_ALERT → bravery 0.2 < 0.4 → switches to Flee
+    // Coward processes RAISE_ALERT → bravery 0.2 < 0.4 → switches to Flee
     updateAI(0.016f);
 
     BOOST_CHECK_MESSAGE(edm.getBehaviorData(cowardIdx).behaviorType == BehaviorType::Flee,
@@ -856,44 +824,31 @@ BOOST_AUTO_TEST_CASE(TestRaiseAlert_CowardFleesOnAlert) {
 
     BOOST_TEST_MESSAGE("Coward flees on RAISE_ALERT verified");
     aiMgr.unassignBehavior(cowardHandle);
-    aiMgr.unassignBehavior(civilianHandle);
 }
 
 BOOST_AUTO_TEST_CASE(TestRaiseAlert_BraveNPCStands) {
     auto& edm = EntityDataManager::Instance();
     auto& aiMgr = AIManager::Instance();
-    auto& eventMgr = EventManager::Instance();
 
-    // Brave civilian and attacked civilian near each other
+    // Brave NPC
     auto brave = TestNPC::create(200.0f, 200.0f);
-    auto civilian = TestNPC::create(220.0f, 220.0f);
-    auto attacker = TestNPC::create(180.0f, 200.0f);
 
     EntityHandle braveHandle = brave->getHandle();
-    EntityHandle civilianHandle = civilian->getHandle();
-    EntityHandle attackerHandle = attacker->getHandle();
-
     size_t braveIdx = edm.getIndex(braveHandle);
-    size_t civilianIdx = edm.getIndex(civilianHandle);
     BOOST_REQUIRE(braveIdx != SIZE_MAX);
-    BOOST_REQUIRE(civilianIdx != SIZE_MAX);
 
     // Set brave personality: high bravery (>= 0.4 ignores RAISE_ALERT)
     edm.getMemoryData(braveIdx).personality.bravery = 0.8f;
-    edm.setFaction(attackerHandle, 2);
 
     aiMgr.assignBehavior(braveHandle, "Wander");
-    aiMgr.assignBehavior(civilianHandle, "Idle");
     updateAI(0.016f);
 
     BOOST_CHECK(edm.getBehaviorData(braveIdx).behaviorType == BehaviorType::Wander);
 
-    // Attacker hits civilian
-    edm.recordCombatEvent(civilianIdx, attackerHandle, civilianHandle, 10.0f, true, 0.0f);
+    // Simulate centralized witness notification: damage handler sends RAISE_ALERT
+    Behaviors::queueBehaviorMessage(braveIdx, BehaviorMessage::RAISE_ALERT);
 
-    // Frame 1 + delivery + Frame 2
-    updateAI(0.016f);
-    eventMgr.update();
+    // Brave NPC processes RAISE_ALERT but bravery 0.8 >= 0.4 → stays
     updateAI(0.016f);
 
     // Brave NPC should NOT flee (bravery 0.8 >= 0.4)
@@ -902,7 +857,6 @@ BOOST_AUTO_TEST_CASE(TestRaiseAlert_BraveNPCStands) {
 
     BOOST_TEST_MESSAGE("Brave NPC ignores RAISE_ALERT verified");
     aiMgr.unassignBehavior(braveHandle);
-    aiMgr.unassignBehavior(civilianHandle);
 }
 
 BOOST_AUTO_TEST_CASE(TestMessageQueueOverflow) {

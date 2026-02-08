@@ -22,6 +22,7 @@
  */
 
 #include "ai/BehaviorConfig.hpp"
+#include "ai/internal/AISpatialGrid.hpp"
 #include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -196,6 +197,15 @@ public:
                             std::vector<EntityHandle>& outHandles,
                             bool excludePlayer = true) const;
 
+  /**
+   * @brief Query EDM indices within a radius using spatial grid (O(K) vs O(N))
+   * Preferred API for behavior code - returns edmIndices directly, avoiding
+   * redundant getIndex(handle) lookups at call sites.
+   */
+  void queryEdmIndicesInRadius(const Vector2D& center, float radius,
+                               std::vector<size_t>& outEdmIndices,
+                               bool excludePlayer = true) const;
+
   // Global controls
   void setGlobalPause(bool paused);
   bool isGloballyPaused() const;
@@ -326,6 +336,12 @@ private:
 
   // Reusable buffer for Active tier EDM indices (avoids per-frame allocation)
   std::vector<size_t> m_activeIndicesBuffer;
+
+  // Spatial grid for O(K) radius queries (rebuilt once per frame)
+  AISpatialGrid m_spatialGrid;
+
+  // Cached player edmIndex (updated once per frame during update(), SIZE_MAX = no player)
+  size_t m_cachedPlayerEdmIdx{SIZE_MAX};
 
   // Optimized batch processing constants
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size

@@ -222,17 +222,16 @@ EntityHandle shouldEngageEnemy(const BehaviorContext& ctx) {
 
     // Scan for nearest different-faction entity (generic, no player hardcoding)
     if (ctx.characterData) {
-        thread_local std::vector<EntityHandle> s_engageScanBuffer;
+        thread_local std::vector<size_t> s_engageScanBuffer;
         s_engageScanBuffer.clear();
-        AIManager::Instance().queryHandlesInRadius(myPos, ENGAGE_RANGE, s_engageScanBuffer, false);
+        AIManager::Instance().queryEdmIndicesInRadius(myPos, ENGAGE_RANGE, s_engageScanBuffer, false);
         auto& edm = EntityDataManager::Instance();
 
         EntityHandle bestTarget{};
         float bestDistSq = ENGAGE_RANGE_SQ;
 
-        for (const auto& handle : s_engageScanBuffer) {
-            size_t idx = edm.getIndex(handle);
-            if (idx == SIZE_MAX || idx == ctx.edmIndex) continue;
+        for (size_t idx : s_engageScanBuffer) {
+            if (idx == ctx.edmIndex) continue;
             const auto& hot = edm.getHotDataByIndex(idx);
             if (!hot.isAlive()) continue;
             const auto& charData = edm.getCharacterDataByIndex(idx);
@@ -240,7 +239,7 @@ EntityHandle shouldEngageEnemy(const BehaviorContext& ctx) {
             float distSq = Vector2D::distanceSquared(myPos, hot.transform.position);
             if (distSq < bestDistSq) {
                 bestDistSq = distSq;
-                bestTarget = handle;
+                bestTarget = edm.getHandle(idx);
             }
         }
         return bestTarget;

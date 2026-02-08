@@ -19,7 +19,7 @@ namespace {
 thread_local std::mt19937 s_rng{std::random_device{}()};
 thread_local std::uniform_real_distribution<float> s_angleDistribution{0.0f, 2.0f * static_cast<float>(M_PI)};
 thread_local std::uniform_real_distribution<float> s_radiusDistribution{0.3f, 1.0f};
-thread_local std::vector<EntityHandle> s_nearbyBuffer;
+thread_local std::vector<size_t> s_nearbyBuffer;
 
 // ============================================================================
 // CONSTANTS
@@ -235,10 +235,10 @@ EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, float de
     isEnemyFaction = false;
     if (!ctx.behaviorData) return EntityHandle{};
 
-    // Query nearby entities
+    // Query nearby entities via spatial grid (O(K) instead of O(N))
     s_nearbyBuffer.clear();
     if (s_nearbyBuffer.capacity() < 32) s_nearbyBuffer.reserve(32);
-    AIManager::Instance().queryHandlesInRadius(ctx.transform.position, detectionRange, s_nearbyBuffer, true);
+    AIManager::Instance().queryEdmIndicesInRadius(ctx.transform.position, detectionRange, s_nearbyBuffer, true);
 
     float detectionRangeSq = detectionRange * detectionRange;
 
@@ -246,16 +246,12 @@ EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, float de
     // Enemy faction takes priority (returns immediately)
     EntityHandle friendlyAttacker{};
 
-    for (const auto& handle : s_nearbyBuffer) {
-        if (!handle.isValid()) continue;
-        size_t idx = edm.getIndex(handle);
-        if (idx == SIZE_MAX) continue;
-
+    for (size_t idx : s_nearbyBuffer) {
         const auto& charData = edm.getCharacterDataByIndex(idx);
 
         if (charData.faction == 1) { // Enemy - highest priority
             isEnemyFaction = true;
-            return handle;
+            return edm.getHandle(idx);
         }
         else if (charData.faction == 0 && !friendlyAttacker.isValid()) { // Friendly - record attacker
             if (edm.hasMemoryData(idx)) {
@@ -453,14 +449,13 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
     // Call for help when first reaching HOSTILE
     if (guard.currentAlertLevel >= 3 && !guard.helpCalled) {
         guard.helpCalled = true;
-        thread_local std::vector<EntityHandle> s_helpBuffer;
+        thread_local std::vector<size_t> s_helpBuffer;
         s_helpBuffer.clear();
         uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
-        AIManager::Instance().queryHandlesInRadius(
+        AIManager::Instance().queryEdmIndicesInRadius(
             ctx.transform.position, 250.0f, s_helpBuffer, true);
-        for (const auto& handle : s_helpBuffer) {
-            size_t idx = edm.getIndex(handle);
-            if (idx == SIZE_MAX || idx == ctx.edmIndex) continue;
+        for (size_t idx : s_helpBuffer) {
+            if (idx == ctx.edmIndex) continue;
             if (edm.getCharacterDataByIndex(idx).faction != myFaction) continue;
             Behaviors::deferBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);
         }
@@ -608,14 +603,13 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         // When returning to CALM, signal nearby allies to calm down
         if (guard.currentAlertLevel == 0 && previousLevel > 0) {
             guard.helpCalled = false;
-            thread_local std::vector<EntityHandle> s_calmBuffer;
+            thread_local std::vector<size_t> s_calmBuffer;
             s_calmBuffer.clear();
             uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
-            AIManager::Instance().queryHandlesInRadius(
+            AIManager::Instance().queryEdmIndicesInRadius(
                 ctx.transform.position, 250.0f, s_calmBuffer, true);
-            for (const auto& handle : s_calmBuffer) {
-                size_t idx = edm.getIndex(handle);
-                if (idx == SIZE_MAX || idx == ctx.edmIndex) continue;
+            for (size_t idx : s_calmBuffer) {
+                if (idx == ctx.edmIndex) continue;
                 if (edm.getCharacterDataByIndex(idx).faction != myFaction) continue;
                 Behaviors::deferBehaviorMessage(idx, BehaviorMessage::CALM_DOWN);
             }
