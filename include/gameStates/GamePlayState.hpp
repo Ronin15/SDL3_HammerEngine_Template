@@ -98,6 +98,9 @@ private:
   void updateCamera(float deltaTime);
   // Camera auto-manages world bounds; no state-level setup needed
 
+  // Reusable buffer for nearby entity queries (avoids per-interaction allocation)
+  std::vector<EntityHandle> m_nearbyHandlesBuffer;
+
   // Day/night visual overlay state (updated via TimePeriodChangedEvent)
   // Current interpolated values (what's actually rendered)
   float m_dayNightOverlayR{0.0f};

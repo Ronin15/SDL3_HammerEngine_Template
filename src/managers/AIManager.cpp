@@ -190,9 +190,6 @@ void AIManager::clean() {
   // Stop accepting new tasks
   m_globallyPaused.store(true, std::memory_order_release);
 
-  // CRITICAL: Wait for any pending async batches to complete before cleanup
-  waitForAsyncBatchCompletion();
-
   {
     std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
     std::unique_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
@@ -229,9 +226,7 @@ void AIManager::prepareForStateTransition() {
   // Pause AI processing to prevent new tasks
   m_globallyPaused.store(true, std::memory_order_release);
 
-  // CRITICAL: Wait for any pending async batches to complete before state
-  // transition
-  waitForAsyncBatchCompletion();
+  // Batches always complete within update() — no pending futures to wait for.
 
   // DETERMINISTIC SYNCHRONIZATION: Wait for all assignment batches to complete
   //
@@ -387,19 +382,22 @@ void AIManager::update(float deltaTime) {
         : SIZE_MAX;
 
     // Emotional contagion: high-fear NPCs spread fear to nearby NPCs
-    // Runs on main thread before batch processing to avoid data races
-    // Inner loop only runs for the few fearful entities (most early-exit)
+    // Runs on main thread before batch processing to avoid data races.
+    // Staggered: each entity only eligible every CONTAGION_CHECK_INTERVAL frames
+    // to prevent O(N^2) spikes when many entities become fearful simultaneously.
     {
       constexpr float CONTAGION_COOLDOWN = 2.0f;
       constexpr float CONTAGION_RANGE_SQ = 200.0f * 200.0f;
       constexpr float FEAR_THRESHOLD = 0.6f;
+      constexpr size_t CONTAGION_CHECK_INTERVAL = 30; // Check ~1/30th of entities per frame
 
       for (size_t sourceIdx : m_activeIndicesBuffer) {
+        if ((currentFrame + sourceIdx) % CONTAGION_CHECK_INTERVAL != 0) continue;
         if (!edm.hasMemoryData(sourceIdx)) continue;
         auto& source = edm.getMemoryData(sourceIdx);
         if (source.emotions.fear < FEAR_THRESHOLD) continue;
 
-        source.lastContagionTime += deltaTime;
+        source.lastContagionTime += deltaTime * static_cast<float>(CONTAGION_CHECK_INTERVAL);
         if (source.lastContagionTime < CONTAGION_COOLDOWN) continue;
         source.lastContagionTime = 0.0f;
 
@@ -537,8 +535,8 @@ void AIManager::update(float deltaTime) {
           size_t remainingEntities = entityCount % batchCount;
 
           // Submit batches using futures that return damage events
-          std::vector<std::future<std::vector<EventManager::DeferredEvent>>> batchFutures;
-          batchFutures.reserve(batchCount);
+          m_batchFutures.clear();
+          m_batchFutures.reserve(batchCount);
 
           for (size_t i = 0; i < batchCount; ++i) {
             size_t start = i * entitiesPerBatch;
@@ -550,7 +548,7 @@ void AIManager::update(float deltaTime) {
             }
 
             // Submit each batch - processBatch returns damage events directly
-            batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+            m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
                 [this, start, end, deltaTime, worldWidth, worldHeight,
                  cachedPlayerHandle, cachedPlayerPosition, cachedPlayerVelocity,
                  cachedPlayerValid, cachedGameTime]() -> std::vector<EventManager::DeferredEvent> {
@@ -572,12 +570,12 @@ void AIManager::update(float deltaTime) {
           }
 
           // Wait for all batches and collect damage events (lock-free collection)
-          std::vector<EventManager::DeferredEvent> allDamageEvents;
-          for (auto& future : batchFutures) {
+          m_allDamageEvents.clear();
+          for (auto& future : m_batchFutures) {
             if (future.valid()) {
               auto batchEvents = future.get();
               if (!batchEvents.empty()) {
-                allDamageEvents.insert(allDamageEvents.end(),
+                m_allDamageEvents.insert(m_allDamageEvents.end(),
                                        std::make_move_iterator(batchEvents.begin()),
                                        std::make_move_iterator(batchEvents.end()));
               }
@@ -585,8 +583,8 @@ void AIManager::update(float deltaTime) {
           }
 
           // Submit all accumulated damage events to EventManager (single submission per frame)
-          if (!allDamageEvents.empty()) {
-            EventManager::Instance().enqueueBatch(std::move(allDamageEvents));
+          if (!m_allDamageEvents.empty()) {
+            EventManager::Instance().enqueueBatch(std::move(m_allDamageEvents));
           }
         }
     } else {
@@ -670,18 +668,6 @@ void AIManager::update(float deltaTime) {
   }
 }
 
-void AIManager::waitForAsyncBatchCompletion() {
-  // Wait for all batch futures to complete
-  // Used during state transitions and cleanup to ensure no pending work
-  for (auto &future : m_batchFutures) {
-    if (future.valid()) {
-      future.wait();
-    }
-  }
-
-  // NOTE: No CollisionManager update needed - behaviors write directly to
-  // EntityDataManager transforms (lock-free). CollisionManager reads from EDM.
-}
 
 void AIManager::registerDefaultBehaviors() {
   // Initialize behavior name-to-type map for API compatibility
@@ -973,6 +959,9 @@ void AIManager::unregisterEntity(EntityHandle handle) {
   }
 }
 
+// Thread safety: m_activeIndicesBuffer and m_cachedPlayerEdmIdx are written on
+// the main thread before batch futures are submitted. Futures create a
+// happens-before edge, so worker threads read consistent data without a lock.
 void AIManager::queryEdmIndicesInRadius(const Vector2D &center, float radius,
                                         std::vector<size_t> &outEdmIndices,
                                         bool excludePlayer) const {

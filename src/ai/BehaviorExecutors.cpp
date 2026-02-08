@@ -197,6 +197,46 @@ bool shouldRetaliate(const BehaviorContext& ctx) {
     return (bravery > 0.4f && aggression > 0.6f);
 }
 
+float getRelationshipLevel(EntityHandle npcHandle, EntityHandle subjectHandle) {
+    if (!npcHandle.isValid()) {
+        return 0.0f;
+    }
+
+    auto& edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(npcHandle);
+    if (idx == SIZE_MAX) {
+        return 0.0f;
+    }
+
+    if (!edm.hasMemoryData(idx)) {
+        return 0.0f;
+    }
+
+    const auto& memoryData = edm.getMemoryData(idx);
+    if (!memoryData.isValid()) {
+        return 0.0f;
+    }
+
+    // Relationship from emotional state
+    const auto& emotions = memoryData.emotions;
+    float relationship = 0.0f;
+    relationship -= emotions.suspicion * 0.4f;
+    relationship -= emotions.fear * 0.3f;
+    relationship -= emotions.aggression * 0.5f;
+
+    // Sum interaction memory values with subject (inline memories only)
+    if (subjectHandle.isValid()) {
+        for (const auto& mem : memoryData.memories) {
+            if (mem.isValid() && mem.subject == subjectHandle &&
+                mem.type == MemoryType::Interaction) {
+                relationship += mem.value * 0.1f;
+            }
+        }
+    }
+
+    return std::clamp(relationship, -1.0f, 1.0f);
+}
+
 EntityHandle shouldEngageEnemy(const BehaviorContext& ctx) {
     if (!ctx.memoryData || !ctx.memoryData->isValid()) return EntityHandle{};
 

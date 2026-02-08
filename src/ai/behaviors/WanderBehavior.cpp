@@ -6,7 +6,6 @@
 #include "ai/BehaviorExecutors.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "managers/WorldManager.hpp"
 #include <algorithm>
 #include <cmath>
 #include <random>
@@ -16,12 +15,6 @@ namespace {
 thread_local std::mt19937 s_rng{std::random_device{}()};
 thread_local std::uniform_real_distribution<float> s_angleDistribution{0.0f, 2.0f * static_cast<float>(M_PI)};
 thread_local std::uniform_int_distribution<uint64_t> s_delayDistribution{0, 5000};
-
-struct WorldBoundsCache {
-    float minX{0}, minY{0}, maxX{0}, maxY{0};
-    bool initialized{false};
-};
-thread_local WorldBoundsCache s_worldBounds{};
 
 void updateTimers(BehaviorData& data, float deltaTime, PathData* pathData) {
     auto& wander = data.state.wander;
@@ -52,10 +45,10 @@ bool handleStartDelay(BehaviorContext& ctx) {
     return true;
 }
 
-float calculateMoveDistance(const BehaviorData& data, const Vector2D& position,
+float calculateMoveDistance(BehaviorData& data, const Vector2D& position,
                            float baseDistance, const HammerEngine::WanderBehaviorConfig& config) {
     int nearbyCount = data.cachedNearbyCount;
-    auto& wander = const_cast<BehaviorData&>(data).state.wander;
+    auto& wander = data.state.wander;
     float moveDistance = baseDistance;
 
     if (nearbyCount > config.crowdEscapeThreshold) {
@@ -79,37 +72,29 @@ float calculateMoveDistance(const BehaviorData& data, const Vector2D& position,
 }
 
 void applyBoundaryAvoidance(BehaviorData& data, const Vector2D& position,
-                            const HammerEngine::WanderBehaviorConfig& config) {
-    if (!s_worldBounds.initialized) {
-        float minX, minY, maxX, maxY;
-        if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-            s_worldBounds.minX = minX;
-            s_worldBounds.minY = minY;
-            s_worldBounds.maxX = maxX;
-            s_worldBounds.maxY = maxY;
-            s_worldBounds.initialized = true;
-        } else {
-            return;
-        }
+                            const HammerEngine::WanderBehaviorConfig& config,
+                            const BehaviorContext& ctx) {
+    if (!ctx.worldBoundsValid) {
+        return;
     }
 
     auto& wander = data.state.wander;
     const float EDGE_THRESHOLD = config.edgeThreshold;
     Vector2D boundaryForce(0, 0);
 
-    if (position.getX() < s_worldBounds.minX + EDGE_THRESHOLD) {
-        float strength = 1.0f - ((position.getX() - s_worldBounds.minX) / EDGE_THRESHOLD);
+    if (position.getX() < ctx.worldMinX + EDGE_THRESHOLD) {
+        float strength = 1.0f - ((position.getX() - ctx.worldMinX) / EDGE_THRESHOLD);
         boundaryForce = boundaryForce + Vector2D(strength, 0);
-    } else if (position.getX() > s_worldBounds.maxX - EDGE_THRESHOLD) {
-        float strength = 1.0f - ((s_worldBounds.maxX - position.getX()) / EDGE_THRESHOLD);
+    } else if (position.getX() > ctx.worldMaxX - EDGE_THRESHOLD) {
+        float strength = 1.0f - ((ctx.worldMaxX - position.getX()) / EDGE_THRESHOLD);
         boundaryForce = boundaryForce + Vector2D(-strength, 0);
     }
 
-    if (position.getY() < s_worldBounds.minY + EDGE_THRESHOLD) {
-        float strength = 1.0f - ((position.getY() - s_worldBounds.minY) / EDGE_THRESHOLD);
+    if (position.getY() < ctx.worldMinY + EDGE_THRESHOLD) {
+        float strength = 1.0f - ((position.getY() - ctx.worldMinY) / EDGE_THRESHOLD);
         boundaryForce = boundaryForce + Vector2D(0, strength);
-    } else if (position.getY() > s_worldBounds.maxY - EDGE_THRESHOLD) {
-        float strength = 1.0f - ((s_worldBounds.maxY - position.getY()) / EDGE_THRESHOLD);
+    } else if (position.getY() > ctx.worldMaxY - EDGE_THRESHOLD) {
+        float strength = 1.0f - ((ctx.worldMaxY - position.getY()) / EDGE_THRESHOLD);
         boundaryForce = boundaryForce + Vector2D(0, -strength);
     }
 
@@ -174,14 +159,14 @@ void handleMovement(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConf
     Vector2D position = ctx.transform.position;
 
     float moveDistance = calculateMoveDistance(data, position, baseDistance, config);
-    applyBoundaryAvoidance(data, position, config);
+    applyBoundaryAvoidance(data, position, config, ctx);
 
     Vector2D dest = position + wander.currentDirection * moveDistance;
 
-    if (s_worldBounds.initialized) {
+    if (ctx.worldBoundsValid) {
         const float MARGIN = config.worldPaddingMargin;
-        dest.setX(std::clamp(dest.getX(), s_worldBounds.minX + MARGIN, s_worldBounds.maxX - MARGIN));
-        dest.setY(std::clamp(dest.getY(), s_worldBounds.minY + MARGIN, s_worldBounds.maxY - MARGIN));
+        dest.setX(std::clamp(dest.getX(), ctx.worldMinX + MARGIN, ctx.worldMaxX - MARGIN));
+        dest.setY(std::clamp(dest.getY(), ctx.worldMinY + MARGIN, ctx.worldMaxY - MARGIN));
     }
 
     handlePathfinding(ctx, dest, config);

@@ -327,6 +327,17 @@ EntityHandle shouldEngageEnemy(const BehaviorContext& ctx);
 EntityHandle getLastAttacker(const BehaviorContext& ctx);
 
 /**
+ * @brief Calculate relationship level between NPC and a subject entity
+ * @param npcHandle NPC whose memories/emotions to evaluate
+ * @param subjectHandle Entity to evaluate relationship with (typically player)
+ * @return Relationship score from -1.0 (hostile) to +1.0 (trusted), 0.0 if neutral/unknown
+ *
+ * Computed from NPC's emotional state and inline interaction memories with the subject.
+ * Standalone query — does not require BehaviorContext, callable from controllers.
+ */
+[[nodiscard]] float getRelationshipLevel(EntityHandle npcHandle, EntityHandle subjectHandle);
+
+/**
  * @brief Normalize a direction vector
  * @param vector Vector to normalize
  * @return Normalized vector (unit length) or zero vector if input is zero

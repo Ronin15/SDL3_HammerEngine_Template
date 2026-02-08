@@ -886,22 +886,7 @@ struct PathData {
     [[nodiscard]] size_t size() const noexcept { return pathLength; }
 };
 
-/**
- * @brief Behavior type identifiers for AI behaviors
- */
-enum class BehaviorType : uint8_t {
-    Wander = 0,
-    Guard = 1,
-    Patrol = 2,
-    Follow = 3,
-    Chase = 4,
-    Attack = 5,
-    Flee = 6,
-    Idle = 7,
-    Custom = 8,
-    COUNT = 9,
-    None = 0xFF  // Invalid/uninitialized
-};
+// BehaviorType defined in ai/BehaviorConfig.hpp
 
 /**
  * @brief Compact behavior-specific state (indexed by edmIndex like PathData)

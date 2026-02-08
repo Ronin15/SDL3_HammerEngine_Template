@@ -673,10 +673,10 @@ void GamePlayState::handleInput() {
       Vector2D playerPos = mp_Player->getPosition();
 
       // Query nearby NPCs
-      std::vector<EntityHandle> nearbyHandles;
-      aiMgr.queryHandlesInRadius(playerPos, 100.0f, nearbyHandles, true);
+      m_nearbyHandlesBuffer.clear();
+      aiMgr.queryHandlesInRadius(playerPos, 100.0f, m_nearbyHandlesBuffer, true);
 
-      for (const auto& handle : nearbyHandles) {
+      for (const auto& handle : m_nearbyHandlesBuffer) {
         if (!handle.isValid() || handle.getKind() != EntityKind::NPC) {
           continue;
         }

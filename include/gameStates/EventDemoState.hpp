@@ -182,6 +182,10 @@ private:
   size_t m_lastDisplayedNPCCount{0};
   std::string m_lastDisplayedWeather{};
 
+  // Lazy weather string caching — only recomputed when m_currentWeather changes
+  std::string m_cachedWeatherStr{"Clear"};
+  WeatherType m_lastCachedWeatherType{WeatherType::Clear};
+
   // Cached NPC count (updated in update(), used in render())
   size_t m_cachedNPCCount{0};
 

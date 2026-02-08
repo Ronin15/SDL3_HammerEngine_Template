@@ -167,7 +167,7 @@ public:
         }
 
         // Wait for warmup completion
-        aim.waitForAsyncBatchCompletion();
+
 
         // Benchmark (steady-state after hill-climb convergence)
         auto start = std::chrono::high_resolution_clock::now();
@@ -176,7 +176,7 @@ public:
         }
 
         // Wait for all async work to complete
-        aim.waitForAsyncBatchCompletion();
+
 
         auto end = std::chrono::high_resolution_clock::now();
         return std::chrono::duration<double, std::milli>(end - start).count() / iterations;
@@ -504,7 +504,7 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
         for (int i = 0; i < BATCH_MEASURE_INTERVAL; ++i) {
             aim.update(0.016f);
         }
-        aim.waitForAsyncBatchCompletion();
+
 
         auto end = std::chrono::high_resolution_clock::now();
         double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
@@ -562,7 +562,7 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
         for (int i = 0; i < FRAMES_PER_PHASE; ++i) {
             aim.update(0.016f);
         }
-        aim.waitForAsyncBatchCompletion();
+
 
         auto end = std::chrono::high_resolution_clock::now();
         double totalMs = std::chrono::duration<double, std::milli>(end - start).count();

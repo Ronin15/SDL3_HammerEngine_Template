@@ -618,8 +618,11 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
 
   // Render UI components (update moved to update() for consistent frame timing)
   if (!uiMgr.isShutdown()) {
-    // Get weather string from local m_currentWeather (updated by triggerWeatherDemo)
-    std::string currentWeatherStr = getCurrentWeatherString();
+    // Lazy weather string caching — only recompute on weather type change
+    if (m_currentWeather != m_lastCachedWeatherType) {
+      m_cachedWeatherStr = getCurrentWeatherString();
+      m_lastCachedWeatherType = m_currentWeather;
+    }
 
     float const currentFPS = mp_stateManager->getCurrentFPS();
     // Use cached NPC count from update() to avoid EDM query in render path
@@ -628,17 +631,17 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
     // Update if FPS changed by more than 0.05 (avoids flicker) or other values
     // changed
     if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
-        currentWeatherStr != m_lastDisplayedWeather ||
+        m_cachedWeatherStr != m_lastDisplayedWeather ||
         npcCount != m_lastDisplayedNPCCount) {
 
       m_statusBuffer.clear();
       std::format_to(std::back_inserter(m_statusBuffer),
                      "FPS: {:.1f} | Weather: {} | NPCs: {}", currentFPS,
-                     currentWeatherStr, npcCount);
+                     m_cachedWeatherStr, npcCount);
       uiMgr.setText("event_status", m_statusBuffer);
 
       m_lastDisplayedFPS = currentFPS;
-      m_lastDisplayedWeather = currentWeatherStr;
+      m_lastDisplayedWeather = m_cachedWeatherStr;
       m_lastDisplayedNPCCount = npcCount;
     }
   }
@@ -1358,23 +1361,26 @@ void EventDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   // Update status text before recording UI vertices
   auto &uiMgr = UIManager::Instance();
   {
-    // Get weather string from local m_currentWeather
-    std::string currentWeatherStr = getCurrentWeatherString();
+    // Lazy weather string caching — only recompute on weather type change
+    if (m_currentWeather != m_lastCachedWeatherType) {
+      m_cachedWeatherStr = getCurrentWeatherString();
+      m_lastCachedWeatherType = m_currentWeather;
+    }
     float currentFPS = mp_stateManager->getCurrentFPS();
     size_t npcCount = m_cachedNPCCount;
 
     if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
-        currentWeatherStr != m_lastDisplayedWeather ||
+        m_cachedWeatherStr != m_lastDisplayedWeather ||
         npcCount != m_lastDisplayedNPCCount) {
 
       m_statusBuffer.clear();
       std::format_to(std::back_inserter(m_statusBuffer),
                      "FPS: {:.1f} | Weather: {} | NPCs: {}", currentFPS,
-                     currentWeatherStr, npcCount);
+                     m_cachedWeatherStr, npcCount);
       uiMgr.setText("event_status", m_statusBuffer);
 
       m_lastDisplayedFPS = currentFPS;
-      m_lastDisplayedWeather = currentWeatherStr;
+      m_lastDisplayedWeather = m_cachedWeatherStr;
       m_lastDisplayedNPCCount = npcCount;
     }
   }

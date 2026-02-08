@@ -993,6 +993,7 @@ void FontManager::drawTextGPU(const std::string& text, const std::string& fontID
   SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmd);
   if (!copyPass) {
     FONT_ERROR("Failed to begin copy pass for text vertex upload");
+    SDL_CancelGPUCommandBuffer(uploadCmd);
     return;
   }
 

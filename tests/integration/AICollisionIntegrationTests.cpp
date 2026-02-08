@@ -266,8 +266,6 @@ struct AICollisionTestFixture {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
 
-        // Wait for async operations to complete
-        AIManager::Instance().waitForAsyncBatchCompletion();
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
@@ -644,8 +642,6 @@ BOOST_AUTO_TEST_CASE(TestAICollisionPerformanceUnderLoad) {
     }
 
 
-    // Wait for async behavior assignments to complete before testing
-    AIManager::Instance().waitForAsyncBatchCompletion();
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     std::cout << "Entities created. Starting performance test..." << std::endl;

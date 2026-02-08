@@ -548,8 +548,7 @@ void AdvancedAIDemoState::render(SDL_Renderer *renderer,
     // Render player (sub-pixel smoothness from entity's own interpolation)
     if (m_player) {
       m_player->render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
-
-}
+    }
   }
 
   // ========== END SCENE (composite with zoom) ==========

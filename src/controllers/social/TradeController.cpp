@@ -4,6 +4,7 @@
  */
 
 #include "controllers/social/TradeController.hpp"
+#include "ai/BehaviorExecutors.hpp"
 #include "controllers/social/SocialController.hpp"
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
@@ -519,54 +520,9 @@ bool TradeController::willRefuseTrade(EntityHandle npcHandle) const {
 }
 
 float TradeController::getRelationshipLevel(EntityHandle npcHandle) const {
-    constexpr float RELATIONSHIP_NEUTRAL = 0.0f;
-
-    if (!npcHandle.isValid()) {
-        return RELATIONSHIP_NEUTRAL;
-    }
-
-    auto& edm = EntityDataManager::Instance();
-    size_t idx = edm.getIndex(npcHandle);
-    if (idx == SIZE_MAX) {
-        return RELATIONSHIP_NEUTRAL;
-    }
-
-    // Check if NPC has memory data
-    if (!edm.hasMemoryData(idx)) {
-        return RELATIONSHIP_NEUTRAL;
-    }
-
-    const auto& memoryData = edm.getMemoryData(idx);
-    if (!memoryData.isValid()) {
-        return RELATIONSHIP_NEUTRAL;
-    }
-
-    // Calculate relationship from emotional state
-    // Low suspicion + low fear + low aggression = good relationship
-    const auto& emotions = memoryData.emotions;
-
-    float relationship = 0.0f;
-
-    // Negative emotions reduce relationship
-    relationship -= emotions.suspicion * 0.4f;
-    relationship -= emotions.fear * 0.3f;
-    relationship -= emotions.aggression * 0.5f;
-
-    // Check interaction memories for additional context
     auto player = mp_player.lock();
-    if (player) {
-        std::vector<const MemoryEntry*> memories;
-        edm.findMemoriesOfEntity(idx, player->getHandle(), memories);
-
-        // Sum up interaction values (positive = good, negative = bad)
-        for (const auto* mem : memories) {
-            if (mem && mem->type == MemoryType::Interaction) {
-                relationship += mem->value * 0.1f;  // Scale down memory influence
-            }
-        }
-    }
-
-    return std::clamp(relationship, -1.0f, 1.0f);
+    EntityHandle playerHandle = player ? player->getHandle() : EntityHandle{};
+    return Behaviors::getRelationshipLevel(npcHandle, playerHandle);
 }
 
 uint32_t TradeController::getNPCInventoryIndex(EntityHandle npcHandle) const {

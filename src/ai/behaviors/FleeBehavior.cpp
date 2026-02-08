@@ -4,7 +4,6 @@
  */
 
 #include "ai/BehaviorExecutors.hpp"
-#include "ai/BehaviorExecutors.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"

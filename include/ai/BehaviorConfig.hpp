@@ -8,8 +8,19 @@
 
 #include <cstdint>
 
-// Forward declare BehaviorType from EntityDataManager
-enum class BehaviorType : uint8_t;
+enum class BehaviorType : uint8_t {
+    Wander = 0,
+    Guard = 1,
+    Patrol = 2,
+    Follow = 3,
+    Chase = 4,
+    Attack = 5,
+    Flee = 6,
+    Idle = 7,
+    Custom = 8,
+    COUNT = 9,
+    None = 0xFF  // Invalid/uninitialized
+};
 
 namespace HammerEngine
 {
@@ -565,59 +576,59 @@ struct BehaviorConfigData {
     static BehaviorConfigData makeFollow(const FollowBehaviorConfig& cfg = {});
 };
 
-// Inline factory implementations (avoid link-time dependencies)
+// Inline factory implementations
 inline BehaviorConfigData BehaviorConfigData::makeIdle(const IdleBehaviorConfig& cfg) {
     BehaviorConfigData data;
-    data.type = static_cast<BehaviorType>(7);  // BehaviorType::Idle
+    data.type = BehaviorType::Idle;
     data.config.idle = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeWander(const WanderBehaviorConfig& cfg) {
     BehaviorConfigData data;
-    data.type = static_cast<BehaviorType>(0);  // BehaviorType::Wander
+    data.type = BehaviorType::Wander;
     data.config.wander = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeChase(const ChaseBehaviorConfig& cfg) {
     BehaviorConfigData data;
-    data.type = static_cast<BehaviorType>(4);  // BehaviorType::Chase
+    data.type = BehaviorType::Chase;
     data.config.chase = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makePatrol(const PatrolBehaviorConfig& cfg) {
     BehaviorConfigData data;
-    data.type = static_cast<BehaviorType>(2);  // BehaviorType::Patrol
+    data.type = BehaviorType::Patrol;
     data.config.patrol = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeGuard(const GuardBehaviorConfig& cfg) {
     BehaviorConfigData data;
-    data.type = static_cast<BehaviorType>(1);  // BehaviorType::Guard
+    data.type = BehaviorType::Guard;
     data.config.guard = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeAttack(const AttackBehaviorConfig& cfg) {
     BehaviorConfigData data;
-    data.type = static_cast<BehaviorType>(5);  // BehaviorType::Attack
+    data.type = BehaviorType::Attack;
     data.config.attack = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeFlee(const FleeBehaviorConfig& cfg) {
     BehaviorConfigData data;
-    data.type = static_cast<BehaviorType>(6);  // BehaviorType::Flee
+    data.type = BehaviorType::Flee;
     data.config.flee = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeFollow(const FollowBehaviorConfig& cfg) {
     BehaviorConfigData data;
-    data.type = static_cast<BehaviorType>(3);  // BehaviorType::Follow
+    data.type = BehaviorType::Follow;
     data.config.follow = cfg;
     return data;
 }

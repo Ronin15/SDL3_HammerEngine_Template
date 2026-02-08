@@ -123,17 +123,6 @@ public:
    */
   void update(float deltaTime);
 
-  /**
-   * @brief Waits for all async batch operations to complete
-   *
-   * This should be called before systems that depend on AI collision updates
-   * (e.g., CollisionManager) to ensure all async collision data is ready.
-   *
-   * Fast path: ~1ns atomic check if no pending batches
-   * Slow path: blocks until all batches complete on low-core systems
-   */
-  void waitForAsyncBatchCompletion();
-
 
   /**
    * @brief Checks if AIManager has been shut down
@@ -331,7 +320,10 @@ private:
   PathfinderManager* mp_pathfinderManager{nullptr};
 
   // Batch futures for parallel processing - reused via clear() each frame
-  std::vector<std::future<void>> m_batchFutures;
+  std::vector<std::future<std::vector<EventManager::DeferredEvent>>> m_batchFutures;
+
+  // Reusable buffer for collecting damage events from batch futures
+  std::vector<EventManager::DeferredEvent> m_allDamageEvents;
 
   // Reusable buffer for Active tier EDM indices (avoids per-frame allocation)
   std::vector<size_t> m_activeIndicesBuffer;

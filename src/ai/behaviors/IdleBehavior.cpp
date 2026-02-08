@@ -10,14 +10,14 @@
 
 // Static thread-local RNG pool for memory optimization and thread safety
 namespace {
-thread_local std::mt19937 g_rng{std::random_device{}()};
+thread_local std::mt19937 s_rng{std::random_device{}()};
 thread_local std::uniform_real_distribution<float> s_angleDistribution{0.0f, 2.0f * static_cast<float>(M_PI)};
 thread_local std::uniform_real_distribution<float> s_radiusDistribution{0.0f, 1.0f};
 thread_local std::uniform_real_distribution<float> s_frequencyVariation{0.5f, 1.5f};
 
 Vector2D generateRandomOffset(float idleRadius) {
-    float angle = s_angleDistribution(g_rng);
-    float radius = s_radiusDistribution(g_rng) * idleRadius;
+    float angle = s_angleDistribution(s_rng);
+    float radius = s_radiusDistribution(s_rng) * idleRadius;
     return Vector2D(radius * std::cos(angle), radius * std::sin(angle));
 }
 
@@ -25,14 +25,14 @@ float getRandomMovementInterval(float movementFrequency) {
     if (movementFrequency <= 0.0f)
         return std::numeric_limits<float>::max();
     float baseInterval = 1.0f / movementFrequency;
-    return baseInterval * s_frequencyVariation(g_rng);
+    return baseInterval * s_frequencyVariation(s_rng);
 }
 
 float getRandomTurnInterval(float turnFrequency) {
     if (turnFrequency <= 0.0f)
         return std::numeric_limits<float>::max();
     float baseInterval = 1.0f / turnFrequency;
-    return baseInterval * s_frequencyVariation(g_rng);
+    return baseInterval * s_frequencyVariation(s_rng);
 }
 
 void initializeIdleState(const Vector2D& position, BehaviorData& data, const HammerEngine::IdleBehaviorConfig& config) {
@@ -73,7 +73,7 @@ void updateOccasionalTurn(BehaviorContext& ctx, const HammerEngine::IdleBehavior
     idle.turnTimer += ctx.deltaTime;
 
     if (config.turnFrequency > 0.0f && idle.turnTimer >= idle.turnInterval) {
-        idle.currentAngle = s_angleDistribution(g_rng);
+        idle.currentAngle = s_angleDistribution(s_rng);
         idle.turnTimer = 0.0f;
         idle.turnInterval = getRandomTurnInterval(config.turnFrequency);
     }
@@ -97,7 +97,7 @@ void updateLightFidget(BehaviorContext& ctx, const HammerEngine::IdleBehaviorCon
     }
 
     if (config.turnFrequency > 0.0f && idle.turnTimer >= idle.turnInterval) {
-        idle.currentAngle = s_angleDistribution(g_rng);
+        idle.currentAngle = s_angleDistribution(s_rng);
         idle.turnTimer = 0.0f;
         idle.turnInterval = getRandomTurnInterval(config.turnFrequency);
     }
