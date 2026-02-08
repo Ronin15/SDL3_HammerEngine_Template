@@ -189,6 +189,12 @@ m_controllers.get<WeatherController>()->getCurrentWeather();
 
 ## Workflow
 
+Always use established systems and patterns (UIManager helpers, state architecture, existing constants). NEVER create ad-hoc or one-off implementations when a pattern already exists — read the existing code first.
+
+Prefer minimal, architecturally performant, and efficient solutions. Do not add unnecessary abstractions, statistical analysis, or safety checks beyond what was asked.
+
+When the user names a specific file (e.g., "AIDemoState"), work on exactly that file. Do not substitute similar-sounding files.
+
 Search existing patterns before implementing.
 
 **Demo States**: States with "Demo" suffix (EventDemoState, UIDemoState, AIDemoState, OverlayDemoState) are for testing/showcasing features.
@@ -196,3 +202,11 @@ Search existing patterns before implementing.
 **GamePlayState**: The pristine official gameplay state. Keep clean and production-ready.
 
 **Reference States**: SettingsMenuState, MainMenuState for menu patterns.
+
+## Bug Fixing
+
+Fix root causes in production code. NEVER bypass failing tests by modifying test expectations unless explicitly told to.
+
+When debugging rendering issues (jitter, shimmer, flickering), trace the full render pipeline before proposing any fix: camera update → interpolation → floor/round operations → sub-pixel offset → draw. No speculative fixes.
+
+When removing dead code or unused parameters, delete them entirely. Do not comment them out.
