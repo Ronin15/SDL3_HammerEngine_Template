@@ -57,11 +57,13 @@ bool WorldResourceManager::init() {
 
     m_initialized.store(true, std::memory_order_release);
 
-    // Release lock before subscribing to events (EventManager has its own lock;
-    // lock ordering requires registryMutex before EventManager, not both at once)
-    lock.unlock();
-
-    subscribeWorldEvents();
+    // NOTE: Do NOT call subscribeWorldEvents() here. WorldManager fires
+    // WorldUnloadedEvent with DispatchMode::Deferred, meaning the event sits
+    // in EventManager's queue until the next update(). By that time, the new
+    // world has already loaded and repopulated spatial indices — the deferred
+    // onWorldUnloaded() would then wipe freshly-populated data.
+    // Cleanup is handled synchronously via prepareForStateTransition() in
+    // GamePlayState::exit() instead.
 
     WORLD_RESOURCE_INFO("WorldResourceManager initialized (registry-over-EDM mode)");
     return true;

@@ -454,6 +454,9 @@ bool GamePlayState::exit() {
     // Clean up UI
     ui.prepareForStateTransition();
 
+    // Destroy all controllers so re-entry creates fresh instances with valid refs
+    m_controllers.clear();
+
     // Reset player
     mp_Player = nullptr;
 
@@ -515,8 +518,8 @@ bool GamePlayState::exit() {
   // Reset player
   mp_Player = nullptr;
 
-  // Unsubscribe all controllers at once
-  m_controllers.unsubscribeAll();
+  // Destroy all controllers so re-entry creates fresh instances with valid refs
+  m_controllers.clear();
   gameTimeMgr.enableAutoWeather(false);
 
   // Stop ambient particles before unsubscribing
