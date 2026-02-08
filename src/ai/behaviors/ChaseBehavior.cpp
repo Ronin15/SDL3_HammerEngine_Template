@@ -117,6 +117,7 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
     // Target priority: explicit > memory lastTarget > memory lastAttacker
     Vector2D entityPos = ctx.transform.position;
     Vector2D targetPos;
+    EntityHandle targetHandle{};
     bool targetValid = false;
     auto& edm = EntityDataManager::Instance();
 
@@ -126,6 +127,7 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
             const auto& targetHot = edm.getHotDataByIndex(targetIdx);
             if (targetHot.isAlive()) {
                 targetPos = targetHot.transform.position;
+                targetHandle = chase.explicitTarget;
                 targetValid = true;
             }
         }
@@ -141,6 +143,7 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
             const auto& targetHot = edm.getHotDataByIndex(targetIdx);
             if (targetHot.isAlive()) {
                 targetPos = targetHot.transform.position;
+                targetHandle = ctx.memoryData->lastTarget;
                 targetValid = true;
             }
         }
@@ -152,6 +155,7 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
             const auto& attackerHot = edm.getHotDataByIndex(attackerIdx);
             if (attackerHot.isAlive()) {
                 targetPos = attackerHot.transform.position;
+                targetHandle = ctx.memoryData->lastAttacker;
                 targetValid = true;
             }
         }
@@ -173,6 +177,10 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
     // Caught target — transition to Attack
     float catchRadiusSq = config.catchRadius * config.catchRadius;
     if (distanceSquared <= catchRadiusSq) {
+        // Preserve target in memory for Attack to pick up
+        if (ctx.memoryData && targetHandle.isValid()) {
+            ctx.memoryData->lastTarget = targetHandle;
+        }
         switchBehavior(ctx.edmIndex, BehaviorType::Attack);
         return;
     }

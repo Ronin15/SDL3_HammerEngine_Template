@@ -381,13 +381,6 @@ void AIManager::update(float deltaTime) {
     // OPTIMIZATION: Cache game time ONCE per frame for combat timing comparisons
     float cachedGameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
 
-    // Rebuild spatial grid for O(K) radius queries this frame
-    // Always rebuild — the flat hash table uses O(1) generation-based clear
-    // so rebuild cost is proportional to entity count, not table size
-    m_spatialGrid.rebuild(m_activeIndicesBuffer, [&edm](size_t idx) {
-      return edm.getHotDataByIndex(idx).transform.position;
-    });
-
     // Cache player edmIndex once per frame (avoids hash lookup per query)
     m_cachedPlayerEdmIdx = m_playerHandle.isValid()
         ? edm.getIndex(m_playerHandle)
@@ -395,14 +388,11 @@ void AIManager::update(float deltaTime) {
 
     // Emotional contagion: high-fear NPCs spread fear to nearby NPCs
     // Runs on main thread before batch processing to avoid data races
-    // Uses spatial grid for O(K) inner loop instead of O(A^2) brute force
+    // Inner loop only runs for the few fearful entities (most early-exit)
     {
       constexpr float CONTAGION_COOLDOWN = 2.0f;
-      constexpr float CONTAGION_RANGE = 200.0f;
-      constexpr float CONTAGION_RANGE_SQ = CONTAGION_RANGE * CONTAGION_RANGE;
+      constexpr float CONTAGION_RANGE_SQ = 200.0f * 200.0f;
       constexpr float FEAR_THRESHOLD = 0.6f;
-
-      thread_local std::vector<size_t> contagionBuffer;
 
       for (size_t sourceIdx : m_activeIndicesBuffer) {
         if (!edm.hasMemoryData(sourceIdx)) continue;
@@ -415,16 +405,14 @@ void AIManager::update(float deltaTime) {
 
         Vector2D sourcePos = edm.getHotDataByIndex(sourceIdx).transform.position;
 
-        // Spatial grid query: O(K) nearby entities instead of O(A) full scan
-        // queryRadius already applies exact distance check, no redundant distSq needed
-        m_spatialGrid.queryRadius(sourcePos, CONTAGION_RANGE, contagionBuffer);
-
-        for (size_t idx : contagionBuffer) {
+        for (size_t idx : m_activeIndicesBuffer) {
           if (idx == sourceIdx) continue;
           if (!edm.hasMemoryData(idx)) continue;
 
           Vector2D targetPos = edm.getHotDataByIndex(idx).transform.position;
           float distSq = Vector2D::distanceSquared(sourcePos, targetPos);
+          if (distSq > CONTAGION_RANGE_SQ) continue;
+
           float intensity = 1.0f - (distSq / CONTAGION_RANGE_SQ);
           auto& target = edm.getMemoryData(idx);
 
@@ -446,11 +434,8 @@ void AIManager::update(float deltaTime) {
     // Replaces per-entity shouldEngageEnemy() in behaviors — O(N/60) checks per frame
     {
       constexpr size_t ENGAGE_CHECK_INTERVAL = 60;
-      constexpr float ENGAGE_RANGE = 300.0f;
-      constexpr float ENGAGE_RANGE_SQ = ENGAGE_RANGE * ENGAGE_RANGE;
+      constexpr float ENGAGE_RANGE_SQ = 300.0f * 300.0f;
       constexpr float AGGRESSION_THRESHOLD = 0.8f;
-
-      thread_local std::vector<size_t> t_engageBuffer;
 
       for (size_t sourceIdx : m_activeIndicesBuffer) {
         if ((currentFrame + sourceIdx) % ENGAGE_CHECK_INTERVAL != 0) continue;
@@ -461,20 +446,23 @@ void AIManager::update(float deltaTime) {
         // Quick aggression threshold (same as shouldEngageEnemy)
         if (memory.emotions.aggression + memory.personality.aggression < AGGRESSION_THRESHOLD) continue;
 
-        // Only push to passive behaviors (Idle/Wander) — skip active combat behaviors
+        // Push to passive behaviors (Idle/Wander) and targetless Attack/SEEKING entities
         auto& behaviorData = edm.getBehaviorData(sourceIdx);
         BehaviorType type = behaviorData.behaviorType;
-        if (type != BehaviorType::Idle && type != BehaviorType::Wander) continue;
+        if (type == BehaviorType::Attack) {
+            const auto& atk = behaviorData.state.attack;
+            if (atk.hasTarget || atk.hasExplicitTarget) continue;
+        } else if (type != BehaviorType::Idle && type != BehaviorType::Wander) {
+            continue;
+        }
 
         Vector2D sourcePos = edm.getHotDataByIndex(sourceIdx).transform.position;
         uint8_t sourceFaction = edm.getCharacterDataByIndex(sourceIdx).faction;
 
-        m_spatialGrid.queryRadius(sourcePos, ENGAGE_RANGE, t_engageBuffer);
-
         EntityHandle bestTarget{};
         float bestDistSq = ENGAGE_RANGE_SQ;
 
-        for (size_t targetIdx : t_engageBuffer) {
+        for (size_t targetIdx : m_activeIndicesBuffer) {
           if (targetIdx == sourceIdx) continue;
           const auto& hot = edm.getHotDataByIndex(targetIdx);
           if (!hot.isAlive()) continue;
@@ -988,20 +976,14 @@ void AIManager::unregisterEntity(EntityHandle handle) {
 void AIManager::queryEdmIndicesInRadius(const Vector2D &center, float radius,
                                         std::vector<size_t> &outEdmIndices,
                                         bool excludePlayer) const {
-  if (!m_spatialGrid.empty()) {
-    // Fast path: O(K) spatial grid query
-    m_spatialGrid.queryRadius(center, radius, outEdmIndices);
-  } else {
-    // Fallback: linear scan (grid not yet built this frame or no active entities)
-    outEdmIndices.clear();
-    const float radiusSq = radius * radius;
-    auto &edm = EntityDataManager::Instance();
-    for (size_t idx : m_activeIndicesBuffer) {
-      float distSq = Vector2D::distanceSquared(
-          center, edm.getHotDataByIndex(idx).transform.position);
-      if (distSq <= radiusSq) {
-        outEdmIndices.push_back(idx);
-      }
+  outEdmIndices.clear();
+  const float radiusSq = radius * radius;
+  auto &edm = EntityDataManager::Instance();
+  for (size_t idx : m_activeIndicesBuffer) {
+    float distSq = Vector2D::distanceSquared(
+        center, edm.getHotDataByIndex(idx).transform.position);
+    if (distSq <= radiusSq) {
+      outEdmIndices.push_back(idx);
     }
   }
 

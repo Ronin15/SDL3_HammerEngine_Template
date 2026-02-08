@@ -22,7 +22,6 @@
  */
 
 #include "ai/BehaviorConfig.hpp"
-#include "ai/internal/AISpatialGrid.hpp"
 #include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -336,9 +335,6 @@ private:
 
   // Reusable buffer for Active tier EDM indices (avoids per-frame allocation)
   std::vector<size_t> m_activeIndicesBuffer;
-
-  // Spatial grid for O(K) radius queries (rebuilt once per frame)
-  AISpatialGrid m_spatialGrid;
 
   // Cached player edmIndex (updated once per frame during update(), SIZE_MAX = no player)
   size_t m_cachedPlayerEdmIdx{SIZE_MAX};

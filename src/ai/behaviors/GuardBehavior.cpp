@@ -441,6 +441,11 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         threat = detectThreat(ctx, edm, guard.cachedDetectionRange, isEnemyFaction);
         threatPresent = threat.isValid();
         guard.threatSightingTimer = 0.0f;
+
+        // Persist threat handle in memory for Attack behavior handoff
+        if (threatPresent && ctx.memoryData) {
+            ctx.memoryData->lastTarget = threat;
+        }
     }
 
     // Update alert level (isEnemyFaction pre-computed by detectThreat)
@@ -512,10 +517,13 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
             if (guard.currentAlertLevel >= 3) {
                 float distToThreat = (ctx.transform.position - guard.lastKnownThreatPosition).length();
                 if (distToThreat <= DEFAULT_ATTACK_ENGAGE_RANGE) {
-                    // Switch to Attack behavior first (clears old state)
                     switchBehavior(ctx.edmIndex, BehaviorType::Attack);
-                    // Attack behavior will auto-acquire nearest threat - no explicit target available from investigation
-                    // (investigation only has lastKnownThreatPosition, not a valid EntityHandle)
+                    // Set explicit target from memory if available (written by detectThreat above)
+                    if (ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
+                        auto& attackData = edm.getBehaviorData(ctx.edmIndex);
+                        attackData.state.attack.hasExplicitTarget = true;
+                        attackData.state.attack.explicitTarget = ctx.memoryData->lastTarget;
+                    }
                     return;
                 }
             }

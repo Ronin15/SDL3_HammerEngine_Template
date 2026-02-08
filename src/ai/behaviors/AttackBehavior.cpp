@@ -286,7 +286,7 @@ void executeAttackAction(size_t edmIndex, const Vector2D& targetPos, BehaviorDat
     Vector2D knockback = calculateKnockbackVector(entityPos, targetPos) * config.knockbackForce;
     EntityHandle attackerHandle = edm.getHandle(edmIndex);
 
-    // Resolve target handle: explicit > memory lastTarget > memory lastAttacker > scan
+    // Resolve target handle: explicit > memory lastTarget > memory lastAttacker
     EntityHandle targetHandle{};
     if (attack.hasExplicitTarget && attack.explicitTarget.isValid()) {
         targetHandle = attack.explicitTarget;
@@ -298,10 +298,7 @@ void executeAttackAction(size_t edmIndex, const Vector2D& targetPos, BehaviorDat
             targetHandle = memData.lastAttacker;
         }
     }
-    if (!targetHandle.isValid() && charData) {
-        targetHandle = scanForNearestTarget(entityPos, charData->faction, edmIndex);
-    }
-    if (!targetHandle.isValid()) return;  // No valid target
+    if (!targetHandle.isValid()) return;  // No valid target — main execute handles re-acquisition
 
     applyDamageToTarget(targetHandle, damage, knockback, attackerHandle);
 
@@ -462,6 +459,7 @@ void initAttack(size_t edmIndex, const HammerEngine::AttackBehaviorConfig& confi
     attack.targetDistance = 0.0f;
     attack.attackChargeTime = 0.0f;
     attack.recoveryTimer = 0.0f;
+    attack.scanCooldown = 0.0f;
     attack.currentCombo = 0;
     attack.attacksInCombo = 0;
     attack.strafeDirectionInt = 1;
@@ -491,6 +489,13 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
 
     // Process any pending messages before main logic
     processAttackMessages(data, config);
+
+    // Consume engagement target from centralized pre-pass
+    if (data.pendingEngageTarget.isValid()) {
+        attack.hasExplicitTarget = true;
+        attack.explicitTarget = data.pendingEngageTarget;
+        data.pendingEngageTarget = EntityHandle{};
+    }
 
     // Target priority: explicit > memory lastTarget > memory lastAttacker > player (if hostile)
     Vector2D targetPos;
@@ -531,18 +536,25 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
         }
     }
 
-    // Scan for nearest different-faction entity (no player hardcoding)
+    // Throttled scan for nearest different-faction entity (safety net)
     if (!hasTarget && ctx.characterData) {
-        EntityHandle scannedTarget = scanForNearestTarget(
-            ctx.transform.position, ctx.characterData->faction, ctx.edmIndex);
-        if (scannedTarget.isValid()) {
-            size_t scanIdx = edm.getIndex(scannedTarget);
-            if (scanIdx != SIZE_MAX) {
-                targetPos = edm.getHotDataByIndex(scanIdx).transform.position;
-                hasTarget = true;
-                // Set as explicit target for subsequent frames
-                attack.hasExplicitTarget = true;
-                attack.explicitTarget = scannedTarget;
+        attack.scanCooldown -= ctx.deltaTime;
+        if (attack.scanCooldown <= 0.0f) {
+            EntityHandle scannedTarget = scanForNearestTarget(
+                ctx.transform.position, ctx.characterData->faction, ctx.edmIndex);
+            if (scannedTarget.isValid()) {
+                size_t scanIdx = edm.getIndex(scannedTarget);
+                if (scanIdx != SIZE_MAX) {
+                    targetPos = edm.getHotDataByIndex(scanIdx).transform.position;
+                    hasTarget = true;
+                    // Set as explicit target for subsequent frames
+                    attack.hasExplicitTarget = true;
+                    attack.explicitTarget = scannedTarget;
+                    attack.scanCooldown = 0.0f;
+                }
+            }
+            if (!hasTarget) {
+                attack.scanCooldown = 0.5f; // Backoff on failed scan
             }
         }
     }
@@ -551,8 +563,8 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     if (!hasTarget) {
         attack.hasTarget = false;
         ctx.transform.velocity = Vector2D(0, 0);
-        // Was actively fighting, target lost — return to passive behavior
-        if (attack.inCombat) {
+        // Was actively fighting or stuck seeking too long — return to passive behavior
+        if (attack.inCombat || attack.stateChangeTimer > 1.5f) {
             switchBehavior(ctx.edmIndex, BehaviorType::Idle);
         }
         return;
@@ -753,8 +765,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             if (s_specialRoll(s_rng) < config.specialAttackChance && attack.specialAttackReady) {
                 float specialDamage = calculateDamage(data, config) * SPECIAL_ATTACK_MULTIPLIER;
                 Vector2D knockback = calculateKnockbackVector(entityPos, targetPos) * config.knockbackForce * SPECIAL_ATTACK_MULTIPLIER;
-                // Resolve target: explicit > memory lastTarget > memory lastAttacker > scan
-                auto& edm = EntityDataManager::Instance();
+                // Resolve target: explicit > memory lastTarget > memory lastAttacker
                 EntityHandle targetHandle{};
                 if (attack.hasExplicitTarget && attack.explicitTarget.isValid()) {
                     targetHandle = attack.explicitTarget;
@@ -762,8 +773,6 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
                     targetHandle = ctx.memoryData->lastTarget;
                 } else if (ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
                     targetHandle = ctx.memoryData->lastAttacker;
-                } else if (ctx.characterData) {
-                    targetHandle = scanForNearestTarget(entityPos, ctx.characterData->faction, ctx.edmIndex);
                 }
                 if (targetHandle.isValid()) {
                     applyDamageToTarget(targetHandle, specialDamage, knockback, edm.getHandle(ctx.edmIndex));

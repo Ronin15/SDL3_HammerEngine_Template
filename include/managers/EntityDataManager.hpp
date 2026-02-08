@@ -1093,6 +1093,7 @@ struct BehaviorData {
             float targetDistance;
             float attackChargeTime;
             float recoveryTimer;
+            float scanCooldown;
             float preferredAttackAngle;
             int currentCombo;
             int attacksInCombo;
