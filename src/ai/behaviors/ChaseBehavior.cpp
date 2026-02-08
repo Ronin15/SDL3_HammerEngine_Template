@@ -114,7 +114,10 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
         data.lastCrowdAnalysis = 0.0f;
     }
 
-    // Target priority: explicit > memory lastTarget > memory lastAttacker
+    // Target priority: explicit > lastAttacker (immediate threat) > lastTarget (stale tracking)
+    // lastAttacker must outrank lastTarget because combat-reactive transitions
+    // (Follow, Patrol, Idle, Wander → Chase) only set lastAttacker via recordCombatEvent.
+    // lastTarget may hold a stale reference (e.g., the Follow leader).
     Vector2D entityPos = ctx.transform.position;
     Vector2D targetPos;
     EntityHandle targetHandle{};
@@ -137,18 +140,6 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
         }
     }
 
-    if (!targetValid && ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
-        size_t targetIdx = edm.getIndex(ctx.memoryData->lastTarget);
-        if (targetIdx != SIZE_MAX) {
-            const auto& targetHot = edm.getHotDataByIndex(targetIdx);
-            if (targetHot.isAlive()) {
-                targetPos = targetHot.transform.position;
-                targetHandle = ctx.memoryData->lastTarget;
-                targetValid = true;
-            }
-        }
-    }
-
     if (!targetValid && ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
         size_t attackerIdx = edm.getIndex(ctx.memoryData->lastAttacker);
         if (attackerIdx != SIZE_MAX) {
@@ -156,6 +147,18 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
             if (attackerHot.isAlive()) {
                 targetPos = attackerHot.transform.position;
                 targetHandle = ctx.memoryData->lastAttacker;
+                targetValid = true;
+            }
+        }
+    }
+
+    if (!targetValid && ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
+        size_t targetIdx = edm.getIndex(ctx.memoryData->lastTarget);
+        if (targetIdx != SIZE_MAX) {
+            const auto& targetHot = edm.getHotDataByIndex(targetIdx);
+            if (targetHot.isAlive()) {
+                targetPos = targetHot.transform.position;
+                targetHandle = ctx.memoryData->lastTarget;
                 targetValid = true;
             }
         }
