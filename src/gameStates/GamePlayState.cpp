@@ -30,6 +30,7 @@
 #include "managers/UIConstants.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "managers/WorldResourceManager.hpp"
 #include "utils/Camera.hpp"
 #include "world/WorldData.hpp"
 #include <algorithm>
@@ -433,6 +434,12 @@ bool GamePlayState::exit() {
       particleMgr.prepareForStateTransition();
     }
 
+    // Clean up world resource tracking (spatial indices, registries)
+    auto& wrm = WorldResourceManager::Instance();
+    if (wrm.isInitialized()) {
+      wrm.prepareForStateTransition();
+    }
+
     // Clean up camera and scene renderer
     m_camera.reset();
     m_renderPipeline.reset();
@@ -481,6 +488,12 @@ bool GamePlayState::exit() {
   // Simple particle cleanup
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
     particleMgr.prepareForStateTransition();
+  }
+
+  // Clean up world resource tracking (spatial indices, registries)
+  auto& wrm = WorldResourceManager::Instance();
+  if (wrm.isInitialized()) {
+    wrm.prepareForStateTransition();
   }
 
   // Clean up camera and scene renderer first to stop world rendering

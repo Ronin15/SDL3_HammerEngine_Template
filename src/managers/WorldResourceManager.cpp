@@ -57,6 +57,12 @@ bool WorldResourceManager::init() {
 
     m_initialized.store(true, std::memory_order_release);
 
+    // Release lock before subscribing to events (EventManager has its own lock;
+    // lock ordering requires registryMutex before EventManager, not both at once)
+    lock.unlock();
+
+    subscribeWorldEvents();
+
     WORLD_RESOURCE_INFO("WorldResourceManager initialized (registry-over-EDM mode)");
     return true;
 }
@@ -100,6 +106,32 @@ void WorldResourceManager::prepareForStateTransition() {
 
     // Acquire exclusive lock to wait for any in-flight queries to complete
     std::unique_lock lock(m_registryMutex);
+
+    // Clear all registries (stale EDM indices from previous state)
+    m_inventoryRegistry.clear();
+    m_harvestableRegistry.clear();
+    m_inventoryToWorld.clear();
+    m_harvestableToWorld.clear();
+
+    // Clear all spatial indices and reverse lookups
+    m_itemSpatialIndices.clear();
+    m_harvestableSpatialIndices.clear();
+    m_containerSpatialIndices.clear();
+    m_itemToWorld.clear();
+    m_harvestableSpatialToWorld.clear();
+    m_containerToWorld.clear();
+
+    // Clear active world so createWorld() succeeds on re-entry
+    m_activeWorld.clear();
+
+    // Re-create default world entries (matches init() pattern)
+    m_inventoryRegistry["default"] = {};
+    m_harvestableRegistry["default"] = {};
+    m_itemSpatialIndices["default"] = SpatialIndex();
+    m_harvestableSpatialIndices["default"] = SpatialIndex();
+
+    m_stats.reset();
+    m_stats.worldsTracked = 1;
 
     WORLD_RESOURCE_DEBUG("Prepared for state transition");
 }
