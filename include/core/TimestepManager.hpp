@@ -131,6 +131,7 @@ private:
     double m_accumulator;                // Frame timing accumulator
     static constexpr double MAX_ACCUMULATOR = 0.25; // Max delta clamp for VSync mode
     static constexpr double DELTA_SNAP_TOLERANCE = 0.10; // Snap delta within 10% of timestep multiple
+    static constexpr int MAX_SUB_DIVISOR = 4; // Max sub-divisor for high-refresh snapping (120/180/240Hz)
     
     // Frame statistics
     uint32_t m_lastFrameTimeMs;         // Last frame duration in milliseconds (for getFrameTimeMs())
