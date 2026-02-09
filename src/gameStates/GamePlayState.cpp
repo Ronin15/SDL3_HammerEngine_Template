@@ -402,6 +402,7 @@ bool GamePlayState::exit() {
   auto &ui = UIManager::Instance();
   WorldManager &worldMgr = WorldManager::Instance();
   GameTimeManager &gameTimeMgr = GameTimeManager::Instance();
+  auto &wrm = WorldResourceManager::Instance();
 
   if (m_transitioningToLoading) {
     // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded
@@ -433,7 +434,6 @@ bool GamePlayState::exit() {
     }
 
     // Clean up world resource tracking (spatial indices, registries)
-    auto& wrm = WorldResourceManager::Instance();
     if (wrm.isInitialized()) {
       wrm.prepareForStateTransition();
     }
@@ -504,7 +504,6 @@ bool GamePlayState::exit() {
   }
 
   // Clean up world resource tracking (spatial indices, registries)
-  auto& wrm = WorldResourceManager::Instance();
   if (wrm.isInitialized()) {
     wrm.prepareForStateTransition();
   }

@@ -2992,7 +2992,7 @@ void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
 
 #ifndef NDEBUG
         // Rolling log every 60 seconds using time-based check
-        static auto lastLogTime = std::chrono::steady_clock::now();
+        thread_local auto lastLogTime = std::chrono::steady_clock::now();
         auto now = std::chrono::steady_clock::now();
         if (std::chrono::duration_cast<std::chrono::seconds>(now - lastLogTime).count() >= 60) {
             lastLogTime = now;
