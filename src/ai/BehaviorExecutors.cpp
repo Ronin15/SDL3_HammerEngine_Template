@@ -5,7 +5,6 @@
 
 #include "ai/BehaviorExecutors.hpp"
 #include "events/EntityEvents.hpp"
-#include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include <cmath>
@@ -235,57 +234,6 @@ float getRelationshipLevel(EntityHandle npcHandle, EntityHandle subjectHandle) {
     }
 
     return std::clamp(relationship, -1.0f, 1.0f);
-}
-
-EntityHandle shouldEngageEnemy(const BehaviorContext& ctx) {
-    if (!ctx.memoryData || !ctx.memoryData->isValid()) return EntityHandle{};
-
-    float aggression = ctx.memoryData->emotions.aggression;
-    float personalAggression = ctx.memoryData->personality.aggression;
-
-    // Need meaningful aggression to proactively attack
-    if (aggression + personalAggression < 0.8f) return EntityHandle{};
-
-    const Vector2D& myPos = ctx.transform.position;
-    constexpr float ENGAGE_RANGE = 300.0f;
-    constexpr float ENGAGE_RANGE_SQ = ENGAGE_RANGE * ENGAGE_RANGE;
-
-    // Check lastAttacker from memory — any entity (NPC or Player)
-    if (ctx.memoryData->lastAttacker.isValid()) {
-        auto& edm = EntityDataManager::Instance();
-        size_t idx = edm.getIndex(ctx.memoryData->lastAttacker);
-        if (idx != SIZE_MAX && edm.getHotDataByIndex(idx).isAlive()) {
-            float distSq = Vector2D::distanceSquared(myPos, edm.getHotDataByIndex(idx).transform.position);
-            if (distSq < ENGAGE_RANGE_SQ) return ctx.memoryData->lastAttacker;
-        }
-    }
-
-    // Scan for nearest different-faction entity (generic, no player hardcoding)
-    if (ctx.characterData) {
-        thread_local std::vector<size_t> s_engageScanBuffer;
-        s_engageScanBuffer.clear();
-        AIManager::Instance().queryEdmIndicesInRadius(myPos, ENGAGE_RANGE, s_engageScanBuffer, false);
-        auto& edm = EntityDataManager::Instance();
-
-        EntityHandle bestTarget{};
-        float bestDistSq = ENGAGE_RANGE_SQ;
-
-        for (size_t idx : s_engageScanBuffer) {
-            if (idx == ctx.edmIndex) continue;
-            const auto& hot = edm.getHotDataByIndex(idx);
-            if (!hot.isAlive()) continue;
-            const auto& charData = edm.getCharacterDataByIndex(idx);
-            if (charData.faction == ctx.characterData->faction) continue;
-            float distSq = Vector2D::distanceSquared(myPos, hot.transform.position);
-            if (distSq < bestDistSq) {
-                bestDistSq = distSq;
-                bestTarget = edm.getHandle(idx);
-            }
-        }
-        return bestTarget;
-    }
-
-    return EntityHandle{};
 }
 
 EntityHandle getLastAttacker(const BehaviorContext& ctx) {

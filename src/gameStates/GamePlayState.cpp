@@ -454,6 +454,18 @@ bool GamePlayState::exit() {
     // Clean up UI
     ui.prepareForStateTransition();
 
+    // Unsubscribe event handlers before clearing controllers
+    // (handlers capture `this` and call m_controllers.get<>() which returns
+    // nullptr after clear)
+    if (m_dayNightSubscribed) {
+      EventManager::Instance().removeHandler(m_dayNightEventToken);
+      m_dayNightSubscribed = false;
+    }
+    if (m_weatherSubscribed) {
+      EventManager::Instance().removeHandler(m_weatherEventToken);
+      m_weatherSubscribed = false;
+    }
+
     // Destroy all controllers so re-entry creates fresh instances with valid refs
     m_controllers.clear();
 
@@ -981,8 +993,8 @@ void GamePlayState::onTimePeriodChanged(const EventData &data) {
       "gameplay_event_log",
       std::string(m_controllers.get<DayNightController>()->getCurrentPeriodDescription()));
 
-  GAMEPLAY_DEBUG("Day/night transition started to period: " +
-                 std::string(periodEvent->getPeriodName()));
+  GAMEPLAY_DEBUG(std::format("Day/night transition started to period: {}",
+                             periodEvent->getPeriodName()));
 }
 
 void GamePlayState::updateDayNightOverlay(float deltaTime) {

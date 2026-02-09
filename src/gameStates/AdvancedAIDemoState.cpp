@@ -368,6 +368,9 @@ bool AdvancedAIDemoState::exit() {
     // Clean up UI
     ui.prepareForStateTransition();
 
+    // Destroy all controllers so re-entry creates fresh instances with valid refs
+    m_controllers.clear();
+
     // Unload world (LoadingState will reload it)
     if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
       worldMgr.unloadWorld();
@@ -419,6 +422,9 @@ bool AdvancedAIDemoState::exit() {
 
   // Clean up UI components using simplified method
   ui.prepareForStateTransition();
+
+  // Destroy all controllers so re-entry creates fresh instances with valid refs
+  m_controllers.clear();
 
   // Unload the world when fully exiting, but only if there's actually a world
   // loaded This matches EventDemoState's safety pattern and prevents crashes

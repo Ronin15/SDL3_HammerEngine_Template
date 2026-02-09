@@ -6,14 +6,6 @@
 #include "ai/BehaviorExecutors.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include <cmath>
-#include <random>
-
-namespace {
-
-thread_local std::mt19937 s_rng{std::random_device{}()};
-
-} // anonymous namespace
 
 namespace Behaviors {
 

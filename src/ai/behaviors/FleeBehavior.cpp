@@ -7,7 +7,6 @@
 #include "ai/internal/Crowd.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "managers/WorldManager.hpp"
 #include <algorithm>
 #include <cmath>
 #include <random>
@@ -84,18 +83,13 @@ Vector2D findNearestSafeZone(const BehaviorContext& ctx) {
     return nearest;
 }
 
-Vector2D avoidBoundaries(const Vector2D& position, const Vector2D& direction, float padding) {
-    float minX, minY, maxX, maxY;
-    if (!WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-        return direction;
-    }
-
+Vector2D avoidBoundaries(const Vector2D& position, const Vector2D& direction, float padding,
+                         float boundsMinX, float boundsMinY, float boundsMaxX, float boundsMaxY) {
     Vector2D adjustedDir = direction;
-    constexpr float TILE = HammerEngine::TILE_SIZE;
-    float worldMinX = minX * TILE + padding;
-    float worldMinY = minY * TILE + padding;
-    float worldMaxX = maxX * TILE - padding;
-    float worldMaxY = maxY * TILE - padding;
+    float worldMinX = boundsMinX + padding;
+    float worldMinY = boundsMinY + padding;
+    float worldMaxX = boundsMaxX - padding;
+    float worldMaxY = boundsMaxY - padding;
 
     if (position.getX() < worldMinX && direction.getX() < 0) {
         adjustedDir.setX(std::abs(direction.getX()));
@@ -113,7 +107,9 @@ Vector2D avoidBoundaries(const Vector2D& position, const Vector2D& direction, fl
 }
 
 Vector2D calculateFleeDirection(const Vector2D& entityPos, const Vector2D& threatPos,
-                                const BehaviorData& data, float padding) {
+                                const BehaviorData& data, float padding,
+                                float boundsMinX, float boundsMinY,
+                                float boundsMaxX, float boundsMaxY) {
     const auto& flee = data.state.flee;
     Vector2D fleeDir = entityPos - threatPos;
 
@@ -126,7 +122,7 @@ Vector2D calculateFleeDirection(const Vector2D& entityPos, const Vector2D& threa
         }
     }
 
-    fleeDir = avoidBoundaries(entityPos, fleeDir, padding);
+    fleeDir = avoidBoundaries(entityPos, fleeDir, padding, boundsMinX, boundsMinY, boundsMaxX, boundsMaxY);
     return normalizeVector(fleeDir);
 }
 
@@ -157,16 +153,17 @@ void updateStamina(BehaviorData& data, float deltaTime, bool fleeing,
     }
 }
 
-bool tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& goal, float speed) {
+bool tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& goal, float speed,
+                         const HammerEngine::FleeBehaviorConfig& config) {
     if (!ctx.behaviorData || !ctx.pathData) return false;
 
     const auto& flee = ctx.behaviorData->state.flee;
     auto& pathData = *ctx.pathData;
     Vector2D currentPos = ctx.transform.position;
 
-    constexpr float pathTTL = 3.5f;
-    constexpr float noProgressWindow = 0.4f;
-    constexpr float GOAL_CHANGE_THRESH_SQUARED = 180.0f * 180.0f;
+    const float pathTTL = config.pathTTL;
+    const float noProgressWindow = config.noProgressWindow;
+    const float GOAL_CHANGE_THRESH_SQUARED = config.goalChangeThreshold * config.goalChangeThreshold;
 
     const bool skipRefresh = (pathData.pathRequestCooldown > 0.0f && pathData.isFollowingPath() &&
                               pathData.progressTimer < noProgressWindow);
@@ -227,7 +224,8 @@ void updatePanicFlee(BehaviorContext& ctx, const Vector2D& threatPos,
     Vector2D currentPos = ctx.transform.position;
 
     if (flee.directionChangeTimer > 0.2f || flee.fleeDirection.length() < 0.001f) {
-        flee.fleeDirection = calculateFleeDirection(currentPos, threatPos, data, config.worldPadding);
+        flee.fleeDirection = calculateFleeDirection(currentPos, threatPos, data, config.worldPadding,
+                                           ctx.worldMinX, ctx.worldMinY, ctx.worldMaxX, ctx.worldMaxY);
         float randomAngle = s_angleVariation(s_rng) * 0.8f;
         float cos_a = std::cos(randomAngle);
         float sin_a = std::sin(randomAngle);
@@ -249,7 +247,8 @@ void updateStrategicRetreat(BehaviorContext& ctx, const Vector2D& threatPos,
     Vector2D currentPos = ctx.transform.position;
 
     if (flee.directionChangeTimer > 1.0f || flee.fleeDirection.length() < 0.001f) {
-        flee.fleeDirection = calculateFleeDirection(currentPos, threatPos, data, config.worldPadding);
+        flee.fleeDirection = calculateFleeDirection(currentPos, threatPos, data, config.worldPadding,
+                                           ctx.worldMinX, ctx.worldMinY, ctx.worldMaxX, ctx.worldMaxY);
         flee.directionChangeTimer = 0.0f;
     }
 
@@ -271,7 +270,7 @@ void updateStrategicRetreat(BehaviorContext& ctx, const Vector2D& threatPos,
         currentPos + flee.fleeDirection * retreatDistance, 100.0f);
 
     float speedModifier = calculateFleeSpeedModifier(data, config) * config.strategicSpeedMultiplier;
-    if (!tryFollowPathToGoal(ctx, dest, data.moveSpeed * FLEE_SPEED_MULT * speedModifier)) {
+    if (!tryFollowPathToGoal(ctx, dest, data.moveSpeed * FLEE_SPEED_MULT * speedModifier, config)) {
         ctx.transform.velocity = flee.fleeDirection * data.moveSpeed * FLEE_SPEED_MULT * speedModifier;
     }
 }
@@ -288,7 +287,8 @@ void updateEvasiveManeuver(BehaviorContext& ctx, const Vector2D& threatPos,
         flee.zigzagTimer = 0.0f;
     }
 
-    Vector2D baseFleeDir = calculateFleeDirection(currentPos, threatPos, data, config.worldPadding);
+    Vector2D baseFleeDir = calculateFleeDirection(currentPos, threatPos, data, config.worldPadding,
+                                           ctx.worldMinX, ctx.worldMinY, ctx.worldMaxX, ctx.worldMaxY);
 
     float zigzagAngleRad = (config.zigzagAngle * static_cast<float>(M_PI) / 180.0f) * flee.zigzagDirection;
     float cos_z = std::cos(zigzagAngleRad);
@@ -321,7 +321,8 @@ void updateSeekCover(BehaviorContext& ctx, const Vector2D& threatPos,
         coverDistance = baseCoverDistance * 1.2f;
     }
 
-    flee.fleeDirection = calculateFleeDirection(currentPos, threatPos, data, config.worldPadding);
+    flee.fleeDirection = calculateFleeDirection(currentPos, threatPos, data, config.worldPadding,
+                                           ctx.worldMinX, ctx.worldMinY, ctx.worldMaxX, ctx.worldMaxY);
 
     // Check for nearby safe zones and blend flee direction toward them
     Vector2D safeZoneTarget = findNearestSafeZone(ctx);
@@ -335,7 +336,7 @@ void updateSeekCover(BehaviorContext& ctx, const Vector2D& threatPos,
         currentPos + flee.fleeDirection * coverDistance, 100.0f);
 
     float speedModifier = calculateFleeSpeedModifier(data, config);
-    if (!tryFollowPathToGoal(ctx, dest, data.moveSpeed * FLEE_SPEED_MULT * speedModifier)) {
+    if (!tryFollowPathToGoal(ctx, dest, data.moveSpeed * FLEE_SPEED_MULT * speedModifier, config)) {
         ctx.transform.velocity = flee.fleeDirection * data.moveSpeed * FLEE_SPEED_MULT * speedModifier;
     }
 }
@@ -453,7 +454,9 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
         flee.hasValidThreat = true;
         flee.lastThreatPosition = threatPos;
     } else if (flee.isFleeing) {
-        float safeDistanceSquared = config.safeDistance * config.safeDistance;
+        // Hysteresis: exit threshold 20% larger than enter threshold to prevent oscillation
+        float exitDistance = config.safeDistance * 1.2f;
+        float safeDistanceSquared = exitDistance * exitDistance;
         if (distanceToThreatSquared >= safeDistanceSquared) {
             flee.isFleeing = false;
             flee.isInPanic = false;

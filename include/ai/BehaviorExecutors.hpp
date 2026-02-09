@@ -311,15 +311,6 @@ bool isOnAlert(const BehaviorContext& ctx, float suspicionThreshold = 0.5f);
 bool shouldRetaliate(const BehaviorContext& ctx);
 
 /**
- * @brief Check if entity should proactively engage an enemy
- * @param ctx BehaviorContext with memoryData and characterData
- * @return EntityHandle of target if entity has high aggression and enemy is in range, invalid otherwise
- *
- * Checks lastAttacker from memory, then scans for nearest different-faction entity.
- */
-EntityHandle shouldEngageEnemy(const BehaviorContext& ctx);
-
-/**
  * @brief Get the handle of the last entity that attacked this one
  * @param ctx BehaviorContext with memoryData
  * @return EntityHandle of attacker, or invalid handle if none
