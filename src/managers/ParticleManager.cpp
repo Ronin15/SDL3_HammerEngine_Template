@@ -839,6 +839,9 @@ void ParticleManager::update(float deltaTime) {
     m_windPhase += deltaTime * 0.5f;
 
     // Phase 4: Update particle physics with optimal threading strategy
+    // Time only the physics batch for WorkerBudget (preprocessing is fixed overhead)
+    auto batchStartTime = std::chrono::high_resolution_clock::now();
+
     // WorkerBudget is the AUTHORITATIVE source - no manager overrides
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
     auto decision = budgetMgr.shouldUseThreading(
@@ -864,6 +867,8 @@ void ParticleManager::update(float deltaTime) {
       const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
       updateParticlesSingleThreaded(deltaTime, rangeEnd);
     }
+
+    auto batchEndTime = std::chrono::high_resolution_clock::now();
 
   // Phase 5: Swap buffers for next frame (lock-free)
   m_storage.swapBuffers();
@@ -925,15 +930,11 @@ void ParticleManager::update(float deltaTime) {
     }
 #endif
 
-    // Report results for adaptive tuning - report for BOTH modes
-    // Even though threaded timing isn't perfectly accurate (fire-and-forget pattern),
-    // having some data lets WorkerBudget make comparisons and transition between modes.
-    // Note: activeCount > 0 guaranteed here due to early return at line 770
-    auto updateEndTime = std::chrono::high_resolution_clock::now();
-    double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
+    // Report ONLY physics batch time for adaptive tuning (not preprocessing/postprocessing)
+    double batchTimeMs = std::chrono::duration<double, std::milli>(batchEndTime - batchStartTime).count();
     budgetMgr.reportExecution(HammerEngine::SystemType::Particle,
                               activeCount, threadingInfo.wasThreaded,
-                              threadingInfo.batchCount, totalUpdateTime);
+                              threadingInfo.batchCount, batchTimeMs);
 
   } catch (const std::exception &e) {
     PARTICLE_ERROR(std::format("Exception in ParticleManager::update: {}", e.what()));

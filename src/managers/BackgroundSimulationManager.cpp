@@ -147,19 +147,21 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
     // Get optimal workers (WorkerBudget determines everything dynamically)
-    // Use AI system type since background sim processes NPC-like entities
     size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::AI, entityCount);
+        HammerEngine::SystemType::BackgroundSim, entityCount);
 
     // Get adaptive batch strategy
     auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::AI, entityCount, optimalWorkerCount);
+        HammerEngine::SystemType::BackgroundSim, entityCount, optimalWorkerCount);
 
     // Decide threading strategy using adaptive threshold from WorkerBudget
     // WorkerBudget is the AUTHORITATIVE source - no manager overrides
     auto decision = budgetMgr.shouldUseThreading(
-        HammerEngine::SystemType::AI, entityCount);
+        HammerEngine::SystemType::BackgroundSim, entityCount);
     bool useThreading = decision.shouldThread;
+
+    // Time only the batch processing for WorkerBudget (preprocessing is fixed overhead)
+    auto batchStart = std::chrono::steady_clock::now();
 
     if (useThreading) {
         processMultiThreaded(fixedDeltaTime, m_backgroundIndices, batchCount, batchSize);
@@ -173,16 +175,17 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
 
     auto t1 = std::chrono::steady_clock::now();
     double elapsedMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    double batchMs = std::chrono::duration<double, std::milli>(t1 - batchStart).count();
 
     m_perf.lastEntitiesProcessed = entityCount;
     m_perf.lastUpdateMs = elapsedMs;
     m_perf.updateAverage(elapsedMs);
 
-    // Report results for unified adaptive tuning (uses AI system type)
+    // Report ONLY batch time for adaptive tuning (not index retrieval/threading decision)
     if (entityCount > 0) {
-        budgetMgr.reportExecution(HammerEngine::SystemType::AI,
+        budgetMgr.reportExecution(HammerEngine::SystemType::BackgroundSim,
                                   entityCount, useThreading,
-                                  batchCount, elapsedMs);
+                                  batchCount, batchMs);
     }
 
 #ifndef NDEBUG

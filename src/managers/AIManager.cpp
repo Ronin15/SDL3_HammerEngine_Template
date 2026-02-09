@@ -329,8 +329,6 @@ void AIManager::update(float deltaTime) {
 
     const size_t entityCount = m_activeIndicesBuffer.size();
 
-    // Start timing AFTER we know we have work to do
-    auto startTime = std::chrono::high_resolution_clock::now();
     uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
 
     // PERFORMANCE: Invalidate spatial query cache for new frame
@@ -478,6 +476,9 @@ void AIManager::update(float deltaTime) {
       }
     }
 
+    // Start timing ONLY the batch work (preprocessing is fixed main-thread overhead)
+    auto startTime = std::chrono::high_resolution_clock::now();
+
     // Determine threading strategy using adaptive threshold from WorkerBudget
     // WorkerBudget is the AUTHORITATIVE source - no manager overrides
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
@@ -495,6 +496,10 @@ void AIManager::update(float deltaTime) {
     size_t logBatchCount = 1;
     bool logWasThreaded = false;
 #endif
+
+    // endTime is set in each code path (single-batch, multi-threaded, single-threaded)
+    // right after batch work completes but before enqueueBatch — so only batch work is timed.
+    std::chrono::high_resolution_clock::time_point endTime;
 
     if (useThreading) {
       auto &threadSystem = HammerEngine::ThreadSystem::Instance();
@@ -523,8 +528,9 @@ void AIManager::update(float deltaTime) {
                        worldWidth, worldHeight, cachedPlayerHandle,
                        cachedPlayerPosition, cachedPlayerVelocity,
                        cachedPlayerValid, cachedGameTime);
+          endTime = std::chrono::high_resolution_clock::now();
 
-          // Submit damage events (single-batch path)
+          // Submit damage events (single-batch path — outside timing)
           if (!damageEvents.empty()) {
             EventManager::Instance().enqueueBatch(std::move(damageEvents));
           }
@@ -581,8 +587,9 @@ void AIManager::update(float deltaTime) {
               }
             }
           }
+          endTime = std::chrono::high_resolution_clock::now();
 
-          // Submit all accumulated damage events to EventManager (single submission per frame)
+          // Submit all accumulated damage events to EventManager (outside timing)
           if (!m_allDamageEvents.empty()) {
             EventManager::Instance().enqueueBatch(std::move(m_allDamageEvents));
           }
@@ -594,15 +601,13 @@ void AIManager::update(float deltaTime) {
       auto damageEvents = processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth,
                    worldHeight, cachedPlayerHandle, cachedPlayerPosition,
                    cachedPlayerVelocity, cachedPlayerValid, cachedGameTime);
+      endTime = std::chrono::high_resolution_clock::now();
 
-      // Submit damage events (single-threaded path)
+      // Submit damage events (single-threaded path — outside timing)
       if (!damageEvents.empty()) {
         EventManager::Instance().enqueueBatch(std::move(damageEvents));
       }
     }
-
-    // Measure completion time for adaptive tuning (after all batches complete)
-    auto endTime = std::chrono::high_resolution_clock::now();
     double totalUpdateTime =
         std::chrono::duration<double, std::milli>(endTime - startTime).count();
 

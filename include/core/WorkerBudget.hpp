@@ -26,7 +26,8 @@ enum class SystemType : uint8_t {
     Pathfinding = 2,
     Event = 3,
     Collision = 4,
-    COUNT = 5
+    BackgroundSim = 5,
+    COUNT = 6
 };
 
 /**

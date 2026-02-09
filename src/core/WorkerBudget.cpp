@@ -274,6 +274,7 @@ const char* WorkerBudgetManager::getSystemName(SystemType system) {
         case SystemType::Pathfinding: return "Pathfinding";
         case SystemType::Event: return "Event";
         case SystemType::Collision: return "Collision";
+        case SystemType::BackgroundSim: return "BackgroundSim";
         default: return "Unknown";
     }
 }
