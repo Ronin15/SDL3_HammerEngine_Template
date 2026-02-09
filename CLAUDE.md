@@ -25,7 +25,7 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_
 
 ## Testing
 
-Boost.Test (65 executables). **Prefer direct test execution** - much faster than test scripts.
+Boost.Test (70 executables). **Prefer direct test execution** - much faster than test scripts.
 
 ```bash
 # Direct test execution (PREFERRED for development - fast feedback)
@@ -48,19 +48,19 @@ See `tests/TESTING.md` for comprehensive documentation.
 
 **Core**: GameEngine (fixed timestep) | ThreadSystem (WorkerBudget) | Logger (thread-safe) | TimestepManager
 
-**Managers**: EntityDataManager (central data store, SoA) | AIManager (10K+ entities, SIMD) | EventManager (15 event types) | CollisionManager (HierarchicalSpatialHash) | ParticleManager (SoA, pooled) | PathfinderManager | WorldManager (chunk-based procedural) | BackgroundSimulationManager (tiered) | UIManager (theming, DPI) | GameTimeManager | InputManager | TextureManager | FontManager | SoundManager
+**Managers**: EntityDataManager (central data store, SoA) | AIManager (10K+ entities, SIMD) | EventManager (16 event types) | CollisionManager (HierarchicalSpatialHash) | ParticleManager (SoA, pooled) | PathfinderManager | WorldManager (chunk-based procedural) | WorldResourceManager (spatial registry) | BackgroundSimulationManager (tiered) | UIManager (theming, DPI) | GameTimeManager | InputManager | TextureManager | FontManager | SoundManager
 
-**Entities**: EntityKind (9 types) | SimulationTier (Active/Background/Hibernated) | EntityHandle (generation-safe)
+**Entities**: EntityKind (8 types) | SimulationTier (Active/Background/Hibernated) | EntityHandle (generation-safe)
 
 **AI**: AIBehavior base → 8 behaviors (Idle, Wander, Patrol, Chase, Flee, Follow, Guard, Attack) | BehaviorContext (lock-free EDM access)
 
-**Controllers**: State-scoped helpers via ControllerRegistry. Dir: `controllers/{combat,world,render}/`
+**Controllers**: State-scoped helpers via ControllerRegistry. Dir: `controllers/{combat,social,world,render}/`
 
 **Utils**: Camera (world↔screen) | Vector2D | SIMDMath (SSE2/NEON) | JsonReader | BinarySerializer | UniqueID | WorldRenderPipeline (SDL_Renderer facade) | FrameProfiler (F3 debug overlay)
 
 **GPU Rendering** (USE_SDL3_GPU): GPUDevice (singleton) | GPURenderer (frame orchestration) | GPUShaderManager (SPIR-V/Metal) | SpriteBatch (25K sprites) | GPUVertexPool (triple-buffered) | GPUSceneRenderer (scene facade). Shaders: `res/shaders/`
 
-**Structure**: `src/{core,managers,controllers,gameStates,entities,events,ai,collisions,utils,world}` | `include/` mirrors src | `tests/` | `res/`
+**Structure**: `src/{core,managers,controllers,gameStates,entities,events,ai,collisions,utils,world,gpu}` | `include/` mirrors src | `tests/` | `res/`
 
 **Layer Dependencies**: Core → Managers → GameStates → Entities/Controllers
 
@@ -92,9 +92,9 @@ if (decision.shouldThread) {
 budgetMgr.reportExecution(SystemType::AI, count, decision.shouldThread, decision.batchCount, elapsedMs);
 ```
 
-**State Transitions**: Call `prepareForStateTransition()` on managers before cleanup. Pauses work, waits for pending batches, drains message queues.
+**State Transitions**: Call `prepareForStateTransition()` on managers before cleanup. Pauses work, waits for pending batches, drains message queues. ALL game states with AI entities must transition: AIManager, BackgroundSimulationManager, WorldResourceManager, EventManager, CollisionManager, PathfinderManager, EntityDataManager (in that order).
 
-**Thread-Local**: Use for RNG (`thread_local std::mt19937`), reusable buffers, and spatial caches. Eliminates contention without locks.
+**Thread-Local**: Use for RNG (`thread_local std::mt19937`), reusable buffers, and spatial caches. Eliminates contention without locks. When collecting from thread_local vectors, use ref-based API with `clear()` to preserve capacity — never `swap()` or return-by-value which destroys capacity and causes per-frame heap allocations per worker thread.
 
 **Synchronization**: `shared_mutex` for reader-writer (entities, behaviors) | `mutex` for exclusive | `atomic<bool>` for flags | `condition_variable` for worker wake.
 
@@ -125,6 +125,8 @@ Always `reserve()` when size known.
 - Emotional contagion runs as a main-thread pre-pass in `AIManager::update()`, not in EDM.
 
 Behaviors access EDM via context: `ctx.behaviorData` (state), `ctx.pathData` (navigation). Both pre-fetched in `processBatch()`.
+
+**Controller → AI boundary**: Controllers must NEVER directly mutate AI behavior state in EDM (guard alertLevel, behavior flags, etc.). Use `Behaviors::queueBehaviorMessage(idx, BehaviorMessage::X)` from main thread or `Behaviors::deferBehaviorMessage()` from worker threads. The behavior's message handler applies the state change during its next update.
 
 **CRITICAL:** Data surviving between frames (paths, timers) MUST use EDM, never local variables:
 ```cpp

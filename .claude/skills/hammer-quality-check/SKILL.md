@@ -28,6 +28,9 @@ This Skill enforces SDL3 HammerEngine's quality standards as defined in `CLAUDE.
    - 5.9 Singleton manager access (no cached pointers, cache when multiple uses)
    - 5.10 Controller access (no cached pointers, cache when multiple uses)
    - 5.11 Behavior entity state (per-entity state in EDM, not behavior members)
+   - 5.12 Controller → AI layer boundary (behavior messages, not direct EDM mutation)
+   - 5.13 State transition completeness (all managers transitioned in correct order)
+   - 5.14 Thread-local capacity preservation (clear vs swap)
 6. **Copyright & Legal** - License header validation
 7. **Test Coverage** - Verify tests exist for modified code
 
@@ -989,6 +992,162 @@ class AttackBehavior : public AIBehavior {
 
 **Quality Gate:** ✓ No per-entity mutable state in AIBehavior member variables (BLOCKING)
 
+#### 5.12 Controller → AI Layer Boundary (CRITICAL)
+
+**Background:**
+Controllers are state-scoped event bridges. They must NEVER directly mutate AI behavior state in EDM (guard alertLevel, behavior flags, flee state, etc.). The AI layer owns behavior state — controllers communicate via behavior messages. See CLAUDE.md: "Controller → AI boundary" in the EDM Patterns section.
+
+**Check Commands:**
+```bash
+# Find controllers directly accessing behavior-specific state in EDM
+grep -rn "guardState\.\|fleeState\.\|attackState\.\|\.alertLevel\|\.hasActiveThreat" src/controllers/ --include="*.cpp"
+
+# Find controllers mutating BehaviorData fields directly
+grep -rn "getBehaviorData\|getGuardState\|getFleeState\|getAttackState" src/controllers/ --include="*.cpp" | grep -v "const"
+
+# Verify controllers use behavior messages instead
+grep -rn "queueBehaviorMessage\|deferBehaviorMessage" src/controllers/ --include="*.cpp"
+```
+
+**FORBIDDEN PATTERNS:**
+```cpp
+// ✗ FORBIDDEN - Controller directly mutates AI behavior state
+void SocialController::alertNearbyGuards(const Vector2D& location) {
+    auto& edm = EntityDataManager::Instance();
+    for (size_t idx : nearbyGuards) {
+        auto& guardState = edm.getGuardState(idx);
+        guardState.alertLevel = 3;             // LAYER VIOLATION!
+        guardState.hasActiveThreat = true;     // LAYER VIOLATION!
+        guardState.lastKnownThreatPosition = location;  // LAYER VIOLATION!
+    }
+}
+
+// ✓ CORRECT - Controller sends behavior messages, AI layer handles state
+void SocialController::alertNearbyGuards(const Vector2D& location) {
+    auto& edm = EntityDataManager::Instance();
+    m_nearbyGuardBuffer.clear();
+    AIManager::Instance().queryEdmIndicesInRadius(location, GUARD_ALERT_RANGE,
+                                                   m_nearbyGuardBuffer, true);
+    for (size_t idx : m_nearbyGuardBuffer) {
+        if (edm.getBehaviorData(idx).behaviorType != BehaviorType::Guard) continue;
+        Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);  // Main thread
+    }
+}
+```
+
+**Message API:**
+- `Behaviors::queueBehaviorMessage(idx, msg)` — Main thread (controllers, event handlers)
+- `Behaviors::deferBehaviorMessage(idx, msg)` — Worker threads (batch processing)
+
+**Quality Gate:** ✓ No direct AI behavior state mutation from controllers (BLOCKING)
+
+#### 5.13 State Transition Completeness (CRITICAL)
+
+**Background:**
+ALL game states with AI entities must call `prepareForStateTransition()` on ALL relevant managers in BOTH exit paths (transitioning-to-loading AND full exit). Missing a manager causes stale data on re-entry. See CLAUDE.md: "State Transitions" in the Threading section.
+
+**Check Commands:**
+```bash
+# Find game states with exit() methods
+grep -rn "::exit()" src/gameStates/ --include="*.cpp" -l
+
+# For each state, verify all managers are transitioned
+for state in GamePlayState AIDemoState AdvancedAIDemoState; do
+  echo "=== $state ==="
+  grep -c "prepareForStateTransition" "src/gameStates/${state}.cpp" 2>/dev/null || echo "MISSING"
+done
+
+# Check for BackgroundSimulationManager specifically (commonly missed)
+grep -rn "BackgroundSimulationManager.*prepareForStateTransition\|bgSimMgr.*prepareForStateTransition" src/gameStates/ --include="*.cpp"
+```
+
+**Required Manager Transition Order:**
+States with AI entities must transition these managers in order:
+1. `AIManager` — Pauses batch processing, waits for pending futures
+2. `BackgroundSimulationManager` — Clears simulation tiers and accumulators
+3. `WorldResourceManager` — Clears spatial indices and registries
+4. `EventManager` — Drains deferred event queues
+5. `CollisionManager` — Clears collision bodies and spatial hash
+6. `PathfinderManager` — Cancels pending path requests
+7. `EntityDataManager` — Clears all entity data (must be LAST)
+
+**FORBIDDEN PATTERN:**
+```cpp
+// ✗ BAD - Missing BackgroundSimulationManager (stale tiers on re-entry)
+bool GamePlayState::exit() {
+    AIManager &aiMgr = AIManager::Instance();
+    aiMgr.prepareForStateTransition();
+    // BackgroundSimulationManager MISSING!
+    EntityDataManager &edm = EntityDataManager::Instance();
+    edm.prepareForStateTransition();
+}
+
+// ✓ CORRECT - All managers transitioned
+bool GamePlayState::exit() {
+    AIManager &aiMgr = AIManager::Instance();
+    BackgroundSimulationManager &bgSimMgr = BackgroundSimulationManager::Instance();
+    // ... other managers ...
+    EntityDataManager &edm = EntityDataManager::Instance();
+
+    aiMgr.prepareForStateTransition();
+    bgSimMgr.prepareForStateTransition();
+    // ... other managers ...
+    edm.prepareForStateTransition();  // Always last
+}
+```
+
+**Quality Gate:** ✓ All managers transitioned in both exit paths of every AI-enabled state (BLOCKING)
+
+#### 5.14 Thread-Local Capacity Preservation (CRITICAL)
+
+**Background:**
+Thread-local vectors used for deferred event collection (or any per-thread buffering) must preserve their capacity across frames. Using `swap()` with an empty vector or returning by value destroys the capacity, causing per-frame heap allocations on every worker thread. See CLAUDE.md: "Thread-Local" in the Threading section.
+
+**Check Commands:**
+```bash
+# Find thread_local vectors being swapped (destroys capacity)
+grep -rn "swap.*t_\|t_.*swap" src/ --include="*.cpp"
+
+# Find thread_local vectors returned by value (destroys capacity)
+grep -rn "return.*t_\|return std::move.*t_" src/ --include="*.cpp"
+
+# Verify thread_local collections use clear() pattern
+grep -rn "thread_local.*vector" src/ --include="*.cpp" -A 5 | grep -E "clear|swap|return"
+```
+
+**FORBIDDEN PATTERNS:**
+```cpp
+// ✗ BAD - swap() destroys thread_local capacity, reallocates next frame
+thread_local std::vector<DeferredEvent> t_deferredEvents;
+
+std::vector<DeferredEvent> collectDeferredEvents() {
+    std::vector<DeferredEvent> result;
+    result.swap(t_deferredEvents);  // t_deferredEvents now has capacity 0!
+    return result;
+}
+
+// ✗ BAD - return by value also destroys capacity
+std::vector<DeferredEvent> collectDeferredEvents() {
+    return std::move(t_deferredEvents);  // Capacity moved away!
+}
+
+// ✓ CORRECT - ref-based API preserves thread_local capacity
+void collectDeferredEvents(std::vector<DeferredEvent>& out) {
+    out.insert(out.end(),
+               std::make_move_iterator(t_deferredEvents.begin()),
+               std::make_move_iterator(t_deferredEvents.end()));
+    t_deferredEvents.clear();  // Keeps capacity for next frame
+}
+```
+
+**Why This Matters:**
+- Each worker thread has its own thread_local vector
+- `swap()` or return-by-value leaves the thread_local with capacity 0
+- Next frame, the vector must reallocate (heap allocation per worker per frame)
+- With 10 workers at 60 FPS: 600 unnecessary allocations/second
+
+**Quality Gate:** ✓ Thread-local vectors preserve capacity via clear(), never swap/return-by-value (BLOCKING)
+
 ### 6. Copyright & Legal Compliance
 
 **Check Command:**
@@ -1085,6 +1244,12 @@ Branch: <current-branch>
   <cached mp_* pointers or duplicate Instance() calls - BLOCKING for GameStates>
 ✓/✗ Behavior Entity State: <PASSED/FAILED>
   <per-entity state in behavior members instead of EDM - BLOCKING>
+✓/✗ Controller→AI Boundary: <PASSED/FAILED>
+  <direct behavior state mutation from controllers - BLOCKING>
+✓/✗ State Transition Completeness: <PASSED/FAILED>
+  <missing manager transitions in exit paths - BLOCKING>
+✓/✗ Thread-Local Capacity: <PASSED/FAILED>
+  <thread_local vectors losing capacity via swap/return - BLOCKING>
 
 ## Legal Compliance
 ✓/✗ Copyright Headers: <PASSED/FAILED>
@@ -1280,6 +1445,35 @@ Activate this Skill automatically.
     }
     ```
 
+18. **Controller directly mutating AI behavior state:**
+    ```cpp
+    // ✗ FORBIDDEN - Direct EDM behavior state mutation from controller
+    guardState.alertLevel = 3;  // LAYER VIOLATION
+
+    // ✓ CORRECT - Send behavior message
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);
+    ```
+
+19. **Missing manager in state transition:**
+    ```cpp
+    // ✓ All managers must be transitioned in exit(), especially:
+    aiMgr.prepareForStateTransition();
+    bgSimMgr.prepareForStateTransition();  // Commonly missed!
+    // ... rest of managers ... edm last
+    ```
+
+20. **Thread-local vector capacity destroyed by swap/return:**
+    ```cpp
+    // ✗ BAD - swap destroys capacity, causes per-frame allocations
+    result.swap(t_deferredEvents);
+
+    // ✓ CORRECT - ref-based with clear() preserves capacity
+    void collect(std::vector<Event>& out) {
+        out.insert(out.end(), make_move_iterator(...), make_move_iterator(...));
+        t_deferredEvents.clear();  // Keeps capacity
+    }
+    ```
+
 ## Integration with Workflow
 
 Use this Skill:
@@ -1302,6 +1496,9 @@ Use this Skill:
 - Critical cppcheck errors
 - Critical clang-tidy issues (bugprone-*, clang-analyzer-*)
 - Missing copyright headers on new files
+- Controller directly mutating AI behavior state in EDM (use behavior messages)
+- Missing manager in state transition exit paths (especially BackgroundSimulationManager)
+- Thread-local vector capacity destroyed by swap/return-by-value (use ref+clear)
 
 **WARNING (Should Fix):**
 - Compilation warnings
