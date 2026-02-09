@@ -8,7 +8,6 @@
 #include "utils/WorldRenderPipeline.hpp"
 #include "controllers/combat/CombatController.hpp"
 #include "controllers/social/SocialController.hpp"
-#include "controllers/social/TradeController.hpp"
 #include "controllers/world/DayNightController.hpp"
 #include "controllers/world/HarvestController.hpp"
 #include "controllers/world/ItemController.hpp"
@@ -112,9 +111,8 @@ bool GamePlayState::enter() {
     m_controllers.add<HarvestController>(mp_Player);
     m_controllers.add<ResourceRenderController>();
 
-    // Social and trade controllers (SocialController must be created first since TradeController references it)
-    auto& socialCtrl = m_controllers.add<SocialController>(mp_Player);
-    m_controllers.add<TradeController>(mp_Player, &socialCtrl);
+    // Social controller (handles both relationship management and trade UI)
+    m_controllers.add<SocialController>(mp_Player);
 
     // Enable automatic weather changes
     gameTimeMgr.enableAutoWeather(true);
@@ -672,11 +670,11 @@ void GamePlayState::handleInput() {
 
   // Interaction - E to trade/pickup/harvest
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_E) && mp_Player) {
-    auto& tradeCtrl = *m_controllers.get<TradeController>();
+    auto& socialCtrl = *m_controllers.get<SocialController>();
 
     // If already trading, close the trade UI
-    if (tradeCtrl.isTrading()) {
-      tradeCtrl.closeTrade();
+    if (socialCtrl.isTrading()) {
+      socialCtrl.closeTrade();
     } else {
       // Try to find a nearby merchant NPC to trade with
       bool openedTrade = false;
@@ -694,7 +692,7 @@ void GamePlayState::handleInput() {
         }
         // Check if this NPC is a merchant
         if (edm.isNPCMerchant(handle)) {
-          if (tradeCtrl.openTrade(handle)) {
+          if (socialCtrl.openTrade(handle)) {
             openedTrade = true;
             break;
           }

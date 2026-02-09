@@ -409,13 +409,6 @@ inline std::mutex Logger::s_logMutex{};
 #define SOCIAL_INFO(msg) HAMMER_INFO("SocialController", msg)
 #define SOCIAL_DEBUG(msg) HAMMER_DEBUG("SocialController", msg)
 
-// TradeController logging
-#define TRADE_CRITICAL(msg) HAMMER_CRITICAL("TradeController", msg)
-#define TRADE_ERROR(msg) HAMMER_ERROR("TradeController", msg)
-#define TRADE_WARN(msg) HAMMER_WARN("TradeController", msg)
-#define TRADE_INFO(msg) HAMMER_INFO("TradeController", msg)
-#define TRADE_DEBUG(msg) HAMMER_DEBUG("TradeController", msg)
-
 // HarvestController logging
 #define HARVEST_CRITICAL(msg) HAMMER_CRITICAL("HarvestController", msg)
 #define HARVEST_ERROR(msg) HAMMER_ERROR("HarvestController", msg)

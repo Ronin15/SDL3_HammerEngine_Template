@@ -17,6 +17,7 @@
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/GameTimeManager.hpp"
+#include "managers/UIManager.hpp"
 #include "../events/EventManagerTestAccess.hpp"
 #include <memory>
 
@@ -34,9 +35,11 @@ public:
         // Initialize managers
         EntityDataManager::Instance().init();
         GameTimeManager::Instance().init();
+        UIManager::Instance().init();
     }
 
     ~SocialControllerTestFixture() {
+        UIManager::Instance().clean();
         EntityDataManager::Instance().clean();
         EventManager::Instance().clean();
     }
@@ -281,6 +284,181 @@ BOOST_AUTO_TEST_CASE(TestReportTheftWithInvalidVictim) {
     controller.reportTheft(thief, victim, stolenItem, 1);
 
     BOOST_CHECK(true);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// TradeItemInfo Struct Tests
+// ============================================================================
+
+BOOST_AUTO_TEST_SUITE(TradeItemInfoTests)
+
+BOOST_AUTO_TEST_CASE(TestDefaultValues) {
+    TradeItemInfo info;
+
+    BOOST_CHECK(!info.handle.isValid());
+    BOOST_CHECK(info.name.empty());
+    BOOST_CHECK_EQUAL(info.quantity, 0);
+    BOOST_CHECK_EQUAL(info.unitPrice, 0.0f);
+}
+
+BOOST_AUTO_TEST_CASE(TestSetValues) {
+    TradeItemInfo info;
+    info.handle = HammerEngine::ResourceHandle(1, 1);
+    info.name = "Test Item";
+    info.quantity = 10;
+    info.unitPrice = 5.0f;
+
+    BOOST_CHECK(info.handle.isValid());
+    BOOST_CHECK_EQUAL(info.name, "Test Item");
+    BOOST_CHECK_EQUAL(info.quantity, 10);
+    BOOST_CHECK_EQUAL(info.unitPrice, 5.0f);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// Trade Session State Tests
+// ============================================================================
+
+BOOST_FIXTURE_TEST_SUITE(TradeSessionStateTests, SocialControllerTestFixture)
+
+BOOST_AUTO_TEST_CASE(TestInitialTradeState) {
+    SocialController controller(nullptr);
+
+    BOOST_CHECK(!controller.isTrading());
+    BOOST_CHECK(!controller.getMerchantHandle().isValid());
+    BOOST_CHECK(controller.getMerchantItems().empty());
+    BOOST_CHECK(controller.getPlayerItems().empty());
+    BOOST_CHECK_EQUAL(controller.getQuantity(), 1);
+    BOOST_CHECK_EQUAL(controller.getSelectedMerchantIndex(), -1);
+    BOOST_CHECK_EQUAL(controller.getSelectedPlayerIndex(), -1);
+}
+
+BOOST_AUTO_TEST_CASE(TestOpenTradeWithInvalidNPC) {
+    SocialController controller(nullptr);
+
+    EntityHandle invalidHandle;
+
+    bool result = controller.openTrade(invalidHandle);
+    BOOST_CHECK(!result);
+    BOOST_CHECK(!controller.isTrading());
+}
+
+BOOST_AUTO_TEST_CASE(TestCloseTradeWhenNotTrading) {
+    SocialController controller(nullptr);
+
+    // Should not crash when closing without active trade
+    controller.closeTrade();
+    BOOST_CHECK(!controller.isTrading());
+}
+
+BOOST_AUTO_TEST_CASE(TestUpdateWhenNotTrading) {
+    SocialController controller(nullptr);
+
+    // Should not crash
+    controller.update(0.016f);
+    BOOST_CHECK(!controller.isTrading());
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// Trade Selection Tests
+// ============================================================================
+
+BOOST_FIXTURE_TEST_SUITE(TradeSelectionTests, SocialControllerTestFixture)
+
+BOOST_AUTO_TEST_CASE(TestSelectMerchantItemOutOfBounds) {
+    SocialController controller(nullptr);
+
+    // No items in list, should not crash
+    controller.selectMerchantItem(0);
+    controller.selectMerchantItem(100);
+
+    BOOST_CHECK_EQUAL(controller.getSelectedMerchantIndex(), -1);
+}
+
+BOOST_AUTO_TEST_CASE(TestSelectPlayerItemOutOfBounds) {
+    SocialController controller(nullptr);
+
+    // No items in list, should not crash
+    controller.selectPlayerItem(0);
+    controller.selectPlayerItem(100);
+
+    BOOST_CHECK_EQUAL(controller.getSelectedPlayerIndex(), -1);
+}
+
+BOOST_AUTO_TEST_CASE(TestSetQuantityZero) {
+    SocialController controller(nullptr);
+
+    controller.setQuantity(0);
+    BOOST_CHECK_EQUAL(controller.getQuantity(), 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestSetQuantityNegative) {
+    SocialController controller(nullptr);
+
+    controller.setQuantity(-5);
+    BOOST_CHECK_EQUAL(controller.getQuantity(), 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestSetQuantityPositive) {
+    SocialController controller(nullptr);
+
+    controller.setQuantity(10);
+    BOOST_CHECK_EQUAL(controller.getQuantity(), 10);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// Trade Transaction Tests
+// ============================================================================
+
+BOOST_FIXTURE_TEST_SUITE(TradeTransactionTests, SocialControllerTestFixture)
+
+BOOST_AUTO_TEST_CASE(TestExecuteBuyWhenNotTrading) {
+    SocialController controller(nullptr);
+
+    TradeResult result = controller.executeBuy();
+    BOOST_CHECK(result == TradeResult::InvalidItem);
+}
+
+BOOST_AUTO_TEST_CASE(TestExecuteSellWhenNotTrading) {
+    SocialController controller(nullptr);
+
+    TradeResult result = controller.executeSell();
+    BOOST_CHECK(result == TradeResult::InvalidItem);
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentBuyPriceNoSelection) {
+    SocialController controller(nullptr);
+
+    float price = controller.getCurrentBuyPrice();
+    BOOST_CHECK_EQUAL(price, 0.0f);
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentSellPriceNoSelection) {
+    SocialController controller(nullptr);
+
+    float price = controller.getCurrentSellPrice();
+    BOOST_CHECK_EQUAL(price, 0.0f);
+}
+
+BOOST_AUTO_TEST_CASE(TestGetRelationshipDescriptionWhenNotTrading) {
+    SocialController controller(nullptr);
+
+    std::string desc = controller.getCurrentTradeRelationshipDescription();
+    BOOST_CHECK_EQUAL(desc, "N/A");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetPriceModifierWhenNotTrading) {
+    SocialController controller(nullptr);
+
+    float modifier = controller.getCurrentTradePriceModifier();
+    BOOST_CHECK_EQUAL(modifier, 1.0f);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

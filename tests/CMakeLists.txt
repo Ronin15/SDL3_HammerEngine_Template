@@ -103,7 +103,6 @@ set(MOCK_TESTS
     harvest_controller_tests
     item_controller_tests
     social_controller_tests
-    trade_controller_tests
     resource_render_controller_tests
     ai_manager_edm_integration_tests
     pathfinder_manager_edm_integration_tests
@@ -269,8 +268,6 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "controllers/ItemControllerTests.cpp")
     elseif(${test_name} STREQUAL "social_controller_tests")
         set(test_source "controllers/SocialControllerTests.cpp")
-    elseif(${test_name} STREQUAL "trade_controller_tests")
-        set(test_source "controllers/TradeControllerTests.cpp")
     elseif(${test_name} STREQUAL "resource_render_controller_tests")
         set(test_source "controllers/ResourceRenderControllerTests.cpp")
     elseif(${test_name} STREQUAL "ai_manager_edm_integration_tests")
