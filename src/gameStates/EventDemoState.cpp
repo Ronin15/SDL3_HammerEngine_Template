@@ -24,6 +24,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "core/WorkerBudget.hpp"
 #include "utils/Camera.hpp"
 #include "utils/WorldRenderPipeline.hpp"
 
@@ -384,6 +385,7 @@ bool EventDemoState::exit() {
 
       aiMgr.prepareForStateTransition();
       edm.prepareForStateTransition();
+      HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
       if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
         collisionMgr.prepareForStateTransition();
@@ -443,6 +445,7 @@ bool EventDemoState::exit() {
 
     aiMgr.prepareForStateTransition();
     edm.prepareForStateTransition();
+    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
     // Clean collision state before other systems
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {

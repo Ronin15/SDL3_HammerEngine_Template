@@ -66,7 +66,7 @@ public:
         AIManager::Instance().prepareForStateTransition();
         ParticleManager::Instance().prepareForStateTransition();
         EventManager::Instance().prepareForStateTransition();
-        // Note: WorkerBudget state persists across resets (learned thresholds)
+        HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
     }
 
     float calculateWorldSize(size_t entityCount) {

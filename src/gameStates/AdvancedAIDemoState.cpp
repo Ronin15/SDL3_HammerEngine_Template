@@ -17,6 +17,7 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "core/WorkerBudget.hpp"
 #include "utils/WorldRenderPipeline.hpp"
 
 #ifdef USE_SDL3_GPU
@@ -359,6 +360,7 @@ bool AdvancedAIDemoState::exit() {
     aiMgr.prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
     edm.prepareForStateTransition();
+    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
@@ -414,6 +416,7 @@ bool AdvancedAIDemoState::exit() {
   aiMgr.prepareForStateTransition();
   bgSimMgr.prepareForStateTransition();
   edm.prepareForStateTransition();
+  HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
   // Clean collision state
   if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {

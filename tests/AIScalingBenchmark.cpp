@@ -65,11 +65,11 @@ public:
 
     ~AIScalingFixture() = default;
 
-    // Prepare fresh state for each test
     void prepareForTest() {
         AIManager::Instance().prepareForStateTransition();
         EntityDataManager::Instance().prepareForStateTransition();
         CollisionManager::Instance().prepareForStateTransition();
+        HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
     }
 
     // Create AI entities via EntityDataManager

@@ -72,6 +72,7 @@ public:
         AIManager::Instance().prepareForStateTransition();
         EntityDataManager::Instance().prepareForStateTransition();
         CollisionManager::Instance().prepareForStateTransition();
+        HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
     }
 
     // Create NPC entities and force them into background tier

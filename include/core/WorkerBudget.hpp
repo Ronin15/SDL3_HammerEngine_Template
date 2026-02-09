@@ -183,6 +183,14 @@ public:
     bool isThresholdActive(SystemType system) const;
 
     /**
+     * @brief Reset all tuning state for state transitions
+     *
+     * Resets learned thresholds, EMA values, and batch multipliers for all systems.
+     * Call during game state exit alongside other manager prepareForStateTransition() calls.
+     */
+    void prepareForStateTransition();
+
+    /**
      * @brief Invalidate cached budget (call when ThreadSystem changes)
      */
     void invalidateCache();

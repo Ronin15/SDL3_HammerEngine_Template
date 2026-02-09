@@ -282,6 +282,18 @@ const char* WorkerBudgetManager::getSystemName(SystemType system) {
     }
 }
 
+void WorkerBudgetManager::prepareForStateTransition() {
+    for (auto& state : m_systemState) {
+        state.multiSmoothedThroughput.store(0.0, std::memory_order_relaxed);
+        state.prevMultiThroughput.store(0.0, std::memory_order_relaxed);
+        state.multiplier.store(1.0f, std::memory_order_relaxed);
+        state.direction.store(1, std::memory_order_relaxed);
+        state.smoothedSingleTime.store(0.0, std::memory_order_relaxed);
+        state.learnedThreshold.store(0, std::memory_order_relaxed);
+        state.thresholdActive.store(false, std::memory_order_relaxed);
+    }
+}
+
 void WorkerBudgetManager::invalidateCache() {
     m_budgetValid.store(false, std::memory_order_release);
 }
