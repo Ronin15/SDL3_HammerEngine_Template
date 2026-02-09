@@ -8,19 +8,19 @@
 
 /**
  * @file SocialController.hpp
- * @brief Controller for NPC social interactions: trading, gifts, and relationships
+ * @brief Controller for all player-NPC social systems
  *
- * SocialController handles:
- * - Trading with merchant NPCs (buy/sell items)
- * - Trade UI session management (open/close, item selection, transactions)
- * - Gift giving to NPCs (improves relationship)
- * - Relationship tracking via NPC memory system
- * - Price modifiers based on relationship level
+ * Two domains:
  *
- * Uses the NPC memory system (NPCMemoryData) to track:
- * - MemoryType::Interaction for trades and gifts
- * - EmotionalState for relationship sentiment
- * - Memory value field for interaction quality (+/-)
+ * 1. TRADING — Merchant buy/sell with UI session management.
+ *    Price modifiers, inventory transfer, trade UI lifecycle.
+ *
+ * 2. SOCIAL INTERACTIONS — Gifts, greetings, theft, relationship building.
+ *    Records interactions in NPC memory (NPCMemoryData), modifies emotions,
+ *    and will expand to affect NPC personality stats (bravery, etc.)
+ *    through sustained social bonds.
+ *
+ * Both domains share relationship queries and NPC memory access.
  *
  * Ownership: ControllerRegistry owns the controller instance.
  */
@@ -63,7 +63,7 @@ enum class InteractionType {
 };
 
 /**
- * @brief Item display info for UI lists
+ * @brief Item display info for trade UI lists
  */
 struct TradeItemInfo {
     HammerEngine::ResourceHandle handle;
@@ -74,210 +74,84 @@ struct TradeItemInfo {
 
 class SocialController : public ControllerBase, public IUpdatable {
 public:
-    /**
-     * @brief Construct SocialController with required player reference
-     * @param player Shared pointer to the player (required)
-     */
     explicit SocialController(std::shared_ptr<Player> player)
         : mp_player(std::move(player)) {}
 
     ~SocialController() override = default;
 
-    // Movable
     SocialController(SocialController&&) noexcept = default;
     SocialController& operator=(SocialController&&) noexcept = default;
 
     // --- ControllerBase interface ---
 
     void subscribe() override;
-
     [[nodiscard]] std::string_view getName() const override { return "SocialController"; }
 
-    // ========================================================================
-    // TRADE SESSION
-    // ========================================================================
+    // --- IUpdatable interface ---
 
-    /**
-     * @brief Open trade interface with an NPC merchant
-     * @param npcHandle Handle to the merchant NPC
-     * @return true if trade opened successfully
-     */
-    bool openTrade(EntityHandle npcHandle);
-
-    /**
-     * @brief Close the current trade interface
-     */
-    void closeTrade();
-
-    /**
-     * @brief Check if currently in a trade session
-     */
-    [[nodiscard]] bool isTrading() const { return m_isTrading; }
-
-    /**
-     * @brief Get the current merchant handle
-     */
-    [[nodiscard]] EntityHandle getMerchantHandle() const { return m_merchantHandle; }
-
-    // ========================================================================
-    // UI UPDATE
-    // ========================================================================
-
-    /**
-     * @brief Update trade UI (call each frame while trading)
-     * @param deltaTime Frame delta time
-     */
     void update(float deltaTime) override;
 
     // ========================================================================
-    // SELECTION & TRANSACTIONS
+    // TRADING — Session Management
     // ========================================================================
 
-    /**
-     * @brief Select an item from merchant inventory for buying
-     * @param index Index in merchant item list
-     */
+    bool openTrade(EntityHandle npcHandle);
+    void closeTrade();
+    [[nodiscard]] bool isTrading() const { return m_isTrading; }
+    [[nodiscard]] EntityHandle getMerchantHandle() const { return m_merchantHandle; }
+
+    // ========================================================================
+    // TRADING — Item Selection & Transactions
+    // ========================================================================
+
     void selectMerchantItem(size_t index);
-
-    /**
-     * @brief Select an item from player inventory for selling
-     * @param index Index in player item list
-     */
     void selectPlayerItem(size_t index);
-
-    /**
-     * @brief Set quantity for current transaction
-     * @param qty Quantity to buy/sell
-     */
     void setQuantity(int qty);
-
-    /**
-     * @brief Execute buy transaction for selected merchant item
-     * @return TradeResult indicating success or failure
-     */
     TradeResult executeBuy();
-
-    /**
-     * @brief Execute sell transaction for selected player item
-     * @return TradeResult indicating success or failure
-     */
     TradeResult executeSell();
 
     // ========================================================================
-    // TRADE ACCESSORS
+    // TRADING — Accessors (current session)
     // ========================================================================
 
-    /**
-     * @brief Get merchant's tradeable items
-     */
     [[nodiscard]] const std::vector<TradeItemInfo>& getMerchantItems() const { return m_merchantItems; }
-
-    /**
-     * @brief Get player's tradeable items
-     */
     [[nodiscard]] const std::vector<TradeItemInfo>& getPlayerItems() const { return m_playerItems; }
-
-    /**
-     * @brief Get current transaction quantity
-     */
     [[nodiscard]] int getQuantity() const { return m_quantity; }
-
-    /**
-     * @brief Get selected merchant item index (-1 if none)
-     */
     [[nodiscard]] int getSelectedMerchantIndex() const { return m_selectedMerchantIndex; }
-
-    /**
-     * @brief Get selected player item index (-1 if none)
-     */
     [[nodiscard]] int getSelectedPlayerIndex() const { return m_selectedPlayerIndex; }
-
-    /**
-     * @brief Get current buy price for selected item and quantity
-     */
     [[nodiscard]] float getCurrentBuyPrice() const;
-
-    /**
-     * @brief Get current sell price for selected item and quantity
-     */
     [[nodiscard]] float getCurrentSellPrice() const;
-
-    /**
-     * @brief Get relationship description with current merchant
-     */
     [[nodiscard]] std::string getCurrentTradeRelationshipDescription() const;
-
-    /**
-     * @brief Get price modifier with current merchant
-     */
     [[nodiscard]] float getCurrentTradePriceModifier() const;
 
     // ========================================================================
-    // TRADING (BACKEND)
+    // TRADING — Backend (buy/sell/price calculation)
     // ========================================================================
 
-    /**
-     * @brief Attempt to buy an item from an NPC merchant
-     * @param npcHandle NPC to buy from
-     * @param itemHandle Resource type to buy
-     * @param quantity Number of items to buy
-     * @return TradeResult indicating success or failure reason
-     *
-     * Price is calculated as: baseValue * getPriceModifier(npcHandle) * BUY_PRICE_MULTIPLIER
-     * Successful trades improve relationship with the NPC.
-     */
     TradeResult tryBuy(EntityHandle npcHandle,
                        HammerEngine::ResourceHandle itemHandle,
                        int quantity = 1);
 
-    /**
-     * @brief Attempt to sell an item to an NPC merchant
-     * @param npcHandle NPC to sell to
-     * @param itemHandle Resource type to sell
-     * @param quantity Number of items to sell
-     * @return TradeResult indicating success or failure reason
-     *
-     * Price is calculated as: baseValue * getPriceModifier(npcHandle) * SELL_PRICE_MULTIPLIER
-     * Successful trades improve relationship with the NPC.
-     */
     TradeResult trySell(EntityHandle npcHandle,
                         HammerEngine::ResourceHandle itemHandle,
                         int quantity = 1);
 
-    /**
-     * @brief Calculate the buy price for an item from a specific NPC
-     * @param npcHandle NPC merchant
-     * @param itemHandle Resource type
-     * @param quantity Number of items
-     * @return Total price in gold/currency units
-     */
     [[nodiscard]] float calculateBuyPrice(EntityHandle npcHandle,
                                           HammerEngine::ResourceHandle itemHandle,
                                           int quantity = 1) const;
 
-    /**
-     * @brief Calculate the sell price for an item to a specific NPC
-     * @param npcHandle NPC merchant
-     * @param itemHandle Resource type
-     * @param quantity Number of items
-     * @return Total price in gold/currency units
-     */
     [[nodiscard]] float calculateSellPrice(EntityHandle npcHandle,
                                            HammerEngine::ResourceHandle itemHandle,
                                            int quantity = 1) const;
 
     // ========================================================================
-    // GIFTS & INTERACTIONS
+    // SOCIAL — Interactions & Memory
     // ========================================================================
 
     /**
      * @brief Give an item to an NPC as a gift
-     * @param npcHandle NPC to give gift to
-     * @param itemHandle Resource type to give
-     * @param quantity Number of items to give
-     * @return true if gift was given successfully
      *
-     * Gifts significantly improve relationship based on item value.
+     * Gifts improve relationship based on item value.
      * NPCs remember gifts and become more friendly.
      */
     bool tryGift(EntityHandle npcHandle,
@@ -285,28 +159,19 @@ public:
                  int quantity = 1);
 
     /**
-     * @brief Record a generic social interaction
-     * @param npcHandle NPC interacted with
-     * @param type Type of interaction
-     * @param value Interaction quality (-1.0 to +1.0, or item value for trades)
+     * @brief Record a social interaction in NPC memory
+     * @param value Interaction quality (-1.0 to +1.0)
      *
-     * Use this for non-trade interactions like greetings, help, or negative events.
+     * Creates a MemoryType::Interaction entry and updates NPC emotions.
+     * Future: sustained positive interactions will improve NPC personality
+     * stats (bravery, composure, etc.) through social bonds.
      */
     void recordInteraction(EntityHandle npcHandle,
                            InteractionType type,
                            float value = 0.0f);
 
     /**
-     * @brief Report a theft to the system
-     * @param thief EntityHandle of the thief (typically player)
-     * @param victim EntityHandle of the NPC who was robbed
-     * @param stolenItem ResourceHandle of what was stolen
-     * @param quantity Number of items stolen
-     *
-     * This will:
-     * - Record the theft in the victim's memory (severe relationship damage)
-     * - Fire a TheftEvent that nearby guards can respond to
-     * - Alert nearby guards
+     * @brief Report a theft — records memory, fires event, alerts guards
      */
     void reportTheft(EntityHandle thief,
                      EntityHandle victim,
@@ -314,93 +179,57 @@ public:
                      int quantity = 1);
 
     /**
-     * @brief Alert nearby guards to a crime at a location
-     * @param location World position where the crime occurred
-     * @param criminal EntityHandle of the criminal (target for guards)
-     *
-     * Guards within GUARD_ALERT_RANGE will be alerted and respond to the threat.
+     * @brief Alert guards within range to a crime location
      */
     void alertNearbyGuards(const Vector2D& location, EntityHandle criminal);
 
     // ========================================================================
-    // RELATIONSHIP
+    // SHARED — Relationship Queries
     // ========================================================================
 
-    /**
-     * @brief Get relationship level with an NPC
-     * @param npcHandle NPC to check
-     * @return Relationship score from -1.0 (hostile) to +1.0 (best friend)
-     *
-     * Calculated from NPC's memory of interactions and emotional state.
-     * New NPCs start at 0.0 (neutral).
-     */
+    /** @brief Relationship score: -1.0 (hostile) to +1.0 (best friend), 0.0 neutral */
     [[nodiscard]] float getRelationshipLevel(EntityHandle npcHandle) const;
 
-    /**
-     * @brief Get price modifier based on relationship
-     * @param npcHandle NPC merchant
-     * @return Multiplier from 0.7 (best friend) to 1.3 (hostile)
-     *
-     * Better relationships mean better prices for both buying and selling.
-     */
+    /** @brief Price multiplier: 0.7 (trusted) to 1.3 (hostile) */
     [[nodiscard]] float getPriceModifier(EntityHandle npcHandle) const;
 
-    /**
-     * @brief Check if NPC will refuse to trade due to poor relationship
-     * @param npcHandle NPC to check
-     * @return true if relationship is too low for trading
-     */
+    /** @brief True if relationship too low for trading */
     [[nodiscard]] bool willRefuseTrade(EntityHandle npcHandle) const;
 
-    /**
-     * @brief Get a description of the relationship level
-     * @param npcHandle NPC to check
-     * @return String like "Friendly", "Neutral", "Hostile", etc.
-     */
+    /** @brief Human-readable relationship: "Friendly", "Neutral", "Hostile", etc. */
     [[nodiscard]] std::string getRelationshipDescription(EntityHandle npcHandle) const;
 
     // ========================================================================
-    // NPC INVENTORY HELPERS
+    // SHARED — NPC Inventory Helpers
     // ========================================================================
 
-    /**
-     * @brief Check if an NPC has merchant capability (has inventory)
-     * @param npcHandle NPC to check
-     * @return true if NPC can trade
-     */
     [[nodiscard]] bool isMerchant(EntityHandle npcHandle) const;
-
-    /**
-     * @brief Get NPC's inventory index for direct access
-     * @param npcHandle NPC to query
-     * @return Inventory index, or INVALID_INVENTORY_INDEX if not a merchant
-     */
     [[nodiscard]] uint32_t getNPCInventoryIndex(EntityHandle npcHandle) const;
 
     // ========================================================================
-    // CONFIGURATION
+    // CONSTANTS
     // ========================================================================
 
-    // Price multipliers (buy price > sell price for merchant profit)
-    static constexpr float BUY_PRICE_MULTIPLIER = 1.2f;   // 20% markup when buying
-    static constexpr float SELL_PRICE_MULTIPLIER = 0.6f;  // 40% markdown when selling
+    // Trade pricing
+    static constexpr float BUY_PRICE_MULTIPLIER = 1.2f;
+    static constexpr float SELL_PRICE_MULTIPLIER = 0.6f;
 
     // Relationship thresholds
-    static constexpr float RELATIONSHIP_HOSTILE = -0.5f;   // Won't trade
+    static constexpr float RELATIONSHIP_HOSTILE = -0.5f;
     static constexpr float RELATIONSHIP_UNFRIENDLY = -0.25f;
     static constexpr float RELATIONSHIP_NEUTRAL = 0.0f;
     static constexpr float RELATIONSHIP_FRIENDLY = 0.25f;
-    static constexpr float RELATIONSHIP_TRUSTED = 0.5f;    // Best prices
+    static constexpr float RELATIONSHIP_TRUSTED = 0.5f;
 
-    // Relationship changes per interaction
-    static constexpr float TRADE_RELATIONSHIP_GAIN = 0.02f;   // Per successful trade
-    static constexpr float GIFT_RELATIONSHIP_BASE = 0.05f;    // Base gift bonus
-    static constexpr float GIFT_VALUE_SCALE = 0.001f;         // Additional per gold value
-    static constexpr float THEFT_RELATIONSHIP_LOSS = -0.3f;   // Per theft
-    static constexpr float GUARD_ALERT_RANGE = 500.0f;        // Guards within range respond to theft
+    // Interaction relationship deltas
+    static constexpr float TRADE_RELATIONSHIP_GAIN = 0.02f;
+    static constexpr float GIFT_RELATIONSHIP_BASE = 0.05f;
+    static constexpr float GIFT_VALUE_SCALE = 0.001f;
+    static constexpr float THEFT_RELATIONSHIP_LOSS = -0.3f;
+    static constexpr float GUARD_ALERT_RANGE = 500.0f;
 
 private:
-    // Trade UI management
+    // --- Trade UI ---
     void createTradeUI();
     void destroyTradeUI();
     void refreshMerchantItems();
@@ -408,24 +237,12 @@ private:
     void updatePriceDisplay();
     void updateSelectionHighlight();
 
-    /**
-     * @brief Record a trade in NPC's memory
-     */
+    // --- Memory recording ---
     void recordTrade(EntityHandle npcHandle, float tradeValue, bool wasGoodDeal);
-
-    /**
-     * @brief Record a gift in NPC's memory
-     */
     void recordGift(EntityHandle npcHandle, float giftValue);
-
-    /**
-     * @brief Update NPC's emotional state based on interaction
-     */
     void updateEmotions(EntityHandle npcHandle, InteractionType type, float value);
 
-    /**
-     * @brief Get base item value from ResourceTemplateManager
-     */
+    // --- Utility ---
     [[nodiscard]] float getItemBaseValue(HammerEngine::ResourceHandle itemHandle) const;
 
     // Player reference
@@ -436,16 +253,16 @@ private:
     bool m_isTrading{false};
     bool m_priceDisplayDirty{true};
 
-    // Item lists
+    // Trade item lists
     std::vector<TradeItemInfo> m_merchantItems;
     std::vector<TradeItemInfo> m_playerItems;
 
-    // Selection state
+    // Trade selection state
     int m_selectedMerchantIndex{-1};
     int m_selectedPlayerIndex{-1};
     int m_quantity{1};
 
-    // UI element IDs
+    // Trade UI element IDs
     static constexpr const char* UI_PANEL = "trade_panel";
     static constexpr const char* UI_TITLE = "trade_title";
     static constexpr const char* UI_RELATIONSHIP = "trade_relationship";
