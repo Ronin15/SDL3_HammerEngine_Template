@@ -214,9 +214,8 @@ void applyDamageToTarget(EntityHandle targetHandle, float damage, const Vector2D
 
     Vector2D scaledKnockback = knockback * 0.1f;
 
-    auto damageEvent = std::make_shared<DamageEvent>(
-        EntityEventType::DamageIntent, attackerHandle, targetHandle,
-        damage, scaledKnockback);
+    auto damageEvent = EventManager::Instance().acquireDamageEvent();
+    damageEvent->configure(attackerHandle, targetHandle, damage, scaledKnockback);
 
     EventData eventData;
     eventData.typeId = EventTypeId::Combat;

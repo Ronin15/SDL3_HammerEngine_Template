@@ -56,6 +56,7 @@ class CollisionObstacleChangedEvent;
 class ParticleEffectEvent;
 class TimeEvent;
 class DamageEvent;
+class AlertEvent;
 class Entity;
 
 using EventPtr = std::shared_ptr<Event>;
@@ -482,6 +483,18 @@ public:
    */
   void clearEventPools();
 
+  // ==================== Pool Acquisition (for deferred event creation) ====================
+
+  /**
+   * @brief Acquire a DamageEvent from pool (avoids per-event allocation)
+   */
+  std::shared_ptr<DamageEvent> acquireDamageEvent() const { return m_damagePool.acquire(); }
+
+  /**
+   * @brief Acquire an AlertEvent from pool (avoids per-event allocation)
+   */
+  std::shared_ptr<AlertEvent> acquireAlertEvent() const { return m_alertEventPool.acquire(); }
+
 private:
   EventManager(); // Constructor pre-allocates handler vectors
 
@@ -503,6 +516,7 @@ private:
   mutable EventPool<ParticleEffectEvent> m_particleEffectPool;
   mutable EventPool<CollisionObstacleChangedEvent> m_collisionObstacleChangedPool;
   mutable EventPool<DamageEvent> m_damagePool;
+  mutable EventPool<AlertEvent> m_alertEventPool;
 
   // Handler storage (type-indexed)
   std::array<std::vector<HandlerEntry>, static_cast<size_t>(EventTypeId::COUNT)>

@@ -172,10 +172,10 @@ void CombatController::performAttack(Player *player) {
     float oldHealth = charData.health;
 
     // Fire DamageIntent event for any observers
-    auto damageIntent = std::make_shared<DamageEvent>(
-        EntityEventType::DamageIntent, playerHandle, handle, attackDamage,
-        knockback);
-    EventManager::Instance().dispatchEvent(
+    auto& eventMgr = EventManager::Instance();
+    auto damageIntent = eventMgr.acquireDamageEvent();
+    damageIntent->configure(playerHandle, handle, attackDamage, knockback);
+    eventMgr.dispatchEvent(
         damageIntent, EventManager::DispatchMode::Immediate);
 
     // Apply damage directly to CharacterData

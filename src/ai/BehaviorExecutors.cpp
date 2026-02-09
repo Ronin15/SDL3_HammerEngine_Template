@@ -350,7 +350,8 @@ void clearPendingMessages(size_t edmIndex) {
 thread_local std::vector<EventManager::DeferredEvent> t_deferredMessageEvents;
 
 void deferBehaviorMessage(size_t targetEdmIndex, uint8_t messageId, uint8_t param) {
-    auto alertEvent = std::make_shared<AlertEvent>(targetEdmIndex, messageId, param);
+    auto alertEvent = EventManager::Instance().acquireAlertEvent();
+    alertEvent->configure(targetEdmIndex, messageId, param);
 
     EventData eventData;
     eventData.typeId = EventTypeId::BehaviorMessage;

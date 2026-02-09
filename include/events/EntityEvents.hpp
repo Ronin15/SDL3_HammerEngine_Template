@@ -340,12 +340,29 @@ private:
  */
 class AlertEvent : public Event {
 public:
+    /**
+     * @brief Default constructor for pool allocation
+     */
+    AlertEvent()
+        : m_targetEdmIndex(0)
+        , m_messageId(0)
+        , m_param(0) {}
+
     AlertEvent(size_t targetEdmIndex, uint8_t messageId, uint8_t param = 0)
         : m_targetEdmIndex(targetEdmIndex)
         , m_messageId(messageId)
         , m_param(param) {}
 
     ~AlertEvent() override = default;
+
+    /**
+     * @brief Configure event for pool reuse
+     */
+    void configure(size_t targetEdmIndex, uint8_t messageId, uint8_t param) {
+        m_targetEdmIndex = targetEdmIndex;
+        m_messageId = messageId;
+        m_param = param;
+    }
 
     void update() override {}
     void execute() override {}
