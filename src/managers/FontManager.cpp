@@ -709,11 +709,13 @@ void FontManager::clean() {
   m_gpuLruList.clear();
   m_pendingTextUploads.clear();
 
-  // Release text vertex buffer
+  // Release text vertex buffer and pending draws
   if (m_textVertexBuffer) {
     SDL_ReleaseGPUBuffer(HammerEngine::GPUDevice::Instance().get(), m_textVertexBuffer);
     m_textVertexBuffer = nullptr;
   }
+  m_textVertexBufferCapacity = 0;
+  m_pendingTextDraws.clear();
 #endif
 
   // Clear display tracking
@@ -897,8 +899,8 @@ void FontManager::processPendingTextUploads(SDL_GPUCopyPass* copyPass) {
 void FontManager::drawTextGPU(const std::string& text, const std::string& fontID,
                                int x, int y, SDL_Color color,
                                HammerEngine::GPURenderer& gpuRenderer,
-                               SDL_GPURenderPass* pass) {
-  if (!pass || text.empty()) {
+                               SDL_GPURenderPass* /*pass*/) {
+  if (text.empty()) {
     return;
   }
 
@@ -918,82 +920,87 @@ void FontManager::drawTextGPU(const std::string& text, const std::string& fontID
   float dstW = static_cast<float>(textData->width);
   float dstH = static_cast<float>(textData->height);
 
-  // Create orthographic projection for screen-space rendering
-  float orthoMatrix[16];
+  PendingGPUTextDraw draw;
+  // Quad vertices
+  draw.vertices[0] = {dstX, dstY, 0.0f, 0.0f, 255, 255, 255, 255};
+  draw.vertices[1] = {dstX + dstW, dstY, 1.0f, 0.0f, 255, 255, 255, 255};
+  draw.vertices[2] = {dstX + dstW, dstY + dstH, 1.0f, 1.0f, 255, 255, 255, 255};
+  draw.vertices[3] = {dstX, dstY + dstH, 0.0f, 1.0f, 255, 255, 255, 255};
+  draw.texture = textData->texture->get();
+  draw.sampler = gpuRenderer.getLinearSampler();
   HammerEngine::GPURenderer::createOrthoMatrix(
       0.0f, static_cast<float>(gpuRenderer.getViewportWidth()),
       static_cast<float>(gpuRenderer.getViewportHeight()), 0.0f,
-      orthoMatrix);
+      draw.orthoMatrix);
 
-  // Bind UI sprite pipeline (for swapchain rendering)
-  SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUISpritePipeline());
+  m_pendingTextDraws.push_back(draw);
+}
 
-  // Push view-projection
-  gpuRenderer.pushViewProjection(pass, orthoMatrix);
+void FontManager::flushTextDraws(HammerEngine::GPURenderer& gpuRenderer,
+                                  SDL_GPURenderPass* pass) {
+  if (m_pendingTextDraws.empty() || !pass) return;
 
-  // Create quad vertices
-  HammerEngine::SpriteVertex vertices[4];
-  // Top-left
-  vertices[0] = {dstX, dstY, 0.0f, 0.0f, 255, 255, 255, 255};
-  // Top-right
-  vertices[1] = {dstX + dstW, dstY, 1.0f, 0.0f, 255, 255, 255, 255};
-  // Bottom-right
-  vertices[2] = {dstX + dstW, dstY + dstH, 1.0f, 1.0f, 255, 255, 255, 255};
-  // Bottom-left
-  vertices[3] = {dstX, dstY + dstH, 0.0f, 1.0f, 255, 255, 255, 255};
-
-  // Use the sprite batch's index buffer for the quad
-  const auto& batch = gpuRenderer.getSpriteBatch();
-
-  // Bind texture
-  SDL_GPUTextureSamplerBinding texSampler{};
-  texSampler.texture = textData->texture->get();
-  texSampler.sampler = gpuRenderer.getLinearSampler();
-  SDL_BindGPUFragmentSamplers(pass, 0, &texSampler, 1);
-
-  // Lazy-init text vertex buffer (4 vertices, reused for all text draws)
   const auto& gpuDevice = HammerEngine::GPUDevice::Instance();
-  if (!m_textVertexBuffer) {
+  size_t drawCount = m_pendingTextDraws.size();
+  size_t totalVertexSize = drawCount * 4 * sizeof(HammerEngine::SpriteVertex);
+
+  // Lazy-init / grow text vertex buffer
+  if (!m_textVertexBuffer || drawCount > m_textVertexBufferCapacity) {
+    if (m_textVertexBuffer) {
+      SDL_ReleaseGPUBuffer(gpuDevice.get(), m_textVertexBuffer);
+    }
+    m_textVertexBufferCapacity = std::max(drawCount, MAX_GPU_TEXT_DRAWS_PER_FRAME);
+
     SDL_GPUBufferCreateInfo bufferInfo{};
     bufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
-    bufferInfo.size = sizeof(HammerEngine::SpriteVertex) * 4;
+    bufferInfo.size = static_cast<uint32_t>(m_textVertexBufferCapacity * 4 * sizeof(HammerEngine::SpriteVertex));
     m_textVertexBuffer = SDL_CreateGPUBuffer(gpuDevice.get(), &bufferInfo);
 
     if (!m_textVertexBuffer) {
       FONT_ERROR(std::format("Failed to create text vertex buffer: {}", SDL_GetError()));
+      m_pendingTextDraws.clear();
       return;
     }
   }
 
-  // Upload vertex data to GPU (one-shot command buffer + copy pass)
+  // Single transfer buffer for all vertices
   HammerEngine::GPUTransferBuffer vertexTransfer(
-      gpuDevice.get(), SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, sizeof(vertices));
+      gpuDevice.get(), SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, totalVertexSize);
 
   if (!vertexTransfer.isValid()) {
-    FONT_ERROR("Failed to create vertex transfer buffer for text");
+    FONT_ERROR("Failed to create vertex transfer buffer for text batch");
+    m_pendingTextDraws.clear();
     return;
   }
 
   void* mapped = vertexTransfer.map(false);
   if (!mapped) {
-    FONT_ERROR("Failed to map vertex transfer buffer for text");
+    FONT_ERROR("Failed to map vertex transfer buffer for text batch");
+    m_pendingTextDraws.clear();
     return;
   }
 
-  std::memcpy(mapped, vertices, sizeof(vertices));
+  // Copy all vertices at offsets
+  for (size_t i = 0; i < drawCount; ++i) {
+    size_t offset = i * 4 * sizeof(HammerEngine::SpriteVertex);
+    std::memcpy(static_cast<uint8_t*>(mapped) + offset,
+                m_pendingTextDraws[i].vertices, sizeof(HammerEngine::SpriteVertex) * 4);
+  }
   vertexTransfer.unmap();
 
-  // Create one-shot command buffer to upload vertices
+  // ONE command buffer + copy pass for all uploads
   SDL_GPUCommandBuffer* uploadCmd = SDL_AcquireGPUCommandBuffer(gpuDevice.get());
   if (!uploadCmd) {
-    FONT_ERROR("Failed to acquire command buffer for text vertex upload");
+    FONT_ERROR("Failed to acquire command buffer for text batch upload");
+    m_pendingTextDraws.clear();
     return;
   }
 
   SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmd);
   if (!copyPass) {
-    FONT_ERROR("Failed to begin copy pass for text vertex upload");
+    FONT_ERROR("Failed to begin copy pass for text batch upload");
     SDL_CancelGPUCommandBuffer(uploadCmd);
+    m_pendingTextDraws.clear();
     return;
   }
 
@@ -1001,26 +1008,40 @@ void FontManager::drawTextGPU(const std::string& text, const std::string& fontID
   SDL_GPUBufferRegion dst{};
   dst.buffer = m_textVertexBuffer;
   dst.offset = 0;
-  dst.size = sizeof(vertices);
+  dst.size = static_cast<uint32_t>(totalVertexSize);
 
   SDL_UploadToGPUBuffer(copyPass, &src, &dst, false);
   SDL_EndGPUCopyPass(copyPass);
   SDL_SubmitGPUCommandBuffer(uploadCmd);
 
-  // Bind our text vertex buffer (not the sprite pool)
-  SDL_GPUBufferBinding vertexBinding{};
-  vertexBinding.buffer = m_textVertexBuffer;
-  vertexBinding.offset = 0;
-  SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
+  // Draw all text quads
+  const auto& batch = gpuRenderer.getSpriteBatch();
 
-  // Bind the index buffer
-  SDL_GPUBufferBinding indexBinding{};
-  indexBinding.buffer = batch.getIndexBuffer();
-  indexBinding.offset = 0;
-  SDL_BindGPUIndexBuffer(pass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+  for (size_t i = 0; i < drawCount; ++i) {
+    const auto& draw = m_pendingTextDraws[i];
 
-  // Draw the quad (6 indices for 4 vertices)
-  SDL_DrawGPUIndexedPrimitives(pass, 6, 1, 0, 0, 0);
+    SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUISpritePipeline());
+    gpuRenderer.pushViewProjection(pass, draw.orthoMatrix);
+
+    SDL_GPUTextureSamplerBinding texSampler{};
+    texSampler.texture = draw.texture;
+    texSampler.sampler = draw.sampler;
+    SDL_BindGPUFragmentSamplers(pass, 0, &texSampler, 1);
+
+    SDL_GPUBufferBinding vertexBinding{};
+    vertexBinding.buffer = m_textVertexBuffer;
+    vertexBinding.offset = static_cast<uint32_t>(i * 4 * sizeof(HammerEngine::SpriteVertex));
+    SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
+
+    SDL_GPUBufferBinding indexBinding{};
+    indexBinding.buffer = batch.getIndexBuffer();
+    indexBinding.offset = 0;
+    SDL_BindGPUIndexBuffer(pass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+
+    SDL_DrawGPUIndexedPrimitives(pass, 6, 1, 0, 0, 0);
+  }
+
+  m_pendingTextDraws.clear();
 }
 
 void FontManager::clearGPUTextCache() {

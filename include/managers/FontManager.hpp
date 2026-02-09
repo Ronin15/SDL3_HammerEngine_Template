@@ -261,19 +261,32 @@ class FontManager {
   void processPendingTextUploads(SDL_GPUCopyPass* copyPass);
 
   /**
-   * @brief Draw text using GPU renderer to the swapchain
+   * @brief Queue text for batched GPU rendering
    * @param text Text string to draw
    * @param fontID Unique identifier of the font to use
    * @param x X coordinate (center point of text)
    * @param y Y coordinate (center point of text)
    * @param color Text color for drawing
-   * @param gpuRenderer GPU renderer instance
-   * @param pass Active render pass (swapchain pass)
+   * @param gpuRenderer GPU renderer instance (used for viewport dimensions)
+   * @param pass Ignored (kept for API compatibility)
+   *
+   * Queues text draw into pending list. Call flushTextDraws() once per frame
+   * after all drawTextGPU() calls to perform a single batched upload + draw.
    */
   void drawTextGPU(const std::string& text, const std::string& fontID,
                    int x, int y, SDL_Color color,
                    HammerEngine::GPURenderer& gpuRenderer,
                    SDL_GPURenderPass* pass);
+
+  /**
+   * @brief Flush all queued text draws in a single batched GPU submission
+   * @param gpuRenderer GPU renderer instance
+   * @param pass Active render pass (swapchain pass)
+   *
+   * Performs one transfer buffer allocation, one copy pass, and draws all
+   * queued text quads. Call once per frame after all drawTextGPU() calls.
+   */
+  void flushTextDraws(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass);
 
   /**
    * @brief Clear GPU text cache (call on state transitions or when memory is needed)
@@ -352,8 +365,19 @@ class FontManager {
   };
   std::vector<PendingTextUpload> m_pendingTextUploads{};
 
-  // Dedicated vertex buffer for text rendering (4 vertices per quad)
+  // Batched text vertex buffer (grows to fit all pending draws)
   SDL_GPUBuffer* m_textVertexBuffer{nullptr};
+  size_t m_textVertexBufferCapacity{0};  // Current capacity in draw count
+
+  // Pending text draws queued by drawTextGPU(), flushed by flushTextDraws()
+  static constexpr size_t MAX_GPU_TEXT_DRAWS_PER_FRAME = 64;
+  struct PendingGPUTextDraw {
+    HammerEngine::SpriteVertex vertices[4];
+    SDL_GPUTexture* texture;
+    SDL_GPUSampler* sampler;
+    float orthoMatrix[16];
+  };
+  std::vector<PendingGPUTextDraw> m_pendingTextDraws{};
 #endif
 
   // Delete copy constructor and assignment operator
