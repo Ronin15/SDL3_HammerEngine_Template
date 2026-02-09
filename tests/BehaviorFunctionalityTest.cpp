@@ -686,7 +686,8 @@ BOOST_AUTO_TEST_CASE(TestDeferredPipelineEndToEnd) {
     Behaviors::deferBehaviorMessage(guardIdx, BehaviorMessage::RAISE_ALERT);
 
     // Collect and enqueue (mimics processBatch → AIManager::update flow)
-    auto events = Behaviors::collectDeferredMessageEvents();
+    std::vector<EventManager::DeferredEvent> events;
+    Behaviors::collectDeferredMessageEvents(events);
     BOOST_CHECK(events.size() == 1);
     eventMgr.enqueueBatch(std::move(events));
 

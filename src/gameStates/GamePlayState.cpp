@@ -18,6 +18,7 @@
 #include "gameStates/LoadingState.hpp"
 #include "gameStates/PauseState.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/GameStateManager.hpp"
@@ -395,6 +396,7 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
 bool GamePlayState::exit() {
   // Cache manager references for better performance
   AIManager &aiMgr = AIManager::Instance();
+  BackgroundSimulationManager &bgSimMgr = BackgroundSimulationManager::Instance();
   EntityDataManager &edm = EntityDataManager::Instance();
   CollisionManager &collisionMgr = CollisionManager::Instance();
   PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
@@ -423,6 +425,7 @@ bool GamePlayState::exit() {
     }
 
     aiMgr.prepareForStateTransition();
+    bgSimMgr.prepareForStateTransition();
     edm.prepareForStateTransition();
 
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
@@ -491,6 +494,7 @@ bool GamePlayState::exit() {
   }
 
   aiMgr.prepareForStateTransition();
+  bgSimMgr.prepareForStateTransition();
   edm.prepareForStateTransition();
 
   // Clean collision state before other systems

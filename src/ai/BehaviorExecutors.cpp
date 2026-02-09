@@ -400,10 +400,10 @@ void deferBehaviorMessage(size_t targetEdmIndex, uint8_t messageId, uint8_t para
     t_deferredMessageEvents.push_back({EventTypeId::BehaviorMessage, std::move(eventData)});
 }
 
-std::vector<EventManager::DeferredEvent> collectDeferredMessageEvents() {
-    std::vector<EventManager::DeferredEvent> result;
-    result.swap(t_deferredMessageEvents);
-    return result;
+void collectDeferredMessageEvents(std::vector<EventManager::DeferredEvent>& out) {
+    out.insert(out.end(), std::make_move_iterator(t_deferredMessageEvents.begin()),
+                          std::make_move_iterator(t_deferredMessageEvents.end()));
+    t_deferredMessageEvents.clear();
 }
 
 } // namespace Behaviors

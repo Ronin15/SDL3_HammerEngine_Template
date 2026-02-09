@@ -9,6 +9,7 @@
 #include "core/Logger.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/GameStateManager.hpp"
@@ -191,8 +192,8 @@ bool AdvancedAIDemoState::enter() {
     float worldMinX, worldMinY, worldMaxX, worldMaxY;
     if (worldManager.getWorldBounds(worldMinX, worldMinY, worldMaxX,
                                     worldMaxY)) {
-      m_worldWidth = worldMaxX;
-      m_worldHeight = worldMaxY;
+      m_worldWidth = std::max(0.0f, worldMaxX - worldMinX);
+      m_worldHeight = std::max(0.0f, worldMaxY - worldMinY);
       GAMESTATE_INFO(std::format("World dimensions: {} x {} pixels",
                                  m_worldWidth, m_worldHeight));
     } else {
@@ -326,6 +327,7 @@ bool AdvancedAIDemoState::exit() {
 
   // Cache manager references for better performance
   AIManager &aiMgr = AIManager::Instance();
+  BackgroundSimulationManager &bgSimMgr = BackgroundSimulationManager::Instance();
   EntityDataManager &edm = EntityDataManager::Instance();
   CollisionManager &collisionMgr = CollisionManager::Instance();
   PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
@@ -355,6 +357,7 @@ bool AdvancedAIDemoState::exit() {
     }
 
     aiMgr.prepareForStateTransition();
+    bgSimMgr.prepareForStateTransition();
     edm.prepareForStateTransition();
 
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
@@ -409,6 +412,7 @@ bool AdvancedAIDemoState::exit() {
   }
 
   aiMgr.prepareForStateTransition();
+  bgSimMgr.prepareForStateTransition();
   edm.prepareForStateTransition();
 
   // Clean collision state

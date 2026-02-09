@@ -41,11 +41,8 @@ constexpr float SPECIAL_ATTACK_MULTIPLIER = 1.5f;
 constexpr float RETREAT_SPEED_MULTIPLIER = 1.3f;
 constexpr float STRAFE_INTERVAL = 3.0f;
 
-// Future features: Charge attacks and combo finishers
-// Config support exists (chargeDamageMultiplier, etc.) but state machine integration pending
-[[maybe_unused]] constexpr float COMBO_FINISHER_MULTIPLIER = 1.8f;
-[[maybe_unused]] constexpr float CHARGE_SPEED_MULTIPLIER = 2.0f;
-[[maybe_unused]] constexpr float CHARGE_DISTANCE_THRESHOLD_MULT = 1.5f;
+constexpr float CHARGE_SPEED_MULTIPLIER = 2.0f;
+constexpr float CHARGE_DISTANCE_THRESHOLD_MULT = 1.5f;
 constexpr float FEAR_FLEE_THRESHOLD = 0.7f;
 constexpr float BRAVERY_FLEE_THRESHOLD = 0.3f;
 constexpr float BRAVERY_RETREAT_FACTOR = 0.3f;
@@ -730,7 +727,6 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
 
             // Circle strafing if enabled and within optimal range
             if (config.circleStrafe && distToTarget <= optimalRange * 1.2f) {
-                attack.strafeTimer += ctx.deltaTime;
                 if (attack.strafeTimer > STRAFE_INTERVAL) {
                     attack.strafeTimer = 0.0f;
                     // Alternate strafe direction
@@ -812,10 +808,10 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     }
 }
 
-std::vector<EventManager::DeferredEvent> collectDeferredDamageEvents() {
-    std::vector<EventManager::DeferredEvent> result;
-    result.swap(t_deferredDamageEvents);
-    return result;
+void collectDeferredDamageEvents(std::vector<EventManager::DeferredEvent>& out) {
+    out.insert(out.end(), std::make_move_iterator(t_deferredDamageEvents.begin()),
+                          std::make_move_iterator(t_deferredDamageEvents.end()));
+    t_deferredDamageEvents.clear();
 }
 
 } // namespace Behaviors

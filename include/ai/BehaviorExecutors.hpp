@@ -437,7 +437,7 @@ void clearPendingMessages(size_t edmIndex);
  * Attack behaviors defer damage event creation to avoid locking EventManager
  * during batch execution. Call this after processBatch to collect and dispatch.
  */
-std::vector<EventManager::DeferredEvent> collectDeferredDamageEvents();
+void collectDeferredDamageEvents(std::vector<EventManager::DeferredEvent>& out);
 
 // ============================================================================
 // DEFERRED BEHAVIOR MESSAGE COLLECTION (thread-local buffer for inter-entity messages)
@@ -458,7 +458,7 @@ void deferBehaviorMessage(size_t targetEdmIndex, uint8_t messageId, uint8_t para
  * @brief Collect deferred behavior message events from thread-local buffer
  * @return Vector of deferred events to dispatch (moved, buffer cleared)
  */
-std::vector<EventManager::DeferredEvent> collectDeferredMessageEvents();
+void collectDeferredMessageEvents(std::vector<EventManager::DeferredEvent>& out);
 
 } // namespace Behaviors
 

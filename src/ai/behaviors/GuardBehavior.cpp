@@ -240,8 +240,6 @@ EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, float de
     if (s_nearbyBuffer.capacity() < 32) s_nearbyBuffer.reserve(32);
     AIManager::Instance().queryEdmIndicesInRadius(ctx.transform.position, detectionRange, s_nearbyBuffer, true);
 
-    float detectionRangeSq = detectionRange * detectionRange;
-
     // Single-pass: check both enemy faction and friendly attackers
     // Enemy faction takes priority (returns immediately)
     EntityHandle friendlyAttacker{};
@@ -271,7 +269,7 @@ EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, float de
     // Check player for enemy guards - use pre-fetched characterData
     if (ctx.playerValid && ctx.characterData && ctx.characterData->faction == 1) {
         float distSq = Vector2D::distanceSquared(ctx.transform.position, ctx.playerPosition);
-        if (distSq <= detectionRangeSq) {
+        if (distSq <= detectionRange * detectionRange) {
             isEnemyFaction = true;
             return ctx.playerHandle;
         }
@@ -458,7 +456,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         s_helpBuffer.clear();
         uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
         AIManager::Instance().queryEdmIndicesInRadius(
-            ctx.transform.position, 250.0f, s_helpBuffer, true);
+            ctx.transform.position, config.helpCallRadius, s_helpBuffer, true);
         for (size_t idx : s_helpBuffer) {
             if (idx == ctx.edmIndex) continue;
             if (edm.getCharacterDataByIndex(idx).faction != myFaction) continue;
@@ -615,7 +613,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
             s_calmBuffer.clear();
             uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
             AIManager::Instance().queryEdmIndicesInRadius(
-                ctx.transform.position, 250.0f, s_calmBuffer, true);
+                ctx.transform.position, config.helpCallRadius, s_calmBuffer, true);
             for (size_t idx : s_calmBuffer) {
                 if (idx == ctx.edmIndex) continue;
                 if (edm.getCharacterDataByIndex(idx).faction != myFaction) continue;

@@ -78,8 +78,8 @@ void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const 
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Get visibility info from Camera for spatial query (culling tolerance is fine)
-    Vector2D cameraCenter = camera.getPosition();
+    // Use interpolated camera position for spatial query (matches actual render position)
+    Vector2D cameraCenter(cameraX, cameraY);
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
                                     viewport.height * viewport.height) * 0.5f;
@@ -136,8 +136,8 @@ void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const Ha
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Get visibility info from Camera for spatial query (culling tolerance is fine)
-    Vector2D cameraCenter = camera.getPosition();
+    // Use interpolated camera position for spatial query (matches actual render position)
+    Vector2D cameraCenter(cameraX, cameraY);
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
                                     viewport.height * viewport.height) * 0.5f;
@@ -193,8 +193,8 @@ void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, const 
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Get visibility info from Camera for spatial query (culling tolerance is fine)
-    Vector2D cameraCenter = camera.getPosition();
+    // Use interpolated camera position for spatial query (matches actual render position)
+    Vector2D cameraCenter(cameraX, cameraY);
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
                                     viewport.height * viewport.height) * 0.5f;

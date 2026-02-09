@@ -8,6 +8,7 @@
 #include "core/Logger.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/GameStateManager.hpp"
@@ -373,6 +374,7 @@ bool AIDemoState::exit() {
 
   // Cache manager references for better performance
   AIManager &aiMgr = AIManager::Instance();
+  BackgroundSimulationManager &bgSimMgr = BackgroundSimulationManager::Instance();
   EntityDataManager &edm = EntityDataManager::Instance();
   CollisionManager &collisionMgr = CollisionManager::Instance();
   PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
@@ -385,6 +387,9 @@ bool AIDemoState::exit() {
 
     // Reset the flag after using it
     m_transitioningToLoading = false;
+
+    // Clear controllers before entity/manager cleanup
+    m_controllers.clear();
 
     // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
     // NPCs hold EDM indices - must be destroyed while EDM data is still valid
@@ -402,6 +407,7 @@ bool AIDemoState::exit() {
     }
 
     aiMgr.prepareForStateTransition();
+    bgSimMgr.prepareForStateTransition();
     edm.prepareForStateTransition();
 
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
@@ -436,6 +442,9 @@ bool AIDemoState::exit() {
 
   // Full exit (going to main menu, other states, or shutting down)
 
+  // Clear controllers before entity/manager cleanup
+  m_controllers.clear();
+
   // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
   // NPCs hold EDM indices - must be destroyed while EDM data is still valid
   m_npcRenderCtrl.clearSpawnedNPCs();
@@ -452,6 +461,7 @@ bool AIDemoState::exit() {
   }
 
   aiMgr.prepareForStateTransition();
+  bgSimMgr.prepareForStateTransition();
   edm.prepareForStateTransition();
 
   // Clean collision state

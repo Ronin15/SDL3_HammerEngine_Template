@@ -994,10 +994,6 @@ Vector2D PathfinderManager::adjustSpawnToNavigable(const Vector2D& desired, floa
     return pos;
 }
 
-[[maybe_unused]] static inline bool pointInRect(const Vector2D& p, float minX, float minY, float maxX, float maxY) {
-    return p.getX() >= minX && p.getX() <= maxX && p.getY() >= minY && p.getY() <= maxY;
-}
-
 Vector2D PathfinderManager::adjustSpawnToNavigableInRect(const Vector2D& desired,
                                                          float halfW, float halfH,
                                                          float interiorMargin,

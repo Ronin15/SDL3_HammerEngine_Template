@@ -559,23 +559,20 @@ bool Player::equipItem(HammerEngine::ResourceHandle itemHandle) {
 
   auto &edm = EntityDataManager::Instance();
   if (!edm.hasInInventory(m_inventoryIndex, itemHandle, 1)) {
-    PLAYER_WARN("Player::equipItem - Item not available (handle: " +
-                itemHandle.toString() + ")");
+    PLAYER_WARN(std::format("Player::equipItem - Item not available (handle: {})", itemHandle.toString()));
     return false;
   }
 
   const auto &templateManager = ResourceTemplateManager::Instance();
   auto itemTemplate = templateManager.getResourceTemplate(itemHandle);
   if (!itemTemplate) {
-    PLAYER_ERROR("Player::equipItem - Cannot get template for item handle: " +
-                 itemHandle.toString());
+    PLAYER_ERROR(std::format("Player::equipItem - Cannot get template for item handle: {}", itemHandle.toString()));
     return false;
   }
 
   // Check if it's equipment
   if (itemTemplate->getType() != ResourceType::Equipment) {
-    PLAYER_WARN("Player::equipItem - Item is not equipment (handle: " +
-                itemHandle.toString() + ")");
+    PLAYER_WARN(std::format("Player::equipItem - Item is not equipment (handle: {})", itemHandle.toString()));
     return false;
   }
 
@@ -624,9 +621,7 @@ bool Player::unequipItem(const std::string &slotName) {
     return true;
   }
 
-  PLAYER_WARN(
-      "Player::unequipItem - Could not add item back to inventory (handle: " +
-      itemHandle.toString() + ")");
+  PLAYER_WARN(std::format("Player::unequipItem - Could not add item back to inventory (handle: {})", itemHandle.toString()));
   return false;
 }
 
@@ -669,16 +664,14 @@ bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
 
   auto &edm = EntityDataManager::Instance();
   if (!edm.hasInInventory(m_inventoryIndex, itemHandle, 1)) {
-    PLAYER_WARN("Player::consumeItem - Item not available (handle: " +
-                itemHandle.toString() + ")");
+    PLAYER_WARN(std::format("Player::consumeItem - Item not available (handle: {})", itemHandle.toString()));
     return false;
   }
 
   const auto &templateManager = ResourceTemplateManager::Instance();
   auto itemTemplate = templateManager.getResourceTemplate(itemHandle);
   if (!itemTemplate || !itemTemplate->isConsumable()) {
-    PLAYER_WARN("Player::consumeItem - Item is not consumable (handle: " +
-                itemHandle.toString() + ")");
+    PLAYER_WARN(std::format("Player::consumeItem - Item is not consumable (handle: {})", itemHandle.toString()));
     return false;
   }
 

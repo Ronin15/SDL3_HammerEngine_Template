@@ -6,6 +6,7 @@
 #include "controllers/social/SocialController.hpp"
 #include "ai/BehaviorExecutors.hpp"
 #include "core/Logger.hpp"
+#include "managers/AIManager.hpp"
 #include "entities/Player.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -537,36 +538,28 @@ void SocialController::reportTheft(EntityHandle thief,
 }
 
 void SocialController::alertNearbyGuards(const Vector2D& location, EntityHandle criminal) {
+    (void)criminal;  // Guards detect threats autonomously after alert
     auto& edm = EntityDataManager::Instance();
 
-    auto activeIndices = edm.getActiveIndices();
+    // Use spatial query instead of iterating all active entities
+    m_nearbyGuardBuffer.clear();
+    AIManager::Instance().queryEdmIndicesInRadius(location, GUARD_ALERT_RANGE,
+                                                   m_nearbyGuardBuffer, true);
     int guardsAlerted = 0;
 
-    for (size_t idx : activeIndices) {
+    for (size_t idx : m_nearbyGuardBuffer) {
         const auto& behaviorData = edm.getBehaviorData(idx);
         if (behaviorData.behaviorType != BehaviorType::Guard) {
             continue;
         }
 
-        const auto& transform = edm.getHotDataByIndex(idx).transform;
-        float distance = (transform.position - location).length();
+        // Send RAISE_ALERT via behavior message system (guards handle state autonomously)
+        Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);
 
-        if (distance <= GUARD_ALERT_RANGE) {
-            auto& guardData = edm.getBehaviorData(idx);
-            auto& guard = guardData.state.guard;
-
-            guard.currentAlertLevel = 3;
-            guard.alertTimer = 0.0f;
-            guard.lastKnownThreatPosition = location;
-            guard.alertRaised = true;
-            guard.hasActiveThreat = true;
-
-            (void)criminal;
-
-            ++guardsAlerted;
-            SOCIAL_DEBUG(std::format("Guard at ({:.0f}, {:.0f}) alerted to theft",
-                                     transform.position.getX(), transform.position.getY()));
-        }
+        ++guardsAlerted;
+        SOCIAL_DEBUG(std::format("Guard at ({:.0f}, {:.0f}) alerted to theft",
+                                 edm.getHotDataByIndex(idx).transform.position.getX(),
+                                 edm.getHotDataByIndex(idx).transform.position.getY()));
     }
 
     if (guardsAlerted > 0) {

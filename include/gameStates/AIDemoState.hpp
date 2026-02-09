@@ -7,6 +7,7 @@
 #define AI_DEMO_STATE_HPP
 
 #include "gameStates/GameState.hpp"
+#include "controllers/ControllerRegistry.hpp"
 #include "controllers/render/NPCRenderController.hpp"
 #include "entities/EntityHandle.hpp"
 #include "entities/Player.hpp"
@@ -59,6 +60,9 @@ private:
     // Methods
     void initializeCamera();
     void updateCamera(float deltaTime);
+
+    // Controller registry (follows GamePlayState pattern)
+    ControllerRegistry m_controllers;
 
     // Data-driven NPC rendering (velocity-based animation)
     NPCRenderController m_npcRenderCtrl{};

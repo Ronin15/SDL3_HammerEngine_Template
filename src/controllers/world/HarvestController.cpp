@@ -24,8 +24,12 @@ HarvestController::HarvestController(std::shared_ptr<Player> player)
 }
 
 void HarvestController::subscribe() {
-    HARVEST_DEBUG("HarvestController subscribed");
+    if (checkAlreadySubscribed()) {
+        return;
+    }
+
     setSubscribed(true);
+    HARVEST_DEBUG("HarvestController subscribed");
 }
 
 void HarvestController::update(float deltaTime) {

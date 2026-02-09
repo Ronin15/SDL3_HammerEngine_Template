@@ -16,6 +16,7 @@
 #include "gpu/GPURenderer.hpp"
 #endif
 
+#include <format>
 #include <thread>
 #include <chrono>
 
@@ -60,11 +61,11 @@ bool SettingsMenuState::enter() {
     return true;
 }
 
-void SettingsMenuState::update([[maybe_unused]] float deltaTime) {
+void SettingsMenuState::update(float deltaTime) {
     // Process UI input (click detection, hover states, callbacks)
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
-        ui.update(0.0f);
+        ui.update(deltaTime);
     }
 }
 
@@ -220,7 +221,9 @@ void SettingsMenuState::createGraphicsUI() {
 
     // VSync checkbox
     ui.createLabel("settings_vsync_label", {leftColumnX, startY, labelWidth, 40}, "VSync:");
+    ui.setComponentPositioning("settings_vsync_label", {UIPositionMode::TOP_ALIGNED, leftColumnX, startY, labelWidth, 40});
     ui.createCheckbox("settings_vsync_checkbox", {controlX, startY, 30, 30}, "Enabled");
+    ui.setComponentPositioning("settings_vsync_checkbox", {UIPositionMode::TOP_ALIGNED, controlX, startY, 30, 30});
     ui.setChecked("settings_vsync_checkbox", m_tempSettings.vsync);
     ui.setOnClick("settings_vsync_checkbox", [this]() {
         m_tempSettings.vsync = UIManager::Instance().getChecked("settings_vsync_checkbox");
@@ -228,7 +231,9 @@ void SettingsMenuState::createGraphicsUI() {
 
     // Fullscreen checkbox
     ui.createLabel("settings_fullscreen_label", {leftColumnX, startY + rowHeight, labelWidth, 40}, "Fullscreen:");
+    ui.setComponentPositioning("settings_fullscreen_label", {UIPositionMode::TOP_ALIGNED, leftColumnX, startY + rowHeight, labelWidth, 40});
     ui.createCheckbox("settings_fullscreen_checkbox", {controlX, startY + rowHeight, 30, 30}, "Enabled");
+    ui.setComponentPositioning("settings_fullscreen_checkbox", {UIPositionMode::TOP_ALIGNED, controlX, startY + rowHeight, 30, 30});
     ui.setChecked("settings_fullscreen_checkbox", m_tempSettings.fullscreen);
     ui.setOnClick("settings_fullscreen_checkbox", [this]() {
         m_tempSettings.fullscreen = UIManager::Instance().getChecked("settings_fullscreen_checkbox");
@@ -236,7 +241,9 @@ void SettingsMenuState::createGraphicsUI() {
 
     // Show FPS checkbox
     ui.createLabel("settings_showfps_label", {leftColumnX, startY + 2 * rowHeight, labelWidth, 40}, "Show FPS:");
+    ui.setComponentPositioning("settings_showfps_label", {UIPositionMode::TOP_ALIGNED, leftColumnX, startY + 2 * rowHeight, labelWidth, 40});
     ui.createCheckbox("settings_showfps_checkbox", {controlX, startY + 2 * rowHeight, 30, 30}, "Enabled");
+    ui.setComponentPositioning("settings_showfps_checkbox", {UIPositionMode::TOP_ALIGNED, controlX, startY + 2 * rowHeight, 30, 30});
     ui.setChecked("settings_showfps_checkbox", m_tempSettings.showFps);
     ui.setOnClick("settings_showfps_checkbox", [this]() {
         m_tempSettings.showFps = UIManager::Instance().getChecked("settings_showfps_checkbox");
@@ -245,6 +252,7 @@ void SettingsMenuState::createGraphicsUI() {
     // Resolution label (informational)
     ui.createLabel("settings_resolution_label", {leftColumnX, startY + 3 * rowHeight, labelWidth + controlWidth, 40},
                    std::format("Resolution: {}x{}", m_tempSettings.resolutionWidth, m_tempSettings.resolutionHeight));
+    ui.setComponentPositioning("settings_resolution_label", {UIPositionMode::TOP_ALIGNED, leftColumnX, startY + 3 * rowHeight, labelWidth + controlWidth, 40});
 }
 
 void SettingsMenuState::createAudioUI() {
@@ -259,7 +267,9 @@ void SettingsMenuState::createAudioUI() {
 
     // Master Volume slider
     ui.createLabel("settings_master_volume_label", {leftColumnX, startY, labelWidth, 40}, "Master Volume:");
+    ui.setComponentPositioning("settings_master_volume_label", {UIPositionMode::TOP_ALIGNED, leftColumnX, startY, labelWidth, 40});
     ui.createSlider("settings_master_volume_slider", {sliderX, startY, sliderWidth, 30}, 0.0f, 1.0f);
+    ui.setComponentPositioning("settings_master_volume_slider", {UIPositionMode::TOP_ALIGNED, sliderX, startY, sliderWidth, 30});
     ui.setValue("settings_master_volume_slider", m_tempSettings.masterVolume);
     ui.setOnValueChanged("settings_master_volume_slider", [this](float value) {
         m_tempSettings.masterVolume = value;
@@ -267,10 +277,13 @@ void SettingsMenuState::createAudioUI() {
     });
     ui.createLabel("settings_master_volume_value", {sliderX + sliderWidth + 10, startY, 80, 40},
                    std::format("{}%", static_cast<int>(m_tempSettings.masterVolume * 100)));
+    ui.setComponentPositioning("settings_master_volume_value", {UIPositionMode::TOP_ALIGNED, sliderX + sliderWidth + 10, startY, 80, 40});
 
     // Music Volume slider
     ui.createLabel("settings_music_volume_label", {leftColumnX, startY + rowHeight, labelWidth, 40}, "Music Volume:");
+    ui.setComponentPositioning("settings_music_volume_label", {UIPositionMode::TOP_ALIGNED, leftColumnX, startY + rowHeight, labelWidth, 40});
     ui.createSlider("settings_music_volume_slider", {sliderX, startY + rowHeight, sliderWidth, 30}, 0.0f, 1.0f);
+    ui.setComponentPositioning("settings_music_volume_slider", {UIPositionMode::TOP_ALIGNED, sliderX, startY + rowHeight, sliderWidth, 30});
     ui.setValue("settings_music_volume_slider", m_tempSettings.musicVolume);
     ui.setOnValueChanged("settings_music_volume_slider", [this](float value) {
         m_tempSettings.musicVolume = value;
@@ -278,10 +291,13 @@ void SettingsMenuState::createAudioUI() {
     });
     ui.createLabel("settings_music_volume_value", {sliderX + sliderWidth + 10, startY + rowHeight, 80, 40},
                    std::format("{}%", static_cast<int>(m_tempSettings.musicVolume * 100)));
+    ui.setComponentPositioning("settings_music_volume_value", {UIPositionMode::TOP_ALIGNED, sliderX + sliderWidth + 10, startY + rowHeight, 80, 40});
 
     // SFX Volume slider
     ui.createLabel("settings_sfx_volume_label", {leftColumnX, startY + 2 * rowHeight, labelWidth, 40}, "SFX Volume:");
+    ui.setComponentPositioning("settings_sfx_volume_label", {UIPositionMode::TOP_ALIGNED, leftColumnX, startY + 2 * rowHeight, labelWidth, 40});
     ui.createSlider("settings_sfx_volume_slider", {sliderX, startY + 2 * rowHeight, sliderWidth, 30}, 0.0f, 1.0f);
+    ui.setComponentPositioning("settings_sfx_volume_slider", {UIPositionMode::TOP_ALIGNED, sliderX, startY + 2 * rowHeight, sliderWidth, 30});
     ui.setValue("settings_sfx_volume_slider", m_tempSettings.sfxVolume);
     ui.setOnValueChanged("settings_sfx_volume_slider", [this](float value) {
         m_tempSettings.sfxVolume = value;
@@ -289,10 +305,13 @@ void SettingsMenuState::createAudioUI() {
     });
     ui.createLabel("settings_sfx_volume_value", {sliderX + sliderWidth + 10, startY + 2 * rowHeight, 80, 40},
                    std::format("{}%", static_cast<int>(m_tempSettings.sfxVolume * 100)));
+    ui.setComponentPositioning("settings_sfx_volume_value", {UIPositionMode::TOP_ALIGNED, sliderX + sliderWidth + 10, startY + 2 * rowHeight, 80, 40});
 
     // Mute checkbox
     ui.createLabel("settings_mute_label", {leftColumnX, startY + 3 * rowHeight, labelWidth, 40}, "Mute All:");
+    ui.setComponentPositioning("settings_mute_label", {UIPositionMode::TOP_ALIGNED, leftColumnX, startY + 3 * rowHeight, labelWidth, 40});
     ui.createCheckbox("settings_mute_checkbox", {sliderX, startY + 3 * rowHeight, 30, 30}, "Muted");
+    ui.setComponentPositioning("settings_mute_checkbox", {UIPositionMode::TOP_ALIGNED, sliderX, startY + 3 * rowHeight, 30, 30});
     ui.setChecked("settings_mute_checkbox", m_tempSettings.muted);
     ui.setOnClick("settings_mute_checkbox", [this]() {
         m_tempSettings.muted = UIManager::Instance().getChecked("settings_mute_checkbox");
@@ -323,11 +342,14 @@ void SettingsMenuState::createGameplayUI() {
 
     // Difficulty label
     ui.createLabel("settings_difficulty_label", {leftColumnX, startY, labelWidth + 200, 40},
-                   "Difficulty: " + m_tempSettings.difficulty);
+                   std::format("Difficulty: {}", m_tempSettings.difficulty));
+    ui.setComponentPositioning("settings_difficulty_label", {UIPositionMode::TOP_ALIGNED, leftColumnX, startY, labelWidth + 200, 40});
 
     // Autosave checkbox
     ui.createLabel("settings_autosave_label", {leftColumnX, startY + rowHeight, labelWidth, 40}, "Autosave:");
+    ui.setComponentPositioning("settings_autosave_label", {UIPositionMode::TOP_ALIGNED, leftColumnX, startY + rowHeight, labelWidth, 40});
     ui.createCheckbox("settings_autosave_checkbox", {controlX, startY + rowHeight, 30, 30}, "Enabled");
+    ui.setComponentPositioning("settings_autosave_checkbox", {UIPositionMode::TOP_ALIGNED, controlX, startY + rowHeight, 30, 30});
     ui.setChecked("settings_autosave_checkbox", m_tempSettings.autosaveEnabled);
     ui.setOnClick("settings_autosave_checkbox", [this]() {
         m_tempSettings.autosaveEnabled = UIManager::Instance().getChecked("settings_autosave_checkbox");
@@ -336,6 +358,7 @@ void SettingsMenuState::createGameplayUI() {
     // Autosave interval label
     ui.createLabel("settings_autosave_interval_label", {leftColumnX, startY + 2 * rowHeight, labelWidth + 200, 40},
                    std::format("Autosave Interval: {} seconds", m_tempSettings.autosaveInterval));
+    ui.setComponentPositioning("settings_autosave_interval_label", {UIPositionMode::TOP_ALIGNED, leftColumnX, startY + 2 * rowHeight, labelWidth + 200, 40});
 
     // Hide gameplay UI by default
     ui.setComponentVisible("settings_difficulty_label", false);

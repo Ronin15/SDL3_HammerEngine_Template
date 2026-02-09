@@ -6,7 +6,6 @@
 #include "controllers/combat/CombatController.hpp"
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
-#include "events/CombatEvent.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -88,13 +87,6 @@ bool CombatController::tryAttack() {
 
   // Perform hit detection using AIManager
   performAttack(player.get());
-
-  // Dispatch player attacked event
-  auto attackEvent = std::make_shared<CombatEvent>(
-      CombatEventType::PlayerAttacked, player.get(), nullptr,
-      player->getAttackDamage());
-  EventManager::Instance().dispatchEvent(attackEvent,
-                                         EventManager::DispatchMode::Immediate);
 
   return true;
 }

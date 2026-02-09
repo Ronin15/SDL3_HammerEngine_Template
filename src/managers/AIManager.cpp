@@ -1341,14 +1341,11 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
   }
 
   // Collect all deferred events from this batch's thread-local buffers (lock-free)
-  auto damageEvents = Behaviors::collectDeferredDamageEvents();
-  auto messageEvents = Behaviors::collectDeferredMessageEvents();
-  if (!messageEvents.empty()) {
-    damageEvents.insert(damageEvents.end(),
-        std::make_move_iterator(messageEvents.begin()),
-        std::make_move_iterator(messageEvents.end()));
-  }
-  return damageEvents;
+  // Uses ref-based API to preserve thread_local vector capacity across frames
+  std::vector<EventManager::DeferredEvent> deferredEvents;
+  Behaviors::collectDeferredDamageEvents(deferredEvents);
+  Behaviors::collectDeferredMessageEvents(deferredEvents);
+  return deferredEvents;
 }
 
 uint64_t AIManager::getCurrentTimeNanos() {

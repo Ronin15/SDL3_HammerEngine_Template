@@ -248,6 +248,9 @@ private:
     // Player reference
     std::weak_ptr<Player> mp_player;
 
+    // Reusable buffer for spatial queries (avoids per-call allocation)
+    std::vector<size_t> m_nearbyGuardBuffer;
+
     // Trade session state
     EntityHandle m_merchantHandle;
     bool m_isTrading{false};
