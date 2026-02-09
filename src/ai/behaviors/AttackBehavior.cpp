@@ -813,8 +813,8 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
 }
 
 std::vector<EventManager::DeferredEvent> collectDeferredDamageEvents() {
-    std::vector<EventManager::DeferredEvent> result = std::move(t_deferredDamageEvents);
-    t_deferredDamageEvents.clear();
+    std::vector<EventManager::DeferredEvent> result;
+    result.swap(t_deferredDamageEvents);
     return result;
 }
 

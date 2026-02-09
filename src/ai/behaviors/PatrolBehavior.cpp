@@ -6,8 +6,7 @@
 #include "ai/BehaviorExecutors.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "managers/WorldManager.hpp"
-#include <algorithm>
+#include "world/WorldData.hpp"
 #include <cmath>
 #include <random>
 
@@ -24,7 +23,7 @@ thread_local std::uniform_real_distribution<float> s_cooldownVariation{0.0f, 1.0
 
 Vector2D generateRandomWaypoint(const Vector2D& currentPos, float boundaryPadding) {
     float minX, minY, maxX, maxY;
-    if (!WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+    if (!Behaviors::getCachedWorldBounds(minX, minY, maxX, maxY)) {
         float angle = s_angleDist(s_rng);
         return currentPos + Vector2D(std::cos(angle), std::sin(angle)) * 200.0f;
     }

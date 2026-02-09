@@ -7,6 +7,7 @@
 #include "events/EntityEvents.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/WorldManager.hpp"
 #include <cmath>
 
 namespace Behaviors {
@@ -344,6 +345,43 @@ void clearPendingMessages(size_t edmIndex) {
 }
 
 // ============================================================================
+// WORLD BOUNDS CACHE
+// ============================================================================
+
+// Updated from main thread before batch processing; read by worker threads.
+// Sequential game loop ordering guarantees happens-before.
+namespace {
+    struct CachedBounds {
+        float minX{0.0f};
+        float minY{0.0f};
+        float maxX{0.0f};
+        float maxY{0.0f};
+        bool valid{false};
+    };
+    CachedBounds s_cachedBounds;
+} // anonymous namespace
+
+void cacheWorldBounds() {
+    float minX, minY, maxX, maxY;
+    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        s_cachedBounds.minX = minX;
+        s_cachedBounds.minY = minY;
+        s_cachedBounds.maxX = maxX;
+        s_cachedBounds.maxY = maxY;
+        s_cachedBounds.valid = true;
+    }
+}
+
+bool getCachedWorldBounds(float& minX, float& minY, float& maxX, float& maxY) {
+    if (!s_cachedBounds.valid) return false;
+    minX = s_cachedBounds.minX;
+    minY = s_cachedBounds.minY;
+    maxX = s_cachedBounds.maxX;
+    maxY = s_cachedBounds.maxY;
+    return true;
+}
+
+// ============================================================================
 // DEFERRED BEHAVIOR MESSAGE FUNCTIONS
 // ============================================================================
 
@@ -363,8 +401,8 @@ void deferBehaviorMessage(size_t targetEdmIndex, uint8_t messageId, uint8_t para
 }
 
 std::vector<EventManager::DeferredEvent> collectDeferredMessageEvents() {
-    std::vector<EventManager::DeferredEvent> result = std::move(t_deferredMessageEvents);
-    t_deferredMessageEvents.clear();
+    std::vector<EventManager::DeferredEvent> result;
+    result.swap(t_deferredMessageEvents);
     return result;
 }
 

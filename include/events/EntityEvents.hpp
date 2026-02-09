@@ -128,7 +128,7 @@ public:
     std::string getName() const override { return m_name; }
     std::string getType() const override { return "Entity"; }
     std::string getTypeName() const override { return "DamageEvent"; }
-    EventTypeId getTypeId() const override { return EventTypeId::Entity; }
+    EventTypeId getTypeId() const override { return EventTypeId::Combat; }
 
     // Always ready (immediate event)
     bool checkConditions() override { return true; }

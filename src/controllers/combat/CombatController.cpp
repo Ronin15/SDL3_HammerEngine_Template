@@ -4,7 +4,6 @@
  */
 
 #include "controllers/combat/CombatController.hpp"
-#include "ai/BehaviorExecutors.hpp"
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
 #include "events/CombatEvent.hpp"
@@ -12,7 +11,6 @@
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
-#include "managers/GameTimeManager.hpp"
 #include "managers/UIManager.hpp"
 #include <format>
 
@@ -109,7 +107,6 @@ void CombatController::performAttack(Player *player) {
   // Cache manager references at function scope
   auto& edm = EntityDataManager::Instance();
   auto& aiMgr = AIManager::Instance();
-  auto& gameTimeMgr = GameTimeManager::Instance();
   auto& uiMgr = UIManager::Instance();
 
   const Vector2D playerPos = player->getPosition();
@@ -167,74 +164,39 @@ void CombatController::performAttack(Player *player) {
     // Hit detected - calculate knockback direction
     Vector2D knockback = diff.normalized() * 20.0f;
 
-    // Phase 2 EDM Migration: Use CharacterData for health
-    auto &charData = edm.getCharacterData(handle);
-    float oldHealth = charData.health;
+    // Record pre-damage health for UI logging
+    float oldHealth = edm.getCharacterData(handle).health;
 
-    // Fire DamageIntent event for any observers
+    // Dispatch DamageEvent via Combat type — AIManager handler applies
+    // damage, knockback, records combat events, notifies witnesses, handles death
     auto& eventMgr = EventManager::Instance();
-    auto damageIntent = eventMgr.acquireDamageEvent();
-    damageIntent->configure(playerHandle, handle, attackDamage, knockback);
+    auto damageEvent = eventMgr.acquireDamageEvent();
+    damageEvent->configure(playerHandle, handle, attackDamage, knockback);
     eventMgr.dispatchEvent(
-        damageIntent, EventManager::DispatchMode::Immediate);
-
-    // Apply damage directly to CharacterData
-    charData.health = std::max(0.0f, charData.health - attackDamage);
-
-    // Record combat event + apply personality-scaled emotions via AI layer
-    float gameTime = gameTimeMgr.getTotalGameTimeSeconds();
-    Behaviors::processCombatEvent(idx, playerHandle, handle, attackDamage,
-                                  /*wasAttacked=*/true, gameTime);
-
-    // Combat response: Non-hostile entities flee when attacked
-    if (charData.faction != 1) { // Friendly (0) or Neutral (2)
-      // Switch to flee behavior
-      aiMgr.assignBehavior(handle, "Flee");
-
-      // Alert nearby guards - player is attacking friendlies
-      aiMgr.broadcastMessage("friendly_under_attack");
-    }
-
-    // Apply knockback via velocity
-    hotData.transform.velocity = hotData.transform.velocity + knockback;
+        damageEvent, EventManager::DispatchMode::Immediate);
 
     COMBAT_INFO(
         std::format("Hit entity {} for {:.1f} damage! HP: {:.1f} -> {:.1f}",
-                    handle.getId(), attackDamage, oldHealth, charData.health));
+                    handle.getId(), attackDamage, oldHealth,
+                    damageEvent->getRemainingHealth()));
 
-    // Add to on-screen event log (no intermediate string allocation)
     uiMgr.addEventLogEntry(
         GAMEPLAY_EVENT_LOG,
         std::format("Hit Enemy #{} for {:.0f} damage!", handle.getId(), attackDamage));
 
-    // Track closest hit for targeting (using handle for now)
+    // Track closest hit for targeting
     if (distance < closestDist) {
       closestDist = distance;
       closestHandle = handle;
     }
 
-    // Fire CombatEvent for UI/sound observers (using handles)
-    // Note: CombatEvent may need updating to use handles instead of EntityPtr
-    // For now, dispatch DamageEvent which already uses handles
-
-    // Check for kill
-    if (charData.health <= 0.0f) {
-      // Mark as dead in HotData
-      hotData.flags &= ~EntityHotData::FLAG_ALIVE;
-
+    // Kill notification for UI
+    if (damageEvent->wasLethal()) {
       COMBAT_INFO(std::format("Entity {} killed!", handle.getId()));
 
-      // Add kill to on-screen event log (no intermediate string allocation)
       uiMgr.addEventLogEntry(
           GAMEPLAY_EVENT_LOG,
           std::format("Defeated Enemy #{}!", handle.getId()));
-
-      // Fire DeathEvent for entity lifecycle observers
-      auto deathEvent = std::make_shared<DeathEvent>(
-          EntityEventType::DeathCompleted, handle, playerHandle);
-      deathEvent->setDeathPosition(npcPos);
-      EventManager::Instance().dispatchEvent(
-          deathEvent, EventManager::DispatchMode::Immediate);
     }
   }
 

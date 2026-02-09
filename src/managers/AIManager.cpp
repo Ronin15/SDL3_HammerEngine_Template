@@ -350,6 +350,11 @@ void AIManager::update(float deltaTime) {
       }
     }
 
+    // Cache world bounds for behaviors that need them during batch processing
+    // (e.g., PatrolBehavior waypoint generation). Avoids WorldManager::Instance()
+    // calls from worker threads.
+    Behaviors::cacheWorldBounds();
+
     // OPTIMIZATION: Cache player info ONCE per frame (not per behavior call)
     // This eliminates shared_lock contention in
     // getPlayerHandle()/getPlayerPosition()

@@ -379,6 +379,26 @@ void processWitnessedCombat(size_t witnessIndex, EntityHandle attacker,
                             float gameTime, bool wasDeath = false);
 
 // ============================================================================
+// WORLD BOUNDS CACHE (main-thread update, worker-thread read)
+// ============================================================================
+
+/**
+ * @brief Cache world bounds for use by behaviors during batch processing
+ *
+ * Called from AIManager::update() on the main thread before batch processing.
+ * Behaviors read the cached values during worker thread execution, avoiding
+ * WorldManager::Instance() calls from worker threads.
+ */
+void cacheWorldBounds();
+
+/**
+ * @brief Get cached world bounds
+ * @param[out] minX, minY, maxX, maxY World bounds in tile coordinates
+ * @return true if cached bounds are valid
+ */
+bool getCachedWorldBounds(float& minX, float& minY, float& maxX, float& maxY);
+
+// ============================================================================
 // MESSAGE QUEUE FUNCTIONS
 // ============================================================================
 
