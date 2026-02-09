@@ -166,7 +166,10 @@ void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize
         double prevSmoothed = state.smoothedSingleTime.load(std::memory_order_relaxed);
         double newSmoothed;
         if (prevSmoothed <= 0.0) {
-            newSmoothed = totalTimeMs;  // First sample
+            // Dampen first sample to prevent cold-start spikes (burst spawn,
+            // cache-cold frames) from triggering premature threshold learning.
+            // Treats initial EMA state as 0.0ms with standard alpha weighting.
+            newSmoothed = totalTimeMs * SystemTuningState::TIME_SMOOTHING;
         } else {
             newSmoothed = prevSmoothed * (1.0 - SystemTuningState::TIME_SMOOTHING)
                         + totalTimeMs * SystemTuningState::TIME_SMOOTHING;
