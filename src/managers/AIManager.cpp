@@ -384,52 +384,10 @@ void AIManager::update(float deltaTime) {
         ? edm.getIndex(m_playerHandle)
         : SIZE_MAX;
 
-    // Emotional contagion: high-fear NPCs spread fear to nearby NPCs
-    // Runs on main thread before batch processing to avoid data races.
-    // Staggered: each entity only eligible every CONTAGION_CHECK_INTERVAL frames
-    // to prevent O(N^2) spikes when many entities become fearful simultaneously.
-    {
-      constexpr float CONTAGION_COOLDOWN = 2.0f;
-      constexpr float CONTAGION_RANGE_SQ = 200.0f * 200.0f;
-      constexpr float FEAR_THRESHOLD = 0.6f;
-      constexpr size_t CONTAGION_CHECK_INTERVAL = 30; // Check ~1/30th of entities per frame
-
-      for (size_t sourceIdx : m_activeIndicesBuffer) {
-        if ((currentFrame + sourceIdx) % CONTAGION_CHECK_INTERVAL != 0) continue;
-        if (!edm.hasMemoryData(sourceIdx)) continue;
-        auto& source = edm.getMemoryData(sourceIdx);
-        if (source.emotions.fear < FEAR_THRESHOLD) continue;
-
-        source.lastContagionTime += deltaTime * static_cast<float>(CONTAGION_CHECK_INTERVAL);
-        if (source.lastContagionTime < CONTAGION_COOLDOWN) continue;
-        source.lastContagionTime = 0.0f;
-
-        Vector2D sourcePos = edm.getHotDataByIndex(sourceIdx).transform.position;
-
-        for (size_t idx : m_activeIndicesBuffer) {
-          if (idx == sourceIdx) continue;
-          if (!edm.hasMemoryData(idx)) continue;
-
-          Vector2D targetPos = edm.getHotDataByIndex(idx).transform.position;
-          float distSq = Vector2D::distanceSquared(sourcePos, targetPos);
-          if (distSq > CONTAGION_RANGE_SQ) continue;
-
-          float intensity = 1.0f - (distSq / CONTAGION_RANGE_SQ);
-          auto& target = edm.getMemoryData(idx);
-
-          float resistance = target.personality.composure * 0.5f +
-                             target.personality.bravery * 0.3f;
-          float fearDelta = source.emotions.fear * 0.15f * intensity *
-                            (1.0f - resistance);
-          float suspicionDelta = 0.1f * intensity *
-                                 (1.0f - target.personality.composure * 0.5f);
-
-          target.emotions.fear = std::min(1.0f, target.emotions.fear + fearDelta);
-          target.emotions.suspicion =
-              std::min(1.0f, target.emotions.suspicion + suspicionDelta);
-        }
-      }
-    }
+    // Emotional contagion removed — O(N²) per-frame scan caused hitches (83ms+).
+    // Witness fear (direct combat observation) is handled by processWitnessedCombat()
+    // in the damage event handler. Cascading NPC-to-NPC fear propagation is not
+    // currently implemented.
 
     // Centralized engagement pre-pass: push targets to aggressive Idle/Wander NPCs
     // Replaces per-entity shouldEngageEnemy() in behaviors — O(N/60) checks per frame
