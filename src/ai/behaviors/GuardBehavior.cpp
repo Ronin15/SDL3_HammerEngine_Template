@@ -87,6 +87,22 @@ void processGuardMessages(BehaviorData& data, const HammerEngine::GuardBehaviorC
                 guard.alertDecayTimer = 0.0f;
                 break;
 
+            case BehaviorMessage::CALM_DOWN:
+                // Decay alert level by one step (guards remain vigilant)
+                if (guard.currentAlertLevel > 0)
+                {
+                    guard.currentAlertLevel--;
+                    guard.alertDecayTimer = 0.0f;
+                }
+                break;
+
+            case BehaviorMessage::PANIC:
+                // Guards resist panic but escalate to HOSTILE alert
+                guard.currentAlertLevel = 3;
+                guard.alertTimer = 0.0f;
+                guard.alertDecayTimer = 0.0f;
+                break;
+
             default:
                 break;
         }
@@ -448,6 +464,18 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
 
     // Update alert level (isEnemyFaction pre-computed by detectThreat)
     updateAlertLevel(data, threatPresent, isEnemyFaction, guard.escalationMultiplier);
+
+    // Overwhelmed guards with very low bravery can flee (+0.1 guard training bonus)
+    if (guard.currentAlertLevel >= 3 && ctx.memoryData && ctx.memoryData->isValid())
+    {
+        float fear = ctx.memoryData->emotions.fear;
+        float effectiveBravery = ctx.memoryData->personality.bravery + 0.1f;
+        if (fear > 0.7f && effectiveBravery < 0.3f)
+        {
+            switchBehavior(ctx.edmIndex, BehaviorType::Flee);
+            return;
+        }
+    }
 
     // Call for help when first reaching HOSTILE
     if (guard.currentAlertLevel >= 3 && !guard.helpCalled) {

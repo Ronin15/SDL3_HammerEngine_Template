@@ -1528,6 +1528,382 @@ BOOST_AUTO_TEST_CASE(TestRecordCombatEventUpdatesMemory) {
 
 BOOST_AUTO_TEST_SUITE_END()
 
+// Test Suite: Behavior Gap Fix Tests
+BOOST_FIXTURE_TEST_SUITE(BehaviorGapFixTests, BehaviorTestFixture)
+
+// ============================================================================
+// MESSAGE HANDLER TESTS
+// ============================================================================
+
+BOOST_AUTO_TEST_CASE(TestChasePanicSwitchesToFlee) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    auto target = TestNPC::create(400.0f, 400.0f);
+    EntityHandle entityHandle = entity->getHandle();
+    size_t entityIdx = edm.getIndex(entityHandle);
+    BOOST_REQUIRE(entityIdx != SIZE_MAX);
+
+    // Assign Chase behavior and set a target
+    aiMgr.assignBehavior(entityHandle, "Chase");
+    auto& memData = edm.getMemoryData(entityIdx);
+    memData.setValid(true);
+    memData.lastTarget = target->getHandle();
+    updateAI(0.016f);
+
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Chase);
+
+    // Queue PANIC message
+    Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::PANIC);
+    updateAI(0.016f);
+
+    // Should switch to Flee
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Flee);
+    BOOST_TEST_MESSAGE("Chase -> Flee on PANIC verified");
+    aiMgr.unassignBehavior(entityHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestChaseRetreatSwitchesToFlee) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    auto target = TestNPC::create(400.0f, 400.0f);
+    EntityHandle entityHandle = entity->getHandle();
+    size_t entityIdx = edm.getIndex(entityHandle);
+    BOOST_REQUIRE(entityIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(entityHandle, "Chase");
+    auto& memData = edm.getMemoryData(entityIdx);
+    memData.setValid(true);
+    memData.lastTarget = target->getHandle();
+    updateAI(0.016f);
+
+    // Queue RETREAT message
+    Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::RETREAT);
+    updateAI(0.016f);
+
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Flee);
+    BOOST_TEST_MESSAGE("Chase -> Flee on RETREAT verified");
+    aiMgr.unassignBehavior(entityHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestChaseAttackTargetRedirects) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    auto target1 = TestNPC::create(400.0f, 400.0f);
+    auto target2 = TestNPC::create(500.0f, 500.0f);
+    EntityHandle entityHandle = entity->getHandle();
+    size_t entityIdx = edm.getIndex(entityHandle);
+    BOOST_REQUIRE(entityIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(entityHandle, "Chase");
+    auto& memData = edm.getMemoryData(entityIdx);
+    memData.setValid(true);
+    memData.lastTarget = target1->getHandle();
+    memData.lastAttacker = target2->getHandle();
+    updateAI(0.016f);
+
+    // Queue ATTACK_TARGET — should redirect to lastAttacker
+    Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::ATTACK_TARGET);
+    updateAI(0.016f);
+
+    // Should still be chasing but with explicit target set to target2
+    auto& chaseData = edm.getBehaviorData(entityIdx);
+    BOOST_CHECK(chaseData.behaviorType == BehaviorType::Chase);
+    BOOST_CHECK(chaseData.state.chase.hasExplicitTarget == true);
+    BOOST_CHECK(chaseData.state.chase.explicitTarget == target2->getHandle());
+    BOOST_TEST_MESSAGE("Chase ATTACK_TARGET redirected to lastAttacker");
+    aiMgr.unassignBehavior(entityHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestPatrolPanicSwitchesToFlee) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle entityHandle = entity->getHandle();
+    size_t entityIdx = edm.getIndex(entityHandle);
+    BOOST_REQUIRE(entityIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(entityHandle, "Patrol");
+    updateAI(0.016f);
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Patrol);
+
+    Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::PANIC);
+    updateAI(0.016f);
+
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Flee);
+    BOOST_TEST_MESSAGE("Patrol -> Flee on PANIC verified");
+    aiMgr.unassignBehavior(entityHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestPatrolCalmDownReducesFear) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle entityHandle = entity->getHandle();
+    size_t entityIdx = edm.getIndex(entityHandle);
+    BOOST_REQUIRE(entityIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(entityHandle, "Patrol");
+    auto& memData = edm.getMemoryData(entityIdx);
+    memData.setValid(true);
+    memData.emotions.fear = 0.6f;
+    updateAI(0.016f);
+
+    float fearBefore = memData.emotions.fear;
+    Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::CALM_DOWN);
+    updateAI(0.016f);
+
+    // Fear should be reduced (by 0.5, but emotional decay also runs)
+    BOOST_CHECK_LT(memData.emotions.fear, fearBefore);
+    BOOST_TEST_MESSAGE("Patrol CALM_DOWN reduced fear: " << fearBefore << " -> " << memData.emotions.fear);
+    aiMgr.unassignBehavior(entityHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestFollowPanicSwitchesToFlee) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle entityHandle = entity->getHandle();
+    size_t entityIdx = edm.getIndex(entityHandle);
+    BOOST_REQUIRE(entityIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(entityHandle, "Follow");
+    updateAI(0.016f);
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Follow);
+
+    Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::PANIC);
+    updateAI(0.016f);
+
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Flee);
+    BOOST_TEST_MESSAGE("Follow -> Flee on PANIC verified");
+    aiMgr.unassignBehavior(entityHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestFollowRaiseAlertCowardFlees) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle entityHandle = entity->getHandle();
+    size_t entityIdx = edm.getIndex(entityHandle);
+    BOOST_REQUIRE(entityIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(entityHandle, "Follow");
+    auto& memData = edm.getMemoryData(entityIdx);
+    memData.setValid(true);
+    memData.personality.bravery = 0.2f;  // Cowardly (< 0.4 threshold)
+    updateAI(0.016f);
+
+    Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::RAISE_ALERT);
+    updateAI(0.016f);
+
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Flee);
+    BOOST_TEST_MESSAGE("Follow -> Flee on RAISE_ALERT (coward) verified");
+    aiMgr.unassignBehavior(entityHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestFollowRaiseAlertBraveStands) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle entityHandle = entity->getHandle();
+    size_t entityIdx = edm.getIndex(entityHandle);
+    BOOST_REQUIRE(entityIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(entityHandle, "Follow");
+    auto& memData = edm.getMemoryData(entityIdx);
+    memData.setValid(true);
+    memData.personality.bravery = 0.7f;  // Brave (>= 0.4 threshold)
+    updateAI(0.016f);
+
+    Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::RAISE_ALERT);
+    updateAI(0.016f);
+
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Follow);
+    BOOST_TEST_MESSAGE("Follow stays on RAISE_ALERT (brave) verified");
+    aiMgr.unassignBehavior(entityHandle);
+}
+
+// ============================================================================
+// GUARD MESSAGE & FLEE TESTS
+// ============================================================================
+
+BOOST_AUTO_TEST_CASE(TestGuardCalmDownDecaysAlert) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle entityHandle = entity->getHandle();
+    size_t entityIdx = edm.getIndex(entityHandle);
+    BOOST_REQUIRE(entityIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(entityHandle, "Guard");
+
+    // Force HOSTILE alert via RAISE_ALERT
+    Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::RAISE_ALERT);
+    updateAI(0.016f);
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).state.guard.currentAlertLevel == 3);
+
+    // Send CALM_DOWN — should decay by 1
+    Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::CALM_DOWN);
+    updateAI(0.016f);
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).state.guard.currentAlertLevel == 2);
+
+    BOOST_TEST_MESSAGE("Guard CALM_DOWN decayed alert: 3 -> 2");
+    aiMgr.unassignBehavior(entityHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestGuardPanicEscalatesToHostile) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle entityHandle = entity->getHandle();
+    size_t entityIdx = edm.getIndex(entityHandle);
+    BOOST_REQUIRE(entityIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(entityHandle, "Guard");
+    updateAI(0.016f);
+
+    // Guard starts CALM
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).state.guard.currentAlertLevel == 0);
+
+    // PANIC escalates to HOSTILE (guards don't flee, they fight)
+    Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::PANIC);
+    updateAI(0.016f);
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).state.guard.currentAlertLevel == 3);
+
+    BOOST_TEST_MESSAGE("Guard PANIC escalated to HOSTILE (not Flee) verified");
+    aiMgr.unassignBehavior(entityHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestGuardFleesWhenOverwhelmed) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle entityHandle = entity->getHandle();
+    size_t entityIdx = edm.getIndex(entityHandle);
+    BOOST_REQUIRE(entityIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(entityHandle, "Guard");
+    auto& memData = edm.getMemoryData(entityIdx);
+    memData.setValid(true);
+    memData.personality.bravery = 0.1f;  // Very cowardly (0.1 + 0.1 bonus = 0.2 < 0.3)
+    memData.emotions.fear = 0.8f;        // High fear (> 0.7)
+
+    // Force HOSTILE alert so the flee check triggers
+    Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::RAISE_ALERT);
+    updateAI(0.016f);
+
+    // Guard should flee due to overwhelming fear + low bravery
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Flee);
+    BOOST_TEST_MESSAGE("Guard -> Flee when overwhelmed (bravery=0.1, fear=0.8) verified");
+    aiMgr.unassignBehavior(entityHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestGuardStandsWhenBrave) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle entityHandle = entity->getHandle();
+    size_t entityIdx = edm.getIndex(entityHandle);
+    BOOST_REQUIRE(entityIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(entityHandle, "Guard");
+    auto& memData = edm.getMemoryData(entityIdx);
+    memData.setValid(true);
+    memData.personality.bravery = 0.5f;  // Brave (0.5 + 0.1 bonus = 0.6 >= 0.3)
+    memData.emotions.fear = 0.8f;        // High fear
+
+    Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::RAISE_ALERT);
+    updateAI(0.016f);
+
+    // Guard should stand (brave enough despite fear)
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Guard);
+    BOOST_TEST_MESSAGE("Guard stands when brave (bravery=0.5, fear=0.8) verified");
+    aiMgr.unassignBehavior(entityHandle);
+}
+
+// ============================================================================
+// ATTACK PANIC & SPECIAL ATTACK TESTS
+// ============================================================================
+
+BOOST_AUTO_TEST_CASE(TestAttackPanicForcesRetreat) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    auto target = TestNPC::create(320.0f, 320.0f);
+    EntityHandle entityHandle = entity->getHandle();
+    size_t entityIdx = edm.getIndex(entityHandle);
+    BOOST_REQUIRE(entityIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(entityHandle, "Attack");
+    auto& memData = edm.getMemoryData(entityIdx);
+    memData.setValid(true);
+    memData.lastTarget = target->getHandle();
+    updateAI(0.016f);
+
+    // Queue PANIC — should force RETREATING state
+    Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::PANIC);
+    updateAI(0.016f);
+
+    auto& attackData = edm.getBehaviorData(entityIdx);
+    // May have switched to Flee or be in RETREATING state (attack still active)
+    bool retreatingOrFled = (attackData.behaviorType == BehaviorType::Flee) ||
+                            (attackData.behaviorType == BehaviorType::Attack && attackData.state.attack.isRetreating);
+    BOOST_CHECK(retreatingOrFled);
+    BOOST_TEST_MESSAGE("Attack PANIC forced retreat/flee verified");
+    aiMgr.unassignBehavior(entityHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestSpecialAttackReadyAfterCooldown) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle entityHandle = entity->getHandle();
+    size_t entityIdx = edm.getIndex(entityHandle);
+    BOOST_REQUIRE(entityIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(entityHandle, "Attack");
+    auto& behaviorData = edm.getBehaviorData(entityIdx);
+
+    // Starts not ready
+    BOOST_CHECK(behaviorData.state.attack.specialAttackReady == false);
+
+    // Simulate cooldown→next-state transition by manually setting state
+    behaviorData.state.attack.currentState = 6; // COOLDOWN
+    behaviorData.state.attack.stateChangeTimer = 10.0f; // Exceed cooldown time
+    behaviorData.state.attack.hasTarget = true;
+
+    // Set a target so attack has something to do
+    auto& memData = edm.getMemoryData(entityIdx);
+    memData.setValid(true);
+    auto target = TestNPC::create(350.0f, 350.0f);
+    memData.lastTarget = target->getHandle();
+
+    updateAI(0.016f);
+
+    // After cooldown transition, specialAttackReady should be true
+    BOOST_CHECK(edm.getBehaviorData(entityIdx).state.attack.specialAttackReady == true);
+    BOOST_TEST_MESSAGE("specialAttackReady set to true after cooldown transition");
+    aiMgr.unassignBehavior(entityHandle);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
 // Global test summary
 BOOST_AUTO_TEST_CASE(BehaviorTestSummary) {
     BOOST_TEST_MESSAGE("=== Behavior Functionality Test Summary ===");

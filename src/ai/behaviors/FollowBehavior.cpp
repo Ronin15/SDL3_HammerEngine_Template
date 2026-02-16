@@ -44,6 +44,34 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
     auto& data = *ctx.behaviorData;
     auto& follow = data.state.follow;
 
+    // Process pending behavior messages
+    for (uint8_t i = 0; i < data.pendingMessageCount; ++i)
+    {
+        switch (data.pendingMessages[i].messageId)
+        {
+            case BehaviorMessage::PANIC:
+                data.pendingMessageCount = 0;
+                switchBehavior(ctx.edmIndex, BehaviorType::Flee);
+                return;
+            case BehaviorMessage::CALM_DOWN:
+                if (ctx.memoryData && ctx.memoryData->isValid())
+                {
+                    ctx.memoryData->emotions.fear = std::max(0.0f, ctx.memoryData->emotions.fear - 0.5f);
+                }
+                break;
+            case BehaviorMessage::RAISE_ALERT:
+                if (ctx.memoryData && ctx.memoryData->personality.bravery < 0.4f)
+                {
+                    data.pendingMessageCount = 0;
+                    switchBehavior(ctx.edmIndex, BehaviorType::Flee);
+                    return;
+                }
+                break;
+            default: break;
+        }
+    }
+    data.pendingMessageCount = 0;
+
     // Combat reaction: brave+aggressive NPCs fight back, others flee
     if (isUnderRecentAttack(ctx, 2.0f)) {
         if (shouldRetaliate(ctx)) {

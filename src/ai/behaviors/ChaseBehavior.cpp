@@ -80,6 +80,32 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
     auto& data = *ctx.behaviorData;
     auto& chase = data.state.chase;
 
+    // Process pending behavior messages
+    for (uint8_t i = 0; i < data.pendingMessageCount; ++i)
+    {
+        switch (data.pendingMessages[i].messageId)
+        {
+            case BehaviorMessage::PANIC:
+                data.pendingMessageCount = 0;
+                switchBehavior(ctx.edmIndex, BehaviorType::Flee);
+                return;
+            case BehaviorMessage::ATTACK_TARGET:
+                // Redirect chase to new target from memory
+                if (ctx.memoryData && ctx.memoryData->lastAttacker.isValid())
+                {
+                    chase.hasExplicitTarget = true;
+                    chase.explicitTarget = ctx.memoryData->lastAttacker;
+                }
+                break;
+            case BehaviorMessage::RETREAT:
+                data.pendingMessageCount = 0;
+                switchBehavior(ctx.edmIndex, BehaviorType::Flee);
+                return;
+            default: break;
+        }
+    }
+    data.pendingMessageCount = 0;
+
     // Emotional modulation: fearful NPCs break off chase
     if (ctx.memoryData && ctx.memoryData->isValid()) {
         float fear = ctx.memoryData->emotions.fear;

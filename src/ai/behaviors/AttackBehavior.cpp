@@ -141,6 +141,13 @@ void processAttackMessages(BehaviorData& data, const HammerEngine::AttackBehavio
                 attack.stateChangeTimer = 0.0f;
                 break;
 
+            case BehaviorMessage::PANIC:
+                // Panic forces immediate retreat (stronger than RETREAT — witnesses death)
+                attack.currentState = static_cast<uint8_t>(AttackState::RETREATING);
+                attack.isRetreating = true;
+                attack.stateChangeTimer = 0.0f;
+                break;
+
             default:
                 break;
         }
@@ -676,6 +683,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
         currentState = AttackState::COOLDOWN;
     } else if (currentState == AttackState::COOLDOWN && timeInState > effectiveCooldown) {
         attack.canAttack = true;
+        attack.specialAttackReady = true;
         changeState(data, attack.hasTarget ? AttackState::APPROACHING : AttackState::SEEKING);
         currentState = static_cast<AttackState>(attack.currentState);
     }
@@ -770,7 +778,36 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
                     targetHandle = ctx.memoryData->lastAttacker;
                 }
                 if (targetHandle.isValid()) {
-                    applyDamageToTarget(targetHandle, specialDamage, knockback, edm.getHandle(ctx.edmIndex));
+                    EntityHandle attackerHandle = edm.getHandle(ctx.edmIndex);
+                    applyDamageToTarget(targetHandle, specialDamage, knockback, attackerHandle);
+
+                    // AOE damage around impact point
+                    if (config.aoeRadius > 0.0f)
+                    {
+                        s_scanBuffer.clear();
+                        AIManager::Instance().queryEdmIndicesInRadius(
+                            targetPos, config.aoeRadius, s_scanBuffer, false);
+                        uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
+
+                        for (size_t aoeIdx : s_scanBuffer)
+                        {
+                            if (aoeIdx == ctx.edmIndex) continue;
+                            const auto& aoeHot = edm.getHotDataByIndex(aoeIdx);
+                            if (!aoeHot.isAlive()) continue;
+                            EntityHandle aoeTarget = edm.getHandle(aoeIdx);
+                            if (aoeTarget == targetHandle) continue;
+                            if (config.avoidFriendlyFire &&
+                                edm.getCharacterDataByIndex(aoeIdx).faction == myFaction) continue;
+
+                            float distSq = Vector2D::distanceSquared(targetPos, aoeHot.transform.position);
+                            float dist = std::sqrt(distSq);
+                            float falloff = 1.0f - (dist / config.aoeRadius) * 0.5f;
+                            float aoeDamage = specialDamage * falloff;
+                            Vector2D aoeKnockback = calculateKnockbackVector(targetPos, aoeHot.transform.position)
+                                                    * config.knockbackForce * 0.5f;
+                            applyDamageToTarget(aoeTarget, aoeDamage, aoeKnockback, attackerHandle);
+                        }
+                    }
                 }
                 attack.specialAttackReady = false;
             } else {
