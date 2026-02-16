@@ -262,6 +262,7 @@ void AIManager::prepareForStateTransition() {
     m_storage.edmIndices.clear(); // Clear EDM indices to prevent stale data
     m_handleToIndex.clear();
     m_edmToStorageIndex.clear(); // Clear EDM-to-storage reverse mapping
+    m_activeIndicesBuffer.clear(); // Prevent stale EDM indices in radius queries
 
     AI_INFO_IF(entityCount > 0,
                std::format("Cleaned {} AI entities", entityCount));

@@ -210,7 +210,9 @@ void EntityDataManager::prepareForStateTransition() {
     // Clear all entity data (main thread only - no lock needed)
     m_hotData.clear();
     m_entityIds.clear();
+    m_generations.clear();
     m_idToIndex.clear();
+    m_behaviorConfig.clear();
 
     // Clear static entity storage
     m_staticHotData.clear();
