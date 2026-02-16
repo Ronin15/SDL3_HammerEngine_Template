@@ -19,7 +19,6 @@ namespace {
 thread_local std::mt19937 s_rng{std::random_device{}()};
 thread_local std::uniform_real_distribution<float> s_angleDistribution{0.0f, 2.0f * static_cast<float>(M_PI)};
 thread_local std::uniform_real_distribution<float> s_radiusDistribution{0.3f, 1.0f};
-thread_local std::vector<size_t> s_nearbyBuffer;
 
 // ============================================================================
 // CONSTANTS
@@ -245,45 +244,46 @@ void moveToPosition(BehaviorContext& ctx, EntityDataManager& edm, const Vector2D
     }
 }
 
-// Detect threats in range - single-pass to reduce EDM lookups
+// Detect threats using engagement pre-pass target and memory data (O(1) instead of O(N))
 // Returns threat handle and sets isEnemyFaction to avoid redundant lookup in updateAlertLevel
-EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, float detectionRange, bool& isEnemyFaction) {
+EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, bool& isEnemyFaction) {
     isEnemyFaction = false;
     if (!ctx.behaviorData) return EntityHandle{};
 
-    // Query nearby entities via spatial grid (O(K) instead of O(N))
-    s_nearbyBuffer.clear();
-    if (s_nearbyBuffer.capacity() < 32) s_nearbyBuffer.reserve(32);
-    AIManager::Instance().queryEdmIndicesInRadius(ctx.transform.position, detectionRange, s_nearbyBuffer, true);
+    uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
 
-    // Single-pass: check both enemy faction and friendly attackers
-    // Enemy faction takes priority (returns immediately)
-    EntityHandle friendlyAttacker{};
-
-    for (size_t idx : s_nearbyBuffer) {
-        const auto& charData = edm.getCharacterDataByIndex(idx);
-
-        if (charData.faction == 1) { // Enemy - highest priority
-            isEnemyFaction = true;
-            return edm.getHandle(idx);
-        }
-        else if (charData.faction == 0 && !friendlyAttacker.isValid()) { // Friendly - record attacker
-            if (edm.hasMemoryData(idx)) {
-                const auto& memData = edm.getMemoryData(idx);
-                if (memData.lastAttacker.isValid()) {
-                    friendlyAttacker = memData.lastAttacker;
-                }
-            }
+    // 1. Engagement pre-pass target (set by AIManager centralized scan, outside timed section)
+    if (ctx.behaviorData->pendingEngageTarget.isValid()) {
+        EntityHandle target = ctx.behaviorData->pendingEngageTarget;
+        ctx.behaviorData->pendingEngageTarget = EntityHandle{};
+        size_t idx = edm.getIndex(target);
+        if (idx != SIZE_MAX && edm.getHotDataByIndex(idx).isAlive()) {
+            isEnemyFaction = (edm.getCharacterDataByIndex(idx).faction != myFaction);
+            return target;
         }
     }
 
-    // Return friendly's attacker if found (lower priority than direct enemy)
-    if (friendlyAttacker.isValid()) {
-        return friendlyAttacker;
+    // 2. Memory: lastAttacker — someone who attacked this guard
+    if (ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
+        size_t idx = edm.getIndex(ctx.memoryData->lastAttacker);
+        if (idx != SIZE_MAX && edm.getHotDataByIndex(idx).isAlive()) {
+            isEnemyFaction = (edm.getCharacterDataByIndex(idx).faction != myFaction);
+            return ctx.memoryData->lastAttacker;
+        }
     }
 
-    // Check player for enemy guards - use pre-fetched characterData
+    // 3. Memory: lastTarget — previous known threat
+    if (ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
+        size_t idx = edm.getIndex(ctx.memoryData->lastTarget);
+        if (idx != SIZE_MAX && edm.getHotDataByIndex(idx).isAlive()) {
+            isEnemyFaction = (edm.getCharacterDataByIndex(idx).faction != myFaction);
+            return ctx.memoryData->lastTarget;
+        }
+    }
+
+    // 4. Player proximity check for enemy-faction guards
     if (ctx.playerValid && ctx.characterData && ctx.characterData->faction == 1) {
+        float detectionRange = ctx.behaviorData->state.guard.cachedDetectionRange;
         float distSq = Vector2D::distanceSquared(ctx.transform.position, ctx.playerPosition);
         if (distSq <= detectionRange * detectionRange) {
             isEnemyFaction = true;
@@ -452,7 +452,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         : (guard.threatSightingTimer >= THREAT_DETECTION_INTERVAL);
 
     if (shouldPoll) {
-        threat = detectThreat(ctx, edm, guard.cachedDetectionRange, isEnemyFaction);
+        threat = detectThreat(ctx, edm, isEnemyFaction);
         threatPresent = threat.isValid();
         guard.threatSightingTimer = 0.0f;
 

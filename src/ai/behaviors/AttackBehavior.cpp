@@ -10,7 +10,6 @@
 #include "managers/EventManager.hpp"
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <random>
 
 namespace {
@@ -30,8 +29,6 @@ thread_local std::vector<size_t> s_scanBuffer;
 // ============================================================================
 // CONSTANTS
 // ============================================================================
-
-constexpr float SEEK_SCAN_RANGE = 300.0f;
 
 constexpr float COMBAT_ENTER_RANGE_MULT = 1.2f;
 constexpr float COMBAT_EXIT_RANGE_MULT = 2.0f;
@@ -83,30 +80,6 @@ Vector2D rotateVector(const Vector2D& v, float angle) {
     float c = std::cos(angle);
     float s = std::sin(angle);
     return Vector2D(v.getX() * c - v.getY() * s, v.getX() * s + v.getY() * c);
-}
-
-// Scan for nearest different-faction entity (fully generic, no player hardcoding)
-EntityHandle scanForNearestTarget(const Vector2D& pos, uint8_t myFaction, size_t myEdmIndex) {
-    s_scanBuffer.clear();
-    AIManager::Instance().queryEdmIndicesInRadius(pos, SEEK_SCAN_RANGE, s_scanBuffer, false);
-    auto& edm = EntityDataManager::Instance();
-
-    EntityHandle bestTarget{};
-    float bestDistSq = std::numeric_limits<float>::max();
-
-    for (size_t idx : s_scanBuffer) {
-        if (idx == myEdmIndex) continue;
-        const auto& hot = edm.getHotDataByIndex(idx);
-        if (!hot.isAlive()) continue;
-        const auto& charData = edm.getCharacterDataByIndex(idx);
-        if (charData.faction == myFaction) continue;
-        float distSq = Vector2D::distanceSquared(pos, hot.transform.position);
-        if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestTarget = edm.getHandle(idx);
-        }
-    }
-    return bestTarget;
 }
 
 void updateTimers(BehaviorData& data, float deltaTime) {
@@ -539,30 +512,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
         }
     }
 
-    // Throttled scan for nearest different-faction entity (safety net)
-    if (!hasTarget && ctx.characterData) {
-        attack.scanCooldown -= ctx.deltaTime;
-        if (attack.scanCooldown <= 0.0f) {
-            EntityHandle scannedTarget = scanForNearestTarget(
-                ctx.transform.position, ctx.characterData->faction, ctx.edmIndex);
-            if (scannedTarget.isValid()) {
-                size_t scanIdx = edm.getIndex(scannedTarget);
-                if (scanIdx != SIZE_MAX) {
-                    targetPos = edm.getHotDataByIndex(scanIdx).transform.position;
-                    hasTarget = true;
-                    // Set as explicit target for subsequent frames
-                    attack.hasExplicitTarget = true;
-                    attack.explicitTarget = scannedTarget;
-                    attack.scanCooldown = 0.0f;
-                }
-            }
-            if (!hasTarget) {
-                attack.scanCooldown = 0.5f; // Backoff on failed scan
-            }
-        }
-    }
-
-    // No valid target
+    // No valid target (engagement pre-pass will provide one next frame)
     if (!hasTarget) {
         attack.hasTarget = false;
         ctx.transform.velocity = Vector2D(0, 0);
