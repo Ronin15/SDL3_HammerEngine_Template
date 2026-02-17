@@ -423,3 +423,233 @@ BOOST_AUTO_TEST_CASE(TestBehaviorSwitching) {
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// GUARD AND FACTION INDEX TESTS
+// ============================================================================
+
+BOOST_FIXTURE_TEST_SUITE(GuardFactionIndexTests, AIManagerEDMFixture)
+
+BOOST_AUTO_TEST_CASE(GuardIndexPopulatedOnAssignment) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto guard = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle handle = guard->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Unassign auto-assigned behavior, verify guard index is empty for this entity
+    aiMgr.unassignBehavior(handle);
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+
+    // Assign Guard — should appear in guard index
+    aiMgr.assignBehavior(handle, "Guard");
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) != results.end());
+}
+
+BOOST_AUTO_TEST_CASE(GuardIndexNotPopulatedForNonGuards) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto npc = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle handle = npc->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Assign non-Guard behavior
+    aiMgr.unassignBehavior(handle);
+    aiMgr.assignBehavior(handle, "Idle");
+
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+}
+
+BOOST_AUTO_TEST_CASE(GuardIndexRemovedOnUnassign) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto guard = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle handle = guard->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.unassignBehavior(handle);
+    aiMgr.assignBehavior(handle, "Guard");
+
+    // Verify present
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_REQUIRE(std::find(results.begin(), results.end(), idx) != results.end());
+
+    // Unassign — should be removed
+    aiMgr.unassignBehavior(handle);
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+}
+
+BOOST_AUTO_TEST_CASE(GuardIndexRemovedOnUnregister) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto guard = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle handle = guard->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Auto-assigned Guard from createNPCWithRaceClass — verify present
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_REQUIRE(std::find(results.begin(), results.end(), idx) != results.end());
+
+    // Unregister — should be removed
+    aiMgr.unregisterEntity(handle);
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+}
+
+BOOST_AUTO_TEST_CASE(GuardRadiusFilterExcludesDistantGuards) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto near = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    auto far = AITestNPC::create(Vector2D(2000.0f, 2000.0f));
+
+    // Both auto-assigned Guard from "Human"/"Guard" class
+    size_t nearIdx = edm.getIndex(near->getHandle());
+    size_t farIdx = edm.getIndex(far->getHandle());
+    BOOST_REQUIRE(nearIdx != SIZE_MAX);
+    BOOST_REQUIRE(farIdx != SIZE_MAX);
+
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 500.0f, results, false);
+
+    BOOST_CHECK(std::find(results.begin(), results.end(), nearIdx) != results.end());
+    BOOST_CHECK(std::find(results.begin(), results.end(), farIdx) == results.end());
+}
+
+BOOST_AUTO_TEST_CASE(FactionIndexPopulatedOnAssignment) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto npc = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle handle = npc->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Read the faction assigned by createNPCWithRaceClass
+    uint8_t faction = edm.getCharacterDataByIndex(idx).faction;
+
+    // Should be in faction index after auto-assignment
+    std::vector<size_t> results;
+    aiMgr.scanFactionInRadius(faction, Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) != results.end());
+
+    // Should NOT be in a different faction
+    uint8_t otherFaction = (faction == 0) ? 1 : 0;
+    results.clear();
+    aiMgr.scanFactionInRadius(otherFaction, Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+}
+
+BOOST_AUTO_TEST_CASE(FactionIndexRemovedOnUnassign) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto npc = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle handle = npc->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    uint8_t faction = edm.getCharacterDataByIndex(idx).faction;
+
+    // Verify present
+    std::vector<size_t> results;
+    aiMgr.scanFactionInRadius(faction, Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_REQUIRE(std::find(results.begin(), results.end(), idx) != results.end());
+
+    // Unassign — should be removed from faction index
+    aiMgr.unassignBehavior(handle);
+    results.clear();
+    aiMgr.scanFactionInRadius(faction, Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+}
+
+BOOST_AUTO_TEST_CASE(FactionRadiusFilterExcludesDistantEntities) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto near = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    auto far = AITestNPC::create(Vector2D(2000.0f, 2000.0f));
+
+    size_t nearIdx = edm.getIndex(near->getHandle());
+    size_t farIdx = edm.getIndex(far->getHandle());
+    BOOST_REQUIRE(nearIdx != SIZE_MAX);
+    BOOST_REQUIRE(farIdx != SIZE_MAX);
+
+    // Both should have same faction (same race/class)
+    uint8_t faction = edm.getCharacterDataByIndex(nearIdx).faction;
+    BOOST_REQUIRE(edm.getCharacterDataByIndex(farIdx).faction == faction);
+
+    std::vector<size_t> results;
+    aiMgr.scanFactionInRadius(faction, Vector2D(300.0f, 300.0f), 500.0f, results, false);
+
+    BOOST_CHECK(std::find(results.begin(), results.end(), nearIdx) != results.end());
+    BOOST_CHECK(std::find(results.begin(), results.end(), farIdx) == results.end());
+}
+
+BOOST_AUTO_TEST_CASE(IndicesClearedOnStateTransition) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto guard = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    size_t idx = edm.getIndex(guard->getHandle());
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Verify guard is in indices
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_REQUIRE(!results.empty());
+
+    // State transition should clear all indices
+    aiMgr.prepareForStateTransition();
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(results.empty());
+}
+
+BOOST_AUTO_TEST_CASE(BehaviorReassignmentUpdatesGuardIndex) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto npc = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle handle = npc->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Auto-assigned Guard — should be in guard index
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_REQUIRE(std::find(results.begin(), results.end(), idx) != results.end());
+
+    // Reassign to Idle — should be removed from guard index
+    aiMgr.assignBehavior(handle, "Idle");
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+
+    // Reassign back to Guard — should be back in guard index
+    aiMgr.assignBehavior(handle, "Guard");
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) != results.end());
+}
+
+BOOST_AUTO_TEST_SUITE_END()

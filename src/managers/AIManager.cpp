@@ -591,19 +591,16 @@ void AIManager::assignBehavior(EntityHandle handle,
     return;
   }
 
-  // Set config in EDM and initialize state
-  edm.setBehaviorConfig(edmIndex, config);
-  Behaviors::init(edmIndex, config);
-
-  // Now acquire write lock for storage modification
+  // Acquire write lock — index updates and EDM config must be atomic
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
   auto indexIt = m_handleToIndex.find(handle);
   if (indexIt != m_handleToIndex.end()) {
-    // Update existing entity — remove old indices before adding new
+    // Update existing entity — remove old indices before overwriting config
     size_t index = indexIt->second;
     if (index < m_storage.size()) {
-      removeFromIndices(edmIndex, behaviorType);
+      BehaviorType oldType = edm.getBehaviorConfig(edmIndex).type;
+      removeFromIndices(edmIndex, oldType);
 
       if (!m_storage.hotData[index].active) {
         m_storage.hotData[index].active = true;
@@ -643,6 +640,10 @@ void AIManager::assignBehavior(EntityHandle handle,
     AI_INFO(std::format("Added new entity with behavior: {}", behaviorName));
   }
 
+  // Set config in EDM and initialize state (after old indices removed)
+  edm.setBehaviorConfig(edmIndex, config);
+  Behaviors::init(edmIndex, config);
+
   // Add to guard/faction indices for the new behavior
   addToIndices(edmIndex, behaviorType);
 
@@ -667,19 +668,16 @@ void AIManager::assignBehavior(EntityHandle handle,
     return;
   }
 
-  // Set config in EDM and initialize state
-  edm.setBehaviorConfig(edmIndex, config);
-  Behaviors::init(edmIndex, config);
-
-  // Now acquire write lock for storage modification
+  // Acquire write lock — index updates and EDM config must be atomic
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
   auto indexIt = m_handleToIndex.find(handle);
   if (indexIt != m_handleToIndex.end()) {
-    // Update existing entity — remove old indices before adding new
+    // Update existing entity — remove old indices before overwriting config
     size_t index = indexIt->second;
     if (index < m_storage.size()) {
-      removeFromIndices(edmIndex, config.type);
+      BehaviorType oldType = edm.getBehaviorConfig(edmIndex).type;
+      removeFromIndices(edmIndex, oldType);
 
       if (!m_storage.hotData[index].active) {
         m_storage.hotData[index].active = true;
@@ -717,6 +715,10 @@ void AIManager::assignBehavior(EntityHandle handle,
                         static_cast<int>(config.type)));
   }
 
+  // Set config in EDM and initialize state (after old indices removed)
+  edm.setBehaviorConfig(edmIndex, config);
+  Behaviors::init(edmIndex, config);
+
   // Add to guard/faction indices for the new behavior
   addToIndices(edmIndex, config.type);
 
@@ -736,12 +738,12 @@ void AIManager::unassignBehavior(EntityHandle handle) {
       // Mark as inactive
       m_storage.hotData[index].active = false;
 
-      // Clear behavior config in EDM and remove from indices
+      // Remove from indices then clear behavior config in EDM
       size_t edmIndex = m_storage.edmIndices[index];
       if (edmIndex != SIZE_MAX) {
         auto& edm = EntityDataManager::Instance();
-        const auto& oldConfig = edm.getBehaviorConfig(edmIndex);
-        removeFromIndices(edmIndex, oldConfig.type);
+        BehaviorType oldType = edm.getBehaviorConfig(edmIndex).type;
+        removeFromIndices(edmIndex, oldType);
         edm.setBehaviorConfig(edmIndex, HammerEngine::BehaviorConfigData{});
 
         if (edmIndex < m_edmToStorageIndex.size()) {
@@ -815,8 +817,8 @@ void AIManager::unregisterEntity(EntityHandle handle) {
     size_t edmIndex = m_storage.edmIndices[it->second];
     if (edmIndex != SIZE_MAX) {
       auto& edm = EntityDataManager::Instance();
-      const auto& config = edm.getBehaviorConfig(edmIndex);
-      removeFromIndices(edmIndex, config.type);
+      BehaviorType oldType = edm.getBehaviorConfig(edmIndex).type;
+      removeFromIndices(edmIndex, oldType);
     }
   }
 }
@@ -917,14 +919,14 @@ void AIManager::addToIndices(size_t edmIndex, BehaviorType behaviorType) {
   }
 }
 
-void AIManager::removeFromIndices(size_t edmIndex, BehaviorType behaviorType) {
-  // Guard index
-  if (behaviorType == BehaviorType::Guard) {
+void AIManager::removeFromIndices(size_t edmIndex, BehaviorType oldBehaviorType) {
+  if (oldBehaviorType == BehaviorType::Guard) {
     std::erase(m_guardEdmIndices, edmIndex);
   }
-  // Faction index — remove from all factions (faction may have changed)
-  for (auto &factionVec : m_factionEdmIndices) {
-    std::erase(factionVec, edmIndex);
+  auto &edm = EntityDataManager::Instance();
+  uint8_t faction = edm.getCharacterDataByIndex(edmIndex).faction;
+  if (faction < MAX_FACTIONS) {
+    std::erase(m_factionEdmIndices[faction], edmIndex);
   }
 }
 

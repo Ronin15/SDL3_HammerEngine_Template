@@ -312,7 +312,7 @@ private:
   std::array<std::vector<size_t>, MAX_FACTIONS> m_factionEdmIndices;  // Per-faction EDM indices
 
   void addToIndices(size_t edmIndex, BehaviorType behaviorType);
-  void removeFromIndices(size_t edmIndex, BehaviorType behaviorType);
+  void removeFromIndices(size_t edmIndex, BehaviorType oldBehaviorType);
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
