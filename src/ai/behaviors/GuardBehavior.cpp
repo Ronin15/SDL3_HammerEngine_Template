@@ -244,7 +244,7 @@ void moveToPosition(BehaviorContext& ctx, EntityDataManager& edm, const Vector2D
     }
 }
 
-// Detect threats using engagement pre-pass target and memory data (O(1) instead of O(N))
+// Detect threats using memory data (O(1) instead of O(N))
 // Returns threat handle and sets isEnemyFaction to avoid redundant lookup in updateAlertLevel
 EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, bool& isEnemyFaction) {
     isEnemyFaction = false;
@@ -252,18 +252,7 @@ EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, bool& is
 
     uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
 
-    // 1. Engagement pre-pass target (set by AIManager centralized scan, outside timed section)
-    if (ctx.behaviorData->pendingEngageTarget.isValid()) {
-        EntityHandle target = ctx.behaviorData->pendingEngageTarget;
-        ctx.behaviorData->pendingEngageTarget = EntityHandle{};
-        size_t idx = edm.getIndex(target);
-        if (idx != SIZE_MAX && edm.getHotDataByIndex(idx).isAlive()) {
-            isEnemyFaction = (edm.getCharacterDataByIndex(idx).faction != myFaction);
-            return target;
-        }
-    }
-
-    // 2. Memory: lastAttacker — someone who attacked this guard
+    // 1. Memory: lastAttacker — someone who attacked this guard
     if (ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
         size_t idx = edm.getIndex(ctx.memoryData->lastAttacker);
         if (idx != SIZE_MAX && edm.getHotDataByIndex(idx).isAlive()) {

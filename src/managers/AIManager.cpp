@@ -18,7 +18,6 @@
 #include "utils/SIMDMath.hpp"
 #include <array>
 #include <algorithm>
-#include <cstring>
 #include <format>
 
 // Use SIMD abstraction layer
@@ -46,16 +45,6 @@ bool AIManager::init() {
     // Cache manager references for hot path usage (avoid singleton lookups)
     mp_pathfinderManager = &PathfinderManager::Instance();
 
-    // Initialize behavior type mappings
-    m_behaviorTypeMap["Wander"] = BehaviorType::Wander;
-    m_behaviorTypeMap["Guard"] = BehaviorType::Guard;
-    m_behaviorTypeMap["Patrol"] = BehaviorType::Patrol;
-    m_behaviorTypeMap["Follow"] = BehaviorType::Follow;
-    m_behaviorTypeMap["Chase"] = BehaviorType::Chase;
-    m_behaviorTypeMap["Attack"] = BehaviorType::Attack;
-    m_behaviorTypeMap["Flee"] = BehaviorType::Flee;
-    m_behaviorTypeMap["Idle"] = BehaviorType::Idle;
-
     // Pre-allocate storage for better performance
     constexpr size_t INITIAL_CAPACITY = 1000;
     m_storage.reserve(INITIAL_CAPACITY);
@@ -64,11 +53,6 @@ bool AIManager::init() {
     // Reserve EDM-to-storage reverse mapping (grows dynamically based on EDM
     // indices)
     m_edmToStorageIndex.reserve(INITIAL_CAPACITY);
-
-    // Initialize lock-free message queue
-    for (auto &msg : m_lockFreeMessages) {
-      msg.ready.store(false, std::memory_order_relaxed);
-    }
 
     m_initialized.store(true, std::memory_order_release);
     m_globallyPaused.store(false, std::memory_order_release);
@@ -120,7 +104,7 @@ bool AIManager::init() {
                                           damageEvent->getDamage(), true, 0.0f);
           }
 
-          // Notify nearby NPCs that witnessed this combat (spatial grid: O(K) not O(N))
+          // Notify nearby NPCs that witnessed this combat
           Vector2D combatLocation = hotData.transform.position;
           bool wasLethal = (charData.health <= 0.0f);
           uint8_t victimFaction = edm.getCharacterDataByIndex(idx).faction;
@@ -160,13 +144,6 @@ bool AIManager::init() {
                                            alertEvent->getParam());
         });
 
-    // No NPCSpawn handler in AIManager: state owns creation; AI manages
-    // behavior only.
-
-    // NOTE: PathfinderManager and CollisionManager are now initialized by
-    // GameEngine AIManager depends on these managers but doesn't manage their
-    // lifecycle
-
     AI_INFO("AIManager initialized successfully");
     return true;
 
@@ -192,8 +169,6 @@ void AIManager::clean() {
 
   {
     std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
-    std::unique_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
-    std::lock_guard<std::mutex> messagesLock(m_messagesMutex);
 
     // Clear all storage (behaviors are data in EDM, no cleanup needed)
     m_storage.hotData.clear();
@@ -202,15 +177,11 @@ void AIManager::clean() {
     m_storage.edmIndices.clear();
 
     m_handleToIndex.clear();
-    m_edmToStorageIndex.clear(); // Clear EDM-to-storage reverse mapping
-    m_messageQueue.clear();
+    m_edmToStorageIndex.clear();
   }
 
   // Clear cached manager references
   mp_pathfinderManager = nullptr;
-
-  // NOTE: PathfinderManager and CollisionManager are now cleaned up by
-  // GameEngine AIManager no longer manages their lifecycle
 
   // Reset all counters
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
@@ -228,27 +199,6 @@ void AIManager::prepareForStateTransition() {
 
   // Batches always complete within update() — no pending futures to wait for.
 
-  // DETERMINISTIC SYNCHRONIZATION: Wait for all assignment batches to complete
-  //
-  // Replaces empirical 100ms sleep with futures-based completion tracking.
-  // This ensures all async assignment tasks complete before state transition
-  // clears entity data, preventing use-after-free and race conditions.
-  //
-  // Process and clear any pending messages
-  processMessageQueue();
-
-  // Clear message queues completely
-  {
-    std::lock_guard<std::mutex> lock(m_messagesMutex);
-    m_messageQueue.clear();
-    // Reset lock-free message indices
-    m_messageReadIndex.store(0, std::memory_order_relaxed);
-    m_messageWriteIndex.store(0, std::memory_order_relaxed);
-    for (auto &msg : m_lockFreeMessages) {
-      msg.ready.store(false, std::memory_order_relaxed);
-    }
-  }
-
   // Clean up all entities safely (behaviors are data in EDM, no cleanup needed)
   {
     std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
@@ -259,9 +209,9 @@ void AIManager::prepareForStateTransition() {
     m_storage.hotData.clear();
     m_storage.handles.clear();
     m_storage.lastUpdateTimes.clear();
-    m_storage.edmIndices.clear(); // Clear EDM indices to prevent stale data
+    m_storage.edmIndices.clear();
     m_handleToIndex.clear();
-    m_edmToStorageIndex.clear(); // Clear EDM-to-storage reverse mapping
+    m_edmToStorageIndex.clear();
     m_activeIndicesBuffer.clear(); // Prevent stale EDM indices in radius queries
 
     AI_INFO_IF(entityCount > 0,
@@ -273,17 +223,12 @@ void AIManager::prepareForStateTransition() {
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
   m_totalAssignmentCount.store(0, std::memory_order_relaxed);
   m_frameCounter.store(0, std::memory_order_relaxed);
-  m_lastCleanupFrame.store(0, std::memory_order_relaxed);
 
   // Clear player reference completely
   {
     std::lock_guard<std::shared_mutex> lock(m_entitiesMutex);
     m_playerHandle = EntityHandle{};
   }
-
-  // Don't call resetBehaviors() as we've already done comprehensive cleanup
-  // above No behavior caches to clear - maps are cleared by resetBehaviors() if
-  // needed
 
   // Reset pause state to false so next state starts unpaused
   m_globallyPaused.store(false, std::memory_order_release);
@@ -303,17 +248,8 @@ void AIManager::update(float deltaTime) {
     return;
   }
 
-  // NOTE: We do NOT wait for previous frame's batches here - they can overlap
-  // with current frame The critical sync happens in GameEngine before
-  // CollisionManager to ensure collision data is ready This allows better frame
-  // pipelining on low-core systems
-
   try {
-    // Do not carry over AI update futures across frames to avoid races with
-    // render. Any previous frame's update work must be completed within its
-    // frame.
-
-    // OPTIMIZATION: Use getActiveIndices() to iterate only Active tier entities
+    // Use getActiveIndices() to iterate only Active tier entities
     // This reduces iteration from 50K to ~468 (entities within active radius)
     auto &edm = EntityDataManager::Instance();
     auto activeSpan = edm.getActiveIndices();
@@ -332,15 +268,14 @@ void AIManager::update(float deltaTime) {
 
     uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
 
-    // PERFORMANCE: Invalidate spatial query cache for new frame
-    // This ensures thread-local caches are fresh and don't use stale collision
-    // data
+    // Invalidate spatial query cache for new frame
+    // This ensures thread-local caches are fresh and don't use stale collision data
     AIInternal::InvalidateSpatialCache(currentFrame);
 #ifndef NDEBUG
     AIInternal::ResetCrowdStats();
 #endif
 
-    // OPTIMIZATION: Query world bounds ONCE per frame (not per batch)
+    // Query world bounds ONCE per frame (not per batch)
     float worldWidth = 32000.0f;
     float worldHeight = 32000.0f;
     if (mp_pathfinderManager) {
@@ -356,9 +291,8 @@ void AIManager::update(float deltaTime) {
     // calls from worker threads.
     Behaviors::cacheWorldBounds();
 
-    // OPTIMIZATION: Cache player info ONCE per frame (not per behavior call)
-    // This eliminates shared_lock contention in
-    // getPlayerHandle()/getPlayerPosition()
+    // Cache player info ONCE per frame (not per behavior call)
+    // This eliminates shared_lock contention in getPlayerHandle()/getPlayerPosition()
     EntityHandle cachedPlayerHandle;
     Vector2D cachedPlayerPosition;
     Vector2D cachedPlayerVelocity;
@@ -377,7 +311,7 @@ void AIManager::update(float deltaTime) {
       }
     }
 
-    // OPTIMIZATION: Cache game time ONCE per frame for combat timing comparisons
+    // Cache game time ONCE per frame for combat timing comparisons
     float cachedGameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
 
     // Cache player edmIndex once per frame (avoids hash lookup per query)
@@ -385,70 +319,22 @@ void AIManager::update(float deltaTime) {
         ? edm.getIndex(m_playerHandle)
         : SIZE_MAX;
 
-    // Emotional contagion removed — O(N²) per-frame scan caused hitches (83ms+).
-    // Witness fear (direct combat observation) is handled by processWitnessedCombat()
-    // in the damage event handler. Cascading NPC-to-NPC fear propagation is not
-    // currently implemented.
-
-    // Centralized engagement pre-pass: push targets to aggressive Idle/Wander NPCs
-    // Replaces per-entity shouldEngageEnemy() in behaviors — O(N/60) checks per frame
-    {
-      constexpr size_t ENGAGE_CHECK_INTERVAL = 60;
-      constexpr float ENGAGE_RANGE_SQ = 300.0f * 300.0f;
-      constexpr float AGGRESSION_THRESHOLD = 0.8f;
-
-      for (size_t sourceIdx : m_activeIndicesBuffer) {
-        if ((currentFrame + sourceIdx) % ENGAGE_CHECK_INTERVAL != 0) continue;
-
-        if (!edm.hasMemoryData(sourceIdx)) continue;
-        const auto& memory = edm.getMemoryData(sourceIdx);
-
-        // Quick aggression threshold (same as shouldEngageEnemy)
-        if (memory.emotions.aggression + memory.personality.aggression < AGGRESSION_THRESHOLD) continue;
-
-        // Push to passive behaviors (Idle/Wander) and targetless Attack/SEEKING entities
-        auto& behaviorData = edm.getBehaviorData(sourceIdx);
-        BehaviorType type = behaviorData.behaviorType;
-        if (type == BehaviorType::Attack) {
-            const auto& atk = behaviorData.state.attack;
-            if (atk.hasTarget || atk.hasExplicitTarget) continue;
-        } else if (type != BehaviorType::Idle && type != BehaviorType::Wander) {
-            continue;
-        }
-
-        Vector2D sourcePos = edm.getHotDataByIndex(sourceIdx).transform.position;
-        uint8_t sourceFaction = edm.getCharacterDataByIndex(sourceIdx).faction;
-
-        EntityHandle bestTarget{};
-        float bestDistSq = ENGAGE_RANGE_SQ;
-
-        for (size_t targetIdx : m_activeIndicesBuffer) {
-          if (targetIdx == sourceIdx) continue;
-          const auto& hot = edm.getHotDataByIndex(targetIdx);
-          if (!hot.isAlive()) continue;
-          if (edm.getCharacterDataByIndex(targetIdx).faction == sourceFaction) continue;
-          float distSq = Vector2D::distanceSquared(sourcePos, hot.transform.position);
-          if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestTarget = edm.getHandle(targetIdx);
-          }
-        }
-
-        if (bestTarget.isValid()) {
-          behaviorData.pendingEngageTarget = bestTarget;
-        }
-      }
-    }
-
     // Start timing ONLY the batch work (preprocessing is fixed main-thread overhead)
     auto startTime = std::chrono::high_resolution_clock::now();
 
     // Determine threading strategy using adaptive threshold from WorkerBudget
-    // WorkerBudget is the AUTHORITATIVE source - no manager overrides
+    // WorkerBudget is the AUTHORITATIVE source for production decisions
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
     auto decision = budgetMgr.shouldUseThreading(
         HammerEngine::SystemType::AI, entityCount);
     bool useThreading = decision.shouldThread;
+
+#ifndef NDEBUG
+    // Debug override: enableThreading(false) forces single-threaded for benchmarks
+    if (!m_useThreading.load(std::memory_order_acquire)) {
+      useThreading = false;
+    }
+#endif
 
     // Track what actually happened (not just what was planned)
     bool actualWasThreaded = false;
@@ -494,7 +380,7 @@ void AIManager::update(float deltaTime) {
                        cachedPlayerValid, cachedGameTime);
           endTime = std::chrono::high_resolution_clock::now();
 
-          // Submit damage events (single-batch path — outside timing)
+          // Submit deferred events (single-batch path — outside timing)
           if (!damageEvents.empty()) {
             EventManager::Instance().enqueueBatch(std::move(damageEvents));
           }
@@ -504,7 +390,7 @@ void AIManager::update(float deltaTime) {
           size_t entitiesPerBatch = entityCount / batchCount;
           size_t remainingEntities = entityCount % batchCount;
 
-          // Submit batches using futures that return damage events
+          // Submit batches using futures that return deferred events
           m_batchFutures.clear();
           m_batchFutures.reserve(batchCount);
 
@@ -517,7 +403,7 @@ void AIManager::update(float deltaTime) {
               end += remainingEntities;
             }
 
-            // Submit each batch - processBatch returns damage events directly
+            // Submit each batch - processBatch returns deferred events directly
             m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
                 [this, start, end, deltaTime, worldWidth, worldHeight,
                  cachedPlayerHandle, cachedPlayerPosition, cachedPlayerVelocity,
@@ -539,7 +425,7 @@ void AIManager::update(float deltaTime) {
                 HammerEngine::TaskPriority::High, "AI_Batch"));
           }
 
-          // Wait for all batches and collect damage events (lock-free collection)
+          // Wait for all batches and collect deferred events (lock-free collection)
           m_allDamageEvents.clear();
           for (auto& future : m_batchFutures) {
             if (future.valid()) {
@@ -553,13 +439,13 @@ void AIManager::update(float deltaTime) {
           }
           endTime = std::chrono::high_resolution_clock::now();
 
-          // Submit all accumulated damage events to EventManager (outside timing)
+          // Submit all accumulated deferred events to EventManager (outside timing)
           if (!m_allDamageEvents.empty()) {
             EventManager::Instance().enqueueBatch(std::move(m_allDamageEvents));
           }
         }
     } else {
-      // Single-threaded processing (threading disabled in config)
+      // Single-threaded processing
       actualWasThreaded = false;
       actualBatchCount = 1;
       auto damageEvents = processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth,
@@ -567,7 +453,7 @@ void AIManager::update(float deltaTime) {
                    cachedPlayerVelocity, cachedPlayerValid, cachedGameTime);
       endTime = std::chrono::high_resolution_clock::now();
 
-      // Submit damage events (single-threaded path — outside timing)
+      // Submit deferred events (single-threaded path — outside timing)
       if (!damageEvents.empty()) {
         EventManager::Instance().enqueueBatch(std::move(damageEvents));
       }
@@ -582,19 +468,10 @@ void AIManager::update(float deltaTime) {
                                 totalUpdateTime);
     }
 
-    // Process lock-free message queue (AFTER timing — not entity batch work)
-    processMessageQueue();
-
-    currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-
-    // Periodic frame tracking (balanced frequency)
-    if (currentFrame % 1800 == 0) {  // ~30 seconds at 60fps
-      m_lastCleanupFrame.store(currentFrame, std::memory_order_relaxed);
-    }
+    m_frameCounter.fetch_add(1, std::memory_order_relaxed);
 
 #ifndef NDEBUG
-    // Interval stats logging - zero overhead in release (entire block compiles
-    // out)
+    // Interval stats logging - zero overhead in release (entire block compiles out)
     static thread_local uint64_t logFrameCounter = 0;
     if (++logFrameCounter % 1800 == 0 && entityCount > 0) {  // ~30 seconds at 60fps
       // Only calculate expensive stats when actually logging
@@ -956,7 +833,6 @@ void AIManager::queryHandlesInRadius(const Vector2D &center, float radius,
                                      bool excludePlayer) const {
   outHandles.clear();
 
-  // Delegate to spatial grid via edmIndex query
   thread_local std::vector<size_t> t_edmBuffer;
   queryEdmIndicesInRadius(center, radius, t_edmBuffer, excludePlayer);
 
@@ -980,7 +856,6 @@ void AIManager::resetBehaviors() {
   AI_INFO("Resetting all AI behaviors");
 
   std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
-  std::unique_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
 
   // Clear all data (behaviors are data in EDM, no cleanup needed)
   m_storage.hotData.clear();
@@ -988,7 +863,7 @@ void AIManager::resetBehaviors() {
   m_storage.lastUpdateTimes.clear();
   m_storage.edmIndices.clear();
   m_handleToIndex.clear();
-  m_edmToStorageIndex.clear(); // Clear EDM-to-storage reverse mapping
+  m_edmToStorageIndex.clear();
 
   // Reset counters
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
@@ -1002,8 +877,8 @@ void AIManager::enableThreading(bool enable) {
 #endif
 
 size_t AIManager::getBehaviorCount() const {
-  std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
-  return m_behaviorTypeMap.size();  // Number of registered behavior types
+  // m_behaviorTypeMap is immutable after init() — no lock needed
+  return m_behaviorTypeMap.size();
 }
 
 size_t AIManager::getBehaviorUpdateCount() const {
@@ -1014,82 +889,9 @@ size_t AIManager::getTotalAssignmentCount() const {
   return m_totalAssignmentCount.load(std::memory_order_relaxed);
 }
 
-void AIManager::sendMessageToEntity(EntityHandle handle,
-                                    const std::string &message,
-                                    bool /*immediate*/) {
-  // Data-oriented: Messages are queued for processing via EDM memory data
-  // Behaviors can check memory data during execution
-  if (!handle.isValid() || message.empty())
-    return;
-
-  // Use lock-free queue for messages
-  size_t pending = m_messageWriteIndex.load(std::memory_order_relaxed) -
-                   m_messageReadIndex.load(std::memory_order_relaxed);
-  if (pending >= MESSAGE_QUEUE_SIZE) {
-    return; // Queue full - silently drop
-  }
-
-  size_t writeIndex =
-      m_messageWriteIndex.fetch_add(1, std::memory_order_relaxed) %
-      MESSAGE_QUEUE_SIZE;
-  auto &msg = m_lockFreeMessages[writeIndex];
-
-  msg.target = handle;
-  size_t copyLen = std::min(message.length(), sizeof(msg.message) - 1);
-  message.copy(msg.message, copyLen);
-  msg.message[copyLen] = '\0';
-  msg.ready.store(true, std::memory_order_release);
-}
-
-void AIManager::broadcastMessage(const std::string &message,
-                                 bool /*immediate*/) {
-  // Data-oriented: Broadcast messages are queued
-  if (message.empty())
-    return;
-
-  size_t pending = m_messageWriteIndex.load(std::memory_order_relaxed) -
-                   m_messageReadIndex.load(std::memory_order_relaxed);
-  if (pending >= MESSAGE_QUEUE_SIZE) {
-    return; // Queue full - silently drop
-  }
-
-  size_t writeIndex =
-      m_messageWriteIndex.fetch_add(1, std::memory_order_relaxed) %
-      MESSAGE_QUEUE_SIZE;
-  auto &msg = m_lockFreeMessages[writeIndex];
-
-  msg.target = EntityHandle{}; // Invalid handle for broadcast
-  size_t copyLen = std::min(message.length(), sizeof(msg.message) - 1);
-  message.copy(msg.message, copyLen);
-  msg.message[copyLen] = '\0';
-  msg.ready.store(true, std::memory_order_release);
-}
-
-void AIManager::processMessageQueue() {
-  // Process lock-free message queue
-  size_t readIndex = m_messageReadIndex.load(std::memory_order_relaxed);
-  size_t writeIndex = m_messageWriteIndex.load(std::memory_order_acquire);
-
-  while (readIndex != writeIndex) {
-    auto &msg = m_lockFreeMessages[readIndex % MESSAGE_QUEUE_SIZE];
-
-    if (msg.ready.load(std::memory_order_acquire)) {
-      if (msg.target.isValid()) {
-        sendMessageToEntity(msg.target, msg.message, true);
-      }
-
-      msg.ready.store(false, std::memory_order_release);
-    }
-
-    readIndex++;
-  }
-
-  m_messageReadIndex.store(readIndex, std::memory_order_release);
-}
-
 BehaviorType
 AIManager::inferBehaviorType(const std::string &behaviorName) const {
-  // m_behaviorTypeMap is populated once in init() and never modified.
+  // m_behaviorTypeMap is populated once in registerDefaultBehaviors() and never modified.
   // No lock needed for concurrent reads of an immutable container.
   auto it = m_behaviorTypeMap.find(behaviorName);
   return (it != m_behaviorTypeMap.end()) ? it->second : BehaviorType::Custom;
@@ -1269,9 +1071,7 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
       transform.previousPosition = transform.position;
 
       // Execute behavior logic using cached handle ID and EDM index for
-      // contention-free state access Use cached handle from storage to avoid
-      // redundant getHandle() call (3 vector accesses) World bounds: minX=0,
-      // minY=0, maxX=worldWidth, maxY=worldHeight
+      // contention-free state access
       BehaviorContext ctx(
           transform, edmHotData, m_storage.handles[storageIdx].getId(), edmIdx,
           deltaTime, playerHandle, playerPos, playerVel, playerValid,
@@ -1335,7 +1135,6 @@ float AIManager::getUpdateRangeMultiplier(int priority) const {
 void AIManager::registerEntity(EntityHandle handle,
                                const std::string &behaviorName) {
   // Assign behavior directly - no queue delay
-  // The queue system was causing hangs when update() wasn't running yet
   assignBehavior(handle, behaviorName);
 }
 

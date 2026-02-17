@@ -466,13 +466,6 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     // Process any pending messages before main logic
     processAttackMessages(data, config);
 
-    // Consume engagement target from centralized pre-pass
-    if (data.pendingEngageTarget.isValid()) {
-        attack.hasExplicitTarget = true;
-        attack.explicitTarget = data.pendingEngageTarget;
-        data.pendingEngageTarget = EntityHandle{};
-    }
-
     // Target priority: explicit > memory lastTarget > memory lastAttacker > player (if hostile)
     Vector2D targetPos;
     bool hasTarget = false;

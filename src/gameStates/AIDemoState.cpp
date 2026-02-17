@@ -74,10 +74,6 @@ void AIDemoState::handleInput() {
     // Set global AI pause state in AIManager
     aiMgr.setGlobalPause(m_aiPaused);
 
-    // Also send messages for behaviors that need them
-    std::string message = m_aiPaused ? "pause" : "resume";
-    aiMgr.broadcastMessage(message, true);
-
     // Simple feedback
     GAMESTATE_INFO(std::format("AI {}", m_aiPaused ? "PAUSED" : "RESUMED"));
   }

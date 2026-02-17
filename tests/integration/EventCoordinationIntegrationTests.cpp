@@ -236,9 +236,7 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
         "rain", 50.0f, 50.0f, 1.0f, -1.0f, "weather",
         EventManager::DispatchMode::Immediate));
 
-    // DATA-ORIENTED: Send message to AI entities about weather
-    // (Messages are handled by behavior executors internally)
-    AIManager::Instance().broadcastMessage("weather_rain_start");
+    // Legacy broadcast message API was removed - message system now uses BehaviorMessage queue
 
     // Update all managers and process events
     const int maxFrames = 30;

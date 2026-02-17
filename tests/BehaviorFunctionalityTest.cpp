@@ -243,11 +243,7 @@ BOOST_AUTO_TEST_CASE(TestIdleMessageHandling) {
     EntityHandle handle = entity->getHandle();
     AIManager::Instance().assignBehavior(handle, "Idle");
 
-    // Test mode switching via messages
-    AIManager::Instance().sendMessageToEntity(handle, "idle_sway", true);
-    AIManager::Instance().sendMessageToEntity(handle, "idle_fidget", true);
-    AIManager::Instance().sendMessageToEntity(handle, "reset_position", true);
-
+    // Legacy message API was removed - message system now uses BehaviorMessage queue
     // No crashes should occur
     BOOST_CHECK(true);
 }
@@ -576,28 +572,17 @@ BOOST_AUTO_TEST_CASE(TestBehaviorSpecificMessages) {
 
     // Test Guard behavior messages
     AIManager::Instance().assignBehavior(handle, "Guard");
-    AIManager::Instance().sendMessageToEntity(handle, "raise_alert", true);
-    AIManager::Instance().sendMessageToEntity(handle, "clear_alert", true);
-    AIManager::Instance().sendMessageToEntity(handle, "investigate_position", true);
 
     // Test Follow behavior messages
     AIManager::Instance().assignBehavior(handle, "Follow");
-    AIManager::Instance().sendMessageToEntity(handle, "follow_close", true);
-    AIManager::Instance().sendMessageToEntity(handle, "follow_formation", true);
-    AIManager::Instance().sendMessageToEntity(handle, "stop_following", true);
 
     // Test Attack behavior messages
     AIManager::Instance().assignBehavior(handle, "Attack");
-    AIManager::Instance().sendMessageToEntity(handle, "attack_target", true);
-    AIManager::Instance().sendMessageToEntity(handle, "retreat", true);
-    AIManager::Instance().sendMessageToEntity(handle, "enable_combo", true);
 
     // Test Flee behavior messages
     AIManager::Instance().assignBehavior(handle, "Flee");
-    AIManager::Instance().sendMessageToEntity(handle, "panic", true);
-    AIManager::Instance().sendMessageToEntity(handle, "calm_down", true);
-    AIManager::Instance().sendMessageToEntity(handle, "recover_stamina", true);
 
+    // Legacy string message API was removed - message system now uses BehaviorMessage queue
     // No crashes should occur
     BOOST_CHECK(true);
 }
@@ -612,11 +597,7 @@ BOOST_AUTO_TEST_CASE(TestBroadcastMessages) {
     AIManager::Instance().assignBehavior(handle1, "Attack");
     AIManager::Instance().assignBehavior(handle2, "Follow");
 
-    // Test broadcast messages
-    AIManager::Instance().broadcastMessage("global_alert", true);
-    AIManager::Instance().broadcastMessage("combat_start", true);
-    AIManager::Instance().broadcastMessage("all_stop", true);
-
+    // Legacy broadcast message API was removed - message system now uses BehaviorMessage queue
     // All entities should receive messages without crashes
     BOOST_CHECK(true);
 }

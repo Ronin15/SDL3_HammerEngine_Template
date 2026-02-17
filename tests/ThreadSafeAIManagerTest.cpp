@@ -268,9 +268,7 @@ BOOST_AUTO_TEST_CASE(MessageSending)
 
   AIManager::Instance().assignBehavior(handle, "Idle");
 
-  // Send messages (messages are queued in data-oriented system)
-  AIManager::Instance().sendMessageToEntity(handle, "test_message");
-  AIManager::Instance().broadcastMessage("broadcast_test");
+  // Legacy string message API was removed - message system now uses BehaviorMessage queue
 
   // Update to process messages
   updateAI(0.016f);

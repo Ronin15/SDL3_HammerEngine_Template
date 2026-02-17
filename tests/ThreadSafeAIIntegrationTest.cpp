@@ -181,8 +181,7 @@ BOOST_AUTO_TEST_CASE(TestMessageDelivery) {
     // Ensure the behavior is assigned before messaging
     BOOST_REQUIRE(AIManager::Instance().hasBehavior(testEntity->getHandle()));
 
-    // Send message immediately
-    AIManager::Instance().sendMessageToEntity(testEntity->getHandle(), "test_message", true);
+    // Legacy string message API was removed - message system now uses BehaviorMessage queue
 
     // Success if we get here without crashing
     BOOST_CHECK(true);

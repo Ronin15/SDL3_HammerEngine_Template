@@ -172,17 +172,6 @@ void executeIdle(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& c
         return;
     }
 
-    // Centralized engagement: target pushed by AIManager pre-pass
-    if (data.pendingEngageTarget.isValid()) {
-        EntityHandle target = data.pendingEngageTarget;
-        data.pendingEngageTarget = EntityHandle{};
-        switchBehavior(ctx.edmIndex, BehaviorType::Chase);
-        auto& chaseData = EntityDataManager::Instance().getBehaviorData(ctx.edmIndex);
-        chaseData.state.chase.hasExplicitTarget = true;
-        chaseData.state.chase.explicitTarget = target;
-        return;
-    }
-
     // Execute behavior based on current mode
     switch (static_cast<HammerEngine::IdleBehaviorConfig::IdleMode>(config.mode)) {
     case HammerEngine::IdleBehaviorConfig::IdleMode::STATIONARY:

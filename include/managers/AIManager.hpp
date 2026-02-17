@@ -8,16 +8,14 @@
 
 /**
  * @file AIManager.hpp
- * @brief High-performance AI manager with cross-platform optimization
+ * @brief High-performance AI data processor with WorkerBudget-driven threading
  *
- * Enhanced AIManager with Windows performance fixes and optimizations:
- * - Asynchronous (non-blocking) AI processing for optimal game engine
- * performance
- * - ThreadSystem and WorkerBudget integration for optimal scaling
- * - Type-indexed behavior storage for fast lookups
- * - Cache-friendly data structures with reduced lock contention
- * - Cross-platform threading optimizations (Windows/Linux/Mac)
- * - Smart pointer usage throughout for memory safety
+ * AIManager is a pure data processor — it orchestrates behavior execution,
+ * movement integration, and event collection without implementing AI logic:
+ * - ThreadSystem and WorkerBudget integration for adaptive batch scaling
+ * - SIMD movement batching (4-wide position + velocity + world clamping)
+ * - Deferred event collection via thread-local buffers + enqueueBatch()
+ * - Cache-friendly SoA layout with EDM as single source of truth
  * - Scales to 10k+ entities while maintaining 60+ FPS
  */
 
@@ -26,11 +24,9 @@
 #include "entities/EntityHandle.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
-#include <array>
 #include <atomic>
 #include <future>
 #include <memory>
-#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
@@ -38,14 +34,6 @@
 
 // PathfinderManager available for centralized pathfinding services
 class PathfinderManager;
-
-// Performance configuration constants
-namespace AIConfig {
-// Assignment per-frame limit removed. Assignment batching is now dynamic and
-// thread-aware.
-constexpr size_t ASSIGNMENT_QUEUE_RESERVE =
-    1000; // Reserve capacity for assignment queue
-} // namespace AIConfig
 
 // BehaviorType enum is defined in EntityDataManager.hpp
 
@@ -69,7 +57,10 @@ struct AIEntityData {
 };
 
 /**
- * @brief High-performance AI Manager
+ * @brief High-performance AI data processor
+ *
+ * Orchestrates behavior execution and movement integration.
+ * AI decision logic lives in Behaviors:: namespace, not here.
  */
 class AIManager {
 public:
@@ -104,20 +95,14 @@ public:
   void prepareForStateTransition();
 
   /**
-   * @brief Updates all active AI entities using lock-free asynchronous
-   * processing
+   * @brief Updates all active AI entities
    *
-   * PERFORMANCE IMPROVEMENTS:
-   * - Lock-free double buffering eliminates contention
-   * - Cache-efficient SoA layout for 3-4x better performance
-   * - Optimized scalar distance calculations for scattered memory access
-   * - Simplified batch processing with WorkerBudget integration
-   *
-   * Key Features:
-   * - Zero locks during update phase
-   * - Cache-friendly memory access patterns
-   * - Cross-platform threading optimizations
-   * - Scales to 20k+ entities at 60+ FPS
+   * Data processing pipeline:
+   * 1. Gather active indices from EDM tier system
+   * 2. Cache per-frame data (player, world bounds, game time)
+   * 3. WorkerBudget-driven batch execution (single or multi-threaded)
+   * 4. SIMD movement integration with world clamping
+   * 5. Collect deferred events and submit via enqueueBatch()
    *
    * @param deltaTime Time elapsed since last update in seconds
    */
@@ -186,7 +171,7 @@ public:
                             bool excludePlayer = true) const;
 
   /**
-   * @brief Query EDM indices within a radius using spatial grid (O(K) vs O(N))
+   * @brief Query EDM indices within a radius via linear scan of active entities (O(N))
    * Preferred API for behavior code - returns edmIndices directly, avoiding
    * redundant getIndex(handle) lookups at call sites.
    */
@@ -217,12 +202,6 @@ public:
 
   // Thread-safe assignment tracking (atomic counter only)
   size_t getTotalAssignmentCount() const;
-
-  // Message system
-  void sendMessageToEntity(EntityHandle handle, const std::string &message,
-                           bool immediate = false);
-  void broadcastMessage(const std::string &message, bool immediate = false);
-  void processMessageQueue();
 
   /**
    * @brief Get direct access to PathfinderManager for optimal pathfinding
@@ -271,31 +250,15 @@ private:
   // SIZE_MAX = no behavior assigned. Much cheaper than shared_ptr (8 bytes vs 16, no atomic ops)
   std::vector<size_t> m_edmToStorageIndex;
 
-  // NOTE: Behavior caches removed - they were duplicates of the primary maps:
-  // - m_behaviorCache duplicated m_behaviorTemplates (same O(1) lookup)
-  // - m_behaviorTypeCache duplicated m_behaviorTypeMap (immutable after init)
-  // - m_behaviorCacheMutex was only needed for cache writes on miss (removed)
-  // The maps are now accessed directly with appropriate locking.
-
   // Player handle
   EntityHandle m_playerHandle{};
 
-  // Message queue
-  struct QueuedMessage {
-    EntityHandle targetHandle{}; // invalid for broadcast
-    std::string message;
-    uint64_t timestamp;
-
-    QueuedMessage(EntityHandle target, const std::string &msg)
-        : targetHandle(target), message(msg), timestamp(getCurrentTimeNanos()) {}
-  };
-  std::vector<QueuedMessage> m_messageQueue;
-
   // Threading and state
   std::atomic<bool> m_initialized{false};
+#ifndef NDEBUG
   std::atomic<bool> m_useThreading{true};
+#endif
   std::atomic<bool> m_globallyPaused{false};
-  std::atomic<bool> m_processingMessages{false};
 
   // Behavior execution tracking
   std::atomic<size_t> m_totalBehaviorExecutions{0};
@@ -306,15 +269,8 @@ private:
   // Frame counter for cache invalidation and distance staggering (operational)
   std::atomic<uint64_t> m_frameCounter{0};
 
-  // Cleanup timing (thread-safe)
-  std::atomic<uint64_t> m_lastCleanupFrame{0};
-
-  // Distance culling removed - EDM tier system handles this via updateSimulationTiers()
-
   // Thread synchronization
   mutable std::shared_mutex m_entitiesMutex;
-  mutable std::shared_mutex m_behaviorsMutex;
-  mutable std::mutex m_messagesMutex;
 
   // Cached manager references (avoid singleton lookups in hot paths)
   PathfinderManager* mp_pathfinderManager{nullptr};
@@ -331,20 +287,12 @@ private:
   // Cached player edmIndex (updated once per frame during update(), SIZE_MAX = no player)
   size_t m_cachedPlayerEdmIdx{SIZE_MAX};
 
-  // Optimized batch processing constants
-  static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size
-  static constexpr size_t BATCH_SIZE =
-      256; // Larger batches for better throughput
-  // Threading threshold now managed by WorkerBudget adaptive system.
-  // WorkerBudget::shouldUseThreading() decides based on learned optimal threshold.
-  // Threshold adapts to hardware, Debug/Release builds, and runtime conditions.
-
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
 
   // Process batch of Active tier entities using EDM indices directly
   // No tier check needed - getActiveIndices() already filters to Active tier
-  // Returns collected damage events from this batch's thread-local buffer
+  // Returns collected deferred events from this batch's thread-local buffer
   std::vector<EventManager::DeferredEvent> processBatch(const std::vector<size_t>& activeIndices,
                     size_t start, size_t end,
                     float deltaTime,
@@ -353,17 +301,6 @@ private:
                     const Vector2D& playerVel, bool playerValid,
                     float gameTime);
   static uint64_t getCurrentTimeNanos();
-
-  // Lock-free message queue
-  struct alignas(CACHE_LINE_SIZE) LockFreeMessage {
-    EntityHandle target{};  // Invalid handle for broadcast
-    char message[48]; // Fixed size for lock-free queue
-    std::atomic<bool> ready{false};
-  };
-  static constexpr size_t MESSAGE_QUEUE_SIZE = 1024;
-  std::array<LockFreeMessage, MESSAGE_QUEUE_SIZE> m_lockFreeMessages{};
-  std::atomic<size_t> m_messageWriteIndex{0};
-  std::atomic<size_t> m_messageReadIndex{0};
 
   // Shutdown state
   bool m_isShutdown{false};

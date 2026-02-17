@@ -325,17 +325,6 @@ void executeWander(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfi
         return;
     }
 
-    // Centralized engagement: target pushed by AIManager pre-pass
-    if (data.pendingEngageTarget.isValid()) {
-        EntityHandle target = data.pendingEngageTarget;
-        data.pendingEngageTarget = EntityHandle{};
-        switchBehavior(ctx.edmIndex, BehaviorType::Chase);
-        auto& chaseData = EntityDataManager::Instance().getBehaviorData(ctx.edmIndex);
-        chaseData.state.chase.hasExplicitTarget = true;
-        chaseData.state.chase.explicitTarget = target;
-        return;
-    }
-
     updateTimers(data, ctx.deltaTime, ctx.pathData);
 
     if (!handleStartDelay(ctx)) return;

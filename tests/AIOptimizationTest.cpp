@@ -198,20 +198,7 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
     // Wait for async assignments to complete (matches production behavior)
     // Assignments are now synchronous - no wait needed
 
-    // Queue several messages
-    AIManager::Instance().sendMessageToEntity(handle, "test1");
-    AIManager::Instance().sendMessageToEntity(handle, "test2");
-    AIManager::Instance().sendMessageToEntity(handle, "test3");
-
-    // Process the message queue explicitly
-    AIManager::Instance().processMessageQueue();
-
-    // Test immediate delivery
-    AIManager::Instance().sendMessageToEntity(handle, "immediate", true);
-
-    // Test broadcast
-    AIManager::Instance().broadcastMessage("broadcast");
-    AIManager::Instance().processMessageQueue();
+    // Legacy string message API was removed - message system now uses BehaviorMessage queue
 
     // Entity should still have behavior after all messages
     BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
