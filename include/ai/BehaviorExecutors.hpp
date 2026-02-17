@@ -100,6 +100,9 @@ namespace BehaviorMessage {
     constexpr uint8_t PANIC = 10;            // Witness lethal combat — force flee
     constexpr uint8_t CALM_DOWN = 11;        // Guard all-clear — reduce fear
 
+    // Distress messages
+    constexpr uint8_t DISTRESS = 20;         // Victim/fleeing entity calls nearby guards — force SUSPICIOUS
+
     // Guard messages
     constexpr uint8_t RAISE_ALERT = 22;      // Guard/civilian under attack — force HOSTILE
 }

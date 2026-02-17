@@ -5,6 +5,7 @@
 
 #include "ai/BehaviorExecutors.hpp"
 #include "events/EntityEvents.hpp"
+#include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -281,6 +282,20 @@ void processCombatEvent(size_t index, EntityHandle attacker, EntityHandle target
         float aggressionScale = emotionScale * (memData.personality.aggression * 0.5f + memData.personality.bravery * 0.3f);
         float aggressionIncrease = (damage / 120.0f) * aggressionScale;
         edm.modifyEmotions(index, aggressionIncrease, fearIncrease, 0.0f, 0.0f);
+
+        // Distress call to same-faction guards within 500 units
+        // Extends beyond the 300u witness radius so guards further away still respond
+        uint8_t victimFaction = edm.getCharacterDataByIndex(index).faction;
+        Vector2D combatPos = edm.getHotDataByIndex(index).transform.position;
+        thread_local std::vector<size_t> t_guardBuffer;
+        AIManager::Instance().scanActiveIndicesInRadius(combatPos, 500.0f, t_guardBuffer, true);
+        for (size_t guardIdx : t_guardBuffer) {
+            if (guardIdx == index) continue;
+            const auto& guardBehavior = edm.getBehaviorData(guardIdx);
+            if (guardBehavior.behaviorType != BehaviorType::Guard) continue;
+            if (edm.getCharacterDataByIndex(guardIdx).faction != victimFaction) continue;
+            queueBehaviorMessage(guardIdx, BehaviorMessage::DISTRESS);
+        }
     } else {
         float aggressionScale = emotionScale * (1.0f + memData.personality.aggression * 0.5f);
         float aggressionIncrease = (damage / 150.0f) * aggressionScale;

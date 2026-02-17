@@ -102,6 +102,17 @@ void processGuardMessages(BehaviorData& data, const HammerEngine::GuardBehaviorC
                 guard.alertDecayTimer = 0.0f;
                 break;
 
+            case BehaviorMessage::DISTRESS:
+                // Victim/fleeing entity calling for help — escalate to SUSPICIOUS
+                // Triggers faster threat polling (0.25s vs 2s calm rate)
+                if (guard.currentAlertLevel < 1)
+                {
+                    guard.currentAlertLevel = 1;
+                    guard.alertTimer = 0.0f;
+                    guard.alertDecayTimer = 0.0f;
+                }
+                break;
+
             default:
                 break;
         }
@@ -467,12 +478,12 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
     }
 
     // Call for help when first reaching HOSTILE
-    if (guard.currentAlertLevel >= 3 && !guard.helpCalled) {
+    if (guard.currentAlertLevel >= 3 && !guard.helpCalled && config.canCallForHelp) {
         guard.helpCalled = true;
         thread_local std::vector<size_t> s_helpBuffer;
         s_helpBuffer.clear();
         uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
-        AIManager::Instance().queryEdmIndicesInRadius(
+        AIManager::Instance().scanActiveIndicesInRadius(
             ctx.transform.position, config.helpCallRadius, s_helpBuffer, true);
         for (size_t idx : s_helpBuffer) {
             if (idx == ctx.edmIndex) continue;
@@ -628,7 +639,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
             thread_local std::vector<size_t> s_calmBuffer;
             s_calmBuffer.clear();
             uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
-            AIManager::Instance().queryEdmIndicesInRadius(
+            AIManager::Instance().scanActiveIndicesInRadius(
                 ctx.transform.position, config.helpCallRadius, s_calmBuffer, true);
             for (size_t idx : s_calmBuffer) {
                 if (idx == ctx.edmIndex) continue;

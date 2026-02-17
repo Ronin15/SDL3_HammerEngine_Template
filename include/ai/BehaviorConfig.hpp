@@ -355,7 +355,7 @@ struct GuardBehaviorConfig
     float returnToPostTime = 5.0f;                // Delay before returning to post after all-clear
 
     // Help call system
-    bool canCallForHelp = false;                  // Whether guard can call nearby guards
+    bool canCallForHelp = true;                   // Whether guard can call nearby guards
     float helpCallRadius = 300.0f;                // Radius to call for help
     int guardGroupId = 0;                         // Group ID for coordinated response
 };

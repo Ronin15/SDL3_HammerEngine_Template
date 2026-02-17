@@ -5,6 +5,7 @@
 
 #include "ai/BehaviorExecutors.hpp"
 #include "ai/internal/Crowd.hpp"
+#include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include <algorithm>
@@ -23,6 +24,7 @@ thread_local std::uniform_real_distribution<float> s_panicVariation{0.8f, 1.2f};
 constexpr size_t MAX_SAFE_ZONES = 4;  // Matches FleeState array size
 constexpr float FLEE_SPEED_MULT = 1.3f;  // Urgent movement multiplier
 constexpr float CROWD_ANALYSIS_INTERVAL = 0.25f;  // Refresh cached nearby count every 0.25s
+constexpr float DISTRESS_BROADCAST_INTERVAL = 2.0f;  // Seconds between distress calls while fleeing
 
 // Process pending messages for Flee behavior
 void processFleeMessages(BehaviorData& data, const HammerEngine::FleeBehaviorConfig& config) {
@@ -474,6 +476,26 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
             data.cachedNearbyCount = AIInternal::CountNearbyEntities(
                 ctx.entityId, ctx.transform.position, 100.0f);
             data.lastCrowdAnalysis = CROWD_ANALYSIS_INTERVAL;
+        }
+
+        // Broadcast distress to nearby same-faction guards while fleeing
+        // Skips first 0.5s to avoid double-alert with damage handler
+        if (flee.fleeTimer > 0.5f) {
+            float timeSinceLastDistress = std::fmod(flee.fleeTimer - 0.5f, DISTRESS_BROADCAST_INTERVAL);
+            if (timeSinceLastDistress < ctx.deltaTime) {
+                thread_local std::vector<size_t> s_distressBuffer;
+                s_distressBuffer.clear();
+                uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
+                AIManager::Instance().scanActiveIndicesInRadius(
+                    ctx.transform.position, 400.0f, s_distressBuffer, true);
+                auto& edm = EntityDataManager::Instance();
+                for (size_t guardIdx : s_distressBuffer) {
+                    if (guardIdx == ctx.edmIndex) continue;
+                    if (edm.getBehaviorData(guardIdx).behaviorType != BehaviorType::Guard) continue;
+                    if (edm.getCharacterDataByIndex(guardIdx).faction != myFaction) continue;
+                    Behaviors::deferBehaviorMessage(guardIdx, BehaviorMessage::DISTRESS);
+                }
+            }
         }
 
         if (flee.isInPanic) {
