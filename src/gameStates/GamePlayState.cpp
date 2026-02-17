@@ -690,7 +690,7 @@ void GamePlayState::handleInput() {
 
       // Query nearby NPCs
       m_nearbyHandlesBuffer.clear();
-      aiMgr.queryHandlesInRadius(playerPos, 100.0f, m_nearbyHandlesBuffer, true);
+      aiMgr.scanActiveHandlesInRadius(playerPos, 100.0f, m_nearbyHandlesBuffer, true);
 
       for (const auto& handle : m_nearbyHandlesBuffer) {
         if (!handle.isValid() || handle.getKind() != EntityKind::NPC) {

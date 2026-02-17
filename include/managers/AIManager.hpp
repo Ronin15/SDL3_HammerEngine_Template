@@ -164,20 +164,20 @@ public:
   void unregisterEntity(EntityHandle handle);
 
   /**
-   * @brief Query handles within a radius
+   * @brief Linear scan of active entities returning handles within radius (O(N))
    */
-  void queryHandlesInRadius(const Vector2D& center, float radius,
-                            std::vector<EntityHandle>& outHandles,
-                            bool excludePlayer = true) const;
+  void scanActiveHandlesInRadius(const Vector2D& center, float radius,
+                                 std::vector<EntityHandle>& outHandles,
+                                 bool excludePlayer = true) const;
 
   /**
-   * @brief Query EDM indices within a radius via linear scan of active entities (O(N))
+   * @brief Linear scan of active entities returning EDM indices within radius (O(N))
    * Preferred API for behavior code - returns edmIndices directly, avoiding
    * redundant getIndex(handle) lookups at call sites.
    */
-  void queryEdmIndicesInRadius(const Vector2D& center, float radius,
-                               std::vector<size_t>& outEdmIndices,
-                               bool excludePlayer = true) const;
+  void scanActiveIndicesInRadius(const Vector2D& center, float radius,
+                                 std::vector<size_t>& outEdmIndices,
+                                 bool excludePlayer = true) const;
 
   // Global controls
   void setGlobalPause(bool paused);

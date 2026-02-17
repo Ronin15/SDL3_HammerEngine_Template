@@ -111,7 +111,7 @@ void CombatController::performAttack(Player *player) {
   // Query nearby entity handles from AIManager (EntityHandle-based API)
   // Reuse buffer to avoid per-frame allocation
   m_nearbyHandlesBuffer.clear();  // Keeps capacity
-  aiMgr.queryHandlesInRadius(playerPos, attackRange,
+  aiMgr.scanActiveHandlesInRadius(playerPos, attackRange,
                              m_nearbyHandlesBuffer, true);
 
   // Check all nearby entities for hits

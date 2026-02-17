@@ -541,9 +541,9 @@ void SocialController::alertNearbyGuards(const Vector2D& location, EntityHandle 
     (void)criminal;  // Guards detect threats autonomously after alert
     auto& edm = EntityDataManager::Instance();
 
-    // Use spatial query instead of iterating all active entities
+    // Linear scan of active entities for nearby guards
     m_nearbyGuardBuffer.clear();
-    AIManager::Instance().queryEdmIndicesInRadius(location, GUARD_ALERT_RANGE,
+    AIManager::Instance().scanActiveIndicesInRadius(location, GUARD_ALERT_RANGE,
                                                    m_nearbyGuardBuffer, true);
     int guardsAlerted = 0;
 

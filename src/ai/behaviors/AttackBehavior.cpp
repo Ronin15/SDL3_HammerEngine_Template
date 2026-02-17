@@ -569,7 +569,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
         // Signal nearby same-faction allies to retreat
         if (ctx.characterData) {
             s_scanBuffer.clear();
-            AIManager::Instance().queryEdmIndicesInRadius(
+            AIManager::Instance().scanActiveIndicesInRadius(
                 ctx.transform.position, 200.0f, s_scanBuffer, true);
             auto& edm2 = EntityDataManager::Instance();
             for (size_t idx : s_scanBuffer) {
@@ -706,7 +706,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
                     if (config.aoeRadius > 0.0f)
                     {
                         s_scanBuffer.clear();
-                        AIManager::Instance().queryEdmIndicesInRadius(
+                        AIManager::Instance().scanActiveIndicesInRadius(
                             targetPos, config.aoeRadius, s_scanBuffer, false);
                         uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
 

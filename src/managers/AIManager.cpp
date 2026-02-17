@@ -110,7 +110,7 @@ bool AIManager::init() {
           uint8_t victimFaction = edm.getCharacterDataByIndex(idx).faction;
 
           thread_local std::vector<size_t> t_witnessBuffer;
-          AIManager::Instance().queryEdmIndicesInRadius(combatLocation, 300.0f, t_witnessBuffer, false);
+          AIManager::Instance().scanActiveIndicesInRadius(combatLocation, 300.0f, t_witnessBuffer, false);
           for (size_t witnessIdx : t_witnessBuffer) {
             if (witnessIdx == idx) continue;
             Behaviors::processWitnessedCombat(witnessIdx, attackerHandle,
@@ -808,7 +808,7 @@ void AIManager::unregisterEntity(EntityHandle handle) {
 // Thread safety: m_activeIndicesBuffer and m_cachedPlayerEdmIdx are written on
 // the main thread before batch futures are submitted. Futures create a
 // happens-before edge, so worker threads read consistent data without a lock.
-void AIManager::queryEdmIndicesInRadius(const Vector2D &center, float radius,
+void AIManager::scanActiveIndicesInRadius(const Vector2D &center, float radius,
                                         std::vector<size_t> &outEdmIndices,
                                         bool excludePlayer) const {
   outEdmIndices.clear();
@@ -828,13 +828,13 @@ void AIManager::queryEdmIndicesInRadius(const Vector2D &center, float radius,
   }
 }
 
-void AIManager::queryHandlesInRadius(const Vector2D &center, float radius,
+void AIManager::scanActiveHandlesInRadius(const Vector2D &center, float radius,
                                      std::vector<EntityHandle> &outHandles,
                                      bool excludePlayer) const {
   outHandles.clear();
 
   thread_local std::vector<size_t> t_edmBuffer;
-  queryEdmIndicesInRadius(center, radius, t_edmBuffer, excludePlayer);
+  scanActiveIndicesInRadius(center, radius, t_edmBuffer, excludePlayer);
 
   auto &edm = EntityDataManager::Instance();
   outHandles.reserve(t_edmBuffer.size());
