@@ -619,12 +619,11 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
 
     // Handle alert decay
     if (guard.currentAlertLevel > 0 && guard.alertDecayTimer > config.alertDecayTime) {
-        uint8_t previousLevel = guard.currentAlertLevel;
         guard.currentAlertLevel--;
         guard.alertDecayTimer = 0.0f;
 
         // When returning to CALM, signal nearby allies to calm down
-        if (guard.currentAlertLevel == 0 && previousLevel > 0) {
+        if (guard.currentAlertLevel == 0) {
             guard.helpCalled = false;
             thread_local std::vector<size_t> s_calmBuffer;
             s_calmBuffer.clear();

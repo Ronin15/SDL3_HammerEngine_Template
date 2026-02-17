@@ -946,8 +946,8 @@ void WorldManager::initializeWorldResources() {
 
     // High elevation resources
     if (highElevationTiles > 0) {
-      auto stoneHandle = resourceMgr.getHandleById("enchanted_stone");
-      spawnHarvestablesAtElevation(stoneHandle, 0.7f,
+      auto enchantedStoneHandle = resourceMgr.getHandleById("enchanted_stone");
+      spawnHarvestablesAtElevation(enchantedStoneHandle, 0.7f,
                                    std::max(1, highElevationTiles / 30),
                                    1, 3, 90.0f);
     }
@@ -1952,7 +1952,7 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
     &m_cachedTextures.building_cityhall // size 4
   };
 
-  baseLocalY = static_cast<float>((spriteStartY - startTileY) * tileSize + SPRITE_OVERHANG);
+  baseLocalY = static_cast<float>(SPRITE_OVERHANG);  // spriteStartY == startTileY (no upward extension)
   for (int y = spriteStartY; y < spriteEndY; ++y) {
     const auto &row = world.grid[y];
     float localX = static_cast<float>((spriteStartX - startTileX) * tileSize + SPRITE_OVERHANG);

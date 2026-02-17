@@ -564,12 +564,8 @@ private:
   // Reusable buffer for drainDispatchQueueWithBudget
   mutable std::vector<PendingDispatch> m_localDispatchBuffer;
 
-  // Helper methods
-  std::string getEventTypeName(EventTypeId typeId) const;
-
   // Batch processing helper for threaded dispatch
   void processBatchSingleThreaded(size_t start, size_t end) const;
-  void recordPerformance(EventTypeId typeId, double timeMs) const;
   uint64_t getCurrentTimeNanos() const;
   void enqueueDispatch(EventTypeId typeId, const EventData &data) const;
   void drainDispatchQueueWithBudget();

@@ -505,7 +505,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
         }
     }
 
-    // No valid target (engagement pre-pass will provide one next frame)
+    // No valid target — return to passive behavior
     if (!hasTarget) {
         attack.hasTarget = false;
         ctx.transform.velocity = Vector2D(0, 0);
@@ -521,41 +521,19 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     // Update timers
     updateTimers(data, ctx.deltaTime);
 
-    // Update target tracking
-    if (hasTarget) {
-        attack.hasTarget = true;
-        attack.lastTargetPosition = targetPos;
-        float distSquared = (entityPos - targetPos).lengthSquared();
-        attack.targetDistance = std::sqrt(distSquared);
+    // Update target tracking (hasTarget guaranteed true — early return above handles false)
+    attack.hasTarget = true;
+    attack.lastTargetPosition = targetPos;
+    float distSquared = (entityPos - targetPos).lengthSquared();
+    attack.targetDistance = std::sqrt(distSquared);
 
-        // Update combat state
-        float attackRange = config.attackRange;
-        if (!attack.inCombat && attack.targetDistance <= attackRange * COMBAT_ENTER_RANGE_MULT) {
-            attack.inCombat = true;
-        } else if (attack.inCombat && attack.targetDistance > attackRange * COMBAT_EXIT_RANGE_MULT) {
-            attack.inCombat = false;
-            changeState(data, AttackState::SEEKING);
-        }
-    } else {
-        attack.hasTarget = false;
+    // Update combat state
+    float attackRange = config.attackRange;
+    if (!attack.inCombat && attack.targetDistance <= attackRange * COMBAT_ENTER_RANGE_MULT) {
+        attack.inCombat = true;
+    } else if (attack.inCombat && attack.targetDistance > attackRange * COMBAT_EXIT_RANGE_MULT) {
         attack.inCombat = false;
-
-        // Don't override message-triggered states like RETREATING
-        // RETREATING can continue without a target (using lastTargetPosition)
-        if (attack.currentState == static_cast<uint8_t>(AttackState::RETREATING)) {
-            // Use lastTargetPosition for retreat direction if available
-            if (attack.lastTargetPosition.lengthSquared() > 0.01f) {
-                targetPos = attack.lastTargetPosition;
-            } else {
-                // No known target position - just stop but stay in RETREATING state
-                return;
-            }
-        } else {
-            if (attack.currentState != static_cast<uint8_t>(AttackState::SEEKING)) {
-                changeState(data, AttackState::SEEKING);
-            }
-            return;
-        }
+        changeState(data, AttackState::SEEKING);
     }
 
     // Check for berserker mode
@@ -764,7 +742,6 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             break;
 
         case AttackState::RETREATING: {
-            auto& edm = EntityDataManager::Instance();
             Vector2D retreatDir = normalizeDir(entityPos - targetPos);
             Vector2D retreatVelocity = retreatDir * (data.moveSpeed * RETREAT_SPEED_MULTIPLIER);
             edm.getHotDataByIndex(ctx.edmIndex).transform.velocity = retreatVelocity;

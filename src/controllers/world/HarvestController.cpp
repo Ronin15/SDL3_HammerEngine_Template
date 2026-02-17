@@ -228,13 +228,12 @@ void HarvestController::completeHarvest() {
     // Try to add directly to player inventory
     uint32_t playerInvIdx = player->getInventoryIndex();
     bool addedToInventory = false;
-    int oldQuantity = 0;
 
     HARVEST_DEBUG(std::format("Player inventory index: {}", playerInvIdx));
 
     if (playerInvIdx != INVALID_INVENTORY_INDEX) {
         // Get old quantity with targeted lookup (avoids full inventory scan)
-        oldQuantity = edm.getInventoryQuantity(playerInvIdx, harvestData.yieldResource);
+        int oldQuantity = edm.getInventoryQuantity(playerInvIdx, harvestData.yieldResource);
 
         addedToInventory = edm.addToInventory(playerInvIdx, harvestData.yieldResource, yield);
 

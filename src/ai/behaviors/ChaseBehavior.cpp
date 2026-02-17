@@ -236,7 +236,6 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
                 } else if (pathData.pathUpdateTimer > config.pathRefreshInterval) {
                     needsNewPath = true;
                 } else {
-                    auto& edm = EntityDataManager::Instance();
                     Vector2D pathGoal = edm.getPathGoal(ctx.edmIndex);
                     float targetMovementSquared = (targetPos - pathGoal).lengthSquared();
                     needsNewPath = (targetMovementSquared >
@@ -265,7 +264,6 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
                 float dist = toWaypoint.length();
 
                 if (dist < DEFAULT_NAV_RADIUS) {
-                    auto& edm = EntityDataManager::Instance();
                     edm.advanceWaypointWithCache(ctx.edmIndex);
                     if (pathData.isFollowingPath()) {
                         waypoint = ctx.pathData->currentWaypoint;

@@ -973,37 +973,6 @@ void EventManager::clearEventPools() {
 
 // ==================== Helper Methods ====================
 
-std::string EventManager::getEventTypeName(EventTypeId typeId) const {
-  switch (typeId) {
-  case EventTypeId::Weather: return "Weather";
-  case EventTypeId::NPCSpawn: return "NPCSpawn";
-  case EventTypeId::ParticleEffect: return "ParticleEffect";
-  case EventTypeId::ResourceChange: return "ResourceChange";
-  case EventTypeId::World: return "World";
-  case EventTypeId::Camera: return "Camera";
-  case EventTypeId::Harvest: return "Harvest";
-  case EventTypeId::Collision: return "Collision";
-  case EventTypeId::WorldTrigger: return "WorldTrigger";
-  case EventTypeId::CollisionObstacleChanged: return "CollisionObstacleChanged";
-  case EventTypeId::Custom: return "Custom";
-  case EventTypeId::Time: return "Time";
-  case EventTypeId::Combat: return "Combat";
-  case EventTypeId::Entity: return "Entity";
-  case EventTypeId::BehaviorMessage: return "BehaviorMessage";
-  default: return "Unknown";
-  }
-}
-
-void EventManager::recordPerformance(EventTypeId typeId, double timeMs) const {
-  static thread_local uint64_t updateCounter = 0;
-  updateCounter++;
-
-  if (updateCounter % 10 == 0 || timeMs > 5.0) {
-    std::lock_guard<std::mutex> lock(m_perfMutex);
-    m_performanceStats[static_cast<size_t>(typeId)].addSample(timeMs);
-  }
-}
-
 uint64_t EventManager::getCurrentTimeNanos() const {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
              std::chrono::high_resolution_clock::now().time_since_epoch())
