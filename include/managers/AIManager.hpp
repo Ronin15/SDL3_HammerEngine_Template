@@ -24,6 +24,7 @@
 #include "entities/EntityHandle.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
+#include <array>
 #include <atomic>
 #include <future>
 #include <memory>
@@ -179,6 +180,22 @@ public:
                                  std::vector<size_t>& outEdmIndices,
                                  bool excludePlayer = true) const;
 
+  /**
+   * @brief Scan only guard entities within radius (O(G) where G = guard count)
+   * Uses incrementally maintained guard index — no per-frame rebuild.
+   */
+  void scanGuardsInRadius(const Vector2D& center, float radius,
+                          std::vector<size_t>& outEdmIndices,
+                          bool excludePlayer = true) const;
+
+  /**
+   * @brief Scan only same-faction entities within radius (O(F) where F = faction size)
+   * Uses incrementally maintained faction index — no per-frame rebuild.
+   */
+  void scanFactionInRadius(uint8_t faction, const Vector2D& center, float radius,
+                           std::vector<size_t>& outEdmIndices,
+                           bool excludePlayer = true) const;
+
   // Global controls
   void setGlobalPause(bool paused);
   bool isGloballyPaused() const;
@@ -286,6 +303,16 @@ private:
 
   // Cached player edmIndex (updated once per frame during update(), SIZE_MAX = no player)
   size_t m_cachedPlayerEdmIdx{SIZE_MAX};
+
+  // Incrementally maintained behavior/faction indices for O(G)/O(F) radius scans.
+  // Modified only on main thread (under m_entitiesMutex write lock in assignBehavior etc.),
+  // read-only during batch processing — thread-safe by construction.
+  static constexpr uint8_t MAX_FACTIONS = 16;
+  std::vector<size_t> m_guardEdmIndices;                           // EDM indices of Guard-assigned entities
+  std::array<std::vector<size_t>, MAX_FACTIONS> m_factionEdmIndices;  // Per-faction EDM indices
+
+  void addToIndices(size_t edmIndex, BehaviorType behaviorType);
+  void removeFromIndices(size_t edmIndex, BehaviorType behaviorType);
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;

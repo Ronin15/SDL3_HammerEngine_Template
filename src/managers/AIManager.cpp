@@ -178,6 +178,8 @@ void AIManager::clean() {
 
     m_handleToIndex.clear();
     m_edmToStorageIndex.clear();
+    m_guardEdmIndices.clear();
+    for (auto& fv : m_factionEdmIndices) fv.clear();
   }
 
   // Clear cached manager references
@@ -212,7 +214,9 @@ void AIManager::prepareForStateTransition() {
     m_storage.edmIndices.clear();
     m_handleToIndex.clear();
     m_edmToStorageIndex.clear();
-    m_activeIndicesBuffer.clear(); // Prevent stale EDM indices in radius queries
+    m_activeIndicesBuffer.clear();
+    m_guardEdmIndices.clear();
+    for (auto& fv : m_factionEdmIndices) fv.clear();
 
     AI_INFO_IF(entityCount > 0,
                std::format("Cleaned {} AI entities", entityCount));
@@ -596,10 +600,11 @@ void AIManager::assignBehavior(EntityHandle handle,
 
   auto indexIt = m_handleToIndex.find(handle);
   if (indexIt != m_handleToIndex.end()) {
-    // Update existing entity
+    // Update existing entity — remove old indices before adding new
     size_t index = indexIt->second;
     if (index < m_storage.size()) {
-      // Update active state
+      removeFromIndices(edmIndex, behaviorType);
+
       if (!m_storage.hotData[index].active) {
         m_storage.hotData[index].active = true;
       }
@@ -608,7 +613,6 @@ void AIManager::assignBehavior(EntityHandle handle,
         m_storage.edmIndices[index] = edmIndex;
       }
 
-      // Update EDM-to-storage reverse mapping for O(1) lookup in processBatch
       if (m_edmToStorageIndex.size() <= edmIndex) {
         m_edmToStorageIndex.resize(edmIndex + 1, SIZE_MAX);
       }
@@ -621,7 +625,6 @@ void AIManager::assignBehavior(EntityHandle handle,
     // Add new entity
     size_t newIndex = m_storage.size();
 
-    // Add to hot data
     AIEntityData::HotData hotData{};
     hotData.active = true;
 
@@ -630,17 +633,18 @@ void AIManager::assignBehavior(EntityHandle handle,
     m_storage.lastUpdateTimes.push_back(0.0f);
     m_storage.edmIndices.push_back(edmIndex);
 
-    // Populate EDM-to-storage reverse mapping for O(1) lookup in processBatch
     if (m_edmToStorageIndex.size() <= edmIndex) {
       m_edmToStorageIndex.resize(edmIndex + 1, SIZE_MAX);
     }
     m_edmToStorageIndex[edmIndex] = newIndex;
 
-    // Update index map
     m_handleToIndex[handle] = newIndex;
 
     AI_INFO(std::format("Added new entity with behavior: {}", behaviorName));
   }
+
+  // Add to guard/faction indices for the new behavior
+  addToIndices(edmIndex, behaviorType);
 
   m_totalAssignmentCount.fetch_add(1, std::memory_order_relaxed);
 }
@@ -672,9 +676,11 @@ void AIManager::assignBehavior(EntityHandle handle,
 
   auto indexIt = m_handleToIndex.find(handle);
   if (indexIt != m_handleToIndex.end()) {
-    // Update existing entity
+    // Update existing entity — remove old indices before adding new
     size_t index = indexIt->second;
     if (index < m_storage.size()) {
+      removeFromIndices(edmIndex, config.type);
+
       if (!m_storage.hotData[index].active) {
         m_storage.hotData[index].active = true;
       }
@@ -711,6 +717,9 @@ void AIManager::assignBehavior(EntityHandle handle,
                         static_cast<int>(config.type)));
   }
 
+  // Add to guard/faction indices for the new behavior
+  addToIndices(edmIndex, config.type);
+
   m_totalAssignmentCount.fetch_add(1, std::memory_order_relaxed);
 }
 
@@ -727,13 +736,14 @@ void AIManager::unassignBehavior(EntityHandle handle) {
       // Mark as inactive
       m_storage.hotData[index].active = false;
 
-      // Clear behavior config in EDM
+      // Clear behavior config in EDM and remove from indices
       size_t edmIndex = m_storage.edmIndices[index];
       if (edmIndex != SIZE_MAX) {
         auto& edm = EntityDataManager::Instance();
+        const auto& oldConfig = edm.getBehaviorConfig(edmIndex);
+        removeFromIndices(edmIndex, oldConfig.type);
         edm.setBehaviorConfig(edmIndex, HammerEngine::BehaviorConfigData{});
 
-        // Clear from EDM-to-storage reverse mapping
         if (edmIndex < m_edmToStorageIndex.size()) {
           m_edmToStorageIndex[edmIndex] = SIZE_MAX;
         }
@@ -797,11 +807,17 @@ void AIManager::unregisterEntity(EntityHandle handle) {
 
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
-  // Mark as inactive in main storage
+  // Mark as inactive and remove from indices
   auto it = m_handleToIndex.find(handle);
   if (it != m_handleToIndex.end() && it->second < m_storage.size()) {
-    // Mark as inactive
     m_storage.hotData[it->second].active = false;
+
+    size_t edmIndex = m_storage.edmIndices[it->second];
+    if (edmIndex != SIZE_MAX) {
+      auto& edm = EntityDataManager::Instance();
+      const auto& config = edm.getBehaviorConfig(edmIndex);
+      removeFromIndices(edmIndex, config.type);
+    }
   }
 }
 
@@ -843,6 +859,75 @@ void AIManager::scanActiveHandlesInRadius(const Vector2D &center, float radius,
   }
 }
 
+void AIManager::scanGuardsInRadius(const Vector2D &center, float radius,
+                                    std::vector<size_t> &outEdmIndices,
+                                    bool excludePlayer) const {
+  outEdmIndices.clear();
+  const float radiusSq = radius * radius;
+  auto &edm = EntityDataManager::Instance();
+  for (size_t edmIdx : m_guardEdmIndices) {
+    float distSq = Vector2D::distanceSquared(
+        center, edm.getHotDataByIndex(edmIdx).transform.position);
+    if (distSq <= radiusSq) {
+      outEdmIndices.push_back(edmIdx);
+    }
+  }
+  if (excludePlayer && m_cachedPlayerEdmIdx != SIZE_MAX) {
+    std::erase(outEdmIndices, m_cachedPlayerEdmIdx);
+  }
+}
+
+void AIManager::scanFactionInRadius(uint8_t faction, const Vector2D &center,
+                                     float radius,
+                                     std::vector<size_t> &outEdmIndices,
+                                     bool excludePlayer) const {
+  outEdmIndices.clear();
+  if (faction >= MAX_FACTIONS) return;
+  const float radiusSq = radius * radius;
+  auto &edm = EntityDataManager::Instance();
+  for (size_t edmIdx : m_factionEdmIndices[faction]) {
+    float distSq = Vector2D::distanceSquared(
+        center, edm.getHotDataByIndex(edmIdx).transform.position);
+    if (distSq <= radiusSq) {
+      outEdmIndices.push_back(edmIdx);
+    }
+  }
+  if (excludePlayer && m_cachedPlayerEdmIdx != SIZE_MAX) {
+    std::erase(outEdmIndices, m_cachedPlayerEdmIdx);
+  }
+}
+
+void AIManager::addToIndices(size_t edmIndex, BehaviorType behaviorType) {
+  // Guard index
+  if (behaviorType == BehaviorType::Guard) {
+    if (std::find(m_guardEdmIndices.begin(), m_guardEdmIndices.end(), edmIndex)
+        == m_guardEdmIndices.end()) {
+      m_guardEdmIndices.push_back(edmIndex);
+    }
+  }
+  // Faction index
+  auto &edm = EntityDataManager::Instance();
+  uint8_t faction = edm.getCharacterDataByIndex(edmIndex).faction;
+  if (faction < MAX_FACTIONS) {
+    auto &factionVec = m_factionEdmIndices[faction];
+    if (std::find(factionVec.begin(), factionVec.end(), edmIndex)
+        == factionVec.end()) {
+      factionVec.push_back(edmIndex);
+    }
+  }
+}
+
+void AIManager::removeFromIndices(size_t edmIndex, BehaviorType behaviorType) {
+  // Guard index
+  if (behaviorType == BehaviorType::Guard) {
+    std::erase(m_guardEdmIndices, edmIndex);
+  }
+  // Faction index — remove from all factions (faction may have changed)
+  for (auto &factionVec : m_factionEdmIndices) {
+    std::erase(factionVec, edmIndex);
+  }
+}
+
 void AIManager::setGlobalPause(bool paused) {
   m_globallyPaused.store(paused, std::memory_order_release);
   AI_INFO((paused ? "AI processing paused" : "AI processing resumed"));
@@ -864,6 +949,8 @@ void AIManager::resetBehaviors() {
   m_storage.edmIndices.clear();
   m_handleToIndex.clear();
   m_edmToStorageIndex.clear();
+  m_guardEdmIndices.clear();
+  for (auto& fv : m_factionEdmIndices) fv.clear();
 
   // Reset counters
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);

@@ -568,13 +568,11 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
 
         // Signal nearby same-faction allies to retreat
         if (ctx.characterData) {
-            s_scanBuffer.clear();
-            AIManager::Instance().scanActiveIndicesInRadius(
-                ctx.transform.position, 200.0f, s_scanBuffer, true);
-            auto& edm2 = EntityDataManager::Instance();
+            uint8_t myFaction = ctx.characterData->faction;
+            AIManager::Instance().scanFactionInRadius(
+                myFaction, ctx.transform.position, 200.0f, s_scanBuffer, true);
             for (size_t idx : s_scanBuffer) {
                 if (idx == ctx.edmIndex) continue;
-                if (edm2.getCharacterDataByIndex(idx).faction != ctx.characterData->faction) continue;
                 Behaviors::deferBehaviorMessage(idx, BehaviorMessage::RETREAT);
             }
         }

@@ -541,19 +541,13 @@ void SocialController::alertNearbyGuards(const Vector2D& location, EntityHandle 
     (void)criminal;  // Guards detect threats autonomously after alert
     auto& edm = EntityDataManager::Instance();
 
-    // Linear scan of active entities for nearby guards
+    // Scan guard index for nearby guards — O(G) not O(N)
     m_nearbyGuardBuffer.clear();
-    AIManager::Instance().scanActiveIndicesInRadius(location, GUARD_ALERT_RANGE,
-                                                   m_nearbyGuardBuffer, true);
+    AIManager::Instance().scanGuardsInRadius(location, GUARD_ALERT_RANGE,
+                                             m_nearbyGuardBuffer, true);
     int guardsAlerted = 0;
 
     for (size_t idx : m_nearbyGuardBuffer) {
-        const auto& behaviorData = edm.getBehaviorData(idx);
-        if (behaviorData.behaviorType != BehaviorType::Guard) {
-            continue;
-        }
-
-        // Send RAISE_ALERT via behavior message system (guards handle state autonomously)
         Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);
 
         ++guardsAlerted;

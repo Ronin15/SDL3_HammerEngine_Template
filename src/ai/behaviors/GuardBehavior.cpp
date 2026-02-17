@@ -477,17 +477,15 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         }
     }
 
-    // Call for help when first reaching HOSTILE
+    // Call for help when first reaching HOSTILE — scan faction index O(F) not O(N)
     if (guard.currentAlertLevel >= 3 && !guard.helpCalled && config.canCallForHelp) {
         guard.helpCalled = true;
         thread_local std::vector<size_t> s_helpBuffer;
-        s_helpBuffer.clear();
         uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
-        AIManager::Instance().scanActiveIndicesInRadius(
-            ctx.transform.position, config.helpCallRadius, s_helpBuffer, true);
+        AIManager::Instance().scanFactionInRadius(
+            myFaction, ctx.transform.position, config.helpCallRadius, s_helpBuffer, true);
         for (size_t idx : s_helpBuffer) {
             if (idx == ctx.edmIndex) continue;
-            if (edm.getCharacterDataByIndex(idx).faction != myFaction) continue;
             Behaviors::deferBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);
         }
     }
@@ -637,13 +635,11 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         if (guard.currentAlertLevel == 0) {
             guard.helpCalled = false;
             thread_local std::vector<size_t> s_calmBuffer;
-            s_calmBuffer.clear();
             uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
-            AIManager::Instance().scanActiveIndicesInRadius(
-                ctx.transform.position, config.helpCallRadius, s_calmBuffer, true);
+            AIManager::Instance().scanFactionInRadius(
+                myFaction, ctx.transform.position, config.helpCallRadius, s_calmBuffer, true);
             for (size_t idx : s_calmBuffer) {
                 if (idx == ctx.edmIndex) continue;
-                if (edm.getCharacterDataByIndex(idx).faction != myFaction) continue;
                 Behaviors::deferBehaviorMessage(idx, BehaviorMessage::CALM_DOWN);
             }
         }

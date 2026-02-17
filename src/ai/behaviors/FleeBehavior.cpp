@@ -484,14 +484,12 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
             float timeSinceLastDistress = std::fmod(flee.fleeTimer - 0.5f, DISTRESS_BROADCAST_INTERVAL);
             if (timeSinceLastDistress < ctx.deltaTime) {
                 thread_local std::vector<size_t> s_distressBuffer;
-                s_distressBuffer.clear();
                 uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
-                AIManager::Instance().scanActiveIndicesInRadius(
+                AIManager::Instance().scanGuardsInRadius(
                     ctx.transform.position, 400.0f, s_distressBuffer, true);
                 auto& edm = EntityDataManager::Instance();
                 for (size_t guardIdx : s_distressBuffer) {
                     if (guardIdx == ctx.edmIndex) continue;
-                    if (edm.getBehaviorData(guardIdx).behaviorType != BehaviorType::Guard) continue;
                     if (edm.getCharacterDataByIndex(guardIdx).faction != myFaction) continue;
                     Behaviors::deferBehaviorMessage(guardIdx, BehaviorMessage::DISTRESS);
                 }
