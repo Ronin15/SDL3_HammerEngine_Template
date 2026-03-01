@@ -127,8 +127,8 @@ bool GameEngine::init(std::string_view title) {
   // mode change that can lock refresh rate to 60Hz on ProMotion displays.
   // See: https://github.com/libsdl-org/SDL/issues/8452
   SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "1");
-  // Use OpenGL instead of Metal to test for Metal-specific render target hitches
-  SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
+  // Use Metal for best performance and ProMotion support on macOS
+  SDL_SetHint(SDL_HINT_RENDER_DRIVER, "metal");
 #endif
 
   GAMEENGINE_DEBUG("SDL rendering hints configured for optimal quality");
