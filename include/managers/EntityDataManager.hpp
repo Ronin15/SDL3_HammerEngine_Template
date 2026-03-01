@@ -975,6 +975,7 @@ struct BehaviorData {
             float roamTimer;
             float escalationMultiplier{1.0f};  // Suspicion-based threshold multiplier (lower = faster)
             float cachedDetectionRange{0.0f};  // Cached detection range (recomputed on mode change)
+            float hostileTimer{0.0f};          // Time spent at alert level HOSTILE (3) for ALARM escalation
             uint32_t currentPatrolIndex;
             uint8_t currentAlertLevel;  // 0=Calm, 1=Suspicious, 2=Alert, 3=Combat
             uint8_t currentMode;

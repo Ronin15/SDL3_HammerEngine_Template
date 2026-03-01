@@ -155,7 +155,7 @@ void handleMovement(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConf
     if (!ctx.behaviorData) return;
     auto& data = *ctx.behaviorData;
     auto& wander = data.state.wander;
-    float baseDistance = 600.0f;
+    float baseDistance = config.baseGoalDistance;
     Vector2D position = ctx.transform.position;
 
     float moveDistance = calculateMoveDistance(data, position, baseDistance, config);
@@ -223,7 +223,7 @@ void handleMovement(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConf
         wander.directionChangeTimer = 0.0f;
     }
 
-    const float jitterThresholdSq = (data.moveSpeed * 1.5f) * (data.moveSpeed * 1.5f);
+    const float jitterThresholdSq = (data.moveSpeed * config.jitterThresholdMultiplier) * (data.moveSpeed * config.jitterThresholdMultiplier);
     if (speedSq < jitterThresholdSq && speedSq >= stallSpeedSq) {
         float jitter = (s_angleDistribution(s_rng) - static_cast<float>(M_PI)) * 0.1f;
         Vector2D dir = wander.currentDirection;
@@ -238,7 +238,7 @@ void handleMovement(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConf
 
     int nearbyCount = data.cachedNearbyCount;
     if (nearbyCount > 5) {
-        float slowdownMultiplier = (nearbyCount > 10) ? 0.5f : 0.7f;
+        float slowdownMultiplier = (nearbyCount > 10) ? config.crowdSlowdownHeavy : config.crowdSlowdownLight;
         ctx.transform.velocity = ctx.transform.velocity * slowdownMultiplier;
     }
 

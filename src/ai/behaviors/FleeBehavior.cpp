@@ -22,9 +22,7 @@ thread_local std::uniform_real_distribution<float> s_panicVariation{0.8f, 1.2f};
 // No default constants needed - config is always available during execution
 
 constexpr size_t MAX_SAFE_ZONES = 4;  // Matches FleeState array size
-constexpr float FLEE_SPEED_MULT = 1.3f;  // Urgent movement multiplier
 constexpr float CROWD_ANALYSIS_INTERVAL = 0.25f;  // Refresh cached nearby count every 0.25s
-constexpr float DISTRESS_BROADCAST_INTERVAL = 2.0f;  // Seconds between distress calls while fleeing
 
 // Process pending messages for Flee behavior
 void processFleeMessages(BehaviorData& data, const HammerEngine::FleeBehaviorConfig& config) {
@@ -238,7 +236,7 @@ void updatePanicFlee(BehaviorContext& ctx, const Vector2D& threatPos,
     }
 
     float speedModifier = calculateFleeSpeedModifier(data, config);
-    ctx.transform.velocity = flee.fleeDirection * data.moveSpeed * FLEE_SPEED_MULT * speedModifier;
+    ctx.transform.velocity = flee.fleeDirection * data.moveSpeed * config.baseFleeSpeedMultiplier * speedModifier;
 }
 
 void updateStrategicRetreat(BehaviorContext& ctx, const Vector2D& threatPos,
@@ -257,7 +255,7 @@ void updateStrategicRetreat(BehaviorContext& ctx, const Vector2D& threatPos,
     // Use cached nearby count (refreshed by main executeFlee countdown timer)
     int nearbyCount = data.cachedNearbyCount;
 
-    float baseRetreatDistance = 800.0f;
+    float baseRetreatDistance = config.strategicRetreatDistance;
     float retreatDistance = baseRetreatDistance;
     if (nearbyCount > 2) {
         retreatDistance = baseRetreatDistance * 1.8f;
@@ -272,8 +270,8 @@ void updateStrategicRetreat(BehaviorContext& ctx, const Vector2D& threatPos,
         currentPos + flee.fleeDirection * retreatDistance, 100.0f);
 
     float speedModifier = calculateFleeSpeedModifier(data, config) * config.strategicSpeedMultiplier;
-    if (!tryFollowPathToGoal(ctx, dest, data.moveSpeed * FLEE_SPEED_MULT * speedModifier, config)) {
-        ctx.transform.velocity = flee.fleeDirection * data.moveSpeed * FLEE_SPEED_MULT * speedModifier;
+    if (!tryFollowPathToGoal(ctx, dest, data.moveSpeed * config.baseFleeSpeedMultiplier * speedModifier, config)) {
+        ctx.transform.velocity = flee.fleeDirection * data.moveSpeed * config.baseFleeSpeedMultiplier * speedModifier;
     }
 }
 
@@ -302,7 +300,7 @@ void updateEvasiveManeuver(BehaviorContext& ctx, const Vector2D& threatPos,
     flee.fleeDirection = normalizeVector(zigzagDir);
 
     float speedModifier = calculateFleeSpeedModifier(data, config);
-    ctx.transform.velocity = flee.fleeDirection * data.moveSpeed * FLEE_SPEED_MULT * speedModifier;
+    ctx.transform.velocity = flee.fleeDirection * data.moveSpeed * config.baseFleeSpeedMultiplier * speedModifier;
 }
 
 void updateSeekCover(BehaviorContext& ctx, const Vector2D& threatPos,
@@ -315,7 +313,7 @@ void updateSeekCover(BehaviorContext& ctx, const Vector2D& threatPos,
     // Use cached nearby count (refreshed by main executeFlee countdown timer)
     int nearbyCount = data.cachedNearbyCount;
 
-    float baseCoverDistance = 720.0f;
+    float baseCoverDistance = config.coverSeekDistance;
     float coverDistance = baseCoverDistance;
     if (nearbyCount > 2) {
         coverDistance = baseCoverDistance * 1.6f;
@@ -338,8 +336,8 @@ void updateSeekCover(BehaviorContext& ctx, const Vector2D& threatPos,
         currentPos + flee.fleeDirection * coverDistance, 100.0f);
 
     float speedModifier = calculateFleeSpeedModifier(data, config);
-    if (!tryFollowPathToGoal(ctx, dest, data.moveSpeed * FLEE_SPEED_MULT * speedModifier, config)) {
-        ctx.transform.velocity = flee.fleeDirection * data.moveSpeed * FLEE_SPEED_MULT * speedModifier;
+    if (!tryFollowPathToGoal(ctx, dest, data.moveSpeed * config.baseFleeSpeedMultiplier * speedModifier, config)) {
+        ctx.transform.velocity = flee.fleeDirection * data.moveSpeed * config.baseFleeSpeedMultiplier * speedModifier;
     }
 }
 
@@ -366,7 +364,7 @@ void initFlee(size_t edmIndex, const HammerEngine::FleeBehaviorConfig& config) {
     flee.panicTimer = 0.0f;
     flee.currentStamina = config.maxStamina;
     flee.zigzagTimer = 0.0f;
-    flee.navRadius = 18.0f;
+    flee.navRadius = config.navRadius;
     flee.backoffTimer = 0.0f;
     flee.zigzagDirection = 1;
     flee.isFleeing = false;
@@ -481,7 +479,7 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
         // Broadcast distress to nearby same-faction guards while fleeing
         // Skips first 0.5s to avoid double-alert with damage handler
         if (flee.fleeTimer > 0.5f) {
-            float timeSinceLastDistress = std::fmod(flee.fleeTimer - 0.5f, DISTRESS_BROADCAST_INTERVAL);
+            float timeSinceLastDistress = std::fmod(flee.fleeTimer - 0.5f, config.distressBroadcastInterval);
             if (timeSinceLastDistress < ctx.deltaTime) {
                 thread_local std::vector<size_t> s_distressBuffer;
                 uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;

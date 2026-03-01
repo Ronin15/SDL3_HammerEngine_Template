@@ -164,7 +164,7 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
         if (needsPath && pathData.pathRequestCooldown <= 0.0f) {
             PathfinderManager::Instance().requestPathToEDM(ctx.edmIndex, currentPos, desiredPos,
                                                            PathfinderManager::Priority::Normal);
-            pathData.pathRequestCooldown = 1.0f;
+            pathData.pathRequestCooldown = config.pathCooldown;
         }
 
         if (pathData.isFollowingPath()) {
@@ -188,9 +188,9 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
 
                 // Speed adjustment based on distance
                 if (distanceToTarget > config.catchupRange) {
-                    speed *= 1.3f;  // Speed up to catch up
+                    speed *= config.catchupSpeedMultiplier;  // Speed up to catch up
                 } else if (distanceToTarget < config.followDistance * 0.5f) {
-                    speed *= 0.5f;  // Slow down when too close
+                    speed *= config.slowdownSpeedMultiplier;  // Slow down when too close
                 }
 
                 ctx.transform.velocity = direction * speed;

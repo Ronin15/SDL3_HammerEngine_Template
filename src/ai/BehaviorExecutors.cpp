@@ -325,6 +325,16 @@ void processWitnessedCombat(size_t witnessIndex, EntityHandle attacker,
     float suspicionDelta = 0.2f * emotionScale;
     edm.modifyEmotions(witnessIndex, 0.0f, fearDelta, 0.0f, suspicionDelta);
 
+    // Queue behavioral messages filtered by impact intensity and composure
+    constexpr float PANIC_INTENSITY_THRESHOLD = 0.6f;   // High impact → panic
+    constexpr float ALERT_INTENSITY_THRESHOLD = 0.25f;  // Medium impact → raise alert
+
+    if (intensity > PANIC_INTENSITY_THRESHOLD && wasDeath) {
+        queueBehaviorMessage(witnessIndex, BehaviorMessage::PANIC);
+    } else if (intensity > ALERT_INTENSITY_THRESHOLD) {
+        queueBehaviorMessage(witnessIndex, BehaviorMessage::RAISE_ALERT);
+    }
+
     // Create and store memory entry
     MemoryEntry mem;
     mem.subject = attacker;

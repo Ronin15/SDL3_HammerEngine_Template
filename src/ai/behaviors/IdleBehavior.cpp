@@ -60,7 +60,7 @@ void updateSubtleSway(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConf
     if (config.movementFrequency > 0.0f && idle.movementTimer >= idle.movementInterval) {
         Vector2D swayDirection = generateRandomOffset(config.idleRadius);
         swayDirection.normalize();
-        ctx.transform.velocity = swayDirection * 35.0f;
+        ctx.transform.velocity = swayDirection * config.swaySpeed;
         idle.movementTimer = 0.0f;
         idle.movementInterval = getRandomMovementInterval(config.movementFrequency);
     }
@@ -91,7 +91,7 @@ void updateLightFidget(BehaviorContext& ctx, const HammerEngine::IdleBehaviorCon
     if (config.movementFrequency > 0.0f && idle.movementTimer >= idle.movementInterval) {
         Vector2D fidgetDirection = generateRandomOffset(config.idleRadius);
         fidgetDirection.normalize();
-        ctx.transform.velocity = fidgetDirection * 40.0f;
+        ctx.transform.velocity = fidgetDirection * config.fidgetSpeed;
         idle.movementTimer = 0.0f;
         idle.movementInterval = getRandomMovementInterval(config.movementFrequency);
     }

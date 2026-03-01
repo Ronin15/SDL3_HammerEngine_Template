@@ -107,23 +107,15 @@ bool AIManager::init() {
           // Notify nearby NPCs that witnessed this combat
           Vector2D combatLocation = hotData.transform.position;
           bool wasLethal = (charData.health <= 0.0f);
-          uint8_t victimFaction = edm.getCharacterDataByIndex(idx).faction;
 
           thread_local std::vector<size_t> t_witnessBuffer;
           AIManager::Instance().scanActiveIndicesInRadius(combatLocation, 300.0f, t_witnessBuffer, false);
           for (size_t witnessIdx : t_witnessBuffer) {
             if (witnessIdx == idx) continue;
+            // processWitnessedCombat now handles behavioral messages (RAISE_ALERT/PANIC)
+            // with composure and distance filtering applied consistently
             Behaviors::processWitnessedCombat(witnessIdx, attackerHandle,
                                                combatLocation, 0.0f, wasLethal);
-
-            // RAISE_ALERT + PANIC for same-faction nearby allies
-            const auto& witnessChar = edm.getCharacterDataByIndex(witnessIdx);
-            if (witnessChar.faction == victimFaction) {
-              Behaviors::queueBehaviorMessage(witnessIdx, BehaviorMessage::RAISE_ALERT);
-              if (wasLethal) {
-                Behaviors::queueBehaviorMessage(witnessIdx, BehaviorMessage::PANIC);
-              }
-            }
           }
 
           // Death handling (EDM lifecycle) - O(1) per damage event

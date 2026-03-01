@@ -16,10 +16,6 @@ namespace {
 thread_local std::mt19937 s_rng{static_cast<unsigned>(
     std::chrono::steady_clock::now().time_since_epoch().count())};
 
-constexpr float DEFAULT_NAV_RADIUS = 64.0f;
-constexpr float DEFAULT_MAX_RANGE = 1000.0f;
-constexpr float DEFAULT_MIN_RANGE = 50.0f;
-constexpr float CHASE_SPEED_MULT = 1.1f;  // Urgent movement multiplier
 
 void updateCooldowns(BehaviorData& data, float deltaTime) {
     auto& chase = data.state.chase;
@@ -121,7 +117,7 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
     if (ctx.memoryData && ctx.memoryData->isValid()) {
         emotionalSpeedMod = 1.0f + ctx.memoryData->emotions.aggression * 0.2f;
     }
-    float chaseSpeed = CHASE_SPEED_MULT * emotionalSpeedMod;
+    float chaseSpeed = config.speedMultiplier * emotionalSpeedMod;
 
     // Crowd analysis cache
     data.lastCrowdAnalysis += ctx.deltaTime;
@@ -213,8 +209,8 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
         switchBehavior(ctx.edmIndex, BehaviorType::Attack);
         return;
     }
-    float maxRangeSquared = DEFAULT_MAX_RANGE * DEFAULT_MAX_RANGE;
-    float minRangeSquared = DEFAULT_MIN_RANGE * DEFAULT_MIN_RANGE;
+    float maxRangeSquared = config.maxChaseRange * config.maxChaseRange;
+    float minRangeSquared = config.minChaseRange * config.minChaseRange;
 
     updateCooldowns(data, ctx.deltaTime);
 
@@ -247,7 +243,7 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
             if (stuckOnObstacle) pathData.clear();
 
             if ((needsNewPath || stuckOnObstacle) && canRequestPath(data)) {
-                float minRangeCheckSquared = (DEFAULT_MIN_RANGE * 1.5f) * (DEFAULT_MIN_RANGE * 1.5f);
+                float minRangeCheckSquared = (config.minChaseRange * 1.5f) * (config.minChaseRange * 1.5f);
                 if (distanceSquared < minRangeCheckSquared) {
                     ctx.transform.velocity = Vector2D(0, 0);
                     return;
@@ -263,7 +259,7 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
                 Vector2D toWaypoint = waypoint - entityPos;
                 float dist = toWaypoint.length();
 
-                if (dist < DEFAULT_NAV_RADIUS) {
+                if (dist < config.navRadius) {
                     edm.advanceWaypointWithCache(ctx.edmIndex);
                     if (pathData.isFollowingPath()) {
                         waypoint = ctx.pathData->currentWaypoint;

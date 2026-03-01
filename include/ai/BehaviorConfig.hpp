@@ -44,6 +44,8 @@ struct IdleBehaviorConfig
     float idleRadius{20.0f};           // Movement radius for sway/fidget modes
     float movementFrequency{3.0f};     // Seconds between movements
     float turnFrequency{5.0f};         // Seconds between turns
+    float swaySpeed{35.0f};            // Movement speed for SUBTLE_SWAY mode (px/s)
+    float fidgetSpeed{40.0f};          // Movement speed for LIGHT_FIDGET mode (px/s)
 
     /**
      * Create stationary configuration (completely still)
@@ -130,6 +132,12 @@ struct WanderBehaviorConfig
     float stallSpeed = 0.5f;                      // Speed threshold (px/s) to consider entity stalled
     float stallTimeout = 0.6f;                    // Seconds without progress before triggering unstuck
 
+    // Goal/distance parameters
+    float baseGoalDistance{600.0f};               // Base distance for wander goal selection (px)
+    float jitterThresholdMultiplier{1.5f};        // Multiplier on moveSpeed for jitter detection
+    float crowdSlowdownHeavy{0.5f};              // Speed multiplier when crowdCount > 10
+    float crowdSlowdownLight{0.7f};              // Speed multiplier when crowdCount 5-10
+
     // Factory methods for common presets
     static WanderBehaviorConfig createSmallWander()
     {
@@ -191,6 +199,12 @@ struct ChaseBehaviorConfig
     // Line-of-sight
     float losCheckInterval = 0.5f;                // Seconds between LOS checks
     float catchRadius = 20.0f;                    // Distance to consider target "caught"
+
+    // Movement range/nav parameters
+    float navRadius{64.0f};                       // Waypoint reached radius (px)
+    float maxChaseRange{1000.0f};                 // Maximum range to chase target (px)
+    float minChaseRange{50.0f};                   // Minimum range (stop chasing when within) (px)
+    float speedMultiplier{1.1f};                  // Urgent movement multiplier applied to moveSpeed
 
     // Factory method for event targeting
     static ChaseBehaviorConfig createEventTarget()
@@ -284,6 +298,13 @@ struct FleeBehaviorConfig
 
     // Strategic retreat
     float strategicSpeedMultiplier = 0.8f;        // Speed multiplier for strategic retreat
+
+    // Additional flee parameters
+    float baseFleeSpeedMultiplier{1.3f};          // Urgent movement multiplier applied to moveSpeed
+    float distressBroadcastInterval{2.0f};        // Seconds between distress calls while fleeing
+    float navRadius{18.0f};                       // Waypoint reached radius (px)
+    float strategicRetreatDistance{800.0f};       // Base retreat destination distance (px)
+    float coverSeekDistance{720.0f};              // Base cover-seek destination distance (px)
 };
 
 /**
@@ -312,6 +333,11 @@ struct FollowBehaviorConfig
     // Arrival
     float arrivalRadius = 25.0f;                  // Distance to consider arrived at leader
     float velocityThreshold = 10.0f;              // Speed threshold for arrival detection
+
+    // Speed adjustment parameters
+    float pathCooldown{1.0f};                     // Seconds between path requests
+    float catchupSpeedMultiplier{1.3f};           // Speed multiplier when far behind leader
+    float slowdownSpeedMultiplier{0.5f};          // Speed multiplier when too close to leader
 };
 
 /**
@@ -358,6 +384,10 @@ struct GuardBehaviorConfig
     bool canCallForHelp = true;                   // Whether guard can call nearby guards
     float helpCallRadius = 300.0f;                // Radius to call for help
     int guardGroupId = 0;                         // Group ID for coordinated response
+
+    // ALARM escalation (alert level 4)
+    float alarmEscalationTime{8.0f};              // Seconds at HOSTILE before escalating to ALARM
+    float alarmHelpCallRadius{600.0f};            // Wider scan radius for ALARM state
 };
 
 /**

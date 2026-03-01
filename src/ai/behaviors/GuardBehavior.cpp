@@ -365,6 +365,7 @@ void initGuard(size_t edmIndex, const HammerEngine::GuardBehaviorConfig& config)
     guard.currentPatrolTarget = hotData.transform.position;
     guard.lastKnownThreatPosition = Vector2D(0, 0);
     guard.investigationTarget = Vector2D(0, 0);
+    guard.hostileTimer = 0.0f;
 
     data.setInitialized(true);
     (void)config;
@@ -477,8 +478,8 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         }
     }
 
-    // Call for help when first reaching HOSTILE — scan faction index O(F) not O(N)
-    if (guard.currentAlertLevel >= 3 && !guard.helpCalled && config.canCallForHelp) {
+    // Call for help when first reaching HOSTILE (level 3 only) — ALARM handles its own wider call
+    if (guard.currentAlertLevel == 3 && !guard.helpCalled && config.canCallForHelp) {
         guard.helpCalled = true;
         thread_local std::vector<size_t> s_helpBuffer;
         uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
@@ -509,20 +510,49 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
                     moveToPosition(ctx, edm, threatPos, data.moveSpeed);
                     break;
 
-                case 3: // HOSTILE
-                case 4: { // ALARM
+                case 3: { // HOSTILE
+                    // Track time spent at HOSTILE for ALARM escalation
+                    guard.hostileTimer += ctx.deltaTime;
+                    if (guard.hostileTimer >= config.alarmEscalationTime) {
+                        guard.currentAlertLevel = 4; // Escalate to ALARM
+                        guard.hostileTimer = 0.0f;
+                    }
+
                     float distance = (ctx.transform.position - threatPos).length();
                     if (distance <= DEFAULT_ATTACK_ENGAGE_RANGE) {
-                        // Switch to Attack behavior first (clears old state)
                         switchBehavior(ctx.edmIndex, BehaviorType::Attack);
-                        // THEN set explicit target (after switchBehavior has initialized clean state)
                         auto& attackData = edm.getBehaviorData(ctx.edmIndex);
                         attackData.state.attack.hasExplicitTarget = true;
                         attackData.state.attack.explicitTarget = threat;
                         return;
                     } else {
-                        float speed = (guard.currentAlertLevel >= 4) ? data.moveSpeed * GUARD_PURSUIT_SPEED_MULT : data.moveSpeed * GUARD_ALERT_SPEED_MULT;
-                        moveToPosition(ctx, edm, threatPos, speed);
+                        moveToPosition(ctx, edm, threatPos, data.moveSpeed * GUARD_ALERT_SPEED_MULT);
+                    }
+                    break;
+                }
+                case 4: { // ALARM - like HOSTILE but wider help call and no return-to-post
+                    float distance = (ctx.transform.position - threatPos).length();
+                    if (distance <= DEFAULT_ATTACK_ENGAGE_RANGE) {
+                        switchBehavior(ctx.edmIndex, BehaviorType::Attack);
+                        auto& attackData = edm.getBehaviorData(ctx.edmIndex);
+                        attackData.state.attack.hasExplicitTarget = true;
+                        attackData.state.attack.explicitTarget = threat;
+                        return;
+                    } else {
+                        moveToPosition(ctx, edm, threatPos, data.moveSpeed * GUARD_PURSUIT_SPEED_MULT);
+                    }
+
+                    // Widen help call radius for ALARM state
+                    if (!guard.helpCalled && config.canCallForHelp) {
+                        guard.helpCalled = true;
+                        thread_local std::vector<size_t> s_alarmBuffer;
+                        uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
+                        AIManager::Instance().scanFactionInRadius(
+                            myFaction, ctx.transform.position, config.alarmHelpCallRadius, s_alarmBuffer, true);
+                        for (size_t idx : s_alarmBuffer) {
+                            if (idx == ctx.edmIndex) continue;
+                            Behaviors::deferBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);
+                        }
                     }
                     break;
                 }
@@ -532,6 +562,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         }
     } else if (guard.isInvestigating) {
         // Continue investigation
+        // ALARM state: do not return to post until level decays below ALARM
         if (guard.investigationTimer > config.investigationTime && guard.currentAlertLevel < 3) {
             guard.isInvestigating = false;
             guard.returningToPost = true;
@@ -628,8 +659,15 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
 
     // Handle alert decay
     if (guard.currentAlertLevel > 0 && guard.alertDecayTimer > config.alertDecayTime) {
+        uint8_t prevLevel = guard.currentAlertLevel;
         guard.currentAlertLevel--;
         guard.alertDecayTimer = 0.0f;
+
+        // ALARM (4) decays to HOSTILE (3) — reset hostileTimer so escalation restarts
+        if (prevLevel == 4) {
+            guard.hostileTimer = 0.0f;
+            guard.helpCalled = false; // Allow re-calling for help at new radius
+        }
 
         // When returning to CALM, signal nearby allies to calm down
         if (guard.currentAlertLevel == 0) {
