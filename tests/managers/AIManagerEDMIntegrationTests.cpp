@@ -22,6 +22,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "core/ThreadSystem.hpp"
+#include "ai/BehaviorExecutors.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
@@ -647,6 +648,30 @@ BOOST_AUTO_TEST_CASE(BehaviorReassignmentUpdatesGuardIndex) {
 
     // Reassign back to Guard — should be back in guard index
     aiMgr.assignBehavior(handle, "Guard");
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) != results.end());
+}
+
+BOOST_AUTO_TEST_CASE(RuntimeSwitchBehaviorUpdatesGuardQueries) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto npc = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    size_t idx = edm.getIndex(npc->getHandle());
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_REQUIRE(std::find(results.begin(), results.end(), idx) != results.end());
+
+    // Simulate runtime transition from behavior execution path (bypasses AIManager assignment APIs)
+    Behaviors::switchBehavior(idx, BehaviorType::Attack);
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+
+    Behaviors::switchBehavior(idx, BehaviorType::Guard);
     results.clear();
     aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
     BOOST_CHECK(std::find(results.begin(), results.end(), idx) != results.end());

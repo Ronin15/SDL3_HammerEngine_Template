@@ -80,9 +80,12 @@ bool AIManager::init() {
           auto& edm = EntityDataManager::Instance();
           EntityHandle targetHandle = damageEvent->getTarget();
           EntityHandle attackerHandle = damageEvent->getSource();
+          float gameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
 
           size_t idx = edm.getIndex(targetHandle);
           if (idx == SIZE_MAX) return;
+          size_t attackerIdx =
+              attackerHandle.isValid() ? edm.getIndex(attackerHandle) : SIZE_MAX;
 
           auto& hotData = edm.getHotDataByIndex(idx);
           auto& charData = edm.getCharacterData(targetHandle);
@@ -101,7 +104,12 @@ bool AIManager::init() {
           // Record combat data and apply personality-scaled emotions
           if (attackerHandle.isValid()) {
             Behaviors::processCombatEvent(idx, attackerHandle, targetHandle,
-                                          damageEvent->getDamage(), true, 0.0f);
+                                          damageEvent->getDamage(), true, gameTime);
+            // Also update attacker-side combat memory/emotions (damage dealt path)
+            if (attackerIdx != SIZE_MAX && attackerIdx != idx) {
+              Behaviors::processCombatEvent(attackerIdx, attackerHandle, targetHandle,
+                                            damageEvent->getDamage(), false, gameTime);
+            }
           }
 
           // Notify nearby NPCs that witnessed this combat
@@ -111,11 +119,11 @@ bool AIManager::init() {
           thread_local std::vector<size_t> t_witnessBuffer;
           AIManager::Instance().scanActiveIndicesInRadius(combatLocation, 300.0f, t_witnessBuffer, false);
           for (size_t witnessIdx : t_witnessBuffer) {
-            if (witnessIdx == idx) continue;
+            if (witnessIdx == idx || witnessIdx == attackerIdx) continue;
             // processWitnessedCombat now handles behavioral messages (RAISE_ALERT/PANIC)
             // with composure and distance filtering applied consistently
             Behaviors::processWitnessedCombat(witnessIdx, attackerHandle,
-                                               combatLocation, 0.0f, wasLethal);
+                                               combatLocation, gameTime, wasLethal);
           }
 
           // Death handling (EDM lifecycle) - O(1) per damage event
@@ -811,6 +819,11 @@ void AIManager::unregisterEntity(EntityHandle handle) {
       auto& edm = EntityDataManager::Instance();
       BehaviorType oldType = edm.getBehaviorConfig(edmIndex).type;
       removeFromIndices(edmIndex, oldType);
+      edm.setBehaviorConfig(edmIndex, HammerEngine::BehaviorConfigData{});
+
+      if (edmIndex < m_edmToStorageIndex.size()) {
+        m_edmToStorageIndex[edmIndex] = SIZE_MAX;
+      }
     }
   }
 }
@@ -859,13 +872,44 @@ void AIManager::scanGuardsInRadius(const Vector2D &center, float radius,
   outEdmIndices.clear();
   const float radiusSq = radius * radius;
   auto &edm = EntityDataManager::Instance();
-  for (size_t edmIdx : m_guardEdmIndices) {
-    float distSq = Vector2D::distanceSquared(
-        center, edm.getHotDataByIndex(edmIdx).transform.position);
-    if (distSq <= radiusSq) {
-      outEdmIndices.push_back(edmIdx);
+
+  // Re-query behavior type from EDM at scan time so runtime behavior switches
+  // are reflected without relying on assignment-time guard index bookkeeping.
+  if (!m_activeIndicesBuffer.empty()) {
+    for (size_t edmIdx : m_activeIndicesBuffer) {
+      if (edmIdx >= m_edmToStorageIndex.size() ||
+          m_edmToStorageIndex[edmIdx] == SIZE_MAX) {
+        continue;
+      }
+      const auto& config = edm.getBehaviorConfig(edmIdx);
+      if (config.type != BehaviorType::Guard) {
+        continue;
+      }
+      float distSq = Vector2D::distanceSquared(
+          center, edm.getHotDataByIndex(edmIdx).transform.position);
+      if (distSq <= radiusSq) {
+        outEdmIndices.push_back(edmIdx);
+      }
+    }
+  } else {
+    auto activeSpan = edm.getActiveIndices();
+    for (size_t edmIdx : activeSpan) {
+      if (edmIdx >= m_edmToStorageIndex.size() ||
+          m_edmToStorageIndex[edmIdx] == SIZE_MAX) {
+        continue;
+      }
+      const auto& config = edm.getBehaviorConfig(edmIdx);
+      if (config.type != BehaviorType::Guard) {
+        continue;
+      }
+      float distSq = Vector2D::distanceSquared(
+          center, edm.getHotDataByIndex(edmIdx).transform.position);
+      if (distSq <= radiusSq) {
+        outEdmIndices.push_back(edmIdx);
+      }
     }
   }
+
   if (excludePlayer && m_cachedPlayerEdmIdx != SIZE_MAX) {
     std::erase(outEdmIndices, m_cachedPlayerEdmIdx);
   }
