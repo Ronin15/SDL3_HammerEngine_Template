@@ -727,9 +727,10 @@ void EventManager::enqueueBatch(std::vector<DeferredEvent>&& events) const {
   }
 
   // Bulk insert all events
-  for (auto& event : events) {
-    m_pendingDispatch.push_back(PendingDispatch{event.typeId, std::move(event.data)});
-  }
+  std::transform(events.begin(), events.end(), std::back_inserter(m_pendingDispatch),
+                 [](DeferredEvent& event) {
+                   return PendingDispatch{event.typeId, std::move(event.data)};
+                 });
 }
 
 void EventManager::processBatchSingleThreaded(size_t start, size_t end) const {

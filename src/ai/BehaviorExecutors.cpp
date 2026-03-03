@@ -10,6 +10,8 @@
 #include "managers/EventManager.hpp"
 #include "managers/WorldManager.hpp"
 #include <cmath>
+#include <iterator>
+#include <numeric>
 
 namespace Behaviors {
 
@@ -227,12 +229,17 @@ float getRelationshipLevel(EntityHandle npcHandle, EntityHandle subjectHandle) {
 
     // Sum interaction memory values with subject (inline memories only)
     if (subjectHandle.isValid()) {
-        for (const auto& mem : memoryData.memories) {
-            if (mem.isValid() && mem.subject == subjectHandle &&
-                mem.type == MemoryType::Interaction) {
-                relationship += mem.value * 0.1f;
-            }
-        }
+        relationship += std::accumulate(
+            std::begin(memoryData.memories),
+            std::end(memoryData.memories),
+            0.0f,
+            [subjectHandle](float sum, const auto& mem) {
+                if (mem.isValid() && mem.subject == subjectHandle &&
+                    mem.type == MemoryType::Interaction) {
+                    return sum + (mem.value * 0.1f);
+                }
+                return sum;
+            });
     }
 
     return std::clamp(relationship, -1.0f, 1.0f);

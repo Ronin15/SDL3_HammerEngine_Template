@@ -20,6 +20,8 @@ using HammerEngine::JsonValue;
 #include <algorithm>
 #include <cassert>
 #include <format>
+#include <limits>
+#include <numeric>
 
 // ============================================================================
 // LIFECYCLE
@@ -1641,9 +1643,11 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
         m_staticGenerations.push_back(0);
     }
 
-    uint8_t generation = m_staticGenerations[index];
-    ++generation;
-    if (generation == 0) generation = 1;
+    const uint8_t previousGeneration = m_staticGenerations[index];
+    const uint8_t generation =
+        (previousGeneration == std::numeric_limits<uint8_t>::max())
+            ? static_cast<uint8_t>(1)
+            : static_cast<uint8_t>(previousGeneration + 1);
     m_staticGenerations[index] = generation;
 
     // Initialize hot data in static pool
@@ -2183,11 +2187,16 @@ int EntityDataManager::getInventoryQuantityLocked(uint32_t inventoryIndex,
     if (inv.overflowId > 0) {
         auto it = m_inventoryOverflow.find(inv.overflowId);
         if (it != m_inventoryOverflow.end()) {
-            for (const auto& slot : it->second.extraSlots) {
-                if (!slot.isEmpty() && slot.resourceHandle == handle) {
-                    total += slot.quantity;
-                }
-            }
+            total += std::accumulate(
+                it->second.extraSlots.begin(),
+                it->second.extraSlots.end(),
+                0,
+                [handle](int sum, const InventorySlotData& slot) {
+                    if (!slot.isEmpty() && slot.resourceHandle == handle) {
+                        return sum + slot.quantity;
+                    }
+                    return sum;
+                });
         }
     }
 

@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <format>
 #include <limits>
+#include <numeric>
 
 WorldResourceManager& WorldResourceManager::Instance() {
     static WorldResourceManager instance;
@@ -353,11 +354,13 @@ WorldResourceManager::Quantity WorldResourceManager::queryInventoryTotal(
     }
 
     const auto& edm = EntityDataManager::Instance();
-    Quantity total = 0;
-
-    for (uint32_t invIdx : worldIt->second) {
-        total += edm.getInventoryQuantity(invIdx, handle);
-    }
+    const Quantity total = std::accumulate(
+        worldIt->second.begin(),
+        worldIt->second.end(),
+        Quantity{0},
+        [&edm, handle](Quantity sum, uint32_t invIdx) {
+            return sum + edm.getInventoryQuantity(invIdx, handle);
+        });
 
     return total;
 }

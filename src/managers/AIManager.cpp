@@ -861,9 +861,8 @@ void AIManager::scanActiveHandlesInRadius(const Vector2D &center, float radius,
 
   auto &edm = EntityDataManager::Instance();
   outHandles.reserve(t_edmBuffer.size());
-  for (size_t edmIdx : t_edmBuffer) {
-    outHandles.push_back(edm.getHandle(edmIdx));
-  }
+  std::transform(t_edmBuffer.begin(), t_edmBuffer.end(), std::back_inserter(outHandles),
+                 [&edm](size_t edmIdx) { return edm.getHandle(edmIdx); });
 }
 
 void AIManager::scanGuardsInRadius(const Vector2D &center, float radius,
