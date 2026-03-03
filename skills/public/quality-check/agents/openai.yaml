@@ -1,0 +1,4 @@
+interface:
+  display_name: "Quality Check"
+  short_description: "Run C++ static analysis quality checks"
+  default_prompt: "Use $quality-check to review this branch with AGENTS.md standards plus cppcheck and clang-tidy."
