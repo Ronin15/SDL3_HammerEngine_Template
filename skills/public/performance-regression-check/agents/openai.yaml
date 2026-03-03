@@ -1,0 +1,4 @@
+interface:
+  display_name: "Performance Regression Check"
+  short_description: "Detect and validate runtime performance regressions"
+  default_prompt: "Use $performance-regression-check to verify whether recent C++ changes introduced runtime regressions and provide reproducible evidence."

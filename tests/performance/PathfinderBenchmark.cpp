@@ -312,7 +312,7 @@ BOOST_AUTO_TEST_CASE(BenchmarkAsyncPathfinding) {
         }
 
         auto processingEnd = high_resolution_clock::now();
-        double processingTimeMs = duration_cast<milliseconds>(processingEnd - processingStart).count();
+        double processingTimeMs = duration_cast<microseconds>(processingEnd - processingStart).count() / 1000.0;
 
         // Calculate actual completion time from last callback timestamp
         high_resolution_clock::time_point lastCompletion = processingStart;
@@ -321,17 +321,17 @@ BOOST_AUTO_TEST_CASE(BenchmarkAsyncPathfinding) {
                 lastCompletion = timestamp;
             }
         }
-        double actualCompletionMs = duration_cast<milliseconds>(lastCompletion - requestEnd).count();
+        double actualCompletionMs = duration_cast<microseconds>(lastCompletion - requestEnd).count() / 1000.0;
 
         std::cout << "Batch size " << batchSize << ":\n";
         std::cout << "  Completed: " << completedCount.load() << "/" << batchSize << "\n";
         std::cout << "  Request submission: " << std::setprecision(3) << requestTimeMs << "ms\n";
         std::cout << "  Request rate: " << std::setprecision(0)
                   << (batchSize / (requestTimeMs / 1000.0)) << " requests/sec\n";
-        std::cout << "  Actual completion time: " << std::setprecision(1) << actualCompletionMs << "ms\n";
+        std::cout << "  Actual completion time: " << std::setprecision(3) << actualCompletionMs << "ms\n";
         std::cout << "  Processing time (including polling): " << processingTimeMs << "ms\n";
 
-        if (completedCount.load() > 0) {
+        if (completedCount.load() > 0 && actualCompletionMs > 0.0) {
             std::cout << "  Throughput: " << std::setprecision(0)
                       << (completedCount.load() / (actualCompletionMs / 1000.0)) << " paths/sec\n";
         }
