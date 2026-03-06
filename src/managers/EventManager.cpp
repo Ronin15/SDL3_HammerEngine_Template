@@ -784,18 +784,6 @@ void EventManager::drainDispatchQueueWithBudget() {
   // Query WorkerBudget for threading decision
   auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
   auto decision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::Event, eventCount);
-  std::vector<size_t> combatIndices;
-  std::vector<size_t> nonCombatIndices;
-  combatIndices.reserve(eventCount);
-  nonCombatIndices.reserve(eventCount);
-  for (size_t i = 0; i < eventCount; ++i) {
-    if (m_localDispatchBuffer[i].typeId == EventTypeId::Combat) {
-      combatIndices.push_back(i);
-    } else {
-      nonCombatIndices.push_back(i);
-    }
-  }
-
   // Track what actually happened
   bool actualWasThreaded = false;
   size_t actualBatchCount = 1;
@@ -816,68 +804,82 @@ void EventManager::drainDispatchQueueWithBudget() {
     }
   };
 
-  // Always process combat serially to avoid shared-state races in combat handlers.
-  for (size_t idx : combatIndices) {
-    dispatchByIndex(idx);
-  }
+  auto processNonCombatRange = [&](size_t start, size_t end) {
+    const size_t nonCombatCount = (end > start) ? (end - start) : 0;
+    if (nonCombatCount == 0) {
+      return;
+    }
 
-  const size_t nonCombatCount = nonCombatIndices.size();
-  if (nonCombatCount == 0) {
-    actualWasThreaded = false;
-    actualBatchCount = 1;
-  } else if (decision.shouldThread) {
+    if (!decision.shouldThread) {
+      for (size_t i = start; i < end; ++i) {
+        dispatchByIndex(i);
+      }
+      return;
+    }
+
     auto &threadSystem = HammerEngine::ThreadSystem::Instance();
-
-    // Keep non-combat parallel to avoid a global bottleneck when combat is present.
     size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
         HammerEngine::SystemType::Event, nonCombatCount);
-    auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+    auto [batchCount, _batchSize] = budgetMgr.getBatchStrategy(
         HammerEngine::SystemType::Event, nonCombatCount, optimalWorkerCount);
 
     if (batchCount <= 1) {
-      actualWasThreaded = false;
-      actualBatchCount = 1;
-      for (size_t idx : nonCombatIndices) {
-        dispatchByIndex(idx);
+      for (size_t i = start; i < end; ++i) {
+        dispatchByIndex(i);
       }
-    } else {
-      actualWasThreaded = true;
-      actualBatchCount = batchCount;
+      return;
+    }
 
-      m_batchFutures.clear();
-      m_batchFutures.reserve(batchCount);
+    actualWasThreaded = true;
+    actualBatchCount += (batchCount - 1);
 
-      size_t eventsPerBatch = nonCombatCount / batchCount;
-      size_t remainingEvents = nonCombatCount % batchCount;
+    m_batchFutures.clear();
+    m_batchFutures.reserve(batchCount);
 
-      for (size_t i = 0; i < batchCount; ++i) {
-        size_t start = i * eventsPerBatch;
-        size_t end = start + eventsPerBatch;
-        if (i == batchCount - 1) {
-          end += remainingEvents;
-        }
+    size_t eventsPerBatch = nonCombatCount / batchCount;
+    size_t remainingEvents = nonCombatCount % batchCount;
 
-        m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
-            [dispatchByIndex, &nonCombatIndices, start, end]() {
-              for (size_t j = start; j < end; ++j) {
-                dispatchByIndex(nonCombatIndices[j]);
-              }
-            },
-            HammerEngine::TaskPriority::Normal, "Event_Dispatch_Batch"));
+    for (size_t i = 0; i < batchCount; ++i) {
+      size_t batchStartOffset = i * eventsPerBatch;
+      size_t batchEndOffset = batchStartOffset + eventsPerBatch;
+      if (i == batchCount - 1) {
+        batchEndOffset += remainingEvents;
+      }
+
+      m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+          [dispatchByIndex, start, batchStartOffset, batchEndOffset]() {
+            for (size_t j = start + batchStartOffset; j < start + batchEndOffset; ++j) {
+              dispatchByIndex(j);
+            }
+          },
+          HammerEngine::TaskPriority::Normal, "Event_Dispatch_Batch"));
+    }
+
+    // Preserve queue ordering semantics: all events in this range must complete
+    // before dispatching the next combat event.
+    for (auto &future : m_batchFutures) {
+      if (future.valid()) {
+        future.get();
       }
     }
-  } else {
-    actualWasThreaded = false;
-    actualBatchCount = 1;
-    for (size_t idx : nonCombatIndices) {
-      dispatchByIndex(idx);
-    }
-  }
+  };
 
-  // Wait for all batches to complete
-  for (auto &future : m_batchFutures) {
-    if (future.valid()) {
-      future.get();
+  // Preserve sorted queue order while serializing combat handlers:
+  // process each non-combat range in-order, then the combat event that follows.
+  size_t cursor = 0;
+  while (cursor < eventCount) {
+    size_t rangeStart = cursor;
+    while (cursor < eventCount &&
+           m_localDispatchBuffer[cursor].typeId != EventTypeId::Combat) {
+      ++cursor;
+    }
+
+    processNonCombatRange(rangeStart, cursor);
+
+    if (cursor < eventCount &&
+        m_localDispatchBuffer[cursor].typeId == EventTypeId::Combat) {
+      dispatchByIndex(cursor);
+      ++cursor;
     }
   }
 

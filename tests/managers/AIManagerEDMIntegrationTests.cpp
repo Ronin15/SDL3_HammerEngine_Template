@@ -732,4 +732,52 @@ BOOST_AUTO_TEST_CASE(StaleHigherSequenceTransitionDoesNotSuppressValidTransition
     BOOST_CHECK(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Attack);
 }
 
+BOOST_AUTO_TEST_CASE(StaleTransitionSuppressionStressLoop) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    for (int iter = 0; iter < 8; ++iter) {
+        auto original = AITestNPC::create(Vector2D(300.0f + iter * 5.0f, 300.0f));
+        EntityHandle staleHandle = original->getHandle();
+        const size_t reusedIndex = edm.getIndex(staleHandle);
+        BOOST_REQUIRE(reusedIndex != SIZE_MAX);
+
+        aiMgr.assignBehavior(staleHandle, "Idle");
+        BOOST_REQUIRE(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Idle);
+
+        aiMgr.unregisterEntity(staleHandle);
+        edm.destroyEntity(staleHandle);
+        edm.processDestructionQueue();
+        BOOST_REQUIRE(edm.getIndex(staleHandle) == SIZE_MAX);
+
+        std::vector<std::shared_ptr<AITestNPC>> keepAlive;
+        keepAlive.reserve(16);
+        EntityHandle currentHandle{};
+        bool slotReused = false;
+        for (int i = 0; i < 16; ++i) {
+            auto spawned = AITestNPC::create(Vector2D(420.0f + i * 10.0f, 320.0f + iter * 5.0f));
+            keepAlive.push_back(spawned);
+            if (edm.getIndex(spawned->getHandle()) == reusedIndex) {
+                currentHandle = spawned->getHandle();
+                slotReused = true;
+                break;
+            }
+        }
+        BOOST_REQUIRE(slotReused);
+
+        aiMgr.assignBehavior(currentHandle, "Idle");
+        BOOST_REQUIRE(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Idle);
+
+        Behaviors::switchBehavior(reusedIndex, BehaviorType::Attack);
+
+        HammerEngine::BehaviorConfigData staleConfig{};
+        staleConfig.type = BehaviorType::Flee;
+        HammerEngine::AICommandBus::Instance().enqueueBehaviorTransition(
+            staleHandle, reusedIndex, staleConfig);
+
+        aiMgr.update(0.016f);
+        BOOST_CHECK(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Attack);
+    }
+}
+
 BOOST_AUTO_TEST_SUITE_END()

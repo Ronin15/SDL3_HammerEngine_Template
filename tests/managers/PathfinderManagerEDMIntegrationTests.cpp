@@ -24,6 +24,9 @@
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
+#include "managers/WorldManager.hpp"
+#include "managers/WorldResourceManager.hpp"
 #include <atomic>
 #include <chrono>
 #include <memory>
@@ -31,6 +34,48 @@
 #include <vector>
 
 using namespace HammerEngine;
+
+namespace {
+
+bool ensureActiveWorldForPathfindingTests() {
+    auto& worldResMgr = WorldResourceManager::Instance();
+    if (!worldResMgr.isInitialized()) {
+        worldResMgr.init();
+    }
+
+    auto& resourceMgr = ResourceTemplateManager::Instance();
+    if (!resourceMgr.isInitialized()) {
+        resourceMgr.init();
+    }
+
+    auto& worldMgr = WorldManager::Instance();
+    if (!worldMgr.isInitialized()) {
+        if (!worldMgr.init()) {
+            return false;
+        }
+    }
+
+    if (!worldMgr.hasActiveWorld()) {
+        WorldGenerationConfig worldConfig{};
+        worldConfig.width = 20;
+        worldConfig.height = 20;
+        worldConfig.seed = 20260305;
+        worldConfig.elevationFrequency = 0.1f;
+        worldConfig.humidityFrequency = 0.1f;
+        worldConfig.waterLevel = 0.3f;
+        worldConfig.mountainLevel = 0.7f;
+
+        if (!worldMgr.loadNewWorld(worldConfig)) {
+            return false;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    return worldMgr.hasActiveWorld();
+}
+
+} // namespace
 
 // Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
 class PathfindingTestNPC {
@@ -60,15 +105,22 @@ struct PathfinderEDMFixture {
     PathfinderEDMFixture() {
         ThreadSystem::Instance().init();
         EntityDataManager::Instance().init();
+        WorldResourceManager::Instance().init();
+        ResourceTemplateManager::Instance().init();
+        WorldManager::Instance().init();
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         BackgroundSimulationManager::Instance().init();
+        BOOST_REQUIRE(ensureActiveWorldForPathfindingTests());
     }
 
     ~PathfinderEDMFixture() {
         BackgroundSimulationManager::Instance().clean();
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
+        WorldManager::Instance().clean();
+        ResourceTemplateManager::Instance().clean();
+        WorldResourceManager::Instance().clean();
         EntityDataManager::Instance().clean();
         ThreadSystem::Instance().clean();
     }
@@ -253,6 +305,8 @@ BOOST_AUTO_TEST_CASE(StaleCompletionFromReusedSlotDoesNotOverwriteNewEntityPath)
     auto& pm = PathfinderManager::Instance();
     auto& cm = CollisionManager::Instance();
 
+    BOOST_REQUIRE_MESSAGE(ensureActiveWorldForPathfindingTests(),
+                          "Expected active world for grid rebuild");
     cm.setWorldBounds(0.0f, 0.0f, 2048.0f, 2048.0f);
     pm.rebuildGrid(false);
 
@@ -265,7 +319,7 @@ BOOST_AUTO_TEST_CASE(StaleCompletionFromReusedSlotDoesNotOverwriteNewEntityPath)
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    BOOST_REQUIRE(gridReady);
+    BOOST_REQUIRE_MESSAGE(gridReady, "Expected grid rebuild to complete for stale completion test");
 
     auto original = PathfindingTestNPC::create(Vector2D(64.0f, 64.0f));
     EntityHandle staleHandle = original->getHandle();
@@ -323,6 +377,81 @@ BOOST_AUTO_TEST_CASE(StaleCompletionFromReusedSlotDoesNotOverwriteNewEntityPath)
     const float distToExpected = (finalWaypoint - expectedGoal).length();
     const float distToOldGoal = (finalWaypoint - Vector2D(1900.0f, 1900.0f)).length();
     BOOST_CHECK_LT(distToExpected, distToOldGoal);
+}
+
+BOOST_AUTO_TEST_CASE(StaleCompletionFilteringStressLoop) {
+    auto& edm = EntityDataManager::Instance();
+    auto& pm = PathfinderManager::Instance();
+    auto& cm = CollisionManager::Instance();
+
+    BOOST_REQUIRE_MESSAGE(ensureActiveWorldForPathfindingTests(),
+                          "Expected active world for grid rebuild");
+    cm.setWorldBounds(0.0f, 0.0f, 2048.0f, 2048.0f);
+    pm.rebuildGrid(false);
+
+    bool gridReady = false;
+    for (int i = 0; i < 100; ++i) {
+        pm.update();
+        if (pm.isGridReady()) {
+            gridReady = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    BOOST_REQUIRE_MESSAGE(gridReady, "Expected grid rebuild to complete for stale completion stress loop");
+
+    for (int iter = 0; iter < 5; ++iter) {
+        auto original = PathfindingTestNPC::create(Vector2D(64.0f + iter * 8.0f, 64.0f));
+        EntityHandle staleHandle = original->getHandle();
+        const size_t reusedIndex = edm.getIndex(staleHandle);
+        BOOST_REQUIRE(reusedIndex != SIZE_MAX);
+
+        const uint64_t oldReq = pm.requestPathToEDM(
+            reusedIndex, Vector2D(64.0f, 64.0f), Vector2D(1900.0f, 1900.0f),
+            PathfinderManager::Priority::Normal);
+        BOOST_REQUIRE(oldReq > 0);
+
+        edm.destroyEntity(staleHandle);
+        edm.processDestructionQueue();
+        BOOST_REQUIRE(edm.getIndex(staleHandle) == SIZE_MAX);
+
+        std::vector<std::shared_ptr<PathfindingTestNPC>> keepAlive;
+        keepAlive.reserve(20);
+        EntityHandle currentHandle{};
+        bool slotReused = false;
+        for (int i = 0; i < 20; ++i) {
+            auto spawned = PathfindingTestNPC::create(
+                Vector2D(96.0f + i * 8.0f, 96.0f + iter * 5.0f));
+            keepAlive.push_back(spawned);
+            if (edm.getIndex(spawned->getHandle()) == reusedIndex) {
+                currentHandle = spawned->getHandle();
+                slotReused = true;
+                break;
+            }
+        }
+        BOOST_REQUIRE(slotReused);
+
+        const Vector2D expectedGoal(160.0f + iter * 10.0f, 160.0f + iter * 10.0f);
+        const uint64_t newReq = pm.requestPathToEDM(
+            reusedIndex, Vector2D(96.0f, 96.0f), expectedGoal, PathfinderManager::Priority::High);
+        BOOST_REQUIRE(newReq > 0);
+
+        auto& pd = edm.getPathData(reusedIndex);
+        for (int i = 0; i < 200 && pd.pathRequestPending.load(std::memory_order_acquire) != 0; ++i) {
+            pm.update();
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        BOOST_CHECK_EQUAL(pd.pathRequestPending.load(std::memory_order_acquire), 0);
+        BOOST_REQUIRE(pd.hasPath);
+        BOOST_REQUIRE(pd.pathLength > 0);
+
+        const Vector2D* waypoints = edm.getWaypointSlot(reusedIndex);
+        const Vector2D finalWaypoint = waypoints[pd.pathLength - 1];
+        const float distToExpected = (finalWaypoint - expectedGoal).length();
+        const float distToOldGoal = (finalWaypoint - Vector2D(1900.0f, 1900.0f)).length();
+        BOOST_CHECK_LT(distToExpected, distToOldGoal);
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()
