@@ -784,63 +784,94 @@ void EventManager::drainDispatchQueueWithBudget() {
   // Query WorkerBudget for threading decision
   auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
   auto decision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::Event, eventCount);
+  std::vector<size_t> combatIndices;
+  std::vector<size_t> nonCombatIndices;
+  combatIndices.reserve(eventCount);
+  nonCombatIndices.reserve(eventCount);
+  for (size_t i = 0; i < eventCount; ++i) {
+    if (m_localDispatchBuffer[i].typeId == EventTypeId::Combat) {
+      combatIndices.push_back(i);
+    } else {
+      nonCombatIndices.push_back(i);
+    }
+  }
 
   // Track what actually happened
   bool actualWasThreaded = false;
   size_t actualBatchCount = 1;
 
-  if (decision.shouldThread) {
+  auto dispatchByIndex = [this](size_t index) {
+    const auto &pd = m_localDispatchBuffer[index];
+    const auto &typeHandlers = m_handlersByType[static_cast<size_t>(pd.typeId)];
+    for (const auto &entry : typeHandlers) {
+      if (entry) {
+        try {
+          entry.callable(pd.data);
+        } catch (const std::exception &e) {
+          EVENT_ERROR(std::format("Handler exception in dispatch batch: {}", e.what()));
+        } catch (...) {
+          EVENT_ERROR("Unknown handler exception in dispatch batch");
+        }
+      }
+    }
+  };
+
+  // Always process combat serially to avoid shared-state races in combat handlers.
+  for (size_t idx : combatIndices) {
+    dispatchByIndex(idx);
+  }
+
+  const size_t nonCombatCount = nonCombatIndices.size();
+  if (nonCombatCount == 0) {
+    actualWasThreaded = false;
+    actualBatchCount = 1;
+  } else if (decision.shouldThread) {
     auto &threadSystem = HammerEngine::ThreadSystem::Instance();
 
-    // Get optimal worker count and batch strategy
+    // Keep non-combat parallel to avoid a global bottleneck when combat is present.
     size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::Event, eventCount);
+        HammerEngine::SystemType::Event, nonCombatCount);
     auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::Event, eventCount, optimalWorkerCount);
+        HammerEngine::SystemType::Event, nonCombatCount, optimalWorkerCount);
 
-    // Single batch optimization: avoid thread overhead
     if (batchCount <= 1) {
       actualWasThreaded = false;
       actualBatchCount = 1;
-      processBatchSingleThreaded(0, eventCount);
+      for (size_t idx : nonCombatIndices) {
+        dispatchByIndex(idx);
+      }
     } else {
-      // MULTI-THREADED PATH
       actualWasThreaded = true;
       actualBatchCount = batchCount;
 
       m_batchFutures.clear();
       m_batchFutures.reserve(batchCount);
 
-      size_t eventsPerBatch = eventCount / batchCount;
-      size_t remainingEvents = eventCount % batchCount;
+      size_t eventsPerBatch = nonCombatCount / batchCount;
+      size_t remainingEvents = nonCombatCount % batchCount;
 
       for (size_t i = 0; i < batchCount; ++i) {
         size_t start = i * eventsPerBatch;
         size_t end = start + eventsPerBatch;
-
-        // Add remaining events to last batch
         if (i == batchCount - 1) {
           end += remainingEvents;
         }
 
         m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
-            [this, start, end]() {
-              try {
-                processBatchSingleThreaded(start, end);
-              } catch (const std::exception &e) {
-                EVENT_ERROR(std::format("Exception in event batch: {}", e.what()));
-              } catch (...) {
-                EVENT_ERROR("Unknown exception in event batch");
+            [dispatchByIndex, &nonCombatIndices, start, end]() {
+              for (size_t j = start; j < end; ++j) {
+                dispatchByIndex(nonCombatIndices[j]);
               }
             },
             HammerEngine::TaskPriority::Normal, "Event_Dispatch_Batch"));
       }
     }
   } else {
-    // SINGLE-THREADED PATH (WorkerBudget decision)
     actualWasThreaded = false;
     actualBatchCount = 1;
-    processBatchSingleThreaded(0, eventCount);
+    for (size_t idx : nonCombatIndices) {
+      dispatchByIndex(idx);
+    }
   }
 
   // Wait for all batches to complete
