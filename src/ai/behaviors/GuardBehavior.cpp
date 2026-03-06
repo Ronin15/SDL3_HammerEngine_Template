@@ -521,9 +521,6 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
                     float distance = (ctx.transform.position - threatPos).length();
                     if (distance <= DEFAULT_ATTACK_ENGAGE_RANGE) {
                         switchBehavior(ctx.edmIndex, BehaviorType::Attack);
-                        auto& attackData = edm.getBehaviorData(ctx.edmIndex);
-                        attackData.state.attack.hasExplicitTarget = true;
-                        attackData.state.attack.explicitTarget = threat;
                         return;
                     } else {
                         moveToPosition(ctx, edm, threatPos, data.moveSpeed * GUARD_ALERT_SPEED_MULT);
@@ -534,9 +531,6 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
                     float distance = (ctx.transform.position - threatPos).length();
                     if (distance <= DEFAULT_ATTACK_ENGAGE_RANGE) {
                         switchBehavior(ctx.edmIndex, BehaviorType::Attack);
-                        auto& attackData = edm.getBehaviorData(ctx.edmIndex);
-                        attackData.state.attack.hasExplicitTarget = true;
-                        attackData.state.attack.explicitTarget = threat;
                         return;
                     } else {
                         moveToPosition(ctx, edm, threatPos, data.moveSpeed * GUARD_PURSUIT_SPEED_MULT);
@@ -569,19 +563,13 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         } else {
             // At HOSTILE level, check last known threat position for attack opportunity
             // (Main threat detection above handles new threat discovery - no need for second scan)
-            if (guard.currentAlertLevel >= 3) {
-                float distToThreat = (ctx.transform.position - guard.lastKnownThreatPosition).length();
-                if (distToThreat <= DEFAULT_ATTACK_ENGAGE_RANGE) {
-                    switchBehavior(ctx.edmIndex, BehaviorType::Attack);
-                    // Set explicit target from memory if available (written by detectThreat above)
-                    if (ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
-                        auto& attackData = edm.getBehaviorData(ctx.edmIndex);
-                        attackData.state.attack.hasExplicitTarget = true;
-                        attackData.state.attack.explicitTarget = ctx.memoryData->lastTarget;
+                if (guard.currentAlertLevel >= 3) {
+                    float distToThreat = (ctx.transform.position - guard.lastKnownThreatPosition).length();
+                    if (distToThreat <= DEFAULT_ATTACK_ENGAGE_RANGE) {
+                        switchBehavior(ctx.edmIndex, BehaviorType::Attack);
+                        return;
                     }
-                    return;
                 }
-            }
 
             if (!isAtPosition(ctx.transform.position, guard.investigationTarget)) {
                 float speed = (guard.currentAlertLevel >= 3) ? data.moveSpeed * GUARD_PURSUIT_SPEED_MULT : data.moveSpeed;
