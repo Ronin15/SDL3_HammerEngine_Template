@@ -16,8 +16,9 @@ void AICommandBus::enqueueBehaviorMessage(EntityHandle targetHandle, size_t targ
 
 void AICommandBus::enqueueBehaviorTransition(EntityHandle targetHandle, size_t targetEdmIndex,
                                              const BehaviorConfigData& config) {
+    const uint64_t sequence = m_nextTransitionSequence.fetch_add(1, std::memory_order_relaxed);
     std::lock_guard<std::mutex> lock(m_mutex);
-    m_pendingTransitions.push_back({targetHandle, targetEdmIndex, config});
+    m_pendingTransitions.push_back({targetHandle, targetEdmIndex, config, sequence});
 }
 
 void AICommandBus::enqueueFactionChange(EntityHandle targetHandle, size_t targetEdmIndex,

@@ -20,6 +20,7 @@
 #include <array>
 #include <algorithm>
 #include <format>
+#include <unordered_map>
 
 // Use SIMD abstraction layer
 using namespace HammerEngine::SIMD;
@@ -1065,7 +1066,38 @@ void AIManager::commitQueuedBehaviorTransitions() {
   auto& edm = EntityDataManager::Instance();
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
+  // Coalesce to one transition per target for this commit pass.
+  // Multiple worker threads can enqueue conflicting transitions for the same
+  // entity in one frame. Resolve by latest logical enqueue sequence.
+  std::vector<HammerEngine::AICommandBus::BehaviorTransitionCommand> selected;
+  selected.reserve(m_pendingBehaviorTransitions.size());
+  std::unordered_map<size_t, size_t> selectedByEdmIndex;
+  selectedByEdmIndex.reserve(m_pendingBehaviorTransitions.size());
+
   for (const auto& cmd : m_pendingBehaviorTransitions) {
+    if (!cmd.targetHandle.isValid()) {
+      continue;
+    }
+
+    auto it = selectedByEdmIndex.find(cmd.targetEdmIndex);
+    if (it == selectedByEdmIndex.end()) {
+      selectedByEdmIndex.emplace(cmd.targetEdmIndex, selected.size());
+      selected.push_back(cmd);
+      continue;
+    }
+
+    auto& existing = selected[it->second];
+    if (cmd.sequence > existing.sequence) {
+      existing = cmd;
+    }
+  }
+
+  std::sort(selected.begin(), selected.end(),
+            [](const auto& a, const auto& b) {
+              return a.targetEdmIndex < b.targetEdmIndex;
+            });
+
+  for (const auto& cmd : selected) {
     if (!cmd.targetHandle.isValid()) {
       continue;
     }

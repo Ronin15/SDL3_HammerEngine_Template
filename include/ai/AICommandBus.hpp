@@ -8,6 +8,7 @@
 
 #include "ai/BehaviorConfig.hpp"
 #include "entities/EntityHandle.hpp"
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
@@ -28,6 +29,7 @@ public:
         EntityHandle targetHandle{};
         size_t targetEdmIndex{SIZE_MAX};
         BehaviorConfigData config{};
+        uint64_t sequence{0}; // Monotonic enqueue sequence for deterministic arbitration
     };
 
     struct FactionChangeCommand {
@@ -64,6 +66,7 @@ private:
     std::vector<BehaviorMessageCommand> m_pendingMessages;
     std::vector<BehaviorTransitionCommand> m_pendingTransitions;
     std::vector<FactionChangeCommand> m_pendingFactionChanges;
+    std::atomic<uint64_t> m_nextTransitionSequence{1};
 };
 
 } // namespace HammerEngine
