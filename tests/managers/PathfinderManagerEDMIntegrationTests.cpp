@@ -37,6 +37,19 @@ using namespace HammerEngine;
 
 namespace {
 
+struct ThreadSystemTestLifetime {
+    ThreadSystemTestLifetime() {
+        BOOST_REQUIRE_MESSAGE(ThreadSystem::Instance().init(),
+                              "Failed to initialize ThreadSystem for Pathfinder EDM tests");
+    }
+
+    ~ThreadSystemTestLifetime() {
+        ThreadSystem::Instance().clean();
+    }
+};
+
+ThreadSystemTestLifetime g_threadSystemTestLifetime{};
+
 bool ensureActiveWorldForPathfindingTests() {
     auto& worldResMgr = WorldResourceManager::Instance();
     if (!worldResMgr.isInitialized()) {
@@ -75,6 +88,18 @@ bool ensureActiveWorldForPathfindingTests() {
     return worldMgr.hasActiveWorld();
 }
 
+bool waitForGridReady(PathfinderManager& pm, int maxWaitMs = 5000) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(maxWaitMs);
+    while (std::chrono::steady_clock::now() < deadline) {
+        pm.update();
+        if (pm.isGridReady()) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return pm.isGridReady();
+}
+
 } // namespace
 
 // Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
@@ -103,7 +128,6 @@ private:
 // Test fixture
 struct PathfinderEDMFixture {
     PathfinderEDMFixture() {
-        ThreadSystem::Instance().init();
         EntityDataManager::Instance().init();
         WorldResourceManager::Instance().init();
         ResourceTemplateManager::Instance().init();
@@ -122,7 +146,6 @@ struct PathfinderEDMFixture {
         ResourceTemplateManager::Instance().clean();
         WorldResourceManager::Instance().clean();
         EntityDataManager::Instance().clean();
-        ThreadSystem::Instance().clean();
     }
 
     void waitForPathCompletion(int maxWaitMs = 100) {
@@ -310,15 +333,7 @@ BOOST_AUTO_TEST_CASE(StaleCompletionFromReusedSlotDoesNotOverwriteNewEntityPath)
     cm.setWorldBounds(0.0f, 0.0f, 2048.0f, 2048.0f);
     pm.rebuildGrid(false);
 
-    bool gridReady = false;
-    for (int i = 0; i < 100; ++i) {
-        pm.update();
-        if (pm.isGridReady()) {
-            gridReady = true;
-            break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
+    const bool gridReady = waitForGridReady(pm);
     BOOST_REQUIRE_MESSAGE(gridReady, "Expected grid rebuild to complete for stale completion test");
 
     auto original = PathfindingTestNPC::create(Vector2D(64.0f, 64.0f));
@@ -389,15 +404,7 @@ BOOST_AUTO_TEST_CASE(StaleCompletionFilteringStressLoop) {
     cm.setWorldBounds(0.0f, 0.0f, 2048.0f, 2048.0f);
     pm.rebuildGrid(false);
 
-    bool gridReady = false;
-    for (int i = 0; i < 100; ++i) {
-        pm.update();
-        if (pm.isGridReady()) {
-            gridReady = true;
-            break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
+    const bool gridReady = waitForGridReady(pm);
     BOOST_REQUIRE_MESSAGE(gridReady, "Expected grid rebuild to complete for stale completion stress loop");
 
     for (int iter = 0; iter < 5; ++iter) {
