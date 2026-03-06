@@ -24,6 +24,22 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
     return std::abs(a - b) < epsilon;
 }
 
+namespace {
+
+struct ThreadSystemTestLifetime {
+    ThreadSystemTestLifetime() {
+        HammerEngine::ThreadSystem::Instance().init();
+    }
+
+    ~ThreadSystemTestLifetime() {
+        HammerEngine::ThreadSystem::Instance().clean();
+    }
+};
+
+ThreadSystemTestLifetime g_threadSystemTestLifetime{};
+
+} // namespace
+
 // ============================================================================
 // Test Fixture
 // ============================================================================
@@ -31,7 +47,6 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
 class NPCMemoryTestFixture {
 public:
     NPCMemoryTestFixture() {
-        HammerEngine::ThreadSystem::Instance().init();
         edm = &EntityDataManager::Instance();
         edm->init();
         CollisionManager::Instance().init();
@@ -44,7 +59,6 @@ public:
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
         edm->clean();
-        HammerEngine::ThreadSystem::Instance().clean();
     }
 
 protected:
