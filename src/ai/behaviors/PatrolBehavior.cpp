@@ -33,6 +33,14 @@ Vector2D generateRandomWaypoint(const Vector2D& currentPos, float boundaryPaddin
     float worldMinY = minY * TILE + boundaryPadding;
     float worldMaxX = maxX * TILE - boundaryPadding;
     float worldMaxY = maxY * TILE - boundaryPadding;
+    if (worldMaxX < worldMinX) {
+        worldMinX = (minX * TILE + maxX * TILE) * 0.5f;
+        worldMaxX = worldMinX;
+    }
+    if (worldMaxY < worldMinY) {
+        worldMinY = (minY * TILE + maxY * TILE) * 0.5f;
+        worldMaxY = worldMinY;
+    }
 
     std::uniform_real_distribution<float> xDist(worldMinX, worldMaxX);
     std::uniform_real_distribution<float> yDist(worldMinY, worldMaxY);

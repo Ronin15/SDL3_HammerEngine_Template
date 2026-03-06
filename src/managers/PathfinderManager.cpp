@@ -982,9 +982,16 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
         const float worldWidth = currentGrid->getWidth() * gridCellSize;
         const float worldHeight = currentGrid->getHeight() * gridCellSize;
 
+        const float safeMarginX = std::clamp(margin, 0.0f, worldWidth * 0.5f);
+        const float safeMarginY = std::clamp(margin, 0.0f, worldHeight * 0.5f);
+        const float minX = safeMarginX;
+        const float minY = safeMarginY;
+        const float maxX = worldWidth - safeMarginX;
+        const float maxY = worldHeight - safeMarginY;
+
         Vector2D result(
-            std::clamp(position.getX(), margin, worldWidth - margin),
-            std::clamp(position.getY(), margin, worldHeight - margin)
+            std::clamp(position.getX(), minX, maxX),
+            std::clamp(position.getY(), minY, maxY)
         );
 
         return result;
@@ -1001,9 +1008,15 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
         const float gridCellSize = 64.0f;
         const float worldWidth = grid->getWidth() * gridCellSize;
         const float worldHeight = grid->getHeight() * gridCellSize;
+        const float safeMarginX = std::clamp(margin, 0.0f, worldWidth * 0.5f);
+        const float safeMarginY = std::clamp(margin, 0.0f, worldHeight * 0.5f);
+        const float minX = safeMarginX;
+        const float minY = safeMarginY;
+        const float maxX = worldWidth - safeMarginX;
+        const float maxY = worldHeight - safeMarginY;
         return Vector2D(
-            std::clamp(position.getX(), margin, worldWidth - margin),
-            std::clamp(position.getY(), margin, worldHeight - margin)
+            std::clamp(position.getX(), minX, maxX),
+            std::clamp(position.getY(), minY, maxY)
         );
     }
     return position;
@@ -1027,10 +1040,18 @@ Vector2D PathfinderManager::clampInsideExtents(const Vector2D& position, float h
         const float gridCellSize = 64.0f;
         const float worldWidth = grid->getWidth() * gridCellSize;
         const float worldHeight = grid->getHeight() * gridCellSize;
-        float const minX = halfW + extraMargin;
-        float const minY = halfH + extraMargin;
-        float const maxX = worldWidth - halfW - extraMargin;
-        float const maxY = worldHeight - halfH - extraMargin;
+        float minX = halfW + extraMargin;
+        float minY = halfH + extraMargin;
+        float maxX = worldWidth - halfW - extraMargin;
+        float maxY = worldHeight - halfH - extraMargin;
+        if (maxX < minX) {
+            minX = worldWidth * 0.5f;
+            maxX = minX;
+        }
+        if (maxY < minY) {
+            minY = worldHeight * 0.5f;
+            maxY = minY;
+        }
         return Vector2D(
             std::clamp(position.getX(), minX, maxX),
             std::clamp(position.getY(), minY, maxY)
@@ -1069,10 +1090,18 @@ Vector2D PathfinderManager::adjustSpawnToNavigableInRect(const Vector2D& desired
                                                          float minX, float minY,
                                                          float maxX, float maxY) const {
     // Clamp area by extents + interior margin
-    float const aminX = minX + halfW + interiorMargin;
-    float const aminY = minY + halfH + interiorMargin;
-    float const amaxX = maxX - halfW - interiorMargin;
-    float const amaxY = maxY - halfH - interiorMargin;
+    float aminX = minX + halfW + interiorMargin;
+    float aminY = minY + halfH + interiorMargin;
+    float amaxX = maxX - halfW - interiorMargin;
+    float amaxY = maxY - halfH - interiorMargin;
+    if (amaxX < aminX) {
+        aminX = (minX + maxX) * 0.5f;
+        amaxX = aminX;
+    }
+    if (amaxY < aminY) {
+        aminY = (minY + maxY) * 0.5f;
+        amaxY = aminY;
+    }
 
     Vector2D pos = clampInsideExtents(desired, halfW, halfH, interiorMargin);
     // Clamp to area rect

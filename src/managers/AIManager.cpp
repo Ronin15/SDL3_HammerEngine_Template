@@ -1265,8 +1265,20 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
 
     float halfW = edmHotData.halfWidth;
     float halfH = edmHotData.halfHeight;
-    Vector2D clamped(std::clamp(pos.getX(), halfW, worldWidth - halfW),
-                     std::clamp(pos.getY(), halfH, worldHeight - halfH));
+    float minX = halfW;
+    float maxX = worldWidth - halfW;
+    float minY = halfH;
+    float maxY = worldHeight - halfH;
+    if (maxX < minX) {
+      minX = worldWidth * 0.5f;
+      maxX = minX;
+    }
+    if (maxY < minY) {
+      minY = worldHeight * 0.5f;
+      maxY = minY;
+    }
+    Vector2D clamped(std::clamp(pos.getX(), minX, maxX),
+                     std::clamp(pos.getY(), minY, maxY));
     transform.position = clamped;
 
     if (clamped.getX() != pos.getX()) {
@@ -1309,10 +1321,22 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
       posY[lane] = transform->position.getY();
       velX[lane] = transform->velocity.getX();
       velY[lane] = transform->velocity.getY();
-      minX[lane] = hotData->halfWidth;
-      maxX[lane] = worldWidth - hotData->halfWidth;
-      minY[lane] = hotData->halfHeight;
-      maxY[lane] = worldHeight - hotData->halfHeight;
+      float laneMinX = hotData->halfWidth;
+      float laneMaxX = worldWidth - hotData->halfWidth;
+      float laneMinY = hotData->halfHeight;
+      float laneMaxY = worldHeight - hotData->halfHeight;
+      if (laneMaxX < laneMinX) {
+        laneMinX = worldWidth * 0.5f;
+        laneMaxX = laneMinX;
+      }
+      if (laneMaxY < laneMinY) {
+        laneMinY = worldHeight * 0.5f;
+        laneMaxY = laneMinY;
+      }
+      minX[lane] = laneMinX;
+      maxX[lane] = laneMaxX;
+      minY[lane] = laneMinY;
+      maxY[lane] = laneMaxY;
     }
 
     const Float4 deltaTimeVec = broadcast(deltaTime);

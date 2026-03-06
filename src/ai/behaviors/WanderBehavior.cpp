@@ -165,8 +165,24 @@ void handleMovement(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConf
 
     if (ctx.worldBoundsValid) {
         const float MARGIN = config.worldPaddingMargin;
-        dest.setX(std::clamp(dest.getX(), ctx.worldMinX + MARGIN, ctx.worldMaxX - MARGIN));
-        dest.setY(std::clamp(dest.getY(), ctx.worldMinY + MARGIN, ctx.worldMaxY - MARGIN));
+        float minX = ctx.worldMinX + MARGIN;
+        float maxX = ctx.worldMaxX - MARGIN;
+        float minY = ctx.worldMinY + MARGIN;
+        float maxY = ctx.worldMaxY - MARGIN;
+
+        // Small worlds can be narrower than 2*MARGIN; collapse to center instead
+        // of passing inverted bounds to std::clamp (debug STL asserts on Windows).
+        if (maxX < minX) {
+            minX = (ctx.worldMinX + ctx.worldMaxX) * 0.5f;
+            maxX = minX;
+        }
+        if (maxY < minY) {
+            minY = (ctx.worldMinY + ctx.worldMaxY) * 0.5f;
+            maxY = minY;
+        }
+
+        dest.setX(std::clamp(dest.getX(), minX, maxX));
+        dest.setY(std::clamp(dest.getY(), minY, maxY));
     }
 
     handlePathfinding(ctx, dest, config);

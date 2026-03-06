@@ -554,10 +554,14 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D &start,
   // fails
   const int GRID_MARGIN =
       2; // Reduced margin; avoid over-restricting valid goals near edges
-  gx = std::clamp(gx, GRID_MARGIN, m_w - 1 - GRID_MARGIN);
-  gy = std::clamp(gy, GRID_MARGIN, m_h - 1 - GRID_MARGIN);
-  sx = std::clamp(sx, GRID_MARGIN, m_w - 1 - GRID_MARGIN);
-  sy = std::clamp(sy, GRID_MARGIN, m_h - 1 - GRID_MARGIN);
+  int const xLow = std::min(GRID_MARGIN, std::max(0, m_w - 1 - GRID_MARGIN));
+  int const xHigh = std::max(GRID_MARGIN, std::max(0, m_w - 1 - GRID_MARGIN));
+  int const yLow = std::min(GRID_MARGIN, std::max(0, m_h - 1 - GRID_MARGIN));
+  int const yHigh = std::max(GRID_MARGIN, std::max(0, m_h - 1 - GRID_MARGIN));
+  gx = std::clamp(gx, xLow, xHigh);
+  gy = std::clamp(gy, yLow, yHigh);
+  sx = std::clamp(sx, xLow, xHigh);
+  sy = std::clamp(sy, yLow, yHigh);
 
   // Enhanced goal validation: try a small nudge but do not early-return
   // Let the later broader nudge (radius 20) handle difficult endpoints
