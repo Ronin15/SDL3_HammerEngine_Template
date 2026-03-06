@@ -1046,7 +1046,19 @@ void AIManager::commitQueuedBehaviorMessages() {
     grouped[edmIndex].push_back(cmd);
   }
 
-  for (auto& [edmIndex, cmds] : grouped) {
+  std::vector<size_t> orderedEdmIndices;
+  orderedEdmIndices.reserve(grouped.size());
+  for (const auto& [edmIndex, _] : grouped) {
+    orderedEdmIndices.push_back(edmIndex);
+  }
+  std::sort(orderedEdmIndices.begin(), orderedEdmIndices.end());
+
+  for (const size_t edmIndex : orderedEdmIndices) {
+    auto itGroup = grouped.find(edmIndex);
+    if (itGroup == grouped.end()) {
+      continue;
+    }
+    auto& cmds = itGroup->second;
     auto& data = edm.getBehaviorData(edmIndex);
     if (cmds.empty()) {
       continue;
