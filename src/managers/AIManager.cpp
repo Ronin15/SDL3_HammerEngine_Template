@@ -251,6 +251,9 @@ void AIManager::update(float deltaTime) {
   }
 
   try {
+    // Apply worker-computed path completions before behavior reads PathData.
+    PathfinderManager::Instance().commitCompletedPaths();
+
     // Commit queued cross-thread commands before reading per-entity behavior state.
     // Order matters: faction changes keep indices coherent before scans;
     // transitions first, then messages, so messages target current behavior.

@@ -834,6 +834,7 @@ struct PathData {
     Vector2D currentWaypoint{0, 0};     // Cached current waypoint for fast access
     bool hasPath{false};                // Quick check if path is valid
     std::atomic<uint8_t> pathRequestPending{0}; // Path request in flight (release/acquire)
+    std::atomic<uint32_t> latestPathRequestId{0}; // Monotonic request token for stale-result filtering
 
     PathData() = default;
     PathData(const PathData&) = delete;
@@ -853,7 +854,11 @@ struct PathData {
             pathRequestPending.store(
                 other.pathRequestPending.load(std::memory_order_relaxed),
                 std::memory_order_relaxed);
+            latestPathRequestId.store(
+                other.latestPathRequestId.load(std::memory_order_relaxed),
+                std::memory_order_relaxed);
             other.pathRequestPending.store(0, std::memory_order_relaxed);
+            other.latestPathRequestId.store(0, std::memory_order_relaxed);
         }
         return *this;
     }
@@ -869,6 +874,7 @@ struct PathData {
         currentWaypoint = Vector2D{0, 0};
         hasPath = false;
         pathRequestPending.store(0, std::memory_order_relaxed);
+        latestPathRequestId.store(0, std::memory_order_relaxed);
     }
 
     [[nodiscard]] bool isFollowingPath() const noexcept {

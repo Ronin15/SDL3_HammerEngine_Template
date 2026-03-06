@@ -87,6 +87,8 @@ void PathfinderManager::update() {
         return;
     }
 
+    commitCompletedPaths();
+
     // Requests are submitted directly to ThreadSystem in requestPath() - no processing needed here
 
 #ifndef NDEBUG
@@ -119,6 +121,8 @@ void PathfinderManager::clean() {
     // Wait for batch processing to complete before shutdown
     waitForBatchCompletion();
 
+    commitCompletedPaths();
+
     // Unsubscribe from events
     unsubscribeFromEvents();
 
@@ -129,6 +133,11 @@ void PathfinderManager::clean() {
     }
 
     // No queue to clear - using direct ThreadSystem processing
+    {
+        std::lock_guard<std::mutex> lock(m_pathCompletionMutex);
+        m_pendingPathCompletions.clear();
+        m_reusablePathCompletions.clear();
+    }
 
     // Clear grid
     setGrid(nullptr);
@@ -152,6 +161,8 @@ void PathfinderManager::prepareForStateTransition() {
 
     // Wait for batch processing to complete before clearing data
     waitForBatchCompletion();
+
+    commitCompletedPaths();
 
     // Clear path cache completely for fresh state
     {
@@ -191,6 +202,43 @@ void PathfinderManager::prepareForStateTransition() {
     subscribeToEvents();
 
     PATHFIND_INFO("PathfinderManager state transition complete - cleared transient data, kept manager initialized");
+}
+
+void PathfinderManager::commitCompletedPaths() {
+    m_reusablePathCompletions.clear();
+    {
+        std::lock_guard<std::mutex> lock(m_pathCompletionMutex);
+        if (m_pendingPathCompletions.empty()) {
+            return;
+        }
+        m_reusablePathCompletions.swap(m_pendingPathCompletions);
+    }
+
+    auto& edm = EntityDataManager::Instance();
+    for (const auto& completion : m_reusablePathCompletions) {
+        if (!edm.hasPathData(completion.edmIndex)) {
+            continue;
+        }
+
+        auto& pd = edm.getPathData(completion.edmIndex);
+        const uint32_t latestToken = pd.latestPathRequestId.load(std::memory_order_acquire);
+        if (completion.requestToken != latestToken) {
+            continue; // Stale completion - a newer request exists for this slot.
+        }
+
+        if (!completion.hasPath || completion.length == 0) {
+            pd.pathRequestPending.store(0, std::memory_order_release);
+            continue;
+        }
+
+        Vector2D* slot = edm.getWaypointSlot(completion.edmIndex);
+        for (uint16_t i = 0; i < completion.length; ++i) {
+            slot[i] = completion.waypoints[i];
+        }
+        edm.finalizePath(completion.edmIndex, completion.length);
+    }
+
+    m_reusablePathCompletions.clear();
 }
 
 
@@ -324,17 +372,21 @@ uint64_t PathfinderManager::requestPathToEDM(
     // Generate unique request ID
     const uint64_t requestId = m_nextRequestId.fetch_add(1, std::memory_order_relaxed);
 
+    uint32_t requestToken = 0;
     {
         auto& edm = EntityDataManager::Instance();
-        if (edm.hasPathData(edmIndex)) {
-            edm.getPathData(edmIndex).pathRequestPending.store(1, std::memory_order_release);
+        if (!edm.hasPathData(edmIndex)) {
+            return 0;
         }
+        auto& pd = edm.getPathData(edmIndex);
+        requestToken = pd.latestPathRequestId.fetch_add(1, std::memory_order_acq_rel) + 1;
+        pd.pathRequestPending.store(1, std::memory_order_release);
     }
 
     // ASYNC: Enqueue to ThreadSystem and return immediately (non-blocking)
     auto& threadSystem = HammerEngine::ThreadSystem::Instance();
 
-    auto work = [this, edmIndex, nStart, nGoal, cacheKey, gridSnapshot]() {
+    auto work = [this, edmIndex, requestToken, nStart, nGoal, cacheKey, gridSnapshot]() {
         // CRITICAL: Check shutdown before accessing any member data
         // This prevents use-after-free when PathfinderManager is destroyed while tasks pending
         if (m_isShutdown) {
@@ -407,28 +459,34 @@ uint64_t PathfinderManager::requestPathToEDM(
             }
         }
 
-        // Write directly to EDM active slot (legacy path)
-        if (!m_isShutdown) {
-            auto& edm = EntityDataManager::Instance();
-            if (edm.hasPathData(edmIndex)) {
-                if (cacheHit && cachedLen > 0) {
-                    Vector2D* slot = edm.getWaypointSlot(edmIndex);
-                    for (uint16_t i = 0; i < cachedLen; ++i) {
-                        slot[i] = cachedWaypoints[i];
-                    }
-                    edm.finalizePath(edmIndex, cachedLen);
-                } else if (!path.empty()) {
-                    Vector2D* slot = edm.getWaypointSlot(edmIndex);
-                    uint16_t len = static_cast<uint16_t>(std::min(path.size(), size_t{32}));
-                    for (uint16_t i = 0; i < len; ++i) {
-                        slot[i] = path[i];
-                    }
-                    edm.finalizePath(edmIndex, len);
-                } else {
-                    edm.getPathData(edmIndex).pathRequestPending.store(0, std::memory_order_release);
-                }
-            }
+        if (m_isShutdown) {
+            return;
         }
+
+        PathCompletion completion;
+        completion.edmIndex = edmIndex;
+        completion.requestToken = requestToken;
+
+        if (cacheHit && cachedLen > 0) {
+            completion.length = cachedLen;
+            completion.hasPath = true;
+            for (uint16_t i = 0; i < cachedLen; ++i) {
+                completion.waypoints[i] = cachedWaypoints[i];
+            }
+        } else if (!path.empty()) {
+            const uint16_t len = static_cast<uint16_t>(std::min(path.size(), PathCompletion::MAX_WAYPOINTS));
+            completion.length = len;
+            completion.hasPath = len > 0;
+            for (uint16_t i = 0; i < len; ++i) {
+                completion.waypoints[i] = path[i];
+            }
+        } else {
+            completion.length = 0;
+            completion.hasPath = false;
+        }
+
+        std::lock_guard<std::mutex> lock(m_pathCompletionMutex);
+        m_pendingPathCompletions.emplace_back(std::move(completion));
 
     };
 

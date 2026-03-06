@@ -207,6 +207,15 @@ public:
                               const Vector2D& goal,
                               Priority priority = Priority::Normal);
 
+    /**
+     * @brief Commit worker-computed EDM path results on main thread.
+     *
+     * Worker threads only compute paths and enqueue completion payloads.
+     * This method applies the final writes to EDM, preserving frame coherence
+     * and allowing stale request filtering.
+     */
+    void commitCompletedPaths();
+
     // ===== Grid Management =====
 
     /**
@@ -476,6 +485,19 @@ private:
     std::vector<std::future<void>> m_batchFutures;
     std::vector<std::future<void>> m_reusableBatchFutures;  // Swap target to preserve capacity
     // No mutex needed: update and state transitions never run concurrently
+
+    struct PathCompletion {
+        static constexpr size_t MAX_WAYPOINTS = 32;
+        size_t edmIndex{0};
+        uint32_t requestToken{0};
+        uint16_t length{0};
+        bool hasPath{false};
+        std::array<Vector2D, MAX_WAYPOINTS> waypoints{};
+    };
+
+    std::mutex m_pathCompletionMutex;
+    std::vector<PathCompletion> m_pendingPathCompletions;
+    std::vector<PathCompletion> m_reusablePathCompletions;
 
     // Incremental update configuration
     static constexpr float DIRTY_THRESHOLD_PERCENT = 0.25f; // Full rebuild if >25% of grid is dirty
