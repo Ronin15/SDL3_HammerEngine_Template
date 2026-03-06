@@ -20,6 +20,7 @@
  */
 
 #include "ai/BehaviorConfig.hpp"
+#include "ai/AICommandBus.hpp"
 #include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -163,6 +164,7 @@ public:
   // Entity registration (requires behavior - use assignBehavior() or registerEntity with behavior)
   void registerEntity(EntityHandle handle, const std::string &behaviorName);
   void unregisterEntity(EntityHandle handle);
+  void onEntityFactionChanged(size_t edmIndex, uint8_t oldFaction, uint8_t newFaction);
 
   /**
    * @brief Linear scan of active entities returning handles within radius (O(N))
@@ -310,9 +312,13 @@ private:
   static constexpr uint8_t MAX_FACTIONS = 16;
   std::vector<size_t> m_guardEdmIndices;                           // EDM indices of Guard-assigned entities
   std::array<std::vector<size_t>, MAX_FACTIONS> m_factionEdmIndices;  // Per-faction EDM indices
+  std::vector<HammerEngine::AICommandBus::BehaviorMessageCommand> m_pendingBehaviorMessages;
+  std::vector<HammerEngine::AICommandBus::BehaviorTransitionCommand> m_pendingBehaviorTransitions;
 
   void addToIndices(size_t edmIndex, BehaviorType behaviorType);
   void removeFromIndices(size_t edmIndex, BehaviorType oldBehaviorType);
+  void commitQueuedBehaviorMessages();
+  void commitQueuedBehaviorTransitions();
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;

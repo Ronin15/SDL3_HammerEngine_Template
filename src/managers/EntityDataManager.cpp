@@ -878,11 +878,13 @@ void EntityDataManager::setFaction(EntityHandle handle, uint8_t newFaction) {
     size_t index = getIndex(handle);
     if (index == SIZE_MAX) return;
 
-    auto& charData = m_characterData[index];
+    auto& charData = getCharacterDataByIndex(index);
     if (charData.faction == newFaction) return;  // No change
 
+    uint8_t oldFaction = charData.faction;
     charData.faction = newFaction;
     applyFactionCollision(index, newFaction);
+    AIManager::Instance().onEntityFactionChanged(index, oldFaction, newFaction);
 }
 
 // Registry getters

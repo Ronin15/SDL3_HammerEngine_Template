@@ -107,9 +107,6 @@ bool EventManager::init() {
   m_damagePool.setCreator([]() {
     return std::make_shared<DamageEvent>();
   });
-  m_alertEventPool.setCreator([]() {
-    return std::make_shared<AlertEvent>();
-  });
 
   // Reset performance stats
   resetPerformanceStats();
@@ -929,11 +926,6 @@ void EventManager::releaseEventToPool(EventTypeId typeId, const EventPtr& event)
         m_collisionObstacleChangedPool.release(coce);
       }
       break;
-    case EventTypeId::BehaviorMessage:
-      if (auto ae = std::dynamic_pointer_cast<AlertEvent>(event)) {
-        m_alertEventPool.release(ae);
-      }
-      break;
     default:
       // Non-pooled event types
       break;
@@ -969,7 +961,6 @@ void EventManager::clearEventPools() {
   m_particleEffectPool.clear();
   m_collisionObstacleChangedPool.clear();
   m_damagePool.clear();
-  m_alertEventPool.clear();
 }
 
 // ==================== Helper Methods ====================

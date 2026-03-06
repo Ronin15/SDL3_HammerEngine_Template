@@ -606,7 +606,7 @@ BOOST_AUTO_TEST_CASE(TestBroadcastMessages) {
 // QUEUE-BASED MESSAGE SYSTEM TESTS
 // ============================================================================
 
-// Test basic message queue operations (no AI update)
+// Test command-bus message flow
 BOOST_AUTO_TEST_CASE(TestMessageQueueBasicOperations) {
     auto& edm = EntityDataManager::Instance();
     auto& aiMgr = AIManager::Instance();
@@ -618,39 +618,38 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueBasicOperations) {
 
     aiMgr.assignBehavior(handle, "Attack");
 
-    // Verify initial state
     auto& behaviorData = edm.getBehaviorData(idx);
     BOOST_CHECK(behaviorData.pendingMessageCount == 0);
 
-    // Queue a message
+    // Queue messages: command bus should not mutate pending queue immediately
     Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RETREAT);
-    BOOST_CHECK(behaviorData.pendingMessageCount == 1);
-    BOOST_CHECK(behaviorData.pendingMessages[0].messageId == BehaviorMessage::RETREAT);
-
-    // Queue another message with param
     Behaviors::queueBehaviorMessage(idx, BehaviorMessage::CALM_DOWN, 42);
-    BOOST_CHECK(behaviorData.pendingMessageCount == 2);
-    BOOST_CHECK(behaviorData.pendingMessages[1].messageId == BehaviorMessage::CALM_DOWN);
-    BOOST_CHECK(behaviorData.pendingMessages[1].param == 42);
+    BOOST_CHECK(behaviorData.pendingMessageCount == 0);
+
+    // Commit + process on AI update
+    updateAI(0.016f);
+    const auto& afterUpdate = edm.getBehaviorData(idx);
+    bool processedRetreat = (afterUpdate.behaviorType == BehaviorType::Flee) ||
+                            (afterUpdate.behaviorType == BehaviorType::Attack &&
+                             afterUpdate.state.attack.isRetreating);
+    BOOST_CHECK(processedRetreat);
 
     // Clear messages
     Behaviors::clearPendingMessages(idx);
-    BOOST_CHECK(behaviorData.pendingMessageCount == 0);
+    BOOST_CHECK(edm.getBehaviorData(idx).pendingMessageCount == 0);
 
-    BOOST_TEST_MESSAGE("Basic message queue operations verified");
+    BOOST_TEST_MESSAGE("Command-bus message flow verified");
     aiMgr.unassignBehavior(handle);
 }
 
 // ============================================================================
 // DEFERRED MESSAGE PIPELINE INTEGRATION TESTS
-// Test the full emergent communication: behavior → deferBehaviorMessage →
-// collectDeferredMessageEvents → EventManager → queueBehaviorMessage → target
+// Test the command-bus communication: behavior → deferBehaviorMessage → AI commit
 // ============================================================================
 
 BOOST_AUTO_TEST_CASE(TestDeferredPipelineEndToEnd) {
     auto& edm = EntityDataManager::Instance();
     auto& aiMgr = AIManager::Instance();
-    auto& eventMgr = EventManager::Instance();
 
     auto guard = TestNPC::create(300.0f, 300.0f);
     EntityHandle guardHandle = guard->getHandle();
@@ -666,29 +665,15 @@ BOOST_AUTO_TEST_CASE(TestDeferredPipelineEndToEnd) {
     // Simulate what a behavior does during batch: defer a message
     Behaviors::deferBehaviorMessage(guardIdx, BehaviorMessage::RAISE_ALERT);
 
-    // Collect and enqueue (mimics processBatch → AIManager::update flow)
-    std::vector<EventManager::DeferredEvent> events;
-    Behaviors::collectDeferredMessageEvents(events);
-    BOOST_CHECK(events.size() == 1);
-    eventMgr.enqueueBatch(std::move(events));
-
-    // EventManager delivers: handler calls queueBehaviorMessage on main thread
-    eventMgr.update();
-
-    // Verify message was delivered to guard's queue
-    BOOST_CHECK(edm.getBehaviorData(guardIdx).pendingMessageCount == 1);
-    BOOST_CHECK(edm.getBehaviorData(guardIdx).pendingMessages[0].messageId ==
-                BehaviorMessage::RAISE_ALERT);
-
-    // Guard processes the message on next AI update
+    // AI update commits deferred message and processes it
     updateAI(0.016f);
 
-    // Verify guard is now HOSTILE and queue cleared
+    // Verify guard is now HOSTILE and queue is drained by behavior handler
     BOOST_CHECK(edm.getBehaviorData(guardIdx).state.guard.currentAlertLevel == 3);
     BOOST_CHECK(edm.getBehaviorData(guardIdx).pendingMessageCount == 0);
 
-    BOOST_TEST_MESSAGE("Deferred pipeline end-to-end verified: "
-                       "defer → collect → enqueue → EventManager → queue → process");
+    BOOST_TEST_MESSAGE("Deferred command-bus pipeline verified: "
+                       "defer → AI commit → process");
     aiMgr.unassignBehavior(guardHandle);
 }
 
@@ -858,14 +843,12 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueOverflow) {
         Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);
     }
 
-    // Only first 4 should be queued (direct access avoids stale reference)
-    BOOST_CHECK(edm.getBehaviorData(idx).pendingMessageCount == 4);
-
-    // Process messages - should not crash
+    // Process queued commands - should not crash
     updateAI(0.016f);
 
-    // Queue should be cleared after processing
+    // Messages should be consumed and guard should escalate to HOSTILE
     BOOST_CHECK(edm.getBehaviorData(idx).pendingMessageCount == 0);
+    BOOST_CHECK(edm.getBehaviorData(idx).state.guard.currentAlertLevel == 3);
 
     BOOST_TEST_MESSAGE("Message queue overflow handling verified");
     aiMgr.unassignBehavior(handle);
@@ -883,16 +866,17 @@ BOOST_AUTO_TEST_CASE(TestClearPendingMessages) {
     aiMgr.assignBehavior(handle, "Guard");
     updateAI(0.016f);
 
-    // Queue some messages (direct access avoids stale reference)
+    // Queue messages into command bus
     Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RAISE_ALERT);
     Behaviors::queueBehaviorMessage(idx, BehaviorMessage::CALM_DOWN);
-    BOOST_CHECK(edm.getBehaviorData(idx).pendingMessageCount == 2);
+    BOOST_CHECK(edm.getBehaviorData(idx).pendingMessageCount == 0);
 
-    // Clear messages without processing
+    // Clear both queued bus commands and pending per-entity queue
     Behaviors::clearPendingMessages(idx);
     BOOST_CHECK(edm.getBehaviorData(idx).pendingMessageCount == 0);
 
-    // Verify guard state unchanged (messages were cleared, not processed)
+    // Verify guard state unchanged after update (messages were cleared pre-commit)
+    updateAI(0.016f);
     BOOST_CHECK(edm.getBehaviorData(idx).state.guard.currentAlertLevel == 0); // Still CALM
 
     BOOST_TEST_MESSAGE("Clear pending messages verified");

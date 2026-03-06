@@ -262,7 +262,7 @@ void init(size_t edmIndex, const HammerEngine::BehaviorConfigData& configData);
  * @param edmIndex Entity's index in EDM
  * @param newType The new behavior type to switch to
  *
- * Called by behaviors when they need to transition (e.g., Idle -> Flee when attacked).
+ * Queues a behavior transition command for main-thread commit by AIManager.
  * Uses default config for the behavior type.
  */
 void switchBehavior(size_t edmIndex, BehaviorType newType);
@@ -272,7 +272,7 @@ void switchBehavior(size_t edmIndex, BehaviorType newType);
  * @param edmIndex Entity's index in EDM
  * @param config Custom behavior configuration
  *
- * Called by behaviors when they need to transition with specific configuration.
+ * Queues a behavior transition command for main-thread commit by AIManager.
  */
 void switchBehavior(size_t edmIndex, const HammerEngine::BehaviorConfigData& config);
 
@@ -411,21 +411,16 @@ bool getCachedWorldBounds(float& minX, float& minY, float& maxX, float& maxY);
  * @param messageId BehaviorMessage::* constant
  * @param param Optional parameter (behavior-specific)
  *
- * Messages are processed at the start of each behavior's execute function.
- * If the queue is full (4 messages), the message is silently dropped.
+ * Enqueues a command for AIManager's main-thread pre-pass commit.
  *
- * @note THREAD SAFETY: Must be called from the main thread between AI update
- *       batches (e.g., from event handlers, scripts, CombatController).
- *       Messages are consumed at the start of behavior execution in worker threads.
- *       The game loop's sequential manager updates guarantee happens-before ordering.
- *       DO NOT call from worker threads during AI batch processing.
+ * @note THREAD SAFETY: Safe from any thread.
  */
 void queueBehaviorMessage(size_t edmIndex, uint8_t messageId, uint8_t param = 0);
 
 /**
  * @brief Clear all pending messages for an entity
  * @param edmIndex Entity's index in EDM
- * @note Same thread safety contract as queueBehaviorMessage().
+ * @note Must be called from AIManager commit path on main thread.
  */
 void clearPendingMessages(size_t edmIndex);
 
@@ -447,21 +442,15 @@ void collectDeferredDamageEvents(std::vector<EventManager::DeferredEvent>& out);
 // ============================================================================
 
 /**
- * @brief Defer a behavior message for thread-safe delivery via EventManager
+ * @brief Defer a behavior message for thread-safe delivery via AICommandBus
  * @param targetEdmIndex Target entity's EDM index
  * @param messageId BehaviorMessage::* constant
  * @param param Optional parameter
  *
- * Safe to call from worker threads during batch processing. Creates an AlertEvent
- * wrapped in a DeferredEvent. Collected after batch and dispatched via EventManager.
+ * Safe to call from worker threads during batch processing.
+ * Enqueues directly to AICommandBus.
  */
 void deferBehaviorMessage(size_t targetEdmIndex, uint8_t messageId, uint8_t param = 0);
-
-/**
- * @brief Collect deferred behavior message events from thread-local buffer
- * @return Vector of deferred events to dispatch (moved, buffer cleared)
- */
-void collectDeferredMessageEvents(std::vector<EventManager::DeferredEvent>& out);
 
 } // namespace Behaviors
 

@@ -4,10 +4,9 @@
  */
 
 #include "ai/BehaviorExecutors.hpp"
-#include "events/EntityEvents.hpp"
+#include "ai/AICommandBus.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
-#include "managers/EventManager.hpp"
 #include "managers/WorldManager.hpp"
 #include <cmath>
 #include <iterator>
@@ -99,16 +98,7 @@ void switchBehavior(size_t edmIndex, BehaviorType newType) {
 }
 
 void switchBehavior(size_t edmIndex, const HammerEngine::BehaviorConfigData& config) {
-    auto& edm = EntityDataManager::Instance();
-
-    // Clear old behavior state
-    edm.clearBehaviorData(edmIndex);
-
-    // Set new config
-    edm.setBehaviorConfig(edmIndex, config);
-
-    // Initialize new behavior state
-    init(edmIndex, config);
+    HammerEngine::AICommandBus::Instance().enqueueBehaviorTransition(edmIndex, config);
 }
 
 // ============================================================================
@@ -299,7 +289,7 @@ void processCombatEvent(size_t index, EntityHandle attacker, EntityHandle target
         for (size_t guardIdx : t_guardBuffer) {
             if (guardIdx == index) continue;
             if (edm.getCharacterDataByIndex(guardIdx).faction != victimFaction) continue;
-            queueBehaviorMessage(guardIdx, BehaviorMessage::DISTRESS);
+            deferBehaviorMessage(guardIdx, BehaviorMessage::DISTRESS);
         }
     } else {
         float aggressionScale = emotionScale * (1.0f + memData.personality.aggression * 0.5f);
@@ -337,9 +327,9 @@ void processWitnessedCombat(size_t witnessIndex, EntityHandle attacker,
     constexpr float ALERT_INTENSITY_THRESHOLD = 0.25f;  // Medium impact → raise alert
 
     if (intensity > PANIC_INTENSITY_THRESHOLD && wasDeath) {
-        queueBehaviorMessage(witnessIndex, BehaviorMessage::PANIC);
+        deferBehaviorMessage(witnessIndex, BehaviorMessage::PANIC);
     } else if (intensity > ALERT_INTENSITY_THRESHOLD) {
-        queueBehaviorMessage(witnessIndex, BehaviorMessage::RAISE_ALERT);
+        deferBehaviorMessage(witnessIndex, BehaviorMessage::RAISE_ALERT);
     }
 
     // Create and store memory entry
@@ -359,16 +349,11 @@ void processWitnessedCombat(size_t witnessIndex, EntityHandle attacker,
 // ============================================================================
 
 void queueBehaviorMessage(size_t edmIndex, uint8_t messageId, uint8_t param) {
-    auto& edm = EntityDataManager::Instance();
-    auto& data = edm.getBehaviorData(edmIndex);
-    if (data.pendingMessageCount < 4) {
-        data.pendingMessages[data.pendingMessageCount].messageId = messageId;
-        data.pendingMessages[data.pendingMessageCount].param = param;
-        data.pendingMessageCount++;
-    }
+    HammerEngine::AICommandBus::Instance().enqueueBehaviorMessage(edmIndex, messageId, param);
 }
 
 void clearPendingMessages(size_t edmIndex) {
+    HammerEngine::AICommandBus::Instance().clearBehaviorMessages(edmIndex);
     auto& edm = EntityDataManager::Instance();
     auto& data = edm.getBehaviorData(edmIndex);
     data.pendingMessageCount = 0;
@@ -415,25 +400,8 @@ bool getCachedWorldBounds(float& minX, float& minY, float& maxX, float& maxY) {
 // DEFERRED BEHAVIOR MESSAGE FUNCTIONS
 // ============================================================================
 
-thread_local std::vector<EventManager::DeferredEvent> t_deferredMessageEvents;
-
 void deferBehaviorMessage(size_t targetEdmIndex, uint8_t messageId, uint8_t param) {
-    auto alertEvent = EventManager::Instance().acquireAlertEvent();
-    alertEvent->configure(targetEdmIndex, messageId, param);
-
-    EventData eventData;
-    eventData.typeId = EventTypeId::BehaviorMessage;
-    eventData.setActive(true);
-    eventData.priority = EventPriority::HIGH;
-    eventData.event = std::move(alertEvent);
-
-    t_deferredMessageEvents.push_back({EventTypeId::BehaviorMessage, std::move(eventData)});
-}
-
-void collectDeferredMessageEvents(std::vector<EventManager::DeferredEvent>& out) {
-    out.insert(out.end(), std::make_move_iterator(t_deferredMessageEvents.begin()),
-                          std::make_move_iterator(t_deferredMessageEvents.end()));
-    t_deferredMessageEvents.clear();
+    HammerEngine::AICommandBus::Instance().enqueueBehaviorMessage(targetEdmIndex, messageId, param);
 }
 
 } // namespace Behaviors

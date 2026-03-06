@@ -4,6 +4,7 @@
  */
 
 #include "managers/AIManager.hpp"
+#include "ai/AICommandBus.hpp"
 #include "ai/BehaviorExecutors.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "core/Logger.hpp"
@@ -133,17 +134,6 @@ bool AIManager::init() {
           }
         });
 
-    // BehaviorMessage handler: delivers deferred inter-entity messages on main thread
-    EventManager::Instance().registerHandler(EventTypeId::BehaviorMessage,
-        [](const EventData& data) {
-          if (!data.isActive() || !data.event) return;
-          auto alertEvent = std::dynamic_pointer_cast<AlertEvent>(data.event);
-          if (!alertEvent) return;
-          Behaviors::queueBehaviorMessage(alertEvent->getTargetEdmIndex(),
-                                           alertEvent->getMessageId(),
-                                           alertEvent->getParam());
-        });
-
     AI_INFO("AIManager initialized successfully");
     return true;
 
@@ -253,6 +243,11 @@ void AIManager::update(float deltaTime) {
   }
 
   try {
+    // Commit queued cross-thread commands before reading per-entity behavior state.
+    // Order matters: transitions first, then messages, so messages target current behavior.
+    commitQueuedBehaviorTransitions();
+    commitQueuedBehaviorMessages();
+
     // Use getActiveIndices() to iterate only Active tier entities
     // This reduces iteration from 50K to ~468 (entities within active radius)
     auto &edm = EntityDataManager::Instance();
@@ -471,6 +466,10 @@ void AIManager::update(float deltaTime) {
                                 entityCount, actualWasThreaded, actualBatchCount,
                                 totalUpdateTime);
     }
+
+    // Commit commands emitted by worker threads during this frame's batches.
+    commitQueuedBehaviorTransitions();
+    commitQueuedBehaviorMessages();
 
     m_frameCounter.fetch_add(1, std::memory_order_relaxed);
 
@@ -828,6 +827,30 @@ void AIManager::unregisterEntity(EntityHandle handle) {
   }
 }
 
+void AIManager::onEntityFactionChanged(size_t edmIndex, uint8_t oldFaction, uint8_t newFaction) {
+  if (oldFaction >= MAX_FACTIONS || newFaction >= MAX_FACTIONS || oldFaction == newFaction) {
+    return;
+  }
+
+  std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
+
+  if (edmIndex >= m_edmToStorageIndex.size()) {
+    return;
+  }
+
+  const size_t storageIdx = m_edmToStorageIndex[edmIndex];
+  if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size() ||
+      !m_storage.hotData[storageIdx].active) {
+    return;
+  }
+
+  std::erase(m_factionEdmIndices[oldFaction], edmIndex);
+  auto& targetFaction = m_factionEdmIndices[newFaction];
+  if (std::find(targetFaction.begin(), targetFaction.end(), edmIndex) == targetFaction.end()) {
+    targetFaction.push_back(edmIndex);
+  }
+}
+
 // Thread safety: m_activeIndicesBuffer and m_cachedPlayerEdmIdx are written on
 // the main thread before batch futures are submitted. Futures create a
 // happens-before edge, so worker threads read consistent data without a lock.
@@ -872,40 +895,22 @@ void AIManager::scanGuardsInRadius(const Vector2D &center, float radius,
   const float radiusSq = radius * radius;
   auto &edm = EntityDataManager::Instance();
 
-  // Re-query behavior type from EDM at scan time so runtime behavior switches
-  // are reflected without relying on assignment-time guard index bookkeeping.
-  if (!m_activeIndicesBuffer.empty()) {
-    for (size_t edmIdx : m_activeIndicesBuffer) {
-      if (edmIdx >= m_edmToStorageIndex.size() ||
-          m_edmToStorageIndex[edmIdx] == SIZE_MAX) {
-        continue;
-      }
-      const auto& config = edm.getBehaviorConfig(edmIdx);
-      if (config.type != BehaviorType::Guard) {
-        continue;
-      }
-      float distSq = Vector2D::distanceSquared(
-          center, edm.getHotDataByIndex(edmIdx).transform.position);
-      if (distSq <= radiusSq) {
-        outEdmIndices.push_back(edmIdx);
-      }
+  for (size_t edmIdx : m_guardEdmIndices) {
+    if (edmIdx >= m_edmToStorageIndex.size()) {
+      continue;
     }
-  } else {
-    auto activeSpan = edm.getActiveIndices();
-    for (size_t edmIdx : activeSpan) {
-      if (edmIdx >= m_edmToStorageIndex.size() ||
-          m_edmToStorageIndex[edmIdx] == SIZE_MAX) {
-        continue;
-      }
-      const auto& config = edm.getBehaviorConfig(edmIdx);
-      if (config.type != BehaviorType::Guard) {
-        continue;
-      }
-      float distSq = Vector2D::distanceSquared(
-          center, edm.getHotDataByIndex(edmIdx).transform.position);
-      if (distSq <= radiusSq) {
-        outEdmIndices.push_back(edmIdx);
-      }
+    const size_t storageIdx = m_edmToStorageIndex[edmIdx];
+    if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size() ||
+        !m_storage.hotData[storageIdx].active) {
+      continue;
+    }
+    const auto& hotData = edm.getHotDataByIndex(edmIdx);
+    if (!hotData.isAlive()) {
+      continue;
+    }
+    float distSq = Vector2D::distanceSquared(center, hotData.transform.position);
+    if (distSq <= radiusSq) {
+      outEdmIndices.push_back(edmIdx);
     }
   }
 
@@ -923,8 +928,20 @@ void AIManager::scanFactionInRadius(uint8_t faction, const Vector2D &center,
   const float radiusSq = radius * radius;
   auto &edm = EntityDataManager::Instance();
   for (size_t edmIdx : m_factionEdmIndices[faction]) {
+    if (edmIdx >= m_edmToStorageIndex.size()) {
+      continue;
+    }
+    const size_t storageIdx = m_edmToStorageIndex[edmIdx];
+    if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size() ||
+        !m_storage.hotData[storageIdx].active) {
+      continue;
+    }
+    const auto& hotData = edm.getHotDataByIndex(edmIdx);
+    if (!hotData.isAlive()) {
+      continue;
+    }
     float distSq = Vector2D::distanceSquared(
-        center, edm.getHotDataByIndex(edmIdx).transform.position);
+        center, hotData.transform.position);
     if (distSq <= radiusSq) {
       outEdmIndices.push_back(edmIdx);
     }
@@ -962,6 +979,64 @@ void AIManager::removeFromIndices(size_t edmIndex, BehaviorType oldBehaviorType)
   uint8_t faction = edm.getCharacterDataByIndex(edmIndex).faction;
   if (faction < MAX_FACTIONS) {
     std::erase(m_factionEdmIndices[faction], edmIndex);
+  }
+}
+
+void AIManager::commitQueuedBehaviorMessages() {
+  HammerEngine::AICommandBus::Instance().drainBehaviorMessages(m_pendingBehaviorMessages);
+  if (m_pendingBehaviorMessages.empty()) {
+    return;
+  }
+
+  auto& edm = EntityDataManager::Instance();
+  size_t droppedCount = 0;
+
+  for (const auto& cmd : m_pendingBehaviorMessages) {
+    if (cmd.targetEdmIndex == SIZE_MAX || !edm.hasBehaviorData(cmd.targetEdmIndex)) {
+      continue;
+    }
+    auto& data = edm.getBehaviorData(cmd.targetEdmIndex);
+    if (data.pendingMessageCount < 4) {
+      data.pendingMessages[data.pendingMessageCount].messageId = cmd.messageId;
+      data.pendingMessages[data.pendingMessageCount].param = cmd.param;
+      data.pendingMessageCount++;
+    } else {
+      ++droppedCount;
+    }
+  }
+
+  if (droppedCount > 0) {
+    AI_WARN(std::format("Behavior message queue overflow: dropped {} messages", droppedCount));
+  }
+}
+
+void AIManager::commitQueuedBehaviorTransitions() {
+  HammerEngine::AICommandBus::Instance().drainBehaviorTransitions(m_pendingBehaviorTransitions);
+  if (m_pendingBehaviorTransitions.empty()) {
+    return;
+  }
+
+  auto& edm = EntityDataManager::Instance();
+  std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
+
+  for (const auto& cmd : m_pendingBehaviorTransitions) {
+    if (cmd.targetEdmIndex == SIZE_MAX || cmd.targetEdmIndex >= m_edmToStorageIndex.size()) {
+      continue;
+    }
+    size_t storageIdx = m_edmToStorageIndex[cmd.targetEdmIndex];
+    if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size() ||
+        !m_storage.hotData[storageIdx].active) {
+      continue;
+    }
+
+    const auto oldConfig = edm.getBehaviorConfig(cmd.targetEdmIndex);
+    removeFromIndices(cmd.targetEdmIndex, oldConfig.type);
+
+    edm.clearBehaviorData(cmd.targetEdmIndex);
+    edm.setBehaviorConfig(cmd.targetEdmIndex, cmd.config);
+    Behaviors::init(cmd.targetEdmIndex, cmd.config);
+
+    addToIndices(cmd.targetEdmIndex, cmd.config.type);
   }
 }
 
@@ -1227,7 +1302,6 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
   // Uses ref-based API to preserve thread_local vector capacity across frames
   std::vector<EventManager::DeferredEvent> deferredEvents;
   Behaviors::collectDeferredDamageEvents(deferredEvents);
-  Behaviors::collectDeferredMessageEvents(deferredEvents);
   return deferredEvents;
 }
 
