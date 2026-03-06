@@ -314,9 +314,11 @@ private:
   std::array<std::vector<size_t>, MAX_FACTIONS> m_factionEdmIndices;  // Per-faction EDM indices
   std::vector<HammerEngine::AICommandBus::BehaviorMessageCommand> m_pendingBehaviorMessages;
   std::vector<HammerEngine::AICommandBus::BehaviorTransitionCommand> m_pendingBehaviorTransitions;
+  std::vector<HammerEngine::AICommandBus::FactionChangeCommand> m_pendingFactionChanges;
 
   void addToIndices(size_t edmIndex, BehaviorType behaviorType);
   void removeFromIndices(size_t edmIndex, BehaviorType oldBehaviorType);
+  void commitQueuedFactionChanges();
   void commitQueuedBehaviorMessages();
   void commitQueuedBehaviorTransitions();
 

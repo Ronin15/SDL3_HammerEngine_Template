@@ -157,6 +157,9 @@ void AIManager::clean() {
   // Stop accepting new tasks
   m_globallyPaused.store(true, std::memory_order_release);
   HammerEngine::AICommandBus::Instance().clearAll();
+  m_pendingFactionChanges.clear();
+  m_pendingBehaviorTransitions.clear();
+  m_pendingBehaviorMessages.clear();
 
   {
     std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
@@ -190,6 +193,9 @@ void AIManager::prepareForStateTransition() {
   // Pause AI processing to prevent new tasks
   m_globallyPaused.store(true, std::memory_order_release);
   HammerEngine::AICommandBus::Instance().clearAll();
+  m_pendingFactionChanges.clear();
+  m_pendingBehaviorTransitions.clear();
+  m_pendingBehaviorMessages.clear();
 
   // Batches always complete within update() — no pending futures to wait for.
 
@@ -246,7 +252,9 @@ void AIManager::update(float deltaTime) {
 
   try {
     // Commit queued cross-thread commands before reading per-entity behavior state.
-    // Order matters: transitions first, then messages, so messages target current behavior.
+    // Order matters: faction changes keep indices coherent before scans;
+    // transitions first, then messages, so messages target current behavior.
+    commitQueuedFactionChanges();
     commitQueuedBehaviorTransitions();
     commitQueuedBehaviorMessages();
 
@@ -833,24 +841,9 @@ void AIManager::onEntityFactionChanged(size_t edmIndex, uint8_t oldFaction, uint
   if (oldFaction >= MAX_FACTIONS || newFaction >= MAX_FACTIONS || oldFaction == newFaction) {
     return;
   }
-
-  std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
-
-  if (edmIndex >= m_edmToStorageIndex.size()) {
-    return;
-  }
-
-  const size_t storageIdx = m_edmToStorageIndex[edmIndex];
-  if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size() ||
-      !m_storage.hotData[storageIdx].active) {
-    return;
-  }
-
-  std::erase(m_factionEdmIndices[oldFaction], edmIndex);
-  auto& targetFaction = m_factionEdmIndices[newFaction];
-  if (std::find(targetFaction.begin(), targetFaction.end(), edmIndex) == targetFaction.end()) {
-    targetFaction.push_back(edmIndex);
-  }
+  auto& edm = EntityDataManager::Instance();
+  HammerEngine::AICommandBus::Instance().enqueueFactionChange(
+      edm.getHandle(edmIndex), edmIndex, oldFaction, newFaction);
 }
 
 // Thread safety: m_activeIndicesBuffer and m_cachedPlayerEdmIdx are written on
@@ -981,6 +974,48 @@ void AIManager::removeFromIndices(size_t edmIndex, BehaviorType oldBehaviorType)
   uint8_t faction = edm.getCharacterDataByIndex(edmIndex).faction;
   if (faction < MAX_FACTIONS) {
     std::erase(m_factionEdmIndices[faction], edmIndex);
+  }
+}
+
+void AIManager::commitQueuedFactionChanges() {
+  HammerEngine::AICommandBus::Instance().drainFactionChanges(m_pendingFactionChanges);
+  if (m_pendingFactionChanges.empty()) {
+    return;
+  }
+
+  auto& edm = EntityDataManager::Instance();
+  std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
+
+  for (const auto& cmd : m_pendingFactionChanges) {
+    if (!cmd.targetHandle.isValid()) {
+      continue;
+    }
+
+    const size_t edmIndex = edm.getIndex(cmd.targetHandle);
+    if (edmIndex == SIZE_MAX || edmIndex != cmd.targetEdmIndex ||
+        edmIndex >= m_edmToStorageIndex.size()) {
+      continue;
+    }
+
+    const size_t storageIdx = m_edmToStorageIndex[edmIndex];
+    if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size() ||
+        !m_storage.hotData[storageIdx].active) {
+      continue;
+    }
+
+    const uint8_t currentFaction = edm.getCharacterDataByIndex(edmIndex).faction;
+    if (currentFaction >= MAX_FACTIONS) {
+      continue;
+    }
+
+    for (auto& factionVec : m_factionEdmIndices) {
+      std::erase(factionVec, edmIndex);
+    }
+
+    auto& targetFaction = m_factionEdmIndices[currentFaction];
+    if (std::find(targetFaction.begin(), targetFaction.end(), edmIndex) == targetFaction.end()) {
+      targetFaction.push_back(edmIndex);
+    }
   }
 }
 

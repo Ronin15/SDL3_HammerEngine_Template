@@ -20,6 +20,12 @@ void AICommandBus::enqueueBehaviorTransition(EntityHandle targetHandle, size_t t
     m_pendingTransitions.push_back({targetHandle, targetEdmIndex, config});
 }
 
+void AICommandBus::enqueueFactionChange(EntityHandle targetHandle, size_t targetEdmIndex,
+                                        uint8_t oldFaction, uint8_t newFaction) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_pendingFactionChanges.push_back({targetHandle, targetEdmIndex, oldFaction, newFaction});
+}
+
 void AICommandBus::clearBehaviorMessages(EntityHandle targetHandle, size_t targetEdmIndex) {
     std::lock_guard<std::mutex> lock(m_mutex);
     std::erase_if(m_pendingMessages, [targetHandle, targetEdmIndex](const BehaviorMessageCommand& cmd) {
@@ -31,6 +37,7 @@ void AICommandBus::clearAll() {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_pendingMessages.clear();
     m_pendingTransitions.clear();
+    m_pendingFactionChanges.clear();
 }
 
 void AICommandBus::drainBehaviorMessages(std::vector<BehaviorMessageCommand>& out) {
@@ -43,6 +50,12 @@ void AICommandBus::drainBehaviorTransitions(std::vector<BehaviorTransitionComman
     std::lock_guard<std::mutex> lock(m_mutex);
     out.clear();
     out.swap(m_pendingTransitions);
+}
+
+void AICommandBus::drainFactionChanges(std::vector<FactionChangeCommand>& out) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    out.clear();
+    out.swap(m_pendingFactionChanges);
 }
 
 } // namespace HammerEngine

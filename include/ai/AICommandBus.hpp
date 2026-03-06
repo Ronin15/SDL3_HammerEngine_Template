@@ -30,6 +30,13 @@ public:
         BehaviorConfigData config{};
     };
 
+    struct FactionChangeCommand {
+        EntityHandle targetHandle{};
+        size_t targetEdmIndex{SIZE_MAX};
+        uint8_t oldFaction{0};
+        uint8_t newFaction{0};
+    };
+
     static AICommandBus& Instance() {
         static AICommandBus instance;
         return instance;
@@ -39,11 +46,14 @@ public:
                                 uint8_t messageId, uint8_t param = 0);
     void enqueueBehaviorTransition(EntityHandle targetHandle, size_t targetEdmIndex,
                                    const BehaviorConfigData& config);
+    void enqueueFactionChange(EntityHandle targetHandle, size_t targetEdmIndex,
+                              uint8_t oldFaction, uint8_t newFaction);
     void clearBehaviorMessages(EntityHandle targetHandle, size_t targetEdmIndex);
     void clearAll();
 
     void drainBehaviorMessages(std::vector<BehaviorMessageCommand>& out);
     void drainBehaviorTransitions(std::vector<BehaviorTransitionCommand>& out);
+    void drainFactionChanges(std::vector<FactionChangeCommand>& out);
 
 private:
     AICommandBus() = default;
@@ -53,6 +63,7 @@ private:
     std::mutex m_mutex;
     std::vector<BehaviorMessageCommand> m_pendingMessages;
     std::vector<BehaviorTransitionCommand> m_pendingTransitions;
+    std::vector<FactionChangeCommand> m_pendingFactionChanges;
 };
 
 } // namespace HammerEngine
