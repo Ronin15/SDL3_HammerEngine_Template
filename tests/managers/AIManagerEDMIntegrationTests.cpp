@@ -22,6 +22,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "core/ThreadSystem.hpp"
+#include "ai/AICommandBus.hpp"
 #include "ai/BehaviorExecutors.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/BackgroundSimulationManager.hpp"
@@ -677,6 +678,58 @@ BOOST_AUTO_TEST_CASE(RuntimeSwitchBehaviorUpdatesGuardQueries) {
     results.clear();
     aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
     BOOST_CHECK(std::find(results.begin(), results.end(), idx) != results.end());
+}
+
+BOOST_AUTO_TEST_CASE(StaleHigherSequenceTransitionDoesNotSuppressValidTransition) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto original = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle staleHandle = original->getHandle();
+    const size_t reusedIndex = edm.getIndex(staleHandle);
+    BOOST_REQUIRE(reusedIndex != SIZE_MAX);
+
+    aiMgr.assignBehavior(staleHandle, "Idle");
+    BOOST_REQUIRE(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Idle);
+
+    aiMgr.unregisterEntity(staleHandle);
+    edm.destroyEntity(staleHandle);
+    edm.processDestructionQueue();
+    BOOST_REQUIRE(edm.getIndex(staleHandle) == SIZE_MAX);
+
+    std::vector<std::shared_ptr<AITestNPC>> keepAlive;
+    keepAlive.reserve(8);
+
+    EntityHandle currentHandle{};
+    bool slotReused = false;
+    for (int i = 0; i < 8; ++i) {
+        auto spawned = AITestNPC::create(Vector2D(400.0f + i * 10.0f, 300.0f));
+        const size_t idx = edm.getIndex(spawned->getHandle());
+        keepAlive.push_back(spawned);
+        if (idx == reusedIndex) {
+            currentHandle = spawned->getHandle();
+            slotReused = true;
+            break;
+        }
+    }
+    BOOST_REQUIRE(slotReused);
+    BOOST_REQUIRE(currentHandle.isValid());
+    BOOST_REQUIRE(edm.getIndex(currentHandle) == reusedIndex);
+
+    aiMgr.assignBehavior(currentHandle, "Idle");
+    BOOST_REQUIRE(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Idle);
+
+    // Valid transition first (older sequence): should still apply even if a stale
+    // command with newer sequence is enqueued after it.
+    Behaviors::switchBehavior(reusedIndex, BehaviorType::Attack);
+
+    HammerEngine::BehaviorConfigData staleConfig{};
+    staleConfig.type = BehaviorType::Flee;
+    HammerEngine::AICommandBus::Instance().enqueueBehaviorTransition(
+        staleHandle, reusedIndex, staleConfig);
+
+    aiMgr.update(0.016f);
+    BOOST_CHECK(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Attack);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -24,6 +24,7 @@
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <thread>
@@ -245,6 +246,83 @@ BOOST_AUTO_TEST_CASE(TestPathRequestAfterStateTransition) {
     waitForPathCompletion();
 
     BOOST_CHECK(edm.hasPathData(edmIndex));
+}
+
+BOOST_AUTO_TEST_CASE(StaleCompletionFromReusedSlotDoesNotOverwriteNewEntityPath) {
+    auto& edm = EntityDataManager::Instance();
+    auto& pm = PathfinderManager::Instance();
+    auto& cm = CollisionManager::Instance();
+
+    cm.setWorldBounds(0.0f, 0.0f, 2048.0f, 2048.0f);
+    pm.rebuildGrid(false);
+
+    bool gridReady = false;
+    for (int i = 0; i < 100; ++i) {
+        pm.update();
+        if (pm.isGridReady()) {
+            gridReady = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    BOOST_REQUIRE(gridReady);
+
+    auto original = PathfindingTestNPC::create(Vector2D(64.0f, 64.0f));
+    EntityHandle staleHandle = original->getHandle();
+    const size_t reusedIndex = edm.getIndex(staleHandle);
+    BOOST_REQUIRE(reusedIndex != SIZE_MAX);
+
+    // Older request on original occupant (token=1 for this slot).
+    const uint64_t oldReq = pm.requestPathToEDM(
+        reusedIndex, Vector2D(64.0f, 64.0f), Vector2D(1900.0f, 1900.0f),
+        PathfinderManager::Priority::Normal);
+    BOOST_REQUIRE(oldReq > 0);
+
+    // Destroy original occupant before completion commit.
+    edm.destroyEntity(staleHandle);
+    edm.processDestructionQueue();
+    BOOST_REQUIRE(edm.getIndex(staleHandle) == SIZE_MAX);
+
+    // Reuse same slot for new entity and issue a new request (token resets and
+    // starts at 1 again on slot reuse, so handle-generation validation matters).
+    std::vector<std::shared_ptr<PathfindingTestNPC>> keepAlive;
+    keepAlive.reserve(12);
+    EntityHandle currentHandle{};
+    bool slotReused = false;
+    for (int i = 0; i < 12; ++i) {
+        auto spawned = PathfindingTestNPC::create(Vector2D(96.0f + i * 8.0f, 96.0f));
+        const size_t idx = edm.getIndex(spawned->getHandle());
+        keepAlive.push_back(spawned);
+        if (idx == reusedIndex) {
+            currentHandle = spawned->getHandle();
+            slotReused = true;
+            break;
+        }
+    }
+    BOOST_REQUIRE(slotReused);
+    BOOST_REQUIRE(currentHandle.isValid());
+    BOOST_REQUIRE(edm.getIndex(currentHandle) == reusedIndex);
+
+    const Vector2D expectedGoal(160.0f, 160.0f);
+    const uint64_t newReq = pm.requestPathToEDM(
+        reusedIndex, Vector2D(96.0f, 96.0f), expectedGoal, PathfinderManager::Priority::High);
+    BOOST_REQUIRE(newReq > 0);
+
+    auto& pd = edm.getPathData(reusedIndex);
+    for (int i = 0; i < 200 && pd.pathRequestPending.load(std::memory_order_acquire) != 0; ++i) {
+        pm.update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    BOOST_CHECK_EQUAL(pd.pathRequestPending.load(std::memory_order_acquire), 0);
+    BOOST_REQUIRE(pd.hasPath);
+    BOOST_REQUIRE(pd.pathLength > 0);
+
+    const Vector2D* waypoints = edm.getWaypointSlot(reusedIndex);
+    const Vector2D finalWaypoint = waypoints[pd.pathLength - 1];
+    const float distToExpected = (finalWaypoint - expectedGoal).length();
+    const float distToOldGoal = (finalWaypoint - Vector2D(1900.0f, 1900.0f)).length();
+    BOOST_CHECK_LT(distToExpected, distToOldGoal);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
