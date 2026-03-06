@@ -35,6 +35,23 @@
 #include <thread>
 #include <vector>
 
+namespace {
+
+struct ThreadSystemTestLifetime {
+    ThreadSystemTestLifetime() {
+        BOOST_REQUIRE_MESSAGE(HammerEngine::ThreadSystem::Instance().init(),
+                              "Failed to initialize ThreadSystem for AIManager EDM tests");
+    }
+
+    ~ThreadSystemTestLifetime() {
+        HammerEngine::ThreadSystem::Instance().clean();
+    }
+};
+
+ThreadSystemTestLifetime g_threadSystemTestLifetime{};
+
+} // namespace
+
 // Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
 class AITestNPC {
 public:
@@ -81,7 +98,6 @@ private:
 // Test fixture that initializes all required managers
 struct AIManagerEDMFixture {
     AIManagerEDMFixture() {
-        HammerEngine::ThreadSystem::Instance().init();
         EntityDataManager::Instance().init();
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
@@ -95,7 +111,6 @@ struct AIManagerEDMFixture {
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
         EntityDataManager::Instance().clean();
-        HammerEngine::ThreadSystem::Instance().clean();
     }
 };
 

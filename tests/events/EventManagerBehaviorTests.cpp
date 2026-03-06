@@ -16,6 +16,18 @@
 
 namespace {
 
+struct ThreadSystemTestLifetime {
+  ThreadSystemTestLifetime() {
+    BOOST_REQUIRE_MESSAGE(HammerEngine::ThreadSystem::Instance().init(),
+                          "Failed to initialize ThreadSystem for EventManagerBehaviorTests");
+  }
+  ~ThreadSystemTestLifetime() {
+    HammerEngine::ThreadSystem::Instance().clean();
+  }
+};
+
+ThreadSystemTestLifetime g_threadSystemTestLifetime{};
+
 class TestEvent : public Event {
 public:
   explicit TestEvent(const std::string &name) : m_name(name) {}
@@ -38,13 +50,11 @@ private:
 
 struct EventFixture {
   EventFixture() {
-    HammerEngine::ThreadSystem::Instance().init();
     EventManagerTestAccess::reset();
   }
   ~EventFixture() {
     // Clean after each test
     EventManager::Instance().clean();
-    HammerEngine::ThreadSystem::Instance().clean();
   }
 };
 

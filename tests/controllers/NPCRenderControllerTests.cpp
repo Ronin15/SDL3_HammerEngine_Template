@@ -30,6 +30,23 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
     return std::abs(a - b) < epsilon;
 }
 
+namespace {
+
+struct ThreadSystemTestLifetime {
+    ThreadSystemTestLifetime() {
+        BOOST_REQUIRE_MESSAGE(HammerEngine::ThreadSystem::Instance().init(),
+                              "Failed to initialize ThreadSystem for NPCRenderController tests");
+    }
+
+    ~ThreadSystemTestLifetime() {
+        HammerEngine::ThreadSystem::Instance().clean();
+    }
+};
+
+ThreadSystemTestLifetime g_threadSystemTestLifetime{};
+
+} // namespace
+
 // ============================================================================
 // Test Fixture
 // ============================================================================
@@ -43,7 +60,6 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
 class NPCRenderControllerFixture {
 public:
     NPCRenderControllerFixture() {
-        HammerEngine::ThreadSystem::Instance().init();
         EntityDataManager::Instance().init();
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
@@ -55,7 +71,6 @@ public:
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
         EntityDataManager::Instance().clean();
-        HammerEngine::ThreadSystem::Instance().clean();
     }
 
 protected:
