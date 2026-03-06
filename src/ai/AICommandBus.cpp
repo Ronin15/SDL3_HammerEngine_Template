@@ -10,8 +10,9 @@ namespace HammerEngine {
 
 void AICommandBus::enqueueBehaviorMessage(EntityHandle targetHandle, size_t targetEdmIndex,
                                           uint8_t messageId, uint8_t param) {
+    const uint64_t sequence = m_nextMessageSequence.fetch_add(1, std::memory_order_relaxed);
     std::lock_guard<std::mutex> lock(m_mutex);
-    m_pendingMessages.push_back({targetHandle, targetEdmIndex, messageId, param});
+    m_pendingMessages.push_back({targetHandle, targetEdmIndex, messageId, param, sequence});
 }
 
 void AICommandBus::enqueueBehaviorTransition(EntityHandle targetHandle, size_t targetEdmIndex,

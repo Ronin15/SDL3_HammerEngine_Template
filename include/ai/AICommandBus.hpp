@@ -23,6 +23,7 @@ public:
         size_t targetEdmIndex{SIZE_MAX};
         uint8_t messageId{0};
         uint8_t param{0};
+        uint64_t sequence{0}; // Monotonic enqueue sequence for deterministic arbitration
     };
 
     struct BehaviorTransitionCommand {
@@ -66,6 +67,7 @@ private:
     std::vector<BehaviorMessageCommand> m_pendingMessages;
     std::vector<BehaviorTransitionCommand> m_pendingTransitions;
     std::vector<FactionChangeCommand> m_pendingFactionChanges;
+    std::atomic<uint64_t> m_nextMessageSequence{1};
     std::atomic<uint64_t> m_nextTransitionSequence{1};
 };
 

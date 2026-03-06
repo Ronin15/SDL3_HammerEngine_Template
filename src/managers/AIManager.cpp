@@ -1031,6 +1031,8 @@ void AIManager::commitQueuedBehaviorMessages() {
 
   auto& edm = EntityDataManager::Instance();
   size_t droppedCount = 0;
+  std::unordered_map<size_t, std::vector<HammerEngine::AICommandBus::BehaviorMessageCommand>> grouped;
+  grouped.reserve(m_pendingBehaviorMessages.size());
 
   for (const auto& cmd : m_pendingBehaviorMessages) {
     if (!cmd.targetHandle.isValid()) {
@@ -1041,14 +1043,54 @@ void AIManager::commitQueuedBehaviorMessages() {
         !edm.hasBehaviorData(edmIndex)) {
       continue;
     }
+    grouped[edmIndex].push_back(cmd);
+  }
 
+  for (auto& [edmIndex, cmds] : grouped) {
     auto& data = edm.getBehaviorData(edmIndex);
-    if (data.pendingMessageCount < 4) {
+    if (cmds.empty()) {
+      continue;
+    }
+
+    std::sort(cmds.begin(), cmds.end(),
+              [](const auto& a, const auto& b) {
+                return a.sequence < b.sequence;
+              });
+
+    // Deduplicate by message ID with latest event winning.
+    std::vector<HammerEngine::AICommandBus::BehaviorMessageCommand> compact;
+    compact.reserve(cmds.size());
+    std::unordered_map<uint8_t, size_t> msgIndex;
+    msgIndex.reserve(cmds.size());
+
+    for (const auto& cmd : cmds) {
+      auto it = msgIndex.find(cmd.messageId);
+      if (it == msgIndex.end()) {
+        msgIndex.emplace(cmd.messageId, compact.size());
+        compact.push_back(cmd);
+      } else {
+        compact[it->second] = cmd;
+      }
+    }
+
+    std::sort(compact.begin(), compact.end(),
+              [](const auto& a, const auto& b) {
+                return a.sequence < b.sequence;
+              });
+
+    if (compact.size() > 4) {
+      droppedCount += compact.size() - 4;
+      compact.erase(compact.begin(), compact.end() - 4);
+    }
+
+    for (const auto& cmd : compact) {
+      if (data.pendingMessageCount >= 4) {
+        ++droppedCount;
+        continue;
+      }
       data.pendingMessages[data.pendingMessageCount].messageId = cmd.messageId;
       data.pendingMessages[data.pendingMessageCount].param = cmd.param;
       data.pendingMessageCount++;
-    } else {
-      ++droppedCount;
     }
   }
 
