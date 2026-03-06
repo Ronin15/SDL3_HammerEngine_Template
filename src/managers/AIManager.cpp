@@ -156,6 +156,7 @@ void AIManager::clean() {
 
   // Stop accepting new tasks
   m_globallyPaused.store(true, std::memory_order_release);
+  HammerEngine::AICommandBus::Instance().clearAll();
 
   {
     std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
@@ -188,6 +189,7 @@ void AIManager::prepareForStateTransition() {
 
   // Pause AI processing to prevent new tasks
   m_globallyPaused.store(true, std::memory_order_release);
+  HammerEngine::AICommandBus::Instance().clearAll();
 
   // Batches always complete within update() — no pending futures to wait for.
 
@@ -992,10 +994,16 @@ void AIManager::commitQueuedBehaviorMessages() {
   size_t droppedCount = 0;
 
   for (const auto& cmd : m_pendingBehaviorMessages) {
-    if (cmd.targetEdmIndex == SIZE_MAX || !edm.hasBehaviorData(cmd.targetEdmIndex)) {
+    if (!cmd.targetHandle.isValid()) {
       continue;
     }
-    auto& data = edm.getBehaviorData(cmd.targetEdmIndex);
+    const size_t edmIndex = edm.getIndex(cmd.targetHandle);
+    if (edmIndex == SIZE_MAX || edmIndex != cmd.targetEdmIndex ||
+        !edm.hasBehaviorData(edmIndex)) {
+      continue;
+    }
+
+    auto& data = edm.getBehaviorData(edmIndex);
     if (data.pendingMessageCount < 4) {
       data.pendingMessages[data.pendingMessageCount].messageId = cmd.messageId;
       data.pendingMessages[data.pendingMessageCount].param = cmd.param;
@@ -1020,23 +1028,30 @@ void AIManager::commitQueuedBehaviorTransitions() {
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
   for (const auto& cmd : m_pendingBehaviorTransitions) {
-    if (cmd.targetEdmIndex == SIZE_MAX || cmd.targetEdmIndex >= m_edmToStorageIndex.size()) {
+    if (!cmd.targetHandle.isValid()) {
       continue;
     }
-    size_t storageIdx = m_edmToStorageIndex[cmd.targetEdmIndex];
+
+    const size_t edmIndex = edm.getIndex(cmd.targetHandle);
+    if (edmIndex == SIZE_MAX || edmIndex != cmd.targetEdmIndex ||
+        edmIndex >= m_edmToStorageIndex.size()) {
+      continue;
+    }
+
+    size_t storageIdx = m_edmToStorageIndex[edmIndex];
     if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size() ||
         !m_storage.hotData[storageIdx].active) {
       continue;
     }
 
-    const auto oldConfig = edm.getBehaviorConfig(cmd.targetEdmIndex);
-    removeFromIndices(cmd.targetEdmIndex, oldConfig.type);
+    const auto oldConfig = edm.getBehaviorConfig(edmIndex);
+    removeFromIndices(edmIndex, oldConfig.type);
 
-    edm.clearBehaviorData(cmd.targetEdmIndex);
-    edm.setBehaviorConfig(cmd.targetEdmIndex, cmd.config);
-    Behaviors::init(cmd.targetEdmIndex, cmd.config);
+    edm.clearBehaviorData(edmIndex);
+    edm.setBehaviorConfig(edmIndex, cmd.config);
+    Behaviors::init(edmIndex, cmd.config);
 
-    addToIndices(cmd.targetEdmIndex, cmd.config.type);
+    addToIndices(edmIndex, cmd.config.type);
   }
 }
 

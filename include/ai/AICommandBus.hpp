@@ -7,6 +7,7 @@
 #define AI_COMMAND_BUS_HPP
 
 #include "ai/BehaviorConfig.hpp"
+#include "entities/EntityHandle.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
@@ -17,12 +18,14 @@ namespace HammerEngine {
 class AICommandBus {
 public:
     struct BehaviorMessageCommand {
+        EntityHandle targetHandle{};
         size_t targetEdmIndex{SIZE_MAX};
         uint8_t messageId{0};
         uint8_t param{0};
     };
 
     struct BehaviorTransitionCommand {
+        EntityHandle targetHandle{};
         size_t targetEdmIndex{SIZE_MAX};
         BehaviorConfigData config{};
     };
@@ -32,9 +35,12 @@ public:
         return instance;
     }
 
-    void enqueueBehaviorMessage(size_t targetEdmIndex, uint8_t messageId, uint8_t param = 0);
-    void enqueueBehaviorTransition(size_t targetEdmIndex, const BehaviorConfigData& config);
-    void clearBehaviorMessages(size_t targetEdmIndex);
+    void enqueueBehaviorMessage(EntityHandle targetHandle, size_t targetEdmIndex,
+                                uint8_t messageId, uint8_t param = 0);
+    void enqueueBehaviorTransition(EntityHandle targetHandle, size_t targetEdmIndex,
+                                   const BehaviorConfigData& config);
+    void clearBehaviorMessages(EntityHandle targetHandle, size_t targetEdmIndex);
+    void clearAll();
 
     void drainBehaviorMessages(std::vector<BehaviorMessageCommand>& out);
     void drainBehaviorTransitions(std::vector<BehaviorTransitionCommand>& out);

@@ -8,21 +8,29 @@
 
 namespace HammerEngine {
 
-void AICommandBus::enqueueBehaviorMessage(size_t targetEdmIndex, uint8_t messageId, uint8_t param) {
+void AICommandBus::enqueueBehaviorMessage(EntityHandle targetHandle, size_t targetEdmIndex,
+                                          uint8_t messageId, uint8_t param) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    m_pendingMessages.push_back({targetEdmIndex, messageId, param});
+    m_pendingMessages.push_back({targetHandle, targetEdmIndex, messageId, param});
 }
 
-void AICommandBus::enqueueBehaviorTransition(size_t targetEdmIndex, const BehaviorConfigData& config) {
+void AICommandBus::enqueueBehaviorTransition(EntityHandle targetHandle, size_t targetEdmIndex,
+                                             const BehaviorConfigData& config) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    m_pendingTransitions.push_back({targetEdmIndex, config});
+    m_pendingTransitions.push_back({targetHandle, targetEdmIndex, config});
 }
 
-void AICommandBus::clearBehaviorMessages(size_t targetEdmIndex) {
+void AICommandBus::clearBehaviorMessages(EntityHandle targetHandle, size_t targetEdmIndex) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    std::erase_if(m_pendingMessages, [targetEdmIndex](const BehaviorMessageCommand& cmd) {
-        return cmd.targetEdmIndex == targetEdmIndex;
+    std::erase_if(m_pendingMessages, [targetHandle, targetEdmIndex](const BehaviorMessageCommand& cmd) {
+        return cmd.targetEdmIndex == targetEdmIndex && cmd.targetHandle == targetHandle;
     });
+}
+
+void AICommandBus::clearAll() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_pendingMessages.clear();
+    m_pendingTransitions.clear();
 }
 
 void AICommandBus::drainBehaviorMessages(std::vector<BehaviorMessageCommand>& out) {

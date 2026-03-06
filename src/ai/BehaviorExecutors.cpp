@@ -98,7 +98,9 @@ void switchBehavior(size_t edmIndex, BehaviorType newType) {
 }
 
 void switchBehavior(size_t edmIndex, const HammerEngine::BehaviorConfigData& config) {
-    HammerEngine::AICommandBus::Instance().enqueueBehaviorTransition(edmIndex, config);
+    auto& edm = EntityDataManager::Instance();
+    HammerEngine::AICommandBus::Instance().enqueueBehaviorTransition(
+        edm.getHandle(edmIndex), edmIndex, config);
 }
 
 // ============================================================================
@@ -349,12 +351,15 @@ void processWitnessedCombat(size_t witnessIndex, EntityHandle attacker,
 // ============================================================================
 
 void queueBehaviorMessage(size_t edmIndex, uint8_t messageId, uint8_t param) {
-    HammerEngine::AICommandBus::Instance().enqueueBehaviorMessage(edmIndex, messageId, param);
+    auto& edm = EntityDataManager::Instance();
+    HammerEngine::AICommandBus::Instance().enqueueBehaviorMessage(
+        edm.getHandle(edmIndex), edmIndex, messageId, param);
 }
 
 void clearPendingMessages(size_t edmIndex) {
-    HammerEngine::AICommandBus::Instance().clearBehaviorMessages(edmIndex);
     auto& edm = EntityDataManager::Instance();
+    HammerEngine::AICommandBus::Instance().clearBehaviorMessages(
+        edm.getHandle(edmIndex), edmIndex);
     auto& data = edm.getBehaviorData(edmIndex);
     data.pendingMessageCount = 0;
 }
@@ -401,7 +406,9 @@ bool getCachedWorldBounds(float& minX, float& minY, float& maxX, float& maxY) {
 // ============================================================================
 
 void deferBehaviorMessage(size_t targetEdmIndex, uint8_t messageId, uint8_t param) {
-    HammerEngine::AICommandBus::Instance().enqueueBehaviorMessage(targetEdmIndex, messageId, param);
+    auto& edm = EntityDataManager::Instance();
+    HammerEngine::AICommandBus::Instance().enqueueBehaviorMessage(
+        edm.getHandle(targetEdmIndex), targetEdmIndex, messageId, param);
 }
 
 } // namespace Behaviors
