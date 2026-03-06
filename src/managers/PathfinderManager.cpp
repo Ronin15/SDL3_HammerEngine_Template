@@ -216,7 +216,12 @@ void PathfinderManager::commitCompletedPaths() {
 
     auto& edm = EntityDataManager::Instance();
     for (const auto& completion : m_reusablePathCompletions) {
-        if (!edm.hasPathData(completion.edmIndex)) {
+        if (!completion.targetHandle.isValid() || !edm.hasPathData(completion.edmIndex)) {
+            continue;
+        }
+
+        const size_t resolvedIndex = edm.getIndex(completion.targetHandle);
+        if (resolvedIndex == SIZE_MAX || resolvedIndex != completion.edmIndex) {
             continue;
         }
 
@@ -373,9 +378,14 @@ uint64_t PathfinderManager::requestPathToEDM(
     const uint64_t requestId = m_nextRequestId.fetch_add(1, std::memory_order_relaxed);
 
     uint32_t requestToken = 0;
+    EntityHandle requestHandle{};
     {
         auto& edm = EntityDataManager::Instance();
         if (!edm.hasPathData(edmIndex)) {
+            return 0;
+        }
+        requestHandle = edm.getHandle(edmIndex);
+        if (!requestHandle.isValid()) {
             return 0;
         }
         auto& pd = edm.getPathData(edmIndex);
@@ -386,7 +396,7 @@ uint64_t PathfinderManager::requestPathToEDM(
     // ASYNC: Enqueue to ThreadSystem and return immediately (non-blocking)
     auto& threadSystem = HammerEngine::ThreadSystem::Instance();
 
-    auto work = [this, edmIndex, requestToken, nStart, nGoal, cacheKey, gridSnapshot]() {
+    auto work = [this, requestHandle, edmIndex, requestToken, nStart, nGoal, cacheKey, gridSnapshot]() {
         // CRITICAL: Check shutdown before accessing any member data
         // This prevents use-after-free when PathfinderManager is destroyed while tasks pending
         if (m_isShutdown) {
@@ -464,6 +474,7 @@ uint64_t PathfinderManager::requestPathToEDM(
         }
 
         PathCompletion completion;
+        completion.targetHandle = requestHandle;
         completion.edmIndex = edmIndex;
         completion.requestToken = requestToken;
 

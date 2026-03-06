@@ -488,6 +488,7 @@ private:
 
     struct PathCompletion {
         static constexpr size_t MAX_WAYPOINTS = 32;
+        EntityHandle targetHandle{};
         size_t edmIndex{0};
         uint32_t requestToken{0};
         uint16_t length{0};

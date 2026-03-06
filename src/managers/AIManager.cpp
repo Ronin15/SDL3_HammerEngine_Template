@@ -1133,9 +1133,15 @@ void AIManager::commitQueuedBehaviorTransitions() {
       continue;
     }
 
-    auto it = selectedByEdmIndex.find(cmd.targetEdmIndex);
+    const size_t resolvedEdmIndex = edm.getIndex(cmd.targetHandle);
+    if (resolvedEdmIndex == SIZE_MAX || resolvedEdmIndex != cmd.targetEdmIndex ||
+        resolvedEdmIndex >= m_edmToStorageIndex.size()) {
+      continue;
+    }
+
+    auto it = selectedByEdmIndex.find(resolvedEdmIndex);
     if (it == selectedByEdmIndex.end()) {
-      selectedByEdmIndex.emplace(cmd.targetEdmIndex, selected.size());
+      selectedByEdmIndex.emplace(resolvedEdmIndex, selected.size());
       selected.push_back(cmd);
       continue;
     }
