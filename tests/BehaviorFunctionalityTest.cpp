@@ -878,6 +878,36 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueOverflow) {
     aiMgr.unassignBehavior(handle);
 }
 
+BOOST_AUTO_TEST_CASE(TestCommandBusMergesWithExistingPendingInbox) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto entity = TestNPC::create(300.0f, 300.0f);
+    EntityHandle handle = entity->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.assignBehavior(handle, "Attack");
+    updateAI(0.016f);
+
+    auto& behaviorData = edm.getBehaviorData(idx);
+    behaviorData.pendingMessageCount = 4;
+    for (uint8_t i = 0; i < behaviorData.pendingMessageCount; ++i) {
+        behaviorData.pendingMessages[i].messageId = BehaviorMessage::ATTACK_TARGET;
+        behaviorData.pendingMessages[i].param = i;
+    }
+
+    Behaviors::queueBehaviorMessage(idx, BehaviorMessage::RETREAT);
+
+    updateAI(0.016f);
+
+    BOOST_CHECK_MESSAGE(edm.getBehaviorData(idx).state.attack.isRetreating,
+        "New command-bus RETREAT message should survive even when the previous frame left a full inbox");
+    BOOST_CHECK(edm.getBehaviorData(idx).pendingMessageCount == 0);
+
+    aiMgr.unassignBehavior(handle);
+}
+
 BOOST_AUTO_TEST_CASE(TestClearPendingMessages) {
     auto& edm = EntityDataManager::Instance();
     auto& aiMgr = AIManager::Instance();

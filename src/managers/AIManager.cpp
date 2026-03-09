@@ -25,6 +25,52 @@
 // Use SIMD abstraction layer
 using namespace HammerEngine::SIMD;
 
+namespace {
+
+constexpr size_t MAX_PENDING_BEHAVIOR_MESSAGES = 4;
+
+struct PendingBehaviorMessageCandidate {
+  uint8_t messageId{0};
+  uint8_t param{0};
+  uint64_t sequence{0};
+};
+
+void compactBehaviorMessages(
+    std::vector<PendingBehaviorMessageCandidate>& candidates) {
+  if (candidates.empty()) {
+    return;
+  }
+
+  std::sort(candidates.begin(), candidates.end(),
+            [](const auto& a, const auto& b) {
+              return a.sequence < b.sequence;
+            });
+
+  std::vector<PendingBehaviorMessageCandidate> compact;
+  compact.reserve(candidates.size());
+  std::unordered_map<uint8_t, size_t> msgIndex;
+  msgIndex.reserve(candidates.size());
+
+  for (const auto& candidate : candidates) {
+    auto it = msgIndex.find(candidate.messageId);
+    if (it == msgIndex.end()) {
+      msgIndex.emplace(candidate.messageId, compact.size());
+      compact.push_back(candidate);
+    } else {
+      compact[it->second] = candidate;
+    }
+  }
+
+  std::sort(compact.begin(), compact.end(),
+            [](const auto& a, const auto& b) {
+              return a.sequence < b.sequence;
+            });
+
+  candidates = std::move(compact);
+}
+
+} // namespace
+
 bool AIManager::init() {
   if (m_initialized.load(std::memory_order_acquire)) {
     AI_INFO("AIManager already initialized");
@@ -1058,50 +1104,40 @@ void AIManager::commitQueuedBehaviorMessages() {
     if (itGroup == grouped.end()) {
       continue;
     }
-    auto& cmds = itGroup->second;
     auto& data = edm.getBehaviorData(edmIndex);
+    auto& cmds = itGroup->second;
     if (cmds.empty()) {
       continue;
     }
 
-    std::sort(cmds.begin(), cmds.end(),
-              [](const auto& a, const auto& b) {
-                return a.sequence < b.sequence;
-              });
+    std::vector<PendingBehaviorMessageCandidate> candidates;
+    candidates.reserve(static_cast<size_t>(data.pendingMessageCount) + cmds.size());
 
-    // Deduplicate by message ID with latest event winning.
-    std::vector<HammerEngine::AICommandBus::BehaviorMessageCommand> compact;
-    compact.reserve(cmds.size());
-    std::unordered_map<uint8_t, size_t> msgIndex;
-    msgIndex.reserve(cmds.size());
+    // Existing inbox entries are older than newly drained bus entries, so
+    // assign them an earlier synthetic sequence before compacting.
+    for (uint8_t i = 0; i < data.pendingMessageCount; ++i) {
+      candidates.push_back({data.pendingMessages[i].messageId,
+                            data.pendingMessages[i].param,
+                            static_cast<uint64_t>(i)});
+    }
 
+    const uint64_t sequenceBias = static_cast<uint64_t>(data.pendingMessageCount);
     for (const auto& cmd : cmds) {
-      auto it = msgIndex.find(cmd.messageId);
-      if (it == msgIndex.end()) {
-        msgIndex.emplace(cmd.messageId, compact.size());
-        compact.push_back(cmd);
-      } else {
-        compact[it->second] = cmd;
-      }
+      candidates.push_back({cmd.messageId, cmd.param, cmd.sequence + sequenceBias});
     }
 
-    std::sort(compact.begin(), compact.end(),
-              [](const auto& a, const auto& b) {
-                return a.sequence < b.sequence;
-              });
+    compactBehaviorMessages(candidates);
 
-    if (compact.size() > 4) {
-      droppedCount += compact.size() - 4;
-      compact.erase(compact.begin(), compact.end() - 4);
+    if (candidates.size() > MAX_PENDING_BEHAVIOR_MESSAGES) {
+      droppedCount += candidates.size() - MAX_PENDING_BEHAVIOR_MESSAGES;
+      candidates.erase(candidates.begin(),
+                       candidates.end() - MAX_PENDING_BEHAVIOR_MESSAGES);
     }
 
-    for (const auto& cmd : compact) {
-      if (data.pendingMessageCount >= 4) {
-        ++droppedCount;
-        continue;
-      }
-      data.pendingMessages[data.pendingMessageCount].messageId = cmd.messageId;
-      data.pendingMessages[data.pendingMessageCount].param = cmd.param;
+    data.pendingMessageCount = 0;
+    for (const auto& candidate : candidates) {
+      data.pendingMessages[data.pendingMessageCount].messageId = candidate.messageId;
+      data.pendingMessages[data.pendingMessageCount].param = candidate.param;
       data.pendingMessageCount++;
     }
   }
