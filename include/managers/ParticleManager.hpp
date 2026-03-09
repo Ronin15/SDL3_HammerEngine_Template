@@ -672,7 +672,7 @@ public:
    *
    * Called automatically by update() when WorkerBudget threading is enabled.
    */
-  void updateWithWorkerBudget(float deltaTime, size_t particleCount,
+  void updateWithWorkerBudget(float deltaTime, size_t traversedParticleCount,
                               ParticleThreadingInfo& outThreadingInfo);
 
   /**
@@ -1083,10 +1083,10 @@ private:
   void swapBuffers();
   void cleanupInactiveParticles();
   void updateEffectInstances(float deltaTime);
-  void updateParticlesThreaded(float deltaTime, size_t activeParticleCount,
+  void updateParticlesThreaded(float deltaTime, size_t traversedParticleCount,
                                ParticleThreadingInfo& outThreadingInfo);
   void updateParticlesSingleThreaded(float deltaTime,
-                                     size_t activeParticleCount);
+                                     size_t traversedParticleCount);
   void updateParticleRange(LockFreeParticleStorage::ParticleSoA &particles,
                            size_t startIdx, size_t endIdx, float deltaTime,
                            float windPhase);

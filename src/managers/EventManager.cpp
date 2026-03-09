@@ -753,8 +753,6 @@ void EventManager::processBatchSingleThreaded(size_t start, size_t end) const {
 }
 
 void EventManager::drainDispatchQueueWithBudget() {
-  auto startTime = std::chrono::high_resolution_clock::now();
-
   // Extract all pending events under lock - worker threads may be enqueueing
   // events concurrently (e.g., WorldManager::loadNewWorld on worker thread)
   {
@@ -781,12 +779,30 @@ void EventManager::drainDispatchQueueWithBudget() {
               return a.data.priority > b.data.priority;
             });
 
+  size_t maxThreadableRange = 0;
+  size_t scanCursor = 0;
+  while (scanCursor < eventCount) {
+    size_t rangeStart = scanCursor;
+    while (scanCursor < eventCount &&
+           m_localDispatchBuffer[scanCursor].typeId != EventTypeId::Combat) {
+      ++scanCursor;
+    }
+
+    maxThreadableRange = std::max(maxThreadableRange, scanCursor - rangeStart);
+
+    if (scanCursor < eventCount) {
+      ++scanCursor;
+    }
+  }
+
   // Query WorkerBudget for threading decision
   auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-  auto decision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::Event, eventCount);
+  auto decision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::Event,
+                                               maxThreadableRange);
   // Track what actually happened
   bool actualWasThreaded = false;
   size_t actualBatchCount = 1;
+  double measuredRangeMs = 0.0;
 
   auto dispatchByIndex = [this](size_t index) {
     const auto &pd = m_localDispatchBuffer[index];
@@ -810,9 +826,21 @@ void EventManager::drainDispatchQueueWithBudget() {
       return;
     }
 
+    const bool trackThisRange = (nonCombatCount == maxThreadableRange);
+    auto rangeStartTime = std::chrono::high_resolution_clock::time_point{};
+    if (trackThisRange) {
+      rangeStartTime = std::chrono::high_resolution_clock::now();
+    }
+
     if (!decision.shouldThread) {
       for (size_t i = start; i < end; ++i) {
         dispatchByIndex(i);
+      }
+      if (trackThisRange) {
+        auto rangeEndTime = std::chrono::high_resolution_clock::now();
+        measuredRangeMs = std::max(
+            measuredRangeMs,
+            std::chrono::duration<double, std::milli>(rangeEndTime - rangeStartTime).count());
       }
       return;
     }
@@ -826,6 +854,12 @@ void EventManager::drainDispatchQueueWithBudget() {
     if (batchCount <= 1) {
       for (size_t i = start; i < end; ++i) {
         dispatchByIndex(i);
+      }
+      if (trackThisRange) {
+        auto rangeEndTime = std::chrono::high_resolution_clock::now();
+        measuredRangeMs = std::max(
+            measuredRangeMs,
+            std::chrono::duration<double, std::milli>(rangeEndTime - rangeStartTime).count());
       }
       return;
     }
@@ -862,6 +896,13 @@ void EventManager::drainDispatchQueueWithBudget() {
         future.get();
       }
     }
+
+    if (trackThisRange) {
+      auto rangeEndTime = std::chrono::high_resolution_clock::now();
+      measuredRangeMs = std::max(
+          measuredRangeMs,
+          std::chrono::duration<double, std::milli>(rangeEndTime - rangeStartTime).count());
+    }
   };
 
   // Preserve sorted queue order while serializing combat handlers:
@@ -883,24 +924,22 @@ void EventManager::drainDispatchQueueWithBudget() {
     }
   }
 
-  // Measure completion time for adaptive tuning
-  auto endTime = std::chrono::high_resolution_clock::now();
-  double totalTimeMs = std::chrono::duration<double, std::milli>(endTime - startTime).count();
-
   // Report results for unified adaptive tuning
-  if (eventCount > 0) {
+  if (maxThreadableRange > 0 && measuredRangeMs > 0.0) {
     budgetMgr.reportExecution(HammerEngine::SystemType::Event,
-                              eventCount, actualWasThreaded, actualBatchCount, totalTimeMs);
+                              maxThreadableRange, actualWasThreaded,
+                              actualBatchCount, measuredRangeMs);
   }
 
 #ifndef NDEBUG
   // Periodic debug logging (~35 seconds at 60fps)
   static thread_local uint64_t logFrameCounter = 0;
   if (++logFrameCounter % 2100 == 0 && eventCount > 0) {
-    EVENT_DEBUG(std::format("Dispatch: {} events, {} [{} batches, {:.2f}ms]",
+    EVENT_DEBUG(std::format("Dispatch: {} events (max threadable range {}), {} [{} batches, {:.2f}ms]",
                             eventCount,
+                            maxThreadableRange,
                             actualWasThreaded ? "multi-threaded" : "single-threaded",
-                            actualBatchCount, totalTimeMs));
+                            actualBatchCount, measuredRangeMs));
   }
 #endif
 

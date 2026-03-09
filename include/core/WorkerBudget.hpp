@@ -126,10 +126,12 @@ public:
      * WorkerBudget is the AUTHORITATIVE source for threading decisions.
      * Managers should use decision.shouldThread directly without overrides.
      *
-     * Decision based on throughput comparison between modes:
-     * - Tracks smoothed throughput for both single and multi-threaded
-     * - Switches mode when other mode shows 15%+ improvement
-     * - Exploration triggered by signals, not periodic forced probing
+     * Decision based on a learned single-thread timing threshold:
+     * - Stays single-threaded until the manager reports a workload whose
+     *   single-thread batch time crosses the learning threshold
+     * - Once learned, uses hysteresis to stay threaded until workload drops
+     *   below the low band
+     * - Multi-threaded samples do not affect the switch-over threshold
      *
      * @param system The system type
      * @param workloadSize Number of items to process
@@ -140,14 +142,18 @@ public:
     /**
      * @brief Report execution result for unified tuning
      *
-     * Call after processing completes to update throughput tracking
-     * and tune batch multiplier. Replaces separate reportBatchCompletion
-     * and reportThreadingResult calls.
+     * Call after processing completes using the same workload unit that was
+     * passed to shouldUseThreading().
+     *
+     * Reporting semantics:
+     * - Single-threaded samples update the learned switch-over threshold
+     * - Multi-threaded samples update only batch hill-climb tuning
+     * - batchCount is ignored for single-threaded reports
      *
      * @param system The system type
      * @param workloadSize Number of items that were processed
      * @param wasThreaded true if multi-threading was used
-     * @param batchCount Number of batches (0 if single-threaded)
+     * @param batchCount Number of batches used for multi-threaded execution
      * @param totalTimeMs Total time for processing to complete
      */
     void reportExecution(SystemType system, size_t workloadSize,
@@ -215,11 +221,11 @@ private:
      * @brief Unified per-system tuning state
      *
      * Two measurement purposes only:
-     * - Single-threaded: smoothedSingleTime for threshold learning (switch to multi)
-     * - Multi-threaded: multiSmoothedThroughput for batch multiplier hill-climbing
+     * - Single-threaded: smoothedSingleTime learns the switch-over workload
+     * - Multi-threaded: multiSmoothedThroughput tunes batch hill-climbing
      *
      * Threading decision via adaptive threshold learning:
-     * - Single-threaded until completion time >= 1.0ms (learning phase)
+     * - Single-threaded until smoothed single-thread time crosses 0.9ms
      * - Once threshold learned, use multi-threading with hysteresis
      * - Re-learn when workload drops below threshold - 5%
      *
