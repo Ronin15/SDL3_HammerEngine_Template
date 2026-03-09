@@ -291,6 +291,20 @@ void processCombatEvent(size_t index, EntityHandle attacker, EntityHandle target
         for (size_t guardIdx : t_guardBuffer) {
             if (guardIdx == index) continue;
             if (edm.getCharacterDataByIndex(guardIdx).faction != victimFaction) continue;
+            if (edm.hasMemoryData(guardIdx)) {
+                auto& guardMemData = edm.getMemoryData(guardIdx);
+                guardMemData.lastTarget = attacker;
+
+                MemoryEntry mem;
+                mem.subject = attacker;
+                mem.location = combatPos;
+                mem.timestamp = gameTime;
+                mem.value = damage;
+                mem.type = MemoryType::WitnessedCombat;
+                mem.importance = static_cast<uint8_t>(std::min(255.0f, damage * 2.0f));
+                mem.flags = MemoryEntry::FLAG_VALID;
+                edm.addMemory(guardIdx, mem, false);
+            }
             deferBehaviorMessage(guardIdx, BehaviorMessage::DISTRESS);
         }
     } else {

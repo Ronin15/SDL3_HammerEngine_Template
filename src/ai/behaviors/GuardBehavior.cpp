@@ -281,7 +281,38 @@ EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, bool& is
         }
     }
 
-    // 4. Player proximity check for enemy-faction guards
+    // 4. Recent witnessed combat/death memories preserve attacker identity for guard response
+    if (ctx.memoryData && ctx.memoryData->isValid()) {
+        EntityHandle recentThreat{};
+        float recentTimestamp = -1.0f;
+
+        for (size_t i = 0; i < NPCMemoryData::INLINE_MEMORY_COUNT; ++i) {
+            const auto& mem = ctx.memoryData->memories[i];
+            if (!mem.isValid()) continue;
+            if (mem.type != MemoryType::WitnessedCombat &&
+                mem.type != MemoryType::WitnessedDeath) continue;
+            if (!mem.subject.isValid()) continue;
+
+            const float memAge = ctx.gameTime - mem.timestamp;
+            if (memAge > 10.0f) continue;
+
+            size_t idx = edm.getIndex(mem.subject);
+            if (idx == SIZE_MAX || !edm.getHotDataByIndex(idx).isAlive()) continue;
+
+            if (mem.timestamp >= recentTimestamp) {
+                recentTimestamp = mem.timestamp;
+                recentThreat = mem.subject;
+            }
+        }
+
+        if (recentThreat.isValid()) {
+            size_t idx = edm.getIndex(recentThreat);
+            isEnemyFaction = (edm.getCharacterDataByIndex(idx).faction != myFaction);
+            return recentThreat;
+        }
+    }
+
+    // 5. Player proximity check for enemy-faction guards
     if (ctx.playerValid && ctx.characterData && ctx.characterData->faction == 1) {
         float detectionRange = ctx.behaviorData->state.guard.cachedDetectionRange;
         float distSq = Vector2D::distanceSquared(ctx.transform.position, ctx.playerPosition);

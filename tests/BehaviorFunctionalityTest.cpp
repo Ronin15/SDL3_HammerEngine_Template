@@ -561,6 +561,30 @@ BOOST_AUTO_TEST_CASE(TestAttackBehavior) {
     BOOST_CHECK_GT(finalBehaviorCount, initialBehaviorCount);
 }
 
+BOOST_AUTO_TEST_CASE(TestAttackAutoAcquiresNearbyEnemyTarget) {
+    auto& edm = EntityDataManager::Instance();
+
+    auto attacker = TestNPC::create(300.0f, 300.0f);
+    auto target = TestNPC::create(360.0f, 300.0f);
+
+    edm.setFaction(target->getHandle(), 2);
+
+    EntityHandle attackerHandle = attacker->getHandle();
+    size_t attackerIdx = edm.getIndex(attackerHandle);
+    BOOST_REQUIRE(attackerIdx != SIZE_MAX);
+
+    AIManager::Instance().assignBehavior(attackerHandle, "Attack");
+
+    const float testDeltaTime = 0.1f;
+    for (int i = 0; i < 20; ++i) {
+        updateAI(testDeltaTime, attacker->getPosition());
+    }
+
+    const auto& memData = edm.getMemoryData(attackerIdx);
+    BOOST_CHECK(memData.lastTarget.isValid());
+    BOOST_CHECK(memData.lastTarget == target->getHandle());
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 // Test Suite 5: Message System Testing
@@ -1749,6 +1773,38 @@ BOOST_AUTO_TEST_CASE(TestGuardPanicEscalatesToHostile) {
 
     BOOST_TEST_MESSAGE("Guard PANIC escalated to HOSTILE (not Flee) verified");
     aiMgr.unassignBehavior(entityHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestGuardDistressTracksAttacker) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto victim = TestNPC::create(300.0f, 300.0f);
+    auto guard = TestNPC::create(340.0f, 300.0f);
+    auto attacker = TestNPC::create(360.0f, 300.0f);
+
+    EntityHandle victimHandle = victim->getHandle();
+    EntityHandle guardHandle = guard->getHandle();
+    EntityHandle attackerHandle = attacker->getHandle();
+
+    edm.setFaction(attackerHandle, 2);
+
+    size_t victimIdx = edm.getIndex(victimHandle);
+    size_t guardIdx = edm.getIndex(guardHandle);
+    BOOST_REQUIRE(victimIdx != SIZE_MAX);
+    BOOST_REQUIRE(guardIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(guardHandle, "Guard");
+
+    Behaviors::processCombatEvent(victimIdx, attackerHandle, victimHandle, 20.0f, true, 1.0f);
+    updateAI(0.016f, guard->getPosition());
+
+    const auto& guardMemData = edm.getMemoryData(guardIdx);
+    BOOST_CHECK(guardMemData.lastTarget.isValid());
+    BOOST_CHECK(guardMemData.lastTarget == attackerHandle);
+    BOOST_CHECK(edm.getBehaviorData(guardIdx).state.guard.currentAlertLevel >= 1);
+
+    aiMgr.unassignBehavior(guardHandle);
 }
 
 BOOST_AUTO_TEST_CASE(TestGuardFleesWhenOverwhelmed) {

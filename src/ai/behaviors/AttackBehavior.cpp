@@ -43,6 +43,8 @@ constexpr float CHARGE_DISTANCE_THRESHOLD_MULT = 1.5f;
 constexpr float FEAR_FLEE_THRESHOLD = 0.7f;
 constexpr float BRAVERY_FLEE_THRESHOLD = 0.3f;
 constexpr float BRAVERY_RETREAT_FACTOR = 0.3f;
+constexpr float TARGET_SCAN_RANGE_MULTIPLIER = 6.0f;
+constexpr float MIN_TARGET_SCAN_RANGE = 250.0f;
 
 // Attack state enumeration (matches uint8_t in EDM)
 enum class AttackState : uint8_t {
@@ -217,6 +219,73 @@ void moveToPosition(size_t edmIndex, const Vector2D& targetPos, float speed) {
     } else {
         edm.getHotDataByIndex(edmIndex).transform.velocity = Vector2D(0, 0);
     }
+}
+
+bool isAttackTargetCandidate(size_t selfIdx, size_t candidateIdx, const CharacterData* selfCharData) {
+    if (candidateIdx == SIZE_MAX || candidateIdx == selfIdx) return false;
+
+    auto& edm = EntityDataManager::Instance();
+    const auto& targetHot = edm.getHotDataByIndex(candidateIdx);
+    if (!targetHot.isAlive()) return false;
+
+    if (selfCharData) {
+        const uint8_t myFaction = selfCharData->faction;
+        const uint8_t targetFaction = edm.getCharacterDataByIndex(candidateIdx).faction;
+        if (targetFaction == myFaction) return false;
+    }
+
+    return true;
+}
+
+bool tryAcquireTarget(BehaviorContext& ctx, BehaviorData& data,
+                      const HammerEngine::AttackBehaviorConfig& config,
+                      Vector2D& targetPos) {
+    auto& edm = EntityDataManager::Instance();
+    auto& attack = data.state.attack;
+
+    EntityHandle bestTarget{};
+    float bestDistanceSq = std::numeric_limits<float>::max();
+
+    if (ctx.playerValid && ctx.playerHandle.isValid()) {
+        const size_t playerIdx = edm.getIndex(ctx.playerHandle);
+        if (isAttackTargetCandidate(ctx.edmIndex, playerIdx, ctx.characterData)) {
+            targetPos = edm.getHotDataByIndex(playerIdx).transform.position;
+            bestTarget = ctx.playerHandle;
+            bestDistanceSq = Vector2D::distanceSquared(ctx.transform.position, targetPos);
+        }
+    }
+
+    const float scanRange =
+        std::max(config.attackRange * TARGET_SCAN_RANGE_MULTIPLIER, MIN_TARGET_SCAN_RANGE);
+    AIManager::Instance().scanActiveIndicesInRadius(
+        ctx.transform.position, scanRange, s_scanBuffer, false);
+
+    for (size_t candidateIdx : s_scanBuffer) {
+        if (!isAttackTargetCandidate(ctx.edmIndex, candidateIdx, ctx.characterData)) {
+            continue;
+        }
+
+        const Vector2D candidatePos = edm.getHotDataByIndex(candidateIdx).transform.position;
+        const float distanceSq =
+            Vector2D::distanceSquared(ctx.transform.position, candidatePos);
+        if (distanceSq >= bestDistanceSq) {
+            continue;
+        }
+
+        bestTarget = edm.getHandle(candidateIdx);
+        bestDistanceSq = distanceSq;
+        targetPos = candidatePos;
+    }
+
+    if (!bestTarget.isValid()) {
+        return false;
+    }
+
+    attack.hasTarget = true;
+    if (ctx.memoryData) {
+        ctx.memoryData->lastTarget = bestTarget;
+    }
+    return true;
 }
 
 bool shouldRetreat(size_t edmIndex, const CharacterData* charData, float retreatThreshold, float aggression) {
@@ -503,6 +572,23 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             targetPos = edm.getHotDataByIndex(attackerIdx).transform.position;
             hasTarget = true;
         }
+    }
+
+    // Check player as a direct hostile fallback
+    if (!hasTarget && ctx.playerValid && ctx.playerHandle.isValid()) {
+        size_t playerIdx = edm.getIndex(ctx.playerHandle);
+        if (isAttackTargetCandidate(ctx.edmIndex, playerIdx, ctx.characterData)) {
+            targetPos = edm.getHotDataByIndex(playerIdx).transform.position;
+            hasTarget = true;
+            if (ctx.memoryData) {
+                ctx.memoryData->lastTarget = ctx.playerHandle;
+            }
+        }
+    }
+
+    // Dynamically acquire the nearest valid target when memory is empty/stale.
+    if (!hasTarget) {
+        hasTarget = tryAcquireTarget(ctx, data, config, targetPos);
     }
 
     // No valid target — return to passive behavior
