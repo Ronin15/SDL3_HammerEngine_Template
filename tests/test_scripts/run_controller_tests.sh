@@ -20,7 +20,6 @@ RUN_NPCRENDER=false
 RUN_ITEM=false
 RUN_RESOURCERENDER=false
 RUN_SOCIAL=false
-RUN_TRADE=false
 
 for arg in "$@"; do
   case $arg in
@@ -41,7 +40,6 @@ for arg in "$@"; do
       echo -e "  --item            Run only ItemController tests"
       echo -e "  --resourcerender  Run only ResourceRenderController tests"
       echo -e "  --social          Run only SocialController tests"
-      echo -e "  --trade           Run only TradeController tests"
       echo -e "  --help            Show this help message"
       exit 0
       ;;
@@ -85,11 +83,6 @@ for arg in "$@"; do
       RUN_SOCIAL=true
       shift
       ;;
-    --trade)
-      RUN_ALL=false
-      RUN_TRADE=true
-      shift
-      ;;
   esac
 done
 
@@ -128,10 +121,6 @@ fi
 
 if [ "$RUN_ALL" = true ] || [ "$RUN_SOCIAL" = true ]; then
   EXECUTABLES+=("social_controller_tests")
-fi
-
-if [ "$RUN_ALL" = true ] || [ "$RUN_TRADE" = true ]; then
-  EXECUTABLES+=("trade_controller_tests")
 fi
 
 # Get the directory where this script is located and find project root
