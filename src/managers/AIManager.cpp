@@ -35,38 +35,39 @@ struct PendingBehaviorMessageCandidate {
   uint64_t sequence{0};
 };
 
-void compactBehaviorMessages(
-    std::vector<PendingBehaviorMessageCandidate>& candidates) {
-  if (candidates.empty()) {
-    return;
+constexpr size_t MAX_COMPACTED_BEHAVIOR_MESSAGES = 16;
+
+void sortPendingBehaviorCandidates(
+    std::array<PendingBehaviorMessageCandidate,
+               MAX_COMPACTED_BEHAVIOR_MESSAGES>& candidates,
+    size_t count) {
+  for (size_t i = 1; i < count; ++i) {
+    PendingBehaviorMessageCandidate value = candidates[i];
+    size_t insertIdx = i;
+    while (insertIdx > 0 &&
+           candidates[insertIdx - 1].sequence > value.sequence) {
+      candidates[insertIdx] = candidates[insertIdx - 1];
+      --insertIdx;
+    }
+    candidates[insertIdx] = value;
   }
+}
 
-  std::sort(candidates.begin(), candidates.end(),
-            [](const auto& a, const auto& b) {
-              return a.sequence < b.sequence;
-            });
-
-  std::vector<PendingBehaviorMessageCandidate> compact;
-  compact.reserve(candidates.size());
-  std::unordered_map<uint8_t, size_t> msgIndex;
-  msgIndex.reserve(candidates.size());
-
-  for (const auto& candidate : candidates) {
-    auto it = msgIndex.find(candidate.messageId);
-    if (it == msgIndex.end()) {
-      msgIndex.emplace(candidate.messageId, compact.size());
-      compact.push_back(candidate);
-    } else {
-      compact[it->second] = candidate;
+void upsertPendingBehaviorCandidate(
+    std::array<PendingBehaviorMessageCandidate,
+               MAX_COMPACTED_BEHAVIOR_MESSAGES>& candidates,
+    size_t& count,
+    const PendingBehaviorMessageCandidate& candidate) {
+  for (size_t i = 0; i < count; ++i) {
+    if (candidates[i].messageId == candidate.messageId) {
+      candidates[i] = candidate;
+      return;
     }
   }
 
-  std::sort(compact.begin(), compact.end(),
-            [](const auto& a, const auto& b) {
-              return a.sequence < b.sequence;
-            });
-
-  candidates = std::move(compact);
+  if (count < candidates.size()) {
+    candidates[count++] = candidate;
+  }
 }
 
 } // namespace
@@ -1077,69 +1078,83 @@ void AIManager::commitQueuedBehaviorMessages() {
 
   auto& edm = EntityDataManager::Instance();
   size_t droppedCount = 0;
-  std::unordered_map<size_t, std::vector<HammerEngine::AICommandBus::BehaviorMessageCommand>> grouped;
-  grouped.reserve(m_pendingBehaviorMessages.size());
+  std::sort(m_pendingBehaviorMessages.begin(), m_pendingBehaviorMessages.end(),
+            [](const auto& lhs, const auto& rhs) {
+              if (lhs.targetEdmIndex != rhs.targetEdmIndex) {
+                return lhs.targetEdmIndex < rhs.targetEdmIndex;
+              }
+              return lhs.sequence < rhs.sequence;
+            });
 
-  for (const auto& cmd : m_pendingBehaviorMessages) {
-    if (!cmd.targetHandle.isValid()) {
+  size_t i = 0;
+  while (i < m_pendingBehaviorMessages.size()) {
+    const size_t edmIndex = m_pendingBehaviorMessages[i].targetEdmIndex;
+    size_t runEnd = i + 1;
+    while (runEnd < m_pendingBehaviorMessages.size() &&
+           m_pendingBehaviorMessages[runEnd].targetEdmIndex == edmIndex) {
+      ++runEnd;
+    }
+
+    if (edmIndex == SIZE_MAX || !edm.hasBehaviorData(edmIndex)) {
+      i = runEnd;
       continue;
     }
-    const size_t edmIndex = edm.getIndex(cmd.targetHandle);
-    if (edmIndex == SIZE_MAX || edmIndex != cmd.targetEdmIndex ||
-        !edm.hasBehaviorData(edmIndex)) {
-      continue;
-    }
-    grouped[edmIndex].push_back(cmd);
-  }
 
-  std::vector<size_t> orderedEdmIndices;
-  orderedEdmIndices.reserve(grouped.size());
-  for (const auto& [edmIndex, _] : grouped) {
-    orderedEdmIndices.push_back(edmIndex);
-  }
-  std::sort(orderedEdmIndices.begin(), orderedEdmIndices.end());
-
-  for (const size_t edmIndex : orderedEdmIndices) {
-    auto itGroup = grouped.find(edmIndex);
-    if (itGroup == grouped.end()) {
-      continue;
-    }
     auto& data = edm.getBehaviorData(edmIndex);
-    auto& cmds = itGroup->second;
-    if (cmds.empty()) {
-      continue;
-    }
+    std::array<PendingBehaviorMessageCandidate,
+               MAX_COMPACTED_BEHAVIOR_MESSAGES> candidates{};
+    size_t candidateCount = 0;
 
-    std::vector<PendingBehaviorMessageCandidate> candidates;
-    candidates.reserve(static_cast<size_t>(data.pendingMessageCount) + cmds.size());
-
-    // Existing inbox entries are older than newly drained bus entries, so
-    // assign them an earlier synthetic sequence before compacting.
-    for (uint8_t i = 0; i < data.pendingMessageCount; ++i) {
-      candidates.push_back({data.pendingMessages[i].messageId,
-                            data.pendingMessages[i].param,
-                            static_cast<uint64_t>(i)});
+    // Existing inbox entries are always older than commands drained this frame.
+    for (uint8_t msgIdx = 0; msgIdx < data.pendingMessageCount; ++msgIdx) {
+      upsertPendingBehaviorCandidate(
+          candidates, candidateCount,
+          {data.pendingMessages[msgIdx].messageId,
+           data.pendingMessages[msgIdx].param,
+           static_cast<uint64_t>(msgIdx)});
     }
 
     const uint64_t sequenceBias = static_cast<uint64_t>(data.pendingMessageCount);
-    for (const auto& cmd : cmds) {
-      candidates.push_back({cmd.messageId, cmd.param, cmd.sequence + sequenceBias});
+    for (size_t runIdx = i; runIdx < runEnd; ++runIdx) {
+      const auto& cmd = m_pendingBehaviorMessages[runIdx];
+      if (!cmd.targetHandle.isValid()) {
+        continue;
+      }
+
+      const size_t resolvedEdmIndex = edm.getIndex(cmd.targetHandle);
+      if (resolvedEdmIndex == SIZE_MAX || resolvedEdmIndex != edmIndex) {
+        continue;
+      }
+
+      upsertPendingBehaviorCandidate(
+          candidates, candidateCount,
+          {cmd.messageId, cmd.param, cmd.sequence + sequenceBias});
     }
 
-    compactBehaviorMessages(candidates);
+    if (candidateCount == 0) {
+      i = runEnd;
+      continue;
+    }
 
-    if (candidates.size() > MAX_PENDING_BEHAVIOR_MESSAGES) {
-      droppedCount += candidates.size() - MAX_PENDING_BEHAVIOR_MESSAGES;
-      candidates.erase(candidates.begin(),
-                       candidates.end() - MAX_PENDING_BEHAVIOR_MESSAGES);
+    sortPendingBehaviorCandidates(candidates, candidateCount);
+
+    size_t firstKept = 0;
+    if (candidateCount > MAX_PENDING_BEHAVIOR_MESSAGES) {
+      droppedCount += candidateCount - MAX_PENDING_BEHAVIOR_MESSAGES;
+      firstKept = candidateCount - MAX_PENDING_BEHAVIOR_MESSAGES;
     }
 
     data.pendingMessageCount = 0;
-    for (const auto& candidate : candidates) {
-      data.pendingMessages[data.pendingMessageCount].messageId = candidate.messageId;
-      data.pendingMessages[data.pendingMessageCount].param = candidate.param;
+    for (size_t candidateIdx = firstKept; candidateIdx < candidateCount;
+         ++candidateIdx) {
+      data.pendingMessages[data.pendingMessageCount].messageId =
+          candidates[candidateIdx].messageId;
+      data.pendingMessages[data.pendingMessageCount].param =
+          candidates[candidateIdx].param;
       data.pendingMessageCount++;
     }
+
+    i = runEnd;
   }
 
   if (droppedCount > 0) {
