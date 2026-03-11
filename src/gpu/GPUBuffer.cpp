@@ -68,8 +68,10 @@ GPUBuffer& GPUBuffer::operator=(GPUBuffer&& other) noexcept {
 void GPUBuffer::release() {
     if (m_buffer && m_device) {
         SDL_ReleaseGPUBuffer(m_device, m_buffer);
-        m_buffer = nullptr;
     }
+    m_buffer = nullptr;
+    m_device = nullptr;
+    m_size = 0;
 }
 
 SDL_GPUBufferBinding GPUBuffer::asBinding(uint32_t offset) const {

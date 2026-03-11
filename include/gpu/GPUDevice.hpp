@@ -60,6 +60,7 @@ public:
 private:
     GPUDevice() = default;
     ~GPUDevice();
+    static SDL_GPUShaderFormat getRequestedShaderFormats();
 
     // Non-copyable, non-movable
     GPUDevice(const GPUDevice&) = delete;

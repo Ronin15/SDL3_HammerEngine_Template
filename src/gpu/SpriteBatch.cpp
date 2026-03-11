@@ -81,7 +81,11 @@ bool SpriteBatch::init(SDL_GPUDevice* device, const char* name) {
 
     SDL_UploadToGPUBuffer(copyPass, &src, &dst, false);
     SDL_EndGPUCopyPass(copyPass);
-    SDL_SubmitGPUCommandBuffer(cmd);
+    if (!SDL_SubmitGPUCommandBuffer(cmd)) {
+        GAMEENGINE_ERROR(std::format("SpriteBatch: failed to submit index upload command buffer: {}",
+                                     SDL_GetError()));
+        return false;
+    }
 
     m_initialized = true;
     GAMEENGINE_INFO(std::format("{} initialized: max {} sprites, {} KB index buffer",

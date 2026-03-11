@@ -10,6 +10,16 @@
 
 namespace HammerEngine {
 
+size_t ShaderCacheKeyHash::operator()(const ShaderCacheKey& key) const noexcept {
+    size_t hash = std::hash<std::string>{}(key.basePath);
+    hash ^= static_cast<size_t>(key.stage) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+    hash ^= static_cast<size_t>(key.info.numSamplers) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+    hash ^= static_cast<size_t>(key.info.numStorageTextures) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+    hash ^= static_cast<size_t>(key.info.numStorageBuffers) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+    hash ^= static_cast<size_t>(key.info.numUniformBuffers) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+    return hash;
+}
+
 GPUShaderManager& GPUShaderManager::Instance() {
     static GPUShaderManager instance;
     return instance;
@@ -62,7 +72,8 @@ SDL_GPUShader* GPUShaderManager::loadShader(const std::string& basePath,
     }
 
     // Check cache using base path as key
-    auto it = m_shaders.find(basePath);
+    ShaderCacheKey key{basePath, stage, info};
+    auto it = m_shaders.find(key);
     if (it != m_shaders.end()) {
         return it->second;
     }
@@ -81,20 +92,24 @@ SDL_GPUShader* GPUShaderManager::loadShader(const std::string& basePath,
     }
 
     if (shader) {
-        m_shaders[basePath] = shader;
+        m_shaders.emplace(std::move(key), shader);
         GAMEENGINE_DEBUG(std::format("Loaded shader: {}", basePath));
     }
 
     return shader;
 }
 
-SDL_GPUShader* GPUShaderManager::getShader(const std::string& name) const {
-    auto it = m_shaders.find(name);
+SDL_GPUShader* GPUShaderManager::getShader(const std::string& name,
+                                           SDL_GPUShaderStage stage,
+                                           const ShaderInfo& info) const {
+    auto it = m_shaders.find(ShaderCacheKey{name, stage, info});
     return (it != m_shaders.end()) ? it->second : nullptr;
 }
 
-bool GPUShaderManager::hasShader(const std::string& name) const {
-    return m_shaders.find(name) != m_shaders.end();
+bool GPUShaderManager::hasShader(const std::string& name,
+                                 SDL_GPUShaderStage stage,
+                                 const ShaderInfo& info) const {
+    return m_shaders.find(ShaderCacheKey{name, stage, info}) != m_shaders.end();
 }
 
 SDL_GPUShader* GPUShaderManager::loadSPIRV(const std::string& path,

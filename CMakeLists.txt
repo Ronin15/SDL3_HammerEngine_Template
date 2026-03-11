@@ -371,6 +371,17 @@ target_compile_definitions(HammerEngineObjects PRIVATE
 # SDL3_GPU compile definition
 if(USE_SDL3_GPU)
     target_compile_definitions(HammerEngineObjects PUBLIC USE_SDL3_GPU)
+
+    if(APPLE)
+        if(GENERATE_METAL_SHADERS)
+            target_compile_definitions(HammerEngineObjects PUBLIC HE_GPU_SHADERFORMAT_MSL_AVAILABLE)
+        else()
+            target_compile_definitions(HammerEngineObjects PUBLIC HE_GPU_SHADERFORMAT_SPIRV_AVAILABLE)
+        endif()
+    else()
+        target_compile_definitions(HammerEngineObjects PUBLIC HE_GPU_SHADERFORMAT_SPIRV_AVAILABLE)
+    endif()
+
     add_dependencies(HammerEngineObjects compile_shaders)
 endif()
 

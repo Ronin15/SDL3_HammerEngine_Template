@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 71 test executables covering AI systems, AI behaviors, behavior state transitions, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTime simulation, controller systems, entity state management, entity data management, NPC memory system, background simulation, EDM integration tests, GPU rendering subsystem (when USE_SDL3_GPU=ON), and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 72 test executables covering AI systems, AI behaviors, behavior state transitions, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTime simulation, controller systems, entity state management, entity data management, NPC memory system, background simulation, EDM integration tests, GPU rendering subsystem (when USE_SDL3_GPU=ON), GPU frame timing benchmarks, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -1794,6 +1794,48 @@ Located in `tests/gpu/`, these tests validate the SDL3 GPU rendering subsystem. 
 - Viewport management
 - Orthographic matrix creation
 
+### GPU Benchmark Utility
+
+**GPUFrameTimingBenchmark.cpp** - Focused GPU frame timing benchmark:
+- Uses the real `GPURenderer` path with synthetic workload uploads and draws
+- Supports workload modes: `particle`, `primitive`, `sprite`, `ui`, and `mixed`
+- Reports average total frame time plus `GPUSwapchain`, `GPUUpload`, and `GPUSubmit`
+- Intended for before/after renderer comparisons on the same machine
+- Exercises the frame lifecycle, upload path, and present timing without needing a full game state
+
+Run it directly:
+
+```bash
+# Build benchmark (USE_SDL3_GPU must be enabled)
+ninja -C build gpu_frame_timing_benchmark
+
+# Typical run
+./bin/debug/gpu_frame_timing_benchmark --mode particle --warmup 120 --frames 300 --quads 2000
+
+# Compare different workload paths
+./bin/debug/gpu_frame_timing_benchmark --mode primitive --frames 600 --quads 4000
+./bin/debug/gpu_frame_timing_benchmark --mode sprite --frames 600 --quads 4000
+./bin/debug/gpu_frame_timing_benchmark --mode ui --frames 600 --quads 4000
+./bin/debug/gpu_frame_timing_benchmark --mode mixed --frames 600 --quads 4000
+
+# Script wrapper
+./tests/test_scripts/run_gpu_frame_benchmark.sh --mode mixed
+./tests/test_scripts/run_gpu_frame_benchmark.sh --mode sprite --frames 600 --quads 4000
+```
+
+Interpretation:
+- `Avg frame time` is the end-to-end CPU frame duration for the benchmark loop
+- `Avg GPUSwapchain` is where frame pacing / VSync wait shows up
+- `Avg GPUUpload` shows CPU-side time spent finalizing uploads into the frame
+- `Avg GPUSubmit` shows command buffer submission overhead
+
+Notes:
+- Run this on a normal desktop session for meaningful numbers
+- Headless or `SDL_VIDEODRIVER=offscreen` runs are useful only to validate the executable path, not to judge real rendering performance
+- Compare runs on the same machine, driver, display mode, and window state
+- `--quads` is applied per active workload; in `mixed` mode it is distributed across the active pools
+- Windows wrapper: `tests/test_scripts/run_gpu_frame_benchmark.bat`
+
 ### Running GPU Tests
 
 ```bash
@@ -1855,7 +1897,8 @@ BOOST_FIXTURE_TEST_CASE(TestName, GPUTestFixture) {
 - Unit tests: ~20 test cases
 - Integration tests: ~45 test cases
 - System tests: ~25 test cases
-- **Total: ~90 test cases across 8 test executables**
+- GPU benchmark utilities: 1 standalone executable
+- **Total: ~90 test cases across 8 GPU test executables plus 1 GPU benchmark utility**
 
 ## Additional Documentation
 

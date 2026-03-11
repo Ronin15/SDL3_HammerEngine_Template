@@ -1152,7 +1152,9 @@ void GameEngine::render() {
     auto& profiler = HammerEngine::FrameProfiler::Instance();
 
     // Begin GPU frame (profiler timing is inside beginFrame for granular breakdown)
-    gpuRenderer.beginFrame();
+    if (!gpuRenderer.beginFrame()) {
+      return;
+    }
 
     // Update profiler overlay (creates/updates UIManager components before recording)
     profiler.renderOverlay(nullptr, nullptr);
@@ -1206,9 +1208,9 @@ void GameEngine::render() {
 }
 
 void GameEngine::present() {
-  // Present is separate from render for accurate profiling
-  // NOTE: For GPU path, VSync wait already happened in beginFrame() at acquire time.
-  // This is different from SDL_Renderer where VSync blocks in SDL_RenderPresent.
+  // Present is separate from render for accurate profiling.
+  // For the GPU path, frame pacing now happens when the swapchain pass acquires
+  // the swapchain texture rather than at frame start.
 #ifdef USE_SDL3_GPU
   if (m_gpuRendering) {
     HammerEngine::GPURenderer::Instance().endFrame();
@@ -1664,7 +1666,7 @@ void GameEngine::onWindowResize(const SDL_Event &event) {
   }
 
 #ifdef USE_SDL3_GPU
-  // GPURenderer syncs viewport from swapchain in beginFrame()
+  // GPURenderer syncs viewport from the swapchain when the GPU frame begins rendering.
   // No manual updateViewport needed - swapchain is authoritative source
 #else
   // Update renderer to native resolution (no scaling)

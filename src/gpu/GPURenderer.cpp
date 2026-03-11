@@ -164,6 +164,7 @@ void GPURenderer::shutdown() {
 
     m_device = nullptr;
     m_window = nullptr;
+    resetFrameState();
     m_initialized = false;
 
     GAMEENGINE_INFO("GPURenderer shutdown complete");
@@ -198,14 +199,16 @@ void GPURenderer::cleanupPartialInit() {
 
     m_device = nullptr;
     m_window = nullptr;
+    resetFrameState();
 }
 
-void GPURenderer::beginFrame() {
+bool GPURenderer::beginFrame() {
     if (!m_initialized) {
-        return;
+        return false;
     }
 
     auto& profiler = FrameProfiler::Instance();
+    resetFrameState();
 
     // Acquire command buffer
     profiler.beginRender(RenderPhase::GPUCmdBuffer);
@@ -214,62 +217,52 @@ void GPURenderer::beginFrame() {
 
     if (!m_commandBuffer) {
         GAMEENGINE_ERROR(std::format("Failed to acquire GPU command buffer: {}", SDL_GetError()));
-        return;
-    }
-
-    // Acquire swapchain texture - blocks for VSync/frame pacing
-    // NOTE: For GPU path, VSync wait happens here (at acquire), not at present.
-    // This is different from SDL_Renderer where VSync is at SDL_RenderPresent.
-    // The profiler will show this as part of Render phase, which is expected.
-    profiler.beginRender(RenderPhase::GPUSwapchain);
-    if (!SDL_WaitAndAcquireGPUSwapchainTexture(
-            m_commandBuffer, m_window, &m_swapchainTexture,
-            &m_swapchainWidth, &m_swapchainHeight)) {
-        profiler.endRender(RenderPhase::GPUSwapchain);
-        GAMEENGINE_ERROR(std::format("Failed to acquire swapchain texture: {}", SDL_GetError()));
-        m_swapchainTexture = nullptr;
-        // Cancel the command buffer to avoid resource leak
-        SDL_CancelGPUCommandBuffer(m_commandBuffer);
-        m_commandBuffer = nullptr;
-        m_copyPass = nullptr;  // Clear stale copy pass pointer
-        return;
-    }
-    profiler.endRender(RenderPhase::GPUSwapchain);
-
-    if (!m_swapchainTexture)
-    {
-        // Window minimized or not visible - cancel command buffer and skip frame
-        SDL_CancelGPUCommandBuffer(m_commandBuffer);
-        m_commandBuffer = nullptr;
-        m_copyPass = nullptr;  // Clear stale copy pass pointer
-        return;
-    }
-
-    // Sync viewport to swapchain size (authoritative source from resize events)
-    if (m_swapchainWidth != m_viewportWidth || m_swapchainHeight != m_viewportHeight) {
-        GAMEENGINE_INFO(std::format("Swapchain size changed: {}x{} -> {}x{}",
-                                    m_viewportWidth, m_viewportHeight,
-                                    m_swapchainWidth, m_swapchainHeight));
-        updateViewport(m_swapchainWidth, m_swapchainHeight);
+        return false;
     }
 
     // Begin vertex pool frames (maps transfer buffers)
     profiler.beginRender(RenderPhase::GPUVertexMap);
-    m_spriteVertexPool.beginFrame();
-    m_entityVertexPool.beginFrame();
-    m_particleVertexPool.beginFrame();
-    m_primitiveVertexPool.beginFrame();
-    m_uiVertexPool.beginFrame();
+    const bool spriteMapped = m_spriteVertexPool.beginFrame() != nullptr;
+    const bool entityMapped = m_entityVertexPool.beginFrame() != nullptr;
+    const bool particleMapped = m_particleVertexPool.beginFrame() != nullptr;
+    const bool primitiveMapped = m_primitiveVertexPool.beginFrame() != nullptr;
+    const bool uiMapped = m_uiVertexPool.beginFrame() != nullptr;
+    if (!spriteMapped || !entityMapped || !particleMapped || !primitiveMapped || !uiMapped) {
+        profiler.endRender(RenderPhase::GPUVertexMap);
+        GAMEENGINE_ERROR("GPURenderer::beginFrame: failed to map one or more vertex pools");
+        m_spriteVertexPool.endFrame(0);
+        m_entityVertexPool.endFrame(0);
+        m_particleVertexPool.endFrame(0);
+        m_primitiveVertexPool.endFrame(0);
+        m_uiVertexPool.endFrame(0);
+        SDL_CancelGPUCommandBuffer(m_commandBuffer);
+        resetFrameState();
+        return false;
+    }
     profiler.endRender(RenderPhase::GPUVertexMap);
 
     // Begin copy pass for uploads
     profiler.beginRender(RenderPhase::GPUCopyPass);
     m_copyPass = SDL_BeginGPUCopyPass(m_commandBuffer);
     profiler.endRender(RenderPhase::GPUCopyPass);
+    if (!m_copyPass) {
+        GAMEENGINE_ERROR(std::format("Failed to begin GPU copy pass: {}", SDL_GetError()));
+        m_spriteVertexPool.endFrame(0);
+        m_entityVertexPool.endFrame(0);
+        m_particleVertexPool.endFrame(0);
+        m_primitiveVertexPool.endFrame(0);
+        m_uiVertexPool.endFrame(0);
+        SDL_CancelGPUCommandBuffer(m_commandBuffer);
+        resetFrameState();
+        return false;
+    }
+
+    m_frameActive = true;
+    return true;
 }
 
 SDL_GPURenderPass* GPURenderer::beginScenePass() {
-    if (!m_commandBuffer) {
+    if (!m_commandBuffer || !m_frameActive) {
         return nullptr;
     }
 
@@ -310,15 +303,45 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
         m_uiVertexPool.endFrame(uiVertexCount);
 
         // Upload vertex data
-        m_spriteVertexPool.upload(m_copyPass);
-        m_entityVertexPool.upload(m_copyPass);
-        m_particleVertexPool.upload(m_copyPass);
-        m_primitiveVertexPool.upload(m_copyPass);
-        m_uiVertexPool.upload(m_copyPass);
+        if (!m_spriteVertexPool.upload(m_copyPass) ||
+            !m_entityVertexPool.upload(m_copyPass) ||
+            !m_particleVertexPool.upload(m_copyPass) ||
+            !m_primitiveVertexPool.upload(m_copyPass) ||
+            !m_uiVertexPool.upload(m_copyPass)) {
+            SDL_EndGPUCopyPass(m_copyPass);
+            m_copyPass = nullptr;
+            profiler.endRender(RenderPhase::GPUUpload);
+            return nullptr;
+        }
 
         SDL_EndGPUCopyPass(m_copyPass);
         m_copyPass = nullptr;
         profiler.endRender(RenderPhase::GPUUpload);
+    }
+
+    if (m_swapchainTexture == nullptr) {
+        auto& profiler = FrameProfiler::Instance();
+        profiler.beginRender(RenderPhase::GPUSwapchain);
+        if (!SDL_WaitAndAcquireGPUSwapchainTexture(
+                m_commandBuffer, m_window, &m_swapchainTexture,
+                &m_swapchainWidth, &m_swapchainHeight)) {
+            profiler.endRender(RenderPhase::GPUSwapchain);
+            GAMEENGINE_ERROR(std::format("Failed to acquire swapchain texture: {}", SDL_GetError()));
+            return nullptr;
+        }
+        profiler.endRender(RenderPhase::GPUSwapchain);
+    }
+
+    if (!m_swapchainTexture) {
+        return nullptr;
+    }
+
+    // Sync viewport before rendering the scene so the scene texture matches the swapchain.
+    if (m_swapchainWidth != m_viewportWidth || m_swapchainHeight != m_viewportHeight) {
+        GAMEENGINE_INFO(std::format("Swapchain size changed: {}x{} -> {}x{}",
+                                    m_viewportWidth, m_viewportHeight,
+                                    m_swapchainWidth, m_swapchainHeight));
+        updateViewport(m_swapchainWidth, m_swapchainHeight);
     }
 
     // Begin scene render pass
@@ -328,6 +351,10 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
     );
 
     m_currentPass = SDL_BeginGPURenderPass(m_commandBuffer, &colorTarget, 1, nullptr);
+    if (!m_currentPass) {
+        GAMEENGINE_ERROR(std::format("Failed to begin scene render pass: {}", SDL_GetError()));
+        return nullptr;
+    }
 
     // Set viewport to match scene texture dimensions
     // Scene texture matches viewport dimensions (zoom handled by composite shader)
@@ -355,7 +382,7 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
 }
 
 SDL_GPURenderPass* GPURenderer::beginSwapchainPass() {
-    if (!m_commandBuffer) {
+    if (!m_commandBuffer || !m_frameActive) {
         return nullptr;
     }
 
@@ -365,9 +392,7 @@ SDL_GPURenderPass* GPURenderer::beginSwapchainPass() {
         m_currentPass = nullptr;
     }
 
-    // Swapchain already acquired in beginFrame()
     if (!m_swapchainTexture) {
-        // Window minimized or not visible
         return nullptr;
     }
 
@@ -379,6 +404,10 @@ SDL_GPURenderPass* GPURenderer::beginSwapchainPass() {
     colorTarget.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
 
     m_currentPass = SDL_BeginGPURenderPass(m_commandBuffer, &colorTarget, 1, nullptr);
+    if (!m_currentPass) {
+        GAMEENGINE_ERROR(std::format("Failed to begin swapchain render pass: {}", SDL_GetError()));
+        return nullptr;
+    }
 
     // Set viewport to swapchain size (synced in beginFrame)
     SDL_GPUViewport viewport{};
@@ -390,11 +419,13 @@ SDL_GPURenderPass* GPURenderer::beginSwapchainPass() {
     viewport.max_depth = 1.0f;
     SDL_SetGPUViewport(m_currentPass, &viewport);
 
+    m_frameReadyForPresentation = true;
     return m_currentPass;
 }
 
 void GPURenderer::endFrame() {
     if (!m_commandBuffer) {
+        resetFrameState();
         return;
     }
 
@@ -413,11 +444,11 @@ void GPURenderer::endFrame() {
     // Submit command buffer (measure to detect backpressure)
     auto& profiler = FrameProfiler::Instance();
     profiler.beginRender(RenderPhase::GPUSubmit);
-    SDL_SubmitGPUCommandBuffer(m_commandBuffer);
+    if (!SDL_SubmitGPUCommandBuffer(m_commandBuffer)) {
+        GAMEENGINE_ERROR(std::format("Failed to submit GPU command buffer: {}", SDL_GetError()));
+    }
     profiler.endRender(RenderPhase::GPUSubmit);
-
-    m_commandBuffer = nullptr;
-    m_swapchainTexture = nullptr;
+    resetFrameState();
 }
 
 SDL_GPUGraphicsPipeline* GPURenderer::getSpriteOpaquePipeline() const {
@@ -604,6 +635,22 @@ bool GPURenderer::loadShaders() {
 
 bool GPURenderer::createPipelines() {
     const auto& shaderMgr = GPUShaderManager::Instance();
+    ShaderInfo spriteVertInfo{};
+    spriteVertInfo.numUniformBuffers = 1;
+
+    ShaderInfo spriteFragInfo{};
+    spriteFragInfo.numSamplers = 1;
+
+    ShaderInfo colorVertInfo{};
+    colorVertInfo.numUniformBuffers = 1;
+
+    ShaderInfo colorFragInfo{};
+
+    ShaderInfo compositeVertInfo{};
+
+    ShaderInfo compositeFragInfo{};
+    compositeFragInfo.numSamplers = 1;
+    compositeFragInfo.numUniformBuffers = 1;
 
     // Scene-rendering pipelines use the scene texture format (RGBA8)
     // Composite pipeline uses the swapchain format (may be BGRA8 on some platforms)
@@ -621,8 +668,8 @@ bool GPURenderer::createPipelines() {
     // Sprite opaque pipeline (renders to scene texture)
     {
         auto config = GPUPipeline::createSpriteConfig(
-            shaderMgr.getShader(spriteVert),
-            shaderMgr.getShader(spriteFrag),
+            shaderMgr.getShader(spriteVert, SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo),
+            shaderMgr.getShader(spriteFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, spriteFragInfo),
             sceneFormat,
             false  // opaque
         );
@@ -634,8 +681,8 @@ bool GPURenderer::createPipelines() {
     // Sprite alpha pipeline (renders to scene texture)
     {
         auto config = GPUPipeline::createSpriteConfig(
-            shaderMgr.getShader(spriteVert),
-            shaderMgr.getShader(spriteFrag),
+            shaderMgr.getShader(spriteVert, SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo),
+            shaderMgr.getShader(spriteFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, spriteFragInfo),
             sceneFormat,
             true  // alpha
         );
@@ -647,8 +694,8 @@ bool GPURenderer::createPipelines() {
     // Particle pipeline (renders to scene texture, uses color shaders)
     {
         auto config = GPUPipeline::createParticleConfig(
-            shaderMgr.getShader(colorVert),
-            shaderMgr.getShader(colorFrag),
+            shaderMgr.getShader(colorVert, SDL_GPU_SHADERSTAGE_VERTEX, colorVertInfo),
+            shaderMgr.getShader(colorFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, colorFragInfo),
             sceneFormat
         );
         if (!m_particlePipeline.create(m_device, config)) {
@@ -659,8 +706,8 @@ bool GPURenderer::createPipelines() {
     // Primitive pipeline (renders to scene texture, uses color shaders)
     {
         auto config = GPUPipeline::createPrimitiveConfig(
-            shaderMgr.getShader(colorVert),
-            shaderMgr.getShader(colorFrag),
+            shaderMgr.getShader(colorVert, SDL_GPU_SHADERSTAGE_VERTEX, colorVertInfo),
+            shaderMgr.getShader(colorFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, colorFragInfo),
             sceneFormat
         );
         if (!m_primitivePipeline.create(m_device, config)) {
@@ -671,8 +718,8 @@ bool GPURenderer::createPipelines() {
     // Composite pipeline (renders to swapchain)
     {
         auto config = GPUPipeline::createCompositeConfig(
-            shaderMgr.getShader(compositeVert),
-            shaderMgr.getShader(compositeFrag),
+            shaderMgr.getShader(compositeVert, SDL_GPU_SHADERSTAGE_VERTEX, compositeVertInfo),
+            shaderMgr.getShader(compositeFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, compositeFragInfo),
             swapchainFormat
         );
         if (!m_compositePipeline.create(m_device, config)) {
@@ -683,8 +730,8 @@ bool GPURenderer::createPipelines() {
     // UI sprite pipeline (renders to swapchain for text/icons)
     {
         auto config = GPUPipeline::createSpriteConfig(
-            shaderMgr.getShader(spriteVert),
-            shaderMgr.getShader(spriteFrag),
+            shaderMgr.getShader(spriteVert, SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo),
+            shaderMgr.getShader(spriteFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, spriteFragInfo),
             swapchainFormat,
             true  // alpha blending for text
         );
@@ -696,8 +743,8 @@ bool GPURenderer::createPipelines() {
     // UI primitive pipeline (renders to swapchain for UI backgrounds, uses color shaders)
     {
         auto config = GPUPipeline::createPrimitiveConfig(
-            shaderMgr.getShader(colorVert),
-            shaderMgr.getShader(colorFrag),
+            shaderMgr.getShader(colorVert, SDL_GPU_SHADERSTAGE_VERTEX, colorVertInfo),
+            shaderMgr.getShader(colorFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, colorFragInfo),
             swapchainFormat
         );
         if (!m_uiPrimitivePipeline.create(m_device, config)) {
@@ -735,6 +782,17 @@ bool GPURenderer::createSceneTexture()
 
     GAMEENGINE_DEBUG(std::format("Scene texture created: {}x{}", sceneWidth, sceneHeight));
     return true;
+}
+
+void GPURenderer::resetFrameState() {
+    m_commandBuffer = nullptr;
+    m_copyPass = nullptr;
+    m_currentPass = nullptr;
+    m_swapchainTexture = nullptr;
+    m_swapchainWidth = 0;
+    m_swapchainHeight = 0;
+    m_frameActive = false;
+    m_frameReadyForPresentation = false;
 }
 
 } // namespace HammerEngine

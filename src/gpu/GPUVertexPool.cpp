@@ -24,7 +24,15 @@ bool GPUVertexPool::init(SDL_GPUDevice* device, uint32_t vertexSize, size_t maxV
     m_vertexSize = vertexSize;
     m_maxVertices = maxVertices;
 
-    uint32_t bufferSize = vertexSize * static_cast<uint32_t>(maxVertices);
+    const size_t bufferSize64 = static_cast<size_t>(vertexSize) * maxVertices;
+    if (bufferSize64 > UINT32_MAX) {
+        GAMEENGINE_ERROR(std::format(
+            "GPUVertexPool::init: buffer size {} exceeds SDL GPU 32-bit limit",
+            bufferSize64));
+        return false;
+    }
+
+    uint32_t bufferSize = static_cast<uint32_t>(bufferSize64);
 
     // Create triple-buffered transfer buffers
     for (size_t i = 0; i < FRAME_COUNT; ++i) {
@@ -38,13 +46,15 @@ bool GPUVertexPool::init(SDL_GPUDevice* device, uint32_t vertexSize, size_t maxV
         }
     }
 
-    // Create persistent GPU buffer
-    m_gpuBuffer = GPUBuffer(device, SDL_GPU_BUFFERUSAGE_VERTEX, bufferSize);
+    // Create triple-buffered GPU buffers to avoid overwriting in-flight vertex data.
+    for (size_t i = 0; i < FRAME_COUNT; ++i) {
+        m_gpuBuffers[i] = GPUBuffer(device, SDL_GPU_BUFFERUSAGE_VERTEX, bufferSize);
 
-    if (!m_gpuBuffer.isValid()) {
-        GAMEENGINE_ERROR("GPUVertexPool: failed to create GPU vertex buffer");
-        shutdown();
-        return false;
+        if (!m_gpuBuffers[i].isValid()) {
+            GAMEENGINE_ERROR(std::format("GPUVertexPool: failed to create GPU vertex buffer {}", i));
+            shutdown();
+            return false;
+        }
     }
 
     GAMEENGINE_INFO(std::format("GPUVertexPool initialized: {} vertices x {} bytes = {} KB",
@@ -53,7 +63,8 @@ bool GPUVertexPool::init(SDL_GPUDevice* device, uint32_t vertexSize, size_t maxV
 }
 
 void GPUVertexPool::shutdown() {
-    m_gpuBuffer = GPUBuffer();
+    std::generate(m_gpuBuffers.begin(), m_gpuBuffers.end(),
+                  []() { return GPUBuffer(); });
 
     std::generate(m_transferBuffers.begin(), m_transferBuffers.end(),
                   []() { return GPUTransferBuffer(); });
@@ -67,7 +78,7 @@ void GPUVertexPool::shutdown() {
 GPUVertexPool::GPUVertexPool(GPUVertexPool&& other) noexcept
     : m_device(other.m_device)
     , m_transferBuffers(std::move(other.m_transferBuffers))
-    , m_gpuBuffer(std::move(other.m_gpuBuffer))
+    , m_gpuBuffers(std::move(other.m_gpuBuffers))
     , m_frameIndex(other.m_frameIndex)
     , m_vertexSize(other.m_vertexSize)
     , m_maxVertices(other.m_maxVertices)
@@ -93,7 +104,7 @@ GPUVertexPool& GPUVertexPool::operator=(GPUVertexPool&& other) noexcept {
         // Move from other
         m_device = other.m_device;
         m_transferBuffers = std::move(other.m_transferBuffers);
-        m_gpuBuffer = std::move(other.m_gpuBuffer);
+        m_gpuBuffers = std::move(other.m_gpuBuffers);
         m_frameIndex = other.m_frameIndex;
         m_vertexSize = other.m_vertexSize;
         m_maxVertices = other.m_maxVertices;
@@ -150,19 +161,20 @@ void GPUVertexPool::endFrame(size_t vertexCount) {
     m_mappedPtr = nullptr;
 }
 
-void GPUVertexPool::upload(SDL_GPUCopyPass* copyPass) {
+bool GPUVertexPool::upload(SDL_GPUCopyPass* copyPass) {
     if (!copyPass || m_currentVertexCount == 0) {
-        return;
+        return true;
     }
 
     SDL_GPUTransferBufferLocation src = m_transferBuffers[m_frameIndex].asLocation(0);
 
     SDL_GPUBufferRegion dst{};
-    dst.buffer = m_gpuBuffer.get();
+    dst.buffer = m_gpuBuffers[m_frameIndex].get();
     dst.offset = 0;
     dst.size = static_cast<uint32_t>(m_currentVertexCount * m_vertexSize);
 
     SDL_UploadToGPUBuffer(copyPass, &src, &dst, false);
+    return true;
 }
 
 } // namespace HammerEngine

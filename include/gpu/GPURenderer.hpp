@@ -47,9 +47,11 @@ public:
     /**
      * Begin a new frame.
      * - Acquires command buffer
+     * - Maps upload buffers
      * - Begins copy pass for uploads
+     * @return true if the frame can proceed
      */
-    void beginFrame();
+    bool beginFrame();
 
     /**
      * End copy pass and begin scene render pass.
@@ -176,6 +178,7 @@ private:
     bool createPipelines();
     bool createSceneTexture();
     void cleanupPartialInit();  // Clean up resources on init failure
+    void resetFrameState();
 
     // Device reference
     SDL_GPUDevice* m_device{nullptr};
@@ -190,6 +193,8 @@ private:
     SDL_GPUTexture* m_swapchainTexture{nullptr};
     uint32_t m_swapchainWidth{0};
     uint32_t m_swapchainHeight{0};
+    bool m_frameActive{false};
+    bool m_frameReadyForPresentation{false};
 
     // Intermediate scene texture
     std::unique_ptr<GPUTexture> m_sceneTexture;

@@ -5,6 +5,7 @@
 #define GPU_SHADER_MANAGER_HPP
 
 #include <SDL3/SDL_gpu.h>
+#include <cstddef>
 #include <string>
 #include <unordered_map>
 
@@ -18,6 +19,25 @@ struct ShaderInfo {
     uint32_t numStorageTextures{0};
     uint32_t numStorageBuffers{0};
     uint32_t numUniformBuffers{0};
+};
+
+struct ShaderCacheKey {
+    std::string basePath;
+    SDL_GPUShaderStage stage{SDL_GPU_SHADERSTAGE_VERTEX};
+    ShaderInfo info{};
+
+    bool operator==(const ShaderCacheKey& other) const noexcept {
+        return basePath == other.basePath &&
+               stage == other.stage &&
+               info.numSamplers == other.info.numSamplers &&
+               info.numStorageTextures == other.info.numStorageTextures &&
+               info.numStorageBuffers == other.info.numStorageBuffers &&
+               info.numUniformBuffers == other.info.numUniformBuffers;
+    }
+};
+
+struct ShaderCacheKeyHash {
+    size_t operator()(const ShaderCacheKey& key) const noexcept;
 };
 
 /**
@@ -63,12 +83,16 @@ public:
      * @param name Shader name (usually the basePath used during loading)
      * @return Shader pointer, or nullptr if not found
      */
-    SDL_GPUShader* getShader(const std::string& name) const;
+    SDL_GPUShader* getShader(const std::string& name,
+                             SDL_GPUShaderStage stage,
+                             const ShaderInfo& info) const;
 
     /**
      * Check if a shader is already loaded.
      */
-    bool hasShader(const std::string& name) const;
+    bool hasShader(const std::string& name,
+                   SDL_GPUShaderStage stage,
+                   const ShaderInfo& info) const;
 
 private:
     GPUShaderManager() = default;
@@ -94,7 +118,7 @@ private:
                            const std::string& entryPoint);
 
     SDL_GPUDevice* m_device{nullptr};
-    std::unordered_map<std::string, SDL_GPUShader*> m_shaders;
+    std::unordered_map<ShaderCacheKey, SDL_GPUShader*, ShaderCacheKeyHash> m_shaders;
     bool m_useSPIRV{true};  // Determined at init based on backend
 };
 

@@ -123,15 +123,7 @@ BOOST_FIXTURE_TEST_CASE(BeginFrameAcquiresCommandBuffer, RendererTestFixture) {
     // Show window to get valid swapchain for frame cycle testing
     GPUTestFixture::showTestWindow();
 
-    renderer->beginFrame();
-
-    // With visible window, command buffer and copy pass should be acquired
-    // If swapchain still not available (rare edge case), skip the test
-    if (renderer->getCommandBuffer() == nullptr) {
-        BOOST_TEST_MESSAGE("Swapchain not available despite visible window - skipping test");
-        GPUTestFixture::hideTestWindow();
-        return;
-    }
+    BOOST_REQUIRE(renderer->beginFrame());
 
     BOOST_CHECK(renderer->getCommandBuffer() != nullptr);
     BOOST_CHECK(renderer->getCopyPass() != nullptr);
@@ -153,14 +145,7 @@ BOOST_FIXTURE_TEST_CASE(BeginScenePassEndssCopyPass, RendererTestFixture) {
     // Show window to get valid swapchain for frame cycle testing
     GPUTestFixture::showTestWindow();
 
-    renderer->beginFrame();
-
-    // Skip if swapchain not available despite visible window
-    if (renderer->getCommandBuffer() == nullptr) {
-        BOOST_TEST_MESSAGE("Swapchain not available despite visible window - skipping test");
-        GPUTestFixture::hideTestWindow();
-        return;
-    }
+    BOOST_REQUIRE(renderer->beginFrame());
 
     BOOST_REQUIRE(renderer->getCopyPass() != nullptr);
 
@@ -188,14 +173,7 @@ BOOST_FIXTURE_TEST_CASE(BeginSwapchainPassEndsScenePass, RendererTestFixture) {
     // Show window to get valid swapchain for frame cycle testing
     GPUTestFixture::showTestWindow();
 
-    renderer->beginFrame();
-
-    // Skip if swapchain not available despite visible window
-    if (renderer->getCommandBuffer() == nullptr) {
-        BOOST_TEST_MESSAGE("Swapchain not available despite visible window - skipping test");
-        GPUTestFixture::hideTestWindow();
-        return;
-    }
+    BOOST_REQUIRE(renderer->beginFrame());
 
     renderer->beginScenePass();
 
@@ -218,14 +196,7 @@ BOOST_FIXTURE_TEST_CASE(EndFrameSubmitsCommandBuffer, RendererTestFixture) {
     // Show window to get valid swapchain for frame cycle testing
     GPUTestFixture::showTestWindow();
 
-    renderer->beginFrame();
-
-    // Skip if swapchain not available despite visible window
-    if (renderer->getCommandBuffer() == nullptr) {
-        BOOST_TEST_MESSAGE("Swapchain not available despite visible window - skipping test");
-        GPUTestFixture::hideTestWindow();
-        return;
-    }
+    BOOST_REQUIRE(renderer->beginFrame());
 
     renderer->beginScenePass();
     renderer->beginSwapchainPass();
@@ -247,14 +218,7 @@ BOOST_FIXTURE_TEST_CASE(MultipleFrameCycles, RendererTestFixture) {
 
     // Run multiple frame cycles
     for (int frame = 0; frame < 5; ++frame) {
-        renderer->beginFrame();
-
-        // Skip if swapchain not available
-        if (renderer->getCommandBuffer() == nullptr) {
-            BOOST_TEST_MESSAGE("Swapchain not available on frame " << frame << " - skipping test");
-            GPUTestFixture::hideTestWindow();
-            return;
-        }
+        BOOST_REQUIRE(renderer->beginFrame());
 
         renderer->beginScenePass();
         renderer->beginSwapchainPass();
@@ -463,7 +427,7 @@ BOOST_FIXTURE_TEST_CASE(RenderCompositeInSwapchainPass, RendererTestFixture) {
     renderer->setCompositeParams(1.0f, 0.0f, 0.0f);
     renderer->setDayNightParams(1.0f, 1.0f, 1.0f, 0.0f);
 
-    renderer->beginFrame();
+    BOOST_REQUIRE(renderer->beginFrame());
     renderer->beginScenePass();
     SDL_GPURenderPass* swapchainPass = renderer->beginSwapchainPass();
 

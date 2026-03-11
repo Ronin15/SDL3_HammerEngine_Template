@@ -206,6 +206,13 @@ public:
         return m_managerTimes[static_cast<size_t>(mgr)];
     }
 
+    /**
+     * @brief Gets time for a specific render phase from last frame
+     */
+    double getRenderTimeMs(RenderPhase phase) const {
+        return m_renderTimes[static_cast<size_t>(phase)];
+    }
+
 private:
     FrameProfiler() = default;
     ~FrameProfiler() = default;
@@ -375,6 +382,7 @@ public:
     double getLastFrameTimeMs() const { return 0.0; }
     double getPhaseTimeMs(FramePhase) const { return 0.0; }
     double getManagerTimeMs(ManagerPhase) const { return 0.0; }
+    double getRenderTimeMs(RenderPhase) const { return 0.0; }
 };
 
 // Release macros - compile to nothing

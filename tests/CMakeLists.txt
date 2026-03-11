@@ -368,6 +368,13 @@ if(USE_SDL3_GPU)
         gpu_renderer_tests
     )
 
+    add_executable(gpu_frame_timing_benchmark gpu/GPUFrameTimingBenchmark.cpp)
+    target_link_libraries(gpu_frame_timing_benchmark PRIVATE HammerEngineLib)
+    target_include_directories(gpu_frame_timing_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gpu)
+    set_target_properties(gpu_frame_timing_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
+    )
+
     # Source file mapping for GPU unit tests (no GPU required)
     foreach(test_name ${GPU_UNIT_TESTS})
         if(${test_name} STREQUAL "gpu_types_tests")

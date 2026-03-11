@@ -7,6 +7,19 @@
 
 namespace HammerEngine {
 
+SDL_GPUShaderFormat GPUDevice::getRequestedShaderFormats() {
+    SDL_GPUShaderFormat formats = SDL_GPU_SHADERFORMAT_INVALID;
+
+#ifdef HE_GPU_SHADERFORMAT_SPIRV_AVAILABLE
+    formats |= SDL_GPU_SHADERFORMAT_SPIRV;
+#endif
+#ifdef HE_GPU_SHADERFORMAT_MSL_AVAILABLE
+    formats |= SDL_GPU_SHADERFORMAT_MSL;
+#endif
+
+    return formats;
+}
+
 GPUDevice& GPUDevice::Instance() {
     static GPUDevice instance;
     return instance;
@@ -27,10 +40,16 @@ bool GPUDevice::init(SDL_Window* window) {
         return false;
     }
 
-    // Create GPU device with SPIR-V + MSL support (Vulkan + Metal)
-    // Debug mode enabled for validation layers during development
+    const SDL_GPUShaderFormat requestedFormats = getRequestedShaderFormats();
+    if (requestedFormats == SDL_GPU_SHADERFORMAT_INVALID) {
+        GAMEENGINE_ERROR("GPUDevice::init: no shader formats were compiled for this platform");
+        return false;
+    }
+
+    // Create GPU device with the shader formats this build actually ships.
+    // Driver selection remains automatic by passing nullptr.
     m_device = SDL_CreateGPUDevice(
-        SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_MSL,
+        requestedFormats,
 #ifdef DEBUG
         true,   // debug_mode - enable validation in debug builds
 #else
@@ -72,6 +91,9 @@ bool GPUDevice::init(SDL_Window* window) {
     GAMEENGINE_INFO("GPUDevice initialized successfully");
     GAMEENGINE_INFO(std::format("  Driver: {}", driver ? driver : "unknown"));
     GAMEENGINE_INFO(std::format("  Present mode: {}", swapchainConfigured ? "VSYNC" : "default"));
+    GAMEENGINE_INFO(std::format("  Requested shader formats: SPIRV={}, MSL={}",
+        (requestedFormats & SDL_GPU_SHADERFORMAT_SPIRV) != 0,
+        (requestedFormats & SDL_GPU_SHADERFORMAT_MSL) != 0));
     GAMEENGINE_INFO(std::format("  Shader formats: SPIRV={}, MSL={}, DXBC={}, DXIL={}",
         (formats & SDL_GPU_SHADERFORMAT_SPIRV) != 0,
         (formats & SDL_GPU_SHADERFORMAT_MSL) != 0,

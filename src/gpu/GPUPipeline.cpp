@@ -119,8 +119,9 @@ bool GPUPipeline::create(SDL_GPUDevice* device, const PipelineConfig& config) {
 void GPUPipeline::release() {
     if (m_pipeline && m_device) {
         SDL_ReleaseGPUGraphicsPipeline(m_device, m_pipeline);
-        m_pipeline = nullptr;
     }
+    m_pipeline = nullptr;
+    m_device = nullptr;
 }
 
 PipelineConfig GPUPipeline::createSpriteConfig(SDL_GPUShader* vertShader,
