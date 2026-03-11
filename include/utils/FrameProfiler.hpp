@@ -58,7 +58,7 @@ enum class RenderPhase : uint8_t {
     UI,               // UIManager render
     // GPU-specific phases (granular breakdown)
     GPUCmdBuffer,     // Command buffer acquisition
-    GPUSwapchain,     // Swapchain texture acquisition (VSync wait happens here)
+    GPUSwapchainWait, // Swapchain texture acquisition / pacing wait
     GPUVertexMap,     // Vertex pool mapping
     GPUCopyPass,      // Begin copy pass
     GPUUpload,        // Vertex/texture uploads
@@ -246,6 +246,7 @@ private:
     // Last hitch info for overlay
     FramePhase m_lastHitchCause{FramePhase::Events};
     ManagerPhase m_lastHitchManager{ManagerPhase::Event};
+    RenderPhase m_lastHitchRender{RenderPhase::WorldTiles};
     bool m_hadRecentHitch{false};
     uint64_t m_lastHitchFrame{0};
 

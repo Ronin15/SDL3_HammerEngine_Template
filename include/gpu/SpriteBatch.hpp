@@ -18,7 +18,7 @@ namespace HammerEngine {
  * Works with GPURenderer's vertex pool system:
  * 1. During beginFrame(), vertex pool is mapped
  * 2. SpriteBatch writes sprites to the mapped buffer
- * 3. During beginScenePass(), vertices are uploaded via copy pass
+ * 3. During GPURenderer::beginScenePass(), vertices are uploaded via the frame copy pass
  * 4. During render pass, draw calls are issued
  *
  * Usage:

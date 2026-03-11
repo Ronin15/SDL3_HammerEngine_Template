@@ -29,6 +29,42 @@ TimestepManager::TimestepManager(float targetFPS, float fixedTimestep)
     m_explicitlySet = false;
 }
 
+double TimestepManager::snapDeltaToCadence(double deltaTime) const {
+    if (deltaTime <= 0.0) {
+        return deltaTime;
+    }
+
+    if (m_displayRefreshHz > 0.0f && !m_usingSoftwareFrameLimiting) {
+        const double displayInterval = 1.0 / static_cast<double>(m_displayRefreshHz);
+        const double displayTolerance = displayInterval * DISPLAY_SNAP_TOLERANCE;
+
+        for (int intervalCount = 1; intervalCount <= MAX_DISPLAY_INTERVALS; ++intervalCount) {
+            const double candidate = displayInterval * static_cast<double>(intervalCount);
+            if (std::abs(deltaTime - candidate) <= displayTolerance) {
+                return candidate;
+            }
+        }
+    }
+
+    // Fall back to timestep-relative snapping when we do not know the display cadence.
+    double nearestMultiple = std::round(deltaTime / m_fixedTimestep) * m_fixedTimestep;
+    if (nearestMultiple > 0.0 &&
+        std::abs(deltaTime - nearestMultiple) < m_fixedTimestep * DELTA_SNAP_TOLERANCE) {
+        return nearestMultiple;
+    }
+
+    for (int divisor = 2; divisor <= MAX_SUB_DIVISOR; ++divisor) {
+        double subStep = m_fixedTimestep / static_cast<double>(divisor);
+        double nearestSubMultiple = std::round(deltaTime / subStep) * subStep;
+        if (nearestSubMultiple > 0.0 &&
+            std::abs(deltaTime - nearestSubMultiple) < subStep * DELTA_SNAP_TOLERANCE) {
+            return nearestSubMultiple;
+        }
+    }
+
+    return deltaTime;
+}
+
 void TimestepManager::startFrame() {
     auto currentTime = std::chrono::high_resolution_clock::now();
     
@@ -53,42 +89,11 @@ void TimestepManager::startFrame() {
     m_lastDeltaSeconds = deltaTime;  // Store high precision for FPS calculation
 
     // Unified accumulator for both VSync and software frame limiting:
-    // Clamp delta to prevent spiral of death, snap to nearest timestep multiple
-    // to prevent accumulator drift from timing jitter, then add to accumulator.
-    // Software mode: SDL_DelayPrecise in limitFrameRate() handles frame pacing,
-    //                so accumulator naturally gets ~1 timestep per frame.
-    // VSync mode:    Swapchain present or SDL_RenderPresent handles pacing.
-    // Both modes benefit from delta snapping to prevent drift at matching rates.
+    // Clamp delta to prevent spiral of death, then quantize to the active
+    // cadence when possible. For VSync this uses the real display interval if
+    // known; otherwise it falls back to timestep-relative snapping.
     deltaTime = std::min(deltaTime, MAX_ACCUMULATOR);
-
-    // Snap delta to nearest multiple (or sub-multiple) of fixedTimestep when within tolerance.
-    // Prevents accumulator drift from VSync/timing jitter when display rate is
-    // near a multiple of the update rate (e.g., 60Hz display / 60Hz update)
-    // or a clean divisor (e.g., 120Hz = 2×60Hz, 240Hz = 4×60Hz).
-    // At mismatched rates (e.g., 144Hz / 60Hz), deltas are too far to snap.
-    bool snapped = false;
-
-    // First: try integer multiples (60Hz, 30Hz, etc.)
-    double nearestMultiple = std::round(deltaTime / m_fixedTimestep) * m_fixedTimestep;
-    if (nearestMultiple > 0.0 &&
-        std::abs(deltaTime - nearestMultiple) < m_fixedTimestep * DELTA_SNAP_TOLERANCE) {
-        deltaTime = nearestMultiple;
-        snapped = true;
-    }
-
-    // Second: try sub-multiples (1/2, 1/3, 1/4 of fixedTimestep)
-    // Handles high-refresh displays: 120Hz=1/2, 180Hz=1/3, 240Hz=1/4
-    if (!snapped) {
-        for (int divisor = 2; divisor <= MAX_SUB_DIVISOR; ++divisor) {
-            double subStep = m_fixedTimestep / static_cast<double>(divisor);
-            double nearestSubMultiple = std::round(deltaTime / subStep) * subStep;
-            if (nearestSubMultiple > 0.0 &&
-                std::abs(deltaTime - nearestSubMultiple) < subStep * DELTA_SNAP_TOLERANCE) {
-                deltaTime = nearestSubMultiple;
-                break;
-            }
-        }
-    }
+    deltaTime = snapDeltaToCadence(deltaTime);
 
     m_accumulator += deltaTime;
     
@@ -169,6 +174,14 @@ void TimestepManager::setFixedTimestep(float timestep) {
     }
 }
 
+void TimestepManager::setDisplayRefreshHz(float hz) {
+    if (hz > 0.0f) {
+        m_displayRefreshHz = hz;
+    } else {
+        m_displayRefreshHz = 0.0f;
+    }
+}
+
 void TimestepManager::reset() {
     m_accumulator = 0.0;
     m_firstFrame = true;
@@ -238,4 +251,3 @@ void TimestepManager::preciseFrameWait(double targetFrameTimeMs) const {
     Uint64 targetNs = static_cast<Uint64>(targetFrameTimeMs * 1000000.0);
     SDL_DelayPrecise(targetNs);
 }
-

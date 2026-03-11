@@ -1799,7 +1799,7 @@ Located in `tests/gpu/`, these tests validate the SDL3 GPU rendering subsystem. 
 **GPUFrameTimingBenchmark.cpp** - Focused GPU frame timing benchmark:
 - Uses the real `GPURenderer` path with synthetic workload uploads and draws
 - Supports workload modes: `particle`, `primitive`, `sprite`, `ui`, and `mixed`
-- Reports average total frame time plus `GPUSwapchain`, `GPUUpload`, and `GPUSubmit`
+- Reports average total frame time plus `GPUSwapchainWait`, `GPUUpload`, and `GPUSubmit`
 - Intended for before/after renderer comparisons on the same machine
 - Exercises the frame lifecycle, upload path, and present timing without needing a full game state
 
@@ -1825,7 +1825,7 @@ ninja -C build gpu_frame_timing_benchmark
 
 Interpretation:
 - `Avg frame time` is the end-to-end CPU frame duration for the benchmark loop
-- `Avg GPUSwapchain` is where frame pacing / VSync wait shows up
+- `Avg GPUSwapchainWait` is where frame pacing / swapchain wait shows up
 - `Avg GPUUpload` shows CPU-side time spent finalizing uploads into the frame
 - `Avg GPUSubmit` shows command buffer submission overhead
 

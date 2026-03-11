@@ -379,6 +379,14 @@ private:
    * @details Normalizes UI scale, reloads fonts, and triggers UI repositioning.
    */
   void onDisplayChange(const SDL_Event& event);
+
+  /**
+   * @brief Refreshes TimestepManager's view of the active display cadence.
+   * @details Reads the window's current display refresh via SDL and pushes it
+   *          into TimestepManager so VSync-paced frame deltas can be quantized
+   *          to the real display interval.
+   */
+  void updateDisplayRefreshRate();
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{
       nullptr, SDL_DestroyWindow};

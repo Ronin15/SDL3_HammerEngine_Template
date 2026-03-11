@@ -256,7 +256,7 @@ class FontManager {
   /**
    * @brief Process pending text texture uploads in the main copy pass
    * @param copyPass Active GPU copy pass from the main render loop
-   * @note Call this from GPURenderer::beginScenePass() alongside TextureManager uploads
+   * @note Call this during the GPURenderer frame upload stage alongside TextureManager uploads
    */
   void processPendingTextUploads(SDL_GPUCopyPass* copyPass);
 

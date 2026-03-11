@@ -347,6 +347,7 @@ bool GameEngine::init(std::string_view title) {
   // Create TimestepManager (uses default 60 FPS target and 1/60s fixed
   // timestep)
   m_timestepManager = std::make_unique<TimestepManager>();
+  updateDisplayRefreshRate();
 
   // VSync handling - different for GPU vs SDL_Renderer
 #ifdef USE_SDL3_GPU
@@ -1164,10 +1165,8 @@ void GameEngine::render() {
     mp_gameStateManager->recordGPUVertices(gpuRenderer, interpolationAlpha);
     profiler.endRender(HammerEngine::RenderPhase::WorldTiles);
 
-    // Begin scene render pass (uploads vertices, clears scene texture)
-    profiler.beginRender(HammerEngine::RenderPhase::GPUUpload);
+    // Begin scene render pass (finalizes uploads, clears scene texture)
     SDL_GPURenderPass* scenePass = gpuRenderer.beginScenePass();
-    profiler.endRender(HammerEngine::RenderPhase::GPUUpload);
 
     // Render scene content
     profiler.beginRender(HammerEngine::RenderPhase::Entities);
@@ -1540,6 +1539,34 @@ void GameEngine::setFullscreen(bool enabled) {
   toggleFullscreen();
 }
 
+void GameEngine::updateDisplayRefreshRate() {
+  if (!m_timestepManager || !mp_window) {
+    return;
+  }
+
+  SDL_DisplayID displayID = SDL_GetDisplayForWindow(mp_window.get());
+  if (displayID == 0) {
+    m_timestepManager->setDisplayRefreshHz(0.0f);
+    GAMEENGINE_WARN("Unable to determine active display for timestep refresh tracking");
+    return;
+  }
+
+  const SDL_DisplayMode* displayMode = SDL_GetCurrentDisplayMode(displayID);
+  if (!displayMode || displayMode->refresh_rate <= 0.0f) {
+    displayMode = SDL_GetDesktopDisplayMode(displayID);
+  }
+
+  if (!displayMode || displayMode->refresh_rate <= 0.0f) {
+    m_timestepManager->setDisplayRefreshHz(0.0f);
+    GAMEENGINE_WARN("Unable to query active display refresh rate for timestep tracking");
+    return;
+  }
+
+  m_timestepManager->setDisplayRefreshHz(displayMode->refresh_rate);
+  GAMEENGINE_INFO(std::format("TimestepManager display refresh set to {:.2f}Hz",
+                              displayMode->refresh_rate));
+}
+
 void GameEngine::setGlobalPause(bool paused) {
   m_globallyPaused = paused;
 
@@ -1652,6 +1679,7 @@ void GameEngine::onWindowResize(const SDL_Event &event) {
 
   // Update GameEngine window dimensions
   setWindowSize(newWidth, newHeight);
+  updateDisplayRefreshRate();
 
   // Use native resolution rendering (all platforms) for crisp, sharp text
   // This matches the initialization approach in GameEngine and ensures
@@ -1779,6 +1807,7 @@ void GameEngine::onDisplayChange(const SDL_Event &event) {
   }
 
   GAMEENGINE_INFO(std::format("Display event detected: {}", eventName));
+  updateDisplayRefreshRate();
 
 // On Apple platforms, display changes often invalidate font textures
 // due to different DPI scaling or context changes

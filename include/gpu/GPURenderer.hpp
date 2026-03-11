@@ -54,7 +54,16 @@ public:
     bool beginFrame();
 
     /**
-     * End copy pass and begin scene render pass.
+     * Finalize uploads and acquire the swapchain texture for this frame.
+     * SDL_GPU presents the acquired swapchain texture when the owning command
+     * buffer is submitted, so acquisition remains part of the render command
+     * buffer flow.
+     * @return true if a swapchain texture is ready for this frame
+     */
+    bool acquireSwapchainTexture();
+
+    /**
+     * End copy pass, upload frame data, and begin scene render pass.
      * @return Active render pass for scene rendering
      */
     SDL_GPURenderPass* beginScenePass();
@@ -189,7 +198,7 @@ private:
     SDL_GPUCopyPass* m_copyPass{nullptr};
     SDL_GPURenderPass* m_currentPass{nullptr};
 
-    // Swapchain state (acquired in beginFrame for authoritative dimensions)
+    // Swapchain state (acquired explicitly before the swapchain render pass)
     SDL_GPUTexture* m_swapchainTexture{nullptr};
     uint32_t m_swapchainWidth{0};
     uint32_t m_swapchainHeight{0};

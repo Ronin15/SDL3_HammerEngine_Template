@@ -90,7 +90,7 @@ void GameEngine::render(float alpha) {
 | Phase | Description |
 |-------|-------------|
 | `GPUCmdBuffer` | Command buffer acquisition |
-| `GPUSwapchain` | Swapchain texture acquisition (VSync wait) |
+| `GPUSwapchainWait` | Swapchain wait/acquisition on the frame command buffer |
 | `GPUVertexMap` | Vertex pool mapping |
 | `GPUCopyPass` | Begin copy pass |
 | `GPUUpload` | Vertex/texture uploads |
@@ -229,7 +229,7 @@ FrameProfiler::Instance().setThresholdMs(16.67);
 
 ### VSync Exclusion
 
-The profiler excludes VSync wait time from hitch calculations. For GPU rendering, `GPUSwapchain` time (where VSync wait occurs) is automatically subtracted from the frame total.
+The profiler excludes swapchain pacing wait from hitch calculations. For GPU rendering, `GPUSwapchainWait` time is automatically subtracted from the frame total.
 
 ## F3 Debug Overlay
 

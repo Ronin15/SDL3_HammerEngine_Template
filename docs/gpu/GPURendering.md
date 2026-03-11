@@ -71,7 +71,7 @@ GameEngine::recordGPUVertices()
 
 ```
 GameEngine::renderGPUScene()
-├── gpuRenderer.beginScenePass()       // End copy, begin scene render pass
+├── gpuRenderer.beginScenePass()       // End copy, wait/acquire swapchain, begin scene render pass
 ├── gpuSceneRenderer.renderScene()     // Issue draw calls for world sprites
 ├── renderEntities()                   // Issue draw calls for entities
 └── renderParticles()                  // Issue draw calls for particles

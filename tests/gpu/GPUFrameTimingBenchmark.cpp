@@ -470,7 +470,7 @@ int main(int argc, char* argv[]) {
             const double frameMs = std::chrono::duration<double, std::milli>(frameEnd - frameStart).count();
             samples.add(
                 frameMs,
-                profiler.getRenderTimeMs(HammerEngine::RenderPhase::GPUSwapchain),
+                profiler.getRenderTimeMs(HammerEngine::RenderPhase::GPUSwapchainWait),
                 profiler.getRenderTimeMs(HammerEngine::RenderPhase::GPUUpload),
                 profiler.getRenderTimeMs(HammerEngine::RenderPhase::GPUSubmit)
             );

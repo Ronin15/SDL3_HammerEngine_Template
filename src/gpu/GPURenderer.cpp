@@ -261,6 +261,42 @@ bool GPURenderer::beginFrame() {
     return true;
 }
 
+bool GPURenderer::acquireSwapchainTexture() {
+    if (!m_commandBuffer || !m_frameActive) {
+        return false;
+    }
+
+    if (m_swapchainTexture != nullptr) {
+        return true;
+    }
+
+    auto& profiler = FrameProfiler::Instance();
+    profiler.beginRender(RenderPhase::GPUSwapchainWait);
+    if (!SDL_WaitAndAcquireGPUSwapchainTexture(
+            m_commandBuffer, m_window, &m_swapchainTexture,
+            &m_swapchainWidth, &m_swapchainHeight)) {
+        profiler.endRender(RenderPhase::GPUSwapchainWait);
+        GAMEENGINE_ERROR(std::format("Failed to acquire swapchain texture: {}", SDL_GetError()));
+        return false;
+    }
+    profiler.endRender(RenderPhase::GPUSwapchainWait);
+
+    if (!m_swapchainTexture) {
+        return false;
+    }
+
+    // Sync viewport before scene recording so the scene texture matches the
+    // swapchain dimensions for this frame.
+    if (m_swapchainWidth != m_viewportWidth || m_swapchainHeight != m_viewportHeight) {
+        GAMEENGINE_INFO(std::format("Swapchain size changed: {}x{} -> {}x{}",
+                                    m_viewportWidth, m_viewportHeight,
+                                    m_swapchainWidth, m_swapchainHeight));
+        updateViewport(m_swapchainWidth, m_swapchainHeight);
+    }
+
+    return true;
+}
+
 SDL_GPURenderPass* GPURenderer::beginScenePass() {
     if (!m_commandBuffer || !m_frameActive) {
         return nullptr;
@@ -319,29 +355,8 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
         profiler.endRender(RenderPhase::GPUUpload);
     }
 
-    if (m_swapchainTexture == nullptr) {
-        auto& profiler = FrameProfiler::Instance();
-        profiler.beginRender(RenderPhase::GPUSwapchain);
-        if (!SDL_WaitAndAcquireGPUSwapchainTexture(
-                m_commandBuffer, m_window, &m_swapchainTexture,
-                &m_swapchainWidth, &m_swapchainHeight)) {
-            profiler.endRender(RenderPhase::GPUSwapchain);
-            GAMEENGINE_ERROR(std::format("Failed to acquire swapchain texture: {}", SDL_GetError()));
-            return nullptr;
-        }
-        profiler.endRender(RenderPhase::GPUSwapchain);
-    }
-
-    if (!m_swapchainTexture) {
+    if (!acquireSwapchainTexture()) {
         return nullptr;
-    }
-
-    // Sync viewport before rendering the scene so the scene texture matches the swapchain.
-    if (m_swapchainWidth != m_viewportWidth || m_swapchainHeight != m_viewportHeight) {
-        GAMEENGINE_INFO(std::format("Swapchain size changed: {}x{} -> {}x{}",
-                                    m_viewportWidth, m_viewportHeight,
-                                    m_swapchainWidth, m_swapchainHeight));
-        updateViewport(m_swapchainWidth, m_swapchainHeight);
     }
 
     // Begin scene render pass
@@ -350,7 +365,9 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
         {0.122f, 0.125f, 0.133f, 1.0f}  // HammerGray slate gray (31, 32, 34)
     );
 
+    profiler.beginRender(RenderPhase::GPUScenePass);
     m_currentPass = SDL_BeginGPURenderPass(m_commandBuffer, &colorTarget, 1, nullptr);
+    profiler.endRender(RenderPhase::GPUScenePass);
     if (!m_currentPass) {
         GAMEENGINE_ERROR(std::format("Failed to begin scene render pass: {}", SDL_GetError()));
         return nullptr;
@@ -403,7 +420,10 @@ SDL_GPURenderPass* GPURenderer::beginSwapchainPass() {
     colorTarget.store_op = SDL_GPU_STOREOP_STORE;
     colorTarget.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
 
+    auto& profiler = FrameProfiler::Instance();
+    profiler.beginRender(RenderPhase::GPUSwapPass);
     m_currentPass = SDL_BeginGPURenderPass(m_commandBuffer, &colorTarget, 1, nullptr);
+    profiler.endRender(RenderPhase::GPUSwapPass);
     if (!m_currentPass) {
         GAMEENGINE_ERROR(std::format("Failed to begin swapchain render pass: {}", SDL_GetError()));
         return nullptr;
