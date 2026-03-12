@@ -61,7 +61,7 @@ public:
 
 private:
   // Demo management methods
-  void setupEventSystem();
+  void registerEventHandlers();
   void unregisterEventHandlers();
 
   // Event demonstration methods (manual triggers only)

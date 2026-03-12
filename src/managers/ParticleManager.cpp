@@ -556,8 +556,6 @@ bool ParticleManager::init() {
     m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false;
 
-    registerEventHandlers();
-
     PARTICLE_INFO("ParticleManager initialized successfully");
     return true;
 
@@ -592,15 +590,6 @@ void ParticleManager::clean() {
         future.wait();
       }
     }
-  }
-
-  // Remove event handlers using stored tokens
-  if (EventManager::Instance().isInitialized()) {
-    auto &eventMgr = EventManager::Instance();
-    for (const auto &token : m_eventHandlerTokens) {
-      eventMgr.removeHandler(token);
-    }
-    m_eventHandlerTokens.clear();
   }
 
   // Clear all storage - no locks needed for lock-free storage
@@ -723,80 +712,76 @@ void ParticleManager::prepareForStateTransition() {
       weatherEffectsStopped, independentEffectsStopped, regularEffectsStopped,
       particlesCleared));
 
-  registerEventHandlers();
 }
 
-void ParticleManager::registerEventHandlers() {
-  if (!EventManager::Instance().isInitialized()) {
+void ParticleManager::handleParticleEffectEvent(const EventData &data) {
+  if (!data.isActive() || !data.event) {
     return;
   }
 
-  auto &eventMgr = EventManager::Instance();
-  m_eventHandlerTokens.clear();
+  auto pe = std::dynamic_pointer_cast<ParticleEffectEvent>(data.event);
+  if (!pe) {
+    return;
+  }
 
-  auto peToken = eventMgr.registerHandlerWithToken(
-      EventTypeId::ParticleEffect, [](const EventData &data) {
-        if (!data.isActive() || !data.event) return;
-        auto pe = std::dynamic_pointer_cast<ParticleEffectEvent>(data.event);
-        if (!pe) return;
+  if (!isInitialized() || isShutdown()) {
+    PARTICLE_ERROR(std::format("ParticleManager not available for effect: {}",
+                               pe->getEffectName()));
+    return;
+  }
 
-        auto &particleMgr = ParticleManager::Instance();
-        if (!particleMgr.isInitialized() || particleMgr.isShutdown()) {
-          PARTICLE_ERROR(std::format("ParticleManager not available for effect: {}",
-                                     pe->getEffectName()));
-          return;
-        }
+  const Vector2D &pos = pe->getPosition();
+  float intensity = pe->getIntensity();
+  float duration = pe->getDuration();
+  const std::string &groupTag = pe->getGroupTag();
+  const std::string &soundEffect = pe->getSoundEffect();
 
-        const Vector2D &pos = pe->getPosition();
-        float intensity = pe->getIntensity();
-        float duration = pe->getDuration();
-        const std::string &groupTag = pe->getGroupTag();
-        const std::string &soundEffect = pe->getSoundEffect();
+  uint32_t effectId = 0;
+  if (duration == -1.0f) {
+    effectId = playIndependentEffect(pe->getEffectType(), pos, intensity,
+                                     duration, groupTag, soundEffect);
+  } else {
+    effectId = playEffect(pe->getEffectType(), pos, intensity);
+  }
 
-        uint32_t effectId = 0;
-        if (duration == -1.0f) {
-          effectId = particleMgr.playIndependentEffect(
-              pe->getEffectType(), pos, intensity, duration, groupTag, soundEffect);
-        } else {
-          effectId = particleMgr.playEffect(pe->getEffectType(), pos, intensity);
-        }
+  if (!soundEffect.empty()) {
+    try {
+      SoundManager &soundMgr = SoundManager::Instance();
+      soundMgr.playSFX(soundEffect, 0, 100);
+    } catch (const std::exception &e) {
+      PARTICLE_ERROR(std::format("Sound effect failed: {}", e.what()));
+    }
+  }
 
-        if (!soundEffect.empty()) {
-          try {
-            SoundManager &soundMgr = SoundManager::Instance();
-            soundMgr.playSFX(soundEffect, 0, 100);
-          } catch (const std::exception &e) {
-            PARTICLE_ERROR(std::format("Sound effect failed: {}", e.what()));
-          }
-        }
+  if (effectId != 0) {
+    PARTICLE_INFO(std::format(
+        "ParticleEffect '{}' triggered at ({}, {}) intensity={} -> ID: {}",
+        pe->getEffectName(), pos.getX(), pos.getY(), intensity, effectId));
+  }
+}
 
-        if (effectId != 0) {
-          PARTICLE_INFO(std::format("ParticleEffect '{}' triggered at ({}, {}) intensity={} -> ID: {}",
-                                    pe->getEffectName(), pos.getX(), pos.getY(), intensity, effectId));
-        }
-      });
-  m_eventHandlerTokens.push_back(peToken);
+void ParticleManager::handleWeatherEvent(const EventData &data) {
+  if (!data.isActive() || !data.event) {
+    return;
+  }
 
-  auto weatherToken = eventMgr.registerHandlerWithToken(
-      EventTypeId::Weather, [](const EventData &data) {
-        if (!data.isActive() || !data.event) return;
-        auto we = std::dynamic_pointer_cast<WeatherEvent>(data.event);
-        if (!we) return;
+  auto we = std::dynamic_pointer_cast<WeatherEvent>(data.event);
+  if (!we) {
+    return;
+  }
 
-        auto &particleMgr = ParticleManager::Instance();
-        if (!particleMgr.isInitialized() || particleMgr.isShutdown()) {
-          PARTICLE_WARN("ParticleManager not initialized - weather effects disabled");
-          return;
-        }
+  if (!isInitialized() || isShutdown()) {
+    PARTICLE_WARN("ParticleManager not initialized - weather effects disabled");
+    return;
+  }
 
-        const auto &wp = we->getWeatherParams();
-        PARTICLE_INFO(std::format("Weather handler: {}, intensity={:.2f}, transition={:.2f}s",
-                                  we->getWeatherTypeString(), wp.intensity, wp.transitionTime));
+  const auto &wp = we->getWeatherParams();
+  PARTICLE_INFO(std::format(
+      "Weather handler: {}, intensity={:.2f}, transition={:.2f}s",
+      we->getWeatherTypeString(), wp.intensity, wp.transitionTime));
 
-        particleMgr.triggerWeatherEffect(
-            we->getWeatherTypeString(), wp.intensity, wp.transitionTime);
-      });
-  m_eventHandlerTokens.push_back(weatherToken);
+  triggerWeatherEffect(we->getWeatherTypeString(), wp.intensity,
+                       wp.transitionTime);
 }
 
 void ParticleManager::update(float deltaTime) {

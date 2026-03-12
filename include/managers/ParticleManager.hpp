@@ -437,6 +437,9 @@ public:
    */
   bool isShutdown() const;
 
+  void handleParticleEffectEvent(const EventData& data);
+  void handleWeatherEvent(const EventData& data);
+
   // Effect Management
   /**
    * @brief Registers a particle effect definition for use
@@ -942,10 +945,6 @@ private:
   std::atomic<bool> m_useWorkerBudget{true};
   // Threading threshold now managed by WorkerBudget adaptive system
 
-  // Event handler tokens for proper cleanup
-  std::vector<EventManager::HandlerToken> m_eventHandlerTokens;
-
-
   std::atomic<size_t> m_activeCount{0};
 
   // Camera and culling
@@ -963,8 +962,6 @@ private:
   std::vector<std::future<void>> m_batchFutures;
   std::vector<std::future<void>> m_reusableBatchFutures;  // Swap target to preserve capacity
   std::mutex m_batchFuturesMutex;  // Protect futures vector
-
-  void registerEventHandlers();
 
   // NOTE: No update mutex - GameEngine handles update/render synchronization
 

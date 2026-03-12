@@ -47,46 +47,14 @@ bool WorldManager::init() {
 
   try {
     m_tileRenderer = std::make_unique<HammerEngine::TileRenderer>();
-    // Note: Event handlers will be registered later to avoid race conditions
-    // with EventManager
-
     m_isShutdown = false;
     m_initialized.store(true, std::memory_order_release);
-    WORLD_MANAGER_INFO("WorldManager initialized successfully (event handlers "
-                       "will be registered later)");
+    WORLD_MANAGER_INFO("WorldManager initialized successfully");
     return true;
   } catch (const std::exception &ex) {
     WORLD_MANAGER_ERROR(
         std::format("WorldManager::init - Exception: {}", ex.what()));
     return false;
-  }
-}
-
-void WorldManager::setupEventHandlers() {
-  if (!m_initialized.load(std::memory_order_acquire)) {
-    WORLD_MANAGER_ERROR(
-        "WorldManager not initialized - cannot setup event handlers");
-    return;
-  }
-
-  try {
-    unregisterEventHandlers();
-
-    if (m_tileRenderer) {
-      m_tileRenderer->unsubscribeFromSeasonEvents();
-    }
-
-    registerEventHandlers();
-
-    // Subscribe TileRenderer to season events for seasonal texture switching
-    if (m_tileRenderer) {
-      m_tileRenderer->subscribeToSeasonEvents();
-    }
-
-    WORLD_MANAGER_DEBUG("WorldManager event handlers setup complete");
-  } catch (const std::exception &ex) {
-    WORLD_MANAGER_ERROR(std::format(
-        "WorldManager::setupEventHandlers - Exception: {}", ex.what()));
   }
 }
 
@@ -96,8 +64,6 @@ void WorldManager::clean() {
   }
 
   std::lock_guard<std::shared_mutex> lock(m_worldMutex);
-
-  unregisterEventHandlers();
 
   // Unsubscribe TileRenderer from season events before cleanup
   if (m_tileRenderer) {
@@ -562,96 +528,6 @@ void WorldManager::fireWorldUnloadedEvent(const std::string &worldId) {
   } catch (const std::exception &ex) {
     WORLD_MANAGER_ERROR(
         std::format("Failed to fire WorldUnloadedEvent: {}", ex.what()));
-  }
-}
-
-void WorldManager::registerEventHandlers() {
-  try {
-    EventManager &eventMgr = EventManager::Instance();
-    m_handlerTokens.clear();
-
-    // Register handler for world events (to respond to events from other
-    // systems)
-    m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
-        EventTypeId::World, [](const EventData &data) {
-          if (data.isActive() && data.event) {
-            // Handle world-related events from other systems
-            WORLD_MANAGER_DEBUG(
-                std::format("WorldManager received world event: {}",
-                            data.event->getName()));
-          }
-        }));
-
-    // Register handler for camera events (world bounds may affect camera)
-    m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
-        EventTypeId::Camera, [](const EventData &data) {
-          if (data.isActive() && data.event) {
-            // Handle camera events that may require world data updates
-            WORLD_MANAGER_DEBUG(
-                std::format("WorldManager received camera event: {}",
-                            data.event->getName()));
-          }
-        }));
-
-    // Register handler for resource change events (resource changes may affect
-    // world state)
-    m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
-        EventTypeId::ResourceChange, [](const EventData &data) {
-          if (data.isActive() && data.event) {
-            // Handle resource changes that may affect world generation or state
-            auto resourceEvent =
-                std::dynamic_pointer_cast<ResourceChangeEvent>(data.event);
-            WORLD_MANAGER_DEBUG_IF(
-                resourceEvent,
-                std::format(
-                    "WorldManager received resource change: {} changed by {}",
-                    resourceEvent
-                        ? resourceEvent->getResourceHandle().toString()
-                        : "",
-                    resourceEvent ? resourceEvent->getQuantityChange() : 0));
-          }
-        }));
-
-    // Register handler for harvest resource events
-    m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
-        EventTypeId::Harvest, [this](const EventData &data) {
-          if (data.isActive() && data.event) {
-            auto harvestEvent =
-                std::dynamic_pointer_cast<HarvestResourceEvent>(data.event);
-            if (harvestEvent) {
-              WORLD_MANAGER_DEBUG(std::format(
-                  "WorldManager received harvest request from entity {} at "
-                  "({}, {})",
-                  harvestEvent->getEntityId(), harvestEvent->getTargetX(),
-                  harvestEvent->getTargetY()));
-
-              // Handle the harvest request
-              handleHarvestResource(harvestEvent->getEntityId(),
-                                    harvestEvent->getTargetX(),
-                                    harvestEvent->getTargetY());
-            }
-          }
-        }));
-
-    WORLD_MANAGER_DEBUG("WorldManager event handlers registered");
-  } catch (const std::exception &ex) {
-    WORLD_MANAGER_ERROR(
-        std::format("Failed to register event handlers: {}", ex.what()));
-  }
-}
-
-void WorldManager::unregisterEventHandlers() {
-  try {
-    auto &eventMgr = EventManager::Instance();
-    for (const auto &tok : m_handlerTokens) {
-      (void)eventMgr.removeHandler(tok);
-    }
-    m_handlerTokens.clear();
-    WORLD_MANAGER_DEBUG(
-        "WorldManager event handlers unregistered (tokens cleared)");
-  } catch (const std::exception &ex) {
-    WORLD_MANAGER_ERROR(
-        std::format("Failed to unregister event handlers: {}", ex.what()));
   }
 }
 

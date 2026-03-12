@@ -11,6 +11,7 @@
 #include "controllers/render/NPCRenderController.hpp"
 #include "entities/EntityHandle.hpp"
 #include "entities/Player.hpp"
+#include "managers/EventManager.hpp"
 #include "utils/Camera.hpp"
 #include "utils/WorldRenderPipeline.hpp"
 
@@ -61,6 +62,8 @@ private:
     void setupTestVillage();  // Spawns merchant NPCs, guards, and villagers
     void initializeCamera();
     void updateCamera(float deltaTime);
+    void registerEventHandlers();
+    void unregisterEventHandlers();
 
     // Data-driven NPC rendering (velocity-based animation)
     NPCRenderController m_npcRenderCtrl{};
@@ -107,6 +110,9 @@ private:
 
     // Cached NPC count (updated in update(), used in render())
     size_t m_cachedNPCCount{0};
+
+    EventManager::HandlerToken m_combatEventToken{};
+    bool m_combatSubscribed{false};
 };
 
 #endif // ADVANCED_AI_DEMO_STATE_HPP

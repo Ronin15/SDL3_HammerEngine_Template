@@ -945,16 +945,12 @@ bool GameEngine::init(std::string_view title) {
   // Step 3: Post-initialization setup that requires manager dependencies
   GAMEENGINE_INFO("Setting up manager cross-dependencies");
   try {
-    // Setup WorldManager event handlers now that EventManager is guaranteed to
-    // be ready
     WorldManager &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized()) {
-      worldMgr.setupEventHandlers();
       worldMgr.setRenderer(mp_renderer.get());
-      GAMEENGINE_INFO("WorldManager event handlers setup complete");
+      GAMEENGINE_INFO("WorldManager renderer setup complete");
     } else {
-      GAMEENGINE_ERROR(
-          "WorldManager not initialized - cannot setup event handlers");
+      GAMEENGINE_ERROR("WorldManager not initialized - cannot set renderer");
       return false;
     }
 

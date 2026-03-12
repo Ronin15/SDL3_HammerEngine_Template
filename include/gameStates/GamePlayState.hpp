@@ -93,6 +93,8 @@ private:
   // Inventory UI methods
   void initializeInventoryUI();
   void toggleInventoryDisplay();
+  void registerEventHandlers();
+  void unregisterEventHandlers();
 
   // Camera management methods
   void initializeCamera();
@@ -133,6 +135,10 @@ private:
   bool m_ambientParticlesActive{false};  // Whether ambient particles are currently running
   EventManager::HandlerToken m_weatherEventToken;
   bool m_weatherSubscribed{false};
+  EventManager::HandlerToken m_combatEventToken;
+  bool m_combatSubscribed{false};
+  EventManager::HandlerToken m_harvestEventToken;
+  bool m_harvestSubscribed{false};
   TimePeriod m_currentTimePeriod{TimePeriod::Day};  // Track current period for weather changes
   WeatherType m_lastWeatherType{WeatherType::Clear};  // Track to avoid redundant weather processing
 };

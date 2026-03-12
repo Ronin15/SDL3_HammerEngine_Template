@@ -250,9 +250,6 @@ bool AIDemoState::enter() {
   try {
     auto &worldManager = WorldManager::Instance();
 
-    // Refresh global world-related event handlers after state transitions.
-    worldManager.setupEventHandlers();
-
     // Update world dimensions from loaded world
     float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
     if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {

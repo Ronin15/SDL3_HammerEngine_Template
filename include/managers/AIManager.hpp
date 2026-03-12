@@ -110,6 +110,8 @@ public:
    */
   void update(float deltaTime);
 
+  void handleCombatEvent(const EventData& data);
+
 
   /**
    * @brief Checks if AIManager has been shut down

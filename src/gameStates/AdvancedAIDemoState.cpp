@@ -188,9 +188,6 @@ bool AdvancedAIDemoState::enter() {
   try {
     auto &worldManager = WorldManager::Instance();
 
-    // Refresh global world-related event handlers after state transitions.
-    worldManager.setupEventHandlers();
-
     // Setup world size using actual world bounds from loaded world
     float worldMinX, worldMinY, worldMaxX, worldMaxY;
     if (worldManager.getWorldBounds(worldMinX, worldMinY, worldMaxX,
@@ -246,6 +243,7 @@ bool AdvancedAIDemoState::enter() {
     // Register CombatController (follows GamePlayState pattern)
     m_controllers.add<CombatController>(m_player);
     m_controllers.subscribeAll();
+    registerEventHandlers();
 
     // Spawn test village with merchants, guards, and villagers
     setupTestVillage();
@@ -353,6 +351,7 @@ bool AdvancedAIDemoState::exit() {
       m_player.reset();
     }
 
+    unregisterEventHandlers();
     aiMgr.prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
 
@@ -409,6 +408,7 @@ bool AdvancedAIDemoState::exit() {
     m_player.reset();
   }
 
+  unregisterEventHandlers();
   aiMgr.prepareForStateTransition();
   bgSimMgr.prepareForStateTransition();
 
@@ -453,6 +453,23 @@ bool AdvancedAIDemoState::exit() {
 
   GAMESTATE_INFO("AdvancedAIDemoState exit complete");
   return true;
+}
+
+void AdvancedAIDemoState::registerEventHandlers() {
+  auto &eventMgr = EventManager::Instance();
+  m_combatEventToken = eventMgr.registerHandlerWithToken(
+      EventTypeId::Combat,
+      [](const EventData &data) { AIManager::Instance().handleCombatEvent(data); });
+  m_combatSubscribed = true;
+}
+
+void AdvancedAIDemoState::unregisterEventHandlers() {
+  if (!m_combatSubscribed) {
+    return;
+  }
+
+  EventManager::Instance().removeHandler(m_combatEventToken);
+  m_combatSubscribed = false;
 }
 
 void AdvancedAIDemoState::update(float deltaTime) {

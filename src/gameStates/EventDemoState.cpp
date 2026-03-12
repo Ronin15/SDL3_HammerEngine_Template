@@ -119,8 +119,8 @@ bool EventDemoState::enter() {
       m_worldHeight = gameEngine.getLogicalHeight();
     }
 
-    // Initialize event system
-    setupEventSystem();
+    // Initialize state-owned event subscriptions.
+    registerEventHandlers();
 
     // Create player
     m_player = std::make_shared<Player>();
@@ -145,10 +145,6 @@ bool EventDemoState::enter() {
     m_controllers.add<WeatherController>();
     m_controllers.add<DayNightController>();
     m_controllers.subscribeAll();
-
-    // WorldManager installs global world/time/resource subscriptions and must
-    // be refreshed after EventManager state-transition cleanup.
-    WorldManager::Instance().setupEventHandlers();
 
     // Enable automatic weather changes via GameTimeManager
     auto &gameTimeMgr = GameTimeManager::Instance();
@@ -665,26 +661,28 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   uiMgr.render(renderer);
 }
 
-void EventDemoState::setupEventSystem() {
-  GAMESTATE_INFO("EventDemoState: EventManager instance obtained");
-  GAMESTATE_INFO("EventDemoState: Using pre-initialized EventManager");
-
+void EventDemoState::registerEventHandlers() {
   auto &eventMgr = EventManager::Instance();
 
-  // Register event handlers using token-based API for easy removal
   m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
       EventTypeId::NPCSpawn, [this](const EventData &data) {
-        if (data.isActive())
+        if (data.isActive()) {
           onNPCSpawned(data);
+        }
       }));
 
   m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
       EventTypeId::ResourceChange, [this](const EventData &data) {
-        if (data.isActive())
+        if (data.isActive()) {
           onResourceChanged(data);
+        }
       }));
 
-  GAMESTATE_INFO("EventDemoState: Event handlers registered");
+  m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
+      EventTypeId::Weather, [](const EventData &data) {
+        ParticleManager::Instance().handleWeatherEvent(data);
+      }));
+
   addLogEntry("Event system ready");
 }
 

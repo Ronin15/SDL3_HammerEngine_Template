@@ -18,6 +18,7 @@
 #include "gameStates/GameOverState.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "gameStates/PauseState.hpp"
+#include "events/HarvestResourceEvent.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
@@ -49,7 +50,8 @@
 GamePlayState::GamePlayState()
     : m_transitioningToLoading{false}, m_transitioningToGameOver{false},
       mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false},
-      m_dayNightEventToken{}, m_weatherEventToken{} {}
+      m_dayNightEventToken{}, m_weatherEventToken{}, m_combatEventToken{},
+      m_harvestEventToken{} {}
 
 GamePlayState::~GamePlayState() = default;
 
@@ -183,27 +185,10 @@ bool GamePlayState::enter() {
     // Subscribe all controllers at once
     m_controllers.subscribeAll();
 
-    // WorldManager's global event handlers are cleared during event-hub state
-    // transitions, so refresh them on state entry.
-    WorldManager::Instance().setupEventHandlers();
-
     // Initialize combat HUD (health/stamina bars, target frame)
     UIManager::Instance().createCombatHUD();
 
-    // Cache EventManager reference for event subscriptions
-    auto &eventMgr = EventManager::Instance();
-
-    // Subscribe to TimePeriodChangedEvent for day/night overlay rendering
-    m_dayNightEventToken = eventMgr.registerHandlerWithToken(
-        EventTypeId::Time,
-        [this](const EventData &data) { onTimePeriodChanged(data); });
-    m_dayNightSubscribed = true;
-
-    // Subscribe to WeatherChangedEvent for ambient particle management
-    m_weatherEventToken = eventMgr.registerHandlerWithToken(
-        EventTypeId::Weather,
-        [this](const EventData &data) { onWeatherChanged(data); });
-    m_weatherSubscribed = true;
+    registerEventHandlers();
 
     // Mark as initialized for future pause/resume cycles
     m_initialized = true;
@@ -439,14 +424,7 @@ bool GamePlayState::exit() {
     // Unsubscribe event handlers before clearing controllers
     // (handlers capture `this` and call m_controllers.get<>() which returns
     // nullptr after clear)
-    if (m_dayNightSubscribed) {
-      eventMgr.removeHandler(m_dayNightEventToken);
-      m_dayNightSubscribed = false;
-    }
-    if (m_weatherSubscribed) {
-      eventMgr.removeHandler(m_weatherEventToken);
-      m_weatherSubscribed = false;
-    }
+    unregisterEventHandlers();
 
     aiMgr.prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
@@ -506,17 +484,7 @@ bool GamePlayState::exit() {
   m_npcRenderCtrl.clearSpawnedNPCs();
 
   // Unsubscribe from event handlers before EventManager teardown.
-  if (m_dayNightSubscribed || m_weatherSubscribed) {
-    if (m_dayNightSubscribed) {
-      eventMgr.removeHandler(m_dayNightEventToken);
-      m_dayNightSubscribed = false;
-    }
-
-    if (m_weatherSubscribed) {
-      eventMgr.removeHandler(m_weatherEventToken);
-      m_weatherSubscribed = false;
-    }
-  }
+  unregisterEventHandlers();
 
   aiMgr.prepareForStateTransition();
   bgSimMgr.prepareForStateTransition();
@@ -576,6 +544,70 @@ bool GamePlayState::exit() {
 }
 
 std::string GamePlayState::getName() const { return "GamePlayState"; }
+
+void GamePlayState::registerEventHandlers() {
+  auto &eventMgr = EventManager::Instance();
+
+  m_dayNightEventToken = eventMgr.registerHandlerWithToken(
+      EventTypeId::Time,
+      [this](const EventData &data) { onTimePeriodChanged(data); });
+  m_dayNightSubscribed = true;
+
+  m_weatherEventToken = eventMgr.registerHandlerWithToken(
+      EventTypeId::Weather,
+      [this](const EventData &data) {
+        ParticleManager::Instance().handleWeatherEvent(data);
+        onWeatherChanged(data);
+      });
+  m_weatherSubscribed = true;
+
+  m_combatEventToken = eventMgr.registerHandlerWithToken(
+      EventTypeId::Combat,
+      [](const EventData &data) { AIManager::Instance().handleCombatEvent(data); });
+  m_combatSubscribed = true;
+
+  m_harvestEventToken = eventMgr.registerHandlerWithToken(
+      EventTypeId::Harvest, [](const EventData &data) {
+        if (!data.isActive() || !data.event) {
+          return;
+        }
+
+        auto harvestEvent =
+            std::dynamic_pointer_cast<HarvestResourceEvent>(data.event);
+        if (!harvestEvent) {
+          return;
+        }
+
+        WorldManager::Instance().handleHarvestResource(
+            harvestEvent->getEntityId(), harvestEvent->getTargetX(),
+            harvestEvent->getTargetY());
+      });
+  m_harvestSubscribed = true;
+}
+
+void GamePlayState::unregisterEventHandlers() {
+  auto &eventMgr = EventManager::Instance();
+
+  if (m_dayNightSubscribed) {
+    eventMgr.removeHandler(m_dayNightEventToken);
+    m_dayNightSubscribed = false;
+  }
+
+  if (m_weatherSubscribed) {
+    eventMgr.removeHandler(m_weatherEventToken);
+    m_weatherSubscribed = false;
+  }
+
+  if (m_combatSubscribed) {
+    eventMgr.removeHandler(m_combatEventToken);
+    m_combatSubscribed = false;
+  }
+
+  if (m_harvestSubscribed) {
+    eventMgr.removeHandler(m_harvestEventToken);
+    m_harvestSubscribed = false;
+  }
+}
 
 void GamePlayState::pause() {
   // Hide gameplay UI when paused (PauseState overlays on top)

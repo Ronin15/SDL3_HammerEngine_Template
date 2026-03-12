@@ -80,9 +80,6 @@ public:
    *   - ParticleManager (Independent but initialized after core systems)
    *   - WorldManager (Needs CollisionManager for static geometry)
    *
-   * Phase 5 (Post-Initialization Event Setup):
-   *   - WorldManager::setupEventHandlers() (Requires EventManager fully initialized)
-   *
    * Note: Initialization uses ThreadSystem futures to parallelize where possible
    * while respecting the dependency constraints above.
    */

@@ -40,9 +40,6 @@ BOOST_AUTO_TEST_CASE(TestWorldLoadedEventPayload) {
     BOOST_REQUIRE(WorldManager::Instance().init());
     BOOST_REQUIRE(EventManager::Instance().init());
 
-    // Setup event handlers
-    WorldManager::Instance().setupEventHandlers();
-
     std::atomic<bool> gotLoaded{false};
     std::string capturedWorldId;
     int capturedW = -1, capturedH = -1;
@@ -89,9 +86,6 @@ BOOST_AUTO_TEST_CASE(TestHarvestResourceIntegration) {
     BOOST_REQUIRE(WorldManager::Instance().init());
     BOOST_REQUIRE(EventManager::Instance().init());
 
-    // Ensure WorldManager registers its handlers (including Harvest)
-    WorldManager::Instance().setupEventHandlers();
-
     WorldGenerationConfig cfg{};
     cfg.width = 20; cfg.height = 20; cfg.seed = 7777; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.2f; cfg.mountainLevel = 0.8f;
     BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(cfg));
@@ -112,6 +106,23 @@ BOOST_AUTO_TEST_CASE(TestHarvestResourceIntegration) {
         if (changed) { tileChangedCount.fetch_add(1); }
     });
 
+    auto harvestToken = EventManager::Instance().registerHandlerWithToken(
+        EventTypeId::Harvest, [](const EventData& data) {
+            if (!data.isActive() || !data.event) {
+                return;
+            }
+
+            auto harvestEvent =
+                std::dynamic_pointer_cast<HarvestResourceEvent>(data.event);
+            if (!harvestEvent) {
+                return;
+            }
+
+            WorldManager::Instance().handleHarvestResource(
+                harvestEvent->getEntityId(), harvestEvent->getTargetX(),
+                harvestEvent->getTargetY());
+        });
+
     // Dispatch harvest event directly (dispatch-only architecture)
     auto harvestEvent = std::make_shared<HarvestResourceEvent>(1, targetX, targetY, "test_harvest");
     EventManager::Instance().dispatchEvent(harvestEvent);
@@ -128,6 +139,8 @@ BOOST_AUTO_TEST_CASE(TestHarvestResourceIntegration) {
     BOOST_REQUIRE(after != nullptr);
     BOOST_CHECK_EQUAL(after->obstacleType, ObstacleType::NONE);
     BOOST_CHECK_GE(tileChangedCount.load(), 1);
+
+    EventManager::Instance().removeHandler(harvestToken);
 
     WorldManager::Instance().clean();
     EventManager::Instance().clean();

@@ -110,84 +110,75 @@ bool AIManager::init() {
     // Register default behaviors (Idle, Wander, Chase, Guard, Attack, Flee, Follow)
     registerDefaultBehaviors();
 
-    // Register damage handler for deferred damage application (thread-safe)
-    // DamageEvents are queued during parallel batch processing and applied here
-    // Responsibilities:
-    //   - Apply damage to health (EDM data)
-    //   - Apply knockback to velocity (EDM data)
-    //   - Update victim's memory for threat detection (EDM data)
-    //   - Mark dead + queue destruction if health <= 0 (EDM lifecycle)
-    // NOT handled here:
-    //   - Combat responses (AI system determines in processBatch)
-    EventManager::Instance().registerHandler(EventTypeId::Combat,
-        [](const EventData& data) {
-          if (!data.isActive() || !data.event) return;
-
-          auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(data.event);
-          if (!damageEvent) return;
-
-          auto& edm = EntityDataManager::Instance();
-          EntityHandle targetHandle = damageEvent->getTarget();
-          EntityHandle attackerHandle = damageEvent->getSource();
-          float gameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
-
-          size_t idx = edm.getIndex(targetHandle);
-          if (idx == SIZE_MAX) return;
-          size_t attackerIdx =
-              attackerHandle.isValid() ? edm.getIndex(attackerHandle) : SIZE_MAX;
-
-          auto& hotData = edm.getHotDataByIndex(idx);
-          auto& charData = edm.getCharacterData(targetHandle);
-
-          // Apply health damage
-          charData.health = std::max(0.0f, charData.health - damageEvent->getDamage());
-
-          // Populate event data for downstream consumers
-          damageEvent->setRemainingHealth(charData.health);
-          damageEvent->setWasLethal(charData.health <= 0.0f);
-
-          // Apply knockback (scaled by inverse mass - heavier entities resist more)
-          float knockbackScale = 1.0f / std::max(0.1f, charData.mass);
-          hotData.transform.velocity = hotData.transform.velocity + damageEvent->getKnockback() * knockbackScale;
-
-          // Record combat data and apply personality-scaled emotions
-          if (attackerHandle.isValid()) {
-            Behaviors::processCombatEvent(idx, attackerHandle, targetHandle,
-                                          damageEvent->getDamage(), true, gameTime);
-            // Also update attacker-side combat memory/emotions (damage dealt path)
-            if (attackerIdx != SIZE_MAX && attackerIdx != idx) {
-              Behaviors::processCombatEvent(attackerIdx, attackerHandle, targetHandle,
-                                            damageEvent->getDamage(), false, gameTime);
-            }
-          }
-
-          // Notify nearby NPCs that witnessed this combat
-          Vector2D combatLocation = hotData.transform.position;
-          bool wasLethal = (charData.health <= 0.0f);
-
-          thread_local std::vector<size_t> t_witnessBuffer;
-          AIManager::Instance().scanActiveIndicesInRadius(combatLocation, 300.0f, t_witnessBuffer, false);
-          for (size_t witnessIdx : t_witnessBuffer) {
-            if (witnessIdx == idx || witnessIdx == attackerIdx) continue;
-            // processWitnessedCombat now handles behavioral messages (RAISE_ALERT/PANIC)
-            // with composure and distance filtering applied consistently
-            Behaviors::processWitnessedCombat(witnessIdx, attackerHandle,
-                                               combatLocation, gameTime, wasLethal);
-          }
-
-          // Death handling (EDM lifecycle) - O(1) per damage event
-          if (charData.health <= 0.0f && hotData.isAlive()) {
-            hotData.flags &= ~EntityHotData::FLAG_ALIVE;
-            edm.destroyEntity(targetHandle);
-          }
-        });
-
     AI_INFO("AIManager initialized successfully");
     return true;
 
   } catch (const std::exception &e) {
     AI_ERROR(std::format("Failed to initialize AIManager: {}", e.what()));
     return false;
+  }
+}
+
+void AIManager::handleCombatEvent(const EventData& data) {
+  if (!data.isActive() || !data.event) {
+    return;
+  }
+
+  auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(data.event);
+  if (!damageEvent) {
+    return;
+  }
+
+  auto& edm = EntityDataManager::Instance();
+  EntityHandle targetHandle = damageEvent->getTarget();
+  EntityHandle attackerHandle = damageEvent->getSource();
+  float gameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
+
+  size_t idx = edm.getIndex(targetHandle);
+  if (idx == SIZE_MAX) {
+    return;
+  }
+
+  size_t attackerIdx =
+      attackerHandle.isValid() ? edm.getIndex(attackerHandle) : SIZE_MAX;
+
+  auto& hotData = edm.getHotDataByIndex(idx);
+  auto& charData = edm.getCharacterData(targetHandle);
+
+  charData.health = std::max(0.0f, charData.health - damageEvent->getDamage());
+  damageEvent->setRemainingHealth(charData.health);
+  damageEvent->setWasLethal(charData.health <= 0.0f);
+
+  float knockbackScale = 1.0f / std::max(0.1f, charData.mass);
+  hotData.transform.velocity =
+      hotData.transform.velocity + damageEvent->getKnockback() * knockbackScale;
+
+  if (attackerHandle.isValid()) {
+    Behaviors::processCombatEvent(idx, attackerHandle, targetHandle,
+                                  damageEvent->getDamage(), true, gameTime);
+    if (attackerIdx != SIZE_MAX && attackerIdx != idx) {
+      Behaviors::processCombatEvent(attackerIdx, attackerHandle, targetHandle,
+                                    damageEvent->getDamage(), false, gameTime);
+    }
+  }
+
+  Vector2D combatLocation = hotData.transform.position;
+  bool wasLethal = (charData.health <= 0.0f);
+
+  thread_local std::vector<size_t> t_witnessBuffer;
+  scanActiveIndicesInRadius(combatLocation, 300.0f, t_witnessBuffer, false);
+  for (size_t witnessIdx : t_witnessBuffer) {
+    if (witnessIdx == idx || witnessIdx == attackerIdx) {
+      continue;
+    }
+
+    Behaviors::processWitnessedCombat(witnessIdx, attackerHandle,
+                                      combatLocation, gameTime, wasLethal);
+  }
+
+  if (charData.health <= 0.0f && hotData.isAlive()) {
+    hotData.flags &= ~EntityHotData::FLAG_ALIVE;
+    edm.destroyEntity(targetHandle);
   }
 }
 
