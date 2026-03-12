@@ -53,6 +53,7 @@ public:
 private:
   bool m_transitioningToLoading{
       false}; // Flag to indicate we're transitioning to loading state
+  bool m_transitioningToGameOver{false}; // Prevent duplicate death transitions
   std::shared_ptr<Player> mp_Player{nullptr}; // Player object
   bool m_inventoryVisible{false}; // Flag to control inventory UI visibility
   bool m_initialized{false}; // Flag to track if state is already initialized (for pause/resume)

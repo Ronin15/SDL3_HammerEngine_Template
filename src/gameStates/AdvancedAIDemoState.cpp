@@ -7,6 +7,7 @@
 #include "controllers/combat/CombatController.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
+#include "gameStates/GameOverState.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/BackgroundSimulationManager.hpp"
@@ -163,6 +164,7 @@ bool AdvancedAIDemoState::enter() {
 
   // Reset transition flag when entering state
   m_transitioningToLoading = false;
+  m_transitioningToGameOver = false;
 
   // Check if already initialized (resuming after LoadingState)
   if (m_initialized) {
@@ -337,6 +339,7 @@ bool AdvancedAIDemoState::exit() {
 
     // Reset the flag after using it
     m_transitioningToLoading = false;
+    m_transitioningToGameOver = false;
 
     // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
     // NPCs hold EDM indices - must be destroyed while EDM data is still valid
@@ -393,6 +396,7 @@ bool AdvancedAIDemoState::exit() {
   }
 
   // Full exit (going to main menu, other states, or shutting down)
+  m_transitioningToGameOver = false;
 
   // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
   // NPCs hold EDM indices - must be destroyed while EDM data is still valid
@@ -486,6 +490,12 @@ void AdvancedAIDemoState::update(float deltaTime) {
     // Update player
     if (m_player) {
       m_player->update(deltaTime);
+
+      if (!m_player->isAlive() && !m_transitioningToGameOver) {
+        m_transitioningToGameOver = true;
+        mp_stateManager->changeState("GameOverState");
+        return;
+      }
     }
 
     // Cache manager references for better performance

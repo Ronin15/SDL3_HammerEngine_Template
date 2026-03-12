@@ -20,6 +20,7 @@
 #include "gameStates/AdvancedAIDemoState.hpp"
 #include "gameStates/EventDemoState.hpp"
 #include "gameStates/GamePlayState.hpp"
+#include "gameStates/GameOverState.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "gameStates/LogoState.hpp"
 #include "gameStates/MainMenuState.hpp"
@@ -789,6 +790,7 @@ bool GameEngine::init(std::string_view title) {
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
   mp_gameStateManager->addState(std::make_unique<SettingsMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
+  mp_gameStateManager->addState(std::make_unique<GameOverState>());
   mp_gameStateManager->addState(std::make_unique<AIDemoState>());
   mp_gameStateManager->addState(std::make_unique<AdvancedAIDemoState>());
   mp_gameStateManager->addState(std::make_unique<EventDemoState>());

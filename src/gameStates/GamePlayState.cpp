@@ -15,6 +15,7 @@
 #include "controllers/render/ResourceRenderController.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
+#include "gameStates/GameOverState.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "gameStates/PauseState.hpp"
 #include "managers/AIManager.hpp"
@@ -46,7 +47,7 @@
 
 // Constructor/destructor defined here where GPUSceneRenderer is complete (for unique_ptr)
 GamePlayState::GamePlayState()
-    : m_transitioningToLoading{false},
+    : m_transitioningToLoading{false}, m_transitioningToGameOver{false},
       mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false},
       m_dayNightEventToken{}, m_weatherEventToken{} {}
 
@@ -61,6 +62,7 @@ bool GamePlayState::enter() {
 
   // Reset transition flag when entering state
   m_transitioningToLoading = false;
+  m_transitioningToGameOver = false;
 
   // Check if world needs to be loaded
   if (!m_worldLoaded) {
@@ -269,6 +271,17 @@ void GamePlayState::update(float deltaTime) {
         combatCtrl.hasActiveTarget(),
         "Target",
         combatCtrl.getTargetHealth());
+
+    if (!mp_Player->isAlive() && !m_transitioningToGameOver) {
+      m_transitioningToGameOver = true;
+
+      if (!mp_stateManager->hasState("GameOverState")) {
+        mp_stateManager->addState(std::make_unique<GameOverState>());
+      }
+
+      mp_stateManager->changeState("GameOverState");
+      return;
+    }
   }
 
   // Update camera (follows player automatically)
@@ -413,6 +426,7 @@ bool GamePlayState::exit() {
 
     // Reset the flag after using it
     m_transitioningToLoading = false;
+    m_transitioningToGameOver = false;
 
     // Clear NPCs before manager cleanup (NPCs hold EDM indices)
     m_npcRenderCtrl.clearSpawnedNPCs();
@@ -483,6 +497,7 @@ bool GamePlayState::exit() {
   }
 
   // Full exit (going to main menu, other states, or shutting down)
+  m_transitioningToGameOver = false;
 
   // Clear NPCs before manager cleanup (NPCs hold EDM indices)
   m_npcRenderCtrl.clearSpawnedNPCs();

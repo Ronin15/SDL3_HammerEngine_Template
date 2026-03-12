@@ -95,6 +95,7 @@ BOOST_AUTO_TEST_CASE(TestOnlyGameEngineCallsRenderPresent) {
 
     // Verify GameStates NEVER call SDL_RenderPresent
     std::vector<std::string> gameStateFiles = {
+        "src/gameStates/GameOverState.cpp",
         "src/gameStates/MainMenuState.cpp",
         "src/gameStates/GamePlayState.cpp",
         "src/gameStates/PauseState.cpp",
@@ -124,6 +125,7 @@ BOOST_AUTO_TEST_CASE(TestOnlyGameEngineCallsRenderClear) {
 
     // Verify GameStates NEVER call SDL_RenderClear
     std::vector<std::string> gameStateFiles = {
+        "src/gameStates/GameOverState.cpp",
         "src/gameStates/MainMenuState.cpp",
         "src/gameStates/GamePlayState.cpp",
         "src/gameStates/PauseState.cpp",
@@ -383,6 +385,7 @@ BOOST_AUTO_TEST_SUITE(DeterministicRenderingTests)
 
 BOOST_AUTO_TEST_CASE(TestNoRandomInRenderMethods) {
     std::vector<std::string> gameStateFiles = {
+        "src/gameStates/GameOverState.cpp",
         "src/gameStates/MainMenuState.cpp",
         "src/gameStates/GamePlayState.cpp",
         "src/gameStates/PauseState.cpp",

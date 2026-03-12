@@ -88,6 +88,7 @@ private:
 
     // Track if we're transitioning to LoadingState (prevents infinite loop)
     bool m_transitioningToLoading{false};
+    bool m_transitioningToGameOver{false};
 
     // Track if state is fully initialized (after returning from LoadingState)
     bool m_initialized{false};
