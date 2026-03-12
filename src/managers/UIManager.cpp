@@ -1692,6 +1692,7 @@ void UIManager::cleanupForStateTransition() {
 
   // Clear all UI components (reset binding count since we're clearing everything)
   m_components.clear();
+  m_sortedComponentsCache.clear();
   m_activeBindingCount = 0;
   invalidateComponentCache();
 
@@ -1704,6 +1705,15 @@ void UIManager::cleanupForStateTransition() {
 
   // Stop and clear all animations
   m_animations.clear();
+
+  // Clear any queued callbacks and cached GPU draw commands so no UI-owned GPU
+  // resources survive past explicit shutdown.
+  m_deferredCallbacks.clear();
+#ifdef USE_SDL3_GPU
+  m_gpuPrimitiveCommands.clear();
+  m_gpuTextCommands.clear();
+  m_gpuImageCommands.clear();
+#endif
 
   // Clear all interaction state
   m_clickedButtons.clear();

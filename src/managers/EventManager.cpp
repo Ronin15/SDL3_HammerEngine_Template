@@ -22,9 +22,20 @@
 #include <algorithm>
 #include <chrono>
 #include <format>
-#include <numeric>
 
 // ==================== Core Singleton & Lifecycle ====================
+
+namespace {
+void registerBuiltInHandlers(EventManager& eventManager) {
+  eventManager.registerHandler(EventTypeId::NPCSpawn, [](const EventData &data) {
+    if (!data.isActive() || !data.event) return;
+    auto npcEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(data.event);
+    if (npcEvent) {
+      npcEvent->execute();
+    }
+  });
+}
+} // namespace
 
 EventManager &EventManager::Instance() {
   static EventManager instance;
@@ -114,14 +125,7 @@ bool EventManager::init() {
   m_lastUpdateTime.store(getCurrentTimeNanos());
   m_initialized.store(true);
 
-  // Register internal handler for NPCSpawn events
-  registerHandler(EventTypeId::NPCSpawn, [](const EventData &data) {
-    if (!data.isActive() || !data.event) return;
-    auto npcEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(data.event);
-    if (npcEvent) {
-      npcEvent->execute();
-    }
-  });
+  registerBuiltInHandlers(*this);
 
   EVENT_INFO("EventManager initialized successfully");
   return true;
@@ -202,6 +206,9 @@ void EventManager::prepareForStateTransition() {
   // Reset performance stats
   resetPerformanceStats();
 
+  // Restore built-in dispatch handlers that states depend on across transitions.
+  registerBuiltInHandlers(*this);
+
   EVENT_INFO("EventManager prepared for state transition");
 }
 
@@ -276,62 +283,28 @@ EventManager::registerHandlerWithToken(EventTypeId typeId, FastEventHandler hand
   uint64_t id = m_nextHandlerId.fetch_add(1, std::memory_order_relaxed);
 
   m_handlersByType[idx].emplace_back(std::move(handler), id);
-  return HandlerToken{typeId, id, false, {}};
-}
-
-EventManager::HandlerToken
-EventManager::registerHandlerForName(const std::string &name, FastEventHandler handler) {
-  std::unique_lock<std::shared_mutex> lock(m_handlersMutex);
-  uint64_t id = m_nextHandlerId.fetch_add(1, std::memory_order_relaxed);
-
-  m_nameHandlers[name].emplace_back(std::move(handler), id);
-  return HandlerToken{EventTypeId::Custom, id, true, name};
+  return HandlerToken{typeId, id};
 }
 
 bool EventManager::removeHandler(const HandlerToken &token) {
   std::unique_lock<std::shared_mutex> lock(m_handlersMutex);
-  if (token.forName) {
-    auto it = m_nameHandlers.find(token.name);
-    if (it == m_nameHandlers.end())
-      return false;
-
-    auto &entries = it->second;
-    for (size_t i = 0; i < entries.size(); ++i) {
-      if (entries[i].id == token.id) {
-        // Swap-and-pop: O(1) removal without leaving holes
-        if (i != entries.size() - 1) {
-          entries[i] = std::move(entries.back());
-        }
-        entries.pop_back();
-        return true;
-      }
-    }
+  const size_t idx = static_cast<size_t>(token.typeId);
+  if (idx >= m_handlersByType.size())
     return false;
-  } else {
-    const size_t idx = static_cast<size_t>(token.typeId);
-    if (idx >= m_handlersByType.size())
-      return false;
 
-    auto &entries = m_handlersByType[idx];
-    auto it = std::find_if(
-        entries.begin(), entries.end(),
-        [&token](const HandlerEntry &entry) { return entry.id == token.id; });
-    if (it != entries.end()) {
-      // Swap-and-pop: O(1) removal without leaving holes
-      if (it != entries.end() - 1) {
-        *it = std::move(entries.back());
-      }
-      entries.pop_back();
-      return true;
+  auto &entries = m_handlersByType[idx];
+  auto it = std::find_if(
+      entries.begin(), entries.end(),
+      [&token](const HandlerEntry &entry) { return entry.id == token.id; });
+  if (it != entries.end()) {
+    // Swap-and-pop: O(1) removal without leaving holes
+    if (it != entries.end() - 1) {
+      *it = std::move(entries.back());
     }
-    return false;
+    entries.pop_back();
+    return true;
   }
-}
-
-void EventManager::removeHandlers(EventTypeId typeId) {
-  std::unique_lock<std::shared_mutex> lock(m_handlersMutex);
-  const size_t idx = static_cast<size_t>(typeId);
-  m_handlersByType[idx].clear();
+  return false;
 }
 
 void EventManager::clearAllHandlers() {
@@ -339,7 +312,6 @@ void EventManager::clearAllHandlers() {
   for (size_t i = 0; i < m_handlersByType.size(); ++i) {
     m_handlersByType[i].clear();
   }
-  m_nameHandlers.clear();
   EVENT_INFO("All event handlers cleared");
 }
 
@@ -348,9 +320,10 @@ size_t EventManager::getHandlerCount(EventTypeId typeId) const {
   return m_handlersByType[static_cast<size_t>(typeId)].size();
 }
 
-void EventManager::removeNameHandlers(const std::string &name) {
+void EventManager::removeHandlers(EventTypeId typeId) {
   std::unique_lock<std::shared_mutex> lock(m_handlersMutex);
-  m_nameHandlers.erase(name);
+  const size_t idx = static_cast<size_t>(typeId);
+  m_handlersByType[idx].clear();
 }
 
 // ==================== Trigger Methods ====================
@@ -668,28 +641,10 @@ bool EventManager::dispatchEvent(const EventPtr& event, DispatchMode mode) const
 bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
                                  DispatchMode mode, const char *errorContext) const {
   if (mode == DispatchMode::Immediate) {
-    std::shared_lock<std::shared_mutex> lock(m_handlersMutex);
-
-    const auto &typeHandlers = m_handlersByType[static_cast<size_t>(typeId)];
-
-    if (typeHandlers.empty()) {
-      return false;
-    }
-
-    for (const auto &entry : typeHandlers) {
-      if (entry) {
-        try {
-          entry.callable(eventData);
-        } catch (const std::exception &e) {
-          EVENT_ERROR(std::format("Handler exception in {}: {}", errorContext, e.what()));
-        } catch (...) {
-          EVENT_ERROR(std::format("Unknown handler exception in {}", errorContext));
-        }
-      }
-    }
-
+    dispatchPendingEvent(PendingDispatch{typeId, eventData}, errorContext);
     releaseEventToPool(typeId, eventData.event);
-    return true;
+    std::shared_lock<std::shared_mutex> lock(m_handlersMutex);
+    return !m_handlersByType[static_cast<size_t>(typeId)].empty();
   }
 
   // Deferred dispatch
@@ -730,23 +685,32 @@ void EventManager::enqueueBatch(std::vector<DeferredEvent>&& events) const {
                  });
 }
 
-void EventManager::processBatchSingleThreaded(size_t start, size_t end) const {
-  // No lock needed - handlers only registered during state transitions,
-  // not during EventManager's update window
+EventManager::DeferredPolicy EventManager::getDeferredPolicy(EventTypeId typeId) const {
+  switch (typeId) {
+    case EventTypeId::World:
+    case EventTypeId::CollisionObstacleChanged:
+    case EventTypeId::Combat:
+      return DeferredPolicy::DeferredSerialOrdered;
+    default:
+      return DeferredPolicy::DeferredSerial;
+  }
+}
 
-  for (size_t i = start; i < end; ++i) {
-    const auto &pd = m_localDispatchBuffer[i];
-    const auto &typeHandlers = m_handlersByType[static_cast<size_t>(pd.typeId)];
+void EventManager::dispatchPendingEvent(const PendingDispatch& pendingDispatch,
+                                        const char* errorContext) const {
+  std::shared_lock<std::shared_mutex> lock(m_handlersMutex);
+  const auto& typeHandlers =
+      m_handlersByType[static_cast<size_t>(pendingDispatch.typeId)];
 
-    for (const auto &entry : typeHandlers) {
-      if (entry) {
-        try {
-          entry.callable(pd.data);
-        } catch (const std::exception &e) {
-          EVENT_ERROR(std::format("Handler exception in dispatch batch: {}", e.what()));
-        } catch (...) {
-          EVENT_ERROR("Unknown handler exception in dispatch batch");
-        }
+  for (const auto& entry : typeHandlers) {
+    if (entry) {
+      try {
+        entry.callable(pendingDispatch.data);
+      } catch (const std::exception& e) {
+        EVENT_ERROR(
+            std::format("Handler exception in {}: {}", errorContext, e.what()));
+      } catch (...) {
+        EVENT_ERROR(std::format("Unknown handler exception in {}", errorContext));
       }
     }
   }
@@ -772,174 +736,39 @@ void EventManager::drainDispatchQueueWithBudget() {
   // Lock released - process events without holding lock
 
   const size_t eventCount = m_localDispatchBuffer.size();
+  size_t serialCount = 0;
+  size_t orderedCount = 0;
+  auto dispatchStartTime = std::chrono::high_resolution_clock::now();
 
-  // Sort by priority (higher priority first)
-  std::sort(m_localDispatchBuffer.begin(), m_localDispatchBuffer.end(),
-            [](const PendingDispatch &a, const PendingDispatch &b) {
-              return a.data.priority > b.data.priority;
-            });
-
-  size_t maxThreadableRange = 0;
-  size_t scanCursor = 0;
-  while (scanCursor < eventCount) {
-    size_t rangeStart = scanCursor;
-    while (scanCursor < eventCount &&
-           m_localDispatchBuffer[scanCursor].typeId != EventTypeId::Combat) {
-      ++scanCursor;
+  for (const auto& pendingDispatch : m_localDispatchBuffer) {
+    switch (getDeferredPolicy(pendingDispatch.typeId)) {
+      case DeferredPolicy::DeferredSerial:
+        ++serialCount;
+        break;
+      case DeferredPolicy::DeferredSerialOrdered:
+        ++orderedCount;
+        break;
     }
 
-    maxThreadableRange = std::max(maxThreadableRange, scanCursor - rangeStart);
-
-    if (scanCursor < eventCount) {
-      ++scanCursor;
-    }
+    dispatchPendingEvent(pendingDispatch, "deferred dispatch");
   }
 
-  // Query WorkerBudget for threading decision
-  auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-  auto decision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::Event,
-                                               maxThreadableRange);
-  // Track what actually happened
-  bool actualWasThreaded = false;
-  size_t actualBatchCount = 1;
-  double measuredRangeMs = 0.0;
+  auto dispatchEndTime = std::chrono::high_resolution_clock::now();
+  double measuredRangeMs = std::chrono::duration<double, std::milli>(
+      dispatchEndTime - dispatchStartTime).count();
 
-  auto dispatchByIndex = [this](size_t index) {
-    const auto &pd = m_localDispatchBuffer[index];
-    const auto &typeHandlers = m_handlersByType[static_cast<size_t>(pd.typeId)];
-    for (const auto &entry : typeHandlers) {
-      if (entry) {
-        try {
-          entry.callable(pd.data);
-        } catch (const std::exception &e) {
-          EVENT_ERROR(std::format("Handler exception in dispatch batch: {}", e.what()));
-        } catch (...) {
-          EVENT_ERROR("Unknown handler exception in dispatch batch");
-        }
-      }
-    }
-  };
-
-  auto processNonCombatRange = [&](size_t start, size_t end) {
-    const size_t nonCombatCount = (end > start) ? (end - start) : 0;
-    if (nonCombatCount == 0) {
-      return;
-    }
-
-    const bool trackThisRange = (nonCombatCount == maxThreadableRange);
-    auto rangeStartTime = std::chrono::high_resolution_clock::time_point{};
-    if (trackThisRange) {
-      rangeStartTime = std::chrono::high_resolution_clock::now();
-    }
-
-    if (!decision.shouldThread) {
-      for (size_t i = start; i < end; ++i) {
-        dispatchByIndex(i);
-      }
-      if (trackThisRange) {
-        auto rangeEndTime = std::chrono::high_resolution_clock::now();
-        measuredRangeMs = std::max(
-            measuredRangeMs,
-            std::chrono::duration<double, std::milli>(rangeEndTime - rangeStartTime).count());
-      }
-      return;
-    }
-
-    auto &threadSystem = HammerEngine::ThreadSystem::Instance();
-    size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::Event, nonCombatCount);
-    auto [batchCount, _batchSize] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::Event, nonCombatCount, optimalWorkerCount);
-
-    if (batchCount <= 1) {
-      for (size_t i = start; i < end; ++i) {
-        dispatchByIndex(i);
-      }
-      if (trackThisRange) {
-        auto rangeEndTime = std::chrono::high_resolution_clock::now();
-        measuredRangeMs = std::max(
-            measuredRangeMs,
-            std::chrono::duration<double, std::milli>(rangeEndTime - rangeStartTime).count());
-      }
-      return;
-    }
-
-    actualWasThreaded = true;
-    actualBatchCount += (batchCount - 1);
-
-    m_batchFutures.clear();
-    m_batchFutures.reserve(batchCount);
-
-    size_t eventsPerBatch = nonCombatCount / batchCount;
-    size_t remainingEvents = nonCombatCount % batchCount;
-
-    for (size_t i = 0; i < batchCount; ++i) {
-      size_t batchStartOffset = i * eventsPerBatch;
-      size_t batchEndOffset = batchStartOffset + eventsPerBatch;
-      if (i == batchCount - 1) {
-        batchEndOffset += remainingEvents;
-      }
-
-      m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
-          [dispatchByIndex, start, batchStartOffset, batchEndOffset]() {
-            for (size_t j = start + batchStartOffset; j < start + batchEndOffset; ++j) {
-              dispatchByIndex(j);
-            }
-          },
-          HammerEngine::TaskPriority::Normal, "Event_Dispatch_Batch"));
-    }
-
-    // Preserve queue ordering semantics: all events in this range must complete
-    // before dispatching the next combat event.
-    for (auto &future : m_batchFutures) {
-      if (future.valid()) {
-        future.get();
-      }
-    }
-
-    if (trackThisRange) {
-      auto rangeEndTime = std::chrono::high_resolution_clock::now();
-      measuredRangeMs = std::max(
-          measuredRangeMs,
-          std::chrono::duration<double, std::milli>(rangeEndTime - rangeStartTime).count());
-    }
-  };
-
-  // Preserve sorted queue order while serializing combat handlers:
-  // process each non-combat range in-order, then the combat event that follows.
-  size_t cursor = 0;
-  while (cursor < eventCount) {
-    size_t rangeStart = cursor;
-    while (cursor < eventCount &&
-           m_localDispatchBuffer[cursor].typeId != EventTypeId::Combat) {
-      ++cursor;
-    }
-
-    processNonCombatRange(rangeStart, cursor);
-
-    if (cursor < eventCount &&
-        m_localDispatchBuffer[cursor].typeId == EventTypeId::Combat) {
-      dispatchByIndex(cursor);
-      ++cursor;
-    }
-  }
-
-  // Report results for unified adaptive tuning
-  if (maxThreadableRange > 0 && measuredRangeMs > 0.0) {
-    budgetMgr.reportExecution(HammerEngine::SystemType::Event,
-                              maxThreadableRange, actualWasThreaded,
-                              actualBatchCount, measuredRangeMs);
+  if (eventCount > 0 && measuredRangeMs > 0.0) {
+    HammerEngine::WorkerBudgetManager::Instance().reportExecution(
+        HammerEngine::SystemType::Event, eventCount, false, 1, measuredRangeMs);
   }
 
 #ifndef NDEBUG
   // Periodic debug logging (~35 seconds at 60fps)
   static thread_local uint64_t logFrameCounter = 0;
   if (++logFrameCounter % 2100 == 0 && eventCount > 0) {
-    EVENT_DEBUG(std::format("Dispatch: {} events (max threadable range {}), {} [{} batches, {:.2f}ms]",
-                            eventCount,
-                            maxThreadableRange,
-                            actualWasThreaded ? "multi-threaded" : "single-threaded",
-                            actualBatchCount, measuredRangeMs));
+    EVENT_DEBUG(std::format(
+        "Dispatch: {} events (serial={}, ordered={}) [1 batch, {:.2f}ms]",
+        eventCount, serialCount, orderedCount, measuredRangeMs));
   }
 #endif
 

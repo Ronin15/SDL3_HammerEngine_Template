@@ -13,6 +13,7 @@
 #include "events/WeatherEvent.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
@@ -24,6 +25,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "managers/WorldResourceManager.hpp"
 #include "core/WorkerBudget.hpp"
 #include "utils/Camera.hpp"
 #include "utils/WorldRenderPipeline.hpp"
@@ -142,6 +144,11 @@ bool EventDemoState::enter() {
     // Register controllers (following GamePlayState pattern)
     m_controllers.add<WeatherController>();
     m_controllers.add<DayNightController>();
+    m_controllers.subscribeAll();
+
+    // WorldManager installs global world/time/resource subscriptions and must
+    // be refreshed after EventManager state-transition cleanup.
+    WorldManager::Instance().setupEventHandlers();
 
     // Enable automatic weather changes via GameTimeManager
     auto &gameTimeMgr = GameTimeManager::Instance();
@@ -352,6 +359,9 @@ bool EventDemoState::exit() {
   ParticleManager &particleMgr = ParticleManager::Instance();
   UIManager &ui = UIManager::Instance();
   WorldManager &worldMgr = WorldManager::Instance();
+  BackgroundSimulationManager &bgSimMgr = BackgroundSimulationManager::Instance();
+  auto &wrm = WorldResourceManager::Instance();
+  EventManager &eventMgr = EventManager::Instance();
 
   try {
     if (m_transitioningToLoading) {
@@ -370,26 +380,28 @@ bool EventDemoState::exit() {
       // Clear controllers
       m_controllers.clear();
 
-      // Unregister our specific handlers via tokens
+      // Unregister our specific handlers via tokens before EventManager cleanup.
       unregisterEventHandlers();
 
-      // Note: Dispatch-only architecture has no stored events to clear
+      aiMgr.prepareForStateTransition();
+      bgSimMgr.prepareForStateTransition();
 
-      // Clean up managers (same as full exit)
-      // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
-      // Pending path tasks hold captured edmIndex values - they must complete
-      // or see the transition flag before EDM clears its data
-      if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-        pathfinderMgr.prepareForStateTransition();
+      if (wrm.isInitialized()) {
+        wrm.prepareForStateTransition();
       }
 
-      aiMgr.prepareForStateTransition();
-      edm.prepareForStateTransition();
-      HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+      eventMgr.prepareForStateTransition();
 
       if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
         collisionMgr.prepareForStateTransition();
       }
+
+      if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+        pathfinderMgr.prepareForStateTransition();
+      }
+
+      edm.prepareForStateTransition();
+      HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
       if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
         particleMgr.prepareForStateTransition();
@@ -430,27 +442,29 @@ bool EventDemoState::exit() {
     // Clear controllers
     m_controllers.clear();
 
-    // Unregister our specific handlers via tokens
+    // Unregister our specific handlers via tokens before EventManager cleanup.
     unregisterEventHandlers();
 
-    // Note: Dispatch-only architecture has no stored events to clear
+    aiMgr.prepareForStateTransition();
+    bgSimMgr.prepareForStateTransition();
 
-    // Use manager prepareForStateTransition methods for deterministic cleanup
-    // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
-    // Pending path tasks hold captured edmIndex values - they must complete or
-    // see the transition flag before EDM clears its data
-    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-      pathfinderMgr.prepareForStateTransition();
+    if (wrm.isInitialized()) {
+      wrm.prepareForStateTransition();
     }
 
-    aiMgr.prepareForStateTransition();
-    edm.prepareForStateTransition();
-    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+    eventMgr.prepareForStateTransition();
 
     // Clean collision state before other systems
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
     }
+
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
+    }
+
+    edm.prepareForStateTransition();
+    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
     // Simple particle cleanup - let prepareForStateTransition handle everything
     if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {

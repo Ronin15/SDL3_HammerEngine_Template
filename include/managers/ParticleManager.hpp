@@ -964,6 +964,8 @@ private:
   std::vector<std::future<void>> m_reusableBatchFutures;  // Swap target to preserve capacity
   std::mutex m_batchFuturesMutex;  // Protect futures vector
 
+  void registerEventHandlers();
+
   // NOTE: No update mutex - GameEngine handles update/render synchronization
 
   // Constants for optimization

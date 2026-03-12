@@ -6,8 +6,10 @@
 #define BOOST_TEST_MODULE EventManagerBehaviorTests
 #include <boost/test/unit_test.hpp>
 #include <atomic>
+#include <vector>
 
 #include "EventManagerTestAccess.hpp"
+#include "collisions/CollisionInfo.hpp"
 #include "core/ThreadSystem.hpp"
 #include "events/CameraEvent.hpp"
 #include "events/Event.hpp"
@@ -157,26 +159,6 @@ BOOST_AUTO_TEST_CASE(TriggerCameraMoved_DispatchesToHandlers) {
   EventManager::Instance().removeHandler(tok);
 }
 
-BOOST_AUTO_TEST_CASE(RemoveNameHandlers_RemovesHandlers) {
-  std::atomic<bool> handlerCalled{false};
-
-  // Register a per-name handler
-  EventManager::Instance().registerHandlerForName(
-      "TestName", [&handlerCalled](const EventData &) {
-        handlerCalled.store(true);
-      });
-
-  // Remove it
-  EventManager::Instance().removeNameHandlers("TestName");
-
-  // Dispatch an event with that name - handler should not be called
-  auto e = std::make_shared<TestEvent>("TestName");
-  EventManager::Instance().dispatchEvent(e);
-  EventManager::Instance().update();
-
-  BOOST_CHECK(!handlerCalled.load()); // Handler was removed
-}
-
 BOOST_AUTO_TEST_CASE(RegisterHandlerWithToken_CanBeRemoved) {
   std::atomic<int> callCount{0};
 
@@ -244,6 +226,36 @@ BOOST_AUTO_TEST_CASE(DeferredDispatch_RequiresUpdate) {
   BOOST_CHECK(handlerCalled.load());
 
   EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_AUTO_TEST_CASE(DeferredDispatch_PreservesFIFOOrderAcrossTypes) {
+  std::vector<int> callOrder;
+
+  auto customTok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Custom, [&callOrder](const EventData &) { callOrder.push_back(1); });
+  auto weatherTok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Weather, [&callOrder](const EventData &) { callOrder.push_back(2); });
+  auto collisionTok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Collision, [&callOrder](const EventData &) { callOrder.push_back(3); });
+
+  EventManager::Instance().dispatchEvent(
+      std::make_shared<TestEvent>("First"), EventManager::DispatchMode::Deferred);
+  EventManager::Instance().changeWeather(
+      "Rainy", 1.0f, EventManager::DispatchMode::Deferred);
+  HammerEngine::CollisionInfo info{};
+  EventManager::Instance().triggerCollision(
+      info, EventManager::DispatchMode::Deferred);
+
+  EventManager::Instance().update();
+
+  BOOST_REQUIRE_EQUAL(callOrder.size(), 3);
+  BOOST_CHECK_EQUAL(callOrder[0], 1);
+  BOOST_CHECK_EQUAL(callOrder[1], 2);
+  BOOST_CHECK_EQUAL(callOrder[2], 3);
+
+  EventManager::Instance().removeHandler(customTok);
+  EventManager::Instance().removeHandler(weatherTok);
+  EventManager::Instance().removeHandler(collisionTok);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

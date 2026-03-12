@@ -70,6 +70,12 @@ void WorldManager::setupEventHandlers() {
   }
 
   try {
+    unregisterEventHandlers();
+
+    if (m_tileRenderer) {
+      m_tileRenderer->unsubscribeFromSeasonEvents();
+    }
+
     registerEventHandlers();
 
     // Subscribe TileRenderer to season events for seasonal texture switching

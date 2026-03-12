@@ -183,6 +183,10 @@ bool GamePlayState::enter() {
     // Subscribe all controllers at once
     m_controllers.subscribeAll();
 
+    // WorldManager's global event handlers are cleared during event-hub state
+    // transitions, so refresh them on state entry.
+    WorldManager::Instance().setupEventHandlers();
+
     // Initialize combat HUD (health/stamina bars, target frame)
     UIManager::Instance().createCombatHUD();
 
@@ -419,6 +423,7 @@ bool GamePlayState::exit() {
   WorldManager &worldMgr = WorldManager::Instance();
   GameTimeManager &gameTimeMgr = GameTimeManager::Instance();
   auto &wrm = WorldResourceManager::Instance();
+  auto &eventMgr = EventManager::Instance();
 
   if (m_transitioningToLoading) {
     // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded
@@ -431,30 +436,40 @@ bool GamePlayState::exit() {
     // Clear NPCs before manager cleanup (NPCs hold EDM indices)
     m_npcRenderCtrl.clearSpawnedNPCs();
 
-    // Clean up managers (same as full exit)
-    // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
-    // Pending path tasks hold captured edmIndex values - they must complete or
-    // see the transition flag before EDM clears its data
-    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-      pathfinderMgr.prepareForStateTransition();
+    // Unsubscribe event handlers before clearing controllers
+    // (handlers capture `this` and call m_controllers.get<>() which returns
+    // nullptr after clear)
+    if (m_dayNightSubscribed) {
+      eventMgr.removeHandler(m_dayNightEventToken);
+      m_dayNightSubscribed = false;
+    }
+    if (m_weatherSubscribed) {
+      eventMgr.removeHandler(m_weatherEventToken);
+      m_weatherSubscribed = false;
     }
 
     aiMgr.prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
-    edm.prepareForStateTransition();
-    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+
+    if (wrm.isInitialized()) {
+      wrm.prepareForStateTransition();
+    }
+
+    eventMgr.prepareForStateTransition();
 
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
     }
 
-    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-      particleMgr.prepareForStateTransition();
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
     }
 
-    // Clean up world resource tracking (spatial indices, registries)
-    if (wrm.isInitialized()) {
-      wrm.prepareForStateTransition();
+    edm.prepareForStateTransition();
+    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+
+    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+      particleMgr.prepareForStateTransition();
     }
 
     // Clean up camera and scene renderer
@@ -470,18 +485,6 @@ bool GamePlayState::exit() {
 
     // Clean up UI
     ui.prepareForStateTransition();
-
-    // Unsubscribe event handlers before clearing controllers
-    // (handlers capture `this` and call m_controllers.get<>() which returns
-    // nullptr after clear)
-    if (m_dayNightSubscribed) {
-      EventManager::Instance().removeHandler(m_dayNightEventToken);
-      m_dayNightSubscribed = false;
-    }
-    if (m_weatherSubscribed) {
-      EventManager::Instance().removeHandler(m_weatherEventToken);
-      m_weatherSubscribed = false;
-    }
 
     // Destroy all controllers so re-entry creates fresh instances with valid refs
     m_controllers.clear();
@@ -502,32 +505,42 @@ bool GamePlayState::exit() {
   // Clear NPCs before manager cleanup (NPCs hold EDM indices)
   m_npcRenderCtrl.clearSpawnedNPCs();
 
-  // Use manager prepareForStateTransition methods for deterministic cleanup
-  // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
-  // Pending path tasks hold captured edmIndex values - they must complete or
-  // see the transition flag before EDM clears its data
-  if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-    pathfinderMgr.prepareForStateTransition();
+  // Unsubscribe from event handlers before EventManager teardown.
+  if (m_dayNightSubscribed || m_weatherSubscribed) {
+    if (m_dayNightSubscribed) {
+      eventMgr.removeHandler(m_dayNightEventToken);
+      m_dayNightSubscribed = false;
+    }
+
+    if (m_weatherSubscribed) {
+      eventMgr.removeHandler(m_weatherEventToken);
+      m_weatherSubscribed = false;
+    }
   }
 
   aiMgr.prepareForStateTransition();
   bgSimMgr.prepareForStateTransition();
-  edm.prepareForStateTransition();
-  HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
-  // Clean collision state before other systems
+  if (wrm.isInitialized()) {
+    wrm.prepareForStateTransition();
+  }
+
+  eventMgr.prepareForStateTransition();
+
   if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
     collisionMgr.prepareForStateTransition();
   }
 
+  if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+    pathfinderMgr.prepareForStateTransition();
+  }
+
+  edm.prepareForStateTransition();
+  HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+
   // Simple particle cleanup
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
     particleMgr.prepareForStateTransition();
-  }
-
-  // Clean up world resource tracking (spatial indices, registries)
-  if (wrm.isInitialized()) {
-    wrm.prepareForStateTransition();
   }
 
   // Clean up camera and scene renderer first to stop world rendering
@@ -553,23 +566,8 @@ bool GamePlayState::exit() {
   m_controllers.clear();
   gameTimeMgr.enableAutoWeather(false);
 
-  // Stop ambient particles before unsubscribing
+  // Stop ambient particles after event teardown so no new weather callbacks fire.
   stopAmbientParticles();
-
-  // Unsubscribe from event handlers
-  if (m_dayNightSubscribed || m_weatherSubscribed) {
-    auto &eventMgr = EventManager::Instance();
-
-    if (m_dayNightSubscribed) {
-      eventMgr.removeHandler(m_dayNightEventToken);
-      m_dayNightSubscribed = false;
-    }
-
-    if (m_weatherSubscribed) {
-      eventMgr.removeHandler(m_weatherEventToken);
-      m_weatherSubscribed = false;
-    }
-  }
 
   // Reset initialization flag for next fresh start
   m_initialized = false;

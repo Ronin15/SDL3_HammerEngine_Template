@@ -302,17 +302,10 @@ public:
    */
   size_t getHandlerCount(EventTypeId typeId) const;
 
-  /**
-   * @brief Removes handlers registered for a specific name
-   */
-  void removeNameHandlers(const std::string &name);
-
-  // Token-based handler management (extensible removal)
+  // Token-based handler management
   struct HandlerToken {
     EventTypeId typeId;
     uint64_t id;
-    bool forName{false};
-    std::string name;
   };
 
   /**
@@ -320,12 +313,6 @@ public:
    */
   HandlerToken registerHandlerWithToken(EventTypeId typeId,
                                         FastEventHandler handler);
-
-  /**
-   * @brief Registers a handler for events with a specific name
-   */
-  HandlerToken registerHandlerForName(const std::string &name,
-                                      FastEventHandler handler);
 
   /**
    * @brief Removes a handler using its token
@@ -516,9 +503,6 @@ private:
       m_handlersByType;
   std::atomic<uint64_t> m_nextHandlerId{1};
 
-  // Per-name handlers
-  std::unordered_map<std::string, std::vector<HandlerEntry>> m_nameHandlers;
-
   // Threading and synchronization
   mutable std::shared_mutex m_handlersMutex;
   std::atomic<bool> m_threadingEnabled{true};
@@ -545,6 +529,10 @@ private:
     EventTypeId typeId;
     EventData data;
   };
+  enum class DeferredPolicy : uint8_t {
+    DeferredSerial,
+    DeferredSerialOrdered,
+  };
   mutable std::mutex m_dispatchMutex;  // Protects concurrent enqueue from AI workers
 
   // Async batch tracking for safe shutdown
@@ -557,8 +545,9 @@ private:
   // Reusable buffer for drainDispatchQueueWithBudget
   mutable std::vector<PendingDispatch> m_localDispatchBuffer;
 
-  // Batch processing helper for threaded dispatch
-  void processBatchSingleThreaded(size_t start, size_t end) const;
+  DeferredPolicy getDeferredPolicy(EventTypeId typeId) const;
+  void dispatchPendingEvent(const PendingDispatch& pendingDispatch,
+                            const char* errorContext) const;
   uint64_t getCurrentTimeNanos() const;
   void enqueueDispatch(EventTypeId typeId, const EventData &data) const;
   void drainDispatchQueueWithBudget();

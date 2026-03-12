@@ -207,25 +207,6 @@ BOOST_FIXTURE_TEST_CASE(RegisterHandlerWithToken_CanBeRemoved, EventManagerFixtu
   BOOST_CHECK_EQUAL(callCount.load(), 1); // Still 1, not incremented
 }
 
-BOOST_FIXTURE_TEST_CASE(RegisterNameHandler_CanBeRemoved, EventManagerFixture) {
-  std::atomic<bool> handlerCalled{false};
-
-  // Register a per-name handler
-  EventManager::Instance().registerHandlerForName(
-      "TestName", [&handlerCalled](const EventData &) {
-        handlerCalled.store(true);
-      });
-
-  // Remove it
-  EventManager::Instance().removeNameHandlers("TestName");
-
-  // Dispatch an event with that name - handler should not be called
-  auto e = std::make_shared<MockEvent>("TestName");
-  EventManager::Instance().dispatchEvent(e, EventManager::DispatchMode::Immediate);
-
-  BOOST_CHECK(!handlerCalled.load()); // Handler was removed
-}
-
 // ==================== Trigger Method Tests ====================
 
 BOOST_FIXTURE_TEST_CASE(ChangeWeather_DispatchesToHandlers, EventManagerFixture) {
@@ -553,15 +534,12 @@ BOOST_FIXTURE_TEST_CASE(DynamicThreadingControl, EventManagerFixture) {
       EventTypeId::Weather,
       [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
 
-  // Test with threading disabled
+  // Debug toggle should not affect correctness of serial deferred delivery.
   EventManager::Instance().enableThreading(false);
 
   // Trigger event with deferred dispatch
   BOOST_CHECK(EventManager::Instance().changeWeather("Clear", 1.0f));
   EventManager::Instance().update();
-
-  // Allow processing time
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   int callsWithoutThreading = handlerCallCount.load();
   BOOST_CHECK_GE(callsWithoutThreading, 1);
@@ -573,9 +551,6 @@ BOOST_FIXTURE_TEST_CASE(DynamicThreadingControl, EventManagerFixture) {
   // Trigger another event
   BOOST_CHECK(EventManager::Instance().changeWeather("Rainy", 1.0f));
   EventManager::Instance().update();
-
-  // Allow threaded processing time
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   int callsWithThreading = handlerCallCount.load();
   BOOST_CHECK_GE(callsWithThreading, 1);
@@ -1042,35 +1017,27 @@ BOOST_FIXTURE_TEST_CASE(IdempotentClean_SafeMultipleCalls, EventManagerFixture) 
   BOOST_CHECK(EventManager::Instance().isInitialized());
 }
 
-BOOST_FIXTURE_TEST_CASE(PriorityOrdering_HighPriorityFirst, EventManagerFixture) {
-  std::vector<uint32_t> processingOrder;
+BOOST_FIXTURE_TEST_CASE(DeferredDispatch_FollowsFIFOEnqueueOrder, EventManagerFixture) {
+  std::vector<int> processingOrder;
   std::mutex orderMutex;
 
-  // Register handlers that record the event priority
-  EventManager::Instance().registerHandler(EventTypeId::Collision, [&](const EventData &data) {
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
     std::lock_guard<std::mutex> lock(orderMutex);
-    processingOrder.push_back(data.priority);
+    processingOrder.push_back(1);
   });
-  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &data) {
+  EventManager::Instance().registerHandler(EventTypeId::Collision, [&](const EventData &) {
     std::lock_guard<std::mutex> lock(orderMutex);
-    processingOrder.push_back(data.priority);
+    processingOrder.push_back(2);
   });
 
-  // Trigger events with different priorities (Collision is CRITICAL, Weather uses LOW by default)
-  // Queue them in reverse priority order to test sorting
-  EventManager::Instance().changeWeather("Test", 1.0f); // LOW priority
+  // Deferred processing should preserve enqueue order even across event types.
+  EventManager::Instance().changeWeather("Test", 1.0f);
   HammerEngine::CollisionInfo info{};
-  EventManager::Instance().triggerCollision(info); // CRITICAL priority
+  EventManager::Instance().triggerCollision(info);
 
-  // Process deferred events
   EventManager::Instance().update();
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  // Should have processed both events
-  BOOST_CHECK_GE(processingOrder.size(), 2);
-
-  // CRITICAL (1000) should come before LOW (200) due to priority sorting
-  if (processingOrder.size() >= 2) {
-    BOOST_CHECK_GE(processingOrder[0], processingOrder[1]);
-  }
+  BOOST_REQUIRE_EQUAL(processingOrder.size(), 2);
+  BOOST_CHECK_EQUAL(processingOrder[0], 1);
+  BOOST_CHECK_EQUAL(processingOrder[1], 2);
 }

@@ -1288,20 +1288,22 @@ GameEngine::getLogicalPresentationMode() const noexcept {
 void GameEngine::clean() {
   GAMEENGINE_INFO("Starting shutdown sequence...");
 
-  // Cache manager references for better performance
-  HammerEngine::ThreadSystem &threadSystem =
-      HammerEngine::ThreadSystem::Instance();
-
-  // Clean up the thread system FIRST to ensure all threads are joined
-  // before we destroy the managers they might be using.
-  GAMEENGINE_INFO("Cleaning up Thread System...");
-  if (HammerEngine::ThreadSystem::Exists() && !threadSystem.isShutdown()) {
-    threadSystem.clean();
-  }
-
   // Clean up engine managers (non-singletons)
   GAMEENGINE_INFO("Cleaning up GameState manager...");
   mp_gameStateManager.reset();
+
+  // Active state exit paths may need workers alive to drain pathfinding,
+  // background simulation, or other queued jobs. Once states are gone, shut the
+  // worker pool down before singleton manager cleanup so no late tasks can race
+  // with SDL-backed resource destruction.
+  GAMEENGINE_INFO("Cleaning up Thread System...");
+  if (HammerEngine::ThreadSystem::Exists()) {
+    HammerEngine::ThreadSystem &threadSystem =
+        HammerEngine::ThreadSystem::Instance();
+    if (!threadSystem.isShutdown()) {
+      threadSystem.clean();
+    }
+  }
 
   // Save copies of the smart pointers to resources we'll clean up at the very
   // end

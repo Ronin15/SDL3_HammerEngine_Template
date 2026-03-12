@@ -13,6 +13,7 @@
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/PathfinderManager.hpp"
@@ -187,6 +188,9 @@ bool AdvancedAIDemoState::enter() {
   try {
     auto &worldManager = WorldManager::Instance();
 
+    // Refresh global world-related event handlers after state transitions.
+    worldManager.setupEventHandlers();
+
     // Setup world size using actual world bounds from loaded world
     float worldMinX, worldMinY, worldMaxX, worldMaxY;
     if (worldManager.getWorldBounds(worldMinX, worldMinY, worldMaxX,
@@ -332,6 +336,7 @@ bool AdvancedAIDemoState::exit() {
   PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
   UIManager &ui = UIManager::Instance();
   WorldManager &worldMgr = WorldManager::Instance();
+  EventManager &eventMgr = EventManager::Instance();
 
   if (m_transitioningToLoading) {
     // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded
@@ -348,22 +353,21 @@ bool AdvancedAIDemoState::exit() {
       m_player.reset();
     }
 
-    // Now safe to clear manager state
-    // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
-    // Pending path tasks hold captured edmIndex values - they must complete or
-    // see the transition flag before EDM clears its data
-    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-      pathfinderMgr.prepareForStateTransition();
-    }
-
     aiMgr.prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
-    edm.prepareForStateTransition();
-    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+
+    eventMgr.prepareForStateTransition();
 
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
     }
+
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
+    }
+
+    edm.prepareForStateTransition();
+    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
     // Clean up camera and scene renderer
     m_camera.reset();
@@ -405,23 +409,22 @@ bool AdvancedAIDemoState::exit() {
     m_player.reset();
   }
 
-  // Now safe to clear manager state
-  // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
-  // Pending path tasks hold captured edmIndex values - they must complete or
-  // see the transition flag before EDM clears its data
-  if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-    pathfinderMgr.prepareForStateTransition();
-  }
-
   aiMgr.prepareForStateTransition();
   bgSimMgr.prepareForStateTransition();
-  edm.prepareForStateTransition();
-  HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+
+  eventMgr.prepareForStateTransition();
 
   // Clean collision state
   if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
     collisionMgr.prepareForStateTransition();
   }
+
+  if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+    pathfinderMgr.prepareForStateTransition();
+  }
+
+  edm.prepareForStateTransition();
+  HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
   // Clean up camera and scene renderer first to stop world rendering
   m_camera.reset();
