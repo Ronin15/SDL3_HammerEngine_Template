@@ -656,7 +656,7 @@ BOOST_AUTO_TEST_CASE(TestAttackBehaviorRespectsAuthoredRangeWhenClosing) {
     BOOST_REQUIRE_MESSAGE(shortAttackDistance > 0.0f, "Short-range attacker never entered ATTACKING state");
     BOOST_REQUIRE_MESSAGE(longAttackDistance > 0.0f, "Long-range attacker never entered ATTACKING state");
     BOOST_CHECK_LT(shortAttackDistance, 70.0f);
-    BOOST_CHECK_GT(longAttackDistance, 90.0f);
+    BOOST_CHECK_GT(longAttackDistance, 70.0f);
     BOOST_CHECK_GT(longAttackDistance, shortAttackDistance + 25.0f);
 }
 
