@@ -68,6 +68,22 @@ enum class AttackMode : uint8_t {
     BERSERKER = 6
 };
 
+float getEffectiveAttackRange(const CharacterData* charData, AttackMode attackMode,
+                              const HammerEngine::AttackBehaviorConfig& config) {
+    const bool usesMeleeReach =
+        attackMode == AttackMode::MELEE ||
+        attackMode == AttackMode::AMBUSH ||
+        attackMode == AttackMode::COORDINATED ||
+        attackMode == AttackMode::BERSERKER ||
+        attackMode == AttackMode::HIT_AND_RUN;
+
+    if (usesMeleeReach && charData && charData->attackRange > 0.0f) {
+        return charData->attackRange;
+    }
+
+    return config.attackRange;
+}
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -613,8 +629,10 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     float distSquared = (entityPos - targetPos).lengthSquared();
     attack.targetDistance = std::sqrt(distSquared);
 
+    AttackMode attackMode = static_cast<AttackMode>(attack.attackMode);
+    const float attackRange = getEffectiveAttackRange(ctx.characterData, attackMode, config);
+
     // Update combat state
-    float attackRange = config.attackRange;
     if (!attack.inCombat && attack.targetDistance <= attackRange * COMBAT_ENTER_RANGE_MULT) {
         attack.inCombat = true;
     } else if (attack.inCombat && attack.targetDistance > attackRange * COMBAT_EXIT_RANGE_MULT) {
@@ -631,7 +649,6 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     }
 
     // Determine attack mode and apply mode-specific modifiers
-    AttackMode attackMode = static_cast<AttackMode>(attack.attackMode);
     float effectiveRetreatThreshold = config.retreatThreshold;
     float effectiveCooldown = config.attackCooldown;
 
@@ -672,8 +689,8 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     }
 
     // Calculate optimal range
-    float optimalRange = config.attackRange * config.optimalRangeMultiplier;
-    float minimumRange = config.attackRange * config.minimumRangeMultiplier;
+    float optimalRange = attackRange * config.optimalRangeMultiplier;
+    float minimumRange = attackRange * config.minimumRangeMultiplier;
 
     // State machine
     AttackState currentState = static_cast<AttackState>(attack.currentState);
@@ -834,7 +851,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             // This prevents message-triggered retreats from being instantly cancelled
             constexpr float MIN_RETREAT_TIME = 0.5f;
             if (attack.stateChangeTimer >= MIN_RETREAT_TIME) {
-                if (attack.targetDistance > config.attackRange * 2.0f ||
+                if (attack.targetDistance > attackRange * 2.0f ||
                     !shouldRetreat(ctx.edmIndex, ctx.characterData, config.retreatThreshold, config.aggression)) {
                     attack.isRetreating = false;
                     changeState(data, AttackState::SEEKING);

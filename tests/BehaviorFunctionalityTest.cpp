@@ -585,6 +585,81 @@ BOOST_AUTO_TEST_CASE(TestAttackAutoAcquiresNearbyEnemyTarget) {
     BOOST_CHECK(memData.lastTarget == target->getHandle());
 }
 
+BOOST_AUTO_TEST_CASE(TestAttackBehaviorRespectsAuthoredRangeWhenClosing) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto shortAttacker = TestNPC::create(300.0f, 300.0f);
+    auto longAttacker = TestNPC::create(300.0f, 360.0f);
+    auto shortTarget = TestNPC::create(420.0f, 300.0f);
+    auto longTarget = TestNPC::create(420.0f, 360.0f);
+
+    const EntityHandle shortAttackerHandle = shortAttacker->getHandle();
+    const EntityHandle longAttackerHandle = longAttacker->getHandle();
+    const EntityHandle shortTargetHandle = shortTarget->getHandle();
+    const EntityHandle longTargetHandle = longTarget->getHandle();
+
+    const size_t shortAttackerIdx = edm.getIndex(shortAttackerHandle);
+    const size_t longAttackerIdx = edm.getIndex(longAttackerHandle);
+    const size_t shortTargetIdx = edm.getIndex(shortTargetHandle);
+    const size_t longTargetIdx = edm.getIndex(longTargetHandle);
+    BOOST_REQUIRE(shortAttackerIdx != SIZE_MAX);
+    BOOST_REQUIRE(longAttackerIdx != SIZE_MAX);
+    BOOST_REQUIRE(shortTargetIdx != SIZE_MAX);
+    BOOST_REQUIRE(longTargetIdx != SIZE_MAX);
+
+    edm.setFaction(shortAttackerHandle, 1);
+    edm.setFaction(longAttackerHandle, 1);
+    edm.setFaction(shortTargetHandle, 2);
+    edm.setFaction(longTargetHandle, 2);
+
+    edm.getCharacterDataByIndex(shortAttackerIdx).attackRange = 45.0f;
+    edm.getCharacterDataByIndex(longAttackerIdx).attackRange = 125.0f;
+
+    aiMgr.assignBehavior(shortTargetHandle, "Idle");
+    aiMgr.assignBehavior(longTargetHandle, "Idle");
+    aiMgr.assignBehavior(shortAttackerHandle, "Attack");
+    aiMgr.assignBehavior(longAttackerHandle, "Attack");
+
+    auto& shortMem = edm.getMemoryData(shortAttackerIdx);
+    auto& longMem = edm.getMemoryData(longAttackerIdx);
+    shortMem.setValid(true);
+    longMem.setValid(true);
+    shortMem.lastTarget = shortTargetHandle;
+    longMem.lastTarget = longTargetHandle;
+
+    float shortAttackDistance = -1.0f;
+    float longAttackDistance = -1.0f;
+
+    for (int i = 0; i < 80; ++i) {
+        updateAI(0.1f, Vector2D(360.0f, 330.0f));
+
+        const auto& shortData = edm.getBehaviorData(shortAttackerIdx);
+        if (shortAttackDistance < 0.0f &&
+            shortData.behaviorType == BehaviorType::Attack &&
+            shortData.state.attack.currentState == 3) {
+            shortAttackDistance = (shortAttacker->getPosition() - shortTarget->getPosition()).length();
+        }
+
+        const auto& longData = edm.getBehaviorData(longAttackerIdx);
+        if (longAttackDistance < 0.0f &&
+            longData.behaviorType == BehaviorType::Attack &&
+            longData.state.attack.currentState == 3) {
+            longAttackDistance = (longAttacker->getPosition() - longTarget->getPosition()).length();
+        }
+
+        if (shortAttackDistance > 0.0f && longAttackDistance > 0.0f) {
+            break;
+        }
+    }
+
+    BOOST_REQUIRE_MESSAGE(shortAttackDistance > 0.0f, "Short-range attacker never entered ATTACKING state");
+    BOOST_REQUIRE_MESSAGE(longAttackDistance > 0.0f, "Long-range attacker never entered ATTACKING state");
+    BOOST_CHECK_LT(shortAttackDistance, 70.0f);
+    BOOST_CHECK_GT(longAttackDistance, 90.0f);
+    BOOST_CHECK_GT(longAttackDistance, shortAttackDistance + 25.0f);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 // Test Suite 5: Message System Testing

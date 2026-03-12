@@ -71,6 +71,14 @@ float getModeAlertRadius(uint8_t currentMode, const HammerEngine::GuardBehaviorC
     }
 }
 
+float getAttackEngageRange(const CharacterData* charData) {
+    if (charData && charData->attackRange > 0.0f) {
+        return charData->attackRange;
+    }
+
+    return DEFAULT_ATTACK_ENGAGE_RANGE;
+}
+
 // Process pending messages for Guard behavior
 void processGuardMessages(BehaviorData& data, const HammerEngine::GuardBehaviorConfig& config) {
     auto& guard = data.state.guard;
@@ -550,7 +558,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
                     }
 
                     float distance = (ctx.transform.position - threatPos).length();
-                    if (distance <= DEFAULT_ATTACK_ENGAGE_RANGE) {
+                    if (distance <= getAttackEngageRange(ctx.characterData)) {
                         switchBehavior(ctx.edmIndex, BehaviorType::Attack);
                         return;
                     } else {
@@ -560,7 +568,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
                 }
                 case 4: { // ALARM - like HOSTILE but wider help call and no return-to-post
                     float distance = (ctx.transform.position - threatPos).length();
-                    if (distance <= DEFAULT_ATTACK_ENGAGE_RANGE) {
+                    if (distance <= getAttackEngageRange(ctx.characterData)) {
                         switchBehavior(ctx.edmIndex, BehaviorType::Attack);
                         return;
                     } else {
@@ -596,7 +604,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
             // (Main threat detection above handles new threat discovery - no need for second scan)
                 if (guard.currentAlertLevel >= 3) {
                     float distToThreat = (ctx.transform.position - guard.lastKnownThreatPosition).length();
-                    if (distToThreat <= DEFAULT_ATTACK_ENGAGE_RANGE) {
+                    if (distToThreat <= getAttackEngageRange(ctx.characterData)) {
                         switchBehavior(ctx.edmIndex, BehaviorType::Attack);
                         return;
                     }

@@ -642,14 +642,14 @@ void AIManager::assignBehavior(EntityHandle handle,
   BehaviorType behaviorType = typeIt->second;
 
   // Get default config for this behavior type
-  auto config = Behaviors::getDefaultConfig(behaviorType);
-
   auto& edm = EntityDataManager::Instance();
   size_t edmIndex = edm.getIndex(handle);
   if (edmIndex == SIZE_MAX) {
     AI_ERROR("Cannot assign behavior: entity not in EDM");
     return;
   }
+
+  auto config = Behaviors::getDefaultConfig(behaviorType);
 
   // Acquire write lock — index updates and EDM config must be atomic
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
