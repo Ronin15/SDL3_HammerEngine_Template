@@ -238,6 +238,7 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
     v[3] = {dstX, dstY + dstH, 0.0f, 1.0f, 200, 200, 200, 255};
 
     GPUDrawCommand cmd;
+    cmd.textureOwner = textData->texture;
     cmd.texture = textData->texture->get();
     cmd.vertexOffset = uiVertexOffset;
     cmd.vertexCount = 4;
@@ -339,8 +340,14 @@ void LogoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
 
   // Draw each text texture
   for (const auto& cmd : m_textDrawCommands) {
+    SDL_GPUTexture* textTexture =
+        cmd.textureOwner ? cmd.textureOwner->get() : cmd.texture;
+    if (!textTexture) {
+      continue;
+    }
+
     SDL_GPUTextureSamplerBinding texSampler{};
-    texSampler.texture = cmd.texture;
+    texSampler.texture = textTexture;
     texSampler.sampler = gpuRenderer.getLinearSampler();
     SDL_BindGPUFragmentSamplers(swapchainPass, 0, &texSampler, 1);
 

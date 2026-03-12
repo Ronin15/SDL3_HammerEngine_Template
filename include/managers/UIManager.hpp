@@ -29,6 +29,7 @@ struct SDL_GPURenderPass;
 
 namespace HammerEngine {
 class GPURenderer;
+class GPUTexture;
 }
 
 #ifdef USE_SDL3_GPU
@@ -36,6 +37,7 @@ class GPURenderer;
 struct UIGPUDrawCommand {
     enum class Type { Rect, Text, Image };
     Type type{Type::Rect};
+    std::shared_ptr<HammerEngine::GPUTexture> textureOwner{};
     SDL_GPUTexture* texture{nullptr};  // For text/image
     uint32_t vertexOffset{0};
     uint32_t vertexCount{0};

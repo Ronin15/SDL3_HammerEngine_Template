@@ -1298,7 +1298,7 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
   // Stumps and rocks - no seasonal variants
   m_cachedTextureIDs.decoration_stump_small = "stump_obstacle_small";
   m_cachedTextureIDs.decoration_stump_medium = "stump_obstacle_medium";
-  m_cachedTextureIDs.decoration_rock_small = "obstacle_rock";
+  m_cachedTextureIDs.decoration_rock_small = "rock_small";
 
   // Logs - no seasonal variants
   m_cachedTextureIDs.decoration_dead_log_hz = "dead_log_hz";

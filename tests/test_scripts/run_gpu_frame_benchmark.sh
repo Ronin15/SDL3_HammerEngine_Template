@@ -82,10 +82,9 @@ echo -e "${BLUE}==================================${NC}"
 echo ""
 
 if [[ ! -f "${BENCHMARK_EXECUTABLE}" ]]; then
-    echo -e "${RED}Benchmark executable not found:${NC} ${BENCHMARK_EXECUTABLE}"
-    echo -e "${YELLOW}Build it first with:${NC}"
-    echo "  ninja -C build gpu_frame_timing_benchmark"
-    exit 1
+    echo -e "${YELLOW}Skipping GPU frame benchmark:${NC} ${BENCHMARK_EXECUTABLE} not built"
+    echo -e "${YELLOW}Build it with a GPU-enabled configuration if you want this benchmark.${NC}"
+    exit 0
 fi
 
 echo -e "${CYAN}Writing results to:${NC} ${RESULTS_FILE}"

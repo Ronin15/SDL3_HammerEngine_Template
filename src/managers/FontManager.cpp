@@ -785,7 +785,7 @@ const GPUTextData* FontManager::renderTextGPU(const std::string& text, const std
                         false);
 
   // Create GPU texture data
-  auto gpuData = std::make_unique<GPUTextData>();
+  auto gpuData = std::make_shared<GPUTextData>();
   gpuData->width = surface->w;
   gpuData->height = surface->h;
 
@@ -793,7 +793,7 @@ const GPUTextData* FontManager::renderTextGPU(const std::string& text, const std
   SDL_GPUDevice* device = gpuDevice.get();
 
   // Create GPU texture (empty - will be uploaded in processPendingTextUploads)
-  gpuData->texture = std::make_unique<HammerEngine::GPUTexture>(
+  gpuData->texture = std::make_shared<HammerEngine::GPUTexture>(
       device,
       static_cast<uint32_t>(surface->w),
       static_cast<uint32_t>(surface->h),
@@ -926,6 +926,7 @@ void FontManager::drawTextGPU(const std::string& text, const std::string& fontID
   draw.vertices[1] = {dstX + dstW, dstY, 1.0f, 0.0f, 255, 255, 255, 255};
   draw.vertices[2] = {dstX + dstW, dstY + dstH, 1.0f, 1.0f, 255, 255, 255, 255};
   draw.vertices[3] = {dstX, dstY + dstH, 0.0f, 1.0f, 255, 255, 255, 255};
+  draw.textureOwner = textData->texture;
   draw.texture = textData->texture->get();
   draw.sampler = gpuRenderer.getLinearSampler();
   HammerEngine::GPURenderer::createOrthoMatrix(
@@ -939,6 +940,13 @@ void FontManager::drawTextGPU(const std::string& text, const std::string& fontID
 void FontManager::flushTextDraws(HammerEngine::GPURenderer& gpuRenderer,
                                   SDL_GPURenderPass* pass) {
   if (m_pendingTextDraws.empty() || !pass) return;
+
+  SDL_GPUCopyPass* copyPass = gpuRenderer.getCopyPass();
+  if (!copyPass) {
+    FONT_ERROR("flushTextDraws requires the renderer's main copy pass");
+    m_pendingTextDraws.clear();
+    return;
+  }
 
   const auto& gpuDevice = HammerEngine::GPUDevice::Instance();
   size_t drawCount = m_pendingTextDraws.size();
@@ -988,22 +996,6 @@ void FontManager::flushTextDraws(HammerEngine::GPURenderer& gpuRenderer,
   }
   vertexTransfer.unmap();
 
-  // ONE command buffer + copy pass for all uploads
-  SDL_GPUCommandBuffer* uploadCmd = SDL_AcquireGPUCommandBuffer(gpuDevice.get());
-  if (!uploadCmd) {
-    FONT_ERROR("Failed to acquire command buffer for text batch upload");
-    m_pendingTextDraws.clear();
-    return;
-  }
-
-  SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmd);
-  if (!copyPass) {
-    FONT_ERROR("Failed to begin copy pass for text batch upload");
-    SDL_CancelGPUCommandBuffer(uploadCmd);
-    m_pendingTextDraws.clear();
-    return;
-  }
-
   SDL_GPUTransferBufferLocation src = vertexTransfer.asLocation(0);
   SDL_GPUBufferRegion dst{};
   dst.buffer = m_textVertexBuffer;
@@ -1011,8 +1003,6 @@ void FontManager::flushTextDraws(HammerEngine::GPURenderer& gpuRenderer,
   dst.size = static_cast<uint32_t>(totalVertexSize);
 
   SDL_UploadToGPUBuffer(copyPass, &src, &dst, false);
-  SDL_EndGPUCopyPass(copyPass);
-  SDL_SubmitGPUCommandBuffer(uploadCmd);
 
   // Draw all text quads
   const auto& batch = gpuRenderer.getSpriteBatch();

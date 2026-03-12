@@ -76,10 +76,9 @@ echo ==================================
 echo.
 
 if not exist "%BENCHMARK_EXECUTABLE%" (
-    echo Benchmark executable not found: %BENCHMARK_EXECUTABLE%
-    echo Build it first with:
-    echo   ninja -C build gpu_frame_timing_benchmark
-    exit /b 1
+    echo Skipping GPU frame benchmark: %BENCHMARK_EXECUTABLE% not built
+    echo Build it with a GPU-enabled configuration if you want this benchmark.
+    exit /b 0
 )
 
 (

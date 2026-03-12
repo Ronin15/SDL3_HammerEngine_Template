@@ -3572,6 +3572,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
 
     UIGPUDrawCommand cmd;
     cmd.type = UIGPUDrawCommand::Type::Text;
+    cmd.textureOwner = textData->texture;
     cmd.texture = textData->texture->get();
     cmd.vertexOffset = uiOffset;
     cmd.vertexCount = 4;
@@ -4029,8 +4030,14 @@ void UIManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderP
     SDL_BindGPUIndexBuffer(pass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
 
     for (const auto& cmd : m_gpuTextCommands) {
+      SDL_GPUTexture* textTexture =
+          cmd.textureOwner ? cmd.textureOwner->get() : cmd.texture;
+      if (!textTexture) {
+        continue;
+      }
+
       SDL_GPUTextureSamplerBinding texSampler{};
-      texSampler.texture = cmd.texture;
+      texSampler.texture = textTexture;
       texSampler.sampler = gpuRenderer.getLinearSampler();
       SDL_BindGPUFragmentSamplers(pass, 0, &texSampler, 1);
 

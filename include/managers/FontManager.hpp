@@ -26,7 +26,7 @@ class GPURenderer;
 }
 
 struct GPUTextData {
-    std::unique_ptr<HammerEngine::GPUTexture> texture;
+    std::shared_ptr<HammerEngine::GPUTexture> texture;
     int width{0};
     int height{0};
     bool uploaded{false};  // Set to true after processPendingTextUploads completes upload
@@ -346,7 +346,7 @@ class FontManager {
   std::list<TextCacheKey> m_gpuLruList{};
 
   struct GPUCacheEntry {
-    std::unique_ptr<GPUTextData> data;
+    std::shared_ptr<GPUTextData> data;
     std::list<TextCacheKey>::iterator lruIterator;
   };
   std::unordered_map<TextCacheKey, GPUCacheEntry, TextCacheKeyHash> m_gpuTextCache{};
@@ -373,6 +373,7 @@ class FontManager {
   static constexpr size_t MAX_GPU_TEXT_DRAWS_PER_FRAME = 64;
   struct PendingGPUTextDraw {
     HammerEngine::SpriteVertex vertices[4];
+    std::shared_ptr<HammerEngine::GPUTexture> textureOwner;
     SDL_GPUTexture* texture;
     SDL_GPUSampler* sampler;
     float orthoMatrix[16];

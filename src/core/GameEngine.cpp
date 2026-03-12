@@ -369,6 +369,7 @@ bool GameEngine::init(std::string_view title) {
     } else {
       GAMEENGINE_WARN(std::format("Failed to set GPU present mode: {} — defaulting to VSYNC",
                                   SDL_GetError()));
+      vsyncRequested = true;
     }
 
     // Software frame limiting needed when VSync is off
