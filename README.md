@@ -161,6 +161,37 @@ export TSAN_OPTIONS="suppressions=$(pwd)/tests/tsan_suppressions.txt"
 
 ---
 
+## Sprite Atlas Workflow
+
+The repository includes an atlas management tool for extracting sprites, assigning texture IDs, and repacking the atlas and runtime metadata.
+
+### Process
+
+```bash
+# 1. Extract sprites from the current atlas
+python3 tools/atlas_tool.py extract
+
+# 2. Map extracted sprites to texture IDs
+python3 tools/atlas_tool.py map
+
+# 3. Repack the atlas and export updated JSON data
+python3 tools/atlas_tool.py pack
+```
+
+- `extract` pulls sprite regions from `res/img/atlas.png` into `res/sprites/`
+- `map` starts a local browser-based mapper and saves rename mappings to `res/sprites/mappings.json`
+- `pack` applies mappings, rebuilds `atlas.png`, updates `res/data/atlas.json`, exports related JSON metadata, and cleans up temporary sprite files
+
+Use `extract-from` to import sprites from an external image instead of the current atlas:
+
+```bash
+python3 tools/atlas_tool.py extract-from path/to/source.png
+```
+
+For the full workflow, command reference, file locations, and legacy texture mapper details, see [tools/README.md](tools/README.md).
+
+---
+
 ## Documentation
 
 **📚 [Documentation Hub](docs/README.md)** – Full guides, API references, and best practices.
