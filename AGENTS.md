@@ -25,7 +25,7 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_
 
 ## Testing
 
-Boost.Test (70 executables). **Prefer direct test execution** - much faster than test scripts.
+Boost.Test (70 executables in the default non-GPU build; additional GPU test executables/benchmarks when `USE_SDL3_GPU=ON`). **Prefer direct test execution** - much faster than test scripts.
 
 ```bash
 # Direct test execution (PREFERRED for development - fast feedback)
@@ -92,13 +92,13 @@ if (decision.shouldThread) {
 budgetMgr.reportExecution(SystemType::AI, count, decision.shouldThread, decision.batchCount, elapsedMs);
 ```
 
-**State Transitions**: Call `prepareForStateTransition()` on managers before cleanup. Pauses work, waits for pending batches, drains message queues. ALL game states with AI entities must transition: AIManager, BackgroundSimulationManager, WorldResourceManager, EventManager, CollisionManager, PathfinderManager, EntityDataManager (in that order).
+**State Transitions**: Call `prepareForStateTransition()` on active managers before cleanup. Current AI-heavy states typically transition in this order when those systems are initialized: AIManager, BackgroundSimulationManager, WorldResourceManager, EventManager, CollisionManager, PathfinderManager, EntityDataManager, WorkerBudgetManager, ParticleManager. Some demo states skip managers they do not initialize.
 
-**Thread-Local**: Use for RNG (`thread_local std::mt19937`), reusable buffers, and spatial caches. Eliminates contention without locks. When collecting from thread_local vectors, use ref-based API with `clear()` to preserve capacity — never `swap()` or return-by-value which destroys capacity and causes per-frame heap allocations per worker thread.
+**Thread-Local**: Use for RNG (`thread_local std::mt19937`), reusable buffers, and spatial caches. Eliminates contention without locks. Prefer ref-based APIs and `clear()` when reusing thread-local vectors to preserve capacity. Avoid return-by-value patterns that force repeated allocations; use `swap()` only when it is intentionally preserving reusable storage across buffers.
 
 **Synchronization**: `shared_mutex` for reader-writer (entities, behaviors) | `mutex` for exclusive | `atomic<bool>` for flags | `condition_variable` for worker wake.
 
-**Rules**: NEVER static vars in threaded code | Main thread only for SDL | Futures must complete before dependent ops | Cache-line align hot atomics (`alignas(64)`)
+**Rules**: Avoid non-`thread_local` static state in threaded code | Main thread only for SDL | Futures must complete before dependent ops | Cache-line align hot atomics (`alignas(64)`)
 
 **Logging**: Use `std::format()`, never `+` concatenation. Use `AI_INFO_IF(cond, msg)` macros when condition only gates logging.
 
@@ -149,15 +149,17 @@ Helpers: `createTitleAtTop()`, `createButtonAtBottom()`, `createCenteredButton()
 
 Manual: `ui.createButton("id", rect, "text"); ui.setComponentPositioning("id", {UIPositionMode::TOP_ALIGNED, ...});`
 
-Modes: TOP_ALIGNED, BOTTOM_ALIGNED, LEFT/RIGHT_ALIGNED, BOTTOM_RIGHT, CENTERED_H, CENTERED_BOTH
+Modes: ABSOLUTE, CENTERED_H, CENTERED_V, CENTERED_BOTH, TOP_ALIGNED, TOP_RIGHT, BOTTOM_ALIGNED, BOTTOM_CENTERED, BOTTOM_RIGHT, LEFT_ALIGNED, RIGHT_ALIGNED
 
 ## Rendering
 
-**One Present() per frame** via `GameEngine::render()` → `GameStateManager::render()` → `GameState::render()`. NEVER call SDL_RenderClear/Present in GameStates.
+**One Present() per frame**: `GameEngine::render()` performs scene/UI rendering, and `GameEngine::present()` performs the actual present/end-frame step. NEVER call SDL_RenderClear/Present in GameStates.
 
 **SDL_Renderer Path**: WorldRenderPipeline (4-phase: prepareChunks→beginScene→renderWorld→endScene) wraps SceneRenderer for pixel-perfect zoom and sub-pixel scrolling.
 
-**GPU Path**: Scene texture → Composite pass (day/night tinting, sub-pixel offset, zoom) → UI pass. GameStates implement `renderGPUScene()` and `renderGPUUI()`.
+**GPU Path**: Scene pass → composite to swapchain → UI pass. GameStates implement `renderGPUScene()` and `renderGPUUI()`, while the engine ends the frame outside the GameState.
+
+**SDL3_GPU UI Text**: Use `TTF_GetGPUTextDrawData()` only. No UV flips, half-texel offsets, or shader hacks. For raster UI/menu text in integer UI layouts, snap final text placement to whole pixels before emitting GPU vertices to avoid bottom-edge shaving with linear filtering.
 
 **DayNightController**: Requires `update(dt)` each frame for lighting interpolation (30s transitions). GPU path updates automatically via `GPURenderer::setDayNightParams()`.
 
@@ -167,7 +169,7 @@ Modes: TOP_ALIGNED, BOTTOM_ALIGNED, LEFT/RIGHT_ALIGNED, BOTTOM_RIGHT, CENTERED_H
 
 ## GameState Architecture
 
-**State Transitions**: Use `mp_stateManager->changeState()`, never `GameEngine::Instance()`. Base class provides `mp_stateManager`.
+**State Transitions**: Use `mp_stateManager->changeState()` for state changes. Base class provides `mp_stateManager`. `GameEngine::Instance()` is still used in states for non-transition engine access such as pause, window sizing, or shutdown.
 
 **Manager/Controller Access**: Local references, not cached member pointers. Cache at function top when used **multiple times**, otherwise call directly.
 ```cpp
@@ -199,7 +201,7 @@ When the user names a specific file (e.g., "AIDemoState"), work on exactly that 
 
 Search existing patterns before implementing.
 
-**Demo States**: States with "Demo" suffix (EventDemoState, UIDemoState, AIDemoState, OverlayDemoState) are for testing/showcasing features.
+**Demo States**: Demo-oriented states are for testing/showcasing features. File/class names do not always match the runtime state name exactly: for example, `EventDemoState` registers as `EventDemo`, and `UIDemoState.hpp` defines `UIExampleState`.
 
 **GamePlayState**: The pristine official gameplay state. Keep clean and production-ready.
 
