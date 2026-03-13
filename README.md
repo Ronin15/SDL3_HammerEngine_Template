@@ -139,8 +139,11 @@ export TSAN_OPTIONS="suppressions=$(pwd)/tests/tsan_suppressions.txt"
 
 - Run all tests: `./tests/test_scripts/run_all_tests.sh`
 - See [tests/TESTING.md](tests/TESTING.md) for comprehensive test documentation and options
-- Static analysis: `./tests/test_scripts/run_cppcheck_focused.sh`
-  See [tests/cppcheck/README.md](tests/cppcheck/README.md) for more.
+- Static analysis:
+  - `cppcheck`: `./tests/test_scripts/run_cppcheck_focused.sh`
+    See [tests/cppcheck/README.md](tests/cppcheck/README.md) for more.
+  - `clang-tidy`: `./tests/test_scripts/run_clang_tidy.sh`
+    See [tests/clang-tidy/README.md](tests/clang-tidy/README.md) for configuration, focused analysis, and full-project analysis details.
 - Memory & thread safety validation: AddressSanitizer (ASAN) and ThreadSanitizer (TSAN) support
   See [docs/core/ThreadSystem.md#threadsanitizer-tsan-support](docs/core/ThreadSystem.md#threadsanitizer-tsan-support) for details
 
