@@ -151,6 +151,8 @@ void GPURenderer::shutdown() {
     m_primitivePipeline.release();
     m_compositePipeline.release();
     m_uiSpritePipeline.release();
+    m_uiTextAlphaPipeline.release();
+    m_uiTextSDFPipeline.release();
     m_uiPrimitivePipeline.release();
 
     // Release textures and samplers
@@ -493,6 +495,14 @@ SDL_GPUGraphicsPipeline* GPURenderer::getUISpritePipeline() const {
     return m_uiSpritePipeline.get();
 }
 
+SDL_GPUGraphicsPipeline* GPURenderer::getUITextAlphaPipeline() const {
+    return m_uiTextAlphaPipeline.get();
+}
+
+SDL_GPUGraphicsPipeline* GPURenderer::getUITextSDFPipeline() const {
+    return m_uiTextSDFPipeline.get();
+}
+
 SDL_GPUGraphicsPipeline* GPURenderer::getUIPrimitivePipeline() const {
     return m_uiPrimitivePipeline.get();
 }
@@ -614,6 +624,9 @@ bool GPURenderer::loadShaders() {
     ShaderInfo spriteFragInfo{};
     spriteFragInfo.numSamplers = 1;  // Texture sampler
 
+    ShaderInfo textFragInfo{};
+    textFragInfo.numSamplers = 1;
+
     // Color shaders used by both particle and primitive pipelines
     ShaderInfo colorVertInfo{};
     colorVertInfo.numUniformBuffers = 1;
@@ -633,6 +646,12 @@ bool GPURenderer::loadShaders() {
         return false;
     }
     if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/sprite.frag"), SDL_GPU_SHADERSTAGE_FRAGMENT, spriteFragInfo)) {
+        return false;
+    }
+    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/text_alpha.frag"), SDL_GPU_SHADERSTAGE_FRAGMENT, textFragInfo)) {
+        return false;
+    }
+    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/text_sdf.frag"), SDL_GPU_SHADERSTAGE_FRAGMENT, textFragInfo)) {
         return false;
     }
     if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/color.vert"), SDL_GPU_SHADERSTAGE_VERTEX, colorVertInfo)) {
@@ -659,6 +678,9 @@ bool GPURenderer::createPipelines() {
     ShaderInfo spriteFragInfo{};
     spriteFragInfo.numSamplers = 1;
 
+    ShaderInfo textFragInfo{};
+    textFragInfo.numSamplers = 1;
+
     ShaderInfo colorVertInfo{};
     colorVertInfo.numUniformBuffers = 1;
 
@@ -678,6 +700,8 @@ bool GPURenderer::createPipelines() {
     // Cache resolved shader paths (must match keys used in loadShaders)
     const std::string spriteVert = ResourcePath::resolve("res/shaders/sprite.vert");
     const std::string spriteFrag = ResourcePath::resolve("res/shaders/sprite.frag");
+    const std::string textAlphaFrag = ResourcePath::resolve("res/shaders/text_alpha.frag");
+    const std::string textSDFFrag = ResourcePath::resolve("res/shaders/text_sdf.frag");
     const std::string colorVert = ResourcePath::resolve("res/shaders/color.vert");
     const std::string colorFrag = ResourcePath::resolve("res/shaders/color.frag");
     const std::string compositeVert = ResourcePath::resolve("res/shaders/composite.vert");
@@ -754,6 +778,30 @@ bool GPURenderer::createPipelines() {
             true  // alpha blending for text
         );
         if (!m_uiSpritePipeline.create(m_device, config)) {
+            return false;
+        }
+    }
+
+    {
+        auto config = GPUPipeline::createSpriteConfig(
+            shaderMgr.getShader(spriteVert, SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo),
+            shaderMgr.getShader(textAlphaFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, textFragInfo),
+            swapchainFormat,
+            true
+        );
+        if (!m_uiTextAlphaPipeline.create(m_device, config)) {
+            return false;
+        }
+    }
+
+    {
+        auto config = GPUPipeline::createSpriteConfig(
+            shaderMgr.getShader(spriteVert, SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo),
+            shaderMgr.getShader(textSDFFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, textFragInfo),
+            swapchainFormat,
+            true
+        );
+        if (!m_uiTextSDFPipeline.create(m_device, config)) {
             return false;
         }
     }

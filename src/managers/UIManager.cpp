@@ -3473,6 +3473,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
 
   uint32_t primOffset = 0;
   uint32_t uiOffset = 0;
+  const float viewportHeight = static_cast<float>(gpuRenderer.getViewportHeight());
 
   // Helper to add a filled rectangle
   auto addFilledRect = [&](const UIRect& rect, const SDL_Color& color) {
@@ -3482,16 +3483,18 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
     float y = static_cast<float>(rect.y);
     float w = static_cast<float>(rect.width);
     float h = static_cast<float>(rect.height);
+    float top = viewportHeight - y;
+    float bottom = top - h;
 
     HammerEngine::ColorVertex* v = primBase + primOffset;
     // Triangle 1
-    v[0] = {x, y, color.r, color.g, color.b, color.a};
-    v[1] = {x + w, y, color.r, color.g, color.b, color.a};
-    v[2] = {x + w, y + h, color.r, color.g, color.b, color.a};
+    v[0] = {x, top, color.r, color.g, color.b, color.a};
+    v[1] = {x + w, top, color.r, color.g, color.b, color.a};
+    v[2] = {x + w, bottom, color.r, color.g, color.b, color.a};
     // Triangle 2
-    v[3] = {x, y, color.r, color.g, color.b, color.a};
-    v[4] = {x + w, y + h, color.r, color.g, color.b, color.a};
-    v[5] = {x, y + h, color.r, color.g, color.b, color.a};
+    v[3] = {x, top, color.r, color.g, color.b, color.a};
+    v[4] = {x + w, bottom, color.r, color.g, color.b, color.a};
+    v[5] = {x, bottom, color.r, color.g, color.b, color.a};
 
     UIGPUDrawCommand cmd;
     cmd.type = UIGPUDrawCommand::Type::Rect;
@@ -3574,11 +3577,6 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
       addFilledRect(bgRect, bgColor);
     }
 
-    if (!fontMgr.setGPUTextPosition(textKey, static_cast<int>(dstX),
-                                    static_cast<int>(dstY))) {
-      return;
-    }
-
     TTF_GPUAtlasDrawSequence* drawSequence = fontMgr.getGPUTextDrawData(textKey);
     if (!drawSequence) {
       return;
@@ -3596,6 +3594,10 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
       }
 
       v = uiBase + uiOffset;
+      SDL_Color drawColor = color;
+      if (seq->image_type == TTF_IMAGE_COLOR) {
+        drawColor = {255, 255, 255, color.a};
+      }
       for (int i = 0; i < seq->num_indices; ++i) {
         int sourceIndex = seq->indices[i];
         if (sourceIndex < 0 || sourceIndex >= seq->num_vertices) {
@@ -3604,13 +3606,15 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
 
         const SDL_FPoint& pos = seq->xy[sourceIndex];
         const SDL_FPoint& uv = seq->uv[sourceIndex];
-        v[i] = {pos.x, -pos.y, uv.x, uv.y,
-                color.r, color.g, color.b, color.a};
+        v[i] = {dstX + pos.x, (viewportHeight - dstY) + pos.y,
+                uv.x, 1.0f - uv.y,
+                drawColor.r, drawColor.g, drawColor.b, drawColor.a};
       }
 
       UIGPUDrawCommand cmd;
       cmd.type = UIGPUDrawCommand::Type::Text;
       cmd.texture = seq->atlas_texture;
+      cmd.imageType = seq->image_type;
       cmd.vertexOffset = uiOffset;
       cmd.vertexCount = static_cast<uint32_t>(seq->num_indices);
       m_gpuTextCommands.push_back(cmd);
@@ -4033,7 +4037,7 @@ void UIManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderP
   float orthoMatrix[16];
   HammerEngine::GPURenderer::createOrthoMatrix(
       0.0f, static_cast<float>(gpuRenderer.getViewportWidth()),
-      static_cast<float>(gpuRenderer.getViewportHeight()), 0.0f,
+      0.0f, static_cast<float>(gpuRenderer.getViewportHeight()),
       orthoMatrix);
 
   // Render primitives (filled rectangles)
@@ -4057,9 +4061,6 @@ void UIManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderP
 
   // Render atlas-backed text triangles
   if (!m_gpuTextCommands.empty()) {
-    SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUISpritePipeline());
-    gpuRenderer.pushViewProjection(pass, orthoMatrix);
-
     SDL_GPUBufferBinding vertexBinding{};
     vertexBinding.buffer = gpuRenderer.getUIVertexPool().getGPUBuffer();
     vertexBinding.offset = 0;
@@ -4075,6 +4076,19 @@ void UIManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderP
       SDL_GPUTextureSamplerBinding texSampler{};
       texSampler.texture = textTexture;
       texSampler.sampler = gpuRenderer.getLinearSampler();
+      switch (cmd.imageType) {
+        case TTF_IMAGE_SDF:
+          SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUITextSDFPipeline());
+          break;
+        case TTF_IMAGE_COLOR:
+          SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUISpritePipeline());
+          break;
+        case TTF_IMAGE_ALPHA:
+        default:
+          SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUITextAlphaPipeline());
+          break;
+      }
+      gpuRenderer.pushViewProjection(pass, orthoMatrix);
       SDL_BindGPUFragmentSamplers(pass, 0, &texSampler, 1);
 
       SDL_DrawGPUPrimitives(pass, cmd.vertexCount, 1, cmd.vertexOffset, 0);

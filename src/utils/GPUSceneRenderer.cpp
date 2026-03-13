@@ -79,7 +79,8 @@ GPUSceneContext GPUSceneRenderer::beginScene(GPURenderer& gpuRenderer,
     spriteBatch.begin(writePtr, vertexPool.getMaxVertices(),
                       atlasTexture->texture->get(), gpuRenderer.getNearestSampler(),
                       static_cast<float>(atlasTexture->width),
-                      static_cast<float>(atlasTexture->height));
+                      static_cast<float>(atlasTexture->height),
+                      static_cast<float>(gpuRenderer.getSceneTexture()->getHeight()));
 
     // Store state for later phases
     m_sceneActive = true;
@@ -154,7 +155,7 @@ void GPUSceneRenderer::renderScene(GPURenderer& gpuRenderer,
     float orthoMatrix[16];
     GPURenderer::createOrthoMatrix(
         0.0f, static_cast<float>(sceneTexture->getWidth()),
-        static_cast<float>(sceneTexture->getHeight()), 0.0f,
+        0.0f, static_cast<float>(sceneTexture->getHeight()),
         orthoMatrix);
 
     // Push view-projection matrix

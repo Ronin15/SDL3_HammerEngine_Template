@@ -808,6 +808,13 @@ bool FontManager::prepareGPUText(const std::string& key, const std::string& text
     return false;
   }
 
+  // Keep text objects at local origin; callers translate returned draw data.
+  if (!TTF_SetTextPosition(entry.text, 0, 0)) {
+    FONT_ERROR(std::format("Failed to reset GPU text origin for '{}': {}",
+                           key, SDL_GetError()));
+    return false;
+  }
+
   if (width) {
     *width = entry.width;
   }

@@ -12,6 +12,7 @@
 #include <vector>
 
 #ifdef USE_SDL3_GPU
+#include <SDL3_ttf/SDL_ttf.h>
 struct SDL_GPUTexture;
 namespace HammerEngine {
 class GPUTexture;
@@ -66,6 +67,7 @@ class LogoState : public GameState {
   struct GPUDrawCommand {
     std::shared_ptr<HammerEngine::GPUTexture> textureOwner{};
     SDL_GPUTexture* texture{nullptr};
+    TTF_ImageType imageType{TTF_IMAGE_INVALID};
     uint32_t vertexOffset{0};
     uint32_t vertexCount{0};
   };

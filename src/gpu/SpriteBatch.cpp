@@ -160,7 +160,8 @@ SpriteBatch& SpriteBatch::operator=(SpriteBatch&& other) noexcept {
 
 void SpriteBatch::begin(SpriteVertex* writePtr, size_t maxVertices,
                         SDL_GPUTexture* texture, SDL_GPUSampler* sampler,
-                        float textureWidth, float textureHeight) {
+                        float textureWidth, float textureHeight,
+                        float targetHeight) {
     if (!m_initialized) {
         GAMEENGINE_ERROR("SpriteBatch::begin: not initialized");
         return;
@@ -177,6 +178,7 @@ void SpriteBatch::begin(SpriteVertex* writePtr, size_t maxVertices,
     m_sampler = sampler;
     m_textureWidth = (textureWidth > 0) ? textureWidth : 1.0f;
     m_textureHeight = (textureHeight > 0) ? textureHeight : 1.0f;
+    m_targetHeight = (targetHeight > 0) ? targetHeight : 1.0f;
     m_spriteCount = 0;
     m_vertexCount = 0;
     m_recording = true;
@@ -212,11 +214,11 @@ void SpriteBatch::drawUV(float u0, float v0, float u1, float v1,
         return;
     }
 
-    // Destination rectangle corners
+    // Convert engine top-left screen/world coordinates to SDL_GPU's Y-up space.
     float x0 = dstX;
-    float y0 = dstY;
     float x1 = dstX + dstW;
-    float y1 = dstY + dstH;
+    float y0 = m_targetHeight - dstY;
+    float y1 = y0 - dstH;
 
     addQuad(x0, y0, x1, y1, u0, v0, u1, v1, r, g, b, a);
 }

@@ -90,6 +90,8 @@ public:
 
     // Pipeline accessors (UI rendering - to swapchain)
     SDL_GPUGraphicsPipeline* getUISpritePipeline() const;
+    SDL_GPUGraphicsPipeline* getUITextAlphaPipeline() const;
+    SDL_GPUGraphicsPipeline* getUITextSDFPipeline() const;
     SDL_GPUGraphicsPipeline* getUIPrimitivePipeline() const;
 
     // Sampler accessors
@@ -221,6 +223,8 @@ private:
 
     // Pipelines (UI rendering - to swapchain)
     GPUPipeline m_uiSpritePipeline;
+    GPUPipeline m_uiTextAlphaPipeline;
+    GPUPipeline m_uiTextSDFPipeline;
     GPUPipeline m_uiPrimitivePipeline;
 
     // Vertex pools

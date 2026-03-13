@@ -1152,6 +1152,12 @@ void ParticleManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
     return;
   }
 
+  const auto* sceneTexture = gpuRenderer.getSceneTexture();
+  if (!sceneTexture) {
+    return;
+  }
+  const float sceneHeight = static_cast<float>(sceneTexture->getHeight());
+
   constexpr size_t VERTICES_PER_QUAD = 6;  // Two triangles
   size_t maxVertices = vertexPool.getMaxVertices();
   size_t vertexOffset = 0;
@@ -1190,7 +1196,7 @@ void ParticleManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
     // Helper to write a ColorVertex
     auto writeVertex = [&](float px, float py) {
       basePtr[vertexOffset].x = px;
-      basePtr[vertexOffset].y = py;
+      basePtr[vertexOffset].y = sceneHeight - py;
       basePtr[vertexOffset].r = r;
       basePtr[vertexOffset].g = g;
       basePtr[vertexOffset].b = b;
@@ -1234,7 +1240,7 @@ void ParticleManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
   float orthoMatrix[16];
   HammerEngine::GPURenderer::createOrthoMatrix(
       0.0f, static_cast<float>(sceneTexture->getWidth()),
-      static_cast<float>(sceneTexture->getHeight()), 0.0f,
+      0.0f, static_cast<float>(sceneTexture->getHeight()),
       orthoMatrix);
 
   // Push view-projection matrix

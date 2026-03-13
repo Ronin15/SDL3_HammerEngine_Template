@@ -300,7 +300,8 @@ void Player::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
 
   entityBatch.begin(writePtr, vertexPool.getMaxVertices(),
                     gpuTextureData->texture->get(), gpuRenderer.getNearestSampler(),
-                    texWidth, texHeight);
+                    texWidth, texHeight,
+                    static_cast<float>(gpuRenderer.getSceneTexture()->getHeight()));
 
   // Get interpolated position
   Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
@@ -354,7 +355,7 @@ void Player::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
   float orthoMatrix[16];
   HammerEngine::GPURenderer::createOrthoMatrix(
       0.0f, static_cast<float>(sceneTexture->getWidth()),
-      static_cast<float>(sceneTexture->getHeight()), 0.0f,
+      0.0f, static_cast<float>(sceneTexture->getHeight()),
       orthoMatrix);
 
   // Push view-projection matrix

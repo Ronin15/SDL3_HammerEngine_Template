@@ -71,10 +71,12 @@ public:
      * @param sampler Sampler for the batch
      * @param textureWidth Width of texture in pixels
      * @param textureHeight Height of texture in pixels
+     * @param targetHeight Height of the render target in pixels
      */
     void begin(SpriteVertex* writePtr, size_t maxVertices,
                SDL_GPUTexture* texture, SDL_GPUSampler* sampler,
-               float textureWidth, float textureHeight);
+               float textureWidth, float textureHeight,
+               float targetHeight);
 
     /**
      * Draw a sprite from atlas coordinates.
@@ -167,6 +169,7 @@ private:
     // Texture dimensions for UV calculation
     float m_textureWidth{1.0f};
     float m_textureHeight{1.0f};
+    float m_targetHeight{1.0f};
 
     size_t m_spriteCount{0};
     size_t m_vertexCount{0};

@@ -208,7 +208,7 @@ void writeSpriteQuads(HammerEngine::SpriteBatch& batch,
     }
 
     batch.begin(vertices, pool.getMaxVertices(), atlasData.texture->get(), sampler,
-                atlasData.width, atlasData.height);
+                atlasData.width, atlasData.height, height);
 
     const float columns = 40.0f;
     const float spacing = quadSize + 4.0f;
