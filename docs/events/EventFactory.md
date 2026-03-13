@@ -33,7 +33,6 @@ EventDefinition def{
 auto ev = EventFactory::Instance().createEvent(def);
 if (ev) {
   // Optional: tune common Event properties
-  ev->setPriority(7);
   ev->setOneTime(true);
   // Register with EventManager
   EventManager::Instance().registerEvent(def.name, ev);
@@ -89,5 +88,4 @@ for (auto &e : events) { EventManager::Instance().registerEvent(e->getName(), e)
 Tips
 - Prefer EventFactory for data/definition-driven creation and custom types.
 - Use EventManager convenience methods for quick one-off creation when definitions aren’t needed.
-- After creation, adjust common Event properties (`setPriority`, `setOneTime`, `setCooldown`) before registering.
-
+- After creation, adjust common Event properties (`setOneTime`, `setCooldown`, `setUpdateFrequency`) before registering.

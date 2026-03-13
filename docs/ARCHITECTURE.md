@@ -126,14 +126,9 @@ graph LR
         WM4[WorldManager]
     end
 
-    subgraph Phase5["Phase 5: Post-Init"]
-        WM5[WorldManager::setupEventHandlers]
-    end
-
     Phase1 --> Phase2
     Phase2 --> Phase3
     Phase3 --> Phase4
-    Phase4 --> Phase5
 ```
 
 ## Update Loop Flow
@@ -518,7 +513,7 @@ graph TB
 | **AIManager** | 10K+ entity AI | SIMD batch, behavior dispatch |
 | **PathfinderManager** | A* pathfinding | Async grid rebuilds, caching |
 | **CollisionManager** | Spatial collision | Hierarchical hash, AABB |
-| **EventManager** | Event dispatch | Type-indexed, priority queue |
+| **EventManager** | Event dispatch | Type-indexed handlers, deferred FIFO queue |
 | **ParticleManager** | 10K+ particles | SIMD physics, camera culling |
 | **WorldManager** | Tile rendering | Chunk caching, procedural gen |
 | **UIManager** | UI components | DPI scaling, theming |

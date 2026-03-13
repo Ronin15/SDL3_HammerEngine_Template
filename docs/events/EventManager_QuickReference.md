@@ -191,20 +191,17 @@ EventManager::Instance().removeEvent("MyEvent");
 EventManager::Instance().registerHandler(EventTypeId::Weather,
     [](const EventData& data) { /* handle weather */ });
 
-// Per-name handlers
-auto nameTok = EventManager::Instance().registerHandlerForName("demo_rainy",
-    [](const EventData& data) { /* handle named demo */ });
-
-// Remove per-name handlers in bulk
-EventManager::Instance().removeNameHandlers("demo_rainy");
-
 // Remove by token
-EventManager::Instance().removeHandler(nameTok);
+auto token = EventManager::Instance().registerHandlerWithToken(
+    EventTypeId::Weather,
+    [](const EventData& data) { /* handle weather */ });
+
+EventManager::Instance().removeHandler(token);
 ```
 
 ### Dispatch Modes and Fallbacks
 - Immediate: Handlers invoked on the calling thread.
-- Deferred: Enqueued and drained during `EventManager::update()` with a small time budget.
+- Deferred: Enqueued and drained during `EventManager::update()` in FIFO order.
 - No-handler fallback: For `changeWeather`, `changeScene`, `spawnNPC`, and `triggerParticleEffect`, sensible defaults execute when no handlers are registered (useful for demos and tests).
 
 ## Factory Quick Guide
@@ -288,9 +285,8 @@ void gameUpdate() {
 ```cpp
 struct EventData {
     EventPtr event;           // Smart pointer to event
-    EventTypeId typeId;       // Type for fast dispatch
     uint32_t flags;           // Active, dirty, etc.
-    uint32_t priority;        // Processing priority
+    EventTypeId typeId;       // Type for fast dispatch
 
     // Helper methods (internal use)
     bool isActive() const;

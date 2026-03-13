@@ -20,7 +20,7 @@ For accuracy, the public EventManager API relevant to this document includes:
 - Registration: `registerEvent(...)`, and typed registrations for Weather/SceneChange/NPCSpawn/ResourceChange/World/Camera
 - Convenience creation: `createWeatherEvent(...)`, `createSceneChangeEvent(...)`, `createNPCSpawnEvent(...)`, particle/world/camera helpers
 - Triggers (no pre-registration): `changeWeather(...)`, `changeScene(...)`, `spawnNPC(...)`, `triggerParticleEffect(...)`, `triggerWorld*`, `triggerCamera*`, `triggerResourceChange(...)`
-- Handlers: type-safe `registerHandler(...)`, token-based `registerHandlerWithToken(...)`, per-name `registerHandlerForName(...)`, `removeHandler(token)`, `removeNameHandlers(...)`, `clearAllHandlers()`
+- Handlers: type-safe `registerHandler(...)`, token-based `registerHandlerWithToken(...)`, `removeHandler(token)`, `clearAllHandlers()`
 - Queries/management: `getEvent(...)`, `getEventsByType(...)`, `setEventActive(...)`, `isEventActive(...)`, `removeEvent(...)`, `hasEvent(...)`
 - Batch helpers: `updateWeatherEvents()`, `updateSceneChangeEvents()`, `updateNPCSpawnEvents()`, `updateResourceChangeEvents()`, `updateWorldEvents()`, `updateCameraEvents()`, `updateHarvestEvents()`, `updateCustomEvents()`
 - Performance/memory: `getPerformanceStats(...)`, `resetPerformanceStats()`, `getEventCount(...)`, `compactEventStorage()`, `clearEventPools()`
@@ -303,13 +303,12 @@ public:
 
 private:
     void transitionToWeather(const std::string& newWeather, float transitionTime) {
-        // Create transition event via EventFactory and register with priority
+        // Create transition event via EventFactory and register it
         std::string transitionName = "Transition_" + m_currentWeather + "_to_" + newWeather;
         EventDefinition def{.type="Weather", .name=transitionName,
             .params={{"weatherType", newWeather}},
             .numParams={{"intensity", getWeatherIntensity(newWeather)}, {"transitionTime", transitionTime}}};
         if (auto ev = EventFactory::Instance().createEvent(def)) {
-            ev->setPriority(7);
             m_eventManager.registerEvent(def.name, ev);
         }
 
@@ -421,67 +420,62 @@ private:
 ### Event Priority Systems
 
 ```cpp
-class PriorityEventManager {
+class EventRegistrationExample {
 private:
     EventManager& m_eventManager;
 
 public:
-    void createPriorityBasedEvents() {
-        // Critical event (priority 10)
+    void createTypedEvents() {
+        // Emergency event
         if (auto ev = EventFactory::Instance().createEvent(
                 {.type="Weather", .name="Emergency_Storm",
                  .params={{"weatherType","Stormy"}}, .numParams={{"intensity",1.0f},{"transitionTime",0.5f}}})) {
-            ev->setPriority(10);
             ev->setOneTime(true);
             m_eventManager.registerEvent("Emergency_Storm", ev);
         }
 
-        // High priority events (9 and 8)
+        // Combat setup events
         if (auto ev = EventFactory::Instance().createEvent(
                 {.type="SceneChange", .name="Combat_Start",
                  .params={{"targetScene","BattleScene"},{"transitionType","fade"}}, .numParams={{"duration",0.8f}}})) {
-            ev->setPriority(9);
             m_eventManager.registerEvent("Combat_Start", ev);
         }
         if (auto ev = EventFactory::Instance().createEvent(
                 {.type="NPCSpawn", .name="Boss_Spawn",
                  .params={{"npcType","DragonBoss"}}, .numParams={{"count",1.0f},{"spawnRadius",0.0f}}})) {
-            ev->setPriority(8);
             m_eventManager.registerEvent("Boss_Spawn", ev);
         }
 
-        // Normal priority events (6 and 5)
+        // Ambient world events
         if (auto ev = EventFactory::Instance().createEvent(
                 {.type="Weather", .name="Weather_Change",
                  .params={{"weatherType","Rainy"}}, .numParams={{"intensity",0.7f},{"transitionTime",3.0f}}})) {
-            ev->setPriority(6);
             m_eventManager.registerEvent("Weather_Change", ev);
         }
         if (auto ev = EventFactory::Instance().createEvent(
                 {.type="SceneChange", .name="Area_Transition",
                  .params={{"targetScene","ForestScene"},{"transitionType","dissolve"}}, .numParams={{"duration",2.0f}}})) {
-            ev->setPriority(5);
             m_eventManager.registerEvent("Area_Transition", ev);
         }
 
-        // Low priority spawn (3)
+        // Ambient NPC spawns
         if (auto ev = EventFactory::Instance().createEvent(
                 {.type="NPCSpawn", .name="Ambient_NPCs",
                  .params={{"npcType","Villager"}}, .numParams={{"count",5.0f},{"spawnRadius",50.0f}}})) {
-            ev->setPriority(3);
             m_eventManager.registerEvent("Ambient_NPCs", ev);
         }
 
-        // Ambient weather (default priority)
+        // Ambient weather
         m_eventManager.createWeatherEvent("Ambient_Weather", "Cloudy", 0.8f, 8.0f);
     }
 
     void monitorPriorityExecution() {
-        // Events are automatically processed by priority within EventManager
-        // Monitor execution order
+        // Deferred events execute in FIFO order within EventManager.
+        // Monitor execution delivery through handlers.
         m_eventManager.registerHandler(EventTypeId::Weather,
             [this](const EventData& data) {
-                std::cout << "Weather event executed with priority: " << data.priority << std::endl;
+                std::cout << "Weather event delivered: "
+                          << (data.event ? data.event->getName() : "<null>") << std::endl;
             });
     }
 };
@@ -519,7 +513,6 @@ public:
         if (auto ev = EventFactory::Instance().createEvent(
                 {.type="SceneChange", .name=name,
                  .params={{"targetScene",newState},{"transitionType","fade"}}, .numParams={{"duration",1.5f}}})) {
-            ev->setPriority(8);
             m_eventManager.registerEvent(name, ev);
         }
 
@@ -544,14 +537,12 @@ private:
                 if (auto ev = EventFactory::Instance().createEvent(
                         {.type="Weather", .name=eventName,
                          .params={{"weatherType","Clear"}}, .numParams={{"intensity",1.0f},{"transitionTime",5.0f}}})) {
-                    ev->setPriority(4);
                     m_eventManager.registerEvent(eventName, ev);
                 }
             } else if (eventName == "RandomNPCs") {
                 if (auto ev = EventFactory::Instance().createEvent(
                         {.type="NPCSpawn", .name=eventName,
                          .params={{"npcType","Villager"}}, .numParams={{"count",3.0f},{"spawnRadius",100.0f}}})) {
-                    ev->setPriority(3);
                     m_eventManager.registerEvent(eventName, ev);
                 }
             }
@@ -560,7 +551,6 @@ private:
                 if (auto ev = EventFactory::Instance().createEvent(
                         {.type="NPCSpawn", .name=eventName,
                          .params={{"npcType","Enemy"}}, .numParams={{"count",5.0f},{"spawnRadius",80.0f}}})) {
-                    ev->setPriority(7);
                     m_eventManager.registerEvent(eventName, ev);
                 }
             }
@@ -642,7 +632,6 @@ private:
         if (auto ev = EventFactory::Instance().createEvent(
                 {.type="SceneChange", .name=name,
                  .params={{"targetScene",targetState},{"transitionType",transitionType}}, .numParams={{"duration",transitionTime}}})) {
-            ev->setPriority(9);
             m_eventManager.registerEvent(name, ev);
         }
 

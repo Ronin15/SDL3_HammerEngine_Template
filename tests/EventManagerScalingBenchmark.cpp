@@ -10,7 +10,10 @@
 
 #include "managers/EventManager.hpp"
 #include "core/WorkerBudget.hpp"
+#include "events/EntityEvents.hpp"
 #include "events/Event.hpp"
+#include "events/ParticleEffectEvent.hpp"
+#include "events/WeatherEvent.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/Logger.hpp"
 #include <iostream>
@@ -98,6 +101,74 @@ private:
 // Global shutdown flag for coordinated cleanup
 static std::atomic<bool> g_shutdownInProgress{false};
 static std::mutex g_outputMutex;
+
+namespace {
+
+std::shared_ptr<MockEvent> createBenchmarkCustomEvent(int sequence) {
+    return std::make_shared<MockEvent>("BenchmarkCustom_" + std::to_string(sequence));
+}
+
+EventManager::DeferredEvent createDeferredBenchmarkEvent(int sequence) {
+    EventData data;
+    data.setActive(true);
+
+    switch (sequence % 3) {
+        case 0:
+            data.typeId = EventTypeId::Weather;
+            data.event = std::make_shared<WeatherEvent>("BenchmarkWeather", "Rainy");
+            break;
+        case 1:
+            data.typeId = EventTypeId::Custom;
+            data.event = createBenchmarkCustomEvent(sequence);
+            break;
+        case 2:
+        default:
+            data.typeId = EventTypeId::ParticleEffect;
+            data.event = std::make_shared<ParticleEffectEvent>(
+                "BenchmarkParticle", ParticleEffectType::Fire, 50.0f, 50.0f, 1.0f, -1.0f, "", "");
+            break;
+    }
+
+    return EventManager::DeferredEvent{data.typeId, std::move(data)};
+}
+
+void enqueueSingleBenchmarkEvent(int sequence) {
+    switch (sequence % 3) {
+        case 0:
+            EventManager::Instance().changeWeather(
+                "Rainy", 1.0f, EventManager::DispatchMode::Deferred);
+            break;
+        case 1:
+            EventManager::Instance().dispatchEvent(
+                createBenchmarkCustomEvent(sequence), EventManager::DispatchMode::Deferred);
+            break;
+        case 2:
+        default:
+            EventManager::Instance().triggerParticleEffect(
+                "Fire", 50.0f, 50.0f, 1.0f, -1.0f, "",
+                EventManager::DispatchMode::Deferred);
+            break;
+    }
+}
+
+EventManager::DeferredEvent createDeferredCombatBenchmarkEvent(int sequence) {
+    auto damageEvent = EventManager::Instance().acquireDamageEvent();
+    if (!damageEvent) {
+        damageEvent = std::make_shared<DamageEvent>();
+    }
+
+    const float damage = 5.0f + static_cast<float>(sequence % 20);
+    const Vector2D knockback(0.1f * static_cast<float>(sequence % 4), 0.0f);
+    damageEvent->configure(EntityHandle{}, EntityHandle{}, damage, knockback);
+
+    EventData data;
+    data.typeId = EventTypeId::Combat;
+    data.setActive(true);
+    data.event = damageEvent;
+    return EventManager::DeferredEvent{EventTypeId::Combat, std::move(data)};
+}
+
+} // namespace
 
 // Mock event handler for benchmarking
 class BenchmarkEventHandler {
@@ -219,7 +290,7 @@ struct EventManagerScalingFixture {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
-    void runHandlerBenchmark(int /* numEventTypes */, int numHandlersPerType, int numTriggers, bool /* useBatching */) {
+    void runHandlerBenchmark(int numEventTypes, int numHandlersPerType, int numTriggers, bool useBatching) {
         if (g_shutdownInProgress.load()) {
             return;
         }
@@ -236,68 +307,109 @@ struct EventManagerScalingFixture {
         auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
         size_t totalWorkers = budgetMgr.getBudget().totalWorkers;
 
-        std::cout << "\n=== Immediate Event Trigger Benchmark ===" << std::endl;
-        std::cout << "  Config: " << numHandlersPerType << " handlers per type, "
-                  << numTriggers << " triggers" << std::endl;
+        std::cout << "\n=== Deferred Event Benchmark ===" << std::endl;
+        std::cout << "  Config: " << numEventTypes << " types, "
+                  << numHandlersPerType << " handlers per type, "
+                  << numTriggers << " deferred events" << std::endl;
+        std::cout << "  Mode: " << (useBatching ? "batch enqueue + FIFO drain"
+                                                : "single enqueue + FIFO drain") << std::endl;
         std::cout << "  System: " << totalWorkers << " workers (all available via WorkerBudget)" << std::endl;
 
         // Register simple handlers (just count calls)
         std::atomic<int> weatherCallCount{0};
-        std::atomic<int> npcCallCount{0};
-        std::atomic<int> sceneCallCount{0};
+        std::atomic<int> customCallCount{0};
+        std::atomic<int> particleCallCount{0};
 
         for (int i = 0; i < numHandlersPerType; ++i) {
             EventManager::Instance().registerHandler(EventTypeId::Weather,
                 [&weatherCallCount](const EventData&) { weatherCallCount++; });
-            EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
-                [&npcCallCount](const EventData&) { npcCallCount++; });
-            EventManager::Instance().registerHandler(EventTypeId::SceneChange,
-                [&sceneCallCount](const EventData&) { sceneCallCount++; });
+            EventManager::Instance().registerHandler(EventTypeId::Custom,
+                [&customCallCount](const EventData&) { customCallCount++; });
+            EventManager::Instance().registerHandler(EventTypeId::ParticleEffect,
+                [&particleCallCount](const EventData&) { particleCallCount++; });
         }
 
         // Warmup
         for (int i = 0; i < 10; ++i) {
-            EventManager::Instance().changeWeather("Clear", 1.0f);
+            enqueueSingleBenchmarkEvent(i);
         }
+        EventManager::Instance().update();
 
-        // Benchmark: Measure trigger performance
+        // Benchmark: measure deferred enqueue and deferred drain separately.
         const int numMeasurements = 3;
-        std::vector<double> durations;
+        std::vector<double> enqueueDurations;
+        std::vector<double> drainDurations;
+        std::vector<double> totalDurations;
 
         for (int run = 0; run < numMeasurements; run++) {
             weatherCallCount = 0;
-            npcCallCount = 0;
-            sceneCallCount = 0;
+            customCallCount = 0;
+            particleCallCount = 0;
 
             auto startTime = std::chrono::high_resolution_clock::now();
 
-            // Trigger events (realistic mix)
-            for (int i = 0; i < numTriggers; ++i) {
-                switch (i % 3) {
-                    case 0: EventManager::Instance().changeWeather("Rainy", 1.0f); break;
-                    case 1: EventManager::Instance().spawnNPC("TestNPC", 100.0f, 100.0f); break;
-                    case 2: EventManager::Instance().triggerParticleEffect("Fire", 50.0f, 50.0f); break;
+            if (useBatching) {
+                std::vector<EventManager::DeferredEvent> localBatch;
+                localBatch.reserve(numTriggers);
+                for (int i = 0; i < numTriggers; ++i) {
+                    localBatch.push_back(createDeferredBenchmarkEvent(i));
                 }
+                auto enqueueEndTime = std::chrono::high_resolution_clock::now();
+                EventManager::Instance().enqueueBatch(std::move(localBatch));
+                auto drainStartTime = std::chrono::high_resolution_clock::now();
+                EventManager::Instance().update();
+                auto endTime = std::chrono::high_resolution_clock::now();
+
+                enqueueDurations.push_back(
+                    std::chrono::duration<double, std::milli>(enqueueEndTime - startTime).count());
+                drainDurations.push_back(
+                    std::chrono::duration<double, std::milli>(endTime - drainStartTime).count());
+                totalDurations.push_back(
+                    std::chrono::duration<double, std::milli>(endTime - startTime).count());
+            } else {
+                for (int i = 0; i < numTriggers; ++i) {
+                    enqueueSingleBenchmarkEvent(i);
+                }
+                auto enqueueEndTime = std::chrono::high_resolution_clock::now();
+                EventManager::Instance().update();
+                auto endTime = std::chrono::high_resolution_clock::now();
+
+                enqueueDurations.push_back(
+                    std::chrono::duration<double, std::milli>(enqueueEndTime - startTime).count());
+                drainDurations.push_back(
+                    std::chrono::duration<double, std::milli>(endTime - enqueueEndTime).count());
+                totalDurations.push_back(
+                    std::chrono::duration<double, std::milli>(endTime - startTime).count());
             }
 
-            auto endTime = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
-            durations.push_back(duration.count() / 1000.0);
+            const int totalHandlerCalls =
+                weatherCallCount.load() + customCallCount.load() + particleCallCount.load();
+            BOOST_CHECK_EQUAL(totalHandlerCalls, numTriggers * numHandlersPerType);
         }
 
         // Calculate statistics
-        double avgDuration = std::accumulate(durations.begin(), durations.end(), 0.0) / durations.size();
-        double minDuration = *std::min_element(durations.begin(), durations.end());
-        double maxDuration = *std::max_element(durations.begin(), durations.end());
+        double avgEnqueueMs = std::accumulate(
+            enqueueDurations.begin(), enqueueDurations.end(), 0.0) / enqueueDurations.size();
+        double avgDrainMs = std::accumulate(
+            drainDurations.begin(), drainDurations.end(), 0.0) / drainDurations.size();
+        double avgTotalMs = std::accumulate(
+            totalDurations.begin(), totalDurations.end(), 0.0) / totalDurations.size();
+        double minTotalMs = *std::min_element(totalDurations.begin(), totalDurations.end());
+        double maxTotalMs = *std::max_element(totalDurations.begin(), totalDurations.end());
 
-        double triggersPerSecond = (numTriggers / avgDuration) * 1000.0;
-        double avgTimePerTrigger = avgDuration / numTriggers;
+        double eventsPerSecond = (numTriggers / avgTotalMs) * 1000.0;
+        double avgTimePerEvent = avgTotalMs / numTriggers;
 
         std::cout << "\nPerformance (avg of " << numMeasurements << " runs):" << std::endl;
-        std::cout << "  Total time: " << std::fixed << std::setprecision(2) << avgDuration << " ms" << std::endl;
-        std::cout << "  Min/Max: " << minDuration << " / " << maxDuration << " ms" << std::endl;
-        std::cout << "  Triggers/sec: " << std::setprecision(0) << triggersPerSecond << std::endl;
-        std::cout << "  Time per trigger: " << std::setprecision(4) << avgTimePerTrigger << " ms" << std::endl;
+        std::cout << "  Enqueue time: " << std::fixed << std::setprecision(2)
+                  << avgEnqueueMs << " ms" << std::endl;
+        std::cout << "  Drain time: " << std::fixed << std::setprecision(2)
+                  << avgDrainMs << " ms" << std::endl;
+        std::cout << "  Total time: " << std::fixed << std::setprecision(2)
+                  << avgTotalMs << " ms" << std::endl;
+        std::cout << "  Min/Max total: " << minTotalMs << " / " << maxTotalMs << " ms" << std::endl;
+        std::cout << "  Events/sec: " << std::setprecision(0) << eventsPerSecond << std::endl;
+        std::cout << "  Time per event: " << std::setprecision(4) << avgTimePerEvent << " ms" << std::endl;
 
         cleanup();
     }
@@ -312,20 +424,20 @@ struct EventManagerScalingFixture {
 
         // Test progression: realistic event counts for actual games
         std::vector<std::tuple<int, int, int>> testCases = {
-            {4, 1, 10},         // Small game: 4 types, 1 handler, 10 events
-            {4, 2, 25},         // Medium game: 4 types, 2 handlers each, 25 events
-            {4, 3, 50},         // Large game: 4 types, 3 handlers each, 50 events
-            {4, 4, 100},        // Very large game: 4 types, 4 handlers each, 100 events
-            {4, 5, 200},        // Massive game: 4 types, 5 handlers each, 200 events
+            {3, 1, 10},         // Small game: 3 types, 1 handler, 10 events
+            {3, 2, 25},         // Medium game: 3 types, 2 handlers each, 25 events
+            {3, 3, 50},         // Large game: 3 types, 3 handlers each, 50 events
+            {3, 4, 100},        // Very large game: 3 types, 4 handlers each, 100 events
+            {3, 5, 200},        // Massive game: 3 types, 5 handlers each, 200 events
         };
 
         for (const auto& [numTypes, numHandlers, numEvents] : testCases) {
             std::cout << "\n--- Test Case: " << numTypes << " types, "
                       << numHandlers << " handlers, " << numEvents << " events ---" << std::endl;
 
-            // Test both immediate and batched modes
-            runHandlerBenchmark(numTypes, numHandlers, numEvents, false); // Immediate
-            runHandlerBenchmark(numTypes, numHandlers, numEvents, true);  // Batched
+            // Compare single deferred enqueue against batch enqueue.
+            runHandlerBenchmark(numTypes, numHandlers, numEvents, false);
+            runHandlerBenchmark(numTypes, numHandlers, numEvents, true);
         }
     }
 
@@ -335,7 +447,7 @@ struct EventManagerScalingFixture {
         const int totalEvents = numThreads * eventsPerThread;
         std::cout << "  Config: " << numThreads << " threads, "
                   << eventsPerThread << " events/thread = "
-                  << totalEvents << " total events" << std::endl;
+                  << totalEvents << " total deferred events" << std::endl;
 
         cleanup();
 
@@ -344,9 +456,9 @@ struct EventManagerScalingFixture {
 
         EventManager::Instance().registerHandler(EventTypeId::Weather,
             [handlerCallCount](const EventData&) { ++(*handlerCallCount); });
-        EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
+        EventManager::Instance().registerHandler(EventTypeId::Custom,
             [handlerCallCount](const EventData&) { ++(*handlerCallCount); });
-        EventManager::Instance().registerHandler(EventTypeId::SceneChange,
+        EventManager::Instance().registerHandler(EventTypeId::ParticleEffect,
             [handlerCallCount](const EventData&) { ++(*handlerCallCount); });
 
         // Benchmark concurrent deferred dispatch + drain
@@ -366,8 +478,9 @@ struct EventManagerScalingFixture {
                                 EventManager::DispatchMode::Deferred);
                             break;
                         case 1:
-                            EventManager::Instance().spawnNPC("NPC", 0.0f, 0.0f, 1, 0.0f,
-                                "", {}, false, EventManager::DispatchMode::Deferred);
+                            EventManager::Instance().dispatchEvent(
+                                createBenchmarkCustomEvent(eventNum),
+                                EventManager::DispatchMode::Deferred);
                             break;
                         case 2:
                             EventManager::Instance().triggerParticleEffect("Fire", 50.0f, 50.0f,
@@ -440,8 +553,8 @@ BOOST_AUTO_TEST_CASE(BasicHandlerPerformance) {
     std::cout << "\n===== BASIC HANDLER PERFORMANCE TEST =====" << std::endl;
 
     // Simple test with realistic small game event count
-    fixture.runHandlerBenchmark(4, 1, 10, false); // Immediate mode
-    fixture.runHandlerBenchmark(4, 1, 10, true);  // Batched mode
+    fixture.runHandlerBenchmark(3, 1, 10, false);
+    fixture.runHandlerBenchmark(3, 1, 10, true);
 }
 
 // Medium scale test
@@ -456,8 +569,8 @@ BOOST_AUTO_TEST_CASE(MediumScalePerformance) {
     std::cout << "\n===== MEDIUM SCALE PERFORMANCE TEST =====" << std::endl;
 
     // Medium load test - realistic medium game event count
-    fixture.runHandlerBenchmark(4, 3, 50, false); // Immediate mode
-    fixture.runHandlerBenchmark(4, 3, 50, true);  // Batched mode
+    fixture.runHandlerBenchmark(3, 3, 50, false);
+    fixture.runHandlerBenchmark(3, 3, 50, true);
 }
 
 // Comprehensive scalability test
@@ -527,7 +640,7 @@ BOOST_AUTO_TEST_CASE(ThreadingVerificationTest) {
     // Register multiple handlers per type (realistic game scenario)
     for (int i = 0; i < 5; ++i) {
         EventManager::Instance().registerHandler(EventTypeId::Weather, heavyHandler);
-        EventManager::Instance().registerHandler(EventTypeId::NPCSpawn, heavyHandler);
+        EventManager::Instance().registerHandler(EventTypeId::Custom, heavyHandler);
         EventManager::Instance().registerHandler(EventTypeId::ParticleEffect, heavyHandler);
     }
 
@@ -543,8 +656,9 @@ BOOST_AUTO_TEST_CASE(ThreadingVerificationTest) {
                     EventManager::DispatchMode::Deferred);
                 break;
             case 1:
-                EventManager::Instance().spawnNPC("NPC", 0.0f, 0.0f, 1, 0.0f,
-                    "", {}, false, EventManager::DispatchMode::Deferred);
+                EventManager::Instance().dispatchEvent(
+                    createBenchmarkCustomEvent(i),
+                    EventManager::DispatchMode::Deferred);
                 break;
             case 2:
                 EventManager::Instance().triggerParticleEffect("Fire", 50.0f, 50.0f,
@@ -610,7 +724,7 @@ BOOST_AUTO_TEST_CASE(ExtremeScaleTest) {
 
     try {
         // Large scale test - realistic maximum game event count
-        const int numEventTypes = 4;
+        const int numEventTypes = 3;
         const int numHandlersPerType = 10;
         const int numEvents = 500;
 
@@ -662,16 +776,17 @@ BOOST_AUTO_TEST_CASE(TestThreadingThreshold) {
         for (int i = 0; i < numHandlersPerType; ++i) {
             EventManager::Instance().registerHandler(EventTypeId::Weather,
                 [&callCount](const EventData&) { callCount++; });
-            EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
+            EventManager::Instance().registerHandler(EventTypeId::Custom,
                 [&callCount](const EventData&) { callCount++; });
-            EventManager::Instance().registerHandler(EventTypeId::SceneChange,
+            EventManager::Instance().registerHandler(EventTypeId::ParticleEffect,
                 [&callCount](const EventData&) { callCount++; });
         }
 
         // Warmup
         for (int i = 0; i < 5; ++i) {
-            EventManager::Instance().changeWeather("Clear", 1.0f);
+            enqueueSingleBenchmarkEvent(i);
         }
+        EventManager::Instance().update();
 
         // Measure
         std::vector<double> durations;
@@ -682,10 +797,12 @@ BOOST_AUTO_TEST_CASE(TestThreadingThreshold) {
             for (int i = 0; i < numTriggers; ++i) {
                 switch (i % 3) {
                     case 0: EventManager::Instance().changeWeather("Rainy", 1.0f); break;
-                    case 1: EventManager::Instance().spawnNPC("TestNPC", 100.0f, 100.0f); break;
+                    case 1: EventManager::Instance().dispatchEvent(createBenchmarkCustomEvent(i)); break;
                     case 2: EventManager::Instance().triggerParticleEffect("Fire", 50.0f, 50.0f); break;
                 }
             }
+
+            EventManager::Instance().update();
 
             auto endTime = std::chrono::high_resolution_clock::now();
             durations.push_back(std::chrono::duration<double, std::milli>(endTime - startTime).count());
@@ -773,7 +890,7 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
     for (int i = 0; i < 3; ++i) {
         eventMgr.registerHandler(EventTypeId::Weather,
             [&callCount](const EventData&) { callCount++; });
-        eventMgr.registerHandler(EventTypeId::NPCSpawn,
+        eventMgr.registerHandler(EventTypeId::ParticleEffect,
             [&callCount](const EventData&) { callCount++; });
     }
 
@@ -795,8 +912,9 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
                 if (i % 2 == 0)
                     eventMgr.changeWeather("Rainy", 1.0f);
                 else
-                    eventMgr.spawnNPC("TestNPC", 100.0f, 100.0f);
+                    eventMgr.triggerParticleEffect("Fire", 50.0f, 50.0f);
             }
+            eventMgr.update();
         }
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -998,4 +1116,99 @@ BOOST_AUTO_TEST_CASE(BatchEnqueuePerformanceTest)
 
     eventMgr.clean();
     eventMgr.init();
+}
+
+// ---------------------------------------------------------------------------
+// Combat Burst Profile Benchmark
+// ---------------------------------------------------------------------------
+BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
+{
+    if (g_shutdownInProgress.load()) {
+        BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
+        return;
+    }
+
+    auto& eventMgr = EventManager::Instance();
+    eventMgr.clean();
+    eventMgr.init();
+
+    std::atomic<int> combatHandlerCalls{0};
+    eventMgr.registerHandler(EventTypeId::Combat,
+        [&combatHandlerCalls](const EventData&) { ++combatHandlerCalls; });
+
+    struct CombatProfile {
+        const char* label;
+        int workers;
+        int eventsPerWorker;
+    };
+
+    const std::vector<CombatProfile> profiles = {
+        {"Typical combat frame", 8, 125},     // 1,000 total events
+        {"Large battle frame", 16, 250},      // 4,000 total events
+    };
+
+    std::cout << "\n===== COMBAT BURST PROFILE BENCHMARK =====" << std::endl;
+    std::cout << "Batched deferred combat events using pooled DamageEvent objects\n" << std::endl;
+
+    for (const auto& profile : profiles) {
+        combatHandlerCalls = 0;
+        const int totalEvents = profile.workers * profile.eventsPerWorker;
+
+        auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+        std::atomic<int> workersComplete{0};
+
+        auto enqueueStart = std::chrono::high_resolution_clock::now();
+        for (int worker = 0; worker < profile.workers; ++worker) {
+            threadSystem.enqueueTask([&eventMgr, &workersComplete, &profile, worker]() {
+                std::vector<EventManager::DeferredEvent> localBatch;
+                localBatch.reserve(profile.eventsPerWorker);
+
+                const int startIndex = worker * profile.eventsPerWorker;
+                for (int i = 0; i < profile.eventsPerWorker; ++i) {
+                    localBatch.push_back(createDeferredCombatBenchmarkEvent(startIndex + i));
+                }
+
+                eventMgr.enqueueBatch(std::move(localBatch));
+                workersComplete.fetch_add(1);
+            });
+        }
+
+        while (workersComplete.load() < profile.workers) {
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+        }
+        auto enqueueEnd = std::chrono::high_resolution_clock::now();
+
+        auto drainStart = std::chrono::high_resolution_clock::now();
+        eventMgr.update();
+        auto drainEnd = std::chrono::high_resolution_clock::now();
+
+        const double enqueueMs =
+            std::chrono::duration<double, std::milli>(enqueueEnd - enqueueStart).count();
+        const double drainMs =
+            std::chrono::duration<double, std::milli>(drainEnd - drainStart).count();
+        const double totalMs =
+            std::chrono::duration<double, std::milli>(drainEnd - enqueueStart).count();
+        const size_t queueCap = 8192;
+        const double queueUsagePct =
+            (static_cast<double>(totalEvents) / static_cast<double>(queueCap)) * 100.0;
+
+        std::cout << profile.label << ":" << std::endl;
+        std::cout << "  Workers: " << profile.workers
+                  << ", events/worker: " << profile.eventsPerWorker
+                  << ", total combat events: " << totalEvents << std::endl;
+        std::cout << "  Enqueue: " << std::fixed << std::setprecision(2)
+                  << enqueueMs << " ms" << std::endl;
+        std::cout << "  Drain:   " << std::fixed << std::setprecision(2)
+                  << drainMs << " ms" << std::endl;
+        std::cout << "  Total:   " << std::fixed << std::setprecision(2)
+                  << totalMs << " ms" << std::endl;
+        std::cout << "  Throughput: " << std::setprecision(0)
+                  << (totalEvents / totalMs) * 1000.0 << " events/sec" << std::endl;
+        std::cout << "  Queue usage vs 8192 cap: " << std::setprecision(1)
+                  << queueUsagePct << "%" << std::endl;
+
+        BOOST_CHECK_EQUAL(combatHandlerCalls.load(), totalEvents);
+    }
+
+    std::cout << std::endl;
 }

@@ -138,7 +138,6 @@ void exampleX_EventFactoryBasics() {
                         .numParams={{"intensity",0.9f},{"transitionTime",2.0f}}};
     auto ev = EventFactory::Instance().createEvent(def);
     if (ev) {
-        ev->setPriority(6);
         ev->setOneTime(true);
         EventManager::Instance().registerEvent(def.name, ev);
     }

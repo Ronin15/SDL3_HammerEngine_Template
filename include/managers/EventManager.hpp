@@ -67,11 +67,9 @@ using EntityPtr = std::shared_ptr<Entity>;
  * Optimized for natural alignment and minimal padding
  */
 struct EventData {
-  EventPtr event;     // Smart pointer to event (16 bytes)
-  uint32_t flags;     // Active, dirty, etc. (4 bytes)
-  uint32_t priority;  // For priority-based processing (4 bytes)
-  EventTypeId typeId; // Type for fast dispatch (4 bytes)
-  uint32_t padding;   // Explicit padding for alignment (4 bytes)
+  EventPtr event;     // Smart pointer to event
+  uint32_t flags;     // Active, dirty, etc.
+  EventTypeId typeId; // Type for fast dispatch
 
   // Flags bit definitions
   static constexpr uint32_t FLAG_ACTIVE = 1 << 0;
@@ -79,7 +77,7 @@ struct EventData {
   static constexpr uint32_t FLAG_PENDING_REMOVAL = 1 << 2;
 
   EventData()
-      : event(nullptr), flags(0), priority(0), typeId(EventTypeId::Custom), padding(0) {}
+      : event(nullptr), flags(0), typeId(EventTypeId::Custom) {}
 
   bool isActive() const { return flags & FLAG_ACTIVE; }
   void setActive(bool active) {
@@ -89,17 +87,6 @@ struct EventData {
   void setDirty(bool dirty) {
     if (dirty) flags |= FLAG_DIRTY; else flags &= ~FLAG_DIRTY;
   }
-};
-
-/**
- * @brief Event priority constants for priority-based processing
- */
-struct EventPriority {
-  static constexpr uint32_t CRITICAL = 1000;  // Critical system events (collisions, core engine)
-  static constexpr uint32_t HIGH = 800;       // Important gameplay events (combat, AI decisions)
-  static constexpr uint32_t NORMAL = 500;     // Standard gameplay events (movement, interactions)
-  static constexpr uint32_t LOW = 200;        // Background events (weather, ambient effects)
-  static constexpr uint32_t DEFERRED = 0;     // Non-time-sensitive events (resource changes, UI updates)
 };
 
 /**
@@ -529,10 +516,6 @@ private:
     EventTypeId typeId;
     EventData data;
   };
-  enum class DeferredPolicy : uint8_t {
-    DeferredSerial,
-    DeferredSerialOrdered,
-  };
   mutable std::mutex m_dispatchMutex;  // Protects concurrent enqueue from AI workers
 
   // Async batch tracking for safe shutdown
@@ -545,7 +528,6 @@ private:
   // Reusable buffer for drainDispatchQueueWithBudget
   mutable std::vector<PendingDispatch> m_localDispatchBuffer;
 
-  DeferredPolicy getDeferredPolicy(EventTypeId typeId) const;
   void dispatchPendingEvent(const PendingDispatch& pendingDispatch,
                             const char* errorContext) const;
   uint64_t getCurrentTimeNanos() const;

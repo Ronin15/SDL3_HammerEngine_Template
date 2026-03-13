@@ -5,7 +5,6 @@
 
 #include "managers/WorldResourceManager.hpp"
 #include "core/Logger.hpp"
-#include "events/WorldEvent.hpp"
 #include "managers/EntityDataManager.hpp"
 #include <algorithm>
 #include <format>
@@ -58,14 +57,6 @@ bool WorldResourceManager::init() {
 
     m_initialized.store(true, std::memory_order_release);
 
-    // NOTE: Do NOT call subscribeWorldEvents() here. WorldManager fires
-    // WorldUnloadedEvent with DispatchMode::Deferred, meaning the event sits
-    // in EventManager's queue until the next update(). By that time, the new
-    // world has already loaded and repopulated spatial indices — the deferred
-    // onWorldUnloaded() would then wipe freshly-populated data.
-    // Cleanup is handled synchronously via prepareForStateTransition() in
-    // GamePlayState::exit() instead.
-
     WORLD_RESOURCE_INFO("WorldResourceManager initialized (registry-over-EDM mode)");
     return true;
 }
@@ -74,13 +65,6 @@ void WorldResourceManager::clean() {
     if (!m_initialized.load(std::memory_order_acquire)) {
         return;
     }
-
-    // Unsubscribe from events first (before lock to avoid potential deadlock with EventManager)
-    auto& em = EventManager::Instance();
-    for (const auto& token : m_eventHandlerTokens) {
-        em.removeHandler(token);
-    }
-    m_eventHandlerTokens.clear();
 
     std::unique_lock lock(m_registryMutex);
 
@@ -844,63 +828,4 @@ void WorldResourceManager::clearSpatialDataForWorld(const WorldId& worldId) {
     }
 
     WORLD_RESOURCE_INFO(std::format("Cleared spatial data for world: {}", worldId));
-}
-
-void WorldResourceManager::subscribeWorldEvents() {
-    auto& em = EventManager::Instance();
-
-    // Subscribe to World events (WorldLoaded, WorldUnloaded)
-    auto token = em.registerHandlerWithToken(EventTypeId::World,
-        [this](const EventData& data) {
-            if (!data.event) {
-                return;
-            }
-
-            // Try WorldLoadedEvent first
-            if (auto loadedEvent = std::dynamic_pointer_cast<WorldLoadedEvent>(data.event)) {
-                onWorldLoaded(loadedEvent->getWorldId());
-                return;
-            }
-
-            // Try WorldUnloadedEvent
-            if (auto unloadedEvent = std::dynamic_pointer_cast<WorldUnloadedEvent>(data.event)) {
-                onWorldUnloaded(unloadedEvent->getWorldId());
-                return;
-            }
-
-            // Other WorldEvent types are ignored
-        });
-
-    m_eventHandlerTokens.push_back(token);
-    WORLD_RESOURCE_INFO("Subscribed to world events");
-}
-
-void WorldResourceManager::onWorldLoaded(const std::string& worldId) {
-    // Single lock acquisition - setActiveWorld() also uses m_registryMutex internally,
-    // and std::shared_mutex is not recursive, so inline its logic here
-    std::unique_lock lock(m_registryMutex);
-
-    // Set active world (inlined from setActiveWorld to avoid deadlock)
-    m_activeWorld = worldId;
-    recalculateActiveWorldCounts();
-
-    // Ensure spatial indices exist for this world (try_emplace avoids double lookup)
-    m_itemSpatialIndices.try_emplace(worldId);
-    m_harvestableSpatialIndices.try_emplace(worldId);
-
-    WORLD_RESOURCE_INFO(std::format("World loaded: {}", worldId));
-}
-
-void WorldResourceManager::onWorldUnloaded(const std::string& worldId) {
-    clearSpatialDataForWorld(worldId);
-
-    // If this was the active world, clear it
-    {
-        std::unique_lock lock(m_registryMutex);
-        if (m_activeWorld == worldId) {
-            m_activeWorld.clear();
-        }
-    }
-
-    WORLD_RESOURCE_INFO(std::format("World unloaded: {}", worldId));
 }

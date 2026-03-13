@@ -121,12 +121,9 @@ Core data structure managed by EventManager (optimized for cache efficiency):
 
 ```cpp
 struct EventData {
-  EventPtr event;     // Smart pointer to event (16 bytes)
-  uint32_t flags;     // Active, dirty, pending removal (4 bytes)
-  uint32_t priority;  // Processing priority (4 bytes)
-  EventTypeId typeId; // Type for fast dispatch (4 bytes)
-  uint32_t padding;   // Explicit padding for alignment (4 bytes)
-  // Total: 32 bytes (was 88 bytes - 64% reduction!)
+  EventPtr event;     // Smart pointer to event
+  uint32_t flags;     // Active, dirty, pending removal
+  EventTypeId typeId; // Type for fast dispatch
 
   // Flags bit definitions
   static constexpr uint32_t FLAG_ACTIVE = 1 << 0;
@@ -317,18 +314,17 @@ EventManager::Instance().createParticleEffectEvent("Sparks", "Sparks", 100.0f, 2
 EventManager::Instance().registerHandler(EventTypeId::ResourceChange,
     [](const EventData& data) { /* handle resource changes */ });
 
-// Per-name handlers
-auto nameTok = EventManager::Instance().registerHandlerForName("demo_rainy",
-    [](const EventData& data) { /* named demo event */ });
+// Token-based removal
+auto token = EventManager::Instance().registerHandlerWithToken(
+    EventTypeId::Weather,
+    [](const EventData& data) { /* handle weather */ });
 
-// Bulk remove per-name handlers or remove a single token
-EventManager::Instance().removeNameHandlers("demo_rainy");
-EventManager::Instance().removeHandler(nameTok);
+EventManager::Instance().removeHandler(token);
 ```
 
 ### Dispatch modes & fallbacks
 - Immediate: Handlers invoked on the calling thread.
-- Deferred: Enqueued and drained in `update()` with a time budget.
+- Deferred: Enqueued and drained in `update()` in FIFO order.
 - No-handler fallback: If no handlers exist for `changeWeather`, `changeScene`, `spawnNPC`, or `triggerParticleEffect`, EventManager performs a sensible default action.
 
 ## Factory-Based Creation
@@ -453,10 +449,8 @@ bool createCameraShakeEvent(const std::string& name, float duration, float inten
 ```cpp
 void registerHandler(EventTypeId typeId, FastEventHandler handler);
 EventManager::HandlerToken registerHandlerWithToken(EventTypeId typeId, FastEventHandler handler);
-EventManager::HandlerToken registerHandlerForName(const std::string& name, FastEventHandler handler);
 bool removeHandler(const EventManager::HandlerToken& token);
 void removeHandlers(EventTypeId typeId);
-void removeNameHandlers(const std::string& name);
 void clearAllHandlers();
 size_t getHandlerCount(EventTypeId typeId) const;
 ```
@@ -668,8 +662,7 @@ void createComplexEvents() {
 
     auto ev = EventFactory::Instance().createEvent(def);
     if (ev) {
-        // You can configure priority/one-time/cooldown on the concrete event if needed
-        ev->setPriority(10);
+        // You can configure one-time/cooldown behavior on the concrete event if needed
         ev->setOneTime(true);
         ev->setCooldown(60.0f);
         EventManager::Instance().registerEvent(def.name, ev);
@@ -742,29 +735,19 @@ public:
         EventManager::Instance().enableThreading(true);
         EventManager::Instance().setThreadingThreshold(200);
 
-        // Setup through EventManager
-        setupEventHandlers();
+        // State-owned gameplay wiring happens explicitly on entry.
+        registerEventHandlers();
         createGameEvents();
 
         m_initialized = true;
         return true;
     }
 
-    void setupEventHandlers() {
-        // All handler registration through EventManager
-        EventManager::Instance().registerHandler(EventTypeId::Weather,
+    void registerEventHandlers() {
+        m_weatherToken = EventManager::Instance().registerHandlerWithToken(
+            EventTypeId::Weather,
             [this](const EventData& data) {
                 handleWeatherEvent(data);
-            });
-
-        EventManager::Instance().registerHandler(EventTypeId::SceneChange,
-            [this](const EventData& data) {
-                handleSceneChange(data);
-            });
-
-        EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
-            [this](const EventData& data) {
-                handleNPCSpawn(data);
             });
     }
 

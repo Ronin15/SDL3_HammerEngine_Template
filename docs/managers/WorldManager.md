@@ -275,7 +275,6 @@ It also listens for `HarvestResourceEvent` to handle resource harvesting by enti
 - `void clean()`: Cleans up resources.
 - `bool isInitialized() const`: Checks if the manager is initialized.
 - `bool isShutdown() const`: Checks if the manager has been shut down.
-- `void setupEventHandlers()`: Sets up event handlers.
 
 ### World Operations
 

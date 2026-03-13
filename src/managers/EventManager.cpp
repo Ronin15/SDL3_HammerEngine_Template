@@ -454,7 +454,6 @@ bool EventManager::triggerCollision(const HammerEngine::CollisionInfo &info,
   EventData eventData;
   eventData.typeId = EventTypeId::Collision;
   eventData.setActive(true);
-  eventData.priority = EventPriority::CRITICAL;
   eventData.event = collisionEvent;
 
   return dispatchEvent(EventTypeId::Collision, eventData, mode, "triggerCollision");
@@ -487,7 +486,6 @@ bool EventManager::triggerCollisionObstacleChanged(
   EventData eventData;
   eventData.typeId = EventTypeId::CollisionObstacleChanged;
   eventData.setActive(true);
-  eventData.priority = EventPriority::CRITICAL;
   eventData.event = obstacleEvent;
 
   return dispatchEvent(EventTypeId::CollisionObstacleChanged, eventData, mode,
@@ -506,7 +504,6 @@ bool EventManager::triggerDamage(DispatchMode mode) const {
   EventData eventData;
   eventData.typeId = EventTypeId::Combat;
   eventData.setActive(true);
-  eventData.priority = EventPriority::HIGH;
   eventData.event = damageEvent;
 
   return dispatchEvent(EventTypeId::Combat, eventData, mode, "triggerDamage");
@@ -685,17 +682,6 @@ void EventManager::enqueueBatch(std::vector<DeferredEvent>&& events) const {
                  });
 }
 
-EventManager::DeferredPolicy EventManager::getDeferredPolicy(EventTypeId typeId) const {
-  switch (typeId) {
-    case EventTypeId::World:
-    case EventTypeId::CollisionObstacleChanged:
-    case EventTypeId::Combat:
-      return DeferredPolicy::DeferredSerialOrdered;
-    default:
-      return DeferredPolicy::DeferredSerial;
-  }
-}
-
 void EventManager::dispatchPendingEvent(const PendingDispatch& pendingDispatch,
                                         const char* errorContext) const {
   std::shared_lock<std::shared_mutex> lock(m_handlersMutex);
@@ -736,20 +722,9 @@ void EventManager::drainDispatchQueueWithBudget() {
   // Lock released - process events without holding lock
 
   const size_t eventCount = m_localDispatchBuffer.size();
-  size_t serialCount = 0;
-  size_t orderedCount = 0;
   auto dispatchStartTime = std::chrono::high_resolution_clock::now();
 
   for (const auto& pendingDispatch : m_localDispatchBuffer) {
-    switch (getDeferredPolicy(pendingDispatch.typeId)) {
-      case DeferredPolicy::DeferredSerial:
-        ++serialCount;
-        break;
-      case DeferredPolicy::DeferredSerialOrdered:
-        ++orderedCount;
-        break;
-    }
-
     dispatchPendingEvent(pendingDispatch, "deferred dispatch");
   }
 
@@ -766,9 +741,8 @@ void EventManager::drainDispatchQueueWithBudget() {
   // Periodic debug logging (~35 seconds at 60fps)
   static thread_local uint64_t logFrameCounter = 0;
   if (++logFrameCounter % 2100 == 0 && eventCount > 0) {
-    EVENT_DEBUG(std::format(
-        "Dispatch: {} events (serial={}, ordered={}) [1 batch, {:.2f}ms]",
-        eventCount, serialCount, orderedCount, measuredRangeMs));
+    EVENT_DEBUG(std::format("Dispatch: {} deferred events [1 batch, {:.2f}ms]",
+                            eventCount, measuredRangeMs));
   }
 #endif
 

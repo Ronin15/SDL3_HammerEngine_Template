@@ -49,10 +49,6 @@ public:
     virtual bool isActive() const { return m_active; }
     virtual void setActive(bool active) { m_active = active; }
 
-    // Event priority (higher values = higher priority)
-    virtual int getPriority() const { return m_priority; }
-    virtual void setPriority(int priority) { m_priority = priority; }
-
     // Condition checking
     virtual bool checkConditions() = 0;
     
@@ -81,7 +77,6 @@ public:
 
 protected:
     bool m_active{true};
-    int m_priority{0};
     int m_updateFrequency{1}; // How often to update (1 = every frame, 2 = every other frame, etc.)
     
     // Cooldown system

@@ -258,4 +258,20 @@ BOOST_AUTO_TEST_CASE(DeferredDispatch_PreservesFIFOOrderAcrossTypes) {
   EventManager::Instance().removeHandler(collisionTok);
 }
 
+BOOST_AUTO_TEST_CASE(PrepareForStateTransition_ClearsCustomHandlersButKeepsBuiltIns) {
+  auto customTok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Custom, [](const EventData &) {});
+
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Custom), 1);
+  BOOST_CHECK_GE(EventManager::Instance().getHandlerCount(EventTypeId::NPCSpawn), 1);
+
+  EventManager::Instance().prepareForStateTransition();
+
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Custom), 0);
+  BOOST_CHECK_GE(EventManager::Instance().getHandlerCount(EventTypeId::NPCSpawn), 1);
+
+  // Removing the stale token should be harmless after transition cleanup.
+  BOOST_CHECK(!EventManager::Instance().removeHandler(customTok));
+}
+
 BOOST_AUTO_TEST_SUITE_END()

@@ -215,7 +215,6 @@ void applyDamageToTarget(EntityHandle targetHandle, float damage, const Vector2D
     EventData eventData;
     eventData.typeId = EventTypeId::Combat;
     eventData.setActive(true);
-    eventData.priority = EventPriority::HIGH;
     eventData.event = damageEvent;
 
     t_deferredDamageEvents.push_back({EventTypeId::Combat, std::move(eventData)});
