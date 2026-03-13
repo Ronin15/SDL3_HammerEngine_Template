@@ -14,24 +14,7 @@
 #include <vector>
 #include <atomic>
 #include <mutex>
-#include <list>
 // filesystem is used in the implementation file
-
-#ifdef USE_SDL3_GPU
-#include "gpu/GPUTexture.hpp"
-#include "gpu/GPURenderer.hpp"
-
-namespace HammerEngine {
-class GPURenderer;
-}
-
-struct GPUTextData {
-    std::shared_ptr<HammerEngine::GPUTexture> texture;
-    int width{0};
-    int height{0};
-    bool uploaded{false};  // Set to true after processPendingTextUploads completes upload
-};
-#endif
 
 class FontManager {
  public:
@@ -244,52 +227,36 @@ class FontManager {
 
 #ifdef USE_SDL3_GPU
   /**
-   * @brief Renders text to a GPU texture for SDL3_GPU rendering
+   * @brief Prepare an atlas-backed GPU text object for subsequent draw data queries
+   * @param key Stable identifier for the GPU text object lifetime
    * @param text Text string to render
    * @param fontID Unique identifier of the font to use
-   * @param color Text color for rendering
-   * @return Pointer to GPUTextData, or nullptr if failed (cached, do not delete)
+   * @param width Optional pointer to receive the logical text width
+   * @param height Optional pointer to receive the logical text height
+   * @return true if the text object is ready, false otherwise
    */
-  const GPUTextData* renderTextGPU(const std::string& text, const std::string& fontID,
-                                    SDL_Color color);
+  bool prepareGPUText(const std::string& key, const std::string& text,
+                      const std::string& fontID, int* width = nullptr,
+                      int* height = nullptr);
 
   /**
-   * @brief Process pending text texture uploads in the main copy pass
-   * @param copyPass Active GPU copy pass from the main render loop
-   * @note Call this during the GPURenderer frame upload stage alongside TextureManager uploads
+   * @brief Set the upper-left position of a prepared GPU text object in pixels
+   * @param key Stable identifier passed to prepareGPUText()
+   * @param x X offset of the text's upper-left corner
+   * @param y Y offset of the text's upper-left corner
+   * @return true if the position was updated, false otherwise
    */
-  void processPendingTextUploads(SDL_GPUCopyPass* copyPass);
+  bool setGPUTextPosition(const std::string& key, int x, int y);
 
   /**
-   * @brief Queue text for batched GPU rendering
-   * @param text Text string to draw
-   * @param fontID Unique identifier of the font to use
-   * @param x X coordinate (center point of text)
-   * @param y Y coordinate (center point of text)
-   * @param color Text color for drawing
-   * @param gpuRenderer GPU renderer instance (used for viewport dimensions)
-   * @param pass Ignored (kept for API compatibility)
-   *
-   * Queues text draw into pending list. Call flushTextDraws() once per frame
-   * after all drawTextGPU() calls to perform a single batched upload + draw.
+   * @brief Get SDL3_ttf GPU draw data for a prepared text object
+   * @param key Stable identifier passed to prepareGPUText()
+   * @return Draw sequence list owned by SDL3_ttf, or nullptr if unavailable
    */
-  void drawTextGPU(const std::string& text, const std::string& fontID,
-                   int x, int y, SDL_Color color,
-                   HammerEngine::GPURenderer& gpuRenderer,
-                   SDL_GPURenderPass* pass);
+  TTF_GPUAtlasDrawSequence* getGPUTextDrawData(const std::string& key);
 
   /**
-   * @brief Flush all queued text draws in a single batched GPU submission
-   * @param gpuRenderer GPU renderer instance
-   * @param pass Active render pass (swapchain pass)
-   *
-   * Performs one transfer buffer allocation, one copy pass, and draws all
-   * queued text quads. Call once per frame after all drawTextGPU() calls.
-   */
-  void flushTextDraws(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass);
-
-  /**
-   * @brief Clear GPU text cache (call on state transitions or when memory is needed)
+   * @brief Clear prepared GPU text objects (call on state transitions or when memory is needed)
    */
   void clearGPUTextCache();
 #endif
@@ -333,52 +300,19 @@ class FontManager {
   std::string m_lastFontPath{};
 
 #ifdef USE_SDL3_GPU
-  // GPU text cache with LRU eviction - main thread only (rendering is main-thread per project conventions)
-  // No mutex needed: all access from renderTextGPU, drawTextGPU, processPendingTextUploads,
-  // and reloadFontsForDisplay executes on the main thread.
-  //
-  // LRU Design: m_gpuLruList tracks access order (most-recent at front).
-  // m_gpuTextCache maps keys to {GPUTextData, LRU iterator} for O(1) lookup + eviction.
-  static constexpr size_t GPU_TEXT_CACHE_MAX_SIZE = 256;
-  static constexpr size_t GPU_TEXT_CACHE_EVICT_COUNT = 64;  // Evict 25% when full
-
-  // LRU list: front = most recently used, back = least recently used
-  std::list<TextCacheKey> m_gpuLruList{};
-
-  struct GPUCacheEntry {
-    std::shared_ptr<GPUTextData> data;
-    std::list<TextCacheKey>::iterator lruIterator;
+  struct GPUTextEntry {
+    TTF_Text* text{nullptr};
+    std::string fontID{};
+    std::string stringValue{};
+    int width{0};
+    int height{0};
   };
-  std::unordered_map<TextCacheKey, GPUCacheEntry, TextCacheKeyHash> m_gpuTextCache{};
 
-  /**
-   * @brief Evict least-recently-used entries when cache exceeds max size
-   */
-  void evictGPUTextCache();
+  bool ensureGPUTextEngine();
+  void destroyGPUTextObjects();
 
-  // Pending text uploads - processed in main copy pass to avoid per-text GPU stalls
-  struct PendingTextUpload {
-    TextCacheKey key;
-    std::unique_ptr<SDL_Surface, void(*)(SDL_Surface*)> surface;
-    uint32_t width;
-    uint32_t height;
-  };
-  std::vector<PendingTextUpload> m_pendingTextUploads{};
-
-  // Batched text vertex buffer (grows to fit all pending draws)
-  SDL_GPUBuffer* m_textVertexBuffer{nullptr};
-  size_t m_textVertexBufferCapacity{0};  // Current capacity in draw count
-
-  // Pending text draws queued by drawTextGPU(), flushed by flushTextDraws()
-  static constexpr size_t MAX_GPU_TEXT_DRAWS_PER_FRAME = 64;
-  struct PendingGPUTextDraw {
-    HammerEngine::SpriteVertex vertices[4];
-    std::shared_ptr<HammerEngine::GPUTexture> textureOwner;
-    SDL_GPUTexture* texture;
-    SDL_GPUSampler* sampler;
-    float orthoMatrix[16];
-  };
-  std::vector<PendingGPUTextDraw> m_pendingTextDraws{};
+  TTF_TextEngine* mp_gpuTextEngine{nullptr};
+  std::unordered_map<std::string, GPUTextEntry> m_gpuTextEntries{};
 #endif
 
   // Delete copy constructor and assignment operator

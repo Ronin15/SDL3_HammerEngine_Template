@@ -45,7 +45,7 @@ struct UIGPUDrawCommand {
 
 // GPU command buffer capacities (avoids per-frame reallocations)
 constexpr size_t GPU_PRIMITIVE_COMMAND_CAPACITY = 256;
-constexpr size_t GPU_TEXT_COMMAND_CAPACITY = 64;
+constexpr size_t GPU_TEXT_COMMAND_CAPACITY = 256;
 constexpr size_t GPU_IMAGE_COMMAND_CAPACITY = 32;
 
 // GPU vertex safety limits

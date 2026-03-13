@@ -578,11 +578,7 @@ bool FontManager::reloadFontsForDisplay(const std::string& fontPath, int windowW
   m_fontMap.clear();
   m_textCache.clear();
 #ifdef USE_SDL3_GPU
-  m_gpuTextCache.clear();
-  m_gpuLruList.clear();
-  m_pendingTextUploads.clear();
-
-  // Keep text vertex buffer (can be reused for new fonts)
+  destroyGPUTextObjects();
 #endif
   m_fontsLoaded.store(false, std::memory_order_release);
 
@@ -704,18 +700,7 @@ void FontManager::clean() {
   m_textCache.clear();
 
 #ifdef USE_SDL3_GPU
-  // Clear GPU text cache (must be done before GPU device shutdown)
-  m_gpuTextCache.clear();
-  m_gpuLruList.clear();
-  m_pendingTextUploads.clear();
-
-  // Release text vertex buffer and pending draws
-  if (m_textVertexBuffer) {
-    SDL_ReleaseGPUBuffer(HammerEngine::GPUDevice::Instance().get(), m_textVertexBuffer);
-    m_textVertexBuffer = nullptr;
-  }
-  m_textVertexBufferCapacity = 0;
-  m_pendingTextDraws.clear();
+  destroyGPUTextObjects();
 #endif
 
   // Clear display tracking
@@ -729,327 +714,137 @@ void FontManager::clean() {
 
 #ifdef USE_SDL3_GPU
 #include "gpu/GPUDevice.hpp"
-#include "gpu/GPUTransferBuffer.hpp"
-#include "gpu/GPUTypes.hpp"
-#include <cstring>
+#include <utility>
 
-const GPUTextData* FontManager::renderTextGPU(const std::string& text, const std::string& fontID,
-                                               SDL_Color color) {
-  if (m_isShutdown || text.empty()) {
-    return nullptr;
+bool FontManager::ensureGPUTextEngine() {
+  if (m_isShutdown) {
+    return false;
   }
 
-  // Check GPU cache first (O(1) lookup)
-  TextCacheKey key = {text, fontID, color};
-  auto cacheIt = m_gpuTextCache.find(key);
-  if (cacheIt != m_gpuTextCache.end()) {
-    // Move to front of LRU list (most recently used)
-    m_gpuLruList.splice(m_gpuLruList.begin(), m_gpuLruList, cacheIt->second.lruIterator);
-    return cacheIt->second.data.get();
+  if (mp_gpuTextEngine) {
+    return true;
   }
 
-  // Evict old entries if cache is full
-  if (m_gpuTextCache.size() >= GPU_TEXT_CACHE_MAX_SIZE) {
-    evictGPUTextCache();
+  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+  if (!gpuDevice.isInitialized() || !gpuDevice.get()) {
+    FONT_ERROR("Cannot create GPU text engine before GPUDevice initialization");
+    return false;
+  }
+
+  mp_gpuTextEngine = TTF_CreateGPUTextEngine(gpuDevice.get());
+  if (!mp_gpuTextEngine) {
+    FONT_ERROR(std::format("Failed to create SDL3_ttf GPU text engine: {}",
+                           SDL_GetError()));
+    return false;
+  }
+
+  TTF_SetGPUTextEngineWinding(mp_gpuTextEngine,
+                              TTF_GPU_TEXTENGINE_WINDING_CLOCKWISE);
+  return true;
+}
+
+void FontManager::destroyGPUTextObjects() {
+  for (auto& [key, entry] : m_gpuTextEntries) {
+    if (entry.text) {
+      TTF_DestroyText(entry.text);
+      entry.text = nullptr;
+    }
+  }
+  m_gpuTextEntries.clear();
+
+  if (mp_gpuTextEngine) {
+    TTF_DestroyGPUTextEngine(mp_gpuTextEngine);
+    mp_gpuTextEngine = nullptr;
+  }
+}
+
+bool FontManager::prepareGPUText(const std::string& key, const std::string& text,
+                                 const std::string& fontID, int* width,
+                                 int* height) {
+  if (m_isShutdown || key.empty() || text.empty()) {
+    return false;
+  }
+
+  if (!ensureGPUTextEngine()) {
+    return false;
   }
 
   auto fontIt = m_fontMap.find(fontID);
   if (fontIt == m_fontMap.end()) {
-    FONT_ERROR(std::format("Font '{}' not found for GPU rendering", fontID));
+    FONT_ERROR(std::format("Font '{}' not found for GPU text", fontID));
+    return false;
+  }
+
+  auto& entry = m_gpuTextEntries[key];
+  if (!entry.text) {
+    entry.text = TTF_CreateText(mp_gpuTextEngine, fontIt->second.get(),
+                                text.c_str(), 0);
+    if (!entry.text) {
+      FONT_ERROR(std::format("Failed to create SDL3_ttf GPU text '{}': {}",
+                             key, SDL_GetError()));
+      return false;
+    }
+  } else {
+    if (entry.fontID != fontID &&
+        !TTF_SetTextFont(entry.text, fontIt->second.get())) {
+      FONT_ERROR(std::format("Failed to update font for GPU text '{}': {}",
+                             key, SDL_GetError()));
+      return false;
+    }
+    if (entry.stringValue != text &&
+        !TTF_SetTextString(entry.text, text.c_str(), 0)) {
+      FONT_ERROR(std::format("Failed to update string for GPU text '{}': {}",
+                             key, SDL_GetError()));
+      return false;
+    }
+  }
+
+  entry.fontID = fontID;
+  entry.stringValue = text;
+
+  if (!TTF_GetTextSize(entry.text, &entry.width, &entry.height)) {
+    FONT_ERROR(std::format("Failed to measure GPU text '{}': {}", key,
+                           SDL_GetError()));
+    return false;
+  }
+
+  if (width) {
+    *width = entry.width;
+  }
+  if (height) {
+    *height = entry.height;
+  }
+
+  return true;
+}
+
+bool FontManager::setGPUTextPosition(const std::string& key, int x, int y) {
+  auto it = m_gpuTextEntries.find(key);
+  if (it == m_gpuTextEntries.end() || !it->second.text) {
+    return false;
+  }
+
+  if (!TTF_SetTextPosition(it->second.text, x, y)) {
+    FONT_ERROR(std::format("Failed to set GPU text position for '{}': {}", key,
+                           SDL_GetError()));
+    return false;
+  }
+
+  return true;
+}
+
+TTF_GPUAtlasDrawSequence* FontManager::getGPUTextDrawData(
+    const std::string& key) {
+  auto it = m_gpuTextEntries.find(key);
+  if (it == m_gpuTextEntries.end() || !it->second.text) {
     return nullptr;
   }
 
-  // Render text to surface
-  SDL_Surface* surface = TTF_RenderText_Blended(fontIt->second.get(), text.c_str(), 0, color);
-  if (!surface) {
-    FONT_ERROR(std::format("Failed to render text surface for GPU: {}", SDL_GetError()));
-    return nullptr;
-  }
-
-  // Convert to ABGR8888 for GPU upload (maps to R8G8B8A8_UNORM byte order on little-endian)
-  SDL_Surface* converted = nullptr;
-  if (surface->format != SDL_PIXELFORMAT_ABGR8888) {
-    converted = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_ABGR8888);
-    SDL_DestroySurface(surface);
-    if (!converted) {
-      FONT_ERROR(std::format("Failed to convert text surface: {}", SDL_GetError()));
-      return nullptr;
-    }
-    surface = converted;
-  }
-
-  // Premultiply alpha for proper blending
-  SDL_PremultiplyAlpha(surface->w, surface->h,
-                        SDL_PIXELFORMAT_ABGR8888, surface->pixels, surface->pitch,
-                        SDL_PIXELFORMAT_ABGR8888, surface->pixels, surface->pitch,
-                        false);
-
-  // Create GPU texture data
-  auto gpuData = std::make_shared<GPUTextData>();
-  gpuData->width = surface->w;
-  gpuData->height = surface->h;
-
-  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
-  SDL_GPUDevice* device = gpuDevice.get();
-
-  // Create GPU texture (empty - will be uploaded in processPendingTextUploads)
-  gpuData->texture = std::make_shared<HammerEngine::GPUTexture>(
-      device,
-      static_cast<uint32_t>(surface->w),
-      static_cast<uint32_t>(surface->h),
-      SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-      SDL_GPU_TEXTUREUSAGE_SAMPLER
-  );
-
-  if (!gpuData->texture->isValid()) {
-    FONT_ERROR("Failed to create GPU texture for text");
-    SDL_DestroySurface(surface);
-    return nullptr;
-  }
-
-  // Queue surface for upload in main copy pass (avoids per-text GPU stalls)
-  m_pendingTextUploads.push_back(PendingTextUpload{
-      key,
-      std::unique_ptr<SDL_Surface, void(*)(SDL_Surface*)>(surface, SDL_DestroySurface),
-      static_cast<uint32_t>(surface->w),
-      static_cast<uint32_t>(surface->h)
-  });
-
-  // Cache with LRU tracking (insert at front = most recently used)
-  GPUTextData* result = gpuData.get();
-  m_gpuLruList.push_front(key);
-  m_gpuTextCache[key] = GPUCacheEntry{std::move(gpuData), m_gpuLruList.begin()};
-  return result;
-}
-
-void FontManager::processPendingTextUploads(SDL_GPUCopyPass* copyPass) {
-  if (!copyPass || m_pendingTextUploads.empty()) {
-    return;
-  }
-
-  const auto& gpuDevice = HammerEngine::GPUDevice::Instance();
-  if (!gpuDevice.isInitialized()) {
-    FONT_ERROR("GPU text upload: GPUDevice not initialized");
-    return;
-  }
-
-  for (auto& pending : m_pendingTextUploads) {
-    auto cacheIt = m_gpuTextCache.find(pending.key);
-    if (cacheIt == m_gpuTextCache.end() || !cacheIt->second.data->texture) {
-      FONT_WARN("GPU text upload: texture not found in cache");
-      continue;
-    }
-
-    SDL_Surface* surface = pending.surface.get();
-    if (!surface) {
-      FONT_WARN("GPU text upload: null surface");
-      continue;
-    }
-
-    // Create transfer buffer for upload
-    uint32_t dataSize = static_cast<uint32_t>(surface->pitch * surface->h);
-    HammerEngine::GPUTransferBuffer transferBuffer(
-        gpuDevice.get(),
-        SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        dataSize
-    );
-
-    if (!transferBuffer.isValid()) {
-      FONT_ERROR("GPU text upload: failed to create transfer buffer");
-      continue;
-    }
-
-    // Map and copy pixel data
-    void* mapped = transferBuffer.map(false);
-    if (!mapped) {
-      FONT_ERROR("GPU text upload: failed to map transfer buffer");
-      continue;
-    }
-
-    std::memcpy(mapped, surface->pixels, dataSize);
-    transferBuffer.unmap();
-
-    // Set up transfer info
-    SDL_GPUTextureTransferInfo srcInfo{};
-    srcInfo.transfer_buffer = transferBuffer.get();
-    srcInfo.offset = 0;
-    srcInfo.pixels_per_row = pending.width;
-    srcInfo.rows_per_layer = pending.height;
-
-    SDL_GPUTextureRegion dstRegion{};
-    dstRegion.texture = cacheIt->second.data->texture->get();
-    dstRegion.x = 0;
-    dstRegion.y = 0;
-    dstRegion.z = 0;
-    dstRegion.w = pending.width;
-    dstRegion.h = pending.height;
-    dstRegion.d = 1;
-
-    // Upload to GPU (batched with other uploads in same copy pass)
-    SDL_UploadToGPUTexture(copyPass, &srcInfo, &dstRegion, false);
-
-    // Mark as uploaded so drawTextGPU can use it
-    cacheIt->second.data->uploaded = true;
-  }
-
-  // Clear pending uploads (surfaces freed by unique_ptr destructors)
-  m_pendingTextUploads.clear();
-}
-
-void FontManager::drawTextGPU(const std::string& text, const std::string& fontID,
-                               int x, int y, SDL_Color color,
-                               HammerEngine::GPURenderer& gpuRenderer,
-                               SDL_GPURenderPass* /*pass*/) {
-  if (text.empty()) {
-    return;
-  }
-
-  const GPUTextData* textData = renderTextGPU(text, fontID, color);
-  if (!textData || !textData->texture || !textData->texture->isValid()) {
-    return;
-  }
-
-  // Skip if texture not uploaded yet (will be ready next frame)
-  if (!textData->uploaded) {
-    return;
-  }
-
-  // Calculate centered position
-  float dstX = static_cast<float>(x) - static_cast<float>(textData->width) * 0.5f;
-  float dstY = static_cast<float>(y) - static_cast<float>(textData->height) * 0.5f;
-  float dstW = static_cast<float>(textData->width);
-  float dstH = static_cast<float>(textData->height);
-
-  PendingGPUTextDraw draw;
-  // Quad vertices
-  draw.vertices[0] = {dstX, dstY, 0.0f, 0.0f, 255, 255, 255, 255};
-  draw.vertices[1] = {dstX + dstW, dstY, 1.0f, 0.0f, 255, 255, 255, 255};
-  draw.vertices[2] = {dstX + dstW, dstY + dstH, 1.0f, 1.0f, 255, 255, 255, 255};
-  draw.vertices[3] = {dstX, dstY + dstH, 0.0f, 1.0f, 255, 255, 255, 255};
-  draw.textureOwner = textData->texture;
-  draw.texture = textData->texture->get();
-  draw.sampler = gpuRenderer.getLinearSampler();
-  HammerEngine::GPURenderer::createOrthoMatrix(
-      0.0f, static_cast<float>(gpuRenderer.getViewportWidth()),
-      static_cast<float>(gpuRenderer.getViewportHeight()), 0.0f,
-      draw.orthoMatrix);
-
-  m_pendingTextDraws.push_back(draw);
-}
-
-void FontManager::flushTextDraws(HammerEngine::GPURenderer& gpuRenderer,
-                                  SDL_GPURenderPass* pass) {
-  if (m_pendingTextDraws.empty() || !pass) return;
-
-  SDL_GPUCopyPass* copyPass = gpuRenderer.getCopyPass();
-  if (!copyPass) {
-    FONT_ERROR("flushTextDraws requires the renderer's main copy pass");
-    m_pendingTextDraws.clear();
-    return;
-  }
-
-  const auto& gpuDevice = HammerEngine::GPUDevice::Instance();
-  size_t drawCount = m_pendingTextDraws.size();
-  size_t totalVertexSize = drawCount * 4 * sizeof(HammerEngine::SpriteVertex);
-
-  // Lazy-init / grow text vertex buffer
-  if (!m_textVertexBuffer || drawCount > m_textVertexBufferCapacity) {
-    if (m_textVertexBuffer) {
-      SDL_ReleaseGPUBuffer(gpuDevice.get(), m_textVertexBuffer);
-    }
-    m_textVertexBufferCapacity = std::max(drawCount, MAX_GPU_TEXT_DRAWS_PER_FRAME);
-
-    SDL_GPUBufferCreateInfo bufferInfo{};
-    bufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
-    bufferInfo.size = static_cast<uint32_t>(m_textVertexBufferCapacity * 4 * sizeof(HammerEngine::SpriteVertex));
-    m_textVertexBuffer = SDL_CreateGPUBuffer(gpuDevice.get(), &bufferInfo);
-
-    if (!m_textVertexBuffer) {
-      FONT_ERROR(std::format("Failed to create text vertex buffer: {}", SDL_GetError()));
-      m_pendingTextDraws.clear();
-      return;
-    }
-  }
-
-  // Single transfer buffer for all vertices
-  HammerEngine::GPUTransferBuffer vertexTransfer(
-      gpuDevice.get(), SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, totalVertexSize);
-
-  if (!vertexTransfer.isValid()) {
-    FONT_ERROR("Failed to create vertex transfer buffer for text batch");
-    m_pendingTextDraws.clear();
-    return;
-  }
-
-  void* mapped = vertexTransfer.map(false);
-  if (!mapped) {
-    FONT_ERROR("Failed to map vertex transfer buffer for text batch");
-    m_pendingTextDraws.clear();
-    return;
-  }
-
-  // Copy all vertices at offsets
-  for (size_t i = 0; i < drawCount; ++i) {
-    size_t offset = i * 4 * sizeof(HammerEngine::SpriteVertex);
-    std::memcpy(static_cast<uint8_t*>(mapped) + offset,
-                m_pendingTextDraws[i].vertices, sizeof(HammerEngine::SpriteVertex) * 4);
-  }
-  vertexTransfer.unmap();
-
-  SDL_GPUTransferBufferLocation src = vertexTransfer.asLocation(0);
-  SDL_GPUBufferRegion dst{};
-  dst.buffer = m_textVertexBuffer;
-  dst.offset = 0;
-  dst.size = static_cast<uint32_t>(totalVertexSize);
-
-  SDL_UploadToGPUBuffer(copyPass, &src, &dst, false);
-
-  // Draw all text quads
-  const auto& batch = gpuRenderer.getSpriteBatch();
-
-  for (size_t i = 0; i < drawCount; ++i) {
-    const auto& draw = m_pendingTextDraws[i];
-
-    SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUISpritePipeline());
-    gpuRenderer.pushViewProjection(pass, draw.orthoMatrix);
-
-    SDL_GPUTextureSamplerBinding texSampler{};
-    texSampler.texture = draw.texture;
-    texSampler.sampler = draw.sampler;
-    SDL_BindGPUFragmentSamplers(pass, 0, &texSampler, 1);
-
-    SDL_GPUBufferBinding vertexBinding{};
-    vertexBinding.buffer = m_textVertexBuffer;
-    vertexBinding.offset = static_cast<uint32_t>(i * 4 * sizeof(HammerEngine::SpriteVertex));
-    SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
-
-    SDL_GPUBufferBinding indexBinding{};
-    indexBinding.buffer = batch.getIndexBuffer();
-    indexBinding.offset = 0;
-    SDL_BindGPUIndexBuffer(pass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-
-    SDL_DrawGPUIndexedPrimitives(pass, 6, 1, 0, 0, 0);
-  }
-
-  m_pendingTextDraws.clear();
+  return TTF_GetGPUTextDrawData(it->second.text);
 }
 
 void FontManager::clearGPUTextCache() {
-  m_gpuTextCache.clear();
-  m_gpuLruList.clear();
-  FONT_DEBUG("GPU text cache cleared");
-}
-
-void FontManager::evictGPUTextCache() {
-  // Evict least-recently-used entries from the back of the LRU list
-  size_t evicted = 0;
-  while (evicted < GPU_TEXT_CACHE_EVICT_COUNT && !m_gpuLruList.empty()) {
-    const auto& oldestKey = m_gpuLruList.back();
-    m_gpuTextCache.erase(oldestKey);
-    m_gpuLruList.pop_back();
-    ++evicted;
-  }
-  FONT_DEBUG(std::format("GPU text cache evicted {} entries, {} remaining",
-                         evicted, m_gpuTextCache.size()));
+  destroyGPUTextObjects();
+  FONT_DEBUG("GPU text objects cleared");
 }
 #endif

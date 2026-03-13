@@ -208,7 +208,6 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
   // Record text vertices to UI vertex pool (rendered to swapchain)
   m_textDrawCommands.clear();
   FontManager& fontMgr = FontManager::Instance();
-  SDL_Color fontColor = {200, 200, 200, 255};
 
   auto& uiPool = gpuRenderer.getUIVertexPool();
   auto* uiBasePtr = static_cast<HammerEngine::SpriteVertex*>(uiPool.getMappedPtr());
@@ -220,35 +219,57 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
   int centerX = m_windowWidth / 2;
 
   // Helper to add text
-  auto addText = [&](const std::string& text, int x, int y) {
-    const GPUTextData* textData = fontMgr.renderTextGPU(text, "fonts_Arial", fontColor);
-    if (!textData || !textData->texture || !textData->texture->isValid()) {
+  auto addText = [&](const std::string& key, const std::string& text, int x, int y) {
+    int textWidth = 0;
+    int textHeight = 0;
+    if (!fontMgr.prepareGPUText(key, text, "fonts_Arial", &textWidth, &textHeight)) {
       return;
     }
 
-    float dstX = static_cast<float>(x - textData->width / 2);
-    float dstY = static_cast<float>(y - textData->height / 2);
-    float dstW = static_cast<float>(textData->width);
-    float dstH = static_cast<float>(textData->height);
+    float dstX = static_cast<float>(x - textWidth / 2);
+    float dstY = static_cast<float>(y - textHeight / 2);
 
-    HammerEngine::SpriteVertex* v = uiBasePtr + uiVertexOffset;
-    v[0] = {dstX, dstY, 0.0f, 0.0f, 200, 200, 200, 255};
-    v[1] = {dstX + dstW, dstY, 1.0f, 0.0f, 200, 200, 200, 255};
-    v[2] = {dstX + dstW, dstY + dstH, 1.0f, 1.0f, 200, 200, 200, 255};
-    v[3] = {dstX, dstY + dstH, 0.0f, 1.0f, 200, 200, 200, 255};
+    if (!fontMgr.setGPUTextPosition(key, static_cast<int>(dstX),
+                                    static_cast<int>(dstY))) {
+      return;
+    }
 
-    GPUDrawCommand cmd;
-    cmd.textureOwner = textData->texture;
-    cmd.texture = textData->texture->get();
-    cmd.vertexOffset = uiVertexOffset;
-    cmd.vertexCount = 4;
-    m_textDrawCommands.push_back(cmd);
-    uiVertexOffset += 4;
+    TTF_GPUAtlasDrawSequence* drawSequence = fontMgr.getGPUTextDrawData(key);
+    if (!drawSequence) {
+      return;
+    }
+
+    for (TTF_GPUAtlasDrawSequence* seq = drawSequence; seq != nullptr; seq = seq->next) {
+      if (!seq->atlas_texture || !seq->xy || !seq->uv || !seq->indices ||
+          seq->num_indices <= 0 || seq->num_vertices <= 0) {
+        continue;
+      }
+
+      HammerEngine::SpriteVertex* v = uiBasePtr + uiVertexOffset;
+      for (int i = 0; i < seq->num_indices; ++i) {
+        int sourceIndex = seq->indices[i];
+        if (sourceIndex < 0 || sourceIndex >= seq->num_vertices) {
+          return;
+        }
+
+        const SDL_FPoint& pos = seq->xy[sourceIndex];
+        const SDL_FPoint& uv = seq->uv[sourceIndex];
+        v[i] = {pos.x, -pos.y, uv.x, uv.y,
+                200, 200, 200, 255};
+      }
+
+      GPUDrawCommand cmd;
+      cmd.texture = seq->atlas_texture;
+      cmd.vertexOffset = uiVertexOffset;
+      cmd.vertexCount = static_cast<uint32_t>(seq->num_indices);
+      m_textDrawCommands.push_back(cmd);
+      uiVertexOffset += static_cast<uint32_t>(seq->num_indices);
+    }
   };
 
-  addText("<]==={ }* Hammer Game Engine *{ }===]>", centerX, m_titleY);
-  addText("Powered by SDL3", centerX, m_subtitleY);
-  addText("v0.8.5", centerX, m_versionY);
+  addText("logo:title", "<]==={ }* Hammer Game Engine *{ }===]>", centerX, m_titleY);
+  addText("logo:subtitle", "Powered by SDL3", centerX, m_subtitleY);
+  addText("logo:version", "v0.8.5", centerX, m_versionY);
 
   uiPool.setWrittenVertexCount(uiVertexOffset);
 }
@@ -331,14 +352,7 @@ void LogoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
   vertexBinding.offset = 0;
   SDL_BindGPUVertexBuffers(swapchainPass, 0, &vertexBinding, 1);
 
-  // Bind index buffer
-  const auto& batch = gpuRenderer.getSpriteBatch();
-  SDL_GPUBufferBinding indexBinding{};
-  indexBinding.buffer = batch.getIndexBuffer();
-  indexBinding.offset = 0;
-  SDL_BindGPUIndexBuffer(swapchainPass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-
-  // Draw each text texture
+  // Draw each text sequence
   for (const auto& cmd : m_textDrawCommands) {
     SDL_GPUTexture* textTexture =
         cmd.textureOwner ? cmd.textureOwner->get() : cmd.texture;
@@ -351,8 +365,8 @@ void LogoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
     texSampler.sampler = gpuRenderer.getLinearSampler();
     SDL_BindGPUFragmentSamplers(swapchainPass, 0, &texSampler, 1);
 
-    uint32_t firstIndex = (cmd.vertexOffset / 4) * 6;
-    SDL_DrawGPUIndexedPrimitives(swapchainPass, 6, 1, firstIndex, 0, 0);
+    SDL_DrawGPUPrimitives(swapchainPass, cmd.vertexCount, 1,
+                          cmd.vertexOffset, 0);
   }
 }
 #endif // USE_SDL3_GPU
