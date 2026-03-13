@@ -298,6 +298,8 @@ BOOST_AUTO_TEST_CASE(SPIRVShaderFilesExist) {
     std::vector<std::string> spirvShaders = {
         "res/shaders/sprite.vert.spv",
         "res/shaders/sprite.frag.spv",
+        "res/shaders/text_alpha.frag.spv",
+        "res/shaders/text_sdf.frag.spv",
         "res/shaders/color.vert.spv",
         "res/shaders/color.frag.spv",
         "res/shaders/composite.vert.spv",
@@ -321,6 +323,8 @@ BOOST_AUTO_TEST_CASE(MetalShaderFilesExist) {
     std::vector<std::string> metalShaders = {
         "res/shaders/sprite.vert.metal",
         "res/shaders/sprite.frag.metal",
+        "res/shaders/text_alpha.frag.metal",
+        "res/shaders/text_sdf.frag.metal",
         "res/shaders/color.vert.metal",
         "res/shaders/color.frag.metal",
         "res/shaders/composite.vert.metal",

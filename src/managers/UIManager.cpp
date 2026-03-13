@@ -11,6 +11,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/TextureManager.hpp"
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <numeric>
 
@@ -3577,6 +3578,11 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
       addFilledRect(bgRect, bgColor);
     }
 
+    // Raster UI text should land on whole pixels to avoid linear-filter
+    // coverage loss at glyph edges when centered inside integer UI bounds.
+    dstX = std::round(dstX);
+    dstY = std::round(dstY);
+
     TTF_GPUAtlasDrawSequence* drawSequence = fontMgr.getGPUTextDrawData(textKey);
     if (!drawSequence) {
       return;
@@ -3606,8 +3612,9 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
 
         const SDL_FPoint& pos = seq->xy[sourceIndex];
         const SDL_FPoint& uv = seq->uv[sourceIndex];
+        // SDL3_ttf GPU text already provides UVs in SDL_GPU convention.
         v[i] = {dstX + pos.x, (viewportHeight - dstY) + pos.y,
-                uv.x, 1.0f - uv.y,
+                uv.x, uv.y,
                 drawColor.r, drawColor.g, drawColor.b, drawColor.a};
       }
 
@@ -4075,16 +4082,18 @@ void UIManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderP
 
       SDL_GPUTextureSamplerBinding texSampler{};
       texSampler.texture = textTexture;
-      texSampler.sampler = gpuRenderer.getLinearSampler();
       switch (cmd.imageType) {
         case TTF_IMAGE_SDF:
+          texSampler.sampler = gpuRenderer.getLinearSampler();
           SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUITextSDFPipeline());
           break;
         case TTF_IMAGE_COLOR:
+          texSampler.sampler = gpuRenderer.getLinearSampler();
           SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUISpritePipeline());
           break;
         case TTF_IMAGE_ALPHA:
         default:
+          texSampler.sampler = gpuRenderer.getLinearSampler();
           SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUITextAlphaPipeline());
           break;
       }

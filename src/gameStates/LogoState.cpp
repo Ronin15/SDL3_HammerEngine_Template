@@ -262,8 +262,9 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
 
         const SDL_FPoint& pos = seq->xy[sourceIndex];
         const SDL_FPoint& uv = seq->uv[sourceIndex];
+        // SDL3_ttf GPU text already provides UVs in SDL_GPU convention.
         v[i] = {dstX + pos.x, (viewportHeight - dstY) + pos.y,
-                uv.x, 1.0f - uv.y,
+                uv.x, uv.y,
                 drawColor.r, drawColor.g, drawColor.b, drawColor.a};
       }
 
@@ -366,18 +367,20 @@ void LogoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
 
     SDL_GPUTextureSamplerBinding texSampler{};
     texSampler.texture = textTexture;
-    texSampler.sampler = gpuRenderer.getLinearSampler();
     switch (cmd.imageType) {
       case TTF_IMAGE_SDF:
+        texSampler.sampler = gpuRenderer.getLinearSampler();
         SDL_BindGPUGraphicsPipeline(swapchainPass,
                                     gpuRenderer.getUITextSDFPipeline());
         break;
       case TTF_IMAGE_COLOR:
+        texSampler.sampler = gpuRenderer.getLinearSampler();
         SDL_BindGPUGraphicsPipeline(swapchainPass,
                                     gpuRenderer.getUISpritePipeline());
         break;
       case TTF_IMAGE_ALPHA:
       default:
+        texSampler.sampler = gpuRenderer.getLinearSampler();
         SDL_BindGPUGraphicsPipeline(swapchainPass,
                                     gpuRenderer.getUITextAlphaPipeline());
         break;
