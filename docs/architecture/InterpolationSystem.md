@@ -274,7 +274,7 @@ void teleport(const Vector2D& pos) {
 
 - **Entity:** `include/entities/Entity.hpp`
 - **Camera:** `docs/utils/Camera.md`
-- **TimestepManager:** `docs/managers/TimestepManager.md`
+- **TimestepManager:** `docs/core/TimestepManager.md`
 - **GameEngine:** `docs/core/GameEngine.md`
 
 ---

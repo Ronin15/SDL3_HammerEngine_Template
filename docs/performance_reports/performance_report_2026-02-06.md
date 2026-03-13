@@ -2,8 +2,9 @@
 
 **Generated:** 2026-02-06
 **Build Type:** Debug
-**Git Commit:** 3196bd09 (FontManager LRU cache for GPU font textures)
-**Branch:** world_update
+**Git Commit:** c5585be8
+**Branch:** resource-combat-updates
+**Status:** Historical benchmark snapshot carried forward on this branch. Metrics below were not regenerated as part of the documentation refresh.
 **Platform:** Darwin 25.2.0 ARM64 (Apple Silicon M3 Pro, 11 threads)
 **Baseline:** 2026-02-04 12:39 PST
 **Benchmark Mode:** Sequential execution (no CPU contention between benchmarks)

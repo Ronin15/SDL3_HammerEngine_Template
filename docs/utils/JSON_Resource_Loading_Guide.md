@@ -1,166 +1,67 @@
-# JSON Resource Loading - Quick Start Guide
-
-This guide shows how to use the new JSON-based resource loading system in HammerEngine.
+# JSON Resource Loading Guide
 
 ## Overview
 
-The HammerEngine now supports loading different resource types from JSON files, making it easy to add new items, materials, currency, and game resources without recompiling the engine.
+The project now uses the unified `res/data/resources.json` catalog for runtime resource definitions. This file contains more than a minimal demo set: equipment, consumables, crafting materials, ores, gems, currencies, merchant goods, and gameplay resources all live in the same catalog.
 
-## Quick Setup
+Use `ResourceTemplateManager` for loading and fast handle lookup, then use handles at runtime.
 
-### 1. Initialize the System
-```cpp
-#include "managers/ResourceTemplateManager.hpp"
-
-// In your game initialization code
-auto& resourceManager = ResourceTemplateManager::Instance();
-resourceManager.init(); // This also initializes the ResourceFactory
-```
-
-### 2. Load Resources from JSON
-```cpp
-// Load from file
-bool success = resourceManager.loadResourcesFromJson("res/data/items.json");
-if (!success) {
-    GAMEENGINE_ERROR("Failed to load items.json");
-}
-
-// Or load from string
-std::string jsonData = R"({
-  "resources": [
-    {
-      "id": "health_potion",
-      "name": "Health Potion",
-      "category": "Item",
-      "type": "Consumable",
-      "description": "Restores health when consumed",
-      "value": 50,
-      "maxStackSize": 10,
-      "consumable": true,
-      "properties": {
-        "effect": "HealHP",
-        "effectPower": 50,
-        "effectDuration": 0
-      }
-    }
-  ]
-})";
-
-resourceManager.loadResourcesFromJsonString(jsonData);
-```
-
-### 3. Use Loaded Resources
-```cpp
-// Get a resource template by name (for initialization/validation)
-auto healthPotion = resourceManager.getResourceByName("Health Potion");
-if (healthPotion) {
-    std::cout << "Found: " << healthPotion->getName() << std::endl;
-    
-    // Convert to handle for runtime use
-    auto healthPotionHandle = healthPotion->getHandle();
-    
-    // Check if it's a consumable
-    auto consumable = std::dynamic_pointer_cast<Consumable>(healthPotion);
-    if (consumable) {
-        std::cout << "Effect Power: " << consumable->getEffectPower() << std::endl;
-    }
-}
-
-// Preferred runtime pattern: Convert names to handles during initialization
-auto healthPotionHandle = resourceManager.getHandleByName("Health Potion");
-if (healthPotionHandle.isValid()) {
-    // Runtime: Fast handle-based operations
-    auto potionInstance = resourceManager.createResource(healthPotionHandle);
-    int maxStack = resourceManager.getMaxStackSize(healthPotionHandle);
-    float value = resourceManager.getValue(healthPotionHandle);
-}
-```
-
-## JSON Schema Overview
-
-All resources share these common fields:
-- `id`: Unique identifier (string)
-- `name`: Display name (string) 
-- `category`: Resource category ("Item", "Material", "Currency", "GameResource")
-- `type`: Specific type (see supported types below)
-- `description`: Description text (optional)
-- `value`: Monetary value (optional, default 0)
-- `maxStackSize`: Maximum stack size (optional, default 1)
-- `consumable`: Whether resource can be consumed (optional, default false)
-- `iconTextureId`: Texture ID for icon (optional)
-- `properties`: Type-specific properties (optional)
-
-## Supported Resource Types
-
-### Items
-- **Equipment**: Weapons, armor, accessories
-- **Consumable**: Potions, food, scrolls  
-- **QuestItem**: Keys, documents, special objects
-
-### Materials
-- **CraftingComponent**: Processed materials for crafting
-- **RawResource**: Unprocessed materials from gathering
-
-### Currency
-- **Gold**: Base currency
-- **Gem**: Precious stones
-- **FactionToken**: Reputation-based currency
-
-### Game Resources
-- **Energy**: Stamina, action points
-- **Mana**: Magical energy
-- **BuildingMaterial**: Construction materials
-- **Ammunition**: Arrows, bullets, projectiles
-
-## Example JSON Files
-
-See the unified resource file in `res/data/`:
-- `resources.json` - All resources: equipment, consumables, quest items, materials, currency, game resources
-
-## Error Handling
+## Recommended Flow
 
 ```cpp
-bool success = resourceManager.loadResourcesFromJson("my_resources.json");
-if (!success) {
-    // Check logs for specific error messages
-    // Invalid resources are skipped, valid ones are still loaded
-    std::cout << "Some resources failed to load, check logs" << std::endl;
-}
+auto& templates = ResourceTemplateManager::Instance();
+templates.init();
+
+auto wood = templates.getHandleById("wood");
+auto ironOre = templates.getHandleById("iron_ore");
+auto goldCoins = templates.getHandleById("gold_coins");
 ```
 
-## Adding Custom Resource Types
+Cache the resulting handles in gameplay code instead of repeating string lookups.
 
-```cpp
-// Register a custom creator function
-ResourceFactory::registerCreator("MyCustomType", [](const JsonValue& json) -> ResourcePtr {
-    std::string id = json["id"].asString();
-    std::string name = json["name"].asString();
-    
-    // Create your custom resource
-    auto resource = std::make_shared<MyCustomResource>(id, name);
-    
-    // Set common properties
-    ResourceFactory::setCommonProperties(resource, json);
-    
-    return resource;
-});
-```
+## Important Schema Fields
 
-## Performance Tips
+Common fields still include:
 
-- Load all JSON resources at startup, not during gameplay
-- **Convert names to ResourceHandles during initialization** and cache them in game objects
-- **Use handle-based operations during runtime** for optimal performance 
-- Use the `getStats()` method to monitor memory usage
-- Organize resources into logical files (items.json, materials.json, etc.)
-- Validate JSON syntax before deploying
+- `id`
+- `name`
+- `category`
+- `type`
+- `value`
+- `maxStackSize`
+- `consumable`
+- `properties`
 
-## Testing
+## Branch-Specific Implications
 
-Run the tests to verify functionality:
-```bash
-./bin/debug/ResourceFactoryTests
-./bin/debug/ResourceTemplateManagerJsonTests  
-```
+### `maxStackSize` matters during gameplay
 
-For more detailed information, see the full ResourceTemplateManager documentation.
+On this branch, stack sizes are gameplay-significant rather than cosmetic:
+
+- harvested wood/stone/ore/gems can fill inventory quickly
+- trading and gift flows depend on current stack limits
+- harvesting falls back to dropped items when inventory insertion fails
+- tests now exercise inventory capacity behavior more directly
+
+When adding new resources, choose `maxStackSize` deliberately and assume it affects both UI and interaction logic.
+
+### Merchant / economy content is now first-class
+
+`resources.json` is no longer just a few sample items. It includes merchant-facing equipment, consumables, raw materials, and currencies used by the trading/social systems.
+
+## Related Data
+
+Resource loading now interacts closely with NPC class data in `res/data/classes.json`:
+
+- `isMerchant`
+- `startingItems`
+- `emotionalResilience`
+
+Merchant inventories and social/trade behavior are only coherent when both resource definitions and class definitions are kept in sync.
+
+## Runtime Guidance
+
+- load templates at startup, not mid-frame
+- convert IDs to handles during initialization
+- use handles in inventories, harvesting, crafting, and trade flows
+- validate stack sizes and item value assumptions when changing gameplay balance

@@ -28,7 +28,7 @@ ThreadSystem (Singleton)
 │       └── Exception Handling
 └── WorkerBudgetManager (Batch optimization)
     ├── Sequential Execution Model
-    ├── Throughput-Based Hill-Climbing
+    ├── Threshold-Based Threading Decisions
     └── Queue Pressure Monitoring
 ```
 
@@ -39,7 +39,7 @@ ThreadSystem (Singleton)
 | **ThreadSystem** | Singleton API manager | Initialization, cleanup, public interface |
 | **ThreadPool** | Worker thread lifecycle | Thread creation, task distribution, graceful shutdown |
 | **TaskQueue** | Priority-based queuing | 5 priority levels, per-priority mutexes, capacity management |
-| **WorkerBudgetManager** | Batch optimization | Adaptive batch sizing, throughput learning, queue pressure |
+| **WorkerBudgetManager** | Batch optimization | Adaptive batch sizing, learned threading thresholds, queue pressure |
 | **PrioritizedTask** | Task wrapper | Priority, timing, description, FIFO within priority |
 
 ### Performance Characteristics
@@ -58,7 +58,7 @@ ThreadSystem (Singleton)
 
 ### Overview
 
-ThreadSystem integrates with the **WorkerBudgetManager** for adaptive batch optimization. WorkerBudget tunes batch counts based on measured throughput, allowing managers to efficiently distribute work across the thread pool.
+ThreadSystem integrates with the **WorkerBudgetManager** for adaptive batch optimization. WorkerBudget now combines learned threading thresholds, adaptive batch sizing, and queue-pressure monitoring so managers can scale work without hard-coded thread cutovers.
 
 For detailed WorkerBudget documentation, see [WorkerBudget.md](WorkerBudget.md).
 
@@ -81,48 +81,46 @@ public:
         size_t workloadSize,
         size_t availableWorkers) const;
 
-    // Report batch completion for adaptive tuning
-    void reportBatchCompletion(
+    // Report execution result for adaptive tuning
+    void reportExecution(
         SystemType system,
-        size_t itemsProcessed,
+        size_t workloadSize,
+        bool wasThreaded,
+        size_t batchCount,
         double elapsedMs);
 };
 
 enum class SystemType {
     AI,
-    Collision,
     Particle,
+    Pathfinding,
     Event,
-    Pathfinding
+    Collision,
+    BackgroundSim
 };
 ```
 
-### Adaptive Batch Tuning (Hill-Climbing)
+### Threading Decision and Batch Tuning
 
-WorkerBudgetManager uses **throughput-based hill-climbing** to find optimal batch counts:
+WorkerBudgetManager now makes threading decisions from learned single-thread timing thresholds and then tunes multi-threaded batch counts with the hill-climb path.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│              Throughput-Based Hill-Climbing                      │
+│            Threshold Learning + Batch Tuning                     │
 ├─────────────────────────────────────────────────────────────────┤
-│  1. Start with batchCount = workerCount (max parallelism)       │
-│  2. Measure throughput: items_processed / elapsed_ms            │
-│  3. Adjust multiplier based on throughput:                      │
-│     - Better throughput → explore further in same direction     │
-│     - Worse throughput → reverse direction                      │
-│  4. Converge to optimal batch count for your hardware           │
+│  1. Learn when single-threaded time crosses the switch-over     │
+│  2. Use hysteresis so modes do not flap near the threshold      │
+│  3. If threaded, tune batch count from multi-thread throughput  │
+│  4. Converge to stable batch sizing for current hardware        │
 │                                                                 │
-│  Multiplier range: 0.25x (consolidation) to 2.5x (expansion)    │
+│  Queue pressure can still scale work back when required         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Example Convergence:**
+**Example:**
 ```cpp
-// 8-core system processing 10,000 AI entities
-// Frame 1: batchCount=8, throughput=1200 items/ms
-// Frame 2: batchCount=10 (exploring), throughput=1350 items/ms (better!)
-// Frame 3: batchCount=12 (exploring), throughput=1280 items/ms (worse)
-// Frame 4: batchCount=10 (converged), stable at optimal
+// AI stays single-threaded until the learned threshold is crossed.
+// Once threaded, WorkerBudget tunes batchCount around the current workload.
 ```
 
 ### Queue Pressure Handling
@@ -171,9 +169,11 @@ void AIManager::update(float deltaTime) {
     // ... wait for futures ...
 
     auto elapsed = std::chrono::steady_clock::now() - startTime;
-    budgetMgr.reportBatchCompletion(
+    budgetMgr.reportExecution(
         HammerEngine::SystemType::AI,
         entityCount,
+        true,
+        batchCount,
         std::chrono::duration<double, std::milli>(elapsed).count());
 }
 ```
@@ -363,9 +363,11 @@ void Manager::update(float deltaTime) {
 
     // 4. Report metrics for adaptive tuning
     auto elapsed = std::chrono::steady_clock::now() - startTime;
-    budgetMgr.reportBatchCompletion(
+    budgetMgr.reportExecution(
         HammerEngine::SystemType::MyType,
         workloadSize,
+        true,
+        batchCount,
         std::chrono::duration<double, std::milli>(elapsed).count());
 }
 ```
@@ -377,8 +379,9 @@ void Manager::update(float deltaTime) {
 | AIManager | AI | 100+ entities |
 | CollisionManager | Collision | 500+ bodies (broadphase), 100+ pairs (narrowphase) |
 | ParticleManager | Particle | 500+ particles |
-| EventManager | Event | 50+ events |
+| EventManager | Event | Deferred-queue workload dependent |
 | PathfinderManager | Pathfinding | 10+ requests |
+| BackgroundSimulationManager | BackgroundSim | Tier workload dependent |
 
 ---
 
@@ -397,7 +400,7 @@ ThreadSystem::Instance().enqueueTask(criticalTask, TaskPriority::Critical);
 ThreadSystem::Instance().enqueueTask(backgroundTask, TaskPriority::Low);
 
 // 3. Report metrics for adaptive tuning
-budgetMgr.reportBatchCompletion(systemType, itemCount, elapsedMs);
+budgetMgr.reportExecution(systemType, itemCount, true, batchCount, elapsedMs);
 ```
 
 #### Anti-Patterns to Avoid
@@ -423,7 +426,7 @@ ThreadSystem::Instance().enqueueTask([]() {
 | **1-100 tasks** | Single batch or sequential | 70-85% |
 | **100-1,000 tasks** | Worker-count batches | 85-90% |
 | **1,000+ tasks** | WorkerBudget adaptive batching | 90%+ |
-| **10,000+ tasks** | WorkerBudget with hill-climbing | 95%+ |
+| **10,000+ tasks** | WorkerBudget with threshold learning + batch tuning | 95%+ |
 
 ---
 
@@ -524,7 +527,7 @@ if (idleTime > 5000) {  // 5 seconds idle
 | Issue | Symptoms | Solution |
 |-------|----------|----------|
 | **High queue utilization** | Tasks queuing up | Check batch sizes, reduce task granularity |
-| **Poor throughput** | Low items/ms | Ensure reportBatchCompletion() is called |
+| **Poor throughput** | Low items/ms | Ensure `reportExecution()` is called with correct threaded/batch data |
 | **Memory growth** | Increasing memory | Reserve queue capacity, use move semantics |
 | **Deadlocks** | System hanging | Avoid blocking operations in tasks |
 
@@ -535,7 +538,7 @@ if (idleTime > 5000) {  // 5 seconds idle
 **Core Systems:**
 - [GameEngine](GameEngine.md) - Central engine coordination
 - [WorkerBudget](WorkerBudget.md) - Detailed WorkerBudget documentation
-- [TimestepManager](../managers/TimestepManager.md) - Fixed timestep timing
+- [TimestepManager](TimestepManager.md) - Fixed timestep timing
 
 **Manager Integration:**
 - [AIManager](../ai/AIManager.md) - AI system threading
