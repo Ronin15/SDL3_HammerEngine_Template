@@ -1109,7 +1109,6 @@ private:
   uint32_t interpolateColor(uint32_t color1, uint32_t color2, float factor);
   void recordPerformance(bool isRender, double timeMs, size_t particleCount);
   uint64_t getCurrentTimeNanos() const;
-
   // PERFORMANCE OPTIMIZATION: Trigonometric lookup tables for fast math
   static constexpr size_t TRIG_LUT_SIZE = 1024;
   static constexpr float TRIG_LUT_SCALE = TRIG_LUT_SIZE / (2.0f * 3.14159265f);

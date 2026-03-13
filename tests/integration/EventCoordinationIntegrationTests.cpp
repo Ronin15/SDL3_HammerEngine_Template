@@ -226,6 +226,13 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
             }
         });
 
+    const auto weatherForwarder = EventManager::Instance().registerHandlerWithToken(
+        EventTypeId::Weather,
+        [](const EventData& data) {
+            ParticleManager::Instance().handleWeatherEvent(data);
+        });
+    (void)weatherForwarder;
+
     // Action: Trigger weather change to rain
     TEST_LOG("Triggering weather change to rain");
     BOOST_CHECK(EventManager::Instance().changeWeather(

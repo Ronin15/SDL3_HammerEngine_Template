@@ -208,6 +208,7 @@ Search existing patterns before implementing.
 ## Bug Fixing
 
 Fix root causes in production code. NEVER bypass failing tests by modifying test expectations unless explicitly told to.
+For EventManager regressions, first distinguish missing state-owned handler wiring in tests from actual production manager bugs.
 
 When debugging rendering issues (jitter, shimmer, flickering), trace the full render pipeline before proposing any fix: camera update → interpolation → floor/round operations → sub-pixel offset → draw. No speculative fixes.
 

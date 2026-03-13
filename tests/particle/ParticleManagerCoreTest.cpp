@@ -12,11 +12,25 @@
 #include "utils/Vector2D.hpp"
 #include <memory>
 
+namespace {
+EventManager::HandlerToken registerParticleEffectForwarder() {
+  return EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::ParticleEffect, [](const EventData &data) {
+        ParticleManager::Instance().handleParticleEffectEvent(data);
+      });
+}
+} // namespace
+
 // Test fixture for ParticleManager core functionality
 struct ParticleManagerCoreFixture {
   ParticleManagerCoreFixture() {
     // Get ParticleManager instance
     manager = &ParticleManager::Instance();
+
+    if (EventManager::Instance().isInitialized()) {
+      EventManager::Instance().clean();
+    }
+    EventManager::Instance().init();
 
     // Ensure clean state for each test
     if (manager->isInitialized()) {
@@ -28,6 +42,9 @@ struct ParticleManagerCoreFixture {
     // Clean up after each test
     if (manager->isInitialized()) {
       manager->clean();
+    }
+    if (EventManager::Instance().isInitialized()) {
+      EventManager::Instance().clean();
     }
   }
 
@@ -254,6 +271,8 @@ BOOST_FIXTURE_TEST_CASE(TestTriggerParticleEffectIntegration,
                         ParticleManagerCoreFixture) {
   manager->init();
   manager->registerBuiltInEffects();
+  const auto particleForwarder = registerParticleEffectForwarder();
+  (void)particleForwarder;
 
   // This is how production code triggers particle effects
   bool result = EventManager::Instance().triggerParticleEffect(
@@ -274,6 +293,8 @@ BOOST_FIXTURE_TEST_CASE(TestTriggerDifferentEffectTypes,
                         ParticleManagerCoreFixture) {
   manager->init();
   manager->registerBuiltInEffects();
+  const auto particleForwarder = registerParticleEffectForwarder();
+  (void)particleForwarder;
 
   // Test all built-in effect types via production API
   std::vector<std::string> effectNames = {"Fire", "Smoke", "Sparks",
@@ -363,6 +384,8 @@ BOOST_FIXTURE_TEST_CASE(TestTriggerEffectExtremeValues,
                         ParticleManagerCoreFixture) {
   manager->init();
   manager->registerBuiltInEffects();
+  const auto particleForwarder = registerParticleEffectForwarder();
+  (void)particleForwarder;
 
   // Extreme positions - should not crash
   BOOST_CHECK(EventManager::Instance().triggerParticleEffect(
@@ -394,6 +417,8 @@ BOOST_FIXTURE_TEST_CASE(TestMultipleParticleEffectEvents,
                         ParticleManagerCoreFixture) {
   manager->init();
   manager->registerBuiltInEffects();
+  const auto particleForwarder = registerParticleEffectForwarder();
+  (void)particleForwarder;
 
   // Dispatch multiple effects through EventManager
   EventManager::Instance().triggerParticleEffect(
