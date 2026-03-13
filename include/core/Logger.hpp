@@ -53,7 +53,9 @@ public:
     std::lock_guard<std::mutex> lock(s_logMutex);
     printf("Hammer Game Engine - [%s] %s: %s\n", system, getLevelString(level),
            message.c_str());
-    fflush(stdout);
+    if (level == LogLevel::ERROR_LEVEL || level == LogLevel::CRITICAL) {
+      fflush(stdout);
+    }
   }
   static void Log(LogLevel level, const char *system, const char *message) {
     if (s_benchmarkMode.load(std::memory_order_relaxed)) {
@@ -64,7 +66,9 @@ public:
     std::lock_guard<std::mutex> lock(s_logMutex);
     printf("Hammer Game Engine - [%s] %s: %s\n", system, getLevelString(level),
            message);
-    fflush(stdout);
+    if (level == LogLevel::ERROR_LEVEL || level == LogLevel::CRITICAL) {
+      fflush(stdout);
+    }
   }
 
 private:
