@@ -1274,6 +1274,21 @@ struct PersonalityTraits {
         aggression = std::clamp(dist(rng), 0.0f, 1.0f);
         composure = std::clamp(dist(rng), 0.0f, 1.0f);
         loyalty = std::clamp(dist(rng), 0.0f, 1.0f);
+
+        // Guarantee a spawned NPC does not end up with an effectively all-neutral profile.
+        constexpr float DEFAULT_TRAIT = 0.5f;
+        constexpr float MIN_VARIATION = 0.01f;
+        const bool allNeutral =
+            std::abs(bravery - DEFAULT_TRAIT) < MIN_VARIATION &&
+            std::abs(aggression - DEFAULT_TRAIT) < MIN_VARIATION &&
+            std::abs(composure - DEFAULT_TRAIT) < MIN_VARIATION &&
+            std::abs(loyalty - DEFAULT_TRAIT) < MIN_VARIATION;
+
+        if (allNeutral) {
+            std::uniform_int_distribution<int> directionDist(0, 1);
+            const float offset = directionDist(rng) == 0 ? -0.05f : 0.05f;
+            bravery = std::clamp(DEFAULT_TRAIT + offset, 0.0f, 1.0f);
+        }
     }
 
     /**
