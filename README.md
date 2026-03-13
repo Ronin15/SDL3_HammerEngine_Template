@@ -10,7 +10,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Rendering & Engine Core**
 
-    Fixed timestep game loop with smooth interpolation at any display refresh rate. Adaptive VSync, sprite sheet animations, particle effects with camera-aware culling, and pixel-perfect zoomed rendering with smooth sub-pixel scrolling. Optional GPU rendering path (`-DUSE_SDL3_GPU=ON`) for modern graphics with day/night ambient lighting effects.
+    Fixed timestep game loop with smooth interpolation at any display refresh rate. VSync-aware frame pacing, sprite sheet animations, particle effects with camera-aware culling, and pixel-perfect zoomed rendering with smooth sub-pixel scrolling. Optional GPU rendering path (`-DUSE_SDL3_GPU=ON`) for modern graphics with day/night ambient lighting effects.
 
 - **Adaptive Multi-Threading System**
 
@@ -22,13 +22,13 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Robust Event & State Management**  
     
-    Event-driven architecture with state machines for entities and game flow, deferred event processing, and thread-safe manager updates.
+    Event-driven architecture centered on `EventManager` as the dispatch hub, with deferred event processing, entity/game state machines, and thread-safe manager updates.
 
 - **Flexible UI System**
 
     Content-aware auto-sizing, professional theming (light/dark/custom), and rich component library (buttons, labels, input fields, lists, modals, etc.). Responsive layouts with DPI-aware rendering and animation support. Centralized UI constants with resolution-aware scaling (1920×1080 baseline) and event-driven resize handling. Optimized for PC handheld devices (Steam Deck, ROG Ally, OneXPlayer) with automatic baseline resolution scaling down to 1280×720.
 
-- **Automatic Resource Management**  
+- **Data-Driven Resource Management**  
   
     JSON-based resource loading for items, materials, currency, and gameplay content. Handle-based runtime access keeps systems data-driven, performant, and extensible.
 
@@ -38,7 +38,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Comprehensive Testing & Analysis**
 
-    65+ test executables with Boost.Test framework covering unit, integration, and performance testing. Includes AI+Collision integration tests, GPU rendering tests, SIMD correctness validation, and comprehensive thread safety verification with documented TSAN suppressions. Static analysis (cppcheck, clang-tidy), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration for production-ready quality assurance.
+    70+ test executables with Boost.Test framework covering unit, integration, and performance testing. Includes AI+Collision integration tests, GPU rendering tests, SIMD correctness validation, NPC memory coverage, and comprehensive thread safety verification with documented TSAN suppressions. Static analysis (cppcheck, clang-tidy), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration support production-ready quality assurance.
 
 - **Debug Profiling Tools**
 
@@ -46,7 +46,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Cross-Platform Optimizations**
 
-    Unified codebase with platform-specific enhancements: SIMD acceleration (x86-64: SSE2/AVX2, ARM64: NEON), macOS Retina support with borderless fullscreen, Wayland detection, adaptive VSync, and native DPI scaling.
+    Unified codebase with platform-specific enhancements: SIMD acceleration (x86-64: SSE2/AVX2, ARM64: NEON), macOS Retina support, Wayland detection, VSync-aware frame pacing, and native DPI scaling.
 
 - **GameTime & World Simulation**
 
@@ -58,7 +58,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Robust Combat System**
 
-    Dedicated combat, harvesting, and interaction controllers support hit detection, resource gathering, and gameplay-specific state transitions without bloating core engine systems.
+    Dedicated combat, harvesting, and social/trading controllers support hit detection, resource gathering, theft/gift flows, and gameplay-specific state transitions without bloating core engine systems.
 
 - **Power Efficient (Race-to-Idle)**
 
@@ -87,13 +87,13 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 ### Prerequisites
 
 - CMake 3.28+, Ninja, C++20 compiler (GCC/Clang) - MSVC support planned
-- Platforms: Linux, macOS (Apple Silicon optimized, Intel supported), Windows (MinGW)
+- Platforms: Linux, macOS (Apple Silicon), Windows (MinGW)
 - [SDL3 dependencies](https://wiki.libsdl.org/SDL3/README-linux) (ttf, mixer)
 - Boost (for tests), cppcheck & clang-tidy (static analysis), Valgrind (optional, Linux only)
 - GPU rendering (optional): glslangValidator, spirv-cross (for `-DUSE_SDL3_GPU=ON`)
 
 **Platform notes:**  
-See [Platform Notes](docs/README.md#platform-notes) for detailed Windows, Linux, and macOS setup instructions.
+See the [documentation hub](docs/README.md) and subsystem docs for current setup details and platform-specific notes.
 
 ### Build
 
@@ -137,7 +137,7 @@ export TSAN_OPTIONS="suppressions=$(pwd)/tests/tsan_suppressions.txt"
 
 ## Testing & Static Analysis
 
-- Run all tests: `./run_all_tests.sh`
+- Run all tests: `./tests/test_scripts/run_all_tests.sh`
 - See [tests/TESTING.md](tests/TESTING.md) for comprehensive test documentation and options
 - Static analysis: `./tests/test_scripts/run_cppcheck_focused.sh`
   See [tests/cppcheck/README.md](tests/cppcheck/README.md) for more.
@@ -240,12 +240,12 @@ Contributions welcome!
 - Player and NPC controls: mouse, keyboard, controller (see `InputManager`)
 - Template can be adapted for 3D (see `GameEngine.cpp` and `TextureManager`)
 - For advanced usage, see [docs/README.md](docs/README.md)
-- This is a work in progress and Art is just a place holder for now. All Art is credited to its authors listed below in the Art section!
+- This is a work in progress, and the bundled art is placeholder content credited below.
 
 ---
 
 ## Art
-All art license follows artists licensing. See thier page below for more details!
+All art follows the original artists' licensing terms. See their pages below for details.
 - World Tiles/Assets : [Pipoya](https://pipoya.itch.io/pipoya-rpg-tileset-32x32)
 - Slimes [patvanmackelberg](https://opengameart.org/users/patvanmackelberg)
 - Player Abigail [adythewolf](https://opengameart.org/users/adythewolf)
