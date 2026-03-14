@@ -238,13 +238,13 @@ void EventManager::drainAllDeferredEvents() {
   // Process until queue is empty (max 100 iterations for safety)
   constexpr int MAX_ITERATIONS = 100;
   for (int i = 0; i < MAX_ITERATIONS; ++i) {
-    bool queueEmpty = false;
+    size_t pendingCount = 0;
     {
       std::lock_guard<std::mutex> lock(m_dispatchMutex);
-      queueEmpty = m_pendingDispatch.empty();
+      pendingCount = getPendingQueueSizeUnsafe();
     }
 
-    if (queueEmpty) {
+    if (pendingCount == 0) {
       break;
     }
 
