@@ -19,6 +19,7 @@
 #include "gameStates/LoadingState.hpp"
 #include "gameStates/PauseState.hpp"
 #include "events/HarvestResourceEvent.hpp"
+#include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
@@ -563,7 +564,10 @@ void GamePlayState::registerEventHandlers() {
 
   m_combatEventToken = eventMgr.registerHandlerWithToken(
       EventTypeId::Combat,
-      [](const EventData &data) { AIManager::Instance().handleCombatEvent(data); });
+      [this](const EventData &data) {
+        handleCombatEvent(data);
+        AIManager::Instance().handleCombatEvent(data);
+      });
   m_combatSubscribed = true;
 
   m_harvestEventToken = eventMgr.registerHandlerWithToken(
@@ -607,6 +611,25 @@ void GamePlayState::unregisterEventHandlers() {
     eventMgr.removeHandler(m_harvestEventToken);
     m_harvestSubscribed = false;
   }
+}
+
+void GamePlayState::handleCombatEvent(const EventData& data) {
+  if (!data.isActive() || !data.event || !mp_Player) {
+    return;
+  }
+
+  auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(data.event);
+  if (!damageEvent) {
+    return;
+  }
+
+  if (damageEvent->getTarget() != mp_Player->getHandle()) {
+    return;
+  }
+
+  mp_Player->takeDamage(damageEvent->getDamage(), damageEvent->getKnockback());
+  damageEvent->setRemainingHealth(mp_Player->getHealth());
+  damageEvent->setWasLethal(!mp_Player->isAlive());
 }
 
 void GamePlayState::pause() {
@@ -1201,15 +1224,15 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   worldMgr.recordGPU(*ctx.spriteBatch, ctx.cameraX, ctx.cameraY,
                      ctx.viewWidth, ctx.viewHeight, ctx.zoom);
 
-  // Record NPCs to sprite batch (atlas-based)
-  m_npcRenderCtrl.recordGPU(ctx);
-
   // Record world resources to sprite batch (dropped items, harvestables, containers)
   if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>()) {
     resourceCtrl->recordGPUDroppedItems(ctx, *m_camera);
     resourceCtrl->recordGPUHarvestables(ctx, *m_camera);
     resourceCtrl->recordGPUContainers(ctx, *m_camera);
   }
+
+  // Record NPCs after resources to preserve SDL render-order parity.
+  m_npcRenderCtrl.recordGPU(ctx);
 
   // End sprite batch recording before switching to entity batch
   m_gpuSceneRenderer->endSpriteBatch();

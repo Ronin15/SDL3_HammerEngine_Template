@@ -12,6 +12,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "events/WorldEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "world/WorldData.hpp"
 #include "core/Logger.hpp"
 #include <memory>
@@ -92,6 +93,66 @@ BOOST_AUTO_TEST_CASE(TestLoadNewWorld) {
     BOOST_REQUIRE(worldData != nullptr);
     BOOST_CHECK_EQUAL(worldData->grid.size(), 20);
     BOOST_CHECK_EQUAL(worldData->grid[0].size(), 20);
+}
+
+BOOST_AUTO_TEST_CASE(TestHarvestablesUseConfiguredHarvestTypes) {
+    WorldGenerationConfig config;
+    config.width = 40;
+    config.height = 40;
+    config.seed = 12345;
+    config.elevationFrequency = 0.1f;
+    config.humidityFrequency = 0.1f;
+    config.waterLevel = 0.2f;
+    config.mountainLevel = 0.6f;
+
+    BOOST_REQUIRE(worldManager->loadNewWorld(config));
+    const WorldData* worldData = worldManager->getWorldData();
+    BOOST_REQUIRE(worldData != nullptr);
+
+    const auto& edm = EntityDataManager::Instance();
+    std::vector<size_t> nearbyHarvestables;
+
+    bool foundTree = false;
+    for (size_t y = 0; y < worldData->grid.size() && !foundTree; ++y) {
+        for (size_t x = 0; x < worldData->grid[y].size() && !foundTree; ++x) {
+            if (worldData->grid[y][x].obstacleType != ObstacleType::TREE) {
+                continue;
+            }
+
+            Vector2D pos(static_cast<float>(x) * TILE_SIZE + TILE_SIZE * 0.5f,
+                         static_cast<float>(y) * TILE_SIZE + TILE_SIZE * 0.5f);
+            nearbyHarvestables.clear();
+            worldResourceManager->queryHarvestablesInRadius(pos, 8.0f, nearbyHarvestables);
+            BOOST_REQUIRE_MESSAGE(!nearbyHarvestables.empty(), "Expected harvestable at tree obstacle");
+
+            const auto handle = edm.getStaticHandle(nearbyHarvestables.front());
+            const auto& harvestable = edm.getHarvestableData(handle);
+            BOOST_CHECK(harvestable.harvestType == HarvestType::Chopping);
+            foundTree = true;
+        }
+    }
+    BOOST_REQUIRE_MESSAGE(foundTree, "Expected at least one tree obstacle in generated world");
+
+    bool foundIronDeposit = false;
+    for (size_t y = 0; y < worldData->grid.size() && !foundIronDeposit; ++y) {
+        for (size_t x = 0; x < worldData->grid[y].size() && !foundIronDeposit; ++x) {
+            if (worldData->grid[y][x].obstacleType != ObstacleType::IRON_DEPOSIT) {
+                continue;
+            }
+
+            Vector2D pos(static_cast<float>(x) * TILE_SIZE + TILE_SIZE * 0.5f,
+                         static_cast<float>(y) * TILE_SIZE + TILE_SIZE * 0.5f);
+            nearbyHarvestables.clear();
+            worldResourceManager->queryHarvestablesInRadius(pos, 8.0f, nearbyHarvestables);
+            BOOST_REQUIRE_MESSAGE(!nearbyHarvestables.empty(), "Expected harvestable at iron deposit obstacle");
+
+            const auto handle = edm.getStaticHandle(nearbyHarvestables.front());
+            const auto& harvestable = edm.getHarvestableData(handle);
+            BOOST_CHECK(harvestable.harvestType == HarvestType::Mining);
+            foundIronDeposit = true;
+        }
+    }
+    BOOST_WARN_MESSAGE(foundIronDeposit, "Generated world had no iron deposit obstacle to validate mining harvest type");
 }
 
 BOOST_AUTO_TEST_CASE(TestGetTileAt) {

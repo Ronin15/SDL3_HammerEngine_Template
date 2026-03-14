@@ -95,6 +95,7 @@ private:
   void toggleInventoryDisplay();
   void registerEventHandlers();
   void unregisterEventHandlers();
+  void handleCombatEvent(const EventData& data);
 
   // Camera management methods
   void initializeCamera();

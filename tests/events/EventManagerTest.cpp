@@ -836,6 +836,46 @@ BOOST_FIXTURE_TEST_CASE(EnqueueBatch_ProcessesAllEventsInBatch, EventManagerFixt
   BOOST_CHECK_GE(handlerCallCount.load(), 10);
 }
 
+BOOST_FIXTURE_TEST_CASE(DeferredQueueOverflow_IsCappedAtMaxDispatchQueue, EventManagerFixture) {
+  EventManager::Instance().registerHandler(EventTypeId::Combat, [](const EventData&) {});
+
+  constexpr size_t queueCap = 8192;
+  for (size_t i = 0; i < queueCap + 25; ++i) {
+    EventManager::Instance().triggerDamage(EventManager::DispatchMode::Deferred);
+  }
+
+  BOOST_CHECK_EQUAL(EventManager::Instance().getPendingEventCount(), queueCap);
+
+  EventManager::Instance().drainAllDeferredEvents();
+  BOOST_CHECK_EQUAL(EventManager::Instance().getPendingEventCount(), 0);
+}
+
+BOOST_FIXTURE_TEST_CASE(EnqueueBatchOverflow_TrimsOversizedIncomingBatchToQueueCap, EventManagerFixture) {
+  std::atomic<int> handlerCallCount{0};
+  EventManager::Instance().registerHandler(
+      EventTypeId::Combat,
+      [&handlerCallCount](const EventData&) { handlerCallCount.fetch_add(1); });
+
+  constexpr size_t queueCap = 8192;
+  std::vector<EventManager::DeferredEvent> batch;
+  batch.reserve(queueCap + 17);
+
+  for (size_t i = 0; i < queueCap + 17; ++i) {
+    EventData data;
+    data.typeId = EventTypeId::Combat;
+    data.setActive(true);
+    data.event = std::make_shared<DamageEvent>();
+    batch.push_back(EventManager::DeferredEvent{EventTypeId::Combat, std::move(data)});
+  }
+
+  EventManager::Instance().enqueueBatch(std::move(batch));
+
+  BOOST_CHECK_EQUAL(EventManager::Instance().getPendingEventCount(), queueCap);
+
+  EventManager::Instance().drainAllDeferredEvents();
+  BOOST_CHECK_EQUAL(handlerCallCount.load(), static_cast<int>(queueCap));
+}
+
 BOOST_FIXTURE_TEST_CASE(GetHandlerCount_ReturnsCorrectCount, EventManagerFixture) {
   // Initially no handlers
   BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 0);

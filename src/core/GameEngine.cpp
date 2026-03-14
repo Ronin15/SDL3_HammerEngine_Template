@@ -1156,6 +1156,12 @@ void GameEngine::render() {
       return;
     }
 
+    // Acquire current-frame swapchain dimensions before any state/UI records vertices.
+    if (!gpuRenderer.acquireSwapchainTexture()) {
+      gpuRenderer.endFrame();
+      return;
+    }
+
     // Update profiler overlay (creates/updates UIManager components before recording)
     profiler.renderOverlay(nullptr, nullptr);
 

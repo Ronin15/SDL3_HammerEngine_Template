@@ -189,6 +189,8 @@ void GPURenderer::cleanupPartialInit() {
     m_primitivePipeline.release();
     m_compositePipeline.release();
     m_uiSpritePipeline.release();
+    m_uiTextAlphaPipeline.release();
+    m_uiTextSDFPipeline.release();
     m_uiPrimitivePipeline.release();
 
     m_sceneTexture.reset();

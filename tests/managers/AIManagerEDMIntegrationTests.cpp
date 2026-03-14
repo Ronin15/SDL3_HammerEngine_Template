@@ -24,6 +24,7 @@
 #include "core/ThreadSystem.hpp"
 #include "ai/AICommandBus.hpp"
 #include "ai/BehaviorExecutors.hpp"
+#include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
@@ -185,6 +186,42 @@ BOOST_AUTO_TEST_CASE(TestBehaviorReassignmentUpdatesSparseBehavior) {
     AIManager::Instance().assignBehavior(handle, "Guard");
 
     BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// COMBAT EVENT ROUTING TESTS
+// ============================================================================
+
+BOOST_FIXTURE_TEST_SUITE(CombatEventRoutingTests, AIManagerEDMFixture)
+
+BOOST_AUTO_TEST_CASE(TestHandleCombatEventDoesNotMutatePlayerHealth) {
+    auto& edm = EntityDataManager::Instance();
+    EntityHandle playerHandle = edm.registerPlayer(9001, Vector2D(100.0f, 100.0f));
+    BOOST_REQUIRE(playerHandle.isValid());
+
+    auto& playerData = edm.getCharacterData(playerHandle);
+    playerData.maxHealth = 100.0f;
+    playerData.health = 100.0f;
+    playerData.mass = 1.0f;
+
+    auto damageEvent = std::make_shared<DamageEvent>(
+        EntityEventType::DamageIntent,
+        EntityHandle{},
+        playerHandle,
+        25.0f,
+        Vector2D(5.0f, 0.0f));
+
+    EventData data;
+    data.typeId = EventTypeId::Combat;
+    data.setActive(true);
+    data.event = damageEvent;
+
+    AIManager::Instance().handleCombatEvent(data);
+
+    BOOST_CHECK_CLOSE(edm.getCharacterData(playerHandle).health, 100.0f, 0.01f);
+    BOOST_CHECK(!damageEvent->wasLethal());
 }
 
 BOOST_AUTO_TEST_SUITE_END()

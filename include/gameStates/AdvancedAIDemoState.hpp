@@ -64,6 +64,7 @@ private:
     void updateCamera(float deltaTime);
     void registerEventHandlers();
     void unregisterEventHandlers();
+    void handleCombatEvent(const EventData& data);
 
     // Data-driven NPC rendering (velocity-based animation)
     NPCRenderController m_npcRenderCtrl{};

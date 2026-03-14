@@ -652,6 +652,7 @@ bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
 void EventManager::enqueueDispatch(EventTypeId typeId, const EventData &data) const {
   std::lock_guard<std::mutex> lock(m_dispatchMutex);
   if (m_pendingDispatch.size() >= m_maxDispatchQueue) {
+    releaseEventToPool(m_pendingDispatch.front().typeId, m_pendingDispatch.front().data.event);
     m_pendingDispatch.pop_front();
   }
   m_pendingDispatch.push_back(PendingDispatch{typeId, data});
@@ -664,13 +665,34 @@ void EventManager::enqueueBatch(std::vector<DeferredEvent>&& events) const {
 
   std::lock_guard<std::mutex> lock(m_dispatchMutex);
 
-  // Drop oldest events if we'd exceed the queue limit
+  // Drop oldest queued events if we'd exceed the queue limit.
   size_t droppedCount = 0;
   while (m_pendingDispatch.size() + events.size() > m_maxDispatchQueue &&
          !m_pendingDispatch.empty()) {
+    releaseEventToPool(m_pendingDispatch.front().typeId, m_pendingDispatch.front().data.event);
     m_pendingDispatch.pop_front();
     ++droppedCount;
   }
+
+  // If the incoming batch itself is larger than the queue cap, keep only the newest
+  // tail that fits and release the overflowed pooled events immediately.
+  if (events.size() > m_maxDispatchQueue) {
+    const size_t overflowCount = events.size() - m_maxDispatchQueue;
+    for (size_t i = 0; i < overflowCount; ++i) {
+      releaseEventToPool(events[i].typeId, events[i].data.event);
+    }
+    events.erase(events.begin(), events.begin() + static_cast<std::ptrdiff_t>(overflowCount));
+    droppedCount += overflowCount;
+  }
+
+  // One final guard in case the queue still cannot fit the incoming tail.
+  while (m_pendingDispatch.size() + events.size() > m_maxDispatchQueue &&
+         !m_pendingDispatch.empty()) {
+    releaseEventToPool(m_pendingDispatch.front().typeId, m_pendingDispatch.front().data.event);
+    m_pendingDispatch.pop_front();
+    ++droppedCount;
+  }
+
   if (droppedCount > 0) {
     EVENT_WARN(std::format("Queue overflow: dropped {} events", droppedCount));
   }

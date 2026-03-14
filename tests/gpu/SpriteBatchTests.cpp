@@ -12,6 +12,7 @@
 #include "gpu/GPUDevice.hpp"
 #include "gpu/SpriteBatch.hpp"
 #include "gpu/GPUTypes.hpp"
+#include <array>
 #include <vector>
 
 using namespace HammerEngine;
@@ -419,6 +420,25 @@ BOOST_FIXTURE_TEST_CASE(MoveConstruction, SpriteBatchTestFixture) {
     batch2.shutdown();
 }
 
+BOOST_FIXTURE_TEST_CASE(MoveConstructionPreservesTargetHeightDuringRecording, SpriteBatchTestFixture) {
+    SKIP_IF_NO_GPU();
+    BOOST_REQUIRE(device->isInitialized());
+
+    SpriteBatch batch1;
+    BOOST_REQUIRE(batch1.init(device->get()));
+
+    std::array<SpriteVertex, SpriteBatch::VERTICES_PER_SPRITE> vertices{};
+    batch1.begin(vertices.data(), vertices.size(), nullptr, nullptr, 64.0f, 64.0f, 200.0f);
+
+    SpriteBatch batch2(std::move(batch1));
+    batch2.drawUV(0.0f, 0.0f, 1.0f, 1.0f, 10.0f, 20.0f, 30.0f, 40.0f);
+
+    BOOST_CHECK_CLOSE(vertices[0].y, 180.0f, 0.001f);
+    BOOST_CHECK_CLOSE(vertices[2].y, 140.0f, 0.001f);
+
+    batch2.shutdown();
+}
+
 BOOST_FIXTURE_TEST_CASE(MoveAssignment, SpriteBatchTestFixture) {
     SKIP_IF_NO_GPU();
     BOOST_REQUIRE(device->isInitialized());
@@ -433,6 +453,26 @@ BOOST_FIXTURE_TEST_CASE(MoveAssignment, SpriteBatchTestFixture) {
 
     BOOST_CHECK(batch1.getIndexBuffer() == nullptr);
     BOOST_CHECK(batch2.getIndexBuffer() == indexBuffer);
+
+    batch2.shutdown();
+}
+
+BOOST_FIXTURE_TEST_CASE(MoveAssignmentPreservesTargetHeightDuringRecording, SpriteBatchTestFixture) {
+    SKIP_IF_NO_GPU();
+    BOOST_REQUIRE(device->isInitialized());
+
+    SpriteBatch batch1;
+    BOOST_REQUIRE(batch1.init(device->get()));
+
+    std::array<SpriteVertex, SpriteBatch::VERTICES_PER_SPRITE> vertices{};
+    batch1.begin(vertices.data(), vertices.size(), nullptr, nullptr, 64.0f, 64.0f, 180.0f);
+
+    SpriteBatch batch2;
+    batch2 = std::move(batch1);
+    batch2.drawUV(0.0f, 0.0f, 1.0f, 1.0f, 4.0f, 8.0f, 12.0f, 16.0f);
+
+    BOOST_CHECK_CLOSE(vertices[0].y, 172.0f, 0.001f);
+    BOOST_CHECK_CLOSE(vertices[2].y, 156.0f, 0.001f);
 
     batch2.shutdown();
 }

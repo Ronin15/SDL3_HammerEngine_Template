@@ -108,6 +108,7 @@ SpriteBatch::SpriteBatch(SpriteBatch&& other) noexcept
     , m_maxVertices(other.m_maxVertices)
     , m_textureWidth(other.m_textureWidth)
     , m_textureHeight(other.m_textureHeight)
+    , m_targetHeight(other.m_targetHeight)
     , m_spriteCount(other.m_spriteCount)
     , m_vertexCount(other.m_vertexCount)
     , m_recording(other.m_recording)
@@ -119,6 +120,7 @@ SpriteBatch::SpriteBatch(SpriteBatch&& other) noexcept
     other.m_sampler = nullptr;
     other.m_writePtr = nullptr;
     other.m_maxVertices = 0;
+    other.m_targetHeight = 1.0f;
     other.m_spriteCount = 0;
     other.m_vertexCount = 0;
     other.m_recording = false;
@@ -139,6 +141,7 @@ SpriteBatch& SpriteBatch::operator=(SpriteBatch&& other) noexcept {
         m_maxVertices = other.m_maxVertices;
         m_textureWidth = other.m_textureWidth;
         m_textureHeight = other.m_textureHeight;
+        m_targetHeight = other.m_targetHeight;
         m_spriteCount = other.m_spriteCount;
         m_vertexCount = other.m_vertexCount;
         m_recording = other.m_recording;
@@ -150,6 +153,7 @@ SpriteBatch& SpriteBatch::operator=(SpriteBatch&& other) noexcept {
         other.m_sampler = nullptr;
         other.m_writePtr = nullptr;
         other.m_maxVertices = 0;
+        other.m_targetHeight = 1.0f;
         other.m_spriteCount = 0;
         other.m_vertexCount = 0;
         other.m_recording = false;

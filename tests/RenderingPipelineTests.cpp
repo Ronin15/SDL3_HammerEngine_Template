@@ -309,6 +309,40 @@ BOOST_AUTO_TEST_CASE(TestCompleteRenderingFlow) {
     BOOST_CHECK(foundStateRender);
 }
 
+BOOST_AUTO_TEST_CASE(TestGPUSwapchainAcquiredBeforeVertexRecording) {
+    const std::string gameEngineFile = "src/core/GameEngine.cpp";
+
+    std::ifstream file(gameEngineFile);
+    BOOST_REQUIRE(file.is_open());
+
+    std::string content((std::istreambuf_iterator<char>(file)),
+                        std::istreambuf_iterator<char>());
+
+    const auto acquirePos = content.find("gpuRenderer.acquireSwapchainTexture()");
+    const auto recordPos = content.find("mp_gameStateManager->recordGPUVertices");
+
+    BOOST_REQUIRE(acquirePos != std::string::npos);
+    BOOST_REQUIRE(recordPos != std::string::npos);
+    BOOST_CHECK_LT(acquirePos, recordPos);
+}
+
+BOOST_AUTO_TEST_CASE(TestGamePlayStateGPUResourceDrawOrderMatchesSDLPath) {
+    const std::string gamePlayFile = "src/gameStates/GamePlayState.cpp";
+
+    std::ifstream file(gamePlayFile);
+    BOOST_REQUIRE(file.is_open());
+
+    std::string content((std::istreambuf_iterator<char>(file)),
+                        std::istreambuf_iterator<char>());
+
+    const auto droppedItemsPos = content.find("resourceCtrl->recordGPUDroppedItems");
+    const auto npcPos = content.find("m_npcRenderCtrl.recordGPU(ctx)");
+
+    BOOST_REQUIRE(droppedItemsPos != std::string::npos);
+    BOOST_REQUIRE(npcPos != std::string::npos);
+    BOOST_CHECK_LT(droppedItemsPos, npcPos);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 // ============================================================================

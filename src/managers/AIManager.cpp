@@ -143,15 +143,19 @@ void AIManager::handleCombatEvent(const EventData& data) {
       attackerHandle.isValid() ? edm.getIndex(attackerHandle) : SIZE_MAX;
 
   auto& hotData = edm.getHotDataByIndex(idx);
+  const bool targetIsPlayer = targetHandle.isPlayer();
   auto& charData = edm.getCharacterData(targetHandle);
 
-  charData.health = std::max(0.0f, charData.health - damageEvent->getDamage());
+  if (!targetIsPlayer) {
+    charData.health = std::max(0.0f, charData.health - damageEvent->getDamage());
+
+    float knockbackScale = 1.0f / std::max(0.1f, charData.mass);
+    hotData.transform.velocity =
+        hotData.transform.velocity + damageEvent->getKnockback() * knockbackScale;
+  }
+
   damageEvent->setRemainingHealth(charData.health);
   damageEvent->setWasLethal(charData.health <= 0.0f);
-
-  float knockbackScale = 1.0f / std::max(0.1f, charData.mass);
-  hotData.transform.velocity =
-      hotData.transform.velocity + damageEvent->getKnockback() * knockbackScale;
 
   if (attackerHandle.isValid()) {
     Behaviors::processCombatEvent(idx, attackerHandle, targetHandle,
@@ -176,7 +180,7 @@ void AIManager::handleCombatEvent(const EventData& data) {
                                       combatLocation, gameTime, wasLethal);
   }
 
-  if (charData.health <= 0.0f && hotData.isAlive()) {
+  if (!targetIsPlayer && charData.health <= 0.0f && hotData.isAlive()) {
     hotData.flags &= ~EntityHotData::FLAG_ALIVE;
     edm.destroyEntity(targetHandle);
   }
