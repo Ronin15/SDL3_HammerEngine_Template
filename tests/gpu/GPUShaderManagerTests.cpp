@@ -295,6 +295,8 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_AUTO_TEST_SUITE(ShaderPathTests)
 
 BOOST_AUTO_TEST_CASE(PlatformShaderFilesExist) {
+    HammerEngine::ResourcePath::init();
+
     const std::string ext = HammerEngine::GPUPlatformConfig::getShaderBinaryExtension();
     std::vector<std::string> shaderFiles = {
         "res/shaders/sprite.vert" + ext,
@@ -307,16 +309,13 @@ BOOST_AUTO_TEST_CASE(PlatformShaderFilesExist) {
         "res/shaders/composite.frag" + ext
     };
 
-    int foundCount = 0;
     for (const auto& path : shaderFiles) {
-        if (HammerEngine::ResourcePath::exists(path)) {
-            foundCount++;
-            BOOST_TEST_MESSAGE("Found platform shader: "
-                               << HammerEngine::ResourcePath::resolve(path));
-        }
-    }
+        const std::string resolvedPath = HammerEngine::ResourcePath::resolve(path);
+        const bool exists = HammerEngine::ResourcePath::exists(path);
 
-    BOOST_CHECK_EQUAL(foundCount, static_cast<int>(shaderFiles.size()));
+        BOOST_TEST_MESSAGE("Checking platform shader: " << resolvedPath);
+        BOOST_CHECK_MESSAGE(exists, "Missing platform shader: " << resolvedPath);
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()
