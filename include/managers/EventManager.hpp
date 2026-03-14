@@ -469,6 +469,8 @@ private:
     size_t targetIdx{SIZE_MAX};
     float damage{0.0f};
     Vector2D knockback{};
+    bool targetIsNPC{false};
+    bool destroyOnLethal{false};
     bool valid{false};
   };
 
@@ -521,6 +523,7 @@ private:
 
   // Deferred dispatch queue
   struct PendingDispatch {
+    uint64_t sequence{0};
     EventTypeId typeId;
     EventData data;
   };
@@ -531,11 +534,14 @@ private:
   std::vector<std::future<void>> m_reusableBatchFutures;
   std::mutex m_batchFuturesMutex;
   mutable std::deque<PendingDispatch> m_pendingDispatch;
+  mutable std::deque<PendingDispatch> m_pendingCombatDispatch;
+  mutable uint64_t m_nextDeferredSequence{0};
   size_t m_maxDispatchQueue{8192};
 
   // Reusable buffer for drainDispatchQueueWithBudget
   mutable std::vector<PendingDispatch> m_localDispatchBuffer;
-  mutable std::vector<size_t> m_combatDispatchIndices;
+  mutable std::vector<PendingDispatch> m_localNonCombatBuffer;
+  mutable std::vector<PendingDispatch> m_localCombatDispatchBuffer;
   mutable std::vector<PreparedCombatEvent> m_preparedCombatBuffer;
   mutable std::vector<std::future<void>> m_combatPrepFutures;
 
@@ -544,13 +550,15 @@ private:
   void dispatchPendingEventWithHandlers(const PendingDispatch& pendingDispatch,
                                         const std::vector<HandlerEntry>& typeHandlers,
                                         const char* errorContext) const;
-  PreparedCombatEvent prepareCombatEvent(size_t dispatchIndex) const;
+  PreparedCombatEvent prepareCombatEvent(const PendingDispatch& pendingDispatch) const;
   void prepareCombatBatch(size_t startCombatIndex, size_t endCombatIndex) const;
   void commitPreparedCombatEvent(const PendingDispatch& pendingDispatch,
                                  const PreparedCombatEvent& preparedCombat,
                                  float gameTime) const;
   uint64_t getCurrentTimeNanos() const;
   void enqueueDispatch(EventTypeId typeId, EventData&& data) const;
+  size_t getPendingQueueSizeUnsafe() const;
+  void dropOldestPendingUnsafe() const;
   void drainDispatchQueueWithBudget();
 
   // Consolidated dispatch helper
