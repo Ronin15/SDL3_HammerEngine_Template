@@ -1136,7 +1136,15 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
         int totalEvents;
     };
 
+    struct CombatScene {
+        std::vector<EntityHandle> attackers;
+        std::vector<EntityHandle> targets;
+    };
+
     const std::vector<CombatProfile> profiles = {
+        {"Skirmish frame", 200},
+        {"Raid frame", 800},
+        {"Siege frame", 2000},
         {"Large combat frame", 4000},
         {"Near-cap battle frame", 8000},
     };
@@ -1152,28 +1160,41 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
         EventManager::Instance().init();
     };
 
-    auto setupCombatScene = [&resetCombatManagers](int playerId) {
+    auto setupCombatScene = [&resetCombatManagers](int totalEvents) {
         resetCombatManagers();
 
         auto& edm = EntityDataManager::Instance();
 
-        EntityHandle attackerHandle =
-            edm.createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
-        BOOST_REQUIRE(attackerHandle.isValid());
+        CombatScene scene;
+        scene.attackers.reserve(static_cast<size_t>(totalEvents));
+        scene.targets.reserve(static_cast<size_t>(totalEvents));
 
-        EntityHandle targetHandle = edm.registerPlayer(playerId, Vector2D(110.0f, 100.0f));
-        BOOST_REQUIRE(targetHandle.isValid());
-        auto& targetData = edm.getCharacterData(targetHandle);
-        targetData.maxHealth = 1000000.0f;
-        targetData.health = 1000000.0f;
-        targetData.mass = 1.0f;
+        for (int i = 0; i < totalEvents; ++i) {
+            const float row = static_cast<float>(i / 100);
+            const float col = static_cast<float>(i % 100);
 
-        return std::pair<EntityHandle, EntityHandle>{attackerHandle, targetHandle};
+            EntityHandle attackerHandle = edm.createNPCWithRaceClass(
+                Vector2D(100.0f + col * 12.0f, 100.0f + row * 18.0f), "Human", "Guard");
+            BOOST_REQUIRE(attackerHandle.isValid());
+
+            EntityHandle targetHandle = edm.createNPCWithRaceClass(
+                Vector2D(106.0f + col * 12.0f, 100.0f + row * 18.0f), "Human", "Guard");
+            BOOST_REQUIRE(targetHandle.isValid());
+
+            auto& targetData = edm.getCharacterData(targetHandle);
+            targetData.maxHealth = 1000000.0f;
+            targetData.health = 1000000.0f;
+            targetData.mass = 1.0f;
+
+            scene.attackers.push_back(attackerHandle);
+            scene.targets.push_back(targetHandle);
+        }
+
+        return scene;
     };
 
     auto runCombatBurst = [](const CombatProfile& profile,
-                             EntityHandle attackerHandle,
-                             EntityHandle targetHandle) {
+                             const CombatScene& scene) {
         auto& eventMgr = EventManager::Instance();
         auto& threadSystem = HammerEngine::ThreadSystem::Instance();
         auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
@@ -1187,7 +1208,7 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
 
         for (size_t worker = 0; worker < producerWorkers; ++worker) {
             threadSystem.enqueueTask([&eventMgr, &workersComplete, &profile,
-                                      attackerHandle, targetHandle, worker,
+                                      &scene, worker,
                                       producerWorkers, eventsPerProducer]() {
                 std::vector<EventManager::DeferredEvent> localBatch;
                 localBatch.reserve(static_cast<size_t>(eventsPerProducer));
@@ -1196,7 +1217,8 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
                 const int endIndex = std::min(startIndex + eventsPerProducer, profile.totalEvents);
                 for (int i = startIndex; i < endIndex; ++i) {
                     localBatch.push_back(createDeferredCombatBenchmarkEvent(
-                        i, attackerHandle, targetHandle));
+                        i, scene.attackers[static_cast<size_t>(i)],
+                        scene.targets[static_cast<size_t>(i)]));
                 }
 
                 eventMgr.enqueueBatch(std::move(localBatch));
@@ -1211,7 +1233,6 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
         eventMgr.update();
     };
 
-    int nextPlayerId = 9901;
     for (const auto& profile : profiles) {
         const int totalEvents = profile.totalEvents;
         auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
@@ -1230,14 +1251,12 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
         }();
 
         constexpr int WARMUP_FRAMES = 8;
-        auto [warmupAttackerHandle, warmupTargetHandle] =
-            setupCombatScene(nextPlayerId++);
+        auto warmupScene = setupCombatScene(totalEvents);
         for (int warmup = 0; warmup < WARMUP_FRAMES; ++warmup) {
-            runCombatBurst(profile, warmupAttackerHandle, warmupTargetHandle);
+            runCombatBurst(profile, warmupScene);
         }
 
-        auto [attackerHandle, targetHandle] =
-            setupCombatScene(nextPlayerId++);
+        auto scene = setupCombatScene(totalEvents);
 
         auto& threadSystem = HammerEngine::ThreadSystem::Instance();
         auto& eventMgr = EventManager::Instance();
@@ -1246,7 +1265,7 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
         auto enqueueStart = std::chrono::high_resolution_clock::now();
         for (size_t worker = 0; worker < producerWorkers; ++worker) {
             threadSystem.enqueueTask([&eventMgr, &workersComplete, &profile,
-                                      attackerHandle, targetHandle, worker,
+                                      &scene, worker,
                                       producerWorkers, eventsPerProducer]() {
                 std::vector<EventManager::DeferredEvent> localBatch;
                 localBatch.reserve(static_cast<size_t>(eventsPerProducer));
@@ -1255,7 +1274,8 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
                 const int endIndex = std::min(startIndex + eventsPerProducer, profile.totalEvents);
                 for (int i = startIndex; i < endIndex; ++i) {
                     localBatch.push_back(createDeferredCombatBenchmarkEvent(
-                        i, attackerHandle, targetHandle));
+                        i, scene.attackers[static_cast<size_t>(i)],
+                        scene.targets[static_cast<size_t>(i)]));
                 }
 
                 eventMgr.enqueueBatch(std::move(localBatch));
@@ -1328,8 +1348,16 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
                   << totalPct60 << "% of 60Hz, "
                   << totalPct120 << "% of 120Hz" << std::endl;
 
-        const auto& targetData = EntityDataManager::Instance().getCharacterData(targetHandle);
-        BOOST_CHECK_CLOSE(targetData.health, 1000000.0 - expectedTotalDamage, 0.001);
+        double totalRemainingHealth = 0.0;
+        auto& edm = EntityDataManager::Instance();
+        for (const EntityHandle targetHandle : scene.targets) {
+            totalRemainingHealth += static_cast<double>(
+                edm.getCharacterData(targetHandle).health);
+        }
+
+        const double expectedRemainingHealth =
+            static_cast<double>(profile.totalEvents) * 1000000.0 - expectedTotalDamage;
+        BOOST_CHECK_CLOSE(totalRemainingHealth, expectedRemainingHealth, 0.001);
     }
 
     std::cout << std::endl;
