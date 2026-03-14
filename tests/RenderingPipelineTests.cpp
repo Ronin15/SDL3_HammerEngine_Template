@@ -309,21 +309,38 @@ BOOST_AUTO_TEST_CASE(TestCompleteRenderingFlow) {
     BOOST_CHECK(foundStateRender);
 }
 
-BOOST_AUTO_TEST_CASE(TestGPUSwapchainAcquiredBeforeVertexRecording) {
+BOOST_AUTO_TEST_CASE(TestGPUVertexRecordingPrecedesScenePassAndSwapchainIsAcquiredInScenePass) {
     const std::string gameEngineFile = "src/core/GameEngine.cpp";
+    const std::string gpuRendererFile = "src/gpu/GPURenderer.cpp";
 
-    std::ifstream file(gameEngineFile);
-    BOOST_REQUIRE(file.is_open());
+    std::ifstream gameEngineStream(gameEngineFile);
+    BOOST_REQUIRE(gameEngineStream.is_open());
 
-    std::string content((std::istreambuf_iterator<char>(file)),
-                        std::istreambuf_iterator<char>());
+    std::string gameEngineContent((std::istreambuf_iterator<char>(gameEngineStream)),
+                                  std::istreambuf_iterator<char>());
 
-    const auto acquirePos = content.find("gpuRenderer.acquireSwapchainTexture()");
-    const auto recordPos = content.find("mp_gameStateManager->recordGPUVertices");
+    const auto recordPos = gameEngineContent.find("mp_gameStateManager->recordGPUVertices");
+    const auto beginScenePassPos = gameEngineContent.find("gpuRenderer.beginScenePass()");
+
+    BOOST_REQUIRE(recordPos != std::string::npos);
+    BOOST_REQUIRE(beginScenePassPos != std::string::npos);
+    BOOST_CHECK_LT(recordPos, beginScenePassPos);
+
+    std::ifstream gpuRendererStream(gpuRendererFile);
+    BOOST_REQUIRE(gpuRendererStream.is_open());
+
+    std::string gpuRendererContent((std::istreambuf_iterator<char>(gpuRendererStream)),
+                                   std::istreambuf_iterator<char>());
+
+    const auto scenePassFuncPos = gpuRendererContent.find("SDL_GPURenderPass* GPURenderer::beginScenePass()");
+    BOOST_REQUIRE(scenePassFuncPos != std::string::npos);
+
+    const auto acquirePos = gpuRendererContent.find("if (!acquireSwapchainTexture())", scenePassFuncPos);
+    const auto beginRenderPassPos = gpuRendererContent.find("SDL_BeginGPURenderPass", scenePassFuncPos);
 
     BOOST_REQUIRE(acquirePos != std::string::npos);
-    BOOST_REQUIRE(recordPos != std::string::npos);
-    BOOST_CHECK_LT(acquirePos, recordPos);
+    BOOST_REQUIRE(beginRenderPassPos != std::string::npos);
+    BOOST_CHECK_LT(acquirePos, beginRenderPassPos);
 }
 
 BOOST_AUTO_TEST_CASE(TestGamePlayStateGPUResourceDrawOrderMatchesSDLPath) {
