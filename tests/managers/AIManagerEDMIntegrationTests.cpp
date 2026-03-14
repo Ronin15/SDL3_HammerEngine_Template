@@ -29,6 +29,7 @@
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include <atomic>
 #include <chrono>
@@ -102,6 +103,7 @@ struct AIManagerEDMFixture {
         EntityDataManager::Instance().init();
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
+        EventManager::Instance().init();
         AIManager::Instance().init();
         BackgroundSimulationManager::Instance().init();
     }
@@ -109,6 +111,7 @@ struct AIManagerEDMFixture {
     ~AIManagerEDMFixture() {
         BackgroundSimulationManager::Instance().clean();
         AIManager::Instance().clean();
+        EventManager::Instance().clean();
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
         EntityDataManager::Instance().clean();
@@ -196,7 +199,7 @@ BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_FIXTURE_TEST_SUITE(CombatEventRoutingTests, AIManagerEDMFixture)
 
-BOOST_AUTO_TEST_CASE(TestHandleCombatEventDoesNotMutatePlayerHealth) {
+BOOST_AUTO_TEST_CASE(TestEventManagerCombatHandlerMutatesPlayerHealth) {
     auto& edm = EntityDataManager::Instance();
     EntityHandle playerHandle = edm.registerPlayer(9001, Vector2D(100.0f, 100.0f));
     BOOST_REQUIRE(playerHandle.isValid());
@@ -218,10 +221,9 @@ BOOST_AUTO_TEST_CASE(TestHandleCombatEventDoesNotMutatePlayerHealth) {
     data.setActive(true);
     data.event = damageEvent;
 
-    AIManager::Instance().handleCombatEvent(data);
+    EventManager::Instance().dispatchEvent(damageEvent, EventManager::DispatchMode::Immediate);
 
-    BOOST_CHECK_CLOSE(edm.getCharacterData(playerHandle).health, 100.0f, 0.01f);
-    BOOST_CHECK(!damageEvent->wasLethal());
+    BOOST_CHECK_CLOSE(edm.getCharacterData(playerHandle).health, 75.0f, 0.01f);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

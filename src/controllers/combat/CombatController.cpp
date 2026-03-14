@@ -159,18 +159,20 @@ void CombatController::performAttack(Player *player) {
     // Record pre-damage health for UI logging
     float oldHealth = edm.getCharacterData(handle).health;
 
-    // Dispatch DamageEvent via Combat type — AIManager handler applies
-    // damage, knockback, records combat events, notifies witnesses, handles death
+    // Dispatch DamageEvent via Combat type. EventManager applies combat results
+    // on the main thread immediately for player attacks.
     auto& eventMgr = EventManager::Instance();
     auto damageEvent = eventMgr.acquireDamageEvent();
     damageEvent->configure(playerHandle, handle, attackDamage, knockback);
     eventMgr.dispatchEvent(
         damageEvent, EventManager::DispatchMode::Immediate);
 
+    const float newHealth = edm.getCharacterData(handle).health;
+    const bool wasLethal = newHealth <= 0.0f;
+
     COMBAT_INFO(
         std::format("Hit entity {} for {:.1f} damage! HP: {:.1f} -> {:.1f}",
-                    handle.getId(), attackDamage, oldHealth,
-                    damageEvent->getRemainingHealth()));
+                    handle.getId(), attackDamage, oldHealth, newHealth));
 
     uiMgr.addEventLogEntry(
         GAMEPLAY_EVENT_LOG,
@@ -183,7 +185,7 @@ void CombatController::performAttack(Player *player) {
     }
 
     // Kill notification for UI
-    if (damageEvent->wasLethal()) {
+    if (wasLethal) {
       COMBAT_INFO(std::format("Entity {} killed!", handle.getId()));
 
       uiMgr.addEventLogEntry(

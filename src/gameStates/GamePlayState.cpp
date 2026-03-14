@@ -51,8 +51,7 @@
 GamePlayState::GamePlayState()
     : m_transitioningToLoading{false}, m_transitioningToGameOver{false},
       mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false},
-      m_dayNightEventToken{}, m_weatherEventToken{}, m_combatEventToken{},
-      m_harvestEventToken{} {}
+      m_dayNightEventToken{}, m_weatherEventToken{}, m_harvestEventToken{} {}
 
 GamePlayState::~GamePlayState() = default;
 
@@ -562,14 +561,6 @@ void GamePlayState::registerEventHandlers() {
       });
   m_weatherSubscribed = true;
 
-  m_combatEventToken = eventMgr.registerHandlerWithToken(
-      EventTypeId::Combat,
-      [this](const EventData &data) {
-        handleCombatEvent(data);
-        AIManager::Instance().handleCombatEvent(data);
-      });
-  m_combatSubscribed = true;
-
   m_harvestEventToken = eventMgr.registerHandlerWithToken(
       EventTypeId::Harvest, [](const EventData &data) {
         if (!data.isActive() || !data.event) {
@@ -602,34 +593,10 @@ void GamePlayState::unregisterEventHandlers() {
     m_weatherSubscribed = false;
   }
 
-  if (m_combatSubscribed) {
-    eventMgr.removeHandler(m_combatEventToken);
-    m_combatSubscribed = false;
-  }
-
   if (m_harvestSubscribed) {
     eventMgr.removeHandler(m_harvestEventToken);
     m_harvestSubscribed = false;
   }
-}
-
-void GamePlayState::handleCombatEvent(const EventData& data) {
-  if (!data.isActive() || !data.event || !mp_Player) {
-    return;
-  }
-
-  auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(data.event);
-  if (!damageEvent) {
-    return;
-  }
-
-  if (damageEvent->getTarget() != mp_Player->getHandle()) {
-    return;
-  }
-
-  mp_Player->takeDamage(damageEvent->getDamage(), damageEvent->getKnockback());
-  damageEvent->setRemainingHealth(mp_Player->getHealth());
-  damageEvent->setWasLethal(!mp_Player->isAlive());
 }
 
 void GamePlayState::pause() {

@@ -457,42 +457,11 @@ bool AdvancedAIDemoState::exit() {
 }
 
 void AdvancedAIDemoState::registerEventHandlers() {
-  auto &eventMgr = EventManager::Instance();
-  m_combatEventToken = eventMgr.registerHandlerWithToken(
-      EventTypeId::Combat,
-      [this](const EventData &data) {
-        handleCombatEvent(data);
-        AIManager::Instance().handleCombatEvent(data);
-      });
-  m_combatSubscribed = true;
+  (void)EventManager::Instance();
 }
 
 void AdvancedAIDemoState::unregisterEventHandlers() {
-  if (!m_combatSubscribed) {
-    return;
-  }
-
-  EventManager::Instance().removeHandler(m_combatEventToken);
-  m_combatSubscribed = false;
-}
-
-void AdvancedAIDemoState::handleCombatEvent(const EventData& data) {
-  if (!data.isActive() || !data.event || !m_player) {
-    return;
-  }
-
-  auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(data.event);
-  if (!damageEvent) {
-    return;
-  }
-
-  if (damageEvent->getTarget() != m_player->getHandle()) {
-    return;
-  }
-
-  m_player->takeDamage(damageEvent->getDamage(), damageEvent->getKnockback());
-  damageEvent->setRemainingHealth(m_player->getHealth());
-  damageEvent->setWasLethal(!m_player->isAlive());
+  (void)EventManager::Instance();
 }
 
 void AdvancedAIDemoState::update(float deltaTime) {

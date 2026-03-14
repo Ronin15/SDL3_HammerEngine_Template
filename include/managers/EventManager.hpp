@@ -8,14 +8,13 @@
 
 /**
  * @file EventManager.hpp
- * @brief High-performance event dispatch hub
+ * @brief High-performance event processing hub
  *
- * Pure dispatch-only architecture:
- * - Systems trigger events when things happen
- * - EventManager dispatches to registered handlers
- * - No per-frame event updates or conditional checking
- * - Type-indexed handler storage for fast dispatch
- * - Deferred dispatch queue with WorkerBudget integration
+ * EventManager provides:
+ * - Type-indexed handler dispatch for cross-system coordination
+ * - Deferred queue draining on the main thread
+ * - Pooled hot-path events for stable batching
+ * - Built-in processing for selected engine-level event types
  */
 
 #include "entities/EntityHandle.hpp"
@@ -193,11 +192,10 @@ struct PerformanceStats {
 };
 
 /**
- * @brief High-performance event dispatch hub
+ * @brief High-performance event processing hub
  *
- * Pure dispatch architecture - events are triggered and immediately
- * dispatched to registered handlers. No event registration or per-frame
- * update loop.
+ * EventManager owns handler registration, deferred queue draining,
+ * and built-in processing for selected engine-level events.
  */
 class EventManager {
 public:

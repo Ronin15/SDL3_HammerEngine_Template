@@ -4,6 +4,7 @@
  */
 
 #include "managers/EventManager.hpp"
+#include "ai/BehaviorExecutors.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
@@ -18,6 +19,9 @@
 #include "events/WeatherEvent.hpp"
 #include "events/WorldEvent.hpp"
 #include "events/WorldTriggerEvent.hpp"
+#include "managers/AIManager.hpp"
+#include "managers/EntityDataManager.hpp"
+#include "managers/GameTimeManager.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -26,6 +30,72 @@
 // ==================== Core Singleton & Lifecycle ====================
 
 namespace {
+void processDamageEvent(const EventData& data) {
+  if (!data.isActive() || !data.event) {
+    return;
+  }
+
+  auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(data.event);
+  if (!damageEvent) {
+    return;
+  }
+
+  auto& edm = EntityDataManager::Instance();
+  const EntityHandle targetHandle = damageEvent->getTarget();
+  const EntityHandle attackerHandle = damageEvent->getSource();
+  const size_t targetIdx = edm.getIndex(targetHandle);
+  if (targetIdx == SIZE_MAX) {
+    return;
+  }
+
+  auto& hotData = edm.getHotDataByIndex(targetIdx);
+  auto& charData = edm.getCharacterData(targetHandle);
+  if (charData.health <= 0.0f) {
+    return;
+  }
+
+  const float damage = damageEvent->getDamage();
+  charData.health = std::max(0.0f, charData.health - damage);
+
+  const float knockbackScale = 1.0f / std::max(0.1f, charData.mass);
+  hotData.transform.velocity =
+      hotData.transform.velocity + damageEvent->getKnockback() * knockbackScale;
+
+  const float gameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
+  const size_t attackerIdx =
+      attackerHandle.isValid() ? edm.getIndex(attackerHandle) : SIZE_MAX;
+
+  if (attackerHandle.isValid()) {
+    Behaviors::processCombatEvent(targetIdx, attackerHandle, targetHandle,
+                                  damage, true, gameTime);
+    if (attackerIdx != SIZE_MAX && attackerIdx != targetIdx) {
+      Behaviors::processCombatEvent(attackerIdx, attackerHandle, targetHandle,
+                                    damage, false, gameTime);
+    }
+  }
+
+  const Vector2D combatLocation = hotData.transform.position;
+  const bool wasLethal = (charData.health <= 0.0f);
+  thread_local std::vector<size_t> t_witnessBuffer;
+  AIManager::Instance().scanActiveIndicesInRadius(combatLocation, 300.0f,
+                                                  t_witnessBuffer, false);
+  for (size_t witnessIdx : t_witnessBuffer) {
+    if (witnessIdx == targetIdx || witnessIdx == attackerIdx) {
+      continue;
+    }
+
+    Behaviors::processWitnessedCombat(witnessIdx, attackerHandle,
+                                      combatLocation, gameTime, wasLethal);
+  }
+
+  if (wasLethal) {
+    hotData.flags &= ~EntityHotData::FLAG_ALIVE;
+    if (!targetHandle.isPlayer()) {
+      edm.destroyEntity(targetHandle);
+    }
+  }
+}
+
 void registerBuiltInHandlers(EventManager& eventManager) {
   eventManager.registerHandler(EventTypeId::NPCSpawn, [](const EventData &data) {
     if (!data.isActive() || !data.event) return;
@@ -33,6 +103,10 @@ void registerBuiltInHandlers(EventManager& eventManager) {
     if (npcEvent) {
       npcEvent->execute();
     }
+  });
+
+  eventManager.registerHandler(EventTypeId::Combat, [](const EventData &data) {
+    processDamageEvent(data);
   });
 }
 } // namespace
@@ -70,7 +144,7 @@ bool EventManager::init() {
   // Reset shutdown flag to allow re-initialization after clean()
   m_isShutdown = false;
 
-  EVENT_INFO("Initializing EventManager (dispatch-only architecture)");
+  EVENT_INFO("Initializing EventManager (central event processing hub)");
 
   // Initialize handler containers
   for (auto &handlerContainer : m_handlersByType) {

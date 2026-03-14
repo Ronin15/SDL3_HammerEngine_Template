@@ -64,7 +64,6 @@ private:
     void updateCamera(float deltaTime);
     void registerEventHandlers();
     void unregisterEventHandlers();
-    void handleCombatEvent(const EventData& data);
 
     // Data-driven NPC rendering (velocity-based animation)
     NPCRenderController m_npcRenderCtrl{};
@@ -111,9 +110,6 @@ private:
 
     // Cached NPC count (updated in update(), used in render())
     size_t m_cachedNPCCount{0};
-
-    EventManager::HandlerToken m_combatEventToken{};
-    bool m_combatSubscribed{false};
 };
 
 #endif // ADVANCED_AI_DEMO_STATE_HPP
