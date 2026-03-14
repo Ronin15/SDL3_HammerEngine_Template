@@ -1295,10 +1295,6 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::Harvestable)].fetch_add(1, std::memory_order_relaxed);
 
-    ENTITY_DEBUG(std::format("Created Harvestable (static) entity {} yielding {} [{}-{}] at ({}, {})",
-                             id, yieldResource.getId(), yieldMin, yieldMax,
-                             position.getX(), position.getY()));
-
     // Auto-register with WorldResourceManager for both registry and spatial queries
     auto& wrm = WorldResourceManager::Instance();
     const std::string& targetWorld = worldId.empty() ? wrm.getActiveWorld() : worldId;

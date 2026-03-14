@@ -297,7 +297,6 @@ void WorldResourceManager::registerHarvestable(size_t edmIndex, const WorldId& w
     m_harvestableToWorld[edmIndex] = worldId;
     m_stats.harvestablesRegistered.fetch_add(1, std::memory_order_relaxed);
 
-    WORLD_RESOURCE_DEBUG(std::format("Registered harvestable {} to world {}", edmIndex, worldId));
 }
 
 void WorldResourceManager::unregisterHarvestable(size_t edmIndex) {
@@ -546,8 +545,6 @@ void WorldResourceManager::registerHarvestableSpatial(size_t edmIndex, const Vec
         m_activeWorldHarvestableCount.fetch_add(1, std::memory_order_relaxed);
     }
 
-    WORLD_RESOURCE_DEBUG(std::format("Registered harvestable spatial {} at ({:.1f}, {:.1f}) to world {}",
-                                      edmIndex, position.getX(), position.getY(), worldId));
 }
 
 void WorldResourceManager::unregisterHarvestableSpatial(size_t edmIndex) {
