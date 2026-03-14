@@ -1627,8 +1627,6 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
                 }
             }
         }
-        PATHFIND_DEBUG(std::format("Marked dirty region for obstacle change at grid ({},{}) radius {}",
-                      gridX, gridY, gridRadius));
     }
 }
 
