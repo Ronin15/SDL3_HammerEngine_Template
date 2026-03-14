@@ -657,17 +657,17 @@ bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
   }
 
   // Deferred dispatch
-  enqueueDispatch(typeId, eventData);
+  enqueueDispatch(typeId, std::move(eventData));
   return true;
 }
 
-void EventManager::enqueueDispatch(EventTypeId typeId, const EventData &data) const {
+void EventManager::enqueueDispatch(EventTypeId typeId, EventData&& data) const {
   std::lock_guard<std::mutex> lock(m_dispatchMutex);
   if (m_pendingDispatch.size() >= m_maxDispatchQueue) {
     releaseEventToPool(m_pendingDispatch.front().typeId, m_pendingDispatch.front().data.event);
     m_pendingDispatch.pop_front();
   }
-  m_pendingDispatch.push_back(PendingDispatch{typeId, data});
+  m_pendingDispatch.emplace_back(PendingDispatch{typeId, std::move(data)});
 }
 
 void EventManager::enqueueBatch(std::vector<DeferredEvent>&& events) const {
@@ -876,9 +876,8 @@ void EventManager::drainDispatchQueueWithBudget() {
 
     m_localDispatchBuffer.clear();
     m_localDispatchBuffer.reserve(pendingCount);
-    m_localDispatchBuffer.resize(pendingCount);
     for (size_t i = 0; i < pendingCount; ++i) {
-      m_localDispatchBuffer[i] = std::move(m_pendingDispatch.front());
+      m_localDispatchBuffer.emplace_back(std::move(m_pendingDispatch.front()));
       m_pendingDispatch.pop_front();
     }
   }
@@ -887,9 +886,12 @@ void EventManager::drainDispatchQueueWithBudget() {
   const size_t eventCount = m_localDispatchBuffer.size();
   m_combatDispatchIndices.clear();
   m_combatDispatchIndices.reserve(eventCount);
+  bool allCombatEvents = (eventCount > 0);
   for (size_t dispatchIndex = 0; dispatchIndex < eventCount; ++dispatchIndex) {
     if (m_localDispatchBuffer[dispatchIndex].typeId == EventTypeId::Combat) {
       m_combatDispatchIndices.push_back(dispatchIndex);
+    } else {
+      allCombatEvents = false;
     }
   }
 
@@ -967,25 +969,47 @@ void EventManager::drainDispatchQueueWithBudget() {
 
   {
     std::shared_lock<std::shared_mutex> handlerLock(m_handlersMutex);
-    size_t preparedCombatCursor = 0;
-    for (size_t dispatchIndex = 0; dispatchIndex < eventCount; ++dispatchIndex) {
-      const auto& pendingDispatch = m_localDispatchBuffer[dispatchIndex];
-      if (pendingDispatch.typeId == EventTypeId::Combat) {
-        if (preparedCombatCursor < m_preparedCombatBuffer.size()) {
+    if (allCombatEvents) {
+      const auto& combatHandlers =
+          m_handlersByType[static_cast<size_t>(EventTypeId::Combat)];
+      const bool hasCombatHandlers = !combatHandlers.empty();
+
+      for (size_t combatIndex = 0; combatIndex < eventCount; ++combatIndex) {
+        const auto& pendingDispatch = m_localDispatchBuffer[combatIndex];
+        if (combatIndex < m_preparedCombatBuffer.size()) {
           commitPreparedCombatEvent(pendingDispatch,
-                                    m_preparedCombatBuffer[preparedCombatCursor],
+                                    m_preparedCombatBuffer[combatIndex],
                                     cachedGameTime);
-          ++preparedCombatCursor;
         } else {
           commitPreparedCombatEvent(pendingDispatch, PreparedCombatEvent{}, cachedGameTime);
         }
-      }
 
-      const auto& typeHandlers =
-          m_handlersByType[static_cast<size_t>(pendingDispatch.typeId)];
-      if (!typeHandlers.empty()) {
-        dispatchPendingEventWithHandlers(pendingDispatch, typeHandlers,
-                                         "deferred dispatch");
+        if (hasCombatHandlers) {
+          dispatchPendingEventWithHandlers(pendingDispatch, combatHandlers,
+                                           "deferred dispatch");
+        }
+      }
+    } else {
+      size_t preparedCombatCursor = 0;
+      for (size_t dispatchIndex = 0; dispatchIndex < eventCount; ++dispatchIndex) {
+        const auto& pendingDispatch = m_localDispatchBuffer[dispatchIndex];
+        if (pendingDispatch.typeId == EventTypeId::Combat) {
+          if (preparedCombatCursor < m_preparedCombatBuffer.size()) {
+            commitPreparedCombatEvent(pendingDispatch,
+                                      m_preparedCombatBuffer[preparedCombatCursor],
+                                      cachedGameTime);
+            ++preparedCombatCursor;
+          } else {
+            commitPreparedCombatEvent(pendingDispatch, PreparedCombatEvent{}, cachedGameTime);
+          }
+        }
+
+        const auto& typeHandlers =
+            m_handlersByType[static_cast<size_t>(pendingDispatch.typeId)];
+        if (!typeHandlers.empty()) {
+          dispatchPendingEventWithHandlers(pendingDispatch, typeHandlers,
+                                           "deferred dispatch");
+        }
       }
     }
   }
@@ -1010,8 +1034,16 @@ void EventManager::drainDispatchQueueWithBudget() {
 #endif
 
   // Release pooled events back to pools (after all processing complete)
-  for (const auto &pd : m_localDispatchBuffer) {
-    releaseEventToPool(pd.typeId, pd.data.event);
+  if (allCombatEvents) {
+    for (const auto& pd : m_localDispatchBuffer) {
+      if (pd.data.event) {
+        m_damagePool.release(std::static_pointer_cast<DamageEvent>(pd.data.event));
+      }
+    }
+  } else {
+    for (const auto& pd : m_localDispatchBuffer) {
+      releaseEventToPool(pd.typeId, pd.data.event);
+    }
   }
 }
 

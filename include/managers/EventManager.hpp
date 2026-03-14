@@ -550,7 +550,7 @@ private:
                                  const PreparedCombatEvent& preparedCombat,
                                  float gameTime) const;
   uint64_t getCurrentTimeNanos() const;
-  void enqueueDispatch(EventTypeId typeId, const EventData &data) const;
+  void enqueueDispatch(EventTypeId typeId, EventData&& data) const;
   void drainDispatchQueueWithBudget();
 
   // Consolidated dispatch helper

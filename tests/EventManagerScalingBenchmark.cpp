@@ -1292,6 +1292,12 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
         const size_t queueCap = 8192;
         const double queueUsagePct =
             (static_cast<double>(totalEvents) / static_cast<double>(queueCap)) * 100.0;
+        constexpr double FRAME_BUDGET_60HZ_MS = 16.67;
+        constexpr double FRAME_BUDGET_120HZ_MS = 8.33;
+        const double drainPct60 = (drainMs / FRAME_BUDGET_60HZ_MS) * 100.0;
+        const double drainPct120 = (drainMs / FRAME_BUDGET_120HZ_MS) * 100.0;
+        const double totalPct60 = (totalMs / FRAME_BUDGET_60HZ_MS) * 100.0;
+        const double totalPct120 = (totalMs / FRAME_BUDGET_120HZ_MS) * 100.0;
 
         std::cout << profile.label << ":" << std::endl;
         std::cout << "  Producer workers: " << producerWorkers
@@ -1315,6 +1321,12 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
                   << (totalEvents / totalMs) * 1000.0 << " events/sec" << std::endl;
         std::cout << "  Queue usage vs 8192 cap: " << std::setprecision(1)
                   << queueUsagePct << "%" << std::endl;
+        std::cout << "  Drain frame impact: " << std::fixed << std::setprecision(1)
+                  << drainPct60 << "% of 60Hz, "
+                  << drainPct120 << "% of 120Hz" << std::endl;
+        std::cout << "  Total frame impact: " << std::fixed << std::setprecision(1)
+                  << totalPct60 << "% of 60Hz, "
+                  << totalPct120 << "% of 120Hz" << std::endl;
 
         const auto& targetData = EntityDataManager::Instance().getCharacterData(targetHandle);
         BOOST_CHECK_CLOSE(targetData.health, 1000000.0 - expectedTotalDamage, 0.001);
