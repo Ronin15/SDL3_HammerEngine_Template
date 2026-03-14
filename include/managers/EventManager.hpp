@@ -462,6 +462,14 @@ public:
   std::shared_ptr<DamageEvent> acquireDamageEvent() const { return m_damagePool.acquire(); }
 
 private:
+  struct PreparedCombatEvent {
+    float damage{0.0f};
+    Vector2D knockback{};
+    Vector2D combatLocation{};
+    std::vector<size_t> witnessIndices{};
+    bool valid{false};
+  };
+
   EventManager(); // Constructor pre-allocates handler vectors
 
   // Shutdown state (main thread access only - game loop guarantees sequential updates)
@@ -525,9 +533,17 @@ private:
 
   // Reusable buffer for drainDispatchQueueWithBudget
   mutable std::vector<PendingDispatch> m_localDispatchBuffer;
+  mutable std::vector<size_t> m_combatDispatchIndices;
+  mutable std::vector<PreparedCombatEvent> m_preparedCombatBuffer;
+  mutable std::vector<std::future<void>> m_combatPrepFutures;
 
   void dispatchPendingEvent(const PendingDispatch& pendingDispatch,
                             const char* errorContext) const;
+  PreparedCombatEvent prepareCombatEvent(size_t dispatchIndex) const;
+  void prepareCombatBatch(size_t startCombatIndex, size_t endCombatIndex) const;
+  void commitPreparedCombatEvent(const PendingDispatch& pendingDispatch,
+                                 const PreparedCombatEvent& preparedCombat,
+                                 float gameTime) const;
   uint64_t getCurrentTimeNanos() const;
   void enqueueDispatch(EventTypeId typeId, const EventData &data) const;
   void drainDispatchQueueWithBudget();

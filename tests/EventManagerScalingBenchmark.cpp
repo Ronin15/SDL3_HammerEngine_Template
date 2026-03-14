@@ -1143,16 +1143,49 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
     };
 
     const std::vector<CombatProfile> profiles = {
-        {"Typical combat frame", 8, 125},     // 1,000 total events
-        {"Large battle frame", 16, 250},      // 4,000 total events
+        {"Large combat frame", 16, 250},      // 4,000 total events
+        {"Near-cap battle frame", 16, 500},   // 8,000 total events
     };
 
     std::cout << "\n===== COMBAT BURST PROFILE BENCHMARK =====" << std::endl;
     std::cout << "Batched deferred combat events using pooled DamageEvent objects\n" << std::endl;
 
+    auto runCombatBurst = [&eventMgr](const CombatProfile& profile) {
+        auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+        std::atomic<int> workersComplete{0};
+
+        for (int worker = 0; worker < profile.workers; ++worker) {
+            threadSystem.enqueueTask([&eventMgr, &workersComplete, &profile, worker]() {
+                std::vector<EventManager::DeferredEvent> localBatch;
+                localBatch.reserve(profile.eventsPerWorker);
+
+                const int startIndex = worker * profile.eventsPerWorker;
+                for (int i = 0; i < profile.eventsPerWorker; ++i) {
+                    localBatch.push_back(createDeferredCombatBenchmarkEvent(startIndex + i));
+                }
+
+                eventMgr.enqueueBatch(std::move(localBatch));
+                workersComplete.fetch_add(1);
+            });
+        }
+
+        while (workersComplete.load() < profile.workers) {
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+        }
+
+        eventMgr.update();
+    };
+
     for (const auto& profile : profiles) {
         combatHandlerCalls = 0;
         const int totalEvents = profile.workers * profile.eventsPerWorker;
+        auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+
+        constexpr int WARMUP_FRAMES = 8;
+        for (int warmup = 0; warmup < WARMUP_FRAMES; ++warmup) {
+            runCombatBurst(profile);
+        }
+        combatHandlerCalls = 0;
 
         auto& threadSystem = HammerEngine::ThreadSystem::Instance();
         std::atomic<int> workersComplete{0};
@@ -1182,6 +1215,13 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
         eventMgr.update();
         auto drainEnd = std::chrono::high_resolution_clock::now();
 
+        auto decision = budgetMgr.shouldUseThreading(
+            HammerEngine::SystemType::Event, static_cast<size_t>(totalEvents));
+        const size_t learnedThreshold =
+            budgetMgr.getLearnedThreshold(HammerEngine::SystemType::Event);
+        const float batchMultiplier =
+            budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Event);
+
         const double enqueueMs =
             std::chrono::duration<double, std::milli>(enqueueEnd - enqueueStart).count();
         const double drainMs =
@@ -1202,6 +1242,11 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
                   << drainMs << " ms" << std::endl;
         std::cout << "  Total:   " << std::fixed << std::setprecision(2)
                   << totalMs << " ms" << std::endl;
+        std::cout << "  WorkerBudget mode: "
+                  << (decision.shouldThread ? "threaded" : "single") << std::endl;
+        std::cout << "  Learned threshold: " << learnedThreshold
+                  << ", batch multiplier: " << std::fixed << std::setprecision(2)
+                  << batchMultiplier << std::endl;
         std::cout << "  Throughput: " << std::setprecision(0)
                   << (totalEvents / totalMs) * 1000.0 << " events/sec" << std::endl;
         std::cout << "  Queue usage vs 8192 cap: " << std::setprecision(1)

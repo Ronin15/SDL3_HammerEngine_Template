@@ -710,6 +710,71 @@ BOOST_FIXTURE_TEST_CASE(TriggerDamage_DispatchesToHandlers, EventManagerFixture)
   EventManager::Instance().removeHandler(tok);
 }
 
+BOOST_FIXTURE_TEST_CASE(ImmediateDamageCommit_RunsBeforeCustomCombatHandlers,
+                        EventManagerFixture) {
+  auto& edm = EntityDataManager::Instance();
+  EntityHandle playerHandle = edm.registerPlayer(9101, Vector2D(100.0f, 100.0f));
+  BOOST_REQUIRE(playerHandle.isValid());
+
+  auto& playerData = edm.getCharacterData(playerHandle);
+  playerData.maxHealth = 100.0f;
+  playerData.health = 100.0f;
+  playerData.mass = 1.0f;
+
+  auto damageEvent = std::make_shared<DamageEvent>(
+      EntityEventType::DamageIntent, EntityHandle{}, playerHandle, 25.0f,
+      Vector2D(5.0f, 0.0f));
+
+  float observedCommittedHealth = -1.0f;
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Combat, [&edm, playerHandle, &observedCommittedHealth](
+                              const EventData& data) {
+        BOOST_REQUIRE(data.event);
+        observedCommittedHealth = edm.getCharacterData(playerHandle).health;
+      });
+
+  BOOST_CHECK(EventManager::Instance().dispatchEvent(
+      damageEvent, EventManager::DispatchMode::Immediate));
+
+  BOOST_CHECK_CLOSE(edm.getCharacterData(playerHandle).health, 75.0f, 0.01f);
+  BOOST_CHECK_CLOSE(observedCommittedHealth, 75.0f, 0.01f);
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(DeferredDamageCommit_RunsBeforeCustomCombatHandlers,
+                        EventManagerFixture) {
+  auto& edm = EntityDataManager::Instance();
+  EntityHandle playerHandle = edm.registerPlayer(9102, Vector2D(100.0f, 100.0f));
+  BOOST_REQUIRE(playerHandle.isValid());
+
+  auto& playerData = edm.getCharacterData(playerHandle);
+  playerData.maxHealth = 100.0f;
+  playerData.health = 100.0f;
+  playerData.mass = 1.0f;
+
+  auto damageEvent = std::make_shared<DamageEvent>(
+      EntityEventType::DamageIntent, EntityHandle{}, playerHandle, 120.0f,
+      Vector2D(2.0f, 0.0f));
+
+  float observedCommittedHealth = -1.0f;
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Combat, [&edm, playerHandle, &observedCommittedHealth](
+                              const EventData& data) {
+        BOOST_REQUIRE(data.event);
+        observedCommittedHealth = edm.getCharacterData(playerHandle).health;
+      });
+
+  BOOST_CHECK(
+      EventManager::Instance().dispatchEvent(damageEvent, EventManager::DispatchMode::Deferred));
+  EventManager::Instance().update();
+
+  BOOST_CHECK_CLOSE(edm.getCharacterData(playerHandle).health, 0.0f, 0.01f);
+  BOOST_CHECK_CLOSE(observedCommittedHealth, 0.0f, 0.01f);
+
+  EventManager::Instance().removeHandler(tok);
+}
+
 BOOST_FIXTURE_TEST_CASE(TriggerWorldTrigger_DispatchesToHandlers, EventManagerFixture) {
   std::atomic<bool> triggerHandlerCalled{false};
   auto tok = EventManager::Instance().registerHandlerWithToken(

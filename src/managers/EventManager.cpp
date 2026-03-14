@@ -30,72 +30,6 @@
 // ==================== Core Singleton & Lifecycle ====================
 
 namespace {
-void processDamageEvent(const EventData& data) {
-  if (!data.isActive() || !data.event) {
-    return;
-  }
-
-  auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(data.event);
-  if (!damageEvent) {
-    return;
-  }
-
-  auto& edm = EntityDataManager::Instance();
-  const EntityHandle targetHandle = damageEvent->getTarget();
-  const EntityHandle attackerHandle = damageEvent->getSource();
-  const size_t targetIdx = edm.getIndex(targetHandle);
-  if (targetIdx == SIZE_MAX) {
-    return;
-  }
-
-  auto& hotData = edm.getHotDataByIndex(targetIdx);
-  auto& charData = edm.getCharacterData(targetHandle);
-  if (charData.health <= 0.0f) {
-    return;
-  }
-
-  const float damage = damageEvent->getDamage();
-  charData.health = std::max(0.0f, charData.health - damage);
-
-  const float knockbackScale = 1.0f / std::max(0.1f, charData.mass);
-  hotData.transform.velocity =
-      hotData.transform.velocity + damageEvent->getKnockback() * knockbackScale;
-
-  const float gameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
-  const size_t attackerIdx =
-      attackerHandle.isValid() ? edm.getIndex(attackerHandle) : SIZE_MAX;
-
-  if (attackerHandle.isValid()) {
-    Behaviors::processCombatEvent(targetIdx, attackerHandle, targetHandle,
-                                  damage, true, gameTime);
-    if (attackerIdx != SIZE_MAX && attackerIdx != targetIdx) {
-      Behaviors::processCombatEvent(attackerIdx, attackerHandle, targetHandle,
-                                    damage, false, gameTime);
-    }
-  }
-
-  const Vector2D combatLocation = hotData.transform.position;
-  const bool wasLethal = (charData.health <= 0.0f);
-  thread_local std::vector<size_t> t_witnessBuffer;
-  AIManager::Instance().scanActiveIndicesInRadius(combatLocation, 300.0f,
-                                                  t_witnessBuffer, false);
-  for (size_t witnessIdx : t_witnessBuffer) {
-    if (witnessIdx == targetIdx || witnessIdx == attackerIdx) {
-      continue;
-    }
-
-    Behaviors::processWitnessedCombat(witnessIdx, attackerHandle,
-                                      combatLocation, gameTime, wasLethal);
-  }
-
-  if (wasLethal) {
-    hotData.flags &= ~EntityHotData::FLAG_ALIVE;
-    if (!targetHandle.isPlayer()) {
-      edm.destroyEntity(targetHandle);
-    }
-  }
-}
-
 void registerBuiltInHandlers(EventManager& eventManager) {
   eventManager.registerHandler(EventTypeId::NPCSpawn, [](const EventData &data) {
     if (!data.isActive() || !data.event) return;
@@ -103,10 +37,6 @@ void registerBuiltInHandlers(EventManager& eventManager) {
     if (npcEvent) {
       npcEvent->execute();
     }
-  });
-
-  eventManager.registerHandler(EventTypeId::Combat, [](const EventData &data) {
-    processDamageEvent(data);
   });
 }
 } // namespace
@@ -712,8 +642,18 @@ bool EventManager::dispatchEvent(const EventPtr& event, DispatchMode mode) const
 bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
                                  DispatchMode mode, const char *errorContext) const {
   if (mode == DispatchMode::Immediate) {
-    dispatchPendingEvent(PendingDispatch{typeId, eventData}, errorContext);
+    const PendingDispatch pendingDispatch{typeId, eventData};
+    if (typeId == EventTypeId::Combat) {
+      const float gameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
+      commitPreparedCombatEvent(pendingDispatch, PreparedCombatEvent{}, gameTime);
+      dispatchPendingEvent(pendingDispatch, errorContext);
+    } else {
+      dispatchPendingEvent(pendingDispatch, errorContext);
+    }
     releaseEventToPool(typeId, eventData.event);
+    if (typeId == EventTypeId::Combat) {
+      return true;
+    }
     std::shared_lock<std::shared_mutex> lock(m_handlersMutex);
     return !m_handlersByType[static_cast<size_t>(typeId)].empty();
   }
@@ -798,6 +738,156 @@ void EventManager::dispatchPendingEvent(const PendingDispatch& pendingDispatch,
   }
 }
 
+EventManager::PreparedCombatEvent
+EventManager::prepareCombatEvent(size_t dispatchIndex) const {
+  PreparedCombatEvent preparedCombat;
+
+  const PendingDispatch& pendingDispatch = m_localDispatchBuffer[dispatchIndex];
+  if (!pendingDispatch.data.isActive() || !pendingDispatch.data.event) {
+    return preparedCombat;
+  }
+
+  auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(pendingDispatch.data.event);
+  if (!damageEvent) {
+    return preparedCombat;
+  }
+
+  auto& edm = EntityDataManager::Instance();
+  const EntityHandle targetHandle = damageEvent->getTarget();
+  const EntityHandle attackerHandle = damageEvent->getSource();
+  const size_t targetIdx = edm.getIndex(targetHandle);
+  const size_t attackerIdx = attackerHandle.isValid()
+      ? edm.getIndex(attackerHandle)
+      : SIZE_MAX;
+  preparedCombat.damage = damageEvent->getDamage();
+  preparedCombat.knockback = damageEvent->getKnockback();
+
+  if (targetIdx == SIZE_MAX) {
+    return preparedCombat;
+  }
+
+  const auto& hotData = edm.getHotDataByIndex(targetIdx);
+  preparedCombat.combatLocation = hotData.transform.position;
+
+  thread_local std::vector<size_t> t_witnessBuffer;
+  AIManager::Instance().scanActiveIndicesInRadius(
+      preparedCombat.combatLocation, 300.0f, t_witnessBuffer, false);
+  preparedCombat.witnessIndices.reserve(t_witnessBuffer.size());
+  for (size_t witnessIdx : t_witnessBuffer) {
+    if (witnessIdx == targetIdx || witnessIdx == attackerIdx) {
+      continue;
+    }
+    preparedCombat.witnessIndices.push_back(witnessIdx);
+  }
+
+  preparedCombat.valid = true;
+  return preparedCombat;
+}
+
+void EventManager::prepareCombatBatch(size_t startCombatIndex,
+                                      size_t endCombatIndex) const {
+  if (startCombatIndex >= endCombatIndex ||
+      startCombatIndex >= m_combatDispatchIndices.size()) {
+    return;
+  }
+
+  for (size_t combatIndex = startCombatIndex; combatIndex < endCombatIndex; ++combatIndex) {
+    m_preparedCombatBuffer[combatIndex] =
+        prepareCombatEvent(m_combatDispatchIndices[combatIndex]);
+  }
+}
+
+void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispatch,
+                                             const PreparedCombatEvent& preparedCombat,
+                                             float gameTime) const {
+  if (!pendingDispatch.data.isActive() || !pendingDispatch.data.event) {
+    return;
+  }
+
+  auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(pendingDispatch.data.event);
+  if (!damageEvent) {
+    return;
+  }
+
+  auto& edm = EntityDataManager::Instance();
+  const EntityHandle targetHandle = damageEvent->getTarget();
+  const EntityHandle attackerHandle = damageEvent->getSource();
+  const size_t targetIdx = edm.getIndex(targetHandle);
+  if (targetIdx == SIZE_MAX) {
+    return;
+  }
+
+  auto& hotData = edm.getHotDataByIndex(targetIdx);
+  auto& charData = edm.getCharacterData(targetHandle);
+  if (charData.health <= 0.0f) {
+    damageEvent->setRemainingHealth(charData.health);
+    damageEvent->setWasLethal(false);
+    return;
+  }
+
+  const float damage = preparedCombat.valid
+      ? preparedCombat.damage
+      : damageEvent->getDamage();
+  charData.health = std::max(0.0f, charData.health - damage);
+
+  const Vector2D knockback = preparedCombat.valid
+      ? preparedCombat.knockback
+      : damageEvent->getKnockback();
+  const float knockbackScale = 1.0f / std::max(0.1f, charData.mass);
+  hotData.transform.velocity = hotData.transform.velocity + knockback * knockbackScale;
+
+  const size_t attackerIdx = attackerHandle.isValid()
+      ? edm.getIndex(attackerHandle)
+      : SIZE_MAX;
+  if (attackerHandle.isValid()) {
+    Behaviors::processCombatEvent(targetIdx, attackerHandle, targetHandle,
+                                  damage, true, gameTime);
+    if (attackerIdx != SIZE_MAX && attackerIdx != targetIdx) {
+      Behaviors::processCombatEvent(attackerIdx, attackerHandle, targetHandle,
+                                    damage, false, gameTime);
+    }
+  }
+
+  const bool wasLethal = (charData.health <= 0.0f);
+  const Vector2D combatLocation = preparedCombat.valid
+      ? preparedCombat.combatLocation
+      : hotData.transform.position;
+  if (preparedCombat.valid) {
+    for (size_t witnessIdx : preparedCombat.witnessIndices) {
+      if (witnessIdx == targetIdx || witnessIdx == attackerIdx) {
+        continue;
+      }
+      if (!edm.getHotDataByIndex(witnessIdx).isAlive()) {
+        continue;
+      }
+
+      Behaviors::processWitnessedCombat(witnessIdx, attackerHandle,
+                                        combatLocation, gameTime, wasLethal);
+    }
+  } else {
+    thread_local std::vector<size_t> t_witnessBuffer;
+    AIManager::Instance().scanActiveIndicesInRadius(combatLocation, 300.0f,
+                                                    t_witnessBuffer, false);
+    for (size_t witnessIdx : t_witnessBuffer) {
+      if (witnessIdx == targetIdx || witnessIdx == attackerIdx) {
+        continue;
+      }
+      Behaviors::processWitnessedCombat(witnessIdx, attackerHandle,
+                                        combatLocation, gameTime, wasLethal);
+    }
+  }
+
+  if (wasLethal) {
+    hotData.flags &= ~EntityHotData::FLAG_ALIVE;
+    if (!targetHandle.isPlayer()) {
+      edm.destroyEntity(targetHandle);
+    }
+  }
+
+  damageEvent->setRemainingHealth(charData.health);
+  damageEvent->setWasLethal(wasLethal);
+}
+
 void EventManager::drainDispatchQueueWithBudget() {
   // Extract all pending events under lock - worker threads may be enqueueing
   // events concurrently (e.g., WorldManager::loadNewWorld on worker thread)
@@ -810,17 +900,108 @@ void EventManager::drainDispatchQueueWithBudget() {
 
     m_localDispatchBuffer.clear();
     m_localDispatchBuffer.reserve(pendingCount);
+    m_localDispatchBuffer.resize(pendingCount);
     for (size_t i = 0; i < pendingCount; ++i) {
-      m_localDispatchBuffer.push_back(std::move(m_pendingDispatch.front()));
+      m_localDispatchBuffer[i] = std::move(m_pendingDispatch.front());
       m_pendingDispatch.pop_front();
     }
   }
   // Lock released - process events without holding lock
 
   const size_t eventCount = m_localDispatchBuffer.size();
-  auto dispatchStartTime = std::chrono::high_resolution_clock::now();
+  m_combatDispatchIndices.clear();
+  m_combatDispatchIndices.reserve(eventCount);
+  for (size_t dispatchIndex = 0; dispatchIndex < eventCount; ++dispatchIndex) {
+    if (m_localDispatchBuffer[dispatchIndex].typeId == EventTypeId::Combat) {
+      m_combatDispatchIndices.push_back(dispatchIndex);
+    }
+  }
 
-  for (const auto& pendingDispatch : m_localDispatchBuffer) {
+  auto dispatchStartTime = std::chrono::high_resolution_clock::now();
+  const float cachedGameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
+  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  const size_t combatEventCount = m_combatDispatchIndices.size();
+  bool useThreading = false;
+
+  if (combatEventCount > 0) {
+    auto decision = budgetMgr.shouldUseThreading(
+        HammerEngine::SystemType::Event, combatEventCount);
+    useThreading = decision.shouldThread;
+#ifndef NDEBUG
+    if (!m_threadingEnabled.load(std::memory_order_acquire)) {
+      useThreading = false;
+    }
+#endif
+  }
+
+  m_preparedCombatBuffer.clear();
+  m_preparedCombatBuffer.resize(combatEventCount);
+  size_t actualBatchCount = 1;
+  bool actualWasThreaded = false;
+
+  if (combatEventCount > 0) {
+    if (useThreading) {
+      auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+      size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+          HammerEngine::SystemType::Event, combatEventCount);
+      auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+          HammerEngine::SystemType::Event, combatEventCount, optimalWorkerCount);
+
+      if (batchCount > 1) {
+        actualWasThreaded = true;
+        actualBatchCount = batchCount;
+        m_combatPrepFutures.clear();
+        m_combatPrepFutures.reserve(batchCount);
+
+        for (size_t batchIndex = 0; batchIndex < batchCount; ++batchIndex) {
+          const size_t startCombatIndex = batchIndex * batchSize;
+          if (startCombatIndex >= combatEventCount) {
+            break;
+          }
+
+          const size_t endCombatIndex =
+              std::min(startCombatIndex + batchSize, combatEventCount);
+          m_combatPrepFutures.push_back(threadSystem.enqueueTaskWithResult(
+              [this, startCombatIndex, endCombatIndex]() {
+                try {
+                  prepareCombatBatch(startCombatIndex, endCombatIndex);
+                } catch (const std::exception& e) {
+                  EVENT_ERROR(std::format("Exception in combat prep batch: {}", e.what()));
+                } catch (...) {
+                  EVENT_ERROR("Unknown exception in combat prep batch");
+                }
+              },
+              HammerEngine::TaskPriority::High, "Event_CombatPrep"));
+        }
+
+        for (auto& future : m_combatPrepFutures) {
+          if (!future.valid()) {
+            continue;
+          }
+
+          future.get();
+        }
+      }
+    }
+
+    if (!actualWasThreaded) {
+      prepareCombatBatch(0, combatEventCount);
+    }
+  }
+
+  size_t preparedCombatCursor = 0;
+  for (size_t dispatchIndex = 0; dispatchIndex < eventCount; ++dispatchIndex) {
+    const auto& pendingDispatch = m_localDispatchBuffer[dispatchIndex];
+    if (pendingDispatch.typeId == EventTypeId::Combat) {
+      if (preparedCombatCursor < m_preparedCombatBuffer.size()) {
+        commitPreparedCombatEvent(pendingDispatch,
+                                  m_preparedCombatBuffer[preparedCombatCursor],
+                                  cachedGameTime);
+        ++preparedCombatCursor;
+      } else {
+        commitPreparedCombatEvent(pendingDispatch, PreparedCombatEvent{}, cachedGameTime);
+      }
+    }
     dispatchPendingEvent(pendingDispatch, "deferred dispatch");
   }
 
@@ -829,8 +1010,9 @@ void EventManager::drainDispatchQueueWithBudget() {
       dispatchEndTime - dispatchStartTime).count();
 
   if (eventCount > 0 && measuredRangeMs > 0.0) {
-    HammerEngine::WorkerBudgetManager::Instance().reportExecution(
-        HammerEngine::SystemType::Event, eventCount, false, 1, measuredRangeMs);
+    budgetMgr.reportExecution(HammerEngine::SystemType::Event, eventCount,
+                              actualWasThreaded, actualBatchCount,
+                              measuredRangeMs);
   }
 
 #ifndef NDEBUG
