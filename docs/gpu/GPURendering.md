@@ -6,6 +6,20 @@
 
 The SDL3 GPU path is built around `GPURenderer` and a two-pass scene-plus-swapchain flow. The current branch makes swapchain acquisition explicit instead of hiding it inside a monolithic frame begin.
 
+## Platform Shader Targets
+
+The GPU build now emits platform-native shader binaries and requests the matching SDL GPU backend at device creation time:
+
+- Windows: Direct3D 12 with `.dxil` shaders
+- macOS: Metal with `.metal` shaders
+- Linux and other non-Apple Unix platforms: Vulkan with `.spv` shaders
+
+Build-time shader tool requirements follow the same split:
+
+- Linux: `glslangValidator`
+- macOS: `glslangValidator`, `spirv-cross`
+- Windows: `glslangValidator`, `spirv-cross`, `dxc`
+
 ## Frame Contract
 
 ```cpp

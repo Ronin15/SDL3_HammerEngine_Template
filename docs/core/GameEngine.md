@@ -53,9 +53,15 @@ This does not change the fixed simulation rate. It allows `TimestepManager` to q
 
 ## Platform Notes
 
-### macOS
+### GPU backend preference
 
-The engine now prefers Metal-backed rendering behavior where possible. This aligns the GPU path with current display refresh handling, including ProMotion-style refresh reporting when available.
+When `USE_SDL3_GPU=ON`, the engine requests the platform-native backend that matches the compiled shader binaries:
+
+- Windows: Direct3D 12
+- macOS: Metal
+- Linux and other non-Apple Unix platforms: Vulkan
+
+On macOS this keeps the GPU path aligned with current display refresh handling, including ProMotion-style refresh reporting when available.
 
 ### Resizing / display changes
 

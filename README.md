@@ -90,7 +90,10 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 - Platforms: Linux, macOS (Apple Silicon), Windows (MinGW)
 - [SDL3 dependencies](https://wiki.libsdl.org/SDL3/README-linux) (ttf, mixer)
 - Boost (for tests), cppcheck & clang-tidy (static analysis), Valgrind (optional, Linux only)
-- GPU rendering (optional): glslangValidator, spirv-cross (for `-DUSE_SDL3_GPU=ON`)
+- GPU rendering (optional): platform shader tools for `-DUSE_SDL3_GPU=ON`
+  - Linux: `glslangValidator` for Vulkan SPIR-V shaders
+  - macOS: `glslangValidator` + `spirv-cross` for Metal shaders
+  - Windows: `glslangValidator` + `spirv-cross` + `dxc` for Direct3D 12 DXIL shaders
 
 **Platform notes:**  
 See the [documentation hub](docs/README.md) and subsystem docs for current setup details and platform-specific notes.
@@ -107,7 +110,7 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 # Release build (optimized)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
 
-# GPU rendering path (SDL3 GPU API with SPIR-V/Metal shaders)
+# GPU rendering path (SDL3 GPU API with platform-native shaders)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DUSE_SDL3_GPU=ON && ninja -C build
 
 # Run the engine

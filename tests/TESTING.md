@@ -98,7 +98,7 @@ The Hammer Game Engine has the following test suites:
     - GPU Types Tests: Vertex struct layouts (SpriteVertex, ColorVertex), UBO alignment validation
     - GPU Pipeline Config Tests: Pipeline configuration factory methods, blend modes
     - GPU Device Tests: Device lifecycle, shader format queries, swapchain format
-    - GPU Shader Manager Tests: Shader loading, caching, SPIR-V/Metal path validation
+    - GPU Shader Manager Tests: Shader loading, caching, and platform-native shader path validation (SPIR-V/Metal/DXIL as applicable)
     - GPU Resource Tests: Buffer, texture, transfer buffer, sampler wrappers
     - GPU Vertex Pool Tests: Triple-buffered vertex pool, frame cycling
     - Sprite Batch Tests: Batch recording, vertex data verification
@@ -1758,7 +1758,7 @@ Located in `tests/gpu/`, these tests validate the SDL3 GPU rendering subsystem. 
 **GPUShaderManagerTests.cpp** - Shader loading and caching:
 - Load all 6 shaders (sprite, color, composite × vert/frag)
 - Shader caching and retrieval
-- SPIR-V and Metal path verification
+- Platform-native shader path verification (`.spv`, `.metal`, or `.dxil` depending on target platform)
 - Nonexistent shader handling
 
 **GPUResourceTests.cpp** - Buffer, texture, sampler wrappers:
