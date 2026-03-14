@@ -41,6 +41,8 @@ namespace {
 // Test fixture for BackgroundSimulationManager benchmarks
 class BGSimBenchmarkFixture {
 public:
+    static bool& initializedFlag() { return s_initialized; }
+
     BGSimBenchmarkFixture() {
         // Initialize systems once per fixture
         if (!s_initialized) {
@@ -149,6 +151,25 @@ protected:
 };
 
 bool BGSimBenchmarkFixture::s_initialized = false;
+
+struct BGSimBenchmarkModuleCleanup {
+    ~BGSimBenchmarkModuleCleanup() {
+        if (!BGSimBenchmarkFixture::initializedFlag()) {
+            return;
+        }
+
+        BackgroundSimulationManager::Instance().clean();
+        AIManager::Instance().clean();
+        CollisionManager::Instance().clean();
+        PathfinderManager::Instance().clean();
+        EntityDataManager::Instance().clean();
+        HammerEngine::ThreadSystem::Instance().clean();
+
+        BGSimBenchmarkFixture::initializedFlag() = false;
+    }
+};
+
+BOOST_GLOBAL_FIXTURE(BGSimBenchmarkModuleCleanup);
 
 } // anonymous namespace
 

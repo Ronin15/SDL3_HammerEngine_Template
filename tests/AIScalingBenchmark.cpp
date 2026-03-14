@@ -42,6 +42,8 @@ namespace {
 // Test fixture for AI scaling benchmarks
 class AIScalingFixture {
 public:
+    static bool& initializedFlag() { return s_initialized; }
+
     AIScalingFixture() {
         // Initialize systems once per fixture
         if (!s_initialized) {
@@ -203,6 +205,25 @@ private:
 };
 
 bool AIScalingFixture::s_initialized = false;
+
+struct AIScalingModuleCleanup {
+    ~AIScalingModuleCleanup() {
+        if (!AIScalingFixture::initializedFlag()) {
+            return;
+        }
+
+        BackgroundSimulationManager::Instance().clean();
+        AIManager::Instance().clean();
+        CollisionManager::Instance().clean();
+        PathfinderManager::Instance().clean();
+        EntityDataManager::Instance().clean();
+        HammerEngine::ThreadSystem::Instance().clean();
+
+        AIScalingFixture::initializedFlag() = false;
+    }
+};
+
+BOOST_GLOBAL_FIXTURE(AIScalingModuleCleanup);
 
 } // anonymous namespace
 

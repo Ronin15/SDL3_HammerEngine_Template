@@ -43,6 +43,8 @@ namespace {
 
 class AnalysisFixture {
 public:
+    static bool& initializedFlag() { return s_initialized; }
+
     AnalysisFixture() {
         if (!s_initialized) {
             HAMMER_ENABLE_BENCHMARK_MODE();
@@ -59,6 +61,8 @@ public:
         }
         m_rng.seed(42);
     }
+
+    ~AnalysisFixture() = default;
 
     void reset() {
         EntityDataManager::Instance().prepareForStateTransition();
@@ -103,6 +107,26 @@ protected:
 };
 
 bool AnalysisFixture::s_initialized = false;
+
+struct AnalysisModuleCleanup {
+    ~AnalysisModuleCleanup() {
+        if (!AnalysisFixture::initializedFlag()) {
+            return;
+        }
+
+        EventManager::Instance().clean();
+        ParticleManager::Instance().clean();
+        AIManager::Instance().clean();
+        CollisionManager::Instance().clean();
+        PathfinderManager::Instance().clean();
+        EntityDataManager::Instance().clean();
+        HammerEngine::ThreadSystem::Instance().clean();
+
+        AnalysisFixture::initializedFlag() = false;
+    }
+};
+
+BOOST_GLOBAL_FIXTURE(AnalysisModuleCleanup);
 
 } // anonymous namespace
 
