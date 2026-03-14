@@ -640,7 +640,7 @@ bool EventManager::dispatchEvent(const EventPtr& event, DispatchMode mode) const
 bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
                                  DispatchMode mode, const char *errorContext) const {
   if (mode == DispatchMode::Immediate) {
-    const PendingDispatch pendingDispatch{typeId, eventData};
+    const PendingDispatch pendingDispatch{0, typeId, eventData};
     if (typeId == EventTypeId::Combat) {
       const float gameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
       commitPreparedCombatEvent(pendingDispatch, PreparedCombatEvent{}, gameTime);
@@ -661,13 +661,46 @@ bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
   return true;
 }
 
-void EventManager::enqueueDispatch(EventTypeId typeId, EventData&& data) const {
-  std::lock_guard<std::mutex> lock(m_dispatchMutex);
-  if (m_pendingDispatch.size() >= m_maxDispatchQueue) {
+size_t EventManager::getPendingQueueSizeUnsafe() const {
+  return m_pendingDispatch.size() + m_pendingCombatDispatch.size();
+}
+
+void EventManager::dropOldestPendingUnsafe() const {
+  if (m_pendingDispatch.empty()) {
+    if (!m_pendingCombatDispatch.empty()) {
+      releaseEventToPool(EventTypeId::Combat, m_pendingCombatDispatch.front().data.event);
+      m_pendingCombatDispatch.pop_front();
+    }
+    return;
+  }
+
+  if (m_pendingCombatDispatch.empty()) {
+    releaseEventToPool(m_pendingDispatch.front().typeId, m_pendingDispatch.front().data.event);
+    m_pendingDispatch.pop_front();
+    return;
+  }
+
+  if (m_pendingCombatDispatch.front().sequence < m_pendingDispatch.front().sequence) {
+    releaseEventToPool(EventTypeId::Combat, m_pendingCombatDispatch.front().data.event);
+    m_pendingCombatDispatch.pop_front();
+  } else {
     releaseEventToPool(m_pendingDispatch.front().typeId, m_pendingDispatch.front().data.event);
     m_pendingDispatch.pop_front();
   }
-  m_pendingDispatch.emplace_back(PendingDispatch{typeId, std::move(data)});
+}
+
+void EventManager::enqueueDispatch(EventTypeId typeId, EventData&& data) const {
+  std::lock_guard<std::mutex> lock(m_dispatchMutex);
+  if (getPendingQueueSizeUnsafe() >= m_maxDispatchQueue) {
+    dropOldestPendingUnsafe();
+  }
+
+  PendingDispatch pendingDispatch{m_nextDeferredSequence++, typeId, std::move(data)};
+  if (typeId == EventTypeId::Combat) {
+    m_pendingCombatDispatch.emplace_back(std::move(pendingDispatch));
+  } else {
+    m_pendingDispatch.emplace_back(std::move(pendingDispatch));
+  }
 }
 
 void EventManager::enqueueBatch(std::vector<DeferredEvent>&& events) const {
@@ -679,10 +712,9 @@ void EventManager::enqueueBatch(std::vector<DeferredEvent>&& events) const {
 
   // Drop oldest queued events if we'd exceed the queue limit.
   size_t droppedCount = 0;
-  while (m_pendingDispatch.size() + events.size() > m_maxDispatchQueue &&
-         !m_pendingDispatch.empty()) {
-    releaseEventToPool(m_pendingDispatch.front().typeId, m_pendingDispatch.front().data.event);
-    m_pendingDispatch.pop_front();
+  while (getPendingQueueSizeUnsafe() + events.size() > m_maxDispatchQueue &&
+         getPendingQueueSizeUnsafe() > 0) {
+    dropOldestPendingUnsafe();
     ++droppedCount;
   }
 
@@ -698,10 +730,9 @@ void EventManager::enqueueBatch(std::vector<DeferredEvent>&& events) const {
   }
 
   // One final guard in case the queue still cannot fit the incoming tail.
-  while (m_pendingDispatch.size() + events.size() > m_maxDispatchQueue &&
-         !m_pendingDispatch.empty()) {
-    releaseEventToPool(m_pendingDispatch.front().typeId, m_pendingDispatch.front().data.event);
-    m_pendingDispatch.pop_front();
+  while (getPendingQueueSizeUnsafe() + events.size() > m_maxDispatchQueue &&
+         getPendingQueueSizeUnsafe() > 0) {
+    dropOldestPendingUnsafe();
     ++droppedCount;
   }
 
@@ -709,11 +740,15 @@ void EventManager::enqueueBatch(std::vector<DeferredEvent>&& events) const {
     EVENT_WARN(std::format("Queue overflow: dropped {} events", droppedCount));
   }
 
-  // Bulk insert all events
-  std::transform(events.begin(), events.end(), std::back_inserter(m_pendingDispatch),
-                 [](DeferredEvent& event) {
-                   return PendingDispatch{event.typeId, std::move(event.data)};
-                 });
+  for (auto& event : events) {
+    PendingDispatch pendingDispatch{
+        m_nextDeferredSequence++, event.typeId, std::move(event.data)};
+    if (pendingDispatch.typeId == EventTypeId::Combat) {
+      m_pendingCombatDispatch.emplace_back(std::move(pendingDispatch));
+    } else {
+      m_pendingDispatch.emplace_back(std::move(pendingDispatch));
+    }
+  }
 }
 
 void EventManager::dispatchPendingEvent(const PendingDispatch& pendingDispatch,
@@ -748,10 +783,8 @@ void EventManager::dispatchPendingEventWithHandlers(
 }
 
 EventManager::PreparedCombatEvent
-EventManager::prepareCombatEvent(size_t dispatchIndex) const {
+EventManager::prepareCombatEvent(const PendingDispatch& pendingDispatch) const {
   PreparedCombatEvent preparedCombat;
-
-  const PendingDispatch& pendingDispatch = m_localDispatchBuffer[dispatchIndex];
   if (!pendingDispatch.data.isActive() || !pendingDispatch.data.event) {
     return preparedCombat;
   }
@@ -771,6 +804,8 @@ EventManager::prepareCombatEvent(size_t dispatchIndex) const {
   preparedCombat.targetIdx = targetIdx;
   preparedCombat.damage = damageEvent->getDamage();
   preparedCombat.knockback = damageEvent->getKnockback();
+  preparedCombat.targetIsNPC = targetHandle.isNPC();
+  preparedCombat.destroyOnLethal = !targetHandle.isPlayer();
 
   if (targetIdx == SIZE_MAX) {
     return preparedCombat;
@@ -783,13 +818,13 @@ EventManager::prepareCombatEvent(size_t dispatchIndex) const {
 void EventManager::prepareCombatBatch(size_t startCombatIndex,
                                       size_t endCombatIndex) const {
   if (startCombatIndex >= endCombatIndex ||
-      startCombatIndex >= m_combatDispatchIndices.size()) {
+      startCombatIndex >= m_localCombatDispatchBuffer.size()) {
     return;
   }
 
   for (size_t combatIndex = startCombatIndex; combatIndex < endCombatIndex; ++combatIndex) {
     m_preparedCombatBuffer[combatIndex] =
-        prepareCombatEvent(m_combatDispatchIndices[combatIndex]);
+        prepareCombatEvent(m_localCombatDispatchBuffer[combatIndex]);
   }
 }
 
@@ -814,6 +849,12 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
   const EntityHandle attackerHandle = preparedCombat.valid
       ? preparedCombat.attackerHandle
       : damageEvent->getSource();
+  const bool targetIsNPC = preparedCombat.valid
+      ? preparedCombat.targetIsNPC
+      : targetHandle.isNPC();
+  const bool destroyOnLethal = preparedCombat.valid
+      ? preparedCombat.destroyOnLethal
+      : !targetHandle.isPlayer();
   const size_t targetIdx = preparedCombat.valid
       ? preparedCombat.targetIdx
       : edm.getIndex(targetHandle);
@@ -822,13 +863,13 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
   }
 
   auto& hotData = edm.getHotDataByIndex(targetIdx);
+  auto& charData = edm.getCharacterDataByIndex(targetIdx);
   if (!hotData.isAlive()) {
-    damageEvent->setRemainingHealth(edm.getCharacterDataByIndex(targetIdx).health);
+    damageEvent->setRemainingHealth(charData.health);
     damageEvent->setWasLethal(false);
     return;
   }
 
-  auto& charData = edm.getCharacterDataByIndex(targetIdx);
   if (charData.health <= 0.0f) {
     damageEvent->setRemainingHealth(charData.health);
     damageEvent->setWasLethal(false);
@@ -846,7 +887,7 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
   const float knockbackScale = 1.0f / std::max(0.1f, charData.mass);
   hotData.transform.velocity = hotData.transform.velocity + knockback * knockbackScale;
 
-  if (attackerHandle.isValid() && targetHandle.isNPC()) {
+  if (attackerHandle.isValid() && targetIsNPC) {
     edm.recordCombatEvent(targetIdx, attackerHandle, targetHandle,
                           damage, true, gameTime);
   }
@@ -855,7 +896,7 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
 
   if (wasLethal) {
     hotData.flags &= ~EntityHotData::FLAG_ALIVE;
-    if (!targetHandle.isPlayer()) {
+    if (destroyOnLethal) {
       edm.destroyEntity(targetHandle);
     }
   }
@@ -869,36 +910,70 @@ void EventManager::drainDispatchQueueWithBudget() {
   // events concurrently (e.g., WorldManager::loadNewWorld on worker thread)
   {
     std::lock_guard<std::mutex> lock(m_dispatchMutex);
-    const size_t pendingCount = m_pendingDispatch.size();
+    const size_t pendingCount = getPendingQueueSizeUnsafe();
     if (pendingCount == 0) {
       return;
     }
 
-    m_localDispatchBuffer.clear();
-    m_localDispatchBuffer.reserve(pendingCount);
-    for (size_t i = 0; i < pendingCount; ++i) {
-      m_localDispatchBuffer.emplace_back(std::move(m_pendingDispatch.front()));
+    const size_t nonCombatCount = m_pendingDispatch.size();
+    const size_t combatCount = m_pendingCombatDispatch.size();
+    m_localNonCombatBuffer.clear();
+    m_localNonCombatBuffer.reserve(nonCombatCount);
+    for (size_t i = 0; i < nonCombatCount; ++i) {
+      m_localNonCombatBuffer.emplace_back(std::move(m_pendingDispatch.front()));
       m_pendingDispatch.pop_front();
+    }
+
+    m_localCombatDispatchBuffer.clear();
+    m_localCombatDispatchBuffer.reserve(combatCount);
+    for (size_t i = 0; i < combatCount; ++i) {
+      m_localCombatDispatchBuffer.emplace_back(std::move(m_pendingCombatDispatch.front()));
+      m_pendingCombatDispatch.pop_front();
+    }
+
+    m_localDispatchBuffer.clear();
+    if (!m_localNonCombatBuffer.empty() && !m_localCombatDispatchBuffer.empty()) {
+      m_localDispatchBuffer.reserve(pendingCount);
+      size_t nonCombatIndex = 0;
+      size_t combatIndex = 0;
+      while (nonCombatIndex < m_localNonCombatBuffer.size() &&
+             combatIndex < m_localCombatDispatchBuffer.size()) {
+        if (m_localNonCombatBuffer[nonCombatIndex].sequence <
+            m_localCombatDispatchBuffer[combatIndex].sequence) {
+          m_localDispatchBuffer.emplace_back(
+              m_localNonCombatBuffer[nonCombatIndex++]);
+        } else {
+          m_localDispatchBuffer.emplace_back(
+              m_localCombatDispatchBuffer[combatIndex++]);
+        }
+      }
+
+      while (nonCombatIndex < m_localNonCombatBuffer.size()) {
+        m_localDispatchBuffer.emplace_back(
+            m_localNonCombatBuffer[nonCombatIndex++]);
+      }
+      while (combatIndex < m_localCombatDispatchBuffer.size()) {
+        m_localDispatchBuffer.emplace_back(
+            m_localCombatDispatchBuffer[combatIndex++]);
+      }
+    } else if (!m_localNonCombatBuffer.empty()) {
+      m_localDispatchBuffer.reserve(nonCombatCount);
+      for (const auto& pendingDispatch : m_localNonCombatBuffer) {
+        m_localDispatchBuffer.emplace_back(pendingDispatch);
+      }
     }
   }
   // Lock released - process events without holding lock
 
-  const size_t eventCount = m_localDispatchBuffer.size();
-  m_combatDispatchIndices.clear();
-  m_combatDispatchIndices.reserve(eventCount);
-  bool allCombatEvents = (eventCount > 0);
-  for (size_t dispatchIndex = 0; dispatchIndex < eventCount; ++dispatchIndex) {
-    if (m_localDispatchBuffer[dispatchIndex].typeId == EventTypeId::Combat) {
-      m_combatDispatchIndices.push_back(dispatchIndex);
-    } else {
-      allCombatEvents = false;
-    }
-  }
+  const size_t eventCount =
+      m_localNonCombatBuffer.size() + m_localCombatDispatchBuffer.size();
+  const bool allCombatEvents =
+      (eventCount > 0 && m_localNonCombatBuffer.empty());
 
   auto dispatchStartTime = std::chrono::high_resolution_clock::now();
   const float cachedGameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
   auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-  const size_t combatEventCount = m_combatDispatchIndices.size();
+  const size_t combatEventCount = m_localCombatDispatchBuffer.size();
   bool useThreading = false;
 
   if (combatEventCount > 0) {
@@ -974,8 +1049,8 @@ void EventManager::drainDispatchQueueWithBudget() {
           m_handlersByType[static_cast<size_t>(EventTypeId::Combat)];
       const bool hasCombatHandlers = !combatHandlers.empty();
 
-      for (size_t combatIndex = 0; combatIndex < eventCount; ++combatIndex) {
-        const auto& pendingDispatch = m_localDispatchBuffer[combatIndex];
+      for (size_t combatIndex = 0; combatIndex < combatEventCount; ++combatIndex) {
+        const auto& pendingDispatch = m_localCombatDispatchBuffer[combatIndex];
         if (combatIndex < m_preparedCombatBuffer.size()) {
           commitPreparedCombatEvent(pendingDispatch,
                                     m_preparedCombatBuffer[combatIndex],
@@ -1035,7 +1110,7 @@ void EventManager::drainDispatchQueueWithBudget() {
 
   // Release pooled events back to pools (after all processing complete)
   if (allCombatEvents) {
-    for (const auto& pd : m_localDispatchBuffer) {
+    for (const auto& pd : m_localCombatDispatchBuffer) {
       if (pd.data.event) {
         m_damagePool.release(std::static_pointer_cast<DamageEvent>(pd.data.event));
       }
@@ -1116,7 +1191,7 @@ void EventManager::resetPerformanceStats() const {
 
 size_t EventManager::getPendingEventCount() const {
   std::lock_guard<std::mutex> lock(m_dispatchMutex);
-  return m_pendingDispatch.size();
+  return getPendingQueueSizeUnsafe();
 }
 
 void EventManager::clearEventPools() {
