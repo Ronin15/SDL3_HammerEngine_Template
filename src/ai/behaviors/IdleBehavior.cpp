@@ -157,8 +157,7 @@ void executeIdle(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& c
     }
     data.pendingMessageCount = 0;
 
-    // Combat reaction: brave+aggressive NPCs fight back, others flee
-    // (Ally alerting now handled centrally by damage event handler via RAISE_ALERT)
+    // Combat reaction: recent combat memory drives self-preservation/retaliation.
     if (isUnderRecentAttack(ctx, 2.0f)) {
         if (shouldRetaliate(ctx)) {
             switchBehavior(ctx.edmIndex, BehaviorType::Chase);

@@ -2903,7 +2903,6 @@ void EntityDataManager::recordCombatEvent(size_t index, EntityHandle attacker,
     mem.type = wasAttacked ? MemoryType::DamageReceived : MemoryType::DamageDealt;
     mem.importance = static_cast<uint8_t>(std::min(255.0f, damage * 2.0f));
     mem.flags = MemoryEntry::FLAG_VALID;
-
     addMemory(index, mem, true);  // Use overflow for combat (important history)
 }
 

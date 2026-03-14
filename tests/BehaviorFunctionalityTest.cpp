@@ -1606,18 +1606,15 @@ BOOST_AUTO_TEST_CASE(TestRecordCombatEventUpdatesMemory) {
     BOOST_REQUIRE(victimIdx != SIZE_MAX);
 
     auto& memData = edm.getMemoryData(victimIdx);
-    float initialFear = memData.emotions.fear;
     uint32_t initialEncounters = memData.combatEncounters;
 
-    Behaviors::processCombatEvent(victimIdx, attackerHandle, victimHandle, 50.0f, true, 0.0f);
+    edm.recordCombatEvent(victimIdx, attackerHandle, victimHandle, 50.0f, true, 0.0f);
 
-    BOOST_CHECK_GT(memData.emotions.fear, initialFear);
     BOOST_CHECK_GT(memData.combatEncounters, initialEncounters);
     BOOST_CHECK(memData.lastAttacker == attackerHandle);
     BOOST_CHECK(memData.flags & NPCMemoryData::FLAG_IN_COMBAT);
 
-    BOOST_TEST_MESSAGE("recordCombatEvent: fear " << initialFear << " -> " << memData.emotions.fear
-                       << ", encounters: " << memData.combatEncounters);
+    BOOST_TEST_MESSAGE("recordCombatEvent encounters: " << memData.combatEncounters);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -1880,7 +1877,7 @@ BOOST_AUTO_TEST_CASE(TestGuardPanicEscalatesToHostile) {
     aiMgr.unassignBehavior(entityHandle);
 }
 
-BOOST_AUTO_TEST_CASE(TestGuardDistressTracksAttacker) {
+BOOST_AUTO_TEST_CASE(TestGuardDoesNotInheritOtherEntityCombatState) {
     auto& edm = EntityDataManager::Instance();
     auto& aiMgr = AIManager::Instance();
 
@@ -1901,13 +1898,12 @@ BOOST_AUTO_TEST_CASE(TestGuardDistressTracksAttacker) {
 
     aiMgr.assignBehavior(guardHandle, "Guard");
 
-    Behaviors::processCombatEvent(victimIdx, attackerHandle, victimHandle, 20.0f, true, 1.0f);
+    edm.recordCombatEvent(victimIdx, attackerHandle, victimHandle, 20.0f, true, 1.0f);
     updateAI(0.016f, guard->getPosition());
 
     const auto& guardMemData = edm.getMemoryData(guardIdx);
-    BOOST_CHECK(guardMemData.lastTarget.isValid());
-    BOOST_CHECK(guardMemData.lastTarget == attackerHandle);
-    BOOST_CHECK(edm.getBehaviorData(guardIdx).state.guard.currentAlertLevel >= 1);
+    BOOST_CHECK(!guardMemData.lastTarget.isValid());
+    BOOST_CHECK_EQUAL(edm.getBehaviorData(guardIdx).state.guard.currentAlertLevel, 0);
 
     aiMgr.unassignBehavior(guardHandle);
 }

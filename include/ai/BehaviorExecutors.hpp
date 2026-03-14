@@ -357,30 +357,6 @@ HammerEngine::BehaviorConfigData getDefaultConfig(BehaviorType type);
 // COMBAT EVENT PROCESSING (AI-layer wrappers for EDM data + emotion logic)
 // ============================================================================
 
-/**
- * @brief Process a combat event: record data in EDM and apply personality-scaled emotions
- * @param index EDM index of the entity involved in combat
- * @param attacker Handle of the attacking entity
- * @param target Handle of the target entity
- * @param damage Damage amount
- * @param wasAttacked true if this entity was the target
- * @param gameTime Current game time for memory timestamp
- */
-void processCombatEvent(size_t index, EntityHandle attacker, EntityHandle target,
-                        float damage, bool wasAttacked, float gameTime);
-
-/**
- * @brief Process a witnessed combat event for a nearby NPC
- * @param witnessIndex EDM index of the witness
- * @param attacker Handle of the attacker entity
- * @param combatLocation World position where combat occurred
- * @param gameTime Current game time for memory timestamp
- * @param wasDeath true if the witnessed combat was lethal
- */
-void processWitnessedCombat(size_t witnessIndex, EntityHandle attacker,
-                            const Vector2D& combatLocation,
-                            float gameTime, bool wasDeath = false);
-
 // ============================================================================
 // WORLD BOUNDS CACHE (main-thread update, worker-thread read)
 // ============================================================================

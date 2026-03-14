@@ -9,6 +9,7 @@
 #include <boost/test/data/monomorphic.hpp>
 
 #include "managers/EventManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "core/WorkerBudget.hpp"
 #include "events/EntityEvents.hpp"
 #include "events/Event.hpp"
@@ -151,7 +152,9 @@ void enqueueSingleBenchmarkEvent(int sequence) {
     }
 }
 
-EventManager::DeferredEvent createDeferredCombatBenchmarkEvent(int sequence) {
+EventManager::DeferredEvent createDeferredCombatBenchmarkEvent(int sequence,
+                                                               EntityHandle attacker,
+                                                               EntityHandle target) {
     auto damageEvent = EventManager::Instance().acquireDamageEvent();
     if (!damageEvent) {
         damageEvent = std::make_shared<DamageEvent>();
@@ -159,7 +162,7 @@ EventManager::DeferredEvent createDeferredCombatBenchmarkEvent(int sequence) {
 
     const float damage = 5.0f + static_cast<float>(sequence % 20);
     const Vector2D knockback(0.1f * static_cast<float>(sequence % 4), 0.0f);
-    damageEvent->configure(EntityHandle{}, EntityHandle{}, damage, knockback);
+    damageEvent->configure(attacker, target, damage, knockback);
 
     EventData data;
     data.typeId = EventTypeId::Combat;
@@ -1128,40 +1131,81 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
         return;
     }
 
-    auto& eventMgr = EventManager::Instance();
-    eventMgr.clean();
-    eventMgr.init();
-
-    std::atomic<int> combatHandlerCalls{0};
-    eventMgr.registerHandler(EventTypeId::Combat,
-        [&combatHandlerCalls](const EventData&) { ++combatHandlerCalls; });
-
     struct CombatProfile {
         const char* label;
-        int workers;
-        int eventsPerWorker;
+        int totalEvents;
     };
 
     const std::vector<CombatProfile> profiles = {
-        {"Large combat frame", 16, 250},      // 4,000 total events
-        {"Near-cap battle frame", 16, 500},   // 8,000 total events
+        {"Large combat frame", 4000},
+        {"Near-cap battle frame", 8000},
     };
 
     std::cout << "\n===== COMBAT BURST PROFILE BENCHMARK =====" << std::endl;
     std::cout << "Batched deferred combat events using pooled DamageEvent objects\n" << std::endl;
 
-    auto runCombatBurst = [&eventMgr](const CombatProfile& profile) {
+    auto resetCombatManagers = []() {
+        EventManager::Instance().clean();
+        EntityDataManager::Instance().clean();
+
+        EntityDataManager::Instance().init();
+        EventManager::Instance().init();
+    };
+
+    auto setupCombatScene = [&resetCombatManagers](int playerId) {
+        resetCombatManagers();
+
+        auto& edm = EntityDataManager::Instance();
+
+        EntityHandle attackerHandle =
+            edm.createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+        BOOST_REQUIRE(attackerHandle.isValid());
+
+        EntityHandle targetHandle = edm.registerPlayer(playerId, Vector2D(110.0f, 100.0f));
+        BOOST_REQUIRE(targetHandle.isValid());
+        auto& targetData = edm.getCharacterData(targetHandle);
+        targetData.maxHealth = 1000000.0f;
+        targetData.health = 1000000.0f;
+        targetData.mass = 1.0f;
+
+        constexpr int WITNESS_COUNT = 64;
+        for (int i = 0; i < WITNESS_COUNT; ++i) {
+            const float offsetX = 120.0f + static_cast<float>(i % 8) * 20.0f;
+            const float offsetY = 60.0f + static_cast<float>(i / 8) * 20.0f;
+            EntityHandle witnessHandle = edm.createNPCWithRaceClass(
+                Vector2D(offsetX, offsetY), "Human", "Guard");
+            BOOST_REQUIRE(witnessHandle.isValid());
+        }
+
+        return std::pair<EntityHandle, EntityHandle>{attackerHandle, targetHandle};
+    };
+
+    auto runCombatBurst = [](const CombatProfile& profile,
+                             EntityHandle attackerHandle,
+                             EntityHandle targetHandle) {
+        auto& eventMgr = EventManager::Instance();
         auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+        auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+        const size_t producerWorkers =
+            std::max<size_t>(1, std::min<size_t>(budgetMgr.getBudget().totalWorkers,
+                                                 static_cast<size_t>(profile.totalEvents)));
+        const int eventsPerProducer = std::max<int>(
+            1, static_cast<int>((profile.totalEvents + static_cast<int>(producerWorkers) - 1) /
+                                static_cast<int>(producerWorkers)));
         std::atomic<int> workersComplete{0};
 
-        for (int worker = 0; worker < profile.workers; ++worker) {
-            threadSystem.enqueueTask([&eventMgr, &workersComplete, &profile, worker]() {
+        for (size_t worker = 0; worker < producerWorkers; ++worker) {
+            threadSystem.enqueueTask([&eventMgr, &workersComplete, &profile,
+                                      attackerHandle, targetHandle, worker,
+                                      producerWorkers, eventsPerProducer]() {
                 std::vector<EventManager::DeferredEvent> localBatch;
-                localBatch.reserve(profile.eventsPerWorker);
+                localBatch.reserve(static_cast<size_t>(eventsPerProducer));
 
-                const int startIndex = worker * profile.eventsPerWorker;
-                for (int i = 0; i < profile.eventsPerWorker; ++i) {
-                    localBatch.push_back(createDeferredCombatBenchmarkEvent(startIndex + i));
+                const int startIndex = static_cast<int>(worker) * eventsPerProducer;
+                const int endIndex = std::min(startIndex + eventsPerProducer, profile.totalEvents);
+                for (int i = startIndex; i < endIndex; ++i) {
+                    localBatch.push_back(createDeferredCombatBenchmarkEvent(
+                        i, attackerHandle, targetHandle));
                 }
 
                 eventMgr.enqueueBatch(std::move(localBatch));
@@ -1169,36 +1213,58 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
             });
         }
 
-        while (workersComplete.load() < profile.workers) {
+        while (workersComplete.load() < static_cast<int>(producerWorkers)) {
             std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
 
         eventMgr.update();
     };
 
+    int nextPlayerId = 9901;
     for (const auto& profile : profiles) {
-        combatHandlerCalls = 0;
-        const int totalEvents = profile.workers * profile.eventsPerWorker;
+        const int totalEvents = profile.totalEvents;
         auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+        const size_t producerWorkers =
+            std::max<size_t>(1, std::min<size_t>(budgetMgr.getBudget().totalWorkers,
+                                                 static_cast<size_t>(totalEvents)));
+        const int eventsPerProducer = std::max<int>(
+            1, static_cast<int>((totalEvents + static_cast<int>(producerWorkers) - 1) /
+                                static_cast<int>(producerWorkers)));
+        const double expectedTotalDamage = [&profile]() {
+            double totalDamage = 0.0;
+            for (int i = 0; i < profile.totalEvents; ++i) {
+                totalDamage += 5.0 + static_cast<double>(i % 20);
+            }
+            return totalDamage;
+        }();
 
         constexpr int WARMUP_FRAMES = 8;
+        auto [warmupAttackerHandle, warmupTargetHandle] =
+            setupCombatScene(nextPlayerId++);
         for (int warmup = 0; warmup < WARMUP_FRAMES; ++warmup) {
-            runCombatBurst(profile);
+            runCombatBurst(profile, warmupAttackerHandle, warmupTargetHandle);
         }
-        combatHandlerCalls = 0;
+
+        auto [attackerHandle, targetHandle] =
+            setupCombatScene(nextPlayerId++);
 
         auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+        auto& eventMgr = EventManager::Instance();
         std::atomic<int> workersComplete{0};
 
         auto enqueueStart = std::chrono::high_resolution_clock::now();
-        for (int worker = 0; worker < profile.workers; ++worker) {
-            threadSystem.enqueueTask([&eventMgr, &workersComplete, &profile, worker]() {
+        for (size_t worker = 0; worker < producerWorkers; ++worker) {
+            threadSystem.enqueueTask([&eventMgr, &workersComplete, &profile,
+                                      attackerHandle, targetHandle, worker,
+                                      producerWorkers, eventsPerProducer]() {
                 std::vector<EventManager::DeferredEvent> localBatch;
-                localBatch.reserve(profile.eventsPerWorker);
+                localBatch.reserve(static_cast<size_t>(eventsPerProducer));
 
-                const int startIndex = worker * profile.eventsPerWorker;
-                for (int i = 0; i < profile.eventsPerWorker; ++i) {
-                    localBatch.push_back(createDeferredCombatBenchmarkEvent(startIndex + i));
+                const int startIndex = static_cast<int>(worker) * eventsPerProducer;
+                const int endIndex = std::min(startIndex + eventsPerProducer, profile.totalEvents);
+                for (int i = startIndex; i < endIndex; ++i) {
+                    localBatch.push_back(createDeferredCombatBenchmarkEvent(
+                        i, attackerHandle, targetHandle));
                 }
 
                 eventMgr.enqueueBatch(std::move(localBatch));
@@ -1206,7 +1272,7 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
             });
         }
 
-        while (workersComplete.load() < profile.workers) {
+        while (workersComplete.load() < static_cast<int>(producerWorkers)) {
             std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
         auto enqueueEnd = std::chrono::high_resolution_clock::now();
@@ -1217,6 +1283,10 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
 
         auto decision = budgetMgr.shouldUseThreading(
             HammerEngine::SystemType::Event, static_cast<size_t>(totalEvents));
+        const size_t optimalWorkers = budgetMgr.getOptimalWorkers(
+            HammerEngine::SystemType::Event, static_cast<size_t>(totalEvents));
+        const auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+            HammerEngine::SystemType::Event, static_cast<size_t>(totalEvents), optimalWorkers);
         const size_t learnedThreshold =
             budgetMgr.getLearnedThreshold(HammerEngine::SystemType::Event);
         const float batchMultiplier =
@@ -1233,8 +1303,8 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
             (static_cast<double>(totalEvents) / static_cast<double>(queueCap)) * 100.0;
 
         std::cout << profile.label << ":" << std::endl;
-        std::cout << "  Workers: " << profile.workers
-                  << ", events/worker: " << profile.eventsPerWorker
+        std::cout << "  Producer workers: " << producerWorkers
+                  << ", events/producer: " << eventsPerProducer
                   << ", total combat events: " << totalEvents << std::endl;
         std::cout << "  Enqueue: " << std::fixed << std::setprecision(2)
                   << enqueueMs << " ms" << std::endl;
@@ -1244,6 +1314,9 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
                   << totalMs << " ms" << std::endl;
         std::cout << "  WorkerBudget mode: "
                   << (decision.shouldThread ? "threaded" : "single") << std::endl;
+        std::cout << "  Event workers: " << optimalWorkers
+                  << ", batches: " << batchCount
+                  << ", batch size: " << batchSize << std::endl;
         std::cout << "  Learned threshold: " << learnedThreshold
                   << ", batch multiplier: " << std::fixed << std::setprecision(2)
                   << batchMultiplier << std::endl;
@@ -1252,7 +1325,8 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
         std::cout << "  Queue usage vs 8192 cap: " << std::setprecision(1)
                   << queueUsagePct << "%" << std::endl;
 
-        BOOST_CHECK_EQUAL(combatHandlerCalls.load(), totalEvents);
+        const auto& targetData = EntityDataManager::Instance().getCharacterData(targetHandle);
+        BOOST_CHECK_CLOSE(targetData.health, 1000000.0 - expectedTotalDamage, 0.001);
     }
 
     std::cout << std::endl;

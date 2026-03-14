@@ -419,7 +419,7 @@ BOOST_AUTO_TEST_CASE(TestRecordCombatEventReceived) {
     auto [handle, index] = createTestNPC();
     EntityHandle attacker{999, EntityKind::Player, 1};
 
-    Behaviors::processCombatEvent(index, attacker, handle, 25.0f, true, 10.0f);
+    edm->recordCombatEvent(index, attacker, handle, 25.0f, true, 10.0f);
 
     auto& memData = edm->getMemoryData(index);
     BOOST_CHECK(memData.isValid());
@@ -427,19 +427,17 @@ BOOST_AUTO_TEST_CASE(TestRecordCombatEventReceived) {
     BOOST_CHECK(approxEqual(memData.totalDamageReceived, 25.0f));
     BOOST_CHECK_EQUAL(memData.combatEncounters, 1);
     BOOST_CHECK(memData.isInCombat());
-    BOOST_CHECK(memData.emotions.fear > 0.0f);  // Fear increased from damage
 }
 
 BOOST_AUTO_TEST_CASE(TestRecordCombatEventDealt) {
     auto [handle, index] = createTestNPC();
     EntityHandle target{888, EntityKind::NPC, 1};
 
-    Behaviors::processCombatEvent(index, handle, target, 30.0f, false, 15.0f);
+    edm->recordCombatEvent(index, handle, target, 30.0f, false, 15.0f);
 
     auto& memData = edm->getMemoryData(index);
     BOOST_CHECK(memData.lastTarget == target);
     BOOST_CHECK(approxEqual(memData.totalDamageDealt, 30.0f));
-    BOOST_CHECK(memData.emotions.aggression > 0.0f);  // Aggression increased from combat
 }
 
 BOOST_AUTO_TEST_CASE(TestMultipleCombatEvents) {
@@ -665,8 +663,8 @@ BOOST_AUTO_TEST_CASE(TestCharacterDataInheritsResilience) {
     BOOST_CHECK(approxEqual(charData.emotionalResilience, guardClass->emotionalResilience));
 }
 
-BOOST_AUTO_TEST_CASE(TestResilienceAffectsFearGain) {
-    // Create two NPCs: one with high resilience (Guard), one with low (Merchant)
+BOOST_AUTO_TEST_CASE(TestResilienceDoesNotAffectRecordedCombatTotals) {
+    // Recording combat in EDM is pure data and should not vary by class.
     EntityHandle guardHandle = edm->createNPCWithRaceClass(Vector2D(100, 100), "Human", "Guard");
     EntityHandle merchantHandle = edm->createNPCWithRaceClass(Vector2D(200, 200), "Human", "GeneralMerchant");
 
@@ -684,43 +682,39 @@ BOOST_AUTO_TEST_CASE(TestResilienceAffectsFearGain) {
     EntityHandle attacker{999, EntityKind::NPC, 1};
     float damage = 50.0f;
 
-    Behaviors::processCombatEvent(guardIdx, attacker, EntityHandle{}, damage, true, 0.0f);
-    Behaviors::processCombatEvent(merchantIdx, attacker, EntityHandle{}, damage, true, 0.0f);
+    edm->recordCombatEvent(guardIdx, attacker, EntityHandle{}, damage, true, 0.0f);
+    edm->recordCombatEvent(merchantIdx, attacker, EntityHandle{}, damage, true, 0.0f);
 
-    // Get resulting fear levels
     auto& guardMem = edm->getMemoryData(guardIdx);
     auto& merchantMem = edm->getMemoryData(merchantIdx);
 
-    // Merchant (low resilience) should have more fear than Guard (high resilience)
-    BOOST_CHECK_MESSAGE(merchantMem.emotions.fear > guardMem.emotions.fear,
-        "Low resilience NPCs should gain more fear from damage");
+    BOOST_CHECK(approxEqual(guardMem.totalDamageReceived, damage));
+    BOOST_CHECK(approxEqual(merchantMem.totalDamageReceived, damage));
+    BOOST_CHECK_EQUAL(guardMem.combatEncounters, 1);
+    BOOST_CHECK_EQUAL(merchantMem.combatEncounters, 1);
 }
 
-BOOST_AUTO_TEST_CASE(TestBraveryAffectsFearGain) {
+BOOST_AUTO_TEST_CASE(TestBraveryDoesNotAffectRecordedCombatTotals) {
     auto [handle, index] = createTestNPC();
 
     edm->initMemoryData(index);
     auto& memData = edm->getMemoryData(index);
 
-    // Set personality to very cowardly
     memData.personality.bravery = 0.1f;
-    memData.personality.composure = 0.5f;
-    memData.emotions.fear = 0.0f;
 
-    // Record combat event
     EntityHandle attacker{999, EntityKind::NPC, 1};
-    Behaviors::processCombatEvent(index, attacker, EntityHandle{}, 30.0f, true, 0.0f);
-    float cowardFear = memData.emotions.fear;
+    edm->recordCombatEvent(index, attacker, EntityHandle{}, 30.0f, true, 0.0f);
 
-    // Reset and test with brave personality
-    memData.emotions.fear = 0.0f;
+    const float cowardDamage = memData.totalDamageReceived;
+    const uint32_t cowardEncounters = memData.combatEncounters;
+
     memData.personality.bravery = 0.9f;
-    Behaviors::processCombatEvent(index, attacker, EntityHandle{}, 30.0f, true, 1.0f);
-    float braveFear = memData.emotions.fear;
+    edm->recordCombatEvent(index, attacker, EntityHandle{}, 30.0f, true, 1.0f);
 
-    // Brave NPCs should gain less fear
-    BOOST_CHECK_MESSAGE(braveFear < cowardFear,
-        "Brave NPCs should gain less fear from damage");
+    BOOST_CHECK(approxEqual(cowardDamage, 30.0f));
+    BOOST_CHECK_EQUAL(cowardEncounters, 1);
+    BOOST_CHECK(approxEqual(memData.totalDamageReceived, 60.0f));
+    BOOST_CHECK_EQUAL(memData.combatEncounters, 2);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -463,10 +463,10 @@ public:
 
 private:
   struct PreparedCombatEvent {
+    size_t attackerIdx{SIZE_MAX};
+    size_t targetIdx{SIZE_MAX};
     float damage{0.0f};
     Vector2D knockback{};
-    Vector2D combatLocation{};
-    std::vector<size_t> witnessIndices{};
     bool valid{false};
   };
 
@@ -539,6 +539,9 @@ private:
 
   void dispatchPendingEvent(const PendingDispatch& pendingDispatch,
                             const char* errorContext) const;
+  void dispatchPendingEventWithHandlers(const PendingDispatch& pendingDispatch,
+                                        const std::vector<HandlerEntry>& typeHandlers,
+                                        const char* errorContext) const;
   PreparedCombatEvent prepareCombatEvent(size_t dispatchIndex) const;
   void prepareCombatBatch(size_t startCombatIndex, size_t endCombatIndex) const;
   void commitPreparedCombatEvent(const PendingDispatch& pendingDispatch,

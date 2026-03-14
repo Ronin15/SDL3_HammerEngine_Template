@@ -4,7 +4,6 @@
  */
 
 #include "managers/EventManager.hpp"
-#include "ai/BehaviorExecutors.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
@@ -19,7 +18,6 @@
 #include "events/WeatherEvent.hpp"
 #include "events/WorldEvent.hpp"
 #include "events/WorldTriggerEvent.hpp"
-#include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/GameTimeManager.hpp"
 
@@ -724,6 +722,17 @@ void EventManager::dispatchPendingEvent(const PendingDispatch& pendingDispatch,
   const auto& typeHandlers =
       m_handlersByType[static_cast<size_t>(pendingDispatch.typeId)];
 
+  dispatchPendingEventWithHandlers(pendingDispatch, typeHandlers, errorContext);
+}
+
+void EventManager::dispatchPendingEventWithHandlers(
+    const PendingDispatch& pendingDispatch,
+    const std::vector<HandlerEntry>& typeHandlers,
+    const char* errorContext) const {
+  if (typeHandlers.empty()) {
+    return;
+  }
+
   for (const auto& entry : typeHandlers) {
     if (entry) {
       try {
@@ -759,25 +768,13 @@ EventManager::prepareCombatEvent(size_t dispatchIndex) const {
   const size_t attackerIdx = attackerHandle.isValid()
       ? edm.getIndex(attackerHandle)
       : SIZE_MAX;
+  preparedCombat.targetIdx = targetIdx;
+  preparedCombat.attackerIdx = attackerIdx;
   preparedCombat.damage = damageEvent->getDamage();
   preparedCombat.knockback = damageEvent->getKnockback();
 
   if (targetIdx == SIZE_MAX) {
     return preparedCombat;
-  }
-
-  const auto& hotData = edm.getHotDataByIndex(targetIdx);
-  preparedCombat.combatLocation = hotData.transform.position;
-
-  thread_local std::vector<size_t> t_witnessBuffer;
-  AIManager::Instance().scanActiveIndicesInRadius(
-      preparedCombat.combatLocation, 300.0f, t_witnessBuffer, false);
-  preparedCombat.witnessIndices.reserve(t_witnessBuffer.size());
-  for (size_t witnessIdx : t_witnessBuffer) {
-    if (witnessIdx == targetIdx || witnessIdx == attackerIdx) {
-      continue;
-    }
-    preparedCombat.witnessIndices.push_back(witnessIdx);
   }
 
   preparedCombat.valid = true;
@@ -804,7 +801,7 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
     return;
   }
 
-  auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(pendingDispatch.data.event);
+  auto damageEvent = std::static_pointer_cast<DamageEvent>(pendingDispatch.data.event);
   if (!damageEvent) {
     return;
   }
@@ -812,13 +809,21 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
   auto& edm = EntityDataManager::Instance();
   const EntityHandle targetHandle = damageEvent->getTarget();
   const EntityHandle attackerHandle = damageEvent->getSource();
-  const size_t targetIdx = edm.getIndex(targetHandle);
+  const size_t targetIdx = preparedCombat.valid
+      ? preparedCombat.targetIdx
+      : edm.getIndex(targetHandle);
   if (targetIdx == SIZE_MAX) {
     return;
   }
 
   auto& hotData = edm.getHotDataByIndex(targetIdx);
-  auto& charData = edm.getCharacterData(targetHandle);
+  if (!hotData.isAlive()) {
+    damageEvent->setRemainingHealth(edm.getCharacterDataByIndex(targetIdx).health);
+    damageEvent->setWasLethal(false);
+    return;
+  }
+
+  auto& charData = edm.getCharacterDataByIndex(targetIdx);
   if (charData.health <= 0.0f) {
     damageEvent->setRemainingHealth(charData.health);
     damageEvent->setWasLethal(false);
@@ -836,46 +841,19 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
   const float knockbackScale = 1.0f / std::max(0.1f, charData.mass);
   hotData.transform.velocity = hotData.transform.velocity + knockback * knockbackScale;
 
-  const size_t attackerIdx = attackerHandle.isValid()
-      ? edm.getIndex(attackerHandle)
-      : SIZE_MAX;
+  const size_t attackerIdx = preparedCombat.valid
+      ? preparedCombat.attackerIdx
+      : (attackerHandle.isValid() ? edm.getIndex(attackerHandle) : SIZE_MAX);
   if (attackerHandle.isValid()) {
-    Behaviors::processCombatEvent(targetIdx, attackerHandle, targetHandle,
-                                  damage, true, gameTime);
+    edm.recordCombatEvent(targetIdx, attackerHandle, targetHandle,
+                          damage, true, gameTime);
     if (attackerIdx != SIZE_MAX && attackerIdx != targetIdx) {
-      Behaviors::processCombatEvent(attackerIdx, attackerHandle, targetHandle,
-                                    damage, false, gameTime);
+      edm.recordCombatEvent(attackerIdx, attackerHandle, targetHandle,
+                            damage, false, gameTime);
     }
   }
 
   const bool wasLethal = (charData.health <= 0.0f);
-  const Vector2D combatLocation = preparedCombat.valid
-      ? preparedCombat.combatLocation
-      : hotData.transform.position;
-  if (preparedCombat.valid) {
-    for (size_t witnessIdx : preparedCombat.witnessIndices) {
-      if (witnessIdx == targetIdx || witnessIdx == attackerIdx) {
-        continue;
-      }
-      if (!edm.getHotDataByIndex(witnessIdx).isAlive()) {
-        continue;
-      }
-
-      Behaviors::processWitnessedCombat(witnessIdx, attackerHandle,
-                                        combatLocation, gameTime, wasLethal);
-    }
-  } else {
-    thread_local std::vector<size_t> t_witnessBuffer;
-    AIManager::Instance().scanActiveIndicesInRadius(combatLocation, 300.0f,
-                                                    t_witnessBuffer, false);
-    for (size_t witnessIdx : t_witnessBuffer) {
-      if (witnessIdx == targetIdx || witnessIdx == attackerIdx) {
-        continue;
-      }
-      Behaviors::processWitnessedCombat(witnessIdx, attackerHandle,
-                                        combatLocation, gameTime, wasLethal);
-    }
-  }
 
   if (wasLethal) {
     hotData.flags &= ~EntityHotData::FLAG_ALIVE;
@@ -989,20 +967,27 @@ void EventManager::drainDispatchQueueWithBudget() {
     }
   }
 
-  size_t preparedCombatCursor = 0;
-  for (size_t dispatchIndex = 0; dispatchIndex < eventCount; ++dispatchIndex) {
-    const auto& pendingDispatch = m_localDispatchBuffer[dispatchIndex];
-    if (pendingDispatch.typeId == EventTypeId::Combat) {
-      if (preparedCombatCursor < m_preparedCombatBuffer.size()) {
-        commitPreparedCombatEvent(pendingDispatch,
-                                  m_preparedCombatBuffer[preparedCombatCursor],
-                                  cachedGameTime);
-        ++preparedCombatCursor;
-      } else {
-        commitPreparedCombatEvent(pendingDispatch, PreparedCombatEvent{}, cachedGameTime);
+  {
+    std::shared_lock<std::shared_mutex> handlerLock(m_handlersMutex);
+    size_t preparedCombatCursor = 0;
+    for (size_t dispatchIndex = 0; dispatchIndex < eventCount; ++dispatchIndex) {
+      const auto& pendingDispatch = m_localDispatchBuffer[dispatchIndex];
+      if (pendingDispatch.typeId == EventTypeId::Combat) {
+        if (preparedCombatCursor < m_preparedCombatBuffer.size()) {
+          commitPreparedCombatEvent(pendingDispatch,
+                                    m_preparedCombatBuffer[preparedCombatCursor],
+                                    cachedGameTime);
+          ++preparedCombatCursor;
+        } else {
+          commitPreparedCombatEvent(pendingDispatch, PreparedCombatEvent{}, cachedGameTime);
+        }
       }
+
+      const auto& typeHandlers =
+          m_handlersByType[static_cast<size_t>(pendingDispatch.typeId)];
+      dispatchPendingEventWithHandlers(pendingDispatch, typeHandlers,
+                                       "deferred dispatch");
     }
-    dispatchPendingEvent(pendingDispatch, "deferred dispatch");
   }
 
   auto dispatchEndTime = std::chrono::high_resolution_clock::now();
@@ -1070,9 +1055,7 @@ void EventManager::releaseEventToPool(EventTypeId typeId, const EventPtr& event)
       }
       break;
     case EventTypeId::Combat:
-      if (auto de = std::dynamic_pointer_cast<DamageEvent>(event)) {
-        m_damagePool.release(de);
-      }
+      m_damagePool.release(std::static_pointer_cast<DamageEvent>(event));
       break;
     case EventTypeId::CollisionObstacleChanged:
       if (auto coce = std::dynamic_pointer_cast<CollisionObstacleChangedEvent>(event)) {
