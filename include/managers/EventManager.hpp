@@ -463,7 +463,9 @@ public:
 
 private:
   struct PreparedCombatEvent {
-    size_t attackerIdx{SIZE_MAX};
+    DamageEvent* pDamageEvent{nullptr};
+    EntityHandle attackerHandle{};
+    EntityHandle targetHandle{};
     size_t targetIdx{SIZE_MAX};
     float damage{0.0f};
     Vector2D knockback{};

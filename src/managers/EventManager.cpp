@@ -756,7 +756,7 @@ EventManager::prepareCombatEvent(size_t dispatchIndex) const {
     return preparedCombat;
   }
 
-  auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(pendingDispatch.data.event);
+  auto* damageEvent = static_cast<DamageEvent*>(pendingDispatch.data.event.get());
   if (!damageEvent) {
     return preparedCombat;
   }
@@ -764,12 +764,11 @@ EventManager::prepareCombatEvent(size_t dispatchIndex) const {
   auto& edm = EntityDataManager::Instance();
   const EntityHandle targetHandle = damageEvent->getTarget();
   const EntityHandle attackerHandle = damageEvent->getSource();
+  preparedCombat.pDamageEvent = damageEvent;
+  preparedCombat.targetHandle = targetHandle;
+  preparedCombat.attackerHandle = attackerHandle;
   const size_t targetIdx = edm.getIndex(targetHandle);
-  const size_t attackerIdx = attackerHandle.isValid()
-      ? edm.getIndex(attackerHandle)
-      : SIZE_MAX;
   preparedCombat.targetIdx = targetIdx;
-  preparedCombat.attackerIdx = attackerIdx;
   preparedCombat.damage = damageEvent->getDamage();
   preparedCombat.knockback = damageEvent->getKnockback();
 
@@ -801,14 +800,20 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
     return;
   }
 
-  auto damageEvent = std::static_pointer_cast<DamageEvent>(pendingDispatch.data.event);
+  DamageEvent* damageEvent = preparedCombat.valid
+      ? preparedCombat.pDamageEvent
+      : static_cast<DamageEvent*>(pendingDispatch.data.event.get());
   if (!damageEvent) {
     return;
   }
 
   auto& edm = EntityDataManager::Instance();
-  const EntityHandle targetHandle = damageEvent->getTarget();
-  const EntityHandle attackerHandle = damageEvent->getSource();
+  const EntityHandle targetHandle = preparedCombat.valid
+      ? preparedCombat.targetHandle
+      : damageEvent->getTarget();
+  const EntityHandle attackerHandle = preparedCombat.valid
+      ? preparedCombat.attackerHandle
+      : damageEvent->getSource();
   const size_t targetIdx = preparedCombat.valid
       ? preparedCombat.targetIdx
       : edm.getIndex(targetHandle);
@@ -841,16 +846,9 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
   const float knockbackScale = 1.0f / std::max(0.1f, charData.mass);
   hotData.transform.velocity = hotData.transform.velocity + knockback * knockbackScale;
 
-  const size_t attackerIdx = preparedCombat.valid
-      ? preparedCombat.attackerIdx
-      : (attackerHandle.isValid() ? edm.getIndex(attackerHandle) : SIZE_MAX);
-  if (attackerHandle.isValid()) {
+  if (attackerHandle.isValid() && targetHandle.isNPC()) {
     edm.recordCombatEvent(targetIdx, attackerHandle, targetHandle,
                           damage, true, gameTime);
-    if (attackerIdx != SIZE_MAX && attackerIdx != targetIdx) {
-      edm.recordCombatEvent(attackerIdx, attackerHandle, targetHandle,
-                            damage, false, gameTime);
-    }
   }
 
   const bool wasLethal = (charData.health <= 0.0f);
@@ -985,8 +983,10 @@ void EventManager::drainDispatchQueueWithBudget() {
 
       const auto& typeHandlers =
           m_handlersByType[static_cast<size_t>(pendingDispatch.typeId)];
-      dispatchPendingEventWithHandlers(pendingDispatch, typeHandlers,
-                                       "deferred dispatch");
+      if (!typeHandlers.empty()) {
+        dispatchPendingEventWithHandlers(pendingDispatch, typeHandlers,
+                                         "deferred dispatch");
+      }
     }
   }
 

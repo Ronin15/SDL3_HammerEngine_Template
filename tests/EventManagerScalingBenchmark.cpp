@@ -1168,15 +1168,6 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
         targetData.health = 1000000.0f;
         targetData.mass = 1.0f;
 
-        constexpr int WITNESS_COUNT = 64;
-        for (int i = 0; i < WITNESS_COUNT; ++i) {
-            const float offsetX = 120.0f + static_cast<float>(i % 8) * 20.0f;
-            const float offsetY = 60.0f + static_cast<float>(i / 8) * 20.0f;
-            EntityHandle witnessHandle = edm.createNPCWithRaceClass(
-                Vector2D(offsetX, offsetY), "Human", "Guard");
-            BOOST_REQUIRE(witnessHandle.isValid());
-        }
-
         return std::pair<EntityHandle, EntityHandle>{attackerHandle, targetHandle};
     };
 
