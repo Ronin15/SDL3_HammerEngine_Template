@@ -6,7 +6,6 @@
 #include "managers/TextureManager.hpp"
 #include "core/Logger.hpp"
 #include "utils/FrameProfiler.hpp"
-#include "utils/ResourcePath.hpp"
 #include <cstring>
 #include <format>
 
@@ -641,29 +640,29 @@ bool GPURenderer::loadShaders() {
     compositeFragInfo.numSamplers = 1;
     compositeFragInfo.numUniformBuffers = 1;  // CompositeUBO
 
-    // Load all shaders (use ResourcePath::resolve for bundle compatibility)
-    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/sprite.vert"), SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo)) {
+    // Shader manager owns resource resolution for platform-specific shader binaries.
+    if (!shaderMgr.loadShader("res/shaders/sprite.vert", SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/sprite.frag"), SDL_GPU_SHADERSTAGE_FRAGMENT, spriteFragInfo)) {
+    if (!shaderMgr.loadShader("res/shaders/sprite.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, spriteFragInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/text_alpha.frag"), SDL_GPU_SHADERSTAGE_FRAGMENT, textFragInfo)) {
+    if (!shaderMgr.loadShader("res/shaders/text_alpha.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, textFragInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/text_sdf.frag"), SDL_GPU_SHADERSTAGE_FRAGMENT, textFragInfo)) {
+    if (!shaderMgr.loadShader("res/shaders/text_sdf.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, textFragInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/color.vert"), SDL_GPU_SHADERSTAGE_VERTEX, colorVertInfo)) {
+    if (!shaderMgr.loadShader("res/shaders/color.vert", SDL_GPU_SHADERSTAGE_VERTEX, colorVertInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/color.frag"), SDL_GPU_SHADERSTAGE_FRAGMENT, colorFragInfo)) {
+    if (!shaderMgr.loadShader("res/shaders/color.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, colorFragInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/composite.vert"), SDL_GPU_SHADERSTAGE_VERTEX, compositeVertInfo)) {
+    if (!shaderMgr.loadShader("res/shaders/composite.vert", SDL_GPU_SHADERSTAGE_VERTEX, compositeVertInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/composite.frag"), SDL_GPU_SHADERSTAGE_FRAGMENT, compositeFragInfo)) {
+    if (!shaderMgr.loadShader("res/shaders/composite.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, compositeFragInfo)) {
         return false;
     }
 
@@ -697,15 +696,15 @@ bool GPURenderer::createPipelines() {
     SDL_GPUTextureFormat sceneFormat = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
     SDL_GPUTextureFormat swapchainFormat = GPUDevice::Instance().getSwapchainFormat();
 
-    // Cache resolved shader paths (must match keys used in loadShaders)
-    const std::string spriteVert = ResourcePath::resolve("res/shaders/sprite.vert");
-    const std::string spriteFrag = ResourcePath::resolve("res/shaders/sprite.frag");
-    const std::string textAlphaFrag = ResourcePath::resolve("res/shaders/text_alpha.frag");
-    const std::string textSDFFrag = ResourcePath::resolve("res/shaders/text_sdf.frag");
-    const std::string colorVert = ResourcePath::resolve("res/shaders/color.vert");
-    const std::string colorFrag = ResourcePath::resolve("res/shaders/color.frag");
-    const std::string compositeVert = ResourcePath::resolve("res/shaders/composite.vert");
-    const std::string compositeFrag = ResourcePath::resolve("res/shaders/composite.frag");
+    // Cache shader keys; GPUShaderManager resolves platform-specific binaries internally.
+    const std::string spriteVert = "res/shaders/sprite.vert";
+    const std::string spriteFrag = "res/shaders/sprite.frag";
+    const std::string textAlphaFrag = "res/shaders/text_alpha.frag";
+    const std::string textSDFFrag = "res/shaders/text_sdf.frag";
+    const std::string colorVert = "res/shaders/color.vert";
+    const std::string colorFrag = "res/shaders/color.frag";
+    const std::string compositeVert = "res/shaders/composite.vert";
+    const std::string compositeFrag = "res/shaders/composite.frag";
 
     // Sprite opaque pipeline (renders to scene texture)
     {

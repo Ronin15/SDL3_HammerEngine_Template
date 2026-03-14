@@ -11,8 +11,9 @@
 
 #include "GPUTestFixture.hpp"
 #include "gpu/GPUDevice.hpp"
+#include "gpu/GPUPlatformConfig.hpp"
 #include "gpu/GPUShaderManager.hpp"
-#include <filesystem>
+#include "utils/ResourcePath.hpp"
 
 using namespace HammerEngine;
 using namespace HammerEngine::Test;
@@ -293,56 +294,29 @@ BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(ShaderPathTests)
 
-BOOST_AUTO_TEST_CASE(SPIRVShaderFilesExist) {
-    // Check that SPIR-V shader files exist for Vulkan backend
-    std::vector<std::string> spirvShaders = {
-        "res/shaders/sprite.vert.spv",
-        "res/shaders/sprite.frag.spv",
-        "res/shaders/text_alpha.frag.spv",
-        "res/shaders/text_sdf.frag.spv",
-        "res/shaders/color.vert.spv",
-        "res/shaders/color.frag.spv",
-        "res/shaders/composite.vert.spv",
-        "res/shaders/composite.frag.spv"
+BOOST_AUTO_TEST_CASE(PlatformShaderFilesExist) {
+    const std::string ext = HammerEngine::GPUPlatformConfig::getShaderBinaryExtension();
+    std::vector<std::string> shaderFiles = {
+        "res/shaders/sprite.vert" + ext,
+        "res/shaders/sprite.frag" + ext,
+        "res/shaders/text_alpha.frag" + ext,
+        "res/shaders/text_sdf.frag" + ext,
+        "res/shaders/color.vert" + ext,
+        "res/shaders/color.frag" + ext,
+        "res/shaders/composite.vert" + ext,
+        "res/shaders/composite.frag" + ext
     };
 
     int foundCount = 0;
-    for (const auto& path : spirvShaders) {
-        if (std::filesystem::exists(path)) {
+    for (const auto& path : shaderFiles) {
+        if (HammerEngine::ResourcePath::exists(path)) {
             foundCount++;
-            BOOST_TEST_MESSAGE("Found SPIR-V shader: " << path);
+            BOOST_TEST_MESSAGE("Found platform shader: "
+                               << HammerEngine::ResourcePath::resolve(path));
         }
     }
 
-    // Should have all SPIR-V shaders (if project builds with Vulkan support)
-    BOOST_TEST_MESSAGE("Found " << foundCount << "/" << spirvShaders.size() << " SPIR-V shaders");
-}
-
-BOOST_AUTO_TEST_CASE(MetalShaderFilesExist) {
-    // Check that Metal shader files exist for macOS/iOS
-    std::vector<std::string> metalShaders = {
-        "res/shaders/sprite.vert.metal",
-        "res/shaders/sprite.frag.metal",
-        "res/shaders/text_alpha.frag.metal",
-        "res/shaders/text_sdf.frag.metal",
-        "res/shaders/color.vert.metal",
-        "res/shaders/color.frag.metal",
-        "res/shaders/composite.vert.metal",
-        "res/shaders/composite.frag.metal"
-    };
-
-    int foundCount = 0;
-    for (const auto& path : metalShaders) {
-        if (std::filesystem::exists(path)) {
-            foundCount++;
-            BOOST_TEST_MESSAGE("Found Metal shader: " << path);
-        }
-    }
-
-    // On macOS, should have all Metal shaders
-#ifdef __APPLE__
-    BOOST_TEST_MESSAGE("Found " << foundCount << "/" << metalShaders.size() << " Metal shaders");
-#endif
+    BOOST_CHECK_EQUAL(foundCount, static_cast<int>(shaderFiles.size()));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

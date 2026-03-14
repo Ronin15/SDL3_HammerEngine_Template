@@ -5,6 +5,7 @@
 #define GPU_SHADER_MANAGER_HPP
 
 #include <SDL3/SDL_gpu.h>
+#include "gpu/GPUPlatformConfig.hpp"
 #include <cstddef>
 #include <string>
 #include <unordered_map>
@@ -43,7 +44,7 @@ struct ShaderCacheKeyHash {
 /**
  * Singleton manager for GPU shaders.
  *
- * Handles loading of SPIR-V (Vulkan) and MSL (Metal) shaders
+ * Handles loading of platform-native shader binaries
  * based on the current GPU backend.
  */
 class GPUShaderManager {
@@ -68,6 +69,7 @@ public:
      * Automatically selects the correct format based on GPU backend:
      * - Vulkan: loads .spv file
      * - Metal: loads .metal file
+     * - Direct3D 12: loads .dxil file
      *
      * @param basePath Path without extension (e.g., "res/shaders/sprite.vert")
      * @param stage Shader stage (VERTEX or FRAGMENT)
@@ -117,9 +119,24 @@ private:
                            const ShaderInfo& info,
                            const std::string& entryPoint);
 
+    /**
+     * Load DXIL binary shader.
+     */
+    SDL_GPUShader* loadDXIL(const std::string& path,
+                            SDL_GPUShaderStage stage,
+                            const ShaderInfo& info);
+
+    std::string resolveShaderPath(const std::string& basePath,
+                                  SDL_GPUShaderStage stage) const;
+    ShaderCacheKey makeCacheKey(const std::string& basePath,
+                                SDL_GPUShaderStage stage,
+                                const ShaderInfo& info) const;
+
     SDL_GPUDevice* m_device{nullptr};
     std::unordered_map<ShaderCacheKey, SDL_GPUShader*, ShaderCacheKeyHash> m_shaders;
-    bool m_useSPIRV{true};  // Determined at init based on backend
+    GPUPlatformConfig::ShaderBinaryKind m_shaderBinaryKind{
+        GPUPlatformConfig::ShaderBinaryKind::SPIRV
+    };
 };
 
 } // namespace HammerEngine

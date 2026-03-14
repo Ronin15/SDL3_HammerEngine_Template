@@ -53,14 +53,13 @@ public:
                         SDL_GPUTextureUsageFlags usage) const;
 
     /**
-     * Get the device driver name (e.g., "vulkan", "metal", "d3d12").
+     * Get the device driver name (e.g., "vulkan", "metal", "direct3d12").
      */
     const char* getDriverName() const;
 
 private:
     GPUDevice() = default;
     ~GPUDevice();
-    static SDL_GPUShaderFormat getRequestedShaderFormats();
 
     // Non-copyable, non-movable
     GPUDevice(const GPUDevice&) = delete;
