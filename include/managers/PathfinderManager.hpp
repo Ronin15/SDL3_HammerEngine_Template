@@ -431,7 +431,7 @@ private:
     // State management
     std::atomic<bool> m_initialized{false};
     std::once_flag m_initFlag; // Thread-safe initialization guard
-    bool m_isShutdown{false};
+    std::atomic<bool> m_isShutdown{false};
     std::atomic<bool> m_globallyPaused{false}; // Global pause state for update() early exit
     std::atomic<bool> m_prewarming{false}; // Track if cache pre-warming is in progress
 

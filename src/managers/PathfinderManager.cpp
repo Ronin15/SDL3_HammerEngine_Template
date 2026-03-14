@@ -25,7 +25,7 @@ PathfinderManager& PathfinderManager::Instance() {
 }
 
 PathfinderManager::~PathfinderManager() {
-    if (!m_isShutdown) {
+    if (!m_isShutdown.load(std::memory_order_acquire)) {
         clean();
     }
 }
@@ -52,7 +52,7 @@ bool PathfinderManager::init() {
         PATHFIND_INFO("Initializing PathfinderManager with clean architecture");
 
         // Reset shutdown flag (allows re-initialization after clean())
-        m_isShutdown = false;
+        m_isShutdown.store(false, std::memory_order_release);
 
         // No queue needed - requests processed directly on ThreadSystem
 
@@ -83,7 +83,8 @@ bool PathfinderManager::isInitialized() const {
 }
 
 void PathfinderManager::update() {
-    if (!m_initialized.load() || m_isShutdown || m_globallyPaused.load(std::memory_order_acquire)) {
+    if (!m_initialized.load() || m_isShutdown.load(std::memory_order_acquire) ||
+        m_globallyPaused.load(std::memory_order_acquire)) {
         return;
     }
 
@@ -109,7 +110,7 @@ bool PathfinderManager::isGloballyPaused() const {
 }
 
 void PathfinderManager::clean() {
-    if (m_isShutdown) {
+    if (m_isShutdown.load(std::memory_order_acquire)) {
         return;
     }
 
@@ -143,14 +144,14 @@ void PathfinderManager::clean() {
     setGrid(nullptr);
 
     m_initialized.store(false);
-    m_isShutdown = true;
+    m_isShutdown.store(true, std::memory_order_release);
     PATHFIND_INFO("PathfinderManager cleaned up");
 }
 
 void PathfinderManager::prepareForStateTransition() {
     PATHFIND_INFO("Preparing PathfinderManager for state transition...");
 
-    if (!m_initialized.load() || m_isShutdown) {
+    if (!m_initialized.load() || m_isShutdown.load(std::memory_order_acquire)) {
         PATHFIND_WARN("PathfinderManager not initialized or already shutdown during state transition");
         return;
     }
@@ -248,7 +249,7 @@ void PathfinderManager::commitCompletedPaths() {
 
 
 bool PathfinderManager::isShutdown() const {
-    return m_isShutdown;
+    return m_isShutdown.load(std::memory_order_acquire);
 }
 
 bool PathfinderManager::isGridReady() const {
@@ -273,7 +274,7 @@ uint64_t PathfinderManager::requestPath(
     Priority priority,
     std::function<void(EntityID, const std::vector<Vector2D>&)> callback
 ) {
-    if (!m_initialized.load() || m_isShutdown) {
+    if (!m_initialized.load() || m_isShutdown.load(std::memory_order_acquire)) {
         return 0;
     }
 
@@ -356,7 +357,7 @@ uint64_t PathfinderManager::requestPathToEDM(
     const Vector2D& goal,
     Priority priority
 ) {
-    if (!m_initialized.load() || m_isShutdown) {
+    if (!m_initialized.load() || m_isShutdown.load(std::memory_order_acquire)) {
         return 0;
     }
 
@@ -399,7 +400,7 @@ uint64_t PathfinderManager::requestPathToEDM(
     auto work = [this, requestHandle, edmIndex, requestToken, nStart, nGoal, cacheKey, gridSnapshot]() {
         // CRITICAL: Check shutdown before accessing any member data
         // This prevents use-after-free when PathfinderManager is destroyed while tasks pending
-        if (m_isShutdown) {
+        if (m_isShutdown.load(std::memory_order_acquire)) {
             return;
         }
 
@@ -429,31 +430,39 @@ uint64_t PathfinderManager::requestPathToEDM(
 
         // Compute path if not cached (pass grid to avoid re-fetching)
         if (!cacheHit) {
-            if (m_isShutdown) return;
+            if (m_isShutdown.load(std::memory_order_acquire)) {
+                return;
+            }
             findPathImmediate(nStart, nGoal, path, gridSnapshot, true);
 
             // Store in cache (write lock to ensure cache fills on EDM requests)
             // Double-check shutdown: first check avoids lock acquisition,
             // second check ensures shutdown didn't occur while waiting for lock
-            if (!path.empty() && !m_isShutdown) {
+            if (!path.empty()) {
+                if (m_isShutdown.load(std::memory_order_acquire)) {
+                    return;
+                }
+
                 std::unique_lock<std::shared_mutex> lock(m_cacheMutex);
-                if (!m_isShutdown) {  // NOLINT(bugprone-redundant-branch-condition)
-                    auto now = std::chrono::steady_clock::now();
-                    auto it = m_pathCache.find(cacheKey);
-                    if (it != m_pathCache.end()) {
-                        it->second.path = path;
-                        it->second.lastUsed = now;
-                        it->second.useCount++;
-                    } else {
-                        if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
-                            evictOldestCacheEntry();
-                        }
-                        PathCacheEntry entry;
-                        entry.path = path;
-                        entry.lastUsed = now;
-                        entry.useCount = 1;
-                        m_pathCache[cacheKey] = std::move(entry);
+                if (m_isShutdown.load(std::memory_order_acquire)) {
+                    return;
+                }
+
+                auto now = std::chrono::steady_clock::now();
+                auto it = m_pathCache.find(cacheKey);
+                if (it != m_pathCache.end()) {
+                    it->second.path = path;
+                    it->second.lastUsed = now;
+                    it->second.useCount++;
+                } else {
+                    if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
+                        evictOldestCacheEntry();
                     }
+                    PathCacheEntry entry;
+                    entry.path = path;
+                    entry.lastUsed = now;
+                    entry.useCount = 1;
+                    m_pathCache[cacheKey] = std::move(entry);
                 }
             }
         }
@@ -469,7 +478,7 @@ uint64_t PathfinderManager::requestPathToEDM(
             }
         }
 
-        if (m_isShutdown) {
+        if (m_isShutdown.load(std::memory_order_acquire)) {
             return;
         }
 
@@ -512,7 +521,7 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     std::vector<Vector2D>& outPath,
     bool skipNormalization
 ) {
-    if (!m_initialized.load() || m_isShutdown) {
+    if (!m_initialized.load() || m_isShutdown.load(std::memory_order_acquire)) {
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
     }
 
@@ -583,7 +592,7 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     const std::shared_ptr<HammerEngine::PathfindingGrid>& grid,
     bool skipNormalization
 ) {
-    if (!m_initialized.load() || m_isShutdown || !grid) {
+    if (!m_initialized.load() || m_isShutdown.load(std::memory_order_acquire) || !grid) {
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
     }
 
