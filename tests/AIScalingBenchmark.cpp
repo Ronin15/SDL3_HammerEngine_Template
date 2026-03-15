@@ -69,8 +69,10 @@ public:
 
     void prepareForTest() {
         AIManager::Instance().prepareForStateTransition();
-        EntityDataManager::Instance().prepareForStateTransition();
+        BackgroundSimulationManager::Instance().prepareForStateTransition();
         CollisionManager::Instance().prepareForStateTransition();
+        PathfinderManager::Instance().prepareForStateTransition();
+        EntityDataManager::Instance().prepareForStateTransition();
         HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
     }
 
