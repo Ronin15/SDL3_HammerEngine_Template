@@ -1,189 +1,121 @@
 # Combat Events Documentation
 
 **Where to find the code:**
-- Header: `include/events/CombatEvent.hpp`
-- Dispatched by: `src/controllers/combat/CombatController.cpp`
-- Handled by: GameStates, UI systems, or other game logic components
+- Legacy combat event base: `include/events/CombatEvent.hpp`
+- Active damage event path: `include/events/EntityEvents.hpp`
+- Event processing: `include/managers/EventManager.hpp`, `src/managers/EventManager.cpp`
+- Player combat producer: `src/controllers/combat/CombatController.cpp`
+- AI combat producer: `src/ai/behaviors/AttackBehavior.cpp`
 
 ## Overview
 
-Combat events are dispatched by the `CombatController` to notify subscribers of significant combat-related actions and outcomes. These events are crucial for updating UI, triggering animations, managing entity states, and coordinating other game systems during combat.
+The current hot combat path is `DamageEvent` under `EventTypeId::Combat`.
 
-All combat events inherit from `CombatEvent` and are dispatched with `Deferred` mode to ensure consistent processing.
+Combat producers build a `DamageEvent`, then `EventManager` applies the core damage result to EDM before combat subscribers run. That means combat handlers now observe post-commit state such as:
 
-## Event Type Hierarchy
+- updated target health
+- `DamageEvent::getRemainingHealth()`
+- `DamageEvent::wasLethal()`
+- any EDM-backed knockback/alive-state updates already applied
 
+`include/events/CombatEvent.hpp` still exists, but it is not the main runtime damage path described here.
+
+## Active Runtime Flow
+
+```text
+CombatController / AI behavior
+    -> acquire or create DamageEvent
+    -> EventManager dispatch under EventTypeId::Combat
+    -> EventManager resolves EDM target
+    -> EventManager applies health + knockback + lethal handling
+    -> EventManager updates DamageEvent result fields
+    -> EventManager dispatches subscribed combat handlers
 ```
-Event (base)
-  └── CombatEvent (base for all combat events)
-        ├── AttackInitiatedEvent
-        ├── DamageDealtEvent
-        ├── EntityDiedEvent
-        ├── StatusEffectAppliedEvent
-        └── HealEvent
-```
 
-## CombatEventType Enum
+For player attacks, `CombatController` currently uses immediate combat dispatch so the hit result is available in the same call path. AI attack batches typically enqueue deferred combat events and flush them at the end of the worker batch.
+
+## Active Event Type
 
 ```cpp
-enum class CombatEventType {
-    AttackInitiated,       // An attack has begun
-    DamageDealt,           // Damage has been applied to an entity
-    EntityDied,            // An entity's health reached zero
-    StatusEffectApplied,   // A status effect (e.g., poison, stun) was applied
-    Heal                   // An entity has regained health
+class DamageEvent : public Event {
+public:
+    void configure(EntityHandle source, EntityHandle target,
+                   float damage, const Vector2D& knockback);
+
+    EntityHandle getSource() const;
+    EntityHandle getTarget() const;
+    float getDamage() const;
+    const Vector2D& getKnockback() const;
+
+    float getRemainingHealth() const;
+    bool wasLethal() const;
 };
 ```
 
-## Event Details
+Important routing detail:
 
-### AttackInitiatedEvent
+- `DamageEvent::getTypeId()` returns `EventTypeId::Combat`
+- combat handlers should subscribe to `EventTypeId::Combat`
+- the payload they usually receive on the hot path is `DamageEvent`
 
-Fired when an attack is initiated by an entity.
+## Dispatch Modes
 
-```cpp
-class AttackInitiatedEvent : public CombatEvent {
-    EntityId getAttackerId() const;
-    EntityId getTargetId() const;
-    AttackType getAttackType() const; // e.g., Melee, Ranged, Spell
-};
-```
+Combat traffic can use either dispatch mode:
 
-**Use Cases:**
-- Trigger attack animations for the attacker
-- Display pre-attack visual effects
-- Play attack sound effects
+- `Immediate`: apply combat result immediately, then run handlers
+- `Deferred`: queue combat work for the main-thread drain pass, then run handlers after commit
 
-### DamageDealtEvent
+Deferred combat events still preserve global enqueue order relative to non-combat deferred events.
 
-Fired when damage has been successfully dealt to a target entity.
+## Producing Combat Events
+
+### Player combat
+
+`CombatController` performs hit detection, acquires a pooled `DamageEvent`, configures it, and dispatches it immediately:
 
 ```cpp
-class DamageDealtEvent : public CombatEvent {
-    EntityId getAttackerId() const;
-    EntityId getTargetId() const;
-    float getDamageAmount() const;
-    DamageType getDamageType() const; // e.g., Physical, Fire, Magic
-    bool isCriticalHit() const;
-    float getNewHealth() const;
-};
+auto& eventMgr = EventManager::Instance();
+auto damageEvent = eventMgr.acquireDamageEvent();
+damageEvent->configure(playerHandle, targetHandle, attackDamage, knockback);
+eventMgr.dispatchEvent(damageEvent, EventManager::DispatchMode::Immediate);
 ```
 
-**Use Cases:**
-- Display damage numbers in UI
-- Update health bars
-- Play hit sound effects
-- Trigger damaged animations for the target
+After dispatch returns, callers can read the applied result from EDM or from the event object itself.
 
-### EntityDiedEvent
+### AI combat
 
-Fired when an entity's health drops to zero or below.
-
-```cpp
-class EntityDiedEvent : public CombatEvent {
-    EntityId getVictimId() const;
-    EntityId getKillerId() const; // May be invalid if no specific killer
-};
-```
-
-**Use Cases:**
-- Trigger death animations
-- Remove entity from active game world
-- Update score/experience for the killer
-- Spawn loot
-
-### StatusEffectAppliedEvent
-
-Fired when a status effect is applied to an entity.
-
-```cpp
-class StatusEffectAppliedEvent : public CombatEvent {
-    EntityId getTargetId() const;
-    StatusEffectType getEffectType() const; // e.g., Poison, Stun, Bleed
-    float getDuration() const;
-    float getPotency() const;
-};
-```
-
-**Use Cases:**
-- Display status effect icons on UI
-- Apply visual effects to the affected entity
-- Modify entity's stats or behavior
-
-### HealEvent
-
-Fired when an entity regains health.
-
-```cpp
-class HealEvent : public CombatEvent {
-    EntityId getTargetId() const;
-    float getHealAmount() const;
-    float getNewHealth() const;
-};
-```
-
-**Use Cases:**
-- Display healing numbers in UI
-- Update health bars
-- Play healing sound effects
+AI attack behavior creates deferred `DamageEvent` payloads inside worker batches and later flushes them via `EventManager::enqueueBatch()`. `EventManager` may pre-prepare those combat events in WorkerBudget-guided batches before main-thread commit.
 
 ## Subscribing to Combat Events
 
-### Using EventManager Directly
-
 ```cpp
-#include "events/CombatEvent.hpp"
+#include "events/EntityEvents.hpp"
 #include "managers/EventManager.hpp"
 
-// Subscribe
 m_combatToken = EventManager::Instance().registerHandlerWithToken(
     EventTypeId::Combat,
     [this](const EventData& data) {
-        auto combatEvent = std::static_pointer_cast<CombatEvent>(data.event);
-
-        switch (combatEvent->getCombatEventType()) {
-            case CombatEventType::DamageDealt:
-                handleDamageDealt(std::static_pointer_cast<DamageDealtEvent>(data.event));
-                break;
-            case CombatEventType::EntityDied:
-                handleEntityDied(std::static_pointer_cast<EntityDiedEvent>(data.event));
-                break;
-            // ... other cases
+        auto damageEvent = std::static_pointer_cast<DamageEvent>(data.event);
+        if (!damageEvent) {
+            return;
         }
-    }
-);
 
-// Unsubscribe
-EventManager::Instance().removeHandler(m_combatToken);
+        onDamageApplied(damageEvent->getTarget(),
+                        damageEvent->getRemainingHealth(),
+                        damageEvent->wasLethal());
+    });
+
+EventManager::Instance().removeHandler(EventTypeId::Combat, m_combatToken);
 ```
 
-### Using CombatController (Recommended for managing combat logic)
+Handlers should treat the payload as an already-processed combat result, not as a request they need to apply themselves.
 
-The CombatController itself subscribes to initial attack events and dispatches further events based on combat outcomes. GameStates or other systems would typically subscribe to the events *dispatched by* the `CombatController` to react to combat results.
+## Legacy `CombatEvent`
 
-```cpp
-// In GameState::enter()
-CombatController::Instance().subscribe(); // CombatController registers its own handlers
-
-// GameState subscribes to outcomes for UI/logic
-m_damageToken = EventManager::Instance().registerHandlerWithToken(
-    EventTypeId::Combat,
-    [this](const EventData& data) { onCombatOutcome(data); }
-);
-```
-
-## Dispatch Mode
-
-All combat events are dispatched with `EventManager::DispatchMode::Deferred`:
-
-- Events are queued by `CombatController` (or other sources)
-- Processed after game logic update completes
-- Ensures consistent game state during handling
-- Prevents immediate side effects that could disrupt current frame's logic
+`include/events/CombatEvent.hpp` still defines a `CombatEvent` base and `CombatEventType` enum. That file exists in the current codebase, but it is not the authoritative description of the active damage pipeline. For gameplay combat, prefer `DamageEvent` documentation and the `EventManager` docs.
 
 ## Related Documentation
 
-- **CombatController:** `docs/controllers/CombatController.md` - Controller that dispatches these events
-- **EventManager:** `docs/events/EventManager.md` - Event subscription system
-- **Entity State Machines:** (Link to relevant entity documentation if available)
-- **GameStates:** (Link to relevant GameState documentation if available)
+- **CombatController:** `docs/controllers/CombatController.md`
+- **EventManager:** `docs/events/EventManager.md`
+- **EventManager Advanced:** `docs/events/EventManager_Advanced.md`

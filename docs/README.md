@@ -2,7 +2,7 @@
 
 ## Overview
 
-This documentation hub tracks the current `resource-combat-updates` branch architecture: event-driven systems with `EventManager` as the dispatch hub, EDM-backed AI state, controller-owned harvesting/social flows, explicit world-resource orchestration, and the SDL3_GPU rendering path.
+This documentation hub documents the engine architecture and major subsystems. The engine uses event-driven systems with `EventManager` as the central event processing hub, EDM-backed AI state, controller-owned harvesting and social flows, world-resource orchestration, and the SDL3_GPU rendering path.
 
 ## Core Systems
 
@@ -53,7 +53,7 @@ This documentation hub tracks the current `resource-combat-updates` branch archi
 ## Testing and Validation
 
 - [`tests/TESTING.md`](../tests/TESTING.md)
-  - includes branch-era additions such as behavior transition coverage, NPC memory tests, new controller tests, and the GPU frame timing benchmark
+  - includes coverage for behavior transitions, NPC memory, controller tests, and GPU frame timing benchmarks
 
 ## Notes
 

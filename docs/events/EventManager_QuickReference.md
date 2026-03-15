@@ -35,6 +35,13 @@ void update();
 void drainAllDeferredEvents();
 ```
 
+Runtime notes:
+
+- combat deferred events are internally queued separately from other event types
+- enqueue order is preserved across both queues with sequence numbers
+- overflow drops the oldest pending events first
+- oversized incoming batches keep only the newest tail that fits
+
 ## EventTypeId
 
 ```cpp
@@ -49,4 +56,5 @@ Time, Combat, Entity, BehaviorMessage
 - Do not use removed APIs such as `registerEvent`, `createSceneChangeEvent`, `getEventsByType`, or compaction helpers.
 - Use deferred dispatch for worker-thread producers and cross-system frame coordination.
 - Use immediate dispatch only when the caller owns timing and thread-safety.
+- `EventTypeId::Combat` / `DamageEvent` applies damage results inside `EventManager` before subscribed handlers run.
 - Use `drainAllDeferredEvents()` only in tests or controlled synchronization points.

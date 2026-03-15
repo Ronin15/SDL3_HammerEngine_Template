@@ -9,9 +9,9 @@ The engine is still layered as:
 - GameStates
 - Entities / Controllers
 
-The important branch-level architectural changes are:
+The architecture includes:
 
-- `EventManager` remains part of the event-driven architecture and serves as the dispatch hub with a deferred FIFO queue
+- `EventManager` remains part of the event-driven architecture and serves as the central event processing hub with main-thread deferred draining, built-in combat processing, and sequence-preserved ordering across combat and non-combat queues
 - AI is EDM-backed and executed through `BehaviorExecutors` + `AICommandBus`
 - `WorldResourceManager` is a registry/spatial index over EDM, not a quantity store
 - GPU rendering uses explicit swapchain acquisition

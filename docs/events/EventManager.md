@@ -4,19 +4,21 @@
 
 ## Overview
 
-`EventManager` is the engine's dispatch hub. It no longer owns a registry of named events or a persistent event store. Systems either:
+`EventManager` is the engine's event processing hub. It no longer owns a registry of named events or a persistent event store. Systems either:
 
 - trigger an event immediately
 - enqueue a deferred event for the main-thread drain pass
 - register handlers for a specific `EventTypeId`
 
-The current design is optimized for branch-local behavior in `resource-combat-updates`:
+`EventManager` provides:
 
 - type-indexed handler lookup
-- deferred FIFO queue for cross-system coordination
+- deferred queue draining on the main thread
 - batch enqueue for worker-thread producers
+- built-in processing for selected engine-level events, especially combat
 - token-based handler removal for state-scoped subscriptions
 - deterministic queue draining for tests
+- sequence-preserved ordering even though combat work is internally split from other deferred events
 
 ## Responsibility Boundary
 
@@ -25,6 +27,7 @@ The current design is optimized for branch-local behavior in `resource-combat-up
 - handler registration and removal
 - immediate dispatch
 - deferred dispatch queue processing
+- built-in combat result application for `DamageEvent` traffic
 - pooled helpers for frequently emitted event types
 
 `EventManager` is not responsible for:
@@ -33,6 +36,8 @@ The current design is optimized for branch-local behavior in `resource-combat-up
 - scene-transition registration
 - query APIs like `getEventsByType()`
 - event compaction or persistent event activation flags
+
+Combat-side emotion logic and behavior-message policy remain outside `EventManager`. Those stay in AI/behavior code; `EventManager` only applies the core damage result and then dispatches handlers.
 
 ## Core API
 
@@ -75,9 +80,20 @@ EventManager::Instance().enqueueBatch(std::move(deferred));
 
 This is the preferred path for AI/combat worker code because it reduces lock acquisitions to one per batch.
 
+## Deferred Queue Behavior
+
+Deferred events are drained on the main thread, but combat events are stored in a separate internal queue so the manager can prepare combat work efficiently. Ordering still follows original enqueue sequence across both queues.
+
+Current queue behavior:
+
+- non-combat and combat deferred events are merged by sequence during drain
+- queue overflow drops the oldest pending events first
+- if an incoming batch alone exceeds queue capacity, only the newest tail is kept
+- pooled events dropped by overflow are released immediately back to their pools
+
 ## Dispatch Modes
 
-- `DispatchMode::Immediate`: call handlers now
+- `DispatchMode::Immediate`: process now; combat events also apply their built-in damage result before handlers run
 - `DispatchMode::Deferred`: enqueue and let `update()` drain later on the main thread
 
 Use deferred mode when the producer is off-thread, when ordering should align with frame-end processing, or when multiple systems may mutate shared state in response.
@@ -93,12 +109,27 @@ Collision, WorldTrigger, CollisionObstacleChanged, Custom,
 Time, Combat, Entity, BehaviorMessage
 ```
 
-Branch-specific additions and changes worth documenting:
+Key event types:
 
 - `BehaviorMessage` covers inter-entity AI signaling such as `RAISE_ALERT`
 - combat-facing events now route through `EventTypeId::Combat`
+- `DamageEvent` under `EventTypeId::Combat` is the hot path for gameplay damage
 - theft/social flows emit normal event traffic instead of bespoke controller-only state
 - `ResourceChangeEvent` is reused heavily by inventory, harvesting, and UI sync paths
+
+## Combat Processing Path
+
+`EventManager` now performs core damage resolution for `DamageEvent` traffic:
+
+1. read source/target/damage/knockback from the queued event
+2. resolve the target EDM index
+3. apply health reduction and knockback to EDM hot/character data
+4. record NPC combat memory data through `EntityDataManager::recordCombatEvent()`
+5. mark lethal results and destroy non-player targets when needed
+6. update the `DamageEvent` with remaining health and lethality
+7. dispatch subscribed combat handlers after the built-in processing step
+
+Immediate combat events follow the same processing order synchronously. Deferred combat events may use WorkerBudget-guided parallel preparation before their main-thread commit step.
 
 ## Common Patterns
 
