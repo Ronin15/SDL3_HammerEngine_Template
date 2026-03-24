@@ -1208,8 +1208,7 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
 
         for (size_t worker = 0; worker < producerWorkers; ++worker) {
             threadSystem.enqueueTask([&eventMgr, &workersComplete, &profile,
-                                      &scene, worker,
-                                      producerWorkers, eventsPerProducer]() {
+                                      &scene, worker, eventsPerProducer]() {
                 std::vector<EventManager::DeferredEvent> localBatch;
                 localBatch.reserve(static_cast<size_t>(eventsPerProducer));
 
@@ -1265,8 +1264,7 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
         auto enqueueStart = std::chrono::high_resolution_clock::now();
         for (size_t worker = 0; worker < producerWorkers; ++worker) {
             threadSystem.enqueueTask([&eventMgr, &workersComplete, &profile,
-                                      &scene, worker,
-                                      producerWorkers, eventsPerProducer]() {
+                                      &scene, worker, eventsPerProducer]() {
                 std::vector<EventManager::DeferredEvent> localBatch;
                 localBatch.reserve(static_cast<size_t>(eventsPerProducer));
 
