@@ -1320,11 +1320,11 @@ BOOST_AUTO_TEST_CASE(TestHarvestableRenderDataUsesObstacleAtlasWhenYieldMatchesW
     BOOST_REQUIRE(handle.isValid());
 
     const auto& renderData = edm->getHarvestableRenderDataByTypeIndex(edm->getHotData(handle).typeLocalIndex);
-    BOOST_CHECK_EQUAL(renderData.atlasX, 359);
+    BOOST_CHECK_EQUAL(renderData.atlasX, 295);
     BOOST_CHECK_EQUAL(renderData.atlasY, 845);
     BOOST_CHECK_EQUAL(renderData.depletedAtlasX, renderData.atlasX);
     BOOST_CHECK_EQUAL(renderData.depletedAtlasY, renderData.atlasY);
-    BOOST_CHECK_EQUAL(renderData.frameWidth, 66);
+    BOOST_CHECK_EQUAL(renderData.frameWidth, 63);
     BOOST_CHECK_EQUAL(renderData.frameHeight, 63);
 }
 

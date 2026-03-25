@@ -9,6 +9,7 @@
 #include "managers/AIManager.hpp"  // For auto-registering NPCs with AI
 #include "managers/ResourceTemplateManager.hpp"  // For getMaxStackSize in inventory
 #include "managers/TextureManager.hpp"  // For texture lookup in creature creation
+#include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"  // For unregister on harvestable destruction
 #include "utils/JsonReader.hpp"  // For loading NPC types from JSON
 #include "utils/ResourcePath.hpp"  // For path resolution in JSON loading
@@ -111,7 +112,22 @@ AtlasRegion lookupHarvestableObstacleRegion(HammerEngine::ResourceHandle yieldRe
 
     AtlasRegion region = lookupAtlasRegion(it->second.textureId);
     if (!region.found && it->second.seasonal) {
-        region = lookupAtlasRegion(std::format("summer_{}", it->second.textureId));
+        const char* seasonPrefix = "spring_";
+        switch (WorldManager::Instance().getCurrentSeason()) {
+            case Season::Spring:
+                seasonPrefix = "spring_";
+                break;
+            case Season::Summer:
+                seasonPrefix = "summer_";
+                break;
+            case Season::Fall:
+                seasonPrefix = "fall_";
+                break;
+            case Season::Winter:
+                seasonPrefix = "winter_";
+                break;
+        }
+        region = lookupAtlasRegion(std::format("{}{}", seasonPrefix, it->second.textureId));
     }
     return region;
 }
