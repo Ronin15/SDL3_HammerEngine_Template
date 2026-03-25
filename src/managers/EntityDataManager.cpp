@@ -23,6 +23,34 @@ using HammerEngine::JsonValue;
 #include <limits>
 #include <numeric>
 
+namespace {
+
+std::shared_ptr<SDL_Texture> getAtlasTextureOwner() {
+    return TextureManager::Instance().getTexture("atlas");
+}
+
+void assignAtlasTextureOwner(NPCRenderData& renderData) {
+    renderData.textureOwner = getAtlasTextureOwner();
+}
+
+void assignAtlasTextureOwner(ItemRenderData& renderData) {
+    renderData.textureOwner = getAtlasTextureOwner();
+}
+
+void assignAtlasTextureOwner(ContainerRenderData& renderData) {
+    auto atlasOwner = getAtlasTextureOwner();
+    renderData.closedTextureOwner = atlasOwner;
+    renderData.openTextureOwner = std::move(atlasOwner);
+}
+
+void assignAtlasTextureOwner(HarvestableRenderData& renderData) {
+    auto atlasOwner = getAtlasTextureOwner();
+    renderData.normalTextureOwner = atlasOwner;
+    renderData.depletedTextureOwner = std::move(atlasOwner);
+}
+
+} // namespace
+
 // ============================================================================
 // LIFECYCLE
 // ============================================================================
@@ -55,10 +83,8 @@ bool EntityDataManager::init() {
 
         m_characterData.reserve(CHARACTER_CAPACITY);
         m_npcRenderData.reserve(CHARACTER_CAPACITY);  // Same capacity as CharacterData
-        m_npcRenderTextureOwners.reserve(CHARACTER_CAPACITY);
         m_itemData.reserve(ITEM_CAPACITY);
         m_itemRenderData.reserve(ITEM_CAPACITY);  // Same capacity as ItemData
-        m_itemRenderTextureOwners.reserve(ITEM_CAPACITY);
         m_projectileData.reserve(PROJECTILE_CAPACITY);
         m_containerData.reserve(100);
         m_containerRenderData.reserve(100);  // Same capacity as ContainerData
@@ -149,10 +175,8 @@ void EntityDataManager::clean() {
 
     m_characterData.clear();
     m_npcRenderData.clear();
-    m_npcRenderTextureOwners.clear();
     m_itemData.clear();
     m_itemRenderData.clear();
-    m_itemRenderTextureOwners.clear();
     m_projectileData.clear();
     m_containerData.clear();
     m_containerRenderData.clear();
@@ -229,10 +253,8 @@ void EntityDataManager::prepareForStateTransition() {
 
     m_characterData.clear();
     m_npcRenderData.clear();
-    m_npcRenderTextureOwners.clear();
     m_itemData.clear();
     m_itemRenderData.clear();
-    m_itemRenderTextureOwners.clear();
     m_projectileData.clear();
     m_containerData.clear();
     m_containerRenderData.clear();
@@ -368,9 +390,6 @@ void EntityDataManager::freeSlot(size_t index) {
             if (typeIndex < m_npcRenderData.size()) {
                 m_npcRenderData[typeIndex].clear();
             }
-            if (typeIndex < m_npcRenderTextureOwners.size()) {
-                m_npcRenderTextureOwners[typeIndex].reset();
-            }
             break;
         case EntityKind::DroppedItem:
             m_freeItemSlots.push_back(typeIndex);
@@ -381,9 +400,6 @@ void EntityDataManager::freeSlot(size_t index) {
             // Clear item render data
             if (typeIndex < m_itemRenderData.size()) {
                 m_itemRenderData[typeIndex].clear();
-            }
-            if (typeIndex < m_itemRenderTextureOwners.size()) {
-                m_itemRenderTextureOwners[typeIndex].reset();
             }
             break;
         case EntityKind::Projectile:
@@ -444,14 +460,10 @@ uint32_t EntityDataManager::allocateCharacterSlot() {
         if (charIndex < m_npcRenderData.size()) {
             m_npcRenderData[charIndex].clear();
         }
-        if (charIndex < m_npcRenderTextureOwners.size()) {
-            m_npcRenderTextureOwners[charIndex].reset();
-        }
     } else {
         charIndex = static_cast<uint32_t>(m_characterData.size());
         m_characterData.emplace_back();
         m_npcRenderData.emplace_back();  // Always stays in sync
-        m_npcRenderTextureOwners.emplace_back();
     }
     return charIndex;
 }
@@ -603,14 +615,10 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
 
     // Set up NPCRenderData from race info
     auto& renderData = m_npcRenderData[typeIndex];
-    if (typeIndex >= m_npcRenderTextureOwners.size()) {
-        m_npcRenderTextureOwners.resize(typeIndex + 1);
-    }
-    m_npcRenderTextureOwners[typeIndex] = TextureManager::Instance().getTexture("atlas");
-    renderData.cachedTexture = m_npcRenderTextureOwners[typeIndex].get();
+    assignAtlasTextureOwner(renderData);
 #ifndef USE_SDL3_GPU
     // Only error in SDL_Renderer path - GPU path uses SpriteBatch with GPU textures
-    if (!renderData.cachedTexture) {
+    if (!renderData.textureOwner) {
         ENTITY_ERROR("createNPCWithRaceClass: Atlas texture not loaded");
     }
 #endif
@@ -618,8 +626,7 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     // Check for unmapped texture (atlasX and atlasY both 0) - use debug texture as fallback
     if (raceInfo.atlasX == 0 && raceInfo.atlasY == 0) {
         ENTITY_WARN(std::format("Race '{}' has no atlas mapping, using debug fallback texture", race));
-        m_npcRenderTextureOwners[typeIndex] = TextureManager::Instance().getTexture("debug");
-        renderData.cachedTexture = m_npcRenderTextureOwners[typeIndex].get();
+        renderData.textureOwner = TextureManager::Instance().getTexture("debug");
         renderData.atlasX = 0;
         renderData.atlasY = 0;
         renderData.frameWidth = 32;
@@ -737,16 +744,11 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
 
     // Set up render data
     auto& renderData = m_npcRenderData[typeIndex];
-    if (typeIndex >= m_npcRenderTextureOwners.size()) {
-        m_npcRenderTextureOwners.resize(typeIndex + 1);
-    }
-    m_npcRenderTextureOwners[typeIndex] = TextureManager::Instance().getTexture("atlas");
-    renderData.cachedTexture = m_npcRenderTextureOwners[typeIndex].get();
+    assignAtlasTextureOwner(renderData);
     // Check for unmapped texture - use debug texture as fallback
     if (typeInfo.atlasX == 0 && typeInfo.atlasY == 0) {
         ENTITY_WARN(std::format("Monster type '{}' has no atlas mapping, using debug fallback texture", monsterType));
-        m_npcRenderTextureOwners[typeIndex] = TextureManager::Instance().getTexture("debug");
-        renderData.cachedTexture = m_npcRenderTextureOwners[typeIndex].get();
+        renderData.textureOwner = TextureManager::Instance().getTexture("debug");
         renderData.atlasX = 0;
         renderData.atlasY = 0;
         renderData.frameWidth = 32;
@@ -840,16 +842,11 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
 
     // Set up render data
     auto& renderData = m_npcRenderData[typeIndex];
-    if (typeIndex >= m_npcRenderTextureOwners.size()) {
-        m_npcRenderTextureOwners.resize(typeIndex + 1);
-    }
-    m_npcRenderTextureOwners[typeIndex] = TextureManager::Instance().getTexture("atlas");
-    renderData.cachedTexture = m_npcRenderTextureOwners[typeIndex].get();
+    assignAtlasTextureOwner(renderData);
     // Check for unmapped texture - use debug texture as fallback
     if (speciesInfo.atlasX == 0 && speciesInfo.atlasY == 0) {
         ENTITY_WARN(std::format("Species '{}' has no atlas mapping, using debug fallback texture", species));
-        m_npcRenderTextureOwners[typeIndex] = TextureManager::Instance().getTexture("debug");
-        renderData.cachedTexture = m_npcRenderTextureOwners[typeIndex].get();
+        renderData.textureOwner = TextureManager::Instance().getTexture("debug");
         renderData.atlasX = 0;
         renderData.atlasY = 0;
         renderData.frameWidth = 32;
@@ -1030,7 +1027,6 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
         itemIndex = static_cast<uint32_t>(m_itemData.size());
         m_itemData.emplace_back();
         m_itemRenderData.emplace_back();  // Keep in sync with ItemData
-        m_itemRenderTextureOwners.emplace_back();
     }
 
     // Initialize ItemData
@@ -1048,15 +1044,11 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     if (itemIndex >= m_itemRenderData.size()) {
         m_itemRenderData.resize(itemIndex + 1);
     }
-    if (itemIndex >= m_itemRenderTextureOwners.size()) {
-        m_itemRenderTextureOwners.resize(itemIndex + 1);
-    }
     auto& renderData = m_itemRenderData[itemIndex];
     renderData.clear();
 
     // Get atlas texture for SDL_Renderer path (GPU path uses SpriteBatch directly)
-    m_itemRenderTextureOwners[itemIndex] = TextureManager::Instance().getTexture("atlas");
-    renderData.cachedTexture = m_itemRenderTextureOwners[itemIndex].get();
+    assignAtlasTextureOwner(renderData);
 
     // Get atlas coords and animation data from resource template
     auto& rtm = ResourceTemplateManager::Instance();
@@ -1194,6 +1186,7 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
     }
     auto& renderData = m_containerRenderData[containerIndex];
     renderData.clear();
+    assignAtlasTextureOwner(renderData);
     renderData.frameWidth = 32;
     renderData.frameHeight = 32;
 
@@ -1314,6 +1307,7 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     }
     auto& renderData = m_harvestableRenderData[harvestableIndex];
     renderData.clear();
+    assignAtlasTextureOwner(renderData);
     renderData.frameWidth = 32;
     renderData.frameHeight = 32;
 
@@ -1714,11 +1708,9 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
     if (itemIndex >= m_itemRenderData.size()) {
         m_itemRenderData.resize(itemIndex + 1);
     }
-    if (itemIndex >= m_itemRenderTextureOwners.size()) {
-        m_itemRenderTextureOwners.resize(itemIndex + 1);
-    }
-    m_itemRenderData[itemIndex].clear();
-    m_itemRenderTextureOwners[itemIndex].reset();
+    auto& renderData = m_itemRenderData[itemIndex];
+    renderData.clear();
+    assignAtlasTextureOwner(renderData);
 
     // Store ID and mapping in static pool
     m_staticEntityIds[index] = entityId;

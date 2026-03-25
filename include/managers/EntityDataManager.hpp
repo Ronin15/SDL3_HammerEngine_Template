@@ -455,8 +455,7 @@ struct SDL_Texture;
  * Indexed by typeLocalIndex (same as CharacterData for NPCs).
  */
 struct NPCRenderData {
-    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
-    SDL_Texture* cachedTexture{nullptr};
+    std::shared_ptr<SDL_Texture> textureOwner{};  // Manager-owned texture handle retained for rendering
     uint16_t atlasX{0};                   // X offset in atlas (pixels)
     uint16_t atlasY{0};                   // Y offset in atlas (pixels)
     uint16_t frameWidth{32};              // Single frame width
@@ -473,7 +472,7 @@ struct NPCRenderData {
     float animationAccumulator{0.0f};     // Time accumulator for frame advancement
 
     void clear() noexcept {
-        cachedTexture = nullptr;
+        textureOwner.reset();
         atlasX = 0;
         atlasY = 0;
         frameWidth = 32;
@@ -680,8 +679,7 @@ struct AnimalRoleInfo {
  * Indexed by typeLocalIndex in EntityHotData.
  */
 struct ItemRenderData {
-    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
-    SDL_Texture* cachedTexture{nullptr};
+    std::shared_ptr<SDL_Texture> textureOwner{};  // Manager-owned texture handle retained for rendering
     uint16_t atlasX{0};                   // X offset in atlas (pixels)
     uint16_t atlasY{0};                   // Y offset in atlas (pixels)
     uint16_t frameWidth{16};              // Single frame width
@@ -694,7 +692,7 @@ struct ItemRenderData {
     float bobAmplitude{3.0f};             // Vertical bob amplitude in pixels
 
     void clear() noexcept {
-        cachedTexture = nullptr;
+        textureOwner.reset();
         atlasX = 0;
         atlasY = 0;
         frameWidth = 16;
@@ -715,9 +713,8 @@ struct ItemRenderData {
  * Indexed by typeLocalIndex in EntityHotData.
  */
 struct ContainerRenderData {
-    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
-    SDL_Texture* closedTexture{nullptr};
-    SDL_Texture* openTexture{nullptr};
+    std::shared_ptr<SDL_Texture> closedTextureOwner{};  // Manager-owned closed-state texture handle
+    std::shared_ptr<SDL_Texture> openTextureOwner{};    // Manager-owned open-state texture handle
     uint16_t atlasX{0};                   // Atlas X offset (0 = unmapped, use default)
     uint16_t atlasY{0};                   // Atlas Y offset (0 = unmapped, use default)
     uint16_t openAtlasX{0};               // Atlas X offset for open state
@@ -729,8 +726,8 @@ struct ContainerRenderData {
     float animTimer{0.0f};                // Animation accumulator
 
     void clear() noexcept {
-        closedTexture = nullptr;
-        openTexture = nullptr;
+        closedTextureOwner.reset();
+        openTextureOwner.reset();
         atlasX = 0;
         atlasY = 0;
         openAtlasX = 0;
@@ -750,9 +747,8 @@ struct ContainerRenderData {
  * Indexed by typeLocalIndex in EntityHotData.
  */
 struct HarvestableRenderData {
-    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
-    SDL_Texture* normalTexture{nullptr};
-    SDL_Texture* depletedTexture{nullptr};
+    std::shared_ptr<SDL_Texture> normalTextureOwner{};    // Manager-owned normal-state texture handle
+    std::shared_ptr<SDL_Texture> depletedTextureOwner{};  // Manager-owned depleted-state texture handle
     uint16_t atlasX{0};                     // Atlas X offset (0 = unmapped, use default)
     uint16_t atlasY{0};                     // Atlas Y offset (0 = unmapped, use default)
     uint16_t depletedAtlasX{0};             // Atlas X offset for depleted state
@@ -764,8 +760,8 @@ struct HarvestableRenderData {
     float animTimer{0.0f};                  // Animation accumulator
 
     void clear() noexcept {
-        normalTexture = nullptr;
-        depletedTexture = nullptr;
+        normalTextureOwner.reset();
+        depletedTextureOwner.reset();
         atlasX = 0;
         atlasY = 0;
         depletedAtlasX = 0;
@@ -2481,8 +2477,6 @@ private:
     std::vector<ItemRenderData> m_itemRenderData;    // DroppedItem render data (same index as ItemData)
     std::vector<ContainerRenderData> m_containerRenderData;  // Container render data
     std::vector<HarvestableRenderData> m_harvestableRenderData;  // Harvestable render data
-    std::vector<std::shared_ptr<SDL_Texture>> m_npcRenderTextureOwners;  // Pins cached NPC textures
-    std::vector<std::shared_ptr<SDL_Texture>> m_itemRenderTextureOwners;  // Pins cached item textures
 
     // Inventory data (indexed by inventory index from createInventory())
     std::vector<InventoryData> m_inventoryData;

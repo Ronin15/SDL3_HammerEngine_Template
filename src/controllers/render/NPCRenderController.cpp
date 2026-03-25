@@ -54,6 +54,7 @@ void NPCRenderController::renderNPCs(SDL_Renderer* renderer, float cameraX, floa
         if (hot.kind != EntityKind::NPC) continue;
 
         const auto& r = edm.getNPCRenderDataByTypeIndex(hot.typeLocalIndex);
+        if (!r.textureOwner) { continue; }
 
         // Interpolate position
         float interpX = hot.transform.previousPosition.getX() +
@@ -80,7 +81,7 @@ void NPCRenderController::renderNPCs(SDL_Renderer* renderer, float cameraX, floa
             static_cast<float>(r.frameHeight)
         };
 
-        SDL_RenderTextureRotated(renderer, r.cachedTexture, &srcRect, &destRect,
+        SDL_RenderTextureRotated(renderer, r.textureOwner.get(), &srcRect, &destRect,
                                   0.0, nullptr, static_cast<SDL_FlipMode>(r.flipMode));
     }
 }

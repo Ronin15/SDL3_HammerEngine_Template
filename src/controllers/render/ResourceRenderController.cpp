@@ -97,7 +97,7 @@ void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const 
         const auto& r = edm.getItemRenderDataByTypeIndex(hot.typeLocalIndex);
 
         // Skip if no texture
-        if (!r.cachedTexture) continue;
+        if (!r.textureOwner) continue;
 
         // Interpolate position
         float interpX = hot.transform.previousPosition.getX() +
@@ -127,7 +127,7 @@ void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const 
             static_cast<float>(r.frameHeight)
         };
 
-        SDL_RenderTexture(renderer, r.cachedTexture, &srcRect, &destRect);
+        SDL_RenderTexture(renderer, r.textureOwner.get(), &srcRect, &destRect);
     }
 }
 
@@ -156,7 +156,8 @@ void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const Ha
         const auto& r = edm.getContainerRenderDataByTypeIndex(hot.typeLocalIndex);
 
         // Choose texture based on open/closed state
-        SDL_Texture* texture = containerData.isOpen() ? r.openTexture : r.closedTexture;
+        const auto& textureOwner = containerData.isOpen() ? r.openTextureOwner : r.closedTextureOwner;
+        SDL_Texture* texture = textureOwner.get();
         if (!texture) continue;
 
         // Interpolate position
@@ -213,8 +214,8 @@ void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, const 
         const auto& r = edm.getHarvestableRenderDataByTypeIndex(hot.typeLocalIndex);
 
         // Choose texture based on depleted state
-        SDL_Texture* texture = harvData.isDepleted ? r.depletedTexture : r.normalTexture;
-        if (!texture) texture = r.normalTexture;  // Fallback to normal if no depleted texture
+        SDL_Texture* texture = harvData.isDepleted ? r.depletedTextureOwner.get() : r.normalTextureOwner.get();
+        if (!texture) texture = r.normalTextureOwner.get();  // Fallback to normal if no depleted texture
         if (!texture) continue;
 
         // Interpolate position
