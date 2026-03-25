@@ -7,6 +7,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "managers/EntityDataManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "entities/Entity.hpp"  // For AnimationConfig
 #include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
@@ -28,12 +29,14 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
 class EntityDataManagerTestFixture {
 public:
     EntityDataManagerTestFixture() {
+        ResourceTemplateManager::Instance().init();
         edm = &EntityDataManager::Instance();
         edm->init();
     }
 
     ~EntityDataManagerTestFixture() {
         edm->clean();
+        ResourceTemplateManager::Instance().clean();
     }
 
 protected:
@@ -1285,6 +1288,44 @@ BOOST_AUTO_TEST_CASE(TestNPCRenderDataMinimumValues) {
     BOOST_CHECK_GE(renderData.numMoveFrames, 1);
     BOOST_CHECK_GE(renderData.idleSpeedMs, 1);
     BOOST_CHECK_GE(renderData.moveSpeedMs, 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestContainerRenderDataUsesMappedAtlasForKnownContainerTypes) {
+    EntityHandle handle = edm->createContainer(Vector2D(100.0f, 100.0f), ContainerType::Chest, 12, 0);
+    BOOST_REQUIRE(handle.isValid());
+
+    const auto& renderData = edm->getContainerRenderDataByTypeIndex(edm->getHotData(handle).typeLocalIndex);
+    BOOST_CHECK(renderData.atlasX != 0 || renderData.atlasY != 0);
+    BOOST_CHECK(renderData.openAtlasX != 0 || renderData.openAtlasY != 0);
+    BOOST_CHECK_GT(renderData.frameWidth, 0);
+    BOOST_CHECK_GT(renderData.frameHeight, 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestContainerRenderDataPreservesOpenVariantDimensions) {
+    EntityHandle handle = edm->createContainer(Vector2D(100.0f, 100.0f), ContainerType::Chest, 12, 0);
+    BOOST_REQUIRE(handle.isValid());
+
+    const auto& renderData = edm->getContainerRenderDataByTypeIndex(edm->getHotData(handle).typeLocalIndex);
+    BOOST_CHECK_EQUAL(renderData.frameWidth, 30);
+    BOOST_CHECK_EQUAL(renderData.frameHeight, 28);
+    BOOST_CHECK_EQUAL(renderData.openFrameWidth, 30);
+    BOOST_CHECK_EQUAL(renderData.openFrameHeight, 31);
+}
+
+BOOST_AUTO_TEST_CASE(TestHarvestableRenderDataUsesObstacleAtlasWhenYieldMatchesWorldNode) {
+    const auto woodHandle = ResourceTemplateManager::Instance().getHandleById("wood");
+    BOOST_REQUIRE(woodHandle.isValid());
+
+    EntityHandle handle = edm->createHarvestable(Vector2D(120.0f, 80.0f), woodHandle, 1, 3, 30.0f);
+    BOOST_REQUIRE(handle.isValid());
+
+    const auto& renderData = edm->getHarvestableRenderDataByTypeIndex(edm->getHotData(handle).typeLocalIndex);
+    BOOST_CHECK_EQUAL(renderData.atlasX, 359);
+    BOOST_CHECK_EQUAL(renderData.atlasY, 845);
+    BOOST_CHECK_EQUAL(renderData.depletedAtlasX, renderData.atlasX);
+    BOOST_CHECK_EQUAL(renderData.depletedAtlasY, renderData.atlasY);
+    BOOST_CHECK_EQUAL(renderData.frameWidth, 66);
+    BOOST_CHECK_EQUAL(renderData.frameHeight, 63);
 }
 
 BOOST_AUTO_TEST_CASE(TestMultipleNPCsGetSeparateRenderData) {

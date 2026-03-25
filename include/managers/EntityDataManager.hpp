@@ -721,6 +721,8 @@ struct ContainerRenderData {
     uint16_t openAtlasY{0};               // Atlas Y offset for open state
     uint16_t frameWidth{32};              // Sprite width
     uint16_t frameHeight{32};             // Sprite height
+    uint16_t openFrameWidth{32};          // Open-state sprite width
+    uint16_t openFrameHeight{32};         // Open-state sprite height
     uint8_t currentFrame{0};              // For animated open/close
     uint8_t numFrames{1};                 // Animation frames
     float animTimer{0.0f};                // Animation accumulator
@@ -734,6 +736,8 @@ struct ContainerRenderData {
         openAtlasY = 0;
         frameWidth = 32;
         frameHeight = 32;
+        openFrameWidth = 32;
+        openFrameHeight = 32;
         currentFrame = 0;
         numFrames = 1;
         animTimer = 0.0f;

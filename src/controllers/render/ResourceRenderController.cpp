@@ -32,16 +32,28 @@ struct ResourceSpriteView {
 
 [[nodiscard]] ResourceSpriteView buildContainerSpriteView(const ContainerRenderData& renderData,
                                                           bool isOpen) {
+    const bool useOpenVariant = isOpen && (renderData.openAtlasX != 0 || renderData.openAtlasY != 0);
     return {
-        isOpen ? renderData.openTextureOwner : renderData.closedTextureOwner,
-        isOpen ? renderData.openAtlasX : renderData.atlasX,
-        isOpen ? renderData.openAtlasY : renderData.atlasY
+        useOpenVariant ? renderData.openTextureOwner : renderData.closedTextureOwner,
+        useOpenVariant ? renderData.openAtlasX : renderData.atlasX,
+        useOpenVariant ? renderData.openAtlasY : renderData.atlasY
     };
+}
+
+[[nodiscard]] uint16_t getContainerFrameWidth(const ContainerRenderData& renderData, bool isOpen) {
+    const bool useOpenVariant = isOpen && (renderData.openAtlasX != 0 || renderData.openAtlasY != 0);
+    return useOpenVariant ? renderData.openFrameWidth : renderData.frameWidth;
+}
+
+[[nodiscard]] uint16_t getContainerFrameHeight(const ContainerRenderData& renderData, bool isOpen) {
+    const bool useOpenVariant = isOpen && (renderData.openAtlasX != 0 || renderData.openAtlasY != 0);
+    return useOpenVariant ? renderData.openFrameHeight : renderData.frameHeight;
 }
 
 [[nodiscard]] ResourceSpriteView buildHarvestableSpriteView(const HarvestableRenderData& renderData,
                                                             bool isDepleted) {
-    if (isDepleted && renderData.depletedTextureOwner) {
+    if (isDepleted && renderData.depletedTextureOwner &&
+        (renderData.depletedAtlasX != 0 || renderData.depletedAtlasY != 0)) {
         return {renderData.depletedTextureOwner, renderData.depletedAtlasX, renderData.depletedAtlasY};
     }
 
@@ -131,6 +143,7 @@ void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const 
 
         // Skip if no texture
         if (!spriteView.textureOwner) continue;
+        if (spriteView.atlasX == 0 && spriteView.atlasY == 0) continue;
 
         // Interpolate position
         float interpX = hot.transform.previousPosition.getX() +
@@ -188,6 +201,8 @@ void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const Ha
         const auto& containerData = edm.getContainerData(hot.typeLocalIndex);
         const auto& r = edm.getContainerRenderDataByTypeIndex(hot.typeLocalIndex);
         const auto spriteView = buildContainerSpriteView(r, containerData.isOpen());
+        const uint16_t frameWidth = getContainerFrameWidth(r, containerData.isOpen());
+        const uint16_t frameHeight = getContainerFrameHeight(r, containerData.isOpen());
 
         if (!spriteView.textureOwner) continue;
 
@@ -199,21 +214,21 @@ void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const Ha
 
         // Calculate source rect
         SDL_FRect srcRect = {
-            static_cast<float>(spriteView.atlasX + r.currentFrame * r.frameWidth),
+            static_cast<float>(spriteView.atlasX + r.currentFrame * frameWidth),
             static_cast<float>(spriteView.atlasY),
-            static_cast<float>(r.frameWidth),
-            static_cast<float>(r.frameHeight)
+            static_cast<float>(frameWidth),
+            static_cast<float>(frameHeight)
         };
 
         // Calculate destination rect (centered)
         // Sub-pixel rendering - unified with Player/Particles for smooth diagonal movement
-        float halfW = static_cast<float>(r.frameWidth) * 0.5f;
-        float halfH = static_cast<float>(r.frameHeight) * 0.5f;
+        float halfW = static_cast<float>(frameWidth) * 0.5f;
+        float halfH = static_cast<float>(frameHeight) * 0.5f;
         SDL_FRect destRect = {
             interpX - cameraX - halfW,
             interpY - cameraY - halfH,
-            static_cast<float>(r.frameWidth),
-            static_cast<float>(r.frameHeight)
+            static_cast<float>(frameWidth),
+            static_cast<float>(frameHeight)
         };
 
         SDL_RenderTexture(renderer, spriteView.textureOwner.get(), &srcRect, &destRect);
@@ -389,10 +404,13 @@ void ResourceRenderController::recordGPUContainers(const HammerEngine::GPUSceneC
 
         const auto& containerData = edm.getContainerData(hot.typeLocalIndex);
         const auto& r = edm.getContainerRenderDataByTypeIndex(hot.typeLocalIndex);
+        const uint16_t frameWidth = getContainerFrameWidth(r, containerData.isOpen());
+        const uint16_t frameHeight = getContainerFrameHeight(r, containerData.isOpen());
 
         // Choose atlas coords based on open/closed state
-        uint16_t atlasX = containerData.isOpen() ? r.openAtlasX : r.atlasX;
-        uint16_t atlasY = containerData.isOpen() ? r.openAtlasY : r.atlasY;
+        const bool useOpenVariant = containerData.isOpen() && (r.openAtlasX != 0 || r.openAtlasY != 0);
+        uint16_t atlasX = useOpenVariant ? r.openAtlasX : r.atlasX;
+        uint16_t atlasY = useOpenVariant ? r.openAtlasY : r.atlasY;
 
         // Skip unmapped textures (both coords 0) - will use default when wired up
         if (atlasX == 0 && atlasY == 0) { continue; }
@@ -404,10 +422,10 @@ void ResourceRenderController::recordGPUContainers(const HammerEngine::GPUSceneC
             (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
 
         // Source rect from atlas coords
-        float srcX = static_cast<float>(atlasX + r.currentFrame * r.frameWidth);
+        float srcX = static_cast<float>(atlasX + r.currentFrame * frameWidth);
         float srcY = static_cast<float>(atlasY);
-        float srcW = static_cast<float>(r.frameWidth);
-        float srcH = static_cast<float>(r.frameHeight);
+        float srcW = static_cast<float>(frameWidth);
+        float srcH = static_cast<float>(frameHeight);
 
         // Destination rect (screen space, centered)
         float halfW = srcW * 0.5f;
@@ -447,8 +465,9 @@ void ResourceRenderController::recordGPUHarvestables(const HammerEngine::GPUScen
         const auto& r = edm.getHarvestableRenderDataByTypeIndex(hot.typeLocalIndex);
 
         // Choose atlas coords based on depleted state
-        uint16_t atlasX = harvData.isDepleted ? r.depletedAtlasX : r.atlasX;
-        uint16_t atlasY = harvData.isDepleted ? r.depletedAtlasY : r.atlasY;
+        const bool useDepletedVariant = harvData.isDepleted && (r.depletedAtlasX != 0 || r.depletedAtlasY != 0);
+        uint16_t atlasX = useDepletedVariant ? r.depletedAtlasX : r.atlasX;
+        uint16_t atlasY = useDepletedVariant ? r.depletedAtlasY : r.atlasY;
 
         // Skip unmapped textures (both coords 0) - will use default when wired up
         if (atlasX == 0 && atlasY == 0) { continue; }

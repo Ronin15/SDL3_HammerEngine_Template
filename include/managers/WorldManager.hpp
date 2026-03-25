@@ -13,10 +13,12 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <type_traits>
 #include <string>
 #include <atomic>
 #include <shared_mutex>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 #include "managers/EventManager.hpp"
 
@@ -652,8 +654,18 @@ public:
 
     template <typename Func>
     decltype(auto) withWorldDataRead(Func&& func) const {
+        using Result = std::invoke_result_t<Func, const HammerEngine::WorldData*>;
+        static_assert(!std::is_reference_v<Result>,
+                      "withWorldDataRead() callbacks must not return references");
+        static_assert(!std::is_pointer_v<std::remove_cv_t<Result>>,
+                      "withWorldDataRead() callbacks must not return pointers");
+
         std::shared_lock<std::shared_mutex> lock(m_worldMutex);
-        return std::forward<Func>(func)(m_currentWorld.get());
+        if constexpr (std::is_void_v<Result>) {
+            std::forward<Func>(func)(m_currentWorld.get());
+        } else {
+            return std::forward<Func>(func)(m_currentWorld.get());
+        }
     }
 
     /**

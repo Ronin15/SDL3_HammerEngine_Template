@@ -795,61 +795,58 @@ size_t CollisionManager::getDynamicBodyCount() const {
 
 void CollisionManager::rebuildStaticFromWorld() {
   std::lock_guard<std::mutex> lock(m_staticRebuildMutex);
-  const WorldManager &wm = WorldManager::Instance();
-  wm.withWorldDataRead([&](const HammerEngine::WorldData *world) {
-    if (!world)
-      return;
-
-    const int gridH = static_cast<int>(world->grid.size());
-    const int gridW = gridH > 0 ? static_cast<int>(world->grid[0].size()) : 0;
+  int gridW = 0;
+  int gridH = 0;
+  if (WorldManager::Instance().getWorldDimensions(gridW, gridH) && gridW > 0 &&
+      gridH > 0) {
     size_t estimatedBodies = static_cast<size_t>(gridH * gridW) / 4;
     m_storage.ensureCapacity(m_storage.size() + estimatedBodies);
+  }
 
-    std::vector<EntityID> toRemove;
-    for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-      const auto &hot = m_storage.hotData[i];
-      if (hot.active &&
-          static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
-        toRemove.push_back(m_storage.entityIds[i]);
-      }
+  std::vector<EntityID> toRemove;
+  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+    const auto &hot = m_storage.hotData[i];
+    if (hot.active &&
+        static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+      toRemove.push_back(m_storage.entityIds[i]);
     }
-    for (auto id : toRemove) {
-      removeCollisionBody(id);
-    }
+  }
+  for (auto id : toRemove) {
+    removeCollisionBody(id);
+  }
 
-    size_t solidBodies = createStaticObstacleBodies();
-    size_t waterTriggers =
-        createTriggersForWaterTiles(HammerEngine::TriggerTag::Water);
+  size_t solidBodies = createStaticObstacleBodies();
+  size_t waterTriggers =
+      createTriggersForWaterTiles(HammerEngine::TriggerTag::Water);
 
-    if (solidBodies > 0 || waterTriggers > 0) {
-      COLLISION_INFO(
-          std::format("World colliders built: solid={}, water triggers={}",
-                      solidBodies, waterTriggers));
+  if (solidBodies > 0 || waterTriggers > 0) {
+    COLLISION_INFO(
+        std::format("World colliders built: solid={}, water triggers={}",
+                    solidBodies, waterTriggers));
 
 #ifndef NDEBUG
-      int buildingBodyCount = 0;
-      for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
-        EntityID id = m_storage.entityIds[i];
-        if ((id >> 61) == 3) {
-          buildingBodyCount++;
-          uint32_t buildingId = (id >> 16) & 0xFFFF;
-          uint16_t subBodyIndex = id & 0xFFFF;
-          COLLISION_DEBUG(std::format(
-              "Building collision body found: buildingId={}, subBodyIndex={}",
-              buildingId, subBodyIndex));
-        }
+    int buildingBodyCount = 0;
+    for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
+      EntityID id = m_storage.entityIds[i];
+      if ((id >> 61) == 3) {
+        buildingBodyCount++;
+        uint32_t buildingId = (id >> 16) & 0xFFFF;
+        uint16_t subBodyIndex = id & 0xFFFF;
+        COLLISION_DEBUG(std::format(
+            "Building collision body found: buildingId={}, subBodyIndex={}",
+            buildingId, subBodyIndex));
       }
-      COLLISION_INFO(std::format(
-          "Total building collision bodies in storage: {}", buildingBodyCount));
-      logCollisionStatistics();
+    }
+    COLLISION_INFO(std::format(
+        "Total building collision bodies in storage: {}", buildingBodyCount));
+    logCollisionStatistics();
 #endif
 
-      rebuildStaticSpatialHashUnlocked();
-    }
+    rebuildStaticSpatialHashUnlocked();
+  }
 
-    EventManager::Instance().triggerStaticCollidersReady(
-        solidBodies, waterTriggers, EventManager::DispatchMode::Immediate);
-  });
+  EventManager::Instance().triggerStaticCollidersReady(
+      solidBodies, waterTriggers, EventManager::DispatchMode::Immediate);
 }
 
 void CollisionManager::onTileChanged(int x, int y) {

@@ -350,7 +350,7 @@ bool WorldManager::handleHarvestResource(int entityId, int targetX,
     return false;
   }
 
-  HammerEngine::Tile &tile = m_currentWorld->grid[targetY][targetX];
+  const HammerEngine::Tile &tile = m_currentWorld->grid[targetY][targetX];
 
   if (tile.obstacleType == HammerEngine::ObstacleType::NONE) {
     // This is expected for EDM-based harvestables that don't have tile obstacles
@@ -363,12 +363,12 @@ bool WorldManager::handleHarvestResource(int entityId, int targetX,
   const HammerEngine::ObstacleType harvestedType = tile.obstacleType;
   (void)harvestedType; // Suppress unused warning
 
-  // Remove the obstacle
-  tile.obstacleType = HammerEngine::ObstacleType::NONE;
-  tile.resourceHandle = HammerEngine::ResourceHandle{};
-
-  // Fire tile changed event
-  fireTileChangedEvent(targetX, targetY, tile);
+  HammerEngine::Tile updatedTile = tile;
+  updatedTile.obstacleType = HammerEngine::ObstacleType::NONE;
+  updatedTile.resourceHandle = HammerEngine::ResourceHandle{};
+  if (!applyTileUpdateLocked(targetX, targetY, updatedTile)) {
+    return false;
+  }
 
   // Notify WorldResourceManager about resource depletion
   // This is a placeholder - actual resource tracking would need proper resource
