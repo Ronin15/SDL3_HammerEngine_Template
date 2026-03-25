@@ -73,20 +73,18 @@ void initPatrol(size_t edmIndex, const HammerEngine::PatrolBehaviorConfig& confi
     guard.assignedPosition = hotData.transform.position;
 
     // Generate initial waypoints in the waypoint slot
-    auto* waypointSlot = edm.getWaypointSlot(edmIndex);
-    if (waypointSlot) {
-        for (size_t i = 0; i < 4; ++i) {
-            waypointSlot[i] = generateRandomWaypoint(hotData.transform.position, config.boundaryPadding);
-        }
+    auto waypointSlot = edm.getWaypointSlot(edmIndex);
+    for (size_t i = 0; i < 4; ++i) {
+        waypointSlot[i] = generateRandomWaypoint(hotData.transform.position, config.boundaryPadding);
     }
 
     data.setInitialized(true);
 }
 
 void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfig& config) {
-    if (!ctx.behaviorData || !ctx.behaviorData->isValid()) return;
+    if (!ctx.behaviorData.isValid()) return;
 
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& guard = data.state.guard;
 
     // Process pending behavior messages
@@ -99,13 +97,13 @@ void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfi
                 switchBehavior(ctx.edmIndex, BehaviorType::Flee);
                 return;
             case BehaviorMessage::CALM_DOWN:
-                if (ctx.memoryData && ctx.memoryData->isValid())
+                if (ctx.memoryData.isValid())
                 {
-                    ctx.memoryData->emotions.fear = std::max(0.0f, ctx.memoryData->emotions.fear - 0.5f);
+                    ctx.memoryData.emotions.fear = std::max(0.0f, ctx.memoryData.emotions.fear - 0.5f);
                 }
                 break;
             case BehaviorMessage::RAISE_ALERT:
-                if (ctx.memoryData && ctx.memoryData->personality.bravery < 0.4f)
+                if (ctx.memoryData.personality.bravery < 0.4f)
                 {
                     data.pendingMessageCount = 0;
                     switchBehavior(ctx.edmIndex, BehaviorType::Flee);
@@ -135,11 +133,7 @@ void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfi
     auto& edm = EntityDataManager::Instance();
 
     // Get waypoints from slot
-    auto* waypointSlot = edm.getWaypointSlot(ctx.edmIndex);
-    if (!waypointSlot) {
-        ctx.transform.velocity = Vector2D(0, 0);
-        return;
-    }
+    auto waypointSlot = edm.getWaypointSlot(ctx.edmIndex);
 
     // Check if at current waypoint
     Vector2D currentWaypoint = waypointSlot[guard.currentPatrolIndex % 4];

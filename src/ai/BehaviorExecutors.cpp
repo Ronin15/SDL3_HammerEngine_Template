@@ -138,9 +138,7 @@ HammerEngine::BehaviorConfigData getDefaultConfig(BehaviorType type) {
 // ============================================================================
 
 bool isUnderRecentAttack(const BehaviorContext& ctx, float thresholdSeconds) {
-    if (!ctx.memoryData) return false;
-
-    const auto& memory = *ctx.memoryData;
+    const auto& memory = ctx.memoryData;
     if (!memory.isValid() || !memory.lastAttacker.isValid()) return false;
 
     // Delta-based timing: lastCombatTime starts at 0 when combat occurs and
@@ -150,43 +148,39 @@ bool isUnderRecentAttack(const BehaviorContext& ctx, float thresholdSeconds) {
 }
 
 bool shouldFleeFromFear(const BehaviorContext& ctx) {
-    if (!ctx.memoryData || !ctx.memoryData->isValid()) return false;
-    float fear = ctx.memoryData->emotions.fear;
-    float bravery = ctx.memoryData->personality.bravery;
+    if (!ctx.memoryData.isValid()) return false;
+    float fear = ctx.memoryData.emotions.fear;
+    float bravery = ctx.memoryData.personality.bravery;
 
     // Crowd courage: nearby allies boost effective bravery
-    if (ctx.behaviorData) {
-        int nearbyCount = ctx.behaviorData->cachedNearbyCount;
-        float crowdBoost = std::min(0.3f, nearbyCount * 0.05f);  // Up to +0.3 from 6+ allies
-        bravery = std::min(1.0f, bravery + crowdBoost);
-    }
+    int nearbyCount = ctx.behaviorData.cachedNearbyCount;
+    float crowdBoost = std::min(0.3f, nearbyCount * 0.05f);  // Up to +0.3 from 6+ allies
+    bravery = std::min(1.0f, bravery + crowdBoost);
 
     return (fear > 0.7f && bravery < 0.3f);
 }
 
 bool isOnAlert(const BehaviorContext& ctx, float suspicionThreshold) {
-    if (!ctx.memoryData || !ctx.memoryData->isValid()) return false;
-    return ctx.memoryData->emotions.suspicion > suspicionThreshold;
+    if (!ctx.memoryData.isValid()) return false;
+    return ctx.memoryData.emotions.suspicion > suspicionThreshold;
 }
 
 bool shouldRetaliate(const BehaviorContext& ctx) {
-    if (!ctx.memoryData || !ctx.memoryData->isValid()) return false;
-    if (!ctx.memoryData->lastAttacker.isValid()) return false;
+    if (!ctx.memoryData.isValid()) return false;
+    if (!ctx.memoryData.lastAttacker.isValid()) return false;
 
     // Verify attacker is still alive
     auto& edm = EntityDataManager::Instance();
-    size_t attackerIdx = edm.getIndex(ctx.memoryData->lastAttacker);
+    size_t attackerIdx = edm.getIndex(ctx.memoryData.lastAttacker);
     if (attackerIdx == SIZE_MAX) return false;
     if (!edm.getHotDataByIndex(attackerIdx).isAlive()) return false;
 
-    float bravery = ctx.memoryData->personality.bravery;
-    float aggression = ctx.memoryData->emotions.aggression + ctx.memoryData->personality.aggression;
+    float bravery = ctx.memoryData.personality.bravery;
+    float aggression = ctx.memoryData.emotions.aggression + ctx.memoryData.personality.aggression;
 
     // Crowd courage: nearby allies boost effective bravery
-    if (ctx.behaviorData) {
-        float crowdBoost = std::min(0.3f, ctx.behaviorData->cachedNearbyCount * 0.05f);
-        bravery = std::min(1.0f, bravery + crowdBoost);
-    }
+    float crowdBoost = std::min(0.3f, ctx.behaviorData.cachedNearbyCount * 0.05f);
+    bravery = std::min(1.0f, bravery + crowdBoost);
 
     // Fight response: brave + aggressive NPCs retaliate
     return (bravery > 0.4f && aggression > 0.6f);
@@ -238,8 +232,7 @@ float getRelationshipLevel(EntityHandle npcHandle, EntityHandle subjectHandle) {
 }
 
 EntityHandle getLastAttacker(const BehaviorContext& ctx) {
-    if (!ctx.memoryData) return EntityHandle{};
-    return ctx.memoryData->lastAttacker;
+    return ctx.memoryData.lastAttacker;
 }
 
 Vector2D normalizeDirection(const Vector2D& vector) {

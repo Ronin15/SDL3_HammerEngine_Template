@@ -48,10 +48,10 @@ struct BehaviorContext {
     bool playerValid{false};       // Whether player is valid this frame
 
     // Pre-fetched EDM data - avoids repeated Instance() calls in behaviors
-    BehaviorData* behaviorData{nullptr};  // nullptr if entity has no behavior data initialized
-    PathData* pathData{nullptr};          // nullptr if entity has no path data
-    NPCMemoryData* memoryData{nullptr};   // nullptr if entity has no memory data
-    const CharacterData* characterData{nullptr};  // Pre-fetched to avoid repeated getCharacterDataByIndex()
+    BehaviorData& behaviorData;      // Guaranteed valid for behavior execution
+    PathData* pathData{nullptr};     // Optional: some behaviors support direct movement fallback
+    NPCMemoryData& memoryData;       // Guaranteed valid for NPC behavior execution
+    const CharacterData& characterData;  // Guaranteed valid for behavior execution
 
     // World bounds cached once per frame - avoids WorldManager::Instance() calls in behaviors
     float worldMinX{0.0f};
@@ -65,13 +65,10 @@ struct BehaviorContext {
     // for systems that need absolute time (e.g., MemoryEntry timestamps).
     float gameTime{0.0f};
 
-    BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt)
-        : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt) {}
-
     BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt,
                     EntityHandle pHandle, const Vector2D& pPos, const Vector2D& pVel, bool pValid,
-                    BehaviorData* bData, PathData* pData, NPCMemoryData* mData,
-                    const CharacterData* cData,
+                    BehaviorData& bData, PathData* pData, NPCMemoryData& mData,
+                    const CharacterData& cData,
                     float wMinX, float wMinY, float wMaxX, float wMaxY, bool wBoundsValid,
                     float gTime)
         : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt),

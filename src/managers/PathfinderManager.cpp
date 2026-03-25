@@ -237,7 +237,7 @@ void PathfinderManager::commitCompletedPaths() {
             continue;
         }
 
-        Vector2D* slot = edm.getWaypointSlot(completion.edmIndex);
+        auto slot = edm.getWaypointSlot(completion.edmIndex);
         for (uint16_t i = 0; i < completion.length; ++i) {
             slot[i] = completion.waypoints[i];
         }

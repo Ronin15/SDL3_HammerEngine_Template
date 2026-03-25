@@ -71,9 +71,9 @@ void initChase(size_t edmIndex, const HammerEngine::ChaseBehaviorConfig& config)
 }
 
 void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig& config) {
-    if (!ctx.behaviorData || !ctx.behaviorData->isValid()) return;
+    if (!ctx.behaviorData.isValid()) return;
 
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& chase = data.state.chase;
 
     // Process pending behavior messages
@@ -87,10 +87,10 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
                 return;
             case BehaviorMessage::ATTACK_TARGET:
                 // Redirect chase to new target from memory
-                if (ctx.memoryData && ctx.memoryData->lastAttacker.isValid())
+                if (ctx.memoryData.lastAttacker.isValid())
                 {
                     chase.hasExplicitTarget = true;
-                    chase.explicitTarget = ctx.memoryData->lastAttacker;
+                    chase.explicitTarget = ctx.memoryData.lastAttacker;
                 }
                 break;
             case BehaviorMessage::RETREAT:
@@ -103,9 +103,9 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
     data.pendingMessageCount = 0;
 
     // Emotional modulation: fearful NPCs break off chase
-    if (ctx.memoryData && ctx.memoryData->isValid()) {
-        float fear = ctx.memoryData->emotions.fear;
-        float bravery = ctx.memoryData->personality.bravery;
+    if (ctx.memoryData.isValid()) {
+        float fear = ctx.memoryData.emotions.fear;
+        float bravery = ctx.memoryData.personality.bravery;
         if (fear > 0.7f && bravery < 0.3f) {
             switchBehavior(ctx.edmIndex, BehaviorType::Flee);
             return;
@@ -114,8 +114,8 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
 
     // Aggression speed modifier (up to +20%)
     float emotionalSpeedMod = 1.0f;
-    if (ctx.memoryData && ctx.memoryData->isValid()) {
-        emotionalSpeedMod = 1.0f + ctx.memoryData->emotions.aggression * 0.2f;
+    if (ctx.memoryData.isValid()) {
+        emotionalSpeedMod = 1.0f + ctx.memoryData.emotions.aggression * 0.2f;
     }
     float chaseSpeed = config.speedMultiplier * emotionalSpeedMod;
 
@@ -162,25 +162,25 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
         }
     }
 
-    if (!targetValid && ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
-        size_t attackerIdx = edm.getIndex(ctx.memoryData->lastAttacker);
+    if (!targetValid && ctx.memoryData.lastAttacker.isValid()) {
+        size_t attackerIdx = edm.getIndex(ctx.memoryData.lastAttacker);
         if (attackerIdx != SIZE_MAX) {
             const auto& attackerHot = edm.getHotDataByIndex(attackerIdx);
             if (attackerHot.isAlive()) {
                 targetPos = attackerHot.transform.position;
-                targetHandle = ctx.memoryData->lastAttacker;
+                targetHandle = ctx.memoryData.lastAttacker;
                 targetValid = true;
             }
         }
     }
 
-    if (!targetValid && ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
-        size_t targetIdx = edm.getIndex(ctx.memoryData->lastTarget);
+    if (!targetValid && ctx.memoryData.lastTarget.isValid()) {
+        size_t targetIdx = edm.getIndex(ctx.memoryData.lastTarget);
         if (targetIdx != SIZE_MAX) {
             const auto& targetHot = edm.getHotDataByIndex(targetIdx);
             if (targetHot.isAlive()) {
                 targetPos = targetHot.transform.position;
-                targetHandle = ctx.memoryData->lastTarget;
+                targetHandle = ctx.memoryData.lastTarget;
                 targetValid = true;
             }
         }
@@ -203,8 +203,8 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
     float catchRadiusSq = config.catchRadius * config.catchRadius;
     if (distanceSquared <= catchRadiusSq) {
         // Preserve target in memory for Attack to pick up
-        if (ctx.memoryData && targetHandle.isValid()) {
-            ctx.memoryData->lastTarget = targetHandle;
+        if (targetHandle.isValid()) {
+            ctx.memoryData.lastTarget = targetHandle;
         }
         switchBehavior(ctx.edmIndex, BehaviorType::Attack);
         return;

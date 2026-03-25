@@ -33,8 +33,7 @@ void updateTimers(BehaviorData& data, float deltaTime, PathData* pathData) {
 }
 
 bool handleStartDelay(BehaviorContext& ctx) {
-    if (!ctx.behaviorData) return false;
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& wander = data.state.wander;
     if (wander.movementStarted) return true;
 
@@ -140,8 +139,7 @@ void handlePathfinding(const BehaviorContext& ctx, const Vector2D& dest,
 }
 
 void chooseNewDirection(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfig& config) {
-    if (!ctx.behaviorData) return;
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& wander = data.state.wander;
     float angle = s_angleDistribution(s_rng);
     wander.currentDirection = Vector2D(std::cos(angle), std::sin(angle));
@@ -152,8 +150,7 @@ void chooseNewDirection(BehaviorContext& ctx, const HammerEngine::WanderBehavior
 }
 
 void handleMovement(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfig& config) {
-    if (!ctx.behaviorData) return;
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& wander = data.state.wander;
     float baseDistance = config.baseGoalDistance;
     Vector2D position = ctx.transform.position;
@@ -295,9 +292,7 @@ void initWander(size_t edmIndex, const HammerEngine::WanderBehaviorConfig& confi
 }
 
 void executeWander(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfig& config) {
-    if (!ctx.behaviorData) return;
-
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     if (!data.isValid()) return;
 
     // Process pending behavior messages
@@ -310,12 +305,12 @@ void executeWander(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfi
                 return;
             case BehaviorMessage::CALM_DOWN:
                 // Clear fear so NPC doesn't re-trigger flee from residual emotion
-                if (ctx.memoryData && ctx.memoryData->isValid()) {
-                    ctx.memoryData->emotions.fear = std::max(0.0f, ctx.memoryData->emotions.fear - 0.5f);
+                if (ctx.memoryData.isValid()) {
+                    ctx.memoryData.emotions.fear = std::max(0.0f, ctx.memoryData.emotions.fear - 0.5f);
                 }
                 break;
             case BehaviorMessage::RAISE_ALERT:
-                if (ctx.memoryData && ctx.memoryData->personality.bravery < 0.4f) {
+                if (ctx.memoryData.personality.bravery < 0.4f) {
                     data.pendingMessageCount = 0;
                     switchBehavior(ctx.edmIndex, BehaviorType::Flee);
                     return;

@@ -52,8 +52,7 @@ void updateStationary(BehaviorContext& ctx) {
 }
 
 void updateSubtleSway(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& config) {
-    if (!ctx.behaviorData) return;
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& idle = data.state.idle;
     idle.movementTimer += ctx.deltaTime;
 
@@ -67,8 +66,7 @@ void updateSubtleSway(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConf
 }
 
 void updateOccasionalTurn(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& config) {
-    if (!ctx.behaviorData) return;
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& idle = data.state.idle;
     idle.turnTimer += ctx.deltaTime;
 
@@ -82,8 +80,7 @@ void updateOccasionalTurn(BehaviorContext& ctx, const HammerEngine::IdleBehavior
 }
 
 void updateLightFidget(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& config) {
-    if (!ctx.behaviorData) return;
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& idle = data.state.idle;
     idle.movementTimer += ctx.deltaTime;
     idle.turnTimer += ctx.deltaTime;
@@ -121,9 +118,7 @@ void initIdle(size_t edmIndex, const HammerEngine::IdleBehaviorConfig& config) {
 }
 
 void executeIdle(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& config) {
-    if (!ctx.behaviorData) return;
-
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     if (!data.isValid()) return;
 
     if (!data.isInitialized()) {
@@ -141,12 +136,12 @@ void executeIdle(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& c
                 return;
             case BehaviorMessage::CALM_DOWN:
                 // Clear fear so NPC doesn't re-trigger flee from residual emotion
-                if (ctx.memoryData && ctx.memoryData->isValid()) {
-                    ctx.memoryData->emotions.fear = std::max(0.0f, ctx.memoryData->emotions.fear - 0.5f);
+                if (ctx.memoryData.isValid()) {
+                    ctx.memoryData.emotions.fear = std::max(0.0f, ctx.memoryData.emotions.fear - 0.5f);
                 }
                 break;
             case BehaviorMessage::RAISE_ALERT:
-                if (ctx.memoryData && ctx.memoryData->personality.bravery < 0.4f) {
+                if (ctx.memoryData.personality.bravery < 0.4f) {
                     data.pendingMessageCount = 0;
                     switchBehavior(ctx.edmIndex, BehaviorType::Flee);
                     return;

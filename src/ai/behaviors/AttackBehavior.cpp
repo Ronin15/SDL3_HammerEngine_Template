@@ -263,7 +263,7 @@ bool tryAcquireTarget(BehaviorContext& ctx, BehaviorData& data,
 
     if (ctx.playerValid && ctx.playerHandle.isValid()) {
         const size_t playerIdx = edm.getIndex(ctx.playerHandle);
-        if (isAttackTargetCandidate(ctx.edmIndex, playerIdx, ctx.characterData)) {
+        if (isAttackTargetCandidate(ctx.edmIndex, playerIdx, &ctx.characterData)) {
             targetPos = edm.getHotDataByIndex(playerIdx).transform.position;
             bestTarget = ctx.playerHandle;
             bestDistanceSq = Vector2D::distanceSquared(ctx.transform.position, targetPos);
@@ -276,7 +276,7 @@ bool tryAcquireTarget(BehaviorContext& ctx, BehaviorData& data,
         ctx.transform.position, scanRange, s_scanBuffer, false);
 
     for (size_t candidateIdx : s_scanBuffer) {
-        if (!isAttackTargetCandidate(ctx.edmIndex, candidateIdx, ctx.characterData)) {
+        if (!isAttackTargetCandidate(ctx.edmIndex, candidateIdx, &ctx.characterData)) {
             continue;
         }
 
@@ -297,9 +297,7 @@ bool tryAcquireTarget(BehaviorContext& ctx, BehaviorData& data,
     }
 
     attack.hasTarget = true;
-    if (ctx.memoryData) {
-        ctx.memoryData->lastTarget = bestTarget;
-    }
+    ctx.memoryData.lastTarget = bestTarget;
     return true;
 }
 
@@ -542,9 +540,9 @@ void initAttack(size_t edmIndex, const HammerEngine::AttackBehaviorConfig& confi
 }
 
 void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfig& config) {
-    if (!ctx.behaviorData || !ctx.behaviorData->isValid()) return;
+    if (!ctx.behaviorData.isValid()) return;
 
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& attack = data.state.attack;
 
     // Process any pending messages before main logic
@@ -572,8 +570,8 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     }
 
     // Check memory lastTarget
-    if (!hasTarget && ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
-        size_t targetIdx = edm.getIndex(ctx.memoryData->lastTarget);
+    if (!hasTarget && ctx.memoryData.lastTarget.isValid()) {
+        size_t targetIdx = edm.getIndex(ctx.memoryData.lastTarget);
         if (targetIdx != SIZE_MAX && edm.getHotDataByIndex(targetIdx).isAlive()) {
             targetPos = edm.getHotDataByIndex(targetIdx).transform.position;
             hasTarget = true;
@@ -581,8 +579,8 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     }
 
     // Check memory lastAttacker
-    if (!hasTarget && ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
-        size_t attackerIdx = edm.getIndex(ctx.memoryData->lastAttacker);
+    if (!hasTarget && ctx.memoryData.lastAttacker.isValid()) {
+        size_t attackerIdx = edm.getIndex(ctx.memoryData.lastAttacker);
         if (attackerIdx != SIZE_MAX && edm.getHotDataByIndex(attackerIdx).isAlive()) {
             targetPos = edm.getHotDataByIndex(attackerIdx).transform.position;
             hasTarget = true;
@@ -592,12 +590,10 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     // Check player as a direct hostile fallback
     if (!hasTarget && ctx.playerValid && ctx.playerHandle.isValid()) {
         size_t playerIdx = edm.getIndex(ctx.playerHandle);
-        if (isAttackTargetCandidate(ctx.edmIndex, playerIdx, ctx.characterData)) {
+        if (isAttackTargetCandidate(ctx.edmIndex, playerIdx, &ctx.characterData)) {
             targetPos = edm.getHotDataByIndex(playerIdx).transform.position;
             hasTarget = true;
-            if (ctx.memoryData) {
-                ctx.memoryData->lastTarget = ctx.playerHandle;
-            }
+            ctx.memoryData.lastTarget = ctx.playerHandle;
         }
     }
 
@@ -629,7 +625,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     attack.targetDistance = std::sqrt(distSquared);
 
     AttackMode attackMode = static_cast<AttackMode>(attack.attackMode);
-    const float attackRange = getEffectiveAttackRange(ctx.characterData, attackMode, config);
+    const float attackRange = getEffectiveAttackRange(&ctx.characterData, attackMode, config);
 
     // Update combat state
     if (!attack.inCombat && attack.targetDistance <= attackRange * COMBAT_ENTER_RANGE_MULT) {
@@ -641,9 +637,9 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
 
     // Check for berserker mode
     bool berserkerMode = false;
-    if (ctx.memoryData && ctx.memoryData->isValid()) {
-        float aggression = ctx.memoryData->emotions.aggression;
-        float personalAggression = ctx.memoryData->personality.aggression;
+    if (ctx.memoryData.isValid()) {
+        float aggression = ctx.memoryData.emotions.aggression;
+        float personalAggression = ctx.memoryData.personality.aggression;
         berserkerMode = (aggression > 0.8f && personalAggression > 0.7f);
     }
 
@@ -658,25 +654,23 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
 
     // Check retreat conditions (respects berserker mode's low threshold)
     if (!berserkerMode && attackMode != AttackMode::BERSERKER &&
-        shouldRetreat(ctx.edmIndex, ctx.characterData, effectiveRetreatThreshold, config.aggression) &&
+        shouldRetreat(ctx.edmIndex, &ctx.characterData, effectiveRetreatThreshold, config.aggression) &&
         attack.currentState != static_cast<uint8_t>(AttackState::RETREATING)) {
 
         bool shouldFlee = false;
-        if (ctx.memoryData && ctx.memoryData->isValid()) {
-            float fear = ctx.memoryData->emotions.fear;
-            float bravery = ctx.memoryData->personality.bravery;
+        if (ctx.memoryData.isValid()) {
+            float fear = ctx.memoryData.emotions.fear;
+            float bravery = ctx.memoryData.personality.bravery;
             shouldFlee = (fear > FEAR_FLEE_THRESHOLD && bravery < BRAVERY_FLEE_THRESHOLD);
         }
 
         // Signal nearby same-faction allies to retreat
-        if (ctx.characterData) {
-            uint8_t myFaction = ctx.characterData->faction;
-            AIManager::Instance().scanFactionInRadius(
-                myFaction, ctx.transform.position, 200.0f, s_scanBuffer, true);
-            for (size_t idx : s_scanBuffer) {
-                if (idx == ctx.edmIndex) continue;
-                Behaviors::deferBehaviorMessage(idx, BehaviorMessage::RETREAT);
-            }
+        uint8_t myFaction = ctx.characterData.faction;
+        AIManager::Instance().scanFactionInRadius(
+            myFaction, ctx.transform.position, 200.0f, s_scanBuffer, true);
+        for (size_t idx : s_scanBuffer) {
+            if (idx == ctx.edmIndex) continue;
+            Behaviors::deferBehaviorMessage(idx, BehaviorMessage::RETREAT);
         }
 
         if (shouldFlee) {
@@ -793,10 +787,10 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
                 EntityHandle targetHandle{};
                 if (attack.hasExplicitTarget && attack.explicitTarget.isValid()) {
                     targetHandle = attack.explicitTarget;
-                } else if (ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
-                    targetHandle = ctx.memoryData->lastTarget;
-                } else if (ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
-                    targetHandle = ctx.memoryData->lastAttacker;
+                } else if (ctx.memoryData.lastTarget.isValid()) {
+                    targetHandle = ctx.memoryData.lastTarget;
+                } else if (ctx.memoryData.lastAttacker.isValid()) {
+                    targetHandle = ctx.memoryData.lastAttacker;
                 }
                 if (targetHandle.isValid()) {
                     EntityHandle attackerHandle = edm.getHandle(ctx.edmIndex);
@@ -808,7 +802,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
                         s_scanBuffer.clear();
                         AIManager::Instance().scanActiveIndicesInRadius(
                             targetPos, config.aoeRadius, s_scanBuffer, false);
-                        uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
+                        uint8_t myFaction = ctx.characterData.faction;
 
                         for (size_t aoeIdx : s_scanBuffer)
                         {
@@ -832,7 +826,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
                 }
                 attack.specialAttackReady = false;
             } else {
-                executeAttackAction(ctx.edmIndex, targetPos, data, config, ctx.characterData);
+                executeAttackAction(ctx.edmIndex, targetPos, data, config, &ctx.characterData);
             }
             changeState(data, AttackState::RECOVERING);
             break;
@@ -851,7 +845,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             constexpr float MIN_RETREAT_TIME = 0.5f;
             if (attack.stateChangeTimer >= MIN_RETREAT_TIME) {
                 if (attack.targetDistance > attackRange * 2.0f ||
-                    !shouldRetreat(ctx.edmIndex, ctx.characterData, config.retreatThreshold, config.aggression)) {
+                    !shouldRetreat(ctx.edmIndex, &ctx.characterData, config.retreatThreshold, config.aggression)) {
                     attack.isRetreating = false;
                     changeState(data, AttackState::SEEKING);
                 }

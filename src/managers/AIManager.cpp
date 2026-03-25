@@ -578,6 +578,11 @@ void AIManager::assignBehavior(EntityHandle handle,
   }
 
   auto config = Behaviors::getDefaultConfig(behaviorType);
+  if (!edm.hasMemoryData(edmIndex)) {
+    edm.initMemoryData(edmIndex);
+  }
+  assert(edm.hasMemoryData(edmIndex) &&
+         "Behavior-assigned AI entities must have valid memory data");
 
   // Acquire write lock — index updates and EDM config must be atomic
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
@@ -655,6 +660,11 @@ void AIManager::assignBehavior(EntityHandle handle,
     AI_ERROR("Cannot assign behavior: entity not in EDM");
     return;
   }
+  if (!edm.hasMemoryData(edmIndex)) {
+    edm.initMemoryData(edmIndex);
+  }
+  assert(edm.hasMemoryData(edmIndex) &&
+         "Behavior-assigned AI entities must have valid memory data");
 
   // Acquire write lock — index updates and EDM config must be atomic
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
@@ -1383,29 +1393,27 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
     // Pre-fetch BehaviorData, PathData, and MemoryData once - avoids repeated Instance()
     // calls in behaviors BehaviorType is read from EDM BehaviorData (single
     // source of truth)
-    BehaviorData *behaviorData = nullptr;
-    PathData *pathData = nullptr;
-    NPCMemoryData *memoryData = nullptr;
-    if (edm.hasBehaviorData(edmIdx)) {
-      behaviorData = &edm.getBehaviorData(edmIdx);
-      if (behaviorData->isValid() &&
-          behaviorData->behaviorType != BehaviorType::None &&
-          behaviorData->behaviorType != BehaviorType::COUNT) {
-        pathData = &edm.getPathData(edmIdx);
-      }
+    if (!edm.hasBehaviorData(edmIdx)) {
+      continue;
     }
+    auto &behaviorData = edm.getBehaviorData(edmIdx);
+    if (!behaviorData.isValid() ||
+        behaviorData.behaviorType == BehaviorType::None ||
+        behaviorData.behaviorType == BehaviorType::COUNT) {
+      continue;
+    }
+    PathData *pathData = &edm.getPathData(edmIdx);
 
-    // Fetch memory data (independent of behavior data)
-    if (edm.hasMemoryData(edmIdx)) {
-      memoryData = &edm.getMemoryData(edmIdx);
-      // Update emotional decay each frame
-      if (memoryData->isValid()) {
-        edm.updateEmotionalDecay(edmIdx, deltaTime);
-      }
+    assert(edm.hasMemoryData(edmIdx) &&
+           "Behavior-executed entities must have initialized memory data");
+    if (!edm.hasMemoryData(edmIdx)) {
+      continue;
     }
+    auto &memoryData = edm.getMemoryData(edmIdx);
+    edm.updateEmotionalDecay(edmIdx, deltaTime);
 
     // Pre-fetch CharacterData to avoid repeated getCharacterDataByIndex() calls in behaviors
-    const CharacterData* characterData = &edm.getCharacterDataByIndex(edmIdx);
+    const CharacterData &characterData = edm.getCharacterDataByIndex(edmIdx);
 
     // Get behavior config from EDM
     const auto& config = edm.getBehaviorConfig(edmIdx);
@@ -1418,7 +1426,7 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
       transform.previousPosition = transform.position;
 
       // Execute behavior logic using cached handle ID and EDM index for
-      // contention-free state access
+          // contention-free state access
       BehaviorContext ctx(
           transform, edmHotData, m_storage.handles[storageIdx].getId(), edmIdx,
           deltaTime, playerHandle, playerPos, playerVel, playerValid,

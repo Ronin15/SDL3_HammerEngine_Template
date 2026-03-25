@@ -2128,9 +2128,10 @@ public:
     void clearPathData(size_t index);
 
     /**
-     * @brief Get raw waypoint slot for direct write (zero-copy)
+     * @brief Get bounded waypoint slot view for direct write (zero-copy)
      */
-    [[nodiscard]] Vector2D* getWaypointSlot(size_t index) noexcept;
+    [[nodiscard]] std::span<Vector2D, FixedWaypointSlot::MAX_WAYPOINTS_PER_ENTITY>
+    getWaypointSlot(size_t index) noexcept;
 
     /**
      * @brief Finalize path after direct write
@@ -2688,8 +2689,11 @@ inline const PathData& EntityDataManager::getPathData(size_t index) const {
 }
 
 // Per-entity waypoint slot accessors - O(1) access with no shared state
-inline Vector2D* EntityDataManager::getWaypointSlot(size_t index) noexcept {
-    return m_waypointSlots[index].waypoints;
+inline std::span<Vector2D, FixedWaypointSlot::MAX_WAYPOINTS_PER_ENTITY>
+EntityDataManager::getWaypointSlot(size_t index) noexcept {
+    assert(index < m_waypointSlots.size() && "Entity waypoint slot out of bounds");
+    return std::span<Vector2D, FixedWaypointSlot::MAX_WAYPOINTS_PER_ENTITY>(
+        m_waypointSlots[index].waypoints, FixedWaypointSlot::MAX_WAYPOINTS_PER_ENTITY);
 }
 
 inline Vector2D EntityDataManager::getWaypoint(size_t entityIdx, size_t waypointIdx) const {

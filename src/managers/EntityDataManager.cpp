@@ -497,6 +497,9 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     hot.triggerTag = 0;
     hot.typeLocalIndex = charIndex;
 
+    // NPC memory is a base creation invariant, not caller-managed setup.
+    initMemoryData(index);
+
     // Store ID and mapping
     m_entityIds[index] = id;
     m_generations[index] = generation;
@@ -560,9 +563,6 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     // Get data indices
     size_t index = getIndex(handle);
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
-
-    // Initialize memory data for emotional states and personality
-    initMemoryData(index);
 
     // Set up CharacterData with computed stats (race base × class multiplier)
     auto& charData = m_characterData[typeIndex];
@@ -695,9 +695,6 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
     size_t index = getIndex(handle);
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
 
-    // Initialize memory data for emotional states and personality
-    initMemoryData(index);
-
     // Set up CharacterData
     auto& charData = m_characterData[typeIndex];
     charData.category = CreatureCategory::Monster;
@@ -795,9 +792,6 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
 
     size_t index = getIndex(handle);
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
-
-    // Initialize memory data for emotional states and personality
-    initMemoryData(index);
 
     // Set up CharacterData
     auto& charData = m_characterData[typeIndex];

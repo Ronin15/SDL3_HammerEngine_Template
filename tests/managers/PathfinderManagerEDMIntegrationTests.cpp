@@ -387,7 +387,7 @@ BOOST_AUTO_TEST_CASE(StaleCompletionFromReusedSlotDoesNotOverwriteNewEntityPath)
     BOOST_REQUIRE(pd.hasPath);
     BOOST_REQUIRE(pd.pathLength > 0);
 
-    const Vector2D* waypoints = edm.getWaypointSlot(reusedIndex);
+    auto waypoints = edm.getWaypointSlot(reusedIndex);
     const Vector2D finalWaypoint = waypoints[pd.pathLength - 1];
     const float distToExpected = (finalWaypoint - expectedGoal).length();
     const float distToOldGoal = (finalWaypoint - Vector2D(1900.0f, 1900.0f)).length();
@@ -453,7 +453,7 @@ BOOST_AUTO_TEST_CASE(StaleCompletionFilteringStressLoop) {
         BOOST_REQUIRE(pd.hasPath);
         BOOST_REQUIRE(pd.pathLength > 0);
 
-        const Vector2D* waypoints = edm.getWaypointSlot(reusedIndex);
+        auto waypoints = edm.getWaypointSlot(reusedIndex);
         const Vector2D finalWaypoint = waypoints[pd.pathLength - 1];
         const float distToExpected = (finalWaypoint - expectedGoal).length();
         const float distToOldGoal = (finalWaypoint - Vector2D(1900.0f, 1900.0f)).length();
