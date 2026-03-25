@@ -48,6 +48,7 @@
 #include <cassert>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <random>
 #include <span>
@@ -2480,6 +2481,8 @@ private:
     std::vector<ItemRenderData> m_itemRenderData;    // DroppedItem render data (same index as ItemData)
     std::vector<ContainerRenderData> m_containerRenderData;  // Container render data
     std::vector<HarvestableRenderData> m_harvestableRenderData;  // Harvestable render data
+    std::vector<std::shared_ptr<SDL_Texture>> m_npcRenderTextureOwners;  // Pins cached NPC textures
+    std::vector<std::shared_ptr<SDL_Texture>> m_itemRenderTextureOwners;  // Pins cached item textures
 
     // Inventory data (indexed by inventory index from createInventory())
     std::vector<InventoryData> m_inventoryData;

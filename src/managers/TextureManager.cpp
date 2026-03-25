@@ -492,7 +492,7 @@ bool TextureManager::loadSingleGPUTexture(const std::string& fileName, const std
   uint32_t height = static_cast<uint32_t>(convertedSurface->h);
 
   // Create GPU texture with RGBA format
-  auto gpuTexture = std::make_unique<HammerEngine::GPUTexture>(
+  auto gpuTexture = std::make_shared<HammerEngine::GPUTexture>(
       gpuDevice.get(),
       width, height,
       SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
@@ -601,23 +601,13 @@ void TextureManager::processPendingUploads(SDL_GPUCopyPass* copyPass) {
   m_pendingUploads.clear();
 }
 
-HammerEngine::GPUTexture* TextureManager::getGPUTexture(const std::string& textureID) const {
+std::optional<GPUTextureData> TextureManager::getGPUTextureData(const std::string& textureID) const {
   std::lock_guard<std::mutex> lock(m_gpuTextureMutex);
 
   auto it = m_gpuTextureMap.find(textureID);
   if (it != m_gpuTextureMap.end()) {
-    return it->second.texture.get();
+    return it->second;
   }
-  return nullptr;
-}
-
-const GPUTextureData* TextureManager::getGPUTextureData(const std::string& textureID) const {
-  std::lock_guard<std::mutex> lock(m_gpuTextureMutex);
-
-  auto it = m_gpuTextureMap.find(textureID);
-  if (it != m_gpuTextureMap.end()) {
-    return &it->second;
-  }
-  return nullptr;
+  return std::nullopt;
 }
 #endif

@@ -229,6 +229,7 @@ private:
     // Cached texture with dimensions and atlas source coords
     // When using atlas: ptr points to shared atlas, atlasX/Y are source rect origin
     struct CachedTexture {
+        std::shared_ptr<SDL_Texture> owner;
         SDL_Texture* ptr{nullptr};
         float w{0}, h{0};
         float atlasX{0}, atlasY{0};  // Source rect origin in atlas (0,0 = full texture)
@@ -484,10 +485,12 @@ private:
     };
 
     SeasonalTileCoords m_seasonalCoords[4];  // Indexed by Season enum (Spring=0, Summer=1, Fall=2, Winter=3)
+    std::shared_ptr<SDL_Texture> m_atlasTextureOwner{};
     SDL_Texture* m_atlasPtr{nullptr};        // Single shared atlas texture
     bool m_useAtlas{false};                  // True if atlas loaded successfully
 
 #ifdef USE_SDL3_GPU
+    std::shared_ptr<GPUTexture> m_atlasGPUOwner{};
     GPUTexture* m_atlasGPUPtr{nullptr};  // GPU atlas texture pointer
 
     // Helper to get atlas coords for a tile
@@ -647,7 +650,11 @@ public:
         m_viewportHeight = height;
     }
 
-    const HammerEngine::WorldData* getWorldData() const { return m_currentWorld.get(); }
+    template <typename Func>
+    decltype(auto) withWorldDataRead(Func&& func) const {
+        std::shared_lock<std::shared_mutex> lock(m_worldMutex);
+        return std::forward<Func>(func)(m_currentWorld.get());
+    }
 
     /**
      * @brief Gets the current world version for change detection

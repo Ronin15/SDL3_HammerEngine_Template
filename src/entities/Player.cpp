@@ -80,7 +80,7 @@ void Player::loadDimensionsFromTexture() {
 
 #ifdef USE_SDL3_GPU
   // Try GPU texture first (used in GPU rendering mode)
-  if (auto* gpuData = texMgr.getGPUTextureData(m_textureID); gpuData) {
+  if (auto gpuData = texMgr.getGPUTextureData(m_textureID); gpuData) {
     width = gpuData->width;
     height = gpuData->height;
     gotDimensions = (width > 0 && height > 0);
@@ -249,7 +249,8 @@ void Player::renderAtPosition(SDL_Renderer *renderer, const Vector2D &interpPos,
   // Cache texture on first render (like WorldManager pattern - no hash lookup
   // per frame)
   if (!m_cachedTexture) {
-    m_cachedTexture = TextureManager::Instance().getTexturePtr(m_textureID);
+    m_cachedTextureOwner = TextureManager::Instance().getTexture(m_textureID);
+    m_cachedTexture = m_cachedTextureOwner.get();
     if (!m_cachedTexture)
       return;
   }
@@ -280,7 +281,7 @@ void Player::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                                float cameraX, float cameraY,
                                float interpolationAlpha) {
   // Get GPU texture for player
-  auto* gpuTextureData = TextureManager::Instance().getGPUTextureData(m_textureID);
+  auto gpuTextureData = TextureManager::Instance().getGPUTextureData(m_textureID);
   if (!gpuTextureData || !gpuTextureData->texture) {
     return;
   }

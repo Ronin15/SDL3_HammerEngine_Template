@@ -12,6 +12,7 @@
 #include <string>
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 #ifdef USE_SDL3_GPU
@@ -33,7 +34,7 @@ struct TextureData {
  * @brief Holds GPU texture data with cached dimensions
  */
 struct GPUTextureData {
-    std::unique_ptr<HammerEngine::GPUTexture> texture;
+    std::shared_ptr<HammerEngine::GPUTexture> texture;
     float width{0.0f};
     float height{0.0f};
 };
@@ -181,10 +182,9 @@ class TextureManager {
   std::shared_ptr<SDL_Texture> getTexture(const std::string& textureID) const;
 
   /**
-   * @brief Get raw texture pointer for caching in entities (like WorldManager pattern)
+   * @brief Get a raw SDL texture pointer for legacy hot-loop caches
    * @param textureID Unique identifier of the texture
-   * @return Raw SDL_Texture pointer, or nullptr if not found. Caller must NOT free.
-   * @note Use this for entity render caching to avoid per-frame hash lookups
+   * @return Raw SDL_Texture pointer, or nullptr if not found
    */
   SDL_Texture* getTexturePtr(const std::string& textureID) const;
 
@@ -229,18 +229,11 @@ class TextureManager {
   void processPendingUploads(SDL_GPUCopyPass* copyPass);
 
   /**
-   * @brief Get GPU texture by ID
+   * @brief Get GPU texture data by ID
    * @param textureID Unique identifier of the texture
-   * @return Pointer to GPUTexture, or nullptr if not found
+   * @return Shared view of GPUTextureData, or std::nullopt if not found
    */
-  HammerEngine::GPUTexture* getGPUTexture(const std::string& textureID) const;
-
-  /**
-   * @brief Get GPU texture data (texture + dimensions)
-   * @param textureID Unique identifier of the texture
-   * @return Pointer to GPUTextureData, or nullptr if not found
-   */
-  const GPUTextureData* getGPUTextureData(const std::string& textureID) const;
+  std::optional<GPUTextureData> getGPUTextureData(const std::string& textureID) const;
 
   /**
    * @brief Check if GPU textures are available

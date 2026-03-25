@@ -172,7 +172,7 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
 
   // Helper to add a logo sprite
   auto addLogo = [&](const char* textureName, int x, int y, int size) {
-    const GPUTextureData* texData = texMgr.getGPUTextureData(textureName);
+    auto texData = texMgr.getGPUTextureData(textureName);
     if (!texData || !texData->texture) {
       return;
     }

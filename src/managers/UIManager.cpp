@@ -2465,10 +2465,10 @@ void regenerateListTextures(const std::shared_ptr<UIComponent>& component, SDL_R
         
         // Only regenerate if texture doesn't exist or if we cleared all textures
         if (!component->m_listItemTextures[i] || needsFullRegeneration) {
-            SDL_Texture* texture = fontManager.renderText(itemText, component->m_style.fontID, 
-                                                        component->m_style.textColor, renderer, true);
+            auto texture = fontManager.renderText(itemText, component->m_style.fontID,
+                                                  component->m_style.textColor, renderer);
             if (texture) {
-                component->m_listItemTextures[i] = std::shared_ptr<SDL_Texture>(texture, SDL_DestroyTexture);
+                component->m_listItemTextures[i] = std::move(texture);
             }
         }
     }

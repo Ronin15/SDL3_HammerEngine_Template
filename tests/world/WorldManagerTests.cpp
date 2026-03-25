@@ -89,10 +89,11 @@ BOOST_AUTO_TEST_CASE(TestLoadNewWorld) {
     BOOST_CHECK(worldManager->hasActiveWorld());
     BOOST_CHECK(!worldManager->getCurrentWorldId().empty());
     
-    const WorldData* worldData = worldManager->getWorldData();
-    BOOST_REQUIRE(worldData != nullptr);
-    BOOST_CHECK_EQUAL(worldData->grid.size(), 20);
-    BOOST_CHECK_EQUAL(worldData->grid[0].size(), 20);
+    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* worldData) {
+        BOOST_REQUIRE(worldData != nullptr);
+        BOOST_CHECK_EQUAL(worldData->grid.size(), 20);
+        BOOST_CHECK_EQUAL(worldData->grid[0].size(), 20);
+    });
 }
 
 BOOST_AUTO_TEST_CASE(TestHarvestablesUseConfiguredHarvestTypes) {
@@ -106,52 +107,55 @@ BOOST_AUTO_TEST_CASE(TestHarvestablesUseConfiguredHarvestTypes) {
     config.mountainLevel = 0.6f;
 
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
-    const WorldData* worldData = worldManager->getWorldData();
-    BOOST_REQUIRE(worldData != nullptr);
-
     const auto& edm = EntityDataManager::Instance();
     std::vector<size_t> nearbyHarvestables;
 
     bool foundTree = false;
-    for (size_t y = 0; y < worldData->grid.size() && !foundTree; ++y) {
-        for (size_t x = 0; x < worldData->grid[y].size() && !foundTree; ++x) {
-            if (worldData->grid[y][x].obstacleType != ObstacleType::TREE) {
-                continue;
+    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* worldData) {
+        BOOST_REQUIRE(worldData != nullptr);
+        for (size_t y = 0; y < worldData->grid.size() && !foundTree; ++y) {
+            for (size_t x = 0; x < worldData->grid[y].size() && !foundTree; ++x) {
+                if (worldData->grid[y][x].obstacleType != ObstacleType::TREE) {
+                    continue;
+                }
+
+                Vector2D pos(static_cast<float>(x) * TILE_SIZE + TILE_SIZE * 0.5f,
+                             static_cast<float>(y) * TILE_SIZE + TILE_SIZE * 0.5f);
+                nearbyHarvestables.clear();
+                worldResourceManager->queryHarvestablesInRadius(pos, 8.0f, nearbyHarvestables);
+                BOOST_REQUIRE_MESSAGE(!nearbyHarvestables.empty(), "Expected harvestable at tree obstacle");
+
+                const auto handle = edm.getStaticHandle(nearbyHarvestables.front());
+                const auto& harvestable = edm.getHarvestableData(handle);
+                BOOST_CHECK(harvestable.harvestType == HarvestType::Chopping);
+                foundTree = true;
             }
-
-            Vector2D pos(static_cast<float>(x) * TILE_SIZE + TILE_SIZE * 0.5f,
-                         static_cast<float>(y) * TILE_SIZE + TILE_SIZE * 0.5f);
-            nearbyHarvestables.clear();
-            worldResourceManager->queryHarvestablesInRadius(pos, 8.0f, nearbyHarvestables);
-            BOOST_REQUIRE_MESSAGE(!nearbyHarvestables.empty(), "Expected harvestable at tree obstacle");
-
-            const auto handle = edm.getStaticHandle(nearbyHarvestables.front());
-            const auto& harvestable = edm.getHarvestableData(handle);
-            BOOST_CHECK(harvestable.harvestType == HarvestType::Chopping);
-            foundTree = true;
         }
-    }
+    });
     BOOST_REQUIRE_MESSAGE(foundTree, "Expected at least one tree obstacle in generated world");
 
     bool foundIronDeposit = false;
-    for (size_t y = 0; y < worldData->grid.size() && !foundIronDeposit; ++y) {
-        for (size_t x = 0; x < worldData->grid[y].size() && !foundIronDeposit; ++x) {
-            if (worldData->grid[y][x].obstacleType != ObstacleType::IRON_DEPOSIT) {
-                continue;
+    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* worldData) {
+        BOOST_REQUIRE(worldData != nullptr);
+        for (size_t y = 0; y < worldData->grid.size() && !foundIronDeposit; ++y) {
+            for (size_t x = 0; x < worldData->grid[y].size() && !foundIronDeposit; ++x) {
+                if (worldData->grid[y][x].obstacleType != ObstacleType::IRON_DEPOSIT) {
+                    continue;
+                }
+
+                Vector2D pos(static_cast<float>(x) * TILE_SIZE + TILE_SIZE * 0.5f,
+                             static_cast<float>(y) * TILE_SIZE + TILE_SIZE * 0.5f);
+                nearbyHarvestables.clear();
+                worldResourceManager->queryHarvestablesInRadius(pos, 8.0f, nearbyHarvestables);
+                BOOST_REQUIRE_MESSAGE(!nearbyHarvestables.empty(), "Expected harvestable at iron deposit obstacle");
+
+                const auto handle = edm.getStaticHandle(nearbyHarvestables.front());
+                const auto& harvestable = edm.getHarvestableData(handle);
+                BOOST_CHECK(harvestable.harvestType == HarvestType::Mining);
+                foundIronDeposit = true;
             }
-
-            Vector2D pos(static_cast<float>(x) * TILE_SIZE + TILE_SIZE * 0.5f,
-                         static_cast<float>(y) * TILE_SIZE + TILE_SIZE * 0.5f);
-            nearbyHarvestables.clear();
-            worldResourceManager->queryHarvestablesInRadius(pos, 8.0f, nearbyHarvestables);
-            BOOST_REQUIRE_MESSAGE(!nearbyHarvestables.empty(), "Expected harvestable at iron deposit obstacle");
-
-            const auto handle = edm.getStaticHandle(nearbyHarvestables.front());
-            const auto& harvestable = edm.getHarvestableData(handle);
-            BOOST_CHECK(harvestable.harvestType == HarvestType::Mining);
-            foundIronDeposit = true;
         }
-    }
+    });
     BOOST_WARN_MESSAGE(foundIronDeposit, "Generated world had no iron deposit obstacle to validate mining harvest type");
 }
 
@@ -396,17 +400,19 @@ BOOST_AUTO_TEST_CASE(TestMultipleWorldLoads) {
     BOOST_REQUIRE(worldManager->loadNewWorld(config1));
     std::string firstWorldId = worldManager->getCurrentWorldId();
     
-    const WorldData* firstWorldData = worldManager->getWorldData();
-    BOOST_REQUIRE(firstWorldData != nullptr);
-    BOOST_CHECK_EQUAL(firstWorldData->grid.size(), 10);
+    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* firstWorldData) {
+        BOOST_REQUIRE(firstWorldData != nullptr);
+        BOOST_CHECK_EQUAL(firstWorldData->grid.size(), 10);
+    });
     
     // Load second world (should replace first)
     BOOST_REQUIRE(worldManager->loadNewWorld(config2));
     std::string secondWorldId = worldManager->getCurrentWorldId();
     
-    const WorldData* secondWorldData = worldManager->getWorldData();
-    BOOST_REQUIRE(secondWorldData != nullptr);
-    BOOST_CHECK_EQUAL(secondWorldData->grid.size(), 15);
+    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* secondWorldData) {
+        BOOST_REQUIRE(secondWorldData != nullptr);
+        BOOST_CHECK_EQUAL(secondWorldData->grid.size(), 15);
+    });
     
     // World IDs should be different
     BOOST_CHECK_NE(firstWorldId, secondWorldId);

@@ -264,79 +264,75 @@ void CollisionManager::setTriggerCooldown(EntityID triggerId, float seconds) {
 size_t
 CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
   const WorldManager &wm = WorldManager::Instance();
-  const auto *world = wm.getWorldData();
-  if (!world)
-    return 0;
-  size_t created = 0;
-  size_t skippedInterior = 0;
-  constexpr float tileSize = HammerEngine::TILE_SIZE;
-  const int h = static_cast<int>(world->grid.size());
-
-  // Helper lambda to check if a tile is water (with bounds checking)
-  auto isWaterTile = [&world, h](int tx, int ty) -> bool {
-    if (ty < 0 || ty >= h)
-      return false;
-    const int rowWidth = static_cast<int>(world->grid[ty].size());
-    if (tx < 0 || tx >= rowWidth)
-      return false;
-    return world->grid[ty][tx].isWater;
-  };
-
-  for (int y = 0; y < h; ++y) {
-    const int w = static_cast<int>(world->grid[y].size());
-    for (int x = 0; x < w; ++x) {
-      const auto &tile = world->grid[y][x];
-      if (!tile.isWater)
-        continue;
-
-      // OPTIMIZATION: Only create triggers for water tiles on the edge
-      // A tile is an "edge" if any of its 4 neighbors is NOT water
-      bool const isEdge = !isWaterTile(x - 1, y) || // Left neighbor
-                          !isWaterTile(x + 1, y) || // Right neighbor
-                          !isWaterTile(x, y - 1) || // Top neighbor
-                          !isWaterTile(x, y + 1);   // Bottom neighbor
-
-      if (!isEdge) {
-        ++skippedInterior;
-        continue; // Skip interior water tiles - player can't enter from here
-      }
-
-      const float cx = x * tileSize + tileSize * 0.5f;
-      const float cy = y * tileSize + tileSize * 0.5f;
-      // Water triggers are EventOnly - skip broadphase, detect player overlap
-      // only
-      createTriggerAreaAt(cx, cy, tileSize * 0.5f, tileSize * 0.5f, tag,
-                          HammerEngine::TriggerType::EventOnly,
-                          CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-      ++created;
+  return wm.withWorldDataRead([&](const HammerEngine::WorldData *world) -> size_t {
+    if (!world) {
+      return 0;
     }
-  }
 
-  COLLISION_DEBUG_IF(
-      skippedInterior > 0,
-      std::format(
-          "Water triggers: {} edge triggers created, {} interior tiles skipped",
-          created, skippedInterior));
-  return created;
+    size_t created = 0;
+    size_t skippedInterior = 0;
+    constexpr float tileSize = HammerEngine::TILE_SIZE;
+    const int h = static_cast<int>(world->grid.size());
+
+    // Helper lambda to check if a tile is water (with bounds checking)
+    auto isWaterTile = [&world, h](int tx, int ty) -> bool {
+      if (ty < 0 || ty >= h)
+        return false;
+      const int rowWidth = static_cast<int>(world->grid[ty].size());
+      if (tx < 0 || tx >= rowWidth)
+        return false;
+      return world->grid[ty][tx].isWater;
+    };
+
+    for (int y = 0; y < h; ++y) {
+      const int w = static_cast<int>(world->grid[y].size());
+      for (int x = 0; x < w; ++x) {
+        const auto &tile = world->grid[y][x];
+        if (!tile.isWater)
+          continue;
+
+        bool const isEdge = !isWaterTile(x - 1, y) || !isWaterTile(x + 1, y) ||
+                            !isWaterTile(x, y - 1) || !isWaterTile(x, y + 1);
+
+        if (!isEdge) {
+          ++skippedInterior;
+          continue;
+        }
+
+        const float cx = x * tileSize + tileSize * 0.5f;
+        const float cy = y * tileSize + tileSize * 0.5f;
+        createTriggerAreaAt(cx, cy, tileSize * 0.5f, tileSize * 0.5f, tag,
+                            HammerEngine::TriggerType::EventOnly,
+                            CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+        ++created;
+      }
+    }
+
+    COLLISION_DEBUG_IF(
+        skippedInterior > 0,
+        std::format(
+            "Water triggers: {} edge triggers created, {} interior tiles skipped",
+            created, skippedInterior));
+    return created;
+  });
 }
 
 size_t CollisionManager::createStaticObstacleBodies() {
   const WorldManager &wm = WorldManager::Instance();
-  const auto *world = wm.getWorldData();
-  if (!world)
-    return 0;
+  return wm.withWorldDataRead([&](const HammerEngine::WorldData *world) -> size_t {
+    if (!world)
+      return 0;
 
-  size_t created = 0;
-  constexpr float tileSize = HammerEngine::TILE_SIZE;
-  const int h = static_cast<int>(world->grid.size());
+    size_t created = 0;
+    constexpr float tileSize = HammerEngine::TILE_SIZE;
+    const int h = static_cast<int>(world->grid.size());
 
-  // Track which tiles we've already processed (O(1) lookup with unordered_set)
-  std::unordered_set<std::pair<int, int>, PairHash> processedTiles;
+    std::unordered_set<std::pair<int, int>, PairHash> processedTiles;
 
-  for (int y = 0; y < h; ++y) {
-    const int w = static_cast<int>(world->grid[y].size());
-    for (int x = 0; x < w; ++x) {
-      const auto &tile = world->grid[y][x];
+    for (int y = 0; y < h; ++y) {
+      const int w = static_cast<int>(world->grid[y].size());
+      for (int x = 0; x < w; ++x) {
+        const auto &tile = world->grid[y][x];
 
       if (tile.obstacleType != ObstacleType::BUILDING || tile.buildingId == 0)
         continue;
@@ -502,10 +498,11 @@ size_t CollisionManager::createStaticObstacleBodies() {
             "Building {}: created {} collision bodies (non-rectangular)",
             tile.buildingId, subBodyIndex));
       }
+      }
     }
-  }
 
-  return created;
+    return created;
+  });
 }
 
 bool CollisionManager::overlaps(EntityID a, EntityID b) const {
@@ -799,103 +796,94 @@ size_t CollisionManager::getDynamicBodyCount() const {
 void CollisionManager::rebuildStaticFromWorld() {
   std::lock_guard<std::mutex> lock(m_staticRebuildMutex);
   const WorldManager &wm = WorldManager::Instance();
-  const auto *world = wm.getWorldData();
-  if (!world)
-    return;
+  wm.withWorldDataRead([&](const HammerEngine::WorldData *world) {
+    if (!world)
+      return;
 
-  // PRE-RESERVE CAPACITY: Prevent vector reallocations during rebuild
-  // This eliminates race condition with background queryArea() calls from
-  // PathfindingGrid Conservative estimate: 25% of tiles could become water edge
-  // triggers + building bodies
-  const int gridH = static_cast<int>(world->grid.size());
-  const int gridW = gridH > 0 ? static_cast<int>(world->grid[0].size()) : 0;
-  size_t estimatedBodies = static_cast<size_t>(gridH * gridW) / 4;
-  m_storage.ensureCapacity(m_storage.size() + estimatedBodies);
+    const int gridH = static_cast<int>(world->grid.size());
+    const int gridW = gridH > 0 ? static_cast<int>(world->grid[0].size()) : 0;
+    size_t estimatedBodies = static_cast<size_t>(gridH * gridW) / 4;
+    m_storage.ensureCapacity(m_storage.size() + estimatedBodies);
 
-  // Remove any existing STATIC world bodies from SOA storage
-  std::vector<EntityID> toRemove;
-  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-    const auto &hot = m_storage.hotData[i];
-    if (hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
-      toRemove.push_back(m_storage.entityIds[i]);
-    }
-  }
-  for (auto id : toRemove) {
-    removeCollisionBody(id);
-  }
-
-  // Create solid collision bodies for obstacles and triggers for movement
-  // penalties
-  size_t solidBodies = createStaticObstacleBodies();
-  size_t waterTriggers =
-      createTriggersForWaterTiles(HammerEngine::TriggerTag::Water);
-
-  if (solidBodies > 0 || waterTriggers > 0) {
-    COLLISION_INFO(
-        std::format("World colliders built: solid={}, water triggers={}",
-                    solidBodies, waterTriggers));
-
-#ifndef NDEBUG
-    // Debug-only: Count building collision bodies for verification
-    int buildingBodyCount = 0;
-    for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
-      EntityID id = m_storage.entityIds[i];
-      if ((id >> 61) == 3) { // Building type
-        buildingBodyCount++;
-        uint32_t buildingId = (id >> 16) & 0xFFFF;
-        uint16_t subBodyIndex = id & 0xFFFF;
-        COLLISION_DEBUG(std::format(
-            "Building collision body found: buildingId={}, subBodyIndex={}",
-            buildingId, subBodyIndex));
+    std::vector<EntityID> toRemove;
+    for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+      const auto &hot = m_storage.hotData[i];
+      if (hot.active &&
+          static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+        toRemove.push_back(m_storage.entityIds[i]);
       }
     }
-    COLLISION_INFO(std::format("Total building collision bodies in storage: {}",
-                               buildingBodyCount));
-    logCollisionStatistics();
+    for (auto id : toRemove) {
+      removeCollisionBody(id);
+    }
+
+    size_t solidBodies = createStaticObstacleBodies();
+    size_t waterTriggers =
+        createTriggersForWaterTiles(HammerEngine::TriggerTag::Water);
+
+    if (solidBodies > 0 || waterTriggers > 0) {
+      COLLISION_INFO(
+          std::format("World colliders built: solid={}, water triggers={}",
+                      solidBodies, waterTriggers));
+
+#ifndef NDEBUG
+      int buildingBodyCount = 0;
+      for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
+        EntityID id = m_storage.entityIds[i];
+        if ((id >> 61) == 3) {
+          buildingBodyCount++;
+          uint32_t buildingId = (id >> 16) & 0xFFFF;
+          uint16_t subBodyIndex = id & 0xFFFF;
+          COLLISION_DEBUG(std::format(
+              "Building collision body found: buildingId={}, subBodyIndex={}",
+              buildingId, subBodyIndex));
+        }
+      }
+      COLLISION_INFO(std::format(
+          "Total building collision bodies in storage: {}", buildingBodyCount));
+      logCollisionStatistics();
 #endif
 
-    // Force immediate static spatial hash rebuild for world changes
-    rebuildStaticSpatialHashUnlocked();
-  }
+      rebuildStaticSpatialHashUnlocked();
+    }
 
-  // Signal that static collision bodies are ready for dependent systems
-  // PathfinderManager waits for this before building its navigation grid
-  EventManager::Instance().triggerStaticCollidersReady(
-      solidBodies, waterTriggers, EventManager::DispatchMode::Immediate);
+    EventManager::Instance().triggerStaticCollidersReady(
+        solidBodies, waterTriggers, EventManager::DispatchMode::Immediate);
+  });
 }
 
 void CollisionManager::onTileChanged(int x, int y) {
   const auto &wm = WorldManager::Instance();
-  const auto *world = wm.getWorldData();
-  if (!world)
-    return;
-  constexpr float tileSize = HammerEngine::TILE_SIZE;
+  wm.withWorldDataRead([&](const HammerEngine::WorldData *world) {
+    if (!world)
+      return;
+    constexpr float tileSize = HammerEngine::TILE_SIZE;
 
-  if (y >= 0 && y < static_cast<int>(world->grid.size()) && x >= 0 &&
-      x < static_cast<int>(world->grid[y].size())) {
-    const auto &tile = world->grid[y][x];
+    if (y >= 0 && y < static_cast<int>(world->grid.size()) && x >= 0 &&
+        x < static_cast<int>(world->grid[y].size())) {
+      const auto &tile = world->grid[y][x];
 
-    // Update water trigger for this tile
-    // For dynamic tile changes, we still track by tile coordinates
-    // TODO: Consider storing tile->entityID mapping for better cleanup
-    if (tile.isWater) {
-      float const cx = x * tileSize + tileSize * 0.5f;
-      float const cy = y * tileSize + tileSize * 0.5f;
-      // Water triggers are EventOnly - skip broadphase, detect player overlap
-      // only
-      createTriggerAreaAt(cx, cy, tileSize * 0.5f, tileSize * 0.5f,
-                          HammerEngine::TriggerTag::Water,
-                          HammerEngine::TriggerType::EventOnly,
-                          CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-    }
+      // Update water trigger for this tile
+      // For dynamic tile changes, we still track by tile coordinates
+      // TODO: Consider storing tile->entityID mapping for better cleanup
+      if (tile.isWater) {
+        float const cx = x * tileSize + tileSize * 0.5f;
+        float const cy = y * tileSize + tileSize * 0.5f;
+        // Water triggers are EventOnly - skip broadphase, detect player overlap
+        // only
+        createTriggerAreaAt(cx, cy, tileSize * 0.5f, tileSize * 0.5f,
+                            HammerEngine::TriggerTag::Water,
+                            HammerEngine::TriggerType::EventOnly,
+                            CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+      }
 
-    // Update solid obstacle collision body for this tile (BUILDING only)
-    // Remove old per-tile collision body (legacy)
-    EntityID oldObstacleId =
-        (static_cast<EntityID>(2ull) << 61) |
-        (static_cast<EntityID>(static_cast<uint32_t>(y)) << 31) |
-        static_cast<EntityID>(static_cast<uint32_t>(x));
-    removeCollisionBody(oldObstacleId);
+      // Update solid obstacle collision body for this tile (BUILDING only)
+      // Remove old per-tile collision body (legacy)
+      EntityID oldObstacleId =
+          (static_cast<EntityID>(2ull) << 61) |
+          (static_cast<EntityID>(static_cast<uint32_t>(y)) << 31) |
+          static_cast<EntityID>(static_cast<uint32_t>(x));
+      removeCollisionBody(oldObstacleId);
 
     if (tile.obstacleType == ObstacleType::BUILDING && tile.buildingId > 0) {
       // Find all connected building tiles to create unified collision body
@@ -1053,13 +1041,14 @@ void CollisionManager::onTileChanged(int x, int y) {
       }
     }
 
-    // ROCK and TREE movement penalties are handled by pathfinding system
-    // No collision triggers needed for these obstacle types
+      // ROCK and TREE movement penalties are handled by pathfinding system
+      // No collision triggers needed for these obstacle types
 
-    // Mark static hash as needing rebuild since tile changed
-    m_staticHashDirty = true;
-    m_staticQueryCacheDirty = true;
-  }
+      // Mark static hash as needing rebuild since tile changed
+      m_staticHashDirty = true;
+      m_staticQueryCacheDirty = true;
+    }
+  });
 }
 
 void CollisionManager::subscribeWorldEvents() {

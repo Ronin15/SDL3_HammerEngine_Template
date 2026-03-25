@@ -1108,14 +1108,11 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
   // Cache raw texture pointers for direct rendering (eliminates ~8,000 hash
   // lookups/frame at 4K)
   auto &texMgr = TextureManager::Instance();
-  auto getPtr = [&texMgr](const std::string &id) -> SDL_Texture * {
-    auto tex = texMgr.getTexture(id);
-    return tex ? tex.get() : nullptr;
-  };
 
   // Cache texture pointers and dimensions (queried once here, not per-draw)
   auto cacheTexture = [&](CachedTexture &cached, const std::string &id) {
-    cached.ptr = getPtr(id);
+    cached.owner = texMgr.getTexture(id);
+    cached.ptr = cached.owner.get();
     if (cached.ptr)
       SDL_GetTextureSize(cached.ptr, &cached.w, &cached.h);
   };
@@ -1406,15 +1403,17 @@ void HammerEngine::TileRenderer::initAtlasCoords() {
   // Get atlas texture pointer from TextureManager (already loaded)
   // For GPU rendering, SDL_Texture may not exist - check GPU texture instead
   auto atlasTex = TextureManager::Instance().getTexture("atlas");
+  m_atlasTextureOwner = atlasTex;
   if (atlasTex) {
     m_atlasPtr = atlasTex.get();
   }
 #ifdef USE_SDL3_GPU
   else {
     // Check if GPU texture is available (GPU rendering path)
-    auto* gpuTex = TextureManager::Instance().getGPUTexture("atlas");
-    if (gpuTex) {
-      m_atlasGPUPtr = gpuTex;
+    auto gpuTex = TextureManager::Instance().getGPUTextureData("atlas");
+    if (gpuTex && gpuTex->texture) {
+      m_atlasGPUOwner = gpuTex->texture;
+      m_atlasGPUPtr = m_atlasGPUOwner.get();
       WORLD_MANAGER_INFO("Using GPU atlas texture for rendering");
     } else {
       WORLD_MANAGER_INFO("Atlas texture not found - using individual textures");
@@ -2371,8 +2370,12 @@ HammerEngine::TileRenderer::getAtlasGPUTexture() const {
   }
   // Get GPU texture from TextureManager
   if (!m_atlasGPUPtr) {
-    const_cast<TileRenderer*>(this)->m_atlasGPUPtr =
-        TextureManager::Instance().getGPUTexture("atlas");
+    if (auto atlasData = TextureManager::Instance().getGPUTextureData("atlas");
+        atlasData && atlasData->texture) {
+      const_cast<TileRenderer*>(this)->m_atlasGPUOwner = atlasData->texture;
+      const_cast<TileRenderer*>(this)->m_atlasGPUPtr =
+          const_cast<TileRenderer*>(this)->m_atlasGPUOwner.get();
+    }
   }
   return m_atlasGPUPtr;
 }
@@ -2388,41 +2391,40 @@ void HammerEngine::TileRenderer::recordGPUTiles(
     return;
   }
 
-  // Get world data from WorldManager
-  const auto* worldData = WorldManager::Instance().getWorldData();
-  if (!worldData || worldData->grid.empty()) {
-    return;
-  }
+  WorldManager::Instance().withWorldDataRead([&](const HammerEngine::WorldData* worldData) {
+    if (!worldData || worldData->grid.empty()) {
+      return;
+    }
 
-  // 2D grid dimensions
-  const int worldHeight = static_cast<int>(worldData->grid.size());
-  const int worldWidth = static_cast<int>(worldData->grid[0].size());
+    // 2D grid dimensions
+    const int worldHeight = static_cast<int>(worldData->grid.size());
+    const int worldWidth = static_cast<int>(worldData->grid[0].size());
 
-  // Calculate visible tile range (with padding for partially visible tiles)
-  const float effectiveViewWidth = viewportWidth / zoom;
-  const float effectiveViewHeight = viewportHeight / zoom;
+    // Calculate visible tile range (with padding for partially visible tiles)
+    const float effectiveViewWidth = viewportWidth / zoom;
+    const float effectiveViewHeight = viewportHeight / zoom;
 
-  const int startTileX = std::max(0, static_cast<int>(cameraX / TILE_SIZE) - VIEWPORT_PADDING);
-  const int startTileY = std::max(0, static_cast<int>(cameraY / TILE_SIZE) - VIEWPORT_PADDING);
-  const int endTileX = std::min(worldWidth,
-                                static_cast<int>((cameraX + effectiveViewWidth) / TILE_SIZE) + VIEWPORT_PADDING + 1);
-  const int endTileY = std::min(worldHeight,
-                                static_cast<int>((cameraY + effectiveViewHeight) / TILE_SIZE) + VIEWPORT_PADDING + 1);
+    const int startTileX = std::max(0, static_cast<int>(cameraX / TILE_SIZE) - VIEWPORT_PADDING);
+    const int startTileY = std::max(0, static_cast<int>(cameraY / TILE_SIZE) - VIEWPORT_PADDING);
+    const int endTileX = std::min(worldWidth,
+                                  static_cast<int>((cameraX + effectiveViewWidth) / TILE_SIZE) + VIEWPORT_PADDING + 1);
+    const int endTileY = std::min(worldHeight,
+                                  static_cast<int>((cameraY + effectiveViewHeight) / TILE_SIZE) + VIEWPORT_PADDING + 1);
 
-  // Early exit if no visible tiles
-  if (startTileX >= endTileX || startTileY >= endTileY) {
-    return;
-  }
+    // Early exit if no visible tiles
+    if (startTileX >= endTileX || startTileY >= endTileY) {
+      return;
+    }
 
-  // Pre-fetch seasonal coords (avoids per-tile lookups)
-  const auto& sc = m_seasonalCoords[static_cast<int>(season)];
+    // Pre-fetch seasonal coords (avoids per-tile lookups)
+    const auto& sc = m_seasonalCoords[static_cast<int>(season)];
 
-  // Render at 1x scale (matching SDL_Renderer approach)
-  // Zoom is handled in the composite shader, not by scaling tile positions
-  const float scaledTileSize = TILE_SIZE;  // 1x scale, no zoom multiplier
-  const float baseCameraX = cameraX;       // No zoom multiplier
-  const float baseCameraY = cameraY;
-  const float startScreenX = startTileX * scaledTileSize - baseCameraX;
+    // Render at 1x scale (matching SDL_Renderer approach)
+    // Zoom is handled in the composite shader, not by scaling tile positions
+    const float scaledTileSize = TILE_SIZE;  // 1x scale, no zoom multiplier
+    const float baseCameraX = cameraX;       // No zoom multiplier
+    const float baseCameraY = cameraY;
+    const float startScreenX = startTileX * scaledTileSize - baseCameraX;
 
   // Debug: Log tile rendering params on viewport change (uses member vars to avoid static)
   if (viewportWidth != m_lastGPUViewportW || viewportHeight != m_lastGPUViewportH) {
@@ -2612,7 +2614,8 @@ void HammerEngine::TileRenderer::recordGPUTiles(
           obs.screenX, obs.screenY, obs.dstW, obs.dstH);
     }
   }
-  // Batch end() is called by GPUSceneRenderer, not here
+    // Batch end() is called by GPUSceneRenderer, not here
+  });
 }
 
 // WorldManager GPU method - delegates to TileRenderer

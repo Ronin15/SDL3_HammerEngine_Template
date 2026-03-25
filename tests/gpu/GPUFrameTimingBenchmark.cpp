@@ -411,7 +411,7 @@ int main(int argc, char* argv[]) {
             renderer.getPrimitiveVertexPool().setWrittenVertexCount(0);
         }
 
-        const GPUTextureData* atlasData = textureMgr.getGPUTextureData("atlas");
+        auto atlasData = textureMgr.getGPUTextureData("atlas");
         if ((config.m_mode == BenchmarkMode::Sprite || config.m_mode == BenchmarkMode::UI || config.m_mode == BenchmarkMode::Mixed) &&
             (!atlasData || !atlasData->texture)) {
             std::cerr << "Atlas GPU texture data unavailable\n";

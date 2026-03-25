@@ -35,7 +35,7 @@ GPUSceneContext GPUSceneRenderer::beginScene(GPURenderer& gpuRenderer,
     }
 
     // Get atlas GPU texture for sprite batch
-    auto* atlasTexture = TextureManager::Instance().getGPUTextureData("atlas");
+    auto atlasTexture = TextureManager::Instance().getGPUTextureData("atlas");
     if (!atlasTexture || !atlasTexture->texture) {
         SCENE_RENDERER_ERROR("GPUSceneRenderer: Atlas GPU texture not available");
         return ctx;

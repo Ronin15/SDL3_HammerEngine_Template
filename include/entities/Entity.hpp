@@ -242,6 +242,7 @@ class Entity : public std::enable_shared_from_this<Entity> {
   virtual void setHeight(int height) { m_height = height; }
   virtual void setTextureID(const std::string& id) {
     m_textureID = id;
+    m_cachedTextureOwner.reset();
     m_cachedTexture = nullptr;  // Invalidate - next render will re-cache
   }
   virtual void setCurrentFrame(int frame) { m_currentFrame = frame; }
@@ -299,6 +300,7 @@ class Entity : public std::enable_shared_from_this<Entity> {
   int m_width{0};
   int m_height{0};
   std::string m_textureID{};
+  std::shared_ptr<SDL_Texture> m_cachedTextureOwner{};
   SDL_Texture* m_cachedTexture{nullptr};  // Cached for render - no hash lookup per frame
   int m_currentFrame{0};
   int m_currentRow{0};
