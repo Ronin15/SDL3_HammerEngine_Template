@@ -1,13 +1,10 @@
 # Time Events
 
-**Where to find the code:**
-- Header: `include/events/TimeEvent.hpp`
-- Dispatched by: `src/core/GameTime.cpp`
-- Handled by: Controllers in `src/controllers/world/`
+**Code:** `include/events/TimeEvent.hpp`, `src/managers/GameTimeManager.cpp`, `src/controllers/world/DayNightController.cpp`, `src/controllers/world/WeatherController.cpp`
 
 ## Overview
 
-Time events are dispatched by the GameTime system to notify subscribers of time-related changes. All time events inherit from `TimeEvent` and are dispatched with `Deferred` mode to ensure consistent processing.
+Time events are dispatched by the `GameTimeManager` system to notify subscribers of time-related changes. All time events inherit from `TimeEvent` and are dispatched with `Deferred` mode to ensure consistent processing.
 
 ## Event Type Hierarchy
 
@@ -125,7 +122,7 @@ class YearChangedEvent : public TimeEvent {
 
 ### WeatherCheckEvent
 
-Fired when GameTime performs an automatic weather roll.
+Fired when `GameTimeManager` performs an automatic weather roll.
 
 ```cpp
 class WeatherCheckEvent : public TimeEvent {
@@ -259,7 +256,7 @@ void onTimeEvent(const EventData& data) {
 
 All time events are dispatched with `EventManager::DispatchMode::Deferred`:
 
-- Events are queued during GameTimeManager::update()
+- Events are queued during `GameTimeManager::update()`
 - Processed after update completes
 - Ensures consistent game state during handling
 - Prevents immediate side effects during time advancement
@@ -279,7 +276,7 @@ GameTimeManager::update(deltaTime)
 
 ## Related Documentation
 
-- **GameTime**: `docs/core/GameTime.md` - Time system that dispatches events
+- **GameTimeManager**: `../managers/GameTimeManager.md` - Time system that dispatches events
 - **EventManager**: `docs/events/EventManager.md` - Event subscription system
 - **WeatherController**: `docs/controllers/WeatherController.md` - Weather handling
 - **DayNightController**: `docs/controllers/DayNightController.md` - Time period tracking

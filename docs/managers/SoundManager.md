@@ -1,8 +1,6 @@
 # SoundManager
 
-**Where to find the code:**
-- Implementation: `src/managers/SoundManager.cpp`
-- Header: `include/managers/SoundManager.hpp`
+**Code:** `include/managers/SoundManager.hpp`, `src/managers/SoundManager.cpp`
 
 **Singleton Access:** Use `SoundManager::Instance()` to access the manager.
 

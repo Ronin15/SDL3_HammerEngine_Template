@@ -1,8 +1,6 @@
 # ResourceFactory
 
-**Where to find the code:**
-- Implementation: `src/managers/ResourceFactory.cpp`
-- Header: `include/managers/ResourceFactory.hpp`
+**Code:** `include/managers/ResourceFactory.hpp`, `src/managers/ResourceFactory.cpp`
 
 ## Overview
 
@@ -178,11 +176,11 @@ Load your resources using ResourceTemplateManager:
 ```cpp
 // Load all resources from file
 auto& rtm = ResourceTemplateManager::Instance();
-rtm.loadFromFile("res/data/custom_resources.json");
+rtm.loadResourcesFromJson("res/data/custom_resources.json");
 
 // Access by name
 ResourceHandle fireHandle = rtm.getHandleByName("Fire Sword");
-const Resource* fireSword = rtm.getResource(fireHandle);
+ResourcePtr fireSword = rtm.getResourceTemplate(fireHandle);
 
 // Cast to specific type if needed
 const auto* customRes = dynamic_cast<const MyCustomResource*>(fireSword);
@@ -204,7 +202,7 @@ void Game::init() {
     registerCustomResources();
 
     // 3. Load resource files (now includes custom types)
-    ResourceTemplateManager::Instance().loadFromFile("res/data/resources.json");
+    ResourceTemplateManager::Instance().loadResourcesFromJson("res/data/resources.json");
 }
 ```
 

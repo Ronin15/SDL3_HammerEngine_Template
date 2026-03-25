@@ -1,8 +1,6 @@
 # SaveGameManager
 
-**Where to find the code:**
-- Implementation: `src/managers/SaveGameManager.cpp`
-- Header: `include/managers/SaveGameManager.hpp`
+**Code:** `include/managers/SaveGameManager.hpp`, `src/managers/SaveGameManager.cpp`
 
 **Singleton Access:** Use `SaveGameManager::Instance()` to access the manager.
 

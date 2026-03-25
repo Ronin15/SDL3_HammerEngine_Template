@@ -108,9 +108,10 @@ Controls the render order of UI components. Lower values render first (behind), 
 
 | Constant | Value | Component Type | Purpose |
 |----------|-------|----------------|---------|
-| `ZORDER_DIALOG` | -10 | Dialog backgrounds | Behind everything |
+| `ZORDER_OVERLAY` | -10 | Overlay backgrounds | Behind everything |
 | `ZORDER_PANEL` | 0 | Background panels | Container backgrounds |
 | `ZORDER_IMAGE` | 1 | Background images | Visual decoration |
+| `ZORDER_DIALOG` | 2 | Dialogs | Above overlays and panels |
 | `ZORDER_PROGRESS_BAR` | 5 | Progress indicators | Status display |
 | `ZORDER_EVENT_LOG` | 6 | Event logs | Information display |
 | `ZORDER_LIST` | 8 | Lists | Item containers |
@@ -148,7 +149,7 @@ auto& ui = UIManager::Instance();
 // Components automatically get correct z-order by type
 ui.createButton("btn", bounds, "Click");           // Auto: ZORDER_BUTTON (10)
 ui.createLabel("label", bounds, "Text");           // Auto: ZORDER_LABEL (20)
-ui.createDialog("bg", bounds);                     // Auto: ZORDER_DIALOG (-10)
+ui.createDialog("bg", bounds);                     // Auto: ZORDER_DIALOG (2)
 
 // Manual override only if needed (rarely required)
 ui.setComponentZOrder("special_button", UIConstants::ZORDER_TITLE);  // Move to top layer
@@ -396,10 +397,10 @@ Animation and interaction timing:
 constexpr float DEFAULT_TOOLTIP_DELAY = 1.0f;  // Hover delay (seconds)
 
 // Scaling limit
-constexpr float MAX_UI_SCALE = 1.0f;           // Prevents upscaling beyond baseline
+constexpr float MAX_UI_SCALE = 3.0f;           // Allows high-DPI scaling up to 3x baseline
 ```
 
-**Note:** `MAX_UI_SCALE = 1.0f` means UI doesn't scale up beyond baseline resolution (1920×1080). On larger displays, UI maintains baseline size with extra space around it.
+**Note:** `MAX_UI_SCALE = 3.0f` caps the UI scale factor while still allowing high-DPI displays to scale beyond baseline resolution when needed.
 
 ---
 

@@ -1,7 +1,6 @@
 # EntityHandle
 
-**Where to find the code:**
-- Header: `include/entities/EntityHandle.hpp`
+**Code:** `include/entities/EntityHandle.hpp`
 
 ## Overview
 

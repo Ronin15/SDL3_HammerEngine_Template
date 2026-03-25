@@ -814,14 +814,14 @@ bool GameEngine::init(std::string_view title) {
     return false;
   }
 
-  // Initialize GameTime (fast, no threading needed)
+  // Initialize GameTimeManager (fast, no threading needed)
   // Time scale: 60.0 = 1 real second equals 1 game minute
-  GAMEENGINE_INFO("Initializing GameTime system");
+  GAMEENGINE_INFO("Initializing GameTimeManager system");
   if (!GameTimeManager::Instance().init(12.0f, 60.0f)) {
-    GAMEENGINE_ERROR("Failed to initialize GameTime");
+    GAMEENGINE_ERROR("Failed to initialize GameTimeManager");
     return false;
   }
-  GAMEENGINE_INFO("GameTime initialized (starting at noon, 60x speed)");
+  GAMEENGINE_INFO("GameTimeManager initialized (starting at noon, 60x speed)");
 
   // Initialize BackgroundSimulationManager (depends on EntityDataManager)
   // Handles simplified simulation for off-screen entities (Phase 5 of Entity
@@ -1189,7 +1189,7 @@ void GameEngine::render() {
     }
     profiler.endRender(HammerEngine::RenderPhase::UI);
 
-    // Note: endFrame() called in present() to separate render/vsync timing
+    // Frame timing is finalized after present() in HammerMain.cpp.
     return;
   }
 #endif

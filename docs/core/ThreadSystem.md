@@ -1,8 +1,6 @@
 # ThreadSystem
 
-**Where to find the code:**
-- Header-only implementation: `include/core/ThreadSystem.hpp`
-- WorkerBudget: `include/core/WorkerBudget.hpp`, `src/core/WorkerBudget.cpp`
+**Code:** `include/core/ThreadSystem.hpp`, `include/core/WorkerBudget.hpp`, `src/core/WorkerBudget.cpp`
 
 **Singleton Access:** Use `HammerEngine::ThreadSystem::Instance()` to access the thread system.
 
@@ -70,10 +68,10 @@ public:
     static WorkerBudgetManager& Instance();
 
     // Get cached worker count
-    WorkerBudget getBudget() const;
+    const WorkerBudget& getBudget() const;
 
     // Get optimal workers for a system (returns all workers if workload > 0)
-    size_t getOptimalWorkers(SystemType system, size_t workloadSize) const;
+    size_t getOptimalWorkers(SystemType system, size_t workloadSize);
 
     // Get optimal batch strategy based on workload and throughput history
     std::pair<size_t, size_t> getBatchStrategy(
@@ -185,7 +183,7 @@ void AIManager::update(float deltaTime) {
 ### Priority Levels
 
 ```cpp
-enum class TaskPriority : int {
+enum class TaskPriority : uint8_t {
     Critical = 0,   // Must execute ASAP (rendering, input handling)
     High = 1,       // Important tasks (physics, animation)
     Normal = 2,     // Default priority for most tasks

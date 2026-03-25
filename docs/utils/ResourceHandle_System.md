@@ -1,9 +1,6 @@
 # Resource Handle System
 
-**Where to find the code:**
-- ResourceHandle: `include/utils/ResourceHandle.hpp`
-- ResourceTemplateManager: `include/managers/ResourceTemplateManager.hpp`, `src/managers/ResourceTemplateManager.cpp`
-- Usage Examples: `src/gameStates/GamePlayState.cpp`, `src/entities/Player.cpp`, `src/entities/NPC.cpp`
+**Code:** `include/utils/ResourceHandle.hpp`, `include/managers/ResourceTemplateManager.hpp`, `src/managers/ResourceTemplateManager.cpp`, `src/gameStates/GamePlayState.cpp`, `src/entities/Player.cpp`, `src/entities/NPC.cpp`
 
 ## Overview
 

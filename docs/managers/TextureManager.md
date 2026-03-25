@@ -1,8 +1,6 @@
 # TextureManager
 
-**Where to find the code:**
-- Implementation: `src/managers/TextureManager.cpp`
-- Header: `include/managers/TextureManager.hpp`
+**Code:** `include/managers/TextureManager.hpp`, `src/managers/TextureManager.cpp`
 
 **Singleton Access:** Use `TextureManager::Instance()` to access the manager.
 

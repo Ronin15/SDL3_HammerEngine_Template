@@ -54,7 +54,7 @@ This document outlines the design and implementation steps for integrating a bas
 ## 4. UI Manager Integration
 
 - **UIManager** owns and manages the minimap widget.
-- **UIManager::renderUI(SDL_Renderer*)** is called from within `GameState::render()`.
+- **UIManager::render(SDL_Renderer*)** is called from within `GameState::render()`.
 - **MinimapWidget::render(SDL_Renderer*)** is called as part of the UIManager's render pass.
 - UIManager handles layout, positioning, and event routing for the minimap.
 
@@ -98,10 +98,10 @@ void GameState::render(SDL_Renderer* renderer) {
     // Draw world, entities, etc.
     // ...
     // Draw UI overlays
-    uiManager.renderUI(renderer);
+    uiManager.render(renderer);
 }
 
-void UIManager::renderUI(SDL_Renderer* renderer) {
+void UIManager::render(SDL_Renderer* renderer) {
     // Draw other UI elements
     // ...
     // Draw minimap overlay
@@ -124,7 +124,7 @@ void UIManager::renderUI(SDL_Renderer* renderer) {
 
 - Add unit tests for discovery logic and minimap rendering.
 - Add integration tests for minimap updates in gameplay.
-- Document minimap architecture, API, and usage in `docs/ui/` and `docs/world/`.
+   - Document minimap architecture, API, and usage in `docs/ui/` and `docs/managers/`.
 
 ---
 

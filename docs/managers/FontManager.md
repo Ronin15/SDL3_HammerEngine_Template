@@ -1,8 +1,6 @@
 # FontManager
 
-**Where to find the code:**
-- Implementation: `src/managers/FontManager.cpp`
-- Header: `include/managers/FontManager.hpp`
+**Code:** `include/managers/FontManager.hpp`, `src/managers/FontManager.cpp`
 
 **Singleton Access:** Use `FontManager::Instance()` to access the manager.
 

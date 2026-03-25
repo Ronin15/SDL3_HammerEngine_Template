@@ -1,8 +1,6 @@
 # ParticleManager
 
-**Where to find the code:**
-- Implementation: `src/managers/ParticleManager.cpp`
-- Header: `include/managers/ParticleManager.hpp`
+**Code:** `include/managers/ParticleManager.hpp`, `src/managers/ParticleManager.cpp`
 
 **Singleton Access:** Use `ParticleManager::Instance()` to access the manager.
 

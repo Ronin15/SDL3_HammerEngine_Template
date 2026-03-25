@@ -1,11 +1,6 @@
 # Combat Events
 
-**Where to find the code:**
-- Legacy combat event base: `include/events/CombatEvent.hpp`
-- Active damage event path: `include/events/EntityEvents.hpp`
-- Event processing: `include/managers/EventManager.hpp`, `src/managers/EventManager.cpp`
-- Player combat producer: `src/controllers/combat/CombatController.cpp`
-- AI combat producer: `src/ai/behaviors/AttackBehavior.cpp`
+**Code:** `include/events/CombatEvent.hpp`, `include/events/EntityEvents.hpp`, `include/managers/EventManager.hpp`, `src/managers/EventManager.cpp`, `src/controllers/combat/CombatController.cpp`, `src/ai/behaviors/AttackBehavior.cpp`
 
 ## Overview
 

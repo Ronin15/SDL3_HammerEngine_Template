@@ -1,8 +1,6 @@
 # EntityStateManager
 
-**Where to find the code:**
-- Implementation: `src/managers/EntityStateManager.cpp`
-- Header: `include/managers/EntityStateManager.hpp`
+**Code:** `include/managers/EntityStateManager.hpp`, `src/managers/EntityStateManager.cpp`
 
 ## Overview
 

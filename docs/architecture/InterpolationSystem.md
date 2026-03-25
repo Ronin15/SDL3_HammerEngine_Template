@@ -1,9 +1,6 @@
 # Interpolation System
 
-**Where to find the code:**
-- Entity: `include/entities/Entity.hpp`
-- Camera: `include/utils/Camera.hpp` and `src/utils/Camera.cpp`
-- Main Loop: `src/core/HammerMain.cpp`
+**Code:** `include/entities/Entity.hpp`, `include/utils/Camera.hpp`, `src/utils/Camera.cpp`, `src/core/HammerMain.cpp`
 
 ## Overview
 

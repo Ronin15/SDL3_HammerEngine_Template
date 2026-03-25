@@ -1,8 +1,6 @@
 # WorldRenderPipeline
 
-**Where to find the code:**
-- Header: `include/utils/WorldRenderPipeline.hpp`
-- Implementation: `src/utils/WorldRenderPipeline.cpp`
+**Code:** `include/utils/WorldRenderPipeline.hpp`, `src/utils/WorldRenderPipeline.cpp`
 
 **Note:** This documentation covers the **SDL_Renderer path only**. For GPU rendering, see [GPURendering.md](../gpu/GPURendering.md) which uses `GPUSceneRenderer` as its parallel implementation.
 

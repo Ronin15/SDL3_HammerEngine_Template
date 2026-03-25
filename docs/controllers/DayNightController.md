@@ -1,9 +1,6 @@
 # DayNightController
 
-**Where to find the code:**
-- Header: `include/controllers/world/DayNightController.hpp`
-- Implementation: `src/controllers/world/DayNightController.cpp`
-- Tests: `tests/controllers/DayNightControllerTests.cpp`
+**Code:** `include/controllers/world/DayNightController.hpp`, `src/controllers/world/DayNightController.cpp`, `tests/controllers/DayNightControllerTests.cpp`
 
 **Ownership:** GameState owns the controller instance (not a singleton).
 
@@ -186,7 +183,7 @@ Get the current time period.
 ### getCurrentPeriodString()
 
 ```cpp
-const char* getCurrentPeriodString() const;
+std::string_view getCurrentPeriodString() const;
 ```
 
 Get current time period as a string (zero allocation).
@@ -339,6 +336,6 @@ void onTimePeriodChanged(const EventData& data) {
 ## Related Documentation
 
 - **Controller Pattern:** `docs/controllers/README.md`
-- **GameTime:** `docs/core/GameTime.md`
+- **GameTimeManager:** `../managers/GameTimeManager.md`
 - **TimeEvents:** `docs/events/TimeEvents.md`
 - **GPURendering:** `docs/gpu/GPURendering.md` - GPU composite shader integration

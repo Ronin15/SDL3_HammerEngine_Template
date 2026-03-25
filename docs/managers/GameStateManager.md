@@ -1,8 +1,6 @@
 # GameStateManager
 
-**Where to find the code:**
-- Implementation: `src/managers/GameStateManager.cpp`
-- Header: `include/managers/GameStateManager.hpp`
+**Code:** `include/managers/GameStateManager.hpp`, `src/managers/GameStateManager.cpp`
 
 ## Overview
 
