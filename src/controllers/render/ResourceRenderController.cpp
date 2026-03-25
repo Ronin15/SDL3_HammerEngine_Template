@@ -119,6 +119,9 @@ void ResourceRenderController::updateHarvestableStates([[maybe_unused]] float de
 
 void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
                                                    float cameraX, float cameraY, float alpha) {
+    RESOURCE_RENDER_WARN_IF(!renderer, "renderDroppedItems: renderer is null");
+    if (!renderer) { return; }
+
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
@@ -179,6 +182,9 @@ void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const 
 
 void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
                                                  float cameraX, float cameraY, float alpha) {
+    RESOURCE_RENDER_WARN_IF(!renderer, "renderContainers: renderer is null");
+    if (!renderer) { return; }
+
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
@@ -237,6 +243,9 @@ void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const Ha
 
 void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
                                                    float cameraX, float cameraY, float alpha) {
+    RESOURCE_RENDER_WARN_IF(!renderer, "renderHarvestables: renderer is null");
+    if (!renderer) { return; }
+
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 

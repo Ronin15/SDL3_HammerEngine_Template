@@ -59,6 +59,7 @@
       "textureId": "obstacle_rock",
       "blocking": true,
       "harvestable": true,
+      "yields": "stone",
       "seasonal": false
     },
     "tree": {
@@ -66,6 +67,7 @@
       "textureId": "obstacle_tree",
       "blocking": true,
       "harvestable": true,
+      "yields": "wood",
       "seasonal": true
     },
     "water": {
