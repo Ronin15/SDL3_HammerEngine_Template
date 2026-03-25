@@ -8,13 +8,16 @@
 
 /**
  * @file CombatEvent.hpp
- * @brief Combat event implementation for damage, attacks, and combat state changes
+ * @brief Combat notification event for combat state changes and UI-facing signals
  *
  * CombatEvent allows the game to notify systems of combat occurrences:
  * - Player attacks
  * - NPC damage taken
  * - Entity deaths
  * - Combat state transitions
+ *
+ * This is a notification-only event. The mutable combat payload used by the
+ * gameplay damage pipeline is DamageEvent under EventTypeId::Combat.
  */
 
 #include "Event.hpp"
@@ -47,7 +50,7 @@ public:
     std::string getName() const override { return m_name; }
     std::string getType() const override { return "Combat"; }
     std::string getTypeName() const override { return "CombatEvent"; }
-    EventTypeId getTypeId() const override { return EventTypeId::Combat; }
+    EventTypeId getTypeId() const override { return EventTypeId::CombatNotification; }
 
     // Condition checking (always true for combat events - they're immediate)
     bool checkConditions() override { return true; }

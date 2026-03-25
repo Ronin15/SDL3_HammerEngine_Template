@@ -4,7 +4,9 @@
 
 ## Overview
 
-The current hot combat path is `DamageEvent` under `EventTypeId::Combat`.
+`CombatEvent` is the notification side of combat and now uses `EventTypeId::CombatNotification`.
+
+The current hot combat mutation path is `DamageEvent` under `EventTypeId::Combat`.
 
 Combat producers build a `DamageEvent`, then `EventManager` applies the core damage result to EDM before combat subscribers run. That means combat handlers now observe post-commit state such as:
 
@@ -29,7 +31,7 @@ CombatController / AI behavior
 
 For player attacks, `CombatController` currently uses immediate combat dispatch so the hit result is available in the same call path. AI attack batches typically enqueue deferred combat events and flush them at the end of the worker batch.
 
-## Active Event Type
+## Active Damage Event
 
 ```cpp
 class DamageEvent : public Event {
@@ -50,7 +52,7 @@ public:
 Important routing detail:
 
 - `DamageEvent::getTypeId()` returns `EventTypeId::Combat`
-- combat handlers should subscribe to `EventTypeId::Combat`
+- combat handlers that mutate or observe damage results should subscribe to `EventTypeId::Combat`
 - the payload they usually receive on the hot path is `DamageEvent`
 
 ## Dispatch Modes
@@ -105,9 +107,11 @@ EventManager::Instance().removeHandler(EventTypeId::Combat, m_combatToken);
 
 Handlers should treat the payload as an already-processed combat result, not as a request they need to apply themselves.
 
-## Legacy `CombatEvent`
+## Combat Notification Event
 
-`include/events/CombatEvent.hpp` still defines a `CombatEvent` base and `CombatEventType` enum. That file exists in the current codebase, but it is not the authoritative description of the active damage pipeline. For gameplay combat, prefer `DamageEvent` documentation and the `EventManager` docs.
+`include/events/CombatEvent.hpp` defines a separate `CombatEvent` base and `CombatEventType` enum for notification-style combat signaling. It reports `EventTypeId::CombatNotification`.
+
+Use this event when you want to broadcast combat state changes without entering the damage mutation pipeline. For gameplay damage, prefer `DamageEvent` documentation and the `EventManager` docs.
 
 ## Related Documentation
 

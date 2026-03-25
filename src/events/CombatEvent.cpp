@@ -23,8 +23,8 @@ void CombatEvent::update() {
 }
 
 void CombatEvent::execute() {
-    // Combat events are data carriers dispatched through EventManager
-    // The actual combat logic is in CombatController
+    // Combat events are notification-only payloads dispatched through EventManager.
+    // The gameplay damage pipeline uses DamageEvent under EventTypeId::Combat.
     COMBAT_DEBUG(std::format("Combat event executed: {} damage={:.1f}",
         getCombatTypeString(), m_damage));
 }

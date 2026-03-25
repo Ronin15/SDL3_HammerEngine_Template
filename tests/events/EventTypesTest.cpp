@@ -771,7 +771,8 @@ BOOST_AUTO_TEST_CASE(TestEventTypeIdEnumValues) {
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Combat), 13);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Entity), 14);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::BehaviorMessage), 15);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 16);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::CombatNotification), 16);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 17);
 }
 
 // Test ResourceChangeEvent
@@ -942,7 +943,7 @@ BOOST_FIXTURE_TEST_CASE(CombatEventBasics, EventTypesFixture) {
 
     BOOST_CHECK_EQUAL(event.getName(), "CombatEvent_PlayerAttacked");
     BOOST_CHECK_EQUAL(event.getType(), "Combat");
-    BOOST_CHECK(event.getTypeId() == EventTypeId::Combat);
+    BOOST_CHECK(event.getTypeId() == EventTypeId::CombatNotification);
     BOOST_CHECK(event.getCombatType() == CombatEventType::PlayerAttacked);
     BOOST_CHECK(event.getAttacker() == attacker.get());
     BOOST_CHECK(event.getTarget() == target.get());
@@ -1015,5 +1016,5 @@ BOOST_FIXTURE_TEST_CASE(AllEventTypesReturnCorrectTypeId, EventTypesFixture) {
   auto attacker = std::make_shared<Player>();
   auto target = std::make_shared<Player>();
   CombatEvent combatEvent(CombatEventType::PlayerAttacked, attacker.get(), target.get());
-  BOOST_CHECK(combatEvent.getTypeId() == EventTypeId::Combat);
+  BOOST_CHECK(combatEvent.getTypeId() == EventTypeId::CombatNotification);
 }

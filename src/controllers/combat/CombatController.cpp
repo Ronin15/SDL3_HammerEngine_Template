@@ -159,7 +159,7 @@ void CombatController::performAttack(Player *player) {
     // Record pre-damage health for UI logging
     float oldHealth = edm.getCharacterData(handle).health;
 
-    // Dispatch DamageEvent via Combat type. EventManager applies combat results
+    // Dispatch the mutable damage payload. EventManager applies combat results
     // on the main thread immediately for player attacks.
     auto& eventMgr = EventManager::Instance();
     auto damageEvent = eventMgr.acquireDamageEvent();

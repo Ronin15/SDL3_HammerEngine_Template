@@ -634,7 +634,10 @@ bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
                                  DispatchMode mode, const char *errorContext) const {
   if (mode == DispatchMode::Immediate) {
     const PendingDispatch pendingDispatch{0, typeId, eventData};
-    if (typeId == EventTypeId::Combat) {
+    const auto damageEvent = typeId == EventTypeId::Combat && eventData.event
+        ? std::dynamic_pointer_cast<DamageEvent>(eventData.event)
+        : nullptr;
+    if (damageEvent) {
       const float gameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
       commitPreparedCombatEvent(pendingDispatch, PreparedCombatEvent{}, gameTime);
       dispatchPendingEvent(pendingDispatch, errorContext);
@@ -642,7 +645,7 @@ bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
       dispatchPendingEvent(pendingDispatch, errorContext);
     }
     releaseEventToPool(typeId, eventData.event);
-    if (typeId == EventTypeId::Combat) {
+    if (damageEvent) {
       return true;
     }
     std::shared_lock<std::shared_mutex> lock(m_handlersMutex);
@@ -782,7 +785,7 @@ EventManager::prepareCombatEvent(const PendingDispatch& pendingDispatch) const {
     return preparedCombat;
   }
 
-  auto* damageEvent = static_cast<DamageEvent*>(pendingDispatch.data.event.get());
+  auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(pendingDispatch.data.event);
   if (!damageEvent) {
     return preparedCombat;
   }
@@ -790,7 +793,7 @@ EventManager::prepareCombatEvent(const PendingDispatch& pendingDispatch) const {
   auto& edm = EntityDataManager::Instance();
   const EntityHandle targetHandle = damageEvent->getTarget();
   const EntityHandle attackerHandle = damageEvent->getSource();
-  preparedCombat.pDamageEvent = damageEvent;
+  preparedCombat.pDamageEvent = damageEvent.get();
   preparedCombat.targetHandle = targetHandle;
   preparedCombat.attackerHandle = attackerHandle;
   const size_t targetIdx = edm.getIndex(targetHandle);
@@ -828,9 +831,7 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
     return;
   }
 
-  DamageEvent* damageEvent = preparedCombat.valid
-      ? preparedCombat.pDamageEvent
-      : static_cast<DamageEvent*>(pendingDispatch.data.event.get());
+  auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(pendingDispatch.data.event);
   if (!damageEvent) {
     return;
   }
@@ -1104,9 +1105,7 @@ void EventManager::drainDispatchQueueWithBudget() {
   // Release pooled events back to pools (after all processing complete)
   if (allCombatEvents) {
     for (const auto& pd : m_localCombatDispatchBuffer) {
-      if (pd.data.event) {
-        m_damagePool.release(std::static_pointer_cast<DamageEvent>(pd.data.event));
-      }
+      releaseEventToPool(pd.typeId, pd.data.event);
     }
   } else {
     for (const auto& pd : m_localDispatchBuffer) {
@@ -1155,7 +1154,9 @@ void EventManager::releaseEventToPool(EventTypeId typeId, const EventPtr& event)
       }
       break;
     case EventTypeId::Combat:
-      m_damagePool.release(std::static_pointer_cast<DamageEvent>(event));
+      if (auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(event)) {
+        m_damagePool.release(damageEvent);
+      }
       break;
     case EventTypeId::CollisionObstacleChanged:
       if (auto coce = std::dynamic_pointer_cast<CollisionObstacleChangedEvent>(event)) {
