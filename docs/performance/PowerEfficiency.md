@@ -1,9 +1,6 @@
-# Power Efficiency Documentation
+# Power Efficiency
 
-**Where to find the code:**
-- ThreadSystem: `include/core/ThreadSystem.hpp`
-- WorkerBudget: `include/core/WorkerBudget.hpp`, `src/core/WorkerBudget.cpp`
-- Power profiling tools: `tests/power_profiling/`
+**Code:** `include/core/ThreadSystem.hpp`, `include/core/WorkerBudget.hpp`, `src/core/WorkerBudget.cpp`, `tests/power_profiling/`
 
 ## Overview
 

@@ -20,6 +20,7 @@
 #include "gameStates/AdvancedAIDemoState.hpp"
 #include "gameStates/EventDemoState.hpp"
 #include "gameStates/GamePlayState.hpp"
+#include "gameStates/GameOverState.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "gameStates/LogoState.hpp"
 #include "gameStates/MainMenuState.hpp"
@@ -127,8 +128,8 @@ bool GameEngine::init(std::string_view title) {
   // mode change that can lock refresh rate to 60Hz on ProMotion displays.
   // See: https://github.com/libsdl-org/SDL/issues/8452
   SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "1");
-  // Use OpenGL instead of Metal to test for Metal-specific render target hitches
-  SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
+  // Use Metal for best performance and ProMotion support on macOS
+  SDL_SetHint(SDL_HINT_RENDER_DRIVER, "metal");
 #endif
 
   GAMEENGINE_DEBUG("SDL rendering hints configured for optimal quality");
@@ -347,13 +348,32 @@ bool GameEngine::init(std::string_view title) {
   // Create TimestepManager (uses default 60 FPS target and 1/60s fixed
   // timestep)
   m_timestepManager = std::make_unique<TimestepManager>();
+  updateDisplayRefreshRate();
 
   // VSync handling - different for GPU vs SDL_Renderer
 #ifdef USE_SDL3_GPU
   if (m_gpuRendering) {
-    // GPU rendering uses swapchain present mode for VSync
-    // SDL3_GPU handles this automatically
-    GAMEENGINE_INFO("GPU rendering: VSync handled by swapchain");
+    // GPU rendering: configure swapchain present mode based on VSync setting
+    auto& gpuDev = HammerEngine::GPUDevice::Instance();
+    SDL_GPUPresentMode presentMode = vsyncRequested
+        ? SDL_GPU_PRESENTMODE_VSYNC
+        : SDL_GPU_PRESENTMODE_MAILBOX;
+
+    bool swapchainOk = SDL_SetGPUSwapchainParameters(
+        gpuDev.get(), gpuDev.getWindow(),
+        SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode);
+
+    if (swapchainOk) {
+      GAMEENGINE_INFO(std::format("GPU rendering: present mode {}",
+                                  vsyncRequested ? "VSYNC" : "MAILBOX"));
+    } else {
+      GAMEENGINE_WARN(std::format("Failed to set GPU present mode: {} — defaulting to VSYNC",
+                                  SDL_GetError()));
+      vsyncRequested = true;
+    }
+
+    // Software frame limiting needed when VSync is off
+    m_timestepManager->setSoftwareFrameLimiting(!vsyncRequested);
   } else {
 #endif
     // Attempt to set VSync based on user preference
@@ -771,6 +791,7 @@ bool GameEngine::init(std::string_view title) {
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
   mp_gameStateManager->addState(std::make_unique<SettingsMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
+  mp_gameStateManager->addState(std::make_unique<GameOverState>());
   mp_gameStateManager->addState(std::make_unique<AIDemoState>());
   mp_gameStateManager->addState(std::make_unique<AdvancedAIDemoState>());
   mp_gameStateManager->addState(std::make_unique<EventDemoState>());
@@ -793,14 +814,14 @@ bool GameEngine::init(std::string_view title) {
     return false;
   }
 
-  // Initialize GameTime (fast, no threading needed)
+  // Initialize GameTimeManager (fast, no threading needed)
   // Time scale: 60.0 = 1 real second equals 1 game minute
-  GAMEENGINE_INFO("Initializing GameTime system");
+  GAMEENGINE_INFO("Initializing GameTimeManager system");
   if (!GameTimeManager::Instance().init(12.0f, 60.0f)) {
-    GAMEENGINE_ERROR("Failed to initialize GameTime");
+    GAMEENGINE_ERROR("Failed to initialize GameTimeManager");
     return false;
   }
-  GAMEENGINE_INFO("GameTime initialized (starting at noon, 60x speed)");
+  GAMEENGINE_INFO("GameTimeManager initialized (starting at noon, 60x speed)");
 
   // Initialize BackgroundSimulationManager (depends on EntityDataManager)
   // Handles simplified simulation for off-screen entities (Phase 5 of Entity
@@ -924,16 +945,12 @@ bool GameEngine::init(std::string_view title) {
   // Step 3: Post-initialization setup that requires manager dependencies
   GAMEENGINE_INFO("Setting up manager cross-dependencies");
   try {
-    // Setup WorldManager event handlers now that EventManager is guaranteed to
-    // be ready
     WorldManager &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized()) {
-      worldMgr.setupEventHandlers();
       worldMgr.setRenderer(mp_renderer.get());
-      GAMEENGINE_INFO("WorldManager event handlers setup complete");
+      GAMEENGINE_INFO("WorldManager renderer setup complete");
     } else {
-      GAMEENGINE_ERROR(
-          "WorldManager not initialized - cannot setup event handlers");
+      GAMEENGINE_ERROR("WorldManager not initialized - cannot set renderer");
       return false;
     }
 
@@ -1135,7 +1152,9 @@ void GameEngine::render() {
     auto& profiler = HammerEngine::FrameProfiler::Instance();
 
     // Begin GPU frame (profiler timing is inside beginFrame for granular breakdown)
-    gpuRenderer.beginFrame();
+    if (!gpuRenderer.beginFrame()) {
+      return;
+    }
 
     // Update profiler overlay (creates/updates UIManager components before recording)
     profiler.renderOverlay(nullptr, nullptr);
@@ -1145,10 +1164,8 @@ void GameEngine::render() {
     mp_gameStateManager->recordGPUVertices(gpuRenderer, interpolationAlpha);
     profiler.endRender(HammerEngine::RenderPhase::WorldTiles);
 
-    // Begin scene render pass (uploads vertices, clears scene texture)
-    profiler.beginRender(HammerEngine::RenderPhase::GPUUpload);
+    // Begin scene render pass (finalizes uploads, clears scene texture)
     SDL_GPURenderPass* scenePass = gpuRenderer.beginScenePass();
-    profiler.endRender(HammerEngine::RenderPhase::GPUUpload);
 
     // Render scene content
     profiler.beginRender(HammerEngine::RenderPhase::Entities);
@@ -1172,7 +1189,7 @@ void GameEngine::render() {
     }
     profiler.endRender(HammerEngine::RenderPhase::UI);
 
-    // Note: endFrame() called in present() to separate render/vsync timing
+    // Frame timing is finalized after present() in HammerMain.cpp.
     return;
   }
 #endif
@@ -1189,9 +1206,9 @@ void GameEngine::render() {
 }
 
 void GameEngine::present() {
-  // Present is separate from render for accurate profiling
-  // NOTE: For GPU path, VSync wait already happened in beginFrame() at acquire time.
-  // This is different from SDL_Renderer where VSync blocks in SDL_RenderPresent.
+  // Present is separate from render for accurate profiling.
+  // For the GPU path, frame pacing now happens when the swapchain pass acquires
+  // the swapchain texture rather than at frame start.
 #ifdef USE_SDL3_GPU
   if (m_gpuRendering) {
     HammerEngine::GPURenderer::Instance().endFrame();
@@ -1267,20 +1284,22 @@ GameEngine::getLogicalPresentationMode() const noexcept {
 void GameEngine::clean() {
   GAMEENGINE_INFO("Starting shutdown sequence...");
 
-  // Cache manager references for better performance
-  HammerEngine::ThreadSystem &threadSystem =
-      HammerEngine::ThreadSystem::Instance();
-
-  // Clean up the thread system FIRST to ensure all threads are joined
-  // before we destroy the managers they might be using.
-  GAMEENGINE_INFO("Cleaning up Thread System...");
-  if (HammerEngine::ThreadSystem::Exists() && !threadSystem.isShutdown()) {
-    threadSystem.clean();
-  }
-
   // Clean up engine managers (non-singletons)
   GAMEENGINE_INFO("Cleaning up GameState manager...");
   mp_gameStateManager.reset();
+
+  // Active state exit paths may need workers alive to drain pathfinding,
+  // background simulation, or other queued jobs. Once states are gone, shut the
+  // worker pool down before singleton manager cleanup so no late tasks can race
+  // with SDL-backed resource destruction.
+  GAMEENGINE_INFO("Cleaning up Thread System...");
+  if (HammerEngine::ThreadSystem::Exists()) {
+    HammerEngine::ThreadSystem &threadSystem =
+        HammerEngine::ThreadSystem::Instance();
+    if (!threadSystem.isShutdown()) {
+      threadSystem.clean();
+    }
+  }
 
   // Save copies of the smart pointers to resources we'll clean up at the very
   // end
@@ -1382,14 +1401,60 @@ void GameEngine::clean() {
 }
 
 bool GameEngine::setVSyncEnabled(bool enable) {
+  m_vsyncRequested = enable;
+  GAMEENGINE_INFO(
+      std::format("{} VSync...", enable ? "Enabling" : "Disabling"));
+
+#ifdef USE_SDL3_GPU
+  if (m_gpuRendering) {
+    auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+    if (!gpuDevice.isInitialized()) {
+      GAMEENGINE_ERROR("Cannot set VSync - GPU device not initialized");
+      return false;
+    }
+
+    // VSYNC blocks until vblank; MAILBOX presents latest frame at vblank without blocking
+    SDL_GPUPresentMode presentMode = enable
+        ? SDL_GPU_PRESENTMODE_VSYNC
+        : SDL_GPU_PRESENTMODE_MAILBOX;
+
+    bool success = SDL_SetGPUSwapchainParameters(
+        gpuDevice.get(), gpuDevice.getWindow(),
+        SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode);
+
+    if (!success) {
+      GAMEENGINE_ERROR(std::format("Failed to {} VSync on GPU swapchain: {}",
+                                   enable ? "enable" : "disable",
+                                   SDL_GetError()));
+      if (m_timestepManager) {
+        m_timestepManager->setSoftwareFrameLimiting(true);
+        GAMEENGINE_INFO("Falling back to software frame limiting");
+      }
+      return false;
+    }
+
+    // Configure software frame limiting: needed when VSync is off
+    if (m_timestepManager) {
+      m_timestepManager->setSoftwareFrameLimiting(!enable);
+    }
+
+    GAMEENGINE_INFO(std::format("GPU VSync {} (present mode: {})",
+                                enable ? "enabled" : "disabled",
+                                enable ? "VSYNC" : "MAILBOX"));
+
+    // Save VSync setting to SettingsManager for persistence
+    auto &settings = HammerEngine::SettingsManager::Instance();
+    settings.set("graphics", "vsync", enable);
+    settings.saveToFile(HammerEngine::ResourcePath::resolve("res/settings.json"));
+
+    return true;
+  }
+#endif
+
   if (!mp_renderer) {
     GAMEENGINE_ERROR("Cannot set VSync - renderer not initialized");
     return false;
   }
-
-  m_vsyncRequested = enable;
-  GAMEENGINE_INFO(
-      std::format("{} VSync...", enable ? "Enabling" : "Disabling"));
 
   // Attempt to set VSync
   bool vsyncSetSuccessfully =
@@ -1475,6 +1540,34 @@ void GameEngine::setFullscreen(bool enabled) {
   toggleFullscreen();
 }
 
+void GameEngine::updateDisplayRefreshRate() {
+  if (!m_timestepManager || !mp_window) {
+    return;
+  }
+
+  SDL_DisplayID displayID = SDL_GetDisplayForWindow(mp_window.get());
+  if (displayID == 0) {
+    m_timestepManager->setDisplayRefreshHz(0.0f);
+    GAMEENGINE_WARN("Unable to determine active display for timestep refresh tracking");
+    return;
+  }
+
+  const SDL_DisplayMode* displayMode = SDL_GetCurrentDisplayMode(displayID);
+  if (!displayMode || displayMode->refresh_rate <= 0.0f) {
+    displayMode = SDL_GetDesktopDisplayMode(displayID);
+  }
+
+  if (!displayMode || displayMode->refresh_rate <= 0.0f) {
+    m_timestepManager->setDisplayRefreshHz(0.0f);
+    GAMEENGINE_WARN("Unable to query active display refresh rate for timestep tracking");
+    return;
+  }
+
+  m_timestepManager->setDisplayRefreshHz(displayMode->refresh_rate);
+  GAMEENGINE_INFO(std::format("TimestepManager display refresh set to {:.2f}Hz",
+                              displayMode->refresh_rate));
+}
+
 void GameEngine::setGlobalPause(bool paused) {
   m_globallyPaused = paused;
 
@@ -1512,7 +1605,19 @@ int GameEngine::getOptimalDisplayIndex() const {
 }
 
 bool GameEngine::verifyVSyncState(bool requested) {
-  // Verify VSync state matches requested setting
+#ifdef USE_SDL3_GPU
+  if (m_gpuRendering) {
+    // GPU path: SDL3 GPU API doesn't provide swapchain present mode query,
+    // so trust the result of SDL_SetGPUSwapchainParameters() from setVSyncEnabled().
+    // Configure software frame limiting: needed when VSync is off
+    if (m_timestepManager) {
+      m_timestepManager->setSoftwareFrameLimiting(!requested);
+    }
+    return requested;
+  }
+#endif
+
+  // SDL_Renderer path: verify VSync state matches requested setting
   int vsyncState = 0;
   bool vsyncVerified = false;
 
@@ -1575,6 +1680,7 @@ void GameEngine::onWindowResize(const SDL_Event &event) {
 
   // Update GameEngine window dimensions
   setWindowSize(newWidth, newHeight);
+  updateDisplayRefreshRate();
 
   // Use native resolution rendering (all platforms) for crisp, sharp text
   // This matches the initialization approach in GameEngine and ensures
@@ -1589,7 +1695,7 @@ void GameEngine::onWindowResize(const SDL_Event &event) {
   }
 
 #ifdef USE_SDL3_GPU
-  // GPURenderer syncs viewport from swapchain in beginFrame()
+  // GPURenderer syncs viewport from the swapchain when the GPU frame begins rendering.
   // No manual updateViewport needed - swapchain is authoritative source
 #else
   // Update renderer to native resolution (no scaling)
@@ -1702,6 +1808,7 @@ void GameEngine::onDisplayChange(const SDL_Event &event) {
   }
 
   GAMEENGINE_INFO(std::format("Display event detected: {}", eventName));
+  updateDisplayRefreshRate();
 
 // On Apple platforms, display changes often invalidate font textures
 // due to different DPI scaling or context changes

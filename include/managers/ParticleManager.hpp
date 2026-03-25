@@ -22,6 +22,7 @@
  * - Thread-safe design with minimal lock contention
  */
 
+#include "managers/EventManager.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <array>
@@ -79,7 +80,6 @@ constexpr bool operator!=(const AlignedAllocator<T1, A1> &,
 
 // Forward declarations
 class TextureManager;
-class EventManager;
 
 namespace HammerEngine {
 struct WorkerBudget;
@@ -437,6 +437,9 @@ public:
    */
   bool isShutdown() const;
 
+  void handleParticleEffectEvent(const EventData& data);
+  void handleWeatherEvent(const EventData& data);
+
   // Effect Management
   /**
    * @brief Registers a particle effect definition for use
@@ -672,7 +675,7 @@ public:
    *
    * Called automatically by update() when WorkerBudget threading is enabled.
    */
-  void updateWithWorkerBudget(float deltaTime, size_t particleCount,
+  void updateWithWorkerBudget(float deltaTime, size_t traversedParticleCount,
                               ParticleThreadingInfo& outThreadingInfo);
 
   /**
@@ -942,7 +945,6 @@ private:
   std::atomic<bool> m_useWorkerBudget{true};
   // Threading threshold now managed by WorkerBudget adaptive system
 
-
   std::atomic<size_t> m_activeCount{0};
 
   // Camera and culling
@@ -1080,10 +1082,10 @@ private:
   void swapBuffers();
   void cleanupInactiveParticles();
   void updateEffectInstances(float deltaTime);
-  void updateParticlesThreaded(float deltaTime, size_t activeParticleCount,
+  void updateParticlesThreaded(float deltaTime, size_t traversedParticleCount,
                                ParticleThreadingInfo& outThreadingInfo);
   void updateParticlesSingleThreaded(float deltaTime,
-                                     size_t activeParticleCount);
+                                     size_t traversedParticleCount);
   void updateParticleRange(LockFreeParticleStorage::ParticleSoA &particles,
                            size_t startIdx, size_t endIdx, float deltaTime,
                            float windPhase);
@@ -1107,7 +1109,6 @@ private:
   uint32_t interpolateColor(uint32_t color1, uint32_t color2, float factor);
   void recordPerformance(bool isRender, double timeMs, size_t particleCount);
   uint64_t getCurrentTimeNanos() const;
-
   // PERFORMANCE OPTIMIZATION: Trigonometric lookup tables for fast math
   static constexpr size_t TRIG_LUT_SIZE = 1024;
   static constexpr float TRIG_LUT_SCALE = TRIG_LUT_SIZE / (2.0f * 3.14159265f);

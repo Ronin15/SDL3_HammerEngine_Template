@@ -1,8 +1,6 @@
-# ControllerRegistry Documentation
+# ControllerRegistry
 
-**Where to find the code:**
-- Header: `include/controllers/ControllerRegistry.hpp`
-- Interface: `include/controllers/IUpdatable.hpp`
+**Code:** `include/controllers/ControllerRegistry.hpp`, `include/controllers/IUpdatable.hpp`
 
 ## Overview
 
@@ -179,11 +177,11 @@ void GamePlayState::render() {
 // CombatController needs player reference
 m_controllers.add<CombatController>(mp_player);
 
-// PathfindingController needs grid dimensions
-m_controllers.add<PathfindingController>(worldWidth, worldHeight);
+// ItemController needs a player reference
+m_controllers.add<ItemController>(mp_player);
 
-// Multiple arguments
-m_controllers.add<AIController>(entityManager, navMesh, debugMode);
+// ResourceRenderController has no constructor arguments
+m_controllers.add<ResourceRenderController>();
 ```
 
 ### Creating an IUpdatable Controller

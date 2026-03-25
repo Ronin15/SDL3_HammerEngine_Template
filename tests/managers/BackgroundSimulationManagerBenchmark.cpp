@@ -41,6 +41,8 @@ namespace {
 // Test fixture for BackgroundSimulationManager benchmarks
 class BGSimBenchmarkFixture {
 public:
+    static bool& initializedFlag() { return s_initialized; }
+
     BGSimBenchmarkFixture() {
         // Initialize systems once per fixture
         if (!s_initialized) {
@@ -72,6 +74,7 @@ public:
         AIManager::Instance().prepareForStateTransition();
         EntityDataManager::Instance().prepareForStateTransition();
         CollisionManager::Instance().prepareForStateTransition();
+        HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
     }
 
     // Create NPC entities and force them into background tier
@@ -148,6 +151,25 @@ protected:
 };
 
 bool BGSimBenchmarkFixture::s_initialized = false;
+
+struct BGSimBenchmarkModuleCleanup {
+    ~BGSimBenchmarkModuleCleanup() {
+        if (!BGSimBenchmarkFixture::initializedFlag()) {
+            return;
+        }
+
+        BackgroundSimulationManager::Instance().clean();
+        AIManager::Instance().clean();
+        CollisionManager::Instance().clean();
+        PathfinderManager::Instance().clean();
+        EntityDataManager::Instance().clean();
+        HammerEngine::ThreadSystem::Instance().clean();
+
+        BGSimBenchmarkFixture::initializedFlag() = false;
+    }
+};
+
+BOOST_GLOBAL_FIXTURE(BGSimBenchmarkModuleCleanup);
 
 } // anonymous namespace
 
@@ -264,10 +286,8 @@ BOOST_AUTO_TEST_CASE(ThreadingThresholdDetection) {
     }
 
     std::cout << "\n=== THREADING RECOMMENDATION ===" << std::endl;
-    double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
     double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
     float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
-    std::cout << "Single throughput: " << std::fixed << std::setprecision(2) << singleTP << " items/ms" << std::endl;
     std::cout << "Multi throughput:  " << std::fixed << std::setprecision(2) << multiTP << " items/ms" << std::endl;
     std::cout << "Batch multiplier:  " << std::fixed << std::setprecision(2) << batchMult << std::endl;
 
@@ -339,9 +359,7 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning) {
 
     // Part 2: Throughput Tracking (replaces threshold adaptation)
     std::cout << "\n--- Part 2: Throughput Tracking ---" << std::endl;
-    double initialSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
     double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
-    std::cout << "Initial single throughput: " << std::fixed << std::setprecision(2) << initialSingleTP << " items/ms" << std::endl;
     std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms" << std::endl;
 
     // Run additional frames to allow throughput tracking
@@ -352,34 +370,26 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning) {
 
         // Sample throughput every 100 frames
         if (frame % 100 == 0) {
-            double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
             double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
             float batchMultNow = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
-            std::cout << "Frame " << frame << ": singleTP=" << std::fixed << std::setprecision(2) << singleTP
-                      << " multiTP=" << multiTP << " batchMult=" << batchMultNow << std::endl;
+            std::cout << "Frame " << frame << ": multiTP=" << std::fixed << std::setprecision(2)
+                      << multiTP << " batchMult=" << batchMultNow << std::endl;
         }
     }
 
-    double finalSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
     double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
     float finalBatchMultTP = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
-    std::cout << "Final single throughput: " << std::fixed << std::setprecision(2) << finalSingleTP << " items/ms" << std::endl;
     std::cout << "Final multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms" << std::endl;
     std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMultTP << std::endl;
 
     // Check if throughput has been collected
-    bool throughputCollected = (finalSingleTP > 0 || finalMultiTP > 0);
-
-    std::string modePreferred = (finalMultiTP > finalSingleTP * 1.15) ? "MULTI" :
-                               (finalSingleTP > finalMultiTP * 1.15) ? "SINGLE" : "COMPARABLE";
-    std::cout << "Threading mode preference: " << modePreferred << std::endl;
+    bool throughputCollected = (finalMultiTP > 0);
 
     // Summary
     std::cout << "\n=== ADAPTIVE TUNING SUMMARY ===" << std::endl;
     std::cout << "Batch sizing:       " << (batchConverged ? "PASS" : "IN_PROGRESS") << std::endl;
     std::cout << "Throughput tracking: " << (throughputCollected ? "PASS" : "NO_DATA") << std::endl;
     std::cout << "Final batch count:  " << finalBatch << std::endl;
-    std::cout << "Mode preference:    " << modePreferred << std::endl;
     std::cout << "================================\n" << std::endl;
 
     // Test passes if batch sizing converged OR throughput was collected

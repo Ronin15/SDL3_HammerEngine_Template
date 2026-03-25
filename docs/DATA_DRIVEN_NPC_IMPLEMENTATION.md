@@ -1,5 +1,7 @@
 # Data-Driven NPC Entity System Implementation
 
+**Code:** `include/managers/EntityDataManager.hpp`, `src/managers/EntityDataManager.cpp`, `include/controllers/render/NPCRenderController.hpp`, `src/controllers/render/NPCRenderController.cpp`
+
 ## Overview
 
 Remove the NPC class and make NPCs data-driven entities with:
@@ -1250,3 +1252,10 @@ git show HEAD~1:include/entities/npcStates/NPCIdleState.hpp
 # Restore a specific file if needed
 git checkout HEAD~1 -- include/entities/NPC.hpp
 ```
+
+## Related Docs
+
+- [EntityDataManager](managers/EntityDataManager.md)
+- [ControllerRegistry](controllers/ControllerRegistry.md)
+- [CombatController](controllers/CombatController.md)
+- [AIManager](ai/AIManager.md)

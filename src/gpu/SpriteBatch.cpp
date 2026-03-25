@@ -10,7 +10,7 @@
 
 namespace HammerEngine {
 
-bool SpriteBatch::init(SDL_GPUDevice* device) {
+bool SpriteBatch::init(SDL_GPUDevice* device, const char* name) {
     if (!device) {
         GAMEENGINE_ERROR("SpriteBatch::init: null device");
         return false;
@@ -81,11 +81,15 @@ bool SpriteBatch::init(SDL_GPUDevice* device) {
 
     SDL_UploadToGPUBuffer(copyPass, &src, &dst, false);
     SDL_EndGPUCopyPass(copyPass);
-    SDL_SubmitGPUCommandBuffer(cmd);
+    if (!SDL_SubmitGPUCommandBuffer(cmd)) {
+        GAMEENGINE_ERROR(std::format("SpriteBatch: failed to submit index upload command buffer: {}",
+                                     SDL_GetError()));
+        return false;
+    }
 
     m_initialized = true;
-    GAMEENGINE_INFO(std::format("SpriteBatch initialized: max {} sprites, {} KB index buffer",
-                    MAX_SPRITES, indexBufferSize / 1024));
+    GAMEENGINE_INFO(std::format("{} initialized: max {} sprites, {} KB index buffer",
+                    name, MAX_SPRITES, indexBufferSize / 1024));
     return true;
 }
 
@@ -104,6 +108,7 @@ SpriteBatch::SpriteBatch(SpriteBatch&& other) noexcept
     , m_maxVertices(other.m_maxVertices)
     , m_textureWidth(other.m_textureWidth)
     , m_textureHeight(other.m_textureHeight)
+    , m_targetHeight(other.m_targetHeight)
     , m_spriteCount(other.m_spriteCount)
     , m_vertexCount(other.m_vertexCount)
     , m_recording(other.m_recording)
@@ -115,6 +120,7 @@ SpriteBatch::SpriteBatch(SpriteBatch&& other) noexcept
     other.m_sampler = nullptr;
     other.m_writePtr = nullptr;
     other.m_maxVertices = 0;
+    other.m_targetHeight = 1.0f;
     other.m_spriteCount = 0;
     other.m_vertexCount = 0;
     other.m_recording = false;
@@ -135,6 +141,7 @@ SpriteBatch& SpriteBatch::operator=(SpriteBatch&& other) noexcept {
         m_maxVertices = other.m_maxVertices;
         m_textureWidth = other.m_textureWidth;
         m_textureHeight = other.m_textureHeight;
+        m_targetHeight = other.m_targetHeight;
         m_spriteCount = other.m_spriteCount;
         m_vertexCount = other.m_vertexCount;
         m_recording = other.m_recording;
@@ -146,6 +153,7 @@ SpriteBatch& SpriteBatch::operator=(SpriteBatch&& other) noexcept {
         other.m_sampler = nullptr;
         other.m_writePtr = nullptr;
         other.m_maxVertices = 0;
+        other.m_targetHeight = 1.0f;
         other.m_spriteCount = 0;
         other.m_vertexCount = 0;
         other.m_recording = false;
@@ -156,7 +164,8 @@ SpriteBatch& SpriteBatch::operator=(SpriteBatch&& other) noexcept {
 
 void SpriteBatch::begin(SpriteVertex* writePtr, size_t maxVertices,
                         SDL_GPUTexture* texture, SDL_GPUSampler* sampler,
-                        float textureWidth, float textureHeight) {
+                        float textureWidth, float textureHeight,
+                        float targetHeight) {
     if (!m_initialized) {
         GAMEENGINE_ERROR("SpriteBatch::begin: not initialized");
         return;
@@ -173,6 +182,7 @@ void SpriteBatch::begin(SpriteVertex* writePtr, size_t maxVertices,
     m_sampler = sampler;
     m_textureWidth = (textureWidth > 0) ? textureWidth : 1.0f;
     m_textureHeight = (textureHeight > 0) ? textureHeight : 1.0f;
+    m_targetHeight = (targetHeight > 0) ? targetHeight : 1.0f;
     m_spriteCount = 0;
     m_vertexCount = 0;
     m_recording = true;
@@ -208,11 +218,11 @@ void SpriteBatch::drawUV(float u0, float v0, float u1, float v1,
         return;
     }
 
-    // Destination rectangle corners
+    // Convert engine top-left screen/world coordinates to SDL_GPU's Y-up space.
     float x0 = dstX;
-    float y0 = dstY;
     float x1 = dstX + dstW;
-    float y1 = dstY + dstH;
+    float y0 = m_targetHeight - dstY;
+    float y1 = y0 - dstH;
 
     addQuad(x0, y0, x1, y1, u0, v0, u1, v1, r, g, b, a);
 }

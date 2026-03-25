@@ -68,6 +68,7 @@ set(SIMPLE_TESTS
     game_time_manager_season_tests
     entity_state_manager_tests
     entity_data_manager_tests
+    npc_memory_tests
     background_simulation_manager_tests
     collision_manager_edm_integration_tests
     event_manager_tests
@@ -99,6 +100,10 @@ set(MOCK_TESTS
     day_night_controller_tests
     controller_registry_tests
     npc_render_controller_tests
+    harvest_controller_tests
+    item_controller_tests
+    social_controller_tests
+    resource_render_controller_tests
     ai_manager_edm_integration_tests
     pathfinder_manager_edm_integration_tests
 )
@@ -187,6 +192,8 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "EntityStateManagerTests.cpp")
     elseif(${test_name} STREQUAL "entity_data_manager_tests")
         set(test_source "managers/EntityDataManagerTests.cpp")
+    elseif(${test_name} STREQUAL "npc_memory_tests")
+        set(test_source "managers/NPCMemoryTests.cpp")
     elseif(${test_name} STREQUAL "background_simulation_manager_tests")
         set(test_source "managers/BackgroundSimulationManagerTests.cpp")
     elseif(${test_name} STREQUAL "collision_manager_edm_integration_tests")
@@ -255,6 +262,14 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "controllers/ControllerRegistryTests.cpp")
     elseif(${test_name} STREQUAL "npc_render_controller_tests")
         set(test_source "controllers/NPCRenderControllerTests.cpp")
+    elseif(${test_name} STREQUAL "harvest_controller_tests")
+        set(test_source "controllers/HarvestControllerTests.cpp")
+    elseif(${test_name} STREQUAL "item_controller_tests")
+        set(test_source "controllers/ItemControllerTests.cpp")
+    elseif(${test_name} STREQUAL "social_controller_tests")
+        set(test_source "controllers/SocialControllerTests.cpp")
+    elseif(${test_name} STREQUAL "resource_render_controller_tests")
+        set(test_source "controllers/ResourceRenderControllerTests.cpp")
     elseif(${test_name} STREQUAL "ai_manager_edm_integration_tests")
         set(test_source "managers/AIManagerEDMIntegrationTests.cpp")
     elseif(${test_name} STREQUAL "pathfinder_manager_edm_integration_tests")
@@ -315,6 +330,7 @@ foreach(test_name ${ALL_TESTS})
     set_tests_properties(${test_name} PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endforeach()
+
 # resource_factory_tests uses test access helper from tests/resources
 target_sources(resource_factory_tests PRIVATE resources/ResourceTestAccess.cpp)
 
@@ -350,6 +366,13 @@ if(USE_SDL3_GPU)
 
     set(GPU_SYSTEM_TESTS
         gpu_renderer_tests
+    )
+
+    add_executable(gpu_frame_timing_benchmark gpu/GPUFrameTimingBenchmark.cpp)
+    target_link_libraries(gpu_frame_timing_benchmark PRIVATE HammerEngineLib)
+    target_include_directories(gpu_frame_timing_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gpu)
+    set_target_properties(gpu_frame_timing_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
     )
 
     # Source file mapping for GPU unit tests (no GPU required)

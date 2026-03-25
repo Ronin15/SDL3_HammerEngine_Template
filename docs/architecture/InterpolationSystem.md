@@ -1,9 +1,6 @@
-# Interpolation System Documentation
+# Interpolation System
 
-**Where to find the code:**
-- Entity: `include/entities/Entity.hpp`
-- Camera: `include/utils/Camera.hpp` and `src/utils/Camera.cpp`
-- Main Loop: `src/core/HammerMain.cpp`
+**Code:** `include/entities/Entity.hpp`, `include/utils/Camera.hpp`, `src/utils/Camera.cpp`, `src/core/HammerMain.cpp`
 
 ## Overview
 
@@ -274,7 +271,7 @@ void teleport(const Vector2D& pos) {
 
 - **Entity:** `include/entities/Entity.hpp`
 - **Camera:** `docs/utils/Camera.md`
-- **TimestepManager:** `docs/managers/TimestepManager.md`
+- **TimestepManager:** `docs/core/TimestepManager.md`
 - **GameEngine:** `docs/core/GameEngine.md`
 
 ---

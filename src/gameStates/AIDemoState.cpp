@@ -4,13 +4,11 @@
  */
 
 #include "gameStates/AIDemoState.hpp"
-#include "ai/behaviors/ChaseBehavior.hpp"
-#include "ai/behaviors/PatrolBehavior.hpp"
-#include "ai/behaviors/WanderBehavior.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/GameStateManager.hpp"
@@ -20,11 +18,10 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/EventManager.hpp"
+#include "core/WorkerBudget.hpp"
 #include "utils/Camera.hpp"
 #include "utils/FrameProfiler.hpp"
 #include "utils/WorldRenderPipeline.hpp"
-#include "world/WorldData.hpp"
-
 #ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
 #include "gpu/SpriteBatch.hpp"
@@ -76,10 +73,6 @@ void AIDemoState::handleInput() {
 
     // Set global AI pause state in AIManager
     aiMgr.setGlobalPause(m_aiPaused);
-
-    // Also send messages for behaviors that need them
-    std::string message = m_aiPaused ? "pause" : "resume";
-    aiMgr.broadcastMessage(message, true);
 
     // Simple feedback
     GAMESTATE_INFO(std::format("AI {}", m_aiPaused ? "PAUSED" : "RESUMED"));
@@ -270,9 +263,6 @@ bool AIDemoState::enter() {
       m_worldHeight = gameEngine.getLogicalHeight();
     }
 
-    // Texture has to be loaded by NPC or Player can't be loaded here
-    setupAIBehaviors();
-
     // Create player first (the chase behavior will need it)
     m_player = std::make_shared<Player>();
     m_player->ensurePhysicsBodyRegistered();
@@ -286,12 +276,8 @@ bool AIDemoState::enter() {
     // (EntityHandle-based API)
     aiMgr.setPlayerHandle(m_player->getHandle());
 
-    // Create and register chase behavior - behaviors can get player via
-    // getPlayerHandle() or getPlayerPosition()
-    auto chaseBehavior = std::make_unique<ChaseBehavior>(90.0f, 500.0f, 50.0f);
-    aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
-    GAMESTATE_INFO(
-        "Chase behavior registered (will use AIManager::getPlayerHandle())");
+    // Chase behavior is now registered by AIManager::registerDefaultBehaviors()
+    // Behaviors get player via AIManager::getPlayerHandle() or getPlayerPosition()
 
     // Create simple HUD UI (matches EventDemoState spacing pattern)
     auto &ui = UIManager::Instance();
@@ -385,11 +371,13 @@ bool AIDemoState::exit() {
 
   // Cache manager references for better performance
   AIManager &aiMgr = AIManager::Instance();
+  BackgroundSimulationManager &bgSimMgr = BackgroundSimulationManager::Instance();
   EntityDataManager &edm = EntityDataManager::Instance();
   CollisionManager &collisionMgr = CollisionManager::Instance();
   PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
   UIManager &ui = UIManager::Instance();
   WorldManager &worldMgr = WorldManager::Instance();
+  EventManager &eventMgr = EventManager::Instance();
 
   if (m_transitioningToLoading) {
     // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded
@@ -398,6 +386,9 @@ bool AIDemoState::exit() {
     // Reset the flag after using it
     m_transitioningToLoading = false;
 
+    // Clear controllers before entity/manager cleanup
+    m_controllers.clear();
+
     // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
     // NPCs hold EDM indices - must be destroyed while EDM data is still valid
     m_npcRenderCtrl.clearSpawnedNPCs();
@@ -405,20 +396,21 @@ bool AIDemoState::exit() {
       m_player.reset();
     }
 
-    // Now safe to clear manager state
-    // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
-    // Pending path tasks hold captured edmIndex values - they must complete or
-    // see the transition flag before EDM clears its data
-    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-      pathfinderMgr.prepareForStateTransition();
-    }
-
     aiMgr.prepareForStateTransition();
-    edm.prepareForStateTransition();
+    bgSimMgr.prepareForStateTransition();
+
+    eventMgr.prepareForStateTransition();
 
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
     }
+
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
+    }
+
+    edm.prepareForStateTransition();
+    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
     // Clean up camera and scene renderer
     m_camera.reset();
@@ -448,6 +440,9 @@ bool AIDemoState::exit() {
 
   // Full exit (going to main menu, other states, or shutting down)
 
+  // Clear controllers before entity/manager cleanup
+  m_controllers.clear();
+
   // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
   // NPCs hold EDM indices - must be destroyed while EDM data is still valid
   m_npcRenderCtrl.clearSpawnedNPCs();
@@ -455,21 +450,22 @@ bool AIDemoState::exit() {
     m_player.reset();
   }
 
-  // Now safe to clear manager state
-  // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
-  // Pending path tasks hold captured edmIndex values - they must complete or
-  // see the transition flag before EDM clears its data
-  if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-    pathfinderMgr.prepareForStateTransition();
-  }
-
   aiMgr.prepareForStateTransition();
-  edm.prepareForStateTransition();
+  bgSimMgr.prepareForStateTransition();
+
+  eventMgr.prepareForStateTransition();
 
   // Clean collision state
   if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
     collisionMgr.prepareForStateTransition();
   }
+
+  if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+    pathfinderMgr.prepareForStateTransition();
+  }
+
+  edm.prepareForStateTransition();
+  HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
   // Clean up camera and scene renderer first to stop world rendering
   m_camera.reset();
@@ -556,10 +552,13 @@ void AIDemoState::update(float deltaTime) {
     // Update camera (follows player automatically)
     updateCamera(deltaTime);
 
+#ifndef USE_SDL3_GPU
     // Prepare chunks via WorldRenderPipeline (predictive prefetching + dirty chunk updates)
+    // GPU path renders tiles directly from atlas coords each frame — no chunk textures needed
     if (m_renderPipeline && m_camera) {
       m_renderPipeline->prepareChunks(*m_camera, deltaTime);
     }
+#endif
 
     // Update UI (moved from render path for consistent frame timing)
     if (!ui.isShutdown()) {
@@ -639,75 +638,6 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   }
 }
 
-void AIDemoState::setupAIBehaviors() {
-  GAMESTATE_INFO("AIDemoState: Setting up AI behaviors using EventDemoState "
-                 "implementation...");
-  // TODO: need to move all availible behaviors into the AIManager and Event
-  // Manager NPC creation with behavior
-  //  Cache AIManager reference for better performance
-  AIManager &aiMgr = AIManager::Instance();
-
-  if (!aiMgr.hasBehavior("Wander")) {
-    auto wanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::MEDIUM_AREA, 60.0f);
-    aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered Wander behavior");
-  }
-
-  if (!aiMgr.hasBehavior("SmallWander")) {
-    auto smallWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::SMALL_AREA, 45.0f);
-    aiMgr.registerBehavior("SmallWander", std::move(smallWanderBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered SmallWander behavior");
-  }
-
-  if (!aiMgr.hasBehavior("LargeWander")) {
-    auto largeWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::LARGE_AREA, 75.0f);
-    aiMgr.registerBehavior("LargeWander", std::move(largeWanderBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered LargeWander behavior");
-  }
-
-  if (!aiMgr.hasBehavior("EventWander")) {
-    auto eventWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::EVENT_TARGET, 52.5f);
-    aiMgr.registerBehavior("EventWander", std::move(eventWanderBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered EventWander behavior");
-  }
-
-  if (!aiMgr.hasBehavior("Patrol")) {
-    auto patrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::RANDOM_AREA, 75.0f, false);
-    aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered Patrol behavior (random area)");
-  }
-
-  if (!aiMgr.hasBehavior("RandomPatrol")) {
-    auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::RANDOM_AREA, 85.0f, false);
-    aiMgr.registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered RandomPatrol behavior");
-  }
-
-  if (!aiMgr.hasBehavior("CirclePatrol")) {
-    auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::CIRCULAR_AREA, 90.0f, false);
-    aiMgr.registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered CirclePatrol behavior");
-  }
-
-  if (!aiMgr.hasBehavior("EventTarget")) {
-    auto eventTargetBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::EVENT_TARGET, 95.0f, false);
-    aiMgr.registerBehavior("EventTarget", std::move(eventTargetBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered EventTarget behavior");
-  }
-
-  // Chase behavior will be set up after player is created in enter() method
-  // This ensures the player reference is available for behaviors to use
-
-  GAMESTATE_INFO("AIDemoState: AI behaviors setup complete.");
-}
 
 void AIDemoState::initializeCamera() {
   const auto &gameEngine = GameEngine::Instance();

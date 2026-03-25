@@ -1,4 +1,4 @@
-# Auto-Sizing System Documentation
+# Auto-Sizing System
 
 ## Overview
 

@@ -1,8 +1,10 @@
 # Data-Driven Resource System Migration Plan
 
+**Code:** `include/managers/EntityDataManager.hpp`, `src/managers/EntityDataManager.cpp`, `include/managers/WorldResourceManager.hpp`, `src/managers/WorldResourceManager.cpp`
+
 ## Overview
 
-Migrate resource entities and inventory into EntityDataManager following the NPCRenderData pattern established in DATA_DRIVEN_NPC_IMPLEMENTATION.md.
+Migrate resource entities and inventory into `EntityDataManager` following the `NPCRenderData` pattern established in [Data-Driven NPC Entity System Implementation](DATA_DRIVEN_NPC_IMPLEMENTATION.md).
 
 **Scope:**
 - Make all interactables data-driven: DroppedItem, Container, Harvestable
@@ -1365,3 +1367,9 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 |------|
 | `include/entities/DroppedItem.hpp` |
 | `src/entities/DroppedItem.cpp` |
+
+## Related Docs
+
+- [Data-Driven NPC Entity System Implementation](DATA_DRIVEN_NPC_IMPLEMENTATION.md)
+- [EntityDataManager](managers/EntityDataManager.md)
+- [WorldResourceManager](managers/WorldResourceManager.md)

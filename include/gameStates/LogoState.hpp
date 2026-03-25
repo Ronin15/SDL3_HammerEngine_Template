@@ -8,10 +8,15 @@
 
 #include "gameStates/GameState.hpp"
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #ifdef USE_SDL3_GPU
+#include <SDL3_ttf/SDL_ttf.h>
 struct SDL_GPUTexture;
+namespace HammerEngine {
+class GPUTexture;
+}
 #endif
 
 class LogoState : public GameState {
@@ -60,7 +65,9 @@ class LogoState : public GameState {
 #ifdef USE_SDL3_GPU
   // GPU draw commands for multiple textures (scene rendering)
   struct GPUDrawCommand {
+    std::shared_ptr<HammerEngine::GPUTexture> textureOwner{};
     SDL_GPUTexture* texture{nullptr};
+    TTF_ImageType imageType{TTF_IMAGE_INVALID};
     uint32_t vertexOffset{0};
     uint32_t vertexCount{0};
   };

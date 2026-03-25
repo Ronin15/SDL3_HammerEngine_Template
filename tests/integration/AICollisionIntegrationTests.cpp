@@ -13,7 +13,6 @@
 #include <vector>
 #include <random>
 #include <memory>
-#include <algorithm>
 
 #include "managers/AIManager.hpp"
 #include "managers/BackgroundSimulationManager.hpp"
@@ -24,8 +23,6 @@
 #include "managers/EntityDataManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "entities/EntityHandle.hpp"
-#include "ai/behaviors/WanderBehavior.hpp"
-#include "ai/internal/Crowd.hpp"
 #include "utils/Vector2D.hpp"
 #include "world/WorldData.hpp"
 
@@ -269,8 +266,6 @@ struct AICollisionTestFixture {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
 
-        // Wait for async operations to complete
-        AIManager::Instance().waitForAsyncBatchCompletion();
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
@@ -364,7 +359,6 @@ BOOST_AUTO_TEST_CASE(TestAINavigatesObstacleField) {
 
     // Create AI entities with wander behavior (will navigate around obstacles)
     const int NUM_ENTITIES = 10;
-    std::vector<std::shared_ptr<WanderBehavior>> behaviors;
 
     // Spawn entities in the center gap (row=2, col=2) to avoid spawning on obstacles
     const Vector2D SPAWN_CENTER(
@@ -381,19 +375,8 @@ BOOST_AUTO_TEST_CASE(TestAINavigatesObstacleField) {
 
         auto entity = createEntity(startPos);
 
-        // Create wander behavior with medium area
-        auto behavior = std::make_shared<WanderBehavior>(
-            WanderBehavior::WanderMode::MEDIUM_AREA,
-            50.0f // speed
-        );
-        behavior->setCenterPoint(GRID_ORIGIN);
-        behavior->setAreaRadius(600.0f); // Wander within obstacle field
-        behaviors.push_back(behavior);
-
-        // Register behavior
-        std::string behaviorName = "WanderBehavior_" + std::to_string(i);
-        AIManager::Instance().registerBehavior(behaviorName, behavior);
-        AIManager::Instance().registerEntity(entity, behaviorName);
+        // Assign Wander behavior using data-oriented API
+        AIManager::Instance().assignBehavior(entity, "Wander");
     }
 
     // Process collision commands for entities
@@ -448,8 +431,6 @@ BOOST_AUTO_TEST_CASE(TestAISeparationForces) {
     const Vector2D SPAWN_CENTER(500.0f, 500.0f);
     const float SPAWN_RADIUS = 100.0f;
 
-    std::vector<std::shared_ptr<WanderBehavior>> behaviors;
-
     for (int i = 0; i < NUM_ENTITIES; ++i) {
         // Spawn entities in a tight cluster
         float angle = (i / static_cast<float>(NUM_ENTITIES)) * 2.0f * 3.14159f;
@@ -460,18 +441,8 @@ BOOST_AUTO_TEST_CASE(TestAISeparationForces) {
 
         auto entity = createEntity(spawnPos);
 
-        // Create wander behavior with small area (entities will stay clustered)
-        auto behavior = std::make_shared<WanderBehavior>(
-            WanderBehavior::WanderMode::SMALL_AREA,
-            30.0f // moderate speed
-        );
-        behavior->setCenterPoint(SPAWN_CENTER);
-        behavior->setAreaRadius(150.0f); // Small area to maintain clustering
-        behaviors.push_back(behavior);
-
-        std::string behaviorName = "SeparationBehavior_" + std::to_string(i);
-        AIManager::Instance().registerBehavior(behaviorName, behavior);
-        AIManager::Instance().registerEntity(entity, behaviorName);
+        // Assign Wander behavior using data-oriented API
+        AIManager::Instance().assignBehavior(entity, "Wander");
     }
 
     // Process collision commands
@@ -601,7 +572,6 @@ BOOST_AUTO_TEST_CASE(TestAIBoundaryAvoidance) {
 
     // Create entities near boundaries with behaviors that might push them out
     const int NUM_ENTITIES = 15;
-    std::vector<std::shared_ptr<WanderBehavior>> behaviors;
 
     std::uniform_real_distribution<float> posDist(100.0f, WORLD_MAX_X - 100.0f);
 
@@ -609,18 +579,8 @@ BOOST_AUTO_TEST_CASE(TestAIBoundaryAvoidance) {
         Vector2D startPos(posDist(m_rng), posDist(m_rng));
         auto entity = createEntity(startPos);
 
-        // Large wander area to encourage boundary testing
-        auto behavior = std::make_shared<WanderBehavior>(
-            WanderBehavior::WanderMode::LARGE_AREA,
-            80.0f // high speed to test boundary enforcement
-        );
-        behavior->setCenterPoint(Vector2D(WORLD_MAX_X / 2.0f, WORLD_MAX_Y / 2.0f));
-        behavior->setAreaRadius(1000.0f);
-        behaviors.push_back(behavior);
-
-        std::string behaviorName = "BoundaryBehavior_" + std::to_string(i);
-        AIManager::Instance().registerBehavior(behaviorName, behavior);
-        AIManager::Instance().registerEntity(entity, behaviorName);
+        // Assign Wander behavior using data-oriented API
+        AIManager::Instance().assignBehavior(entity, "Wander");
     }
 
 
@@ -669,7 +629,6 @@ BOOST_AUTO_TEST_CASE(TestAICollisionPerformanceUnderLoad) {
     const int NUM_ENTITIES = 1000;
     const float WORLD_SIZE = 5000.0f;
 
-    std::vector<std::shared_ptr<WanderBehavior>> behaviors;
     std::uniform_real_distribution<float> posDist(100.0f, WORLD_SIZE - 100.0f);
 
     std::cout << "Creating " << NUM_ENTITIES << " entities..." << std::endl;
@@ -678,23 +637,11 @@ BOOST_AUTO_TEST_CASE(TestAICollisionPerformanceUnderLoad) {
         Vector2D startPos(posDist(m_rng), posDist(m_rng));
         auto entity = createEntity(startPos);
 
-        // Wander behavior with moderate area
-        auto behavior = std::make_shared<WanderBehavior>(
-            WanderBehavior::WanderMode::MEDIUM_AREA,
-            40.0f
-        );
-        behavior->setCenterPoint(startPos);
-        behavior->setAreaRadius(300.0f);
-        behaviors.push_back(behavior);
-
-        std::string behaviorName = "LoadTestBehavior_" + std::to_string(i);
-        AIManager::Instance().registerBehavior(behaviorName, behavior);
-        AIManager::Instance().registerEntity(entity, behaviorName);
+        // Assign Wander behavior using data-oriented API
+        AIManager::Instance().assignBehavior(entity, "Wander");
     }
 
 
-    // Wait for async behavior assignments to complete before testing
-    AIManager::Instance().waitForAsyncBatchCompletion();
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     std::cout << "Entities created. Starting performance test..." << std::endl;

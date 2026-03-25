@@ -66,7 +66,7 @@ const char* FrameProfiler::getRenderPhaseName(RenderPhase phase)
     case RenderPhase::EndScene: return "EndScene";
     case RenderPhase::UI: return "UI";
     case RenderPhase::GPUCmdBuffer: return "GPUCmdBuffer";
-    case RenderPhase::GPUSwapchain: return "GPUSwapchain";
+    case RenderPhase::GPUSwapchainWait: return "GPUSwapchainWait";
     case RenderPhase::GPUVertexMap: return "GPUVertexMap";
     case RenderPhase::GPUCopyPass: return "GPUCopyPass";
     case RenderPhase::GPUUpload: return "GPUUpload";
@@ -106,8 +106,8 @@ void FrameProfiler::endFrame()
         return;  // Skip hitch detection while suppressed
     }
 
-    // Get GPUSwapchain time (VSync wait - expected, not a performance issue)
-    double gpuSwapchainTime = m_renderTimes[static_cast<size_t>(RenderPhase::GPUSwapchain)];
+    // Get swapchain wait time (expected pacing wait, not a render cost)
+    double gpuSwapchainTime = m_renderTimes[static_cast<size_t>(RenderPhase::GPUSwapchainWait)];
 
     // Exclude VSync wait from hitch detection - it's expected frame pacing, not a problem
     double adjustedTotalMs = totalMs - gpuSwapchainTime;
@@ -138,13 +138,16 @@ void FrameProfiler::endFrame()
             cause = FramePhase::Present;
         }
 
+        RenderPhase worstRender = findWorstRenderPhase();
+
         // Store for overlay
         m_lastHitchCause = cause;
+        m_lastHitchRender = worstRender;
         m_hadRecentHitch = true;
         m_lastHitchFrame = m_frameCount;
 
         // Log the hitch with all phases
-        // Note: VSync wait (GPUSwapchain) is excluded from threshold check
+        // Note: swapchain wait is excluded from threshold check
         PROFILER_WARN(std::format("[HITCH] Frame {}: {:.1f}ms (excl. VSync: {:.1f}ms) > {:.1f}ms threshold",
                                    m_frameCount, adjustedTotalMs, gpuSwapchainTime, m_thresholdMs));
 
@@ -182,7 +185,6 @@ void FrameProfiler::endFrame()
 
         // Show render breakdown for render hitches
         if (cause == FramePhase::Render || cause == FramePhase::Present) {
-            RenderPhase worstRender = findWorstRenderPhase();
             double worstRenderTime = m_renderTimes[static_cast<size_t>(worstRender)];
 
             PROFILER_WARN(std::format("    {}: {:.1f}ms  <-- WORST RENDER",
@@ -424,11 +426,16 @@ void FrameProfiler::updateOverlayText()
 
     // Hitch info
     if (m_hadRecentHitch) {
+        const char* detail = "-";
+        if (m_lastHitchCause == FramePhase::Update) {
+            detail = getManagerName(m_lastHitchManager);
+        } else if (m_lastHitchCause == FramePhase::Render ||
+                   m_lastHitchCause == FramePhase::Present) {
+            detail = getRenderPhaseName(m_lastHitchRender);
+        }
+
         m_hitchText = std::format("Cause: {} ({})",
-                                   getPhaseName(m_lastHitchCause),
-                                   m_lastHitchCause == FramePhase::Update
-                                       ? getManagerName(m_lastHitchManager)
-                                       : "-");
+                                   getPhaseName(m_lastHitchCause), detail);
     } else {
         m_hitchText = "";
     }

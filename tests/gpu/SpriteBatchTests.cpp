@@ -12,6 +12,7 @@
 #include "gpu/GPUDevice.hpp"
 #include "gpu/SpriteBatch.hpp"
 #include "gpu/GPUTypes.hpp"
+#include <array>
 #include <vector>
 
 using namespace HammerEngine;
@@ -54,8 +55,8 @@ struct SpriteBatchTestFixture : public GPUTestFixture {
 BOOST_AUTO_TEST_SUITE(SpriteBatchConstantsTests)
 
 BOOST_AUTO_TEST_CASE(MaxSpritesConstant) {
-    // Should support 25000 sprites for 4K rendering with zoom
-    BOOST_CHECK_EQUAL(SpriteBatch::MAX_SPRITES, 25000u);
+    // Should support 50000 sprites for 4K rendering with zoom
+    BOOST_CHECK_EQUAL(SpriteBatch::MAX_SPRITES, 50000u);
 }
 
 BOOST_AUTO_TEST_CASE(VerticesPerSpriteConstant) {
@@ -147,7 +148,7 @@ BOOST_FIXTURE_TEST_CASE(BeginSetsState, SpriteBatchTestFixture) {
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
 
     // Begin recording with mock texture/sampler (nullptr for this test)
-    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f);
+    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
 
     // State should be set but no sprites yet
     BOOST_CHECK_EQUAL(batch.getSpriteCount(), 0u);
@@ -165,7 +166,7 @@ BOOST_FIXTURE_TEST_CASE(DrawIncrementsSpriteCount, SpriteBatchTestFixture) {
     batch.init(device->get());
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
-    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f);
+    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
 
     // Draw one sprite
     batch.draw(0, 0, 32, 32, 100, 100, 32, 32);
@@ -185,7 +186,7 @@ BOOST_FIXTURE_TEST_CASE(DrawMultipleSprites, SpriteBatchTestFixture) {
     batch.init(device->get());
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
-    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f);
+    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
 
     // Draw multiple sprites
     for (int i = 0; i < 100; ++i) {
@@ -207,7 +208,7 @@ BOOST_FIXTURE_TEST_CASE(DrawUVMethod, SpriteBatchTestFixture) {
     batch.init(device->get());
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
-    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f);
+    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
 
     // Draw using normalized UV coordinates
     batch.drawUV(0.0f, 0.0f, 0.5f, 0.5f, 100.0f, 100.0f, 64.0f, 64.0f);
@@ -226,7 +227,7 @@ BOOST_FIXTURE_TEST_CASE(EndReturnsVertexCount, SpriteBatchTestFixture) {
     batch.init(device->get());
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
-    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f);
+    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
 
     batch.draw(0, 0, 32, 32, 0, 0, 32, 32);
     batch.draw(32, 0, 32, 32, 32, 0, 32, 32);
@@ -247,7 +248,7 @@ BOOST_FIXTURE_TEST_CASE(DrawWithColorTint, SpriteBatchTestFixture) {
     batch.init(device->get());
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
-    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f);
+    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
 
     // Draw with custom color tint
     batch.draw(0, 0, 32, 32, 100, 100, 32, 32, 255, 128, 64, 200);
@@ -280,7 +281,7 @@ BOOST_FIXTURE_TEST_CASE(HasSpritesFlag, SpriteBatchTestFixture) {
     batch.init(device->get());
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
-    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f);
+    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
 
     BOOST_CHECK(!batch.hasSprites());
 
@@ -300,7 +301,7 @@ BOOST_FIXTURE_TEST_CASE(LargeSpriteBatch, SpriteBatchTestFixture) {
     batch.init(device->get());
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
-    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 1024.0f, 1024.0f);
+    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 1024.0f, 1024.0f, 1024.0f);
 
     // Draw many sprites (but less than MAX_SPRITES)
     const size_t spriteCount = 10000;
@@ -335,29 +336,29 @@ BOOST_FIXTURE_TEST_CASE(VertexPositionsCorrect, SpriteBatchTestFixture) {
     batch.init(device->get());
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
-    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f);
+    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
 
     // Draw sprite at (100, 200) with size (32, 32)
     batch.draw(0, 0, 32, 32, 100, 200, 32, 32);
 
     batch.end();
 
-    // Verify quad positions (top-left, top-right, bottom-right, bottom-left)
+    // Verify quad positions in SDL_GPU Y-up space
     // Vertex 0: top-left
     BOOST_CHECK_CLOSE(vertices[0].x, 100.0f, 0.001f);
-    BOOST_CHECK_CLOSE(vertices[0].y, 200.0f, 0.001f);
+    BOOST_CHECK_CLOSE(vertices[0].y, 56.0f, 0.001f);
 
     // Vertex 1: top-right
     BOOST_CHECK_CLOSE(vertices[1].x, 132.0f, 0.001f);
-    BOOST_CHECK_CLOSE(vertices[1].y, 200.0f, 0.001f);
+    BOOST_CHECK_CLOSE(vertices[1].y, 56.0f, 0.001f);
 
     // Vertex 2: bottom-right
     BOOST_CHECK_CLOSE(vertices[2].x, 132.0f, 0.001f);
-    BOOST_CHECK_CLOSE(vertices[2].y, 232.0f, 0.001f);
+    BOOST_CHECK_CLOSE(vertices[2].y, 24.0f, 0.001f);
 
     // Vertex 3: bottom-left
     BOOST_CHECK_CLOSE(vertices[3].x, 100.0f, 0.001f);
-    BOOST_CHECK_CLOSE(vertices[3].y, 232.0f, 0.001f);
+    BOOST_CHECK_CLOSE(vertices[3].y, 24.0f, 0.001f);
 
     batch.shutdown();
 }
@@ -372,7 +373,7 @@ BOOST_FIXTURE_TEST_CASE(VertexUVsNormalized, SpriteBatchTestFixture) {
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
     const float texWidth = 256.0f;
     const float texHeight = 256.0f;
-    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, texWidth, texHeight);
+    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, texWidth, texHeight, texHeight);
 
     // Draw sprite from texture region (64, 64, 32, 32)
     batch.draw(64, 64, 32, 32, 0, 0, 32, 32);
@@ -419,6 +420,25 @@ BOOST_FIXTURE_TEST_CASE(MoveConstruction, SpriteBatchTestFixture) {
     batch2.shutdown();
 }
 
+BOOST_FIXTURE_TEST_CASE(MoveConstructionPreservesTargetHeightDuringRecording, SpriteBatchTestFixture) {
+    SKIP_IF_NO_GPU();
+    BOOST_REQUIRE(device->isInitialized());
+
+    SpriteBatch batch1;
+    BOOST_REQUIRE(batch1.init(device->get()));
+
+    std::array<SpriteVertex, SpriteBatch::VERTICES_PER_SPRITE> vertices{};
+    batch1.begin(vertices.data(), vertices.size(), nullptr, nullptr, 64.0f, 64.0f, 200.0f);
+
+    SpriteBatch batch2(std::move(batch1));
+    batch2.drawUV(0.0f, 0.0f, 1.0f, 1.0f, 10.0f, 20.0f, 30.0f, 40.0f);
+
+    BOOST_CHECK_CLOSE(vertices[0].y, 180.0f, 0.001f);
+    BOOST_CHECK_CLOSE(vertices[2].y, 140.0f, 0.001f);
+
+    batch2.shutdown();
+}
+
 BOOST_FIXTURE_TEST_CASE(MoveAssignment, SpriteBatchTestFixture) {
     SKIP_IF_NO_GPU();
     BOOST_REQUIRE(device->isInitialized());
@@ -433,6 +453,26 @@ BOOST_FIXTURE_TEST_CASE(MoveAssignment, SpriteBatchTestFixture) {
 
     BOOST_CHECK(batch1.getIndexBuffer() == nullptr);
     BOOST_CHECK(batch2.getIndexBuffer() == indexBuffer);
+
+    batch2.shutdown();
+}
+
+BOOST_FIXTURE_TEST_CASE(MoveAssignmentPreservesTargetHeightDuringRecording, SpriteBatchTestFixture) {
+    SKIP_IF_NO_GPU();
+    BOOST_REQUIRE(device->isInitialized());
+
+    SpriteBatch batch1;
+    BOOST_REQUIRE(batch1.init(device->get()));
+
+    std::array<SpriteVertex, SpriteBatch::VERTICES_PER_SPRITE> vertices{};
+    batch1.begin(vertices.data(), vertices.size(), nullptr, nullptr, 64.0f, 64.0f, 180.0f);
+
+    SpriteBatch batch2;
+    batch2 = std::move(batch1);
+    batch2.drawUV(0.0f, 0.0f, 1.0f, 1.0f, 4.0f, 8.0f, 12.0f, 16.0f);
+
+    BOOST_CHECK_CLOSE(vertices[0].y, 172.0f, 0.001f);
+    BOOST_CHECK_CLOSE(vertices[2].y, 156.0f, 0.001f);
 
     batch2.shutdown();
 }

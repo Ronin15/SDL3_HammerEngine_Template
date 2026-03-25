@@ -6,6 +6,7 @@
 #include "core/TimestepManager.hpp"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 
 TimestepManager::TimestepManager(float targetFPS, float fixedTimestep)
     : m_targetFPS(targetFPS)
@@ -26,6 +27,42 @@ TimestepManager::TimestepManager(float targetFPS, float fixedTimestep)
     // Initialize fixed timestep state
     m_usingSoftwareFrameLimiting = false;
     m_explicitlySet = false;
+}
+
+double TimestepManager::snapDeltaToCadence(double deltaTime) const {
+    if (deltaTime <= 0.0) {
+        return deltaTime;
+    }
+
+    if (m_displayRefreshHz > 0.0f && !m_usingSoftwareFrameLimiting) {
+        const double displayInterval = 1.0 / static_cast<double>(m_displayRefreshHz);
+        const double displayTolerance = displayInterval * DISPLAY_SNAP_TOLERANCE;
+
+        for (int intervalCount = 1; intervalCount <= MAX_DISPLAY_INTERVALS; ++intervalCount) {
+            const double candidate = displayInterval * static_cast<double>(intervalCount);
+            if (std::abs(deltaTime - candidate) <= displayTolerance) {
+                return candidate;
+            }
+        }
+    }
+
+    // Fall back to timestep-relative snapping when we do not know the display cadence.
+    double nearestMultiple = std::round(deltaTime / m_fixedTimestep) * m_fixedTimestep;
+    if (nearestMultiple > 0.0 &&
+        std::abs(deltaTime - nearestMultiple) < m_fixedTimestep * DELTA_SNAP_TOLERANCE) {
+        return nearestMultiple;
+    }
+
+    for (int divisor = 2; divisor <= MAX_SUB_DIVISOR; ++divisor) {
+        double subStep = m_fixedTimestep / static_cast<double>(divisor);
+        double nearestSubMultiple = std::round(deltaTime / subStep) * subStep;
+        if (nearestSubMultiple > 0.0 &&
+            std::abs(deltaTime - nearestSubMultiple) < subStep * DELTA_SNAP_TOLERANCE) {
+            return nearestSubMultiple;
+        }
+    }
+
+    return deltaTime;
 }
 
 void TimestepManager::startFrame() {
@@ -51,20 +88,14 @@ void TimestepManager::startFrame() {
     double deltaTime = deltaTimeMs / 1000.0;
     m_lastDeltaSeconds = deltaTime;  // Store high precision for FPS calculation
 
-    // Mode-aware accumulator handling:
-    // VSync mode: Normal accumulator pattern - add delta (clamped to prevent spiral)
-    //             Allows catch-up updates under load, uses interpolation for smoothness
-    // Software mode: Force exactly one update per frame by setting accumulator = timestep
-    //                Since we control timing via SDL_DelayPrecise, no catch-up needed
-    //                This eliminates timing jitter causing 0-update or 2-update frames
-    if (m_usingSoftwareFrameLimiting) {
-        // Set to exactly one timestep - guarantees one update, alpha = 0 after
-        m_accumulator = m_fixedTimestep;
-    } else {
-        // VSync: Clamp delta to prevent spiral of death, then add to accumulator
-        deltaTime = std::min(deltaTime, MAX_ACCUMULATOR);
-        m_accumulator += deltaTime;
-    }
+    // Unified accumulator for both VSync and software frame limiting:
+    // Clamp delta to prevent spiral of death, then quantize to the active
+    // cadence when possible. For VSync this uses the real display interval if
+    // known; otherwise it falls back to timestep-relative snapping.
+    deltaTime = std::min(deltaTime, MAX_ACCUMULATOR);
+    deltaTime = snapDeltaToCadence(deltaTime);
+
+    m_accumulator += deltaTime;
     
     // Always render once per frame
     m_shouldRender = true;
@@ -93,8 +124,14 @@ float TimestepManager::getUpdateDeltaTime() const {
 
 double TimestepManager::getInterpolationAlpha() const {
     if (m_fixedTimestep > 0.0f) {
-        double alpha = m_accumulator / m_fixedTimestep;
-        return std::clamp(alpha, 0.0, 1.0);  // Prevent extrapolation during frame drops
+        // Raw alpha represents position between previous and current physics state.
+        // Standard fixed-timestep interpolation is mathematically continuous across
+        // updates (position doesn't jump when alpha drops from ~1.0 to ~0.0) so no
+        // smoothing is needed. EMA smoothing was previously used here but caused
+        // overshoot: after an update drains the accumulator, the smoothed alpha stays
+        // high for several frames, pushing rendered positions ahead of physics state.
+        // At 3x zoom this produced ~5 pixel jerks 60 times per second.
+        return std::clamp(m_accumulator / m_fixedTimestep, 0.0, 1.0);
     }
     return 1.0; // Default to 1.0 to avoid division by zero
 }
@@ -134,6 +171,14 @@ void TimestepManager::setTargetFPS(float fps) {
 void TimestepManager::setFixedTimestep(float timestep) {
     if (timestep > 0.0f) {
         m_fixedTimestep = timestep;
+    }
+}
+
+void TimestepManager::setDisplayRefreshHz(float hz) {
+    if (hz > 0.0f) {
+        m_displayRefreshHz = hz;
+    } else {
+        m_displayRefreshHz = 0.0f;
     }
 }
 
@@ -206,4 +251,3 @@ void TimestepManager::preciseFrameWait(double targetFrameTimeMs) const {
     Uint64 targetNs = static_cast<Uint64>(targetFrameTimeMs * 1000000.0);
     SDL_DelayPrecise(targetNs);
 }
-

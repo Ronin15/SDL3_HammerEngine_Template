@@ -167,11 +167,6 @@ EventPtr EventFactory::createEvent(const EventDefinition& def) {
 
         // Set common event properties if specified in the definition
         if (event) {
-            // Set priority if specified
-            if (def.numParams.count("priority")) {
-                event->setPriority(static_cast<int>(def.numParams.at("priority")));
-            }
-
             // Set update frequency if specified
             if (def.numParams.count("updateFrequency")) {
                 event->setUpdateFrequency(static_cast<int>(def.numParams.at("updateFrequency")));
@@ -379,6 +374,7 @@ void EventFactory::registerCustomEventCreator(const std::string& eventType,
 std::vector<EventPtr> EventFactory::createEventSequence(const std::string& name,
                                                      const std::vector<EventDefinition>& events,
                                                      bool sequential) {
+    (void)sequential;
     std::vector<EventPtr> createdEvents;
     createdEvents.reserve(events.size());
 
@@ -395,11 +391,6 @@ std::vector<EventPtr> EventFactory::createEventSequence(const std::string& name,
         // Create the event
         EventPtr event = createEvent(def);
         if (event) {
-            // If sequential, set priorities to ensure correct order
-            if (sequential) {
-                event->setPriority(static_cast<int>(events.size() - i)); // Higher index = lower priority
-            }
-
             createdEvents.push_back(event);
         }
     }

@@ -14,6 +14,39 @@ namespace HammerEngine {
 
 namespace fs = std::filesystem;
 
+namespace {
+
+std::string findResourceRoot(const fs::path& startPath) {
+    std::error_code ec;
+    fs::path currentPath = fs::weakly_canonical(startPath, ec);
+    if (ec) {
+        currentPath = fs::absolute(startPath, ec);
+        if (ec) {
+            currentPath = startPath;
+        }
+    }
+
+    if (!fs::is_directory(currentPath, ec)) {
+        currentPath = currentPath.parent_path();
+    }
+
+    while (!currentPath.empty()) {
+        if (fs::exists(currentPath / "res", ec)) {
+            return currentPath.string();
+        }
+
+        const fs::path parentPath = currentPath.parent_path();
+        if (parentPath == currentPath) {
+            break;
+        }
+        currentPath = parentPath;
+    }
+
+    return {};
+}
+
+} // namespace
+
 // Static member definitions
 std::vector<ResourcePath::SearchPath> ResourcePath::s_searchPaths;
 bool ResourcePath::s_initialized = false;
@@ -61,20 +94,10 @@ void ResourcePath::detectExecutionContext() {
             addSearchPath(resourcesPath.string(), 0);
         }
     } else {
-        // Running directly - SDL_GetBasePath gives us the executable's directory
-        // For development, we want the project root (parent of bin/)
-        fs::path binPath(basePath);
-
-        // Check if we're in a bin/debug or bin/release structure
-        std::string binPathStr = binPath.generic_string();
-        if (binPathStr.find("/bin/debug/") != std::string::npos ||
-            binPathStr.find("/bin/release/") != std::string::npos ||
-            binPathStr.find("/bin/profile/") != std::string::npos) {
-            // Go up two levels: bin/debug -> bin -> project root
-            fs::path projectRoot = binPath.parent_path().parent_path();
-            addSearchPath(projectRoot.string(), 0);
+        const std::string resourceRoot = findResourceRoot(fs::path(basePath));
+        if (!resourceRoot.empty()) {
+            addSearchPath(resourceRoot, 0);
         } else {
-            // Use the executable's directory as-is
             addSearchPath(basePath, 0);
         }
     }

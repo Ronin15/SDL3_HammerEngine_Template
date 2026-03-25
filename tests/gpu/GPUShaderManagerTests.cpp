@@ -11,8 +11,9 @@
 
 #include "GPUTestFixture.hpp"
 #include "gpu/GPUDevice.hpp"
+#include "gpu/GPUPlatformConfig.hpp"
 #include "gpu/GPUShaderManager.hpp"
-#include <filesystem>
+#include "utils/ResourcePath.hpp"
 
 using namespace HammerEngine;
 using namespace HammerEngine::Test;
@@ -194,17 +195,17 @@ BOOST_FIXTURE_TEST_CASE(HasShaderAfterLoad, ShaderTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     const std::string shaderPath = "res/shaders/sprite.vert";
-
-    // Initially should not have shader
-    BOOST_CHECK(!shaderMgr->hasShader(shaderPath));
-
-    // Load shader
     ShaderInfo info{};
     info.numUniformBuffers = 1;
+
+    // Initially should not have shader
+    BOOST_CHECK(!shaderMgr->hasShader(shaderPath, SDL_GPU_SHADERSTAGE_VERTEX, info));
+
+    // Load shader
     shaderMgr->loadShader(shaderPath, SDL_GPU_SHADERSTAGE_VERTEX, info);
 
     // Now should have shader
-    BOOST_CHECK(shaderMgr->hasShader(shaderPath));
+    BOOST_CHECK(shaderMgr->hasShader(shaderPath, SDL_GPU_SHADERSTAGE_VERTEX, info));
 }
 
 BOOST_FIXTURE_TEST_CASE(GetShaderReturnsSamePointer, ShaderTestFixture) {
@@ -223,7 +224,7 @@ BOOST_FIXTURE_TEST_CASE(GetShaderReturnsSamePointer, ShaderTestFixture) {
     BOOST_REQUIRE(shader1 != nullptr);
 
     // Get cached shader
-    SDL_GPUShader* shader2 = shaderMgr->getShader(shaderPath);
+    SDL_GPUShader* shader2 = shaderMgr->getShader(shaderPath, SDL_GPU_SHADERSTAGE_FRAGMENT, info);
 
     // Should return same pointer
     BOOST_CHECK(shader1 == shader2);
@@ -234,7 +235,9 @@ BOOST_FIXTURE_TEST_CASE(GetShaderReturnsNullForUnloaded, ShaderTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     // Should return nullptr for shader not loaded
-    SDL_GPUShader* shader = shaderMgr->getShader("res/shaders/not_loaded.vert");
+    SDL_GPUShader* shader = shaderMgr->getShader("res/shaders/not_loaded.vert",
+                                                 SDL_GPU_SHADERSTAGE_VERTEX,
+                                                 ShaderInfo{});
     BOOST_CHECK(shader == nullptr);
 }
 
@@ -249,14 +252,38 @@ BOOST_FIXTURE_TEST_CASE(ShutdownClearsCachedShaders, ShaderTestFixture) {
 
     // Load shader
     shaderMgr->loadShader(shaderPath, SDL_GPU_SHADERSTAGE_VERTEX, info);
-    BOOST_CHECK(shaderMgr->hasShader(shaderPath));
+    BOOST_CHECK(shaderMgr->hasShader(shaderPath, SDL_GPU_SHADERSTAGE_VERTEX, info));
 
     // Shutdown clears cache
     shaderMgr->shutdown();
-    BOOST_CHECK(!shaderMgr->hasShader(shaderPath));
+    BOOST_CHECK(!shaderMgr->hasShader(shaderPath, SDL_GPU_SHADERSTAGE_VERTEX, info));
 
     // Re-init for fixture cleanup
     shaderMgr->init(device->get());
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(ShaderCacheKeyTests)
+
+BOOST_FIXTURE_TEST_CASE(DifferentBindingLayoutsDoNotReuseCachedShader, ShaderTestFixture) {
+    SKIP_IF_NO_GPU();
+    BOOST_REQUIRE(device->isInitialized());
+
+    const std::string shaderPath = "res/shaders/sprite.vert";
+
+    ShaderInfo infoA{};
+    infoA.numUniformBuffers = 1;
+
+    ShaderInfo infoB{};
+    infoB.numUniformBuffers = 2;
+
+    SDL_GPUShader* shaderA = shaderMgr->loadShader(shaderPath, SDL_GPU_SHADERSTAGE_VERTEX, infoA);
+    BOOST_REQUIRE(shaderA != nullptr);
+
+    BOOST_CHECK(shaderMgr->hasShader(shaderPath, SDL_GPU_SHADERSTAGE_VERTEX, infoA));
+    BOOST_CHECK(!shaderMgr->hasShader(shaderPath, SDL_GPU_SHADERSTAGE_VERTEX, infoB));
+    BOOST_CHECK(shaderMgr->getShader(shaderPath, SDL_GPU_SHADERSTAGE_VERTEX, infoB) == nullptr);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -267,52 +294,28 @@ BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(ShaderPathTests)
 
-BOOST_AUTO_TEST_CASE(SPIRVShaderFilesExist) {
-    // Check that SPIR-V shader files exist for Vulkan backend
-    std::vector<std::string> spirvShaders = {
-        "res/shaders/sprite.vert.spv",
-        "res/shaders/sprite.frag.spv",
-        "res/shaders/color.vert.spv",
-        "res/shaders/color.frag.spv",
-        "res/shaders/composite.vert.spv",
-        "res/shaders/composite.frag.spv"
+BOOST_AUTO_TEST_CASE(PlatformShaderFilesExist) {
+    HammerEngine::ResourcePath::init();
+
+    const std::string ext = HammerEngine::GPUPlatformConfig::getShaderBinaryExtension();
+    std::vector<std::string> shaderFiles = {
+        "res/shaders/sprite.vert" + ext,
+        "res/shaders/sprite.frag" + ext,
+        "res/shaders/text_alpha.frag" + ext,
+        "res/shaders/text_sdf.frag" + ext,
+        "res/shaders/color.vert" + ext,
+        "res/shaders/color.frag" + ext,
+        "res/shaders/composite.vert" + ext,
+        "res/shaders/composite.frag" + ext
     };
 
-    int foundCount = 0;
-    for (const auto& path : spirvShaders) {
-        if (std::filesystem::exists(path)) {
-            foundCount++;
-            BOOST_TEST_MESSAGE("Found SPIR-V shader: " << path);
-        }
+    for (const auto& path : shaderFiles) {
+        const std::string resolvedPath = HammerEngine::ResourcePath::resolve(path);
+        const bool exists = HammerEngine::ResourcePath::exists(path);
+
+        BOOST_TEST_MESSAGE("Checking platform shader: " << resolvedPath);
+        BOOST_CHECK_MESSAGE(exists, "Missing platform shader: " << resolvedPath);
     }
-
-    // Should have all SPIR-V shaders (if project builds with Vulkan support)
-    BOOST_TEST_MESSAGE("Found " << foundCount << "/" << spirvShaders.size() << " SPIR-V shaders");
-}
-
-BOOST_AUTO_TEST_CASE(MetalShaderFilesExist) {
-    // Check that Metal shader files exist for macOS/iOS
-    std::vector<std::string> metalShaders = {
-        "res/shaders/sprite.vert.metal",
-        "res/shaders/sprite.frag.metal",
-        "res/shaders/color.vert.metal",
-        "res/shaders/color.frag.metal",
-        "res/shaders/composite.vert.metal",
-        "res/shaders/composite.frag.metal"
-    };
-
-    int foundCount = 0;
-    for (const auto& path : metalShaders) {
-        if (std::filesystem::exists(path)) {
-            foundCount++;
-            BOOST_TEST_MESSAGE("Found Metal shader: " << path);
-        }
-    }
-
-    // On macOS, should have all Metal shaders
-#ifdef __APPLE__
-    BOOST_TEST_MESSAGE("Found " << foundCount << "/" << metalShaders.size() << " Metal shaders");
-#endif
 }
 
 BOOST_AUTO_TEST_SUITE_END()

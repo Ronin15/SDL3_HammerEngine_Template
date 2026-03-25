@@ -74,8 +74,11 @@ void GPUTransferBuffer::release() {
             unmap();
         }
         SDL_ReleaseGPUTransferBuffer(m_device, m_buffer);
-        m_buffer = nullptr;
     }
+    m_buffer = nullptr;
+    m_device = nullptr;
+    m_size = 0;
+    m_mapped = false;
 }
 
 void* GPUTransferBuffer::map(bool cycle) {

@@ -107,6 +107,14 @@ public:
     void setFixedTimestep(float timestep);
 
     /**
+     * Set the active display refresh rate used for frame-delta quantization.
+     * The simulation rate remains fixed; this only helps phase-lock VSync-paced
+     * render deltas to the actual display cadence.
+     * @param hz Active display refresh rate in Hz, or <= 0 to disable
+     */
+    void setDisplayRefreshHz(float hz);
+
+    /**
      * Get update frequency in Hz (inverse of fixed timestep)
      * @return update frequency in Hz (e.g., 60.0 for 60 Hz updates)
      */
@@ -130,12 +138,17 @@ private:
     // Simplified timing pattern (eliminates accumulator drift)
     double m_accumulator;                // Frame timing accumulator
     static constexpr double MAX_ACCUMULATOR = 0.25; // Max delta clamp for VSync mode
+    static constexpr double DELTA_SNAP_TOLERANCE = 0.10; // Snap delta within 10% of timestep multiple
+    static constexpr int MAX_SUB_DIVISOR = 4; // Max sub-divisor for high-refresh snapping (120/180/240Hz)
+    static constexpr double DISPLAY_SNAP_TOLERANCE = 0.20; // Snap within 20% of a display interval
+    static constexpr int MAX_DISPLAY_INTERVALS = 8; // Allow missed VBlank quantization without swallowing hitches
     
     // Frame statistics
     uint32_t m_lastFrameTimeMs;         // Last frame duration in milliseconds (for getFrameTimeMs())
     double m_lastDeltaSeconds;          // Last frame duration in seconds (high precision for FPS)
     float m_currentFPS;                 // Current measured FPS (EMA smoothed)
     float m_smoothingAlpha;             // EMA smoothing factor (0.05 = stable, 0.1 = responsive)
+    float m_displayRefreshHz{0.0f};     // Active display refresh for VSync-paced delta quantization
     
     // State flags
     bool m_shouldRender;                // True when render should happen this frame
@@ -145,10 +158,10 @@ private:
     mutable bool m_usingSoftwareFrameLimiting = false;
     mutable bool m_explicitlySet = false;
 
-    
     // Helper methods
     void updateFPS();
     void limitFrameRate() const;
+    double snapDeltaToCadence(double deltaTime) const;
     
 public:
     /**

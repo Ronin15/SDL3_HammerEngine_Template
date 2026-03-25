@@ -7,11 +7,11 @@
 #define GAME_PLAY_STATE_HPP
 
 #include "controllers/ControllerRegistry.hpp"
+#include "controllers/render/NPCRenderController.hpp"
 #include "events/TimeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "gameStates/GameState.hpp"
 #include "managers/EventManager.hpp"
-#include "utils/ResourceHandle.hpp"
 #include <memory>
 #include <string>
 
@@ -53,6 +53,7 @@ public:
 private:
   bool m_transitioningToLoading{
       false}; // Flag to indicate we're transitioning to loading state
+  bool m_transitioningToGameOver{false}; // Prevent duplicate death transitions
   std::shared_ptr<Player> mp_Player{nullptr}; // Player object
   bool m_inventoryVisible{false}; // Flag to control inventory UI visibility
   bool m_initialized{false}; // Flag to track if state is already initialized (for pause/resume)
@@ -68,13 +69,6 @@ private:
   std::unique_ptr<HammerEngine::GPUSceneRenderer> m_gpuSceneRenderer{nullptr};
 #endif
 
-  // Resource handles resolved at initialization (resource handle system
-  // compliance)
-  HammerEngine::ResourceHandle m_goldHandle;
-  HammerEngine::ResourceHandle m_healthPotionHandle;
-  HammerEngine::ResourceHandle m_ironOreHandle;
-  HammerEngine::ResourceHandle m_woodHandle;
-
   // Track whether world has been loaded (prevents re-entering LoadingState)
   bool m_worldLoaded{false};
 
@@ -89,28 +83,26 @@ private:
   // --- Controllers (owned by ControllerRegistry) ---
   ControllerRegistry m_controllers;
 
+  // Data-driven NPC rendering (direct member like AdvancedAIDemoState)
+  NPCRenderController m_npcRenderCtrl{};
+
   // --- Time UI display buffer ---
   std::string m_statusBuffer{};  // Reusable buffer for status text (zero allocation)
   bool m_statusBarDirty{true};   // Flag to rebuild status bar only when events fire
 
-  // --- Combat HUD ---
-  void initializeCombatHUD();
-  void updateCombatHUD();
-
   // Inventory UI methods
   void initializeInventoryUI();
   void toggleInventoryDisplay();
-  void addDemoResource(HammerEngine::ResourceHandle resourceHandle,
-                       int quantity);
-  void removeDemoResource(HammerEngine::ResourceHandle resourceHandle,
-                          int quantity);
-  void
-  initializeResourceHandles(); // Resolve names to handles during initialization
+  void registerEventHandlers();
+  void unregisterEventHandlers();
 
   // Camera management methods
   void initializeCamera();
   void updateCamera(float deltaTime);
   // Camera auto-manages world bounds; no state-level setup needed
+
+  // Reusable buffer for nearby entity queries (avoids per-interaction allocation)
+  std::vector<EntityHandle> m_nearbyHandlesBuffer;
 
   // Day/night visual overlay state (updated via TimePeriodChangedEvent)
   // Current interpolated values (what's actually rendered)
@@ -143,6 +135,8 @@ private:
   bool m_ambientParticlesActive{false};  // Whether ambient particles are currently running
   EventManager::HandlerToken m_weatherEventToken;
   bool m_weatherSubscribed{false};
+  EventManager::HandlerToken m_harvestEventToken;
+  bool m_harvestSubscribed{false};
   TimePeriod m_currentTimePeriod{TimePeriod::Day};  // Track current period for weather changes
   WeatherType m_lastWeatherType{WeatherType::Clear};  // Track to avoid redundant weather processing
 };

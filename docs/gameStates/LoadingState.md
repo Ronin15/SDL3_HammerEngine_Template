@@ -1,4 +1,4 @@
-# LoadingState Documentation
+# LoadingState
 
 ## Overview
 

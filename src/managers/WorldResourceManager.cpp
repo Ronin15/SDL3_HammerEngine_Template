@@ -5,11 +5,11 @@
 
 #include "managers/WorldResourceManager.hpp"
 #include "core/Logger.hpp"
-#include "events/WorldEvent.hpp"
 #include "managers/EntityDataManager.hpp"
 #include <algorithm>
 #include <format>
 #include <limits>
+#include <numeric>
 
 WorldResourceManager& WorldResourceManager::Instance() {
     static WorldResourceManager instance;
@@ -66,13 +66,6 @@ void WorldResourceManager::clean() {
         return;
     }
 
-    // Unsubscribe from events first (before lock to avoid potential deadlock with EventManager)
-    auto& em = EventManager::Instance();
-    for (const auto& token : m_eventHandlerTokens) {
-        em.removeHandler(token);
-    }
-    m_eventHandlerTokens.clear();
-
     std::unique_lock lock(m_registryMutex);
 
     m_inventoryRegistry.clear();
@@ -100,6 +93,32 @@ void WorldResourceManager::prepareForStateTransition() {
 
     // Acquire exclusive lock to wait for any in-flight queries to complete
     std::unique_lock lock(m_registryMutex);
+
+    // Clear all registries (stale EDM indices from previous state)
+    m_inventoryRegistry.clear();
+    m_harvestableRegistry.clear();
+    m_inventoryToWorld.clear();
+    m_harvestableToWorld.clear();
+
+    // Clear all spatial indices and reverse lookups
+    m_itemSpatialIndices.clear();
+    m_harvestableSpatialIndices.clear();
+    m_containerSpatialIndices.clear();
+    m_itemToWorld.clear();
+    m_harvestableSpatialToWorld.clear();
+    m_containerToWorld.clear();
+
+    // Clear active world so createWorld() succeeds on re-entry
+    m_activeWorld.clear();
+
+    // Re-create default world entries (matches init() pattern)
+    m_inventoryRegistry["default"] = {};
+    m_harvestableRegistry["default"] = {};
+    m_itemSpatialIndices["default"] = SpatialIndex();
+    m_harvestableSpatialIndices["default"] = SpatialIndex();
+
+    m_stats.reset();
+    m_stats.worldsTracked = 1;
 
     WORLD_RESOURCE_DEBUG("Prepared for state transition");
 }
@@ -278,7 +297,6 @@ void WorldResourceManager::registerHarvestable(size_t edmIndex, const WorldId& w
     m_harvestableToWorld[edmIndex] = worldId;
     m_stats.harvestablesRegistered.fetch_add(1, std::memory_order_relaxed);
 
-    WORLD_RESOURCE_DEBUG(std::format("Registered harvestable {} to world {}", edmIndex, worldId));
 }
 
 void WorldResourceManager::unregisterHarvestable(size_t edmIndex) {
@@ -319,11 +337,13 @@ WorldResourceManager::Quantity WorldResourceManager::queryInventoryTotal(
     }
 
     const auto& edm = EntityDataManager::Instance();
-    Quantity total = 0;
-
-    for (uint32_t invIdx : worldIt->second) {
-        total += edm.getInventoryQuantity(invIdx, handle);
-    }
+    const Quantity total = std::accumulate(
+        worldIt->second.begin(),
+        worldIt->second.end(),
+        Quantity{0},
+        [&edm, handle](Quantity sum, uint32_t invIdx) {
+            return sum + edm.getInventoryQuantity(invIdx, handle);
+        });
 
     return total;
 }
@@ -525,8 +545,6 @@ void WorldResourceManager::registerHarvestableSpatial(size_t edmIndex, const Vec
         m_activeWorldHarvestableCount.fetch_add(1, std::memory_order_relaxed);
     }
 
-    WORLD_RESOURCE_DEBUG(std::format("Registered harvestable spatial {} at ({:.1f}, {:.1f}) to world {}",
-                                      edmIndex, position.getX(), position.getY(), worldId));
 }
 
 void WorldResourceManager::unregisterHarvestableSpatial(size_t edmIndex) {
@@ -807,63 +825,4 @@ void WorldResourceManager::clearSpatialDataForWorld(const WorldId& worldId) {
     }
 
     WORLD_RESOURCE_INFO(std::format("Cleared spatial data for world: {}", worldId));
-}
-
-void WorldResourceManager::subscribeWorldEvents() {
-    auto& em = EventManager::Instance();
-
-    // Subscribe to World events (WorldLoaded, WorldUnloaded)
-    auto token = em.registerHandlerWithToken(EventTypeId::World,
-        [this](const EventData& data) {
-            if (!data.event) {
-                return;
-            }
-
-            // Try WorldLoadedEvent first
-            if (auto loadedEvent = std::dynamic_pointer_cast<WorldLoadedEvent>(data.event)) {
-                onWorldLoaded(loadedEvent->getWorldId());
-                return;
-            }
-
-            // Try WorldUnloadedEvent
-            if (auto unloadedEvent = std::dynamic_pointer_cast<WorldUnloadedEvent>(data.event)) {
-                onWorldUnloaded(unloadedEvent->getWorldId());
-                return;
-            }
-
-            // Other WorldEvent types are ignored
-        });
-
-    m_eventHandlerTokens.push_back(token);
-    WORLD_RESOURCE_INFO("Subscribed to world events");
-}
-
-void WorldResourceManager::onWorldLoaded(const std::string& worldId) {
-    // Single lock acquisition - setActiveWorld() also uses m_registryMutex internally,
-    // and std::shared_mutex is not recursive, so inline its logic here
-    std::unique_lock lock(m_registryMutex);
-
-    // Set active world (inlined from setActiveWorld to avoid deadlock)
-    m_activeWorld = worldId;
-    recalculateActiveWorldCounts();
-
-    // Ensure spatial indices exist for this world (try_emplace avoids double lookup)
-    m_itemSpatialIndices.try_emplace(worldId);
-    m_harvestableSpatialIndices.try_emplace(worldId);
-
-    WORLD_RESOURCE_INFO(std::format("World loaded: {}", worldId));
-}
-
-void WorldResourceManager::onWorldUnloaded(const std::string& worldId) {
-    clearSpatialDataForWorld(worldId);
-
-    // If this was the active world, clear it
-    {
-        std::unique_lock lock(m_registryMutex);
-        if (m_activeWorld == worldId) {
-            m_activeWorld.clear();
-        }
-    }
-
-    WORLD_RESOURCE_INFO(std::format("World unloaded: {}", worldId));
 }

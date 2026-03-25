@@ -224,7 +224,7 @@
     },
     "rock_small": {
       "name": "Small Rock",
-      "textureId": "obstacle_rock",
+      "textureId": "rock_small",
       "seasonal": false
     },
     "dead_log_hz": {

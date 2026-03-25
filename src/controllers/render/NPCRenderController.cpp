@@ -134,10 +134,8 @@ void NPCRenderController::recordGPU(const HammerEngine::GPUSceneContext& ctx) {
         float dstX = interpX - ctx.cameraX - halfW;
         float dstY = interpY - ctx.cameraY - halfH;
 
-        // Handle flip via UV swap
-        bool flipH = (r.flipMode == static_cast<uint8_t>(SDL_FLIP_HORIZONTAL));
-        if (flipH) {
-            // Swap srcX to the right edge and use negative width to flip UVs
+        // Handle horizontal flip via UV swap
+        if (r.flipMode == static_cast<uint8_t>(SDL_FLIP_HORIZONTAL)) {
             ctx.spriteBatch->draw(srcX + srcW, srcY, -srcW, srcH,
                                   dstX, dstY, srcW, srcH);
         } else {

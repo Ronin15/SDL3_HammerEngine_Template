@@ -1,5 +1,5 @@
 @echo off
-rem Controller Test Runner (Registry, Weather, DayNight)
+rem Controller Test Runner (all controller tests)
 rem Copyright 2025 Hammer Forged Games
 
 setlocal enabledelayedexpansion
@@ -19,6 +19,11 @@ set RUN_ALL=true
 set RUN_REGISTRY=false
 set RUN_WEATHER=false
 set RUN_DAYNIGHT=false
+set RUN_HARVEST=false
+set RUN_NPCRENDER=false
+set RUN_ITEM=false
+set RUN_RESOURCERENDER=false
+set RUN_SOCIAL=false
 
 :parse_args
 if "%~1"=="" goto done_parsing
@@ -45,6 +50,36 @@ if /i "%~1"=="--daynight" (
     shift
     goto parse_args
 )
+if /i "%~1"=="--harvest" (
+    set RUN_ALL=false
+    set RUN_HARVEST=true
+    shift
+    goto parse_args
+)
+if /i "%~1"=="--npcrender" (
+    set RUN_ALL=false
+    set RUN_NPCRENDER=true
+    shift
+    goto parse_args
+)
+if /i "%~1"=="--item" (
+    set RUN_ALL=false
+    set RUN_ITEM=true
+    shift
+    goto parse_args
+)
+if /i "%~1"=="--resourcerender" (
+    set RUN_ALL=false
+    set RUN_RESOURCERENDER=true
+    shift
+    goto parse_args
+)
+if /i "%~1"=="--social" (
+    set RUN_ALL=false
+    set RUN_SOCIAL=true
+    shift
+    goto parse_args
+)
 if /i "%~1"=="--help" (
     echo !BLUE!Controller Test Runner!NC!
     echo Usage: run_controller_tests.bat [options]
@@ -54,6 +89,11 @@ if /i "%~1"=="--help" (
     echo   --registry     Run only ControllerRegistry tests
     echo   --weather      Run only WeatherController tests
     echo   --daynight     Run only DayNightController tests
+    echo   --harvest      Run only HarvestController tests
+    echo   --npcrender    Run only NPCRenderController tests
+    echo   --item         Run only ItemController tests
+    echo   --resourcerender Run only ResourceRenderController tests
+    echo   --social       Run only SocialController tests
     echo   --help         Show this help message
     exit /b 0
 )
@@ -72,10 +112,20 @@ if "%RUN_ALL%"=="true" (
     call :run_single_test controller_registry_tests
     call :run_single_test weather_controller_tests
     call :run_single_test day_night_controller_tests
+    call :run_single_test harvest_controller_tests
+    call :run_single_test npc_render_controller_tests
+    call :run_single_test item_controller_tests
+    call :run_single_test resource_render_controller_tests
+    call :run_single_test social_controller_tests
 ) else (
     if "%RUN_REGISTRY%"=="true" call :run_single_test controller_registry_tests
     if "%RUN_WEATHER%"=="true" call :run_single_test weather_controller_tests
     if "%RUN_DAYNIGHT%"=="true" call :run_single_test day_night_controller_tests
+    if "%RUN_HARVEST%"=="true" call :run_single_test harvest_controller_tests
+    if "%RUN_NPCRENDER%"=="true" call :run_single_test npc_render_controller_tests
+    if "%RUN_ITEM%"=="true" call :run_single_test item_controller_tests
+    if "%RUN_RESOURCERENDER%"=="true" call :run_single_test resource_render_controller_tests
+    if "%RUN_SOCIAL%"=="true" call :run_single_test social_controller_tests
 )
 
 goto show_summary
@@ -133,5 +183,10 @@ if !OVERALL_RESULT! neq 0 (
     echo !GREEN!  ControllerRegistry tests!NC!
     echo !GREEN!  WeatherController tests!NC!
     echo !GREEN!  DayNightController tests!NC!
+    echo !GREEN!  HarvestController tests!NC!
+    echo !GREEN!  NPCRenderController tests!NC!
+    echo !GREEN!  ItemController tests!NC!
+    echo !GREEN!  ResourceRenderController tests!NC!
+    echo !GREEN!  SocialController tests!NC!
     exit /b 0
 )

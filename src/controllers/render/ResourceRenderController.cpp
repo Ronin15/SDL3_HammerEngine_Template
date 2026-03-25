@@ -4,6 +4,7 @@
  */
 
 #include "controllers/render/ResourceRenderController.hpp"
+#include "core/Logger.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include "utils/Camera.hpp"
@@ -77,8 +78,8 @@ void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const 
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Get visibility info from Camera for spatial query (culling tolerance is fine)
-    Vector2D cameraCenter = camera.getPosition();
+    // Use interpolated camera position for spatial query (matches actual render position)
+    Vector2D cameraCenter(cameraX, cameraY);
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
                                     viewport.height * viewport.height) * 0.5f;
@@ -135,8 +136,8 @@ void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const Ha
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Get visibility info from Camera for spatial query (culling tolerance is fine)
-    Vector2D cameraCenter = camera.getPosition();
+    // Use interpolated camera position for spatial query (matches actual render position)
+    Vector2D cameraCenter(cameraX, cameraY);
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
                                     viewport.height * viewport.height) * 0.5f;
@@ -192,8 +193,8 @@ void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, const 
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Get visibility info from Camera for spatial query (culling tolerance is fine)
-    Vector2D cameraCenter = camera.getPosition();
+    // Use interpolated camera position for spatial query (matches actual render position)
+    Vector2D cameraCenter(cameraX, cameraY);
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
                                     viewport.height * viewport.height) * 0.5f;
@@ -280,13 +281,15 @@ void ResourceRenderController::clearAll() {
 #ifdef USE_SDL3_GPU
 void ResourceRenderController::recordGPUDroppedItems(const HammerEngine::GPUSceneContext& ctx,
                                                       const HammerEngine::Camera& camera) {
+    RESOURCE_RENDER_WARN_IF(!ctx.spriteBatch, "recordGPUDroppedItems: ctx.spriteBatch is null");
     if (!ctx.spriteBatch) { return; }
 
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Query visible items using camera viewport
-    Vector2D cameraCenter = camera.getPosition();
+    // Query visible items using rendered camera center (not camera.getPosition()
+    // which lags in Follow mode due to blend factor)
+    Vector2D cameraCenter = ctx.cameraCenter;
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
                                     viewport.height * viewport.height) * 0.5f;
@@ -332,13 +335,15 @@ void ResourceRenderController::recordGPUDroppedItems(const HammerEngine::GPUScen
 
 void ResourceRenderController::recordGPUContainers(const HammerEngine::GPUSceneContext& ctx,
                                                     const HammerEngine::Camera& camera) {
+    RESOURCE_RENDER_WARN_IF(!ctx.spriteBatch, "recordGPUContainers: ctx.spriteBatch is null");
     if (!ctx.spriteBatch) { return; }
 
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Query visible containers using camera viewport
-    Vector2D cameraCenter = camera.getPosition();
+    // Query visible containers using rendered camera center (not camera.getPosition()
+    // which lags in Follow mode due to blend factor)
+    Vector2D cameraCenter = ctx.cameraCenter;
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
                                     viewport.height * viewport.height) * 0.5f;
@@ -386,13 +391,15 @@ void ResourceRenderController::recordGPUContainers(const HammerEngine::GPUSceneC
 
 void ResourceRenderController::recordGPUHarvestables(const HammerEngine::GPUSceneContext& ctx,
                                                       const HammerEngine::Camera& camera) {
+    RESOURCE_RENDER_WARN_IF(!ctx.spriteBatch, "recordGPUHarvestables: ctx.spriteBatch is null");
     if (!ctx.spriteBatch) { return; }
 
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
-    // Query visible harvestables using camera viewport
-    Vector2D cameraCenter = camera.getPosition();
+    // Query visible harvestables using rendered camera center (not camera.getPosition()
+    // which lags in Follow mode due to blend factor)
+    Vector2D cameraCenter = ctx.cameraCenter;
     const auto& viewport = camera.getViewport();
     float visibleRadius = std::sqrt(viewport.width * viewport.width +
                                     viewport.height * viewport.height) * 0.5f;

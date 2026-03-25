@@ -7,6 +7,7 @@
 #define AI_DEMO_STATE_HPP
 
 #include "gameStates/GameState.hpp"
+#include "controllers/ControllerRegistry.hpp"
 #include "controllers/render/NPCRenderController.hpp"
 #include "entities/EntityHandle.hpp"
 #include "entities/Player.hpp"
@@ -57,17 +58,17 @@ public:
 
 private:
     // Methods
-    void setupAIBehaviors();
     void initializeCamera();
     void updateCamera(float deltaTime);
+
+    // Controller registry (follows GamePlayState pattern)
+    ControllerRegistry m_controllers;
 
     // Data-driven NPC rendering (velocity-based animation)
     NPCRenderController m_npcRenderCtrl{};
 
     // Player entity
     PlayerPtr m_player{};
-
-    std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
 
     // Demo settings
     float m_worldWidth{800.0f};
@@ -98,8 +99,6 @@ private:
 
     // AI pause state
     bool m_aiPaused{false};
-    bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit
-
     // Status display optimization - zero per-frame allocations (C++20 type-safe)
     std::string m_statusBuffer{};
     float m_lastDisplayedFPS{-1.0f};

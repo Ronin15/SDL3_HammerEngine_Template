@@ -30,7 +30,6 @@
 #include "utils/Vector2D.hpp"
 #include <algorithm>
 #include <iterator>
-#include "managers/EventManager.hpp"
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -374,7 +373,7 @@ public:
     bool findClosestDroppedItem(const Vector2D& center, float radius, size_t& outIndex) const;
 
     // ========================================================================
-    // ACTIVE WORLD TRACKING (event-driven)
+    // ACTIVE WORLD TRACKING
     // ========================================================================
 
     /**
@@ -382,7 +381,7 @@ public:
      * @param worldId Active world identifier
      *
      * Queries without explicit worldId use this as default.
-     * Called automatically via WorldLoadedEvent subscription.
+     * Called directly by WorldManager when a world becomes active.
      */
     void setActiveWorld(const WorldId& worldId);
 
@@ -396,16 +395,9 @@ public:
      * @brief Clear all spatial data for a world (items + harvestables)
      * @param worldId World to clear
      *
-     * Called automatically via WorldUnloadedEvent subscription.
+     * Called directly during world teardown when needed.
      */
     void clearSpatialDataForWorld(const WorldId& worldId);
-
-    /**
-     * @brief Subscribe to world events (WorldLoaded, WorldUnloaded)
-     *
-     * Call this in init() after EventManager is ready.
-     */
-    void subscribeWorldEvents();
 
     // ========================================================================
     // QUERY-ONLY RESOURCE ACCESS (reads EDM directly)
@@ -517,9 +509,6 @@ private:
     // Currently active world (set via event or explicit call)
     WorldId m_activeWorld;
 
-    // Event handler tokens (for cleanup)
-    std::vector<EventManager::HandlerToken> m_eventHandlerTokens;
-
     // Thread safety
     // LOCK ORDERING: m_registryMutex -> EDM::m_inventoryMutex (never reverse)
     // Query methods acquire m_registryMutex then call EDM which acquires m_inventoryMutex.
@@ -534,10 +523,6 @@ private:
     // These are updated on register/unregister and when active world changes
     std::atomic<size_t> m_activeWorldItemCount{0};
     std::atomic<size_t> m_activeWorldHarvestableCount{0};
-
-    // Event handlers (internal)
-    void onWorldLoaded(const std::string& worldId);
-    void onWorldUnloaded(const std::string& worldId);
 
     // Helper to recalculate active world counts (called under lock)
     void recalculateActiveWorldCounts();

@@ -1,5 +1,7 @@
 # Emergent Gameplay Analysis
 
+**Code:** `include/ai/AIBehavior.hpp`, `include/managers/EventManager.hpp`, `include/managers/EntityDataManager.hpp`, `include/managers/WorldResourceManager.hpp`
+
 Analysis of SDL3 HammerEngine's current capabilities and recommendations for supporting emergent gameplay systems.
 
 **Date**: January 2026
@@ -475,3 +477,10 @@ SDL3 HammerEngine has a solid architectural foundation for emergent gameplay. Th
 The primary gaps are in **social systems** (factions, relationships), **autonomous decision-making** (utility AI), and **system interconnection** (resources/environment affecting AI).
 
 Implementing the recommended systems in priority order will transform the current reactive NPC behavior into a living world where complex behaviors emerge from simple rules and system interactions.
+
+## Related Docs
+
+- [AIManager](ai/AIManager.md)
+- [Behavior Execution Pipeline](ai/BehaviorExecutionPipeline.md)
+- [EventManager](events/EventManager.md)
+- [WorldResourceManager](managers/WorldResourceManager.md)

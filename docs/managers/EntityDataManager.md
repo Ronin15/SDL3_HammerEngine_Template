@@ -1,8 +1,6 @@
-# EntityDataManager Documentation
+# EntityDataManager
 
-**Where to find the code:**
-- Header: `include/managers/EntityDataManager.hpp`
-- Implementation: `src/managers/EntityDataManager.cpp`
+**Code:** `include/managers/EntityDataManager.hpp`, `src/managers/EntityDataManager.cpp`
 
 **Singleton Access:** Use `EntityDataManager::Instance()` to access the manager.
 

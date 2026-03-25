@@ -371,14 +371,10 @@ BOOST_FIXTURE_TEST_CASE(EventSequenceCreation, EventTypesFixture) {
       "WeatherSequence", weatherSequence, true);
   BOOST_CHECK_EQUAL(sequence.size(), 3);
 
-  // Verify the sequence was created with proper priorities
+  // Verify the sequence preserves the requested creation order
   BOOST_CHECK_EQUAL(sequence[0]->getName(), "StartRain");
   BOOST_CHECK_EQUAL(sequence[1]->getName(), "Thunderstorm");
   BOOST_CHECK_EQUAL(sequence[2]->getName(), "ClearSkies");
-
-  // First event should have highest priority
-  BOOST_CHECK_GT(sequence[0]->getPriority(), sequence[1]->getPriority());
-  BOOST_CHECK_GT(sequence[1]->getPriority(), sequence[2]->getPriority());
 }
 
 // Test event cooldown functionality
@@ -774,7 +770,8 @@ BOOST_AUTO_TEST_CASE(TestEventTypeIdEnumValues) {
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Time), 12);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Combat), 13);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Entity), 14);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 15);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::BehaviorMessage), 15);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 16);
 }
 
 // Test ResourceChangeEvent

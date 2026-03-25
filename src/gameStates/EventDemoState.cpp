@@ -4,22 +4,16 @@
  */
 
 #include "gameStates/EventDemoState.hpp"
-#include "ai/behaviors/ChaseBehavior.hpp"
-#include "ai/behaviors/FleeBehavior.hpp"
-#include "ai/behaviors/FollowBehavior.hpp"
-#include "ai/behaviors/IdleBehavior.hpp"
-#include "ai/behaviors/PatrolBehavior.hpp"
-#include "ai/behaviors/WanderBehavior.hpp"
 #include "controllers/world/DayNightController.hpp"
 #include "controllers/world/WeatherController.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
-#include "events/SceneChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
@@ -31,6 +25,8 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "managers/WorldResourceManager.hpp"
+#include "core/WorkerBudget.hpp"
 #include "utils/Camera.hpp"
 #include "utils/WorldRenderPipeline.hpp"
 
@@ -123,8 +119,8 @@ bool EventDemoState::enter() {
       m_worldHeight = gameEngine.getLogicalHeight();
     }
 
-    // Initialize event system
-    setupEventSystem();
+    // Initialize state-owned event subscriptions.
+    registerEventHandlers();
 
     // Create player
     m_player = std::make_shared<Player>();
@@ -148,15 +144,13 @@ bool EventDemoState::enter() {
     // Register controllers (following GamePlayState pattern)
     m_controllers.add<WeatherController>();
     m_controllers.add<DayNightController>();
+    m_controllers.subscribeAll();
 
     // Enable automatic weather changes via GameTimeManager
     auto &gameTimeMgr = GameTimeManager::Instance();
     gameTimeMgr.enableAutoWeather(true);
     gameTimeMgr.setWeatherCheckInterval(4.0f);
     gameTimeMgr.setTimeScale(60.0f);
-
-    // Setup AI behaviors for integration demo
-    setupAIBehaviors();
 
     // Add initial log entry
     addLogEntry("Event Demo System Initialized");
@@ -361,6 +355,8 @@ bool EventDemoState::exit() {
   ParticleManager &particleMgr = ParticleManager::Instance();
   UIManager &ui = UIManager::Instance();
   WorldManager &worldMgr = WorldManager::Instance();
+  BackgroundSimulationManager &bgSimMgr = BackgroundSimulationManager::Instance();
+  auto &wrm = WorldResourceManager::Instance();
   EventManager &eventMgr = EventManager::Instance();
 
   try {
@@ -380,26 +376,28 @@ bool EventDemoState::exit() {
       // Clear controllers
       m_controllers.clear();
 
-      // Unregister our specific handlers via tokens
+      // Unregister our specific handlers via tokens before EventManager cleanup.
       unregisterEventHandlers();
 
-      // Remove all events from EventManager
-      eventMgr.clearAllEvents();
+      aiMgr.prepareForStateTransition();
+      bgSimMgr.prepareForStateTransition();
 
-      // Clean up managers (same as full exit)
-      // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
-      // Pending path tasks hold captured edmIndex values - they must complete
-      // or see the transition flag before EDM clears its data
-      if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-        pathfinderMgr.prepareForStateTransition();
+      if (wrm.isInitialized()) {
+        wrm.prepareForStateTransition();
       }
 
-      aiMgr.prepareForStateTransition();
-      edm.prepareForStateTransition();
+      eventMgr.prepareForStateTransition();
 
       if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
         collisionMgr.prepareForStateTransition();
       }
+
+      if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+        pathfinderMgr.prepareForStateTransition();
+      }
+
+      edm.prepareForStateTransition();
+      HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
       if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
         particleMgr.prepareForStateTransition();
@@ -440,27 +438,29 @@ bool EventDemoState::exit() {
     // Clear controllers
     m_controllers.clear();
 
-    // Unregister our specific handlers via tokens
+    // Unregister our specific handlers via tokens before EventManager cleanup.
     unregisterEventHandlers();
 
-    // Remove all events from EventManager
-    eventMgr.clearAllEvents();
+    aiMgr.prepareForStateTransition();
+    bgSimMgr.prepareForStateTransition();
 
-    // Use manager prepareForStateTransition methods for deterministic cleanup
-    // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
-    // Pending path tasks hold captured edmIndex values - they must complete or
-    // see the transition flag before EDM clears its data
-    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-      pathfinderMgr.prepareForStateTransition();
+    if (wrm.isInitialized()) {
+      wrm.prepareForStateTransition();
     }
 
-    aiMgr.prepareForStateTransition();
-    edm.prepareForStateTransition();
+    eventMgr.prepareForStateTransition();
 
     // Clean collision state before other systems
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
     }
+
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
+    }
+
+    edm.prepareForStateTransition();
+    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
     // Simple particle cleanup - let prepareForStateTransition handle everything
     if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
@@ -563,10 +563,13 @@ void EventDemoState::update(float deltaTime) {
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
 
+#ifndef USE_SDL3_GPU
   // Prepare chunks via WorldRenderPipeline (predictive prefetching + dirty chunk updates)
+  // GPU path renders tiles directly from atlas coords each frame — no chunk textures needed
   if (m_renderPipeline && m_camera) {
     m_renderPipeline->prepareChunks(*m_camera, deltaTime);
   }
+#endif
 
   // AI Manager is updated globally by GameEngine for optimal performance
   // Entity updates are handled by AIManager::update() in GameEngine
@@ -628,10 +631,10 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
 
   // Render UI components (update moved to update() for consistent frame timing)
   if (!uiMgr.isShutdown()) {
-    // Lazy-cache weather string (only compute when enum changes)
-    if (m_currentWeather != m_lastCachedWeather) {
+    // Lazy weather string caching — only recompute on weather type change
+    if (m_currentWeather != m_lastCachedWeatherType) {
       m_cachedWeatherStr = getCurrentWeatherString();
-      m_lastCachedWeather = m_currentWeather;
+      m_lastCachedWeatherType = m_currentWeather;
     }
 
     float const currentFPS = mp_stateManager->getCurrentFPS();
@@ -658,38 +661,28 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   uiMgr.render(renderer);
 }
 
-void EventDemoState::setupEventSystem() {
-  GAMESTATE_INFO("EventDemoState: EventManager instance obtained");
-  GAMESTATE_INFO("EventDemoState: Using pre-initialized EventManager");
-
+void EventDemoState::registerEventHandlers() {
   auto &eventMgr = EventManager::Instance();
-
-  // Register event handlers using token-based API for easy removal
-  m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
-      EventTypeId::Weather, [this](const EventData &data) {
-        if (data.isActive())
-          onWeatherChanged("weather_changed");
-      }));
 
   m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
       EventTypeId::NPCSpawn, [this](const EventData &data) {
-        if (data.isActive())
+        if (data.isActive()) {
           onNPCSpawned(data);
-      }));
-
-  m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
-      EventTypeId::SceneChange, [this](const EventData &data) {
-        if (data.isActive())
-          onSceneChanged("scene_changed");
+        }
       }));
 
   m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
       EventTypeId::ResourceChange, [this](const EventData &data) {
-        if (data.isActive())
+        if (data.isActive()) {
           onResourceChanged(data);
+        }
       }));
 
-  GAMESTATE_INFO("EventDemoState: Event handlers registered");
+  m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
+      EventTypeId::Weather, [](const EventData &data) {
+        ParticleManager::Instance().handleWeatherEvent(data);
+      }));
+
   addLogEntry("Event system ready");
 }
 
@@ -697,7 +690,6 @@ void EventDemoState::handleInput() {
   // Get manager references at function start
   const InputManager &inputMgr = InputManager::Instance();
   ParticleManager &particleMgr = ParticleManager::Instance();
-  const UIManager &ui = UIManager::Instance();
   EntityDataManager &edm = EntityDataManager::Instance();
 
   // Manual event triggers (keys 1-6)
@@ -721,13 +713,6 @@ void EventDemoState::handleInput() {
     } else {
       addLogEntry("NPC limit (R to reset)");
     }
-  }
-
-  // [3] Scene Transition
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_3) &&
-      (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
-    triggerSceneTransitionDemo();
-    m_lastEventTriggerTime = m_totalDemoTime;
   }
 
   // [4] Mass NPC Spawn with varied behaviors
@@ -803,13 +788,6 @@ void EventDemoState::handleInput() {
     mp_stateManager->changeState("MainMenuState");
   }
 
-  // Mouse input for world interaction
-  if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
-    Vector2D const mousePos = inputMgr.getMousePosition();
-    if (!ui.isClickOnUI(mousePos)) {
-      (void)m_camera->screenToWorld(mousePos);
-    }
-  }
 }
 
 void EventDemoState::triggerWeatherDemo() {
@@ -854,26 +832,6 @@ void EventDemoState::triggerNPCSpawnDemo() {
   // Use EventManager to spawn NPC via the unified event hub
   EventManager::Instance().spawnNPC(npcType, spawnX, spawnY);
   addLogEntry(std::format("Spawned: {}", npcType));
-}
-
-void EventDemoState::triggerSceneTransitionDemo() {
-  std::string sceneName = m_sceneNames[m_currentSceneIndex];
-  m_currentSceneIndex = (m_currentSceneIndex + 1) % m_sceneNames.size();
-
-  // Use EventManager hub to change scenes
-  std::vector<TransitionType> transitions = {
-      TransitionType::Fade, TransitionType::Slide, TransitionType::Dissolve,
-      TransitionType::Wipe};
-  TransitionType t = transitions[m_currentSceneIndex % transitions.size()];
-  const char *transitionName = (t == TransitionType::Fade)       ? "fade"
-                               : (t == TransitionType::Slide)    ? "slide"
-                               : (t == TransitionType::Dissolve) ? "dissolve"
-                                                                 : "wipe";
-
-  EventManager::Instance().changeScene(sceneName, transitionName, 2.0f,
-                           EventManager::DispatchMode::Deferred);
-
-  addLogEntry(std::format("Scene: {} ({})", sceneName, transitionName));
 }
 
 void EventDemoState::triggerResourceDemo() {
@@ -1070,7 +1028,7 @@ void EventDemoState::triggerMassNPCSpawnDemo() {
 
   // Spawn 200 NPCs via event system - random races, rotating through 6 behaviors
   EventManager::Instance().spawnNPC(
-      "Villager",                                           // npcType
+      "Farmer",                                             // npcType
       playerPos.getX(), playerPos.getY(),                   // center position
       200,                                                  // count
       1500.0f,                                              // spawnRadius
@@ -1082,74 +1040,41 @@ void EventDemoState::triggerMassNPCSpawnDemo() {
 }
 
 void EventDemoState::triggerConvenienceMethodsDemo() {
-  addLogEntry("Convenience methods demo");
+  addLogEntry("Trigger methods demo");
 
   m_convenienceDemoCounter++;
 
   // Cache EventManager reference for multiple calls
   auto &eventMgr = EventManager::Instance();
 
-  bool success1 = eventMgr.createWeatherEvent(
-      std::format("conv_fog_{}", m_convenienceDemoCounter), "Foggy", 0.7f,
-      2.5f);
-  bool success2 = eventMgr.createWeatherEvent(
-      std::format("conv_storm_{}", m_convenienceDemoCounter), "Stormy", 0.9f,
-      1.5f);
-  bool success3 = eventMgr.createSceneChangeEvent(
-      std::format("conv_dungeon_{}", m_convenienceDemoCounter), "DungeonDemo",
-      "dissolve", 2.0f);
-  bool success4 = eventMgr.createSceneChangeEvent(
-      std::format("conv_town_{}", m_convenienceDemoCounter), "TownDemo",
-      "slide", 1.0f);
-  bool success5 = eventMgr.createNPCSpawnEvent(
-      std::format("conv_guards_{}", m_convenienceDemoCounter), "Guard", 2,
-      30.0f);
-  bool success6 = eventMgr.createNPCSpawnEvent(
-      std::format("conv_merchants_{}", m_convenienceDemoCounter), "Merchant", 1,
-      15.0f);
+  // Demonstrate trigger methods (dispatch-only architecture)
+  // Weather change
+  eventMgr.changeWeather("Foggy", 2.5f, EventManager::DispatchMode::Deferred);
+  m_currentWeather = WeatherType::Foggy;
 
-  int const successCount =
-      success1 + success2 + success3 + success4 + success5 + success6;
-  if (successCount == 6) {
-    addLogEntry("Created 6 events successfully");
+  // Spawn NPCs via trigger
+  Vector2D playerPos = m_player ? m_player->getPosition() : Vector2D(400, 300);
+  eventMgr.spawnNPC("Guard", playerPos.getX() + 100, playerPos.getY());
+  eventMgr.spawnNPC("GeneralMerchant", playerPos.getX() - 100, playerPos.getY());
 
-    // Trigger via EventManager for demonstration
-    eventMgr.changeWeather("Foggy", 2.5f,
-                           EventManager::DispatchMode::Deferred);
-
-    m_currentWeather = WeatherType::Foggy;
-    addLogEntry("Weather: Foggy (demo)");
-  } else {
-    addLogEntry(std::format("Created {}/6 events", successCount));
-  }
+  addLogEntry("Triggered: Foggy weather + 2 NPCs");
 }
 
 void EventDemoState::resetAllEvents() {
   cleanupSpawnedNPCs();
 
-  // Cache EventManager reference for multiple calls
-  auto &eventMgr = EventManager::Instance();
-
-  // Remove all events from EventManager
-  eventMgr.clearAllEvents();
-
   // Trigger clear weather via EventManager
-  eventMgr.changeWeather("Clear", 1.0f, EventManager::DispatchMode::Deferred);
+  EventManager::Instance().changeWeather("Clear", 1.0f,
+                                         EventManager::DispatchMode::Deferred);
 
   m_currentWeather = WeatherType::Clear;
 
   m_currentWeatherIndex = 0;
   m_currentNPCTypeIndex = 0;
-  m_currentSceneIndex = 0;
 
   m_lastEventTriggerTime = 0.0f;
 
-  addLogEntry("Events cleared");
-}
-
-void EventDemoState::onWeatherChanged(const std::string &message) {
-  // Weather handler triggered - message logged via GAMESTATE_DEBUG
-  (void)message;
+  addLogEntry("Demo reset");
 }
 
 void EventDemoState::onNPCSpawned(const EventData &data) {
@@ -1164,10 +1089,6 @@ void EventDemoState::onNPCSpawned(const EventData &data) {
   std::string typeLabel = (params.npcType.empty() || params.npcType == "Random")
                               ? "Random" : params.npcType;
   addLogEntry(std::format("NPC Spawn Event: {} x{}", typeLabel, params.count));
-}
-
-void EventDemoState::onSceneChanged(const std::string &message) {
-  addLogEntry(std::format("Scene: {}", message));
 }
 
 void EventDemoState::onResourceChanged(const EventData &data) {
@@ -1200,103 +1121,6 @@ void EventDemoState::onResourceChanged(const EventData &data) {
     GAMESTATE_ERROR(
         std::format("Error in resource change handler: {}", e.what()));
   }
-}
-
-void EventDemoState::setupAIBehaviors() {
-  // TODO: need to make sure that this logic is moved out of the gamestate.
-  // Maybe on AI Manager init. init/configure all available behaviors
-  GAMESTATE_INFO(
-      "EventDemoState: Setting up AI behaviors for NPC integration...");
-  // Cache AIManager reference for better performance
-  AIManager &aiMgr = AIManager::Instance();
-
-  if (!aiMgr.hasBehavior("Wander")) {
-    auto wanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::MEDIUM_AREA, 60.0f);
-    aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered Wander behavior");
-  }
-
-  if (!aiMgr.hasBehavior("SmallWander")) {
-    auto smallWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::SMALL_AREA, 45.0f);
-    aiMgr.registerBehavior("SmallWander", std::move(smallWanderBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered SmallWander behavior");
-  }
-
-  if (!aiMgr.hasBehavior("LargeWander")) {
-    auto largeWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::LARGE_AREA, 75.0f);
-    aiMgr.registerBehavior("LargeWander", std::move(largeWanderBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered LargeWander behavior");
-  }
-
-  if (!aiMgr.hasBehavior("EventWander")) {
-    auto eventWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::EVENT_TARGET, 52.5f);
-    aiMgr.registerBehavior("EventWander", std::move(eventWanderBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered EventWander behavior");
-  }
-
-  if (!aiMgr.hasBehavior("Patrol")) {
-    auto patrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 56.25f, true);
-    aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered Patrol behavior");
-  }
-
-  if (!aiMgr.hasBehavior("RandomPatrol")) {
-    auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::RANDOM_AREA, 63.75f, false);
-    aiMgr.registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered RandomPatrol behavior");
-  }
-
-  if (!aiMgr.hasBehavior("CirclePatrol")) {
-    auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::CIRCULAR_AREA, 67.5f, false);
-    aiMgr.registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered CirclePatrol behavior");
-  }
-
-  if (!aiMgr.hasBehavior("EventTarget")) {
-    auto eventTargetBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::EVENT_TARGET, 71.25f, false);
-    aiMgr.registerBehavior("EventTarget", std::move(eventTargetBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered EventTarget behavior");
-  }
-
-  if (!aiMgr.hasBehavior("Chase")) {
-    auto chaseBehavior = std::make_unique<ChaseBehavior>(90.0f, 500.0f, 50.0f);
-    aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
-    GAMESTATE_INFO("EventDemoState: Chase behavior registered (will use "
-                   "AIManager::getPlayerReference())");
-  }
-
-  if (!aiMgr.hasBehavior("Idle")) {
-    auto idleBehavior = std::make_unique<IdleBehavior>(
-        IdleBehavior::IdleMode::SUBTLE_SWAY, 20.0f);
-    aiMgr.registerBehavior("Idle", std::move(idleBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered Idle behavior");
-  }
-
-  if (!aiMgr.hasBehavior("Flee")) {
-    auto fleeBehavior = std::make_unique<FleeBehavior>(
-        100.0f,   // fleeSpeed
-        400.0f,   // detectionRange
-        600.0f);  // safeDistance
-    aiMgr.registerBehavior("Flee", std::move(fleeBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered Flee behavior");
-  }
-
-  if (!aiMgr.hasBehavior("Follow")) {
-    auto followBehavior = std::make_unique<FollowBehavior>(
-        FollowBehavior::FollowMode::LOOSE_FOLLOW, 60.0f);
-    aiMgr.registerBehavior("Follow", std::move(followBehavior));
-    GAMESTATE_INFO("EventDemoState: Registered Follow behavior");
-  }
-
-  GAMESTATE_DEBUG("AI Behaviors configured for NPC integration");
 }
 
 void EventDemoState::addLogEntry(const std::string &entry) {
@@ -1507,10 +1331,6 @@ void EventDemoState::updateCamera(float deltaTime) {
   }
 }
 
-// Removed setupCameraForWorld(): camera manages world bounds itself
-// Removed applyCameraTransformation(): unified single-read pattern used in
-// render()
-
 void EventDemoState::toggleInventoryDisplay() {
   auto &ui = UIManager::Instance();
   m_showInventory = !m_showInventory;
@@ -1556,6 +1376,11 @@ void EventDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   // Update status text before recording UI vertices
   auto &uiMgr = UIManager::Instance();
   {
+    // Lazy weather string caching — only recompute on weather type change
+    if (m_currentWeather != m_lastCachedWeatherType) {
+      m_cachedWeatherStr = getCurrentWeatherString();
+      m_lastCachedWeatherType = m_currentWeather;
+    }
     float currentFPS = mp_stateManager->getCurrentFPS();
     size_t npcCount = m_cachedNPCCount;
 

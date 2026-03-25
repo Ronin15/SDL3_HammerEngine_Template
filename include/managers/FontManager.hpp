@@ -16,21 +16,6 @@
 #include <mutex>
 // filesystem is used in the implementation file
 
-#ifdef USE_SDL3_GPU
-#include "gpu/GPUTexture.hpp"
-#include "gpu/GPURenderer.hpp"
-
-namespace HammerEngine {
-class GPURenderer;
-}
-
-struct GPUTextData {
-    std::unique_ptr<HammerEngine::GPUTexture> texture;
-    int width{0};
-    int height{0};
-};
-#endif
-
 class FontManager {
  public:
   ~FontManager() {
@@ -242,32 +227,36 @@ class FontManager {
 
 #ifdef USE_SDL3_GPU
   /**
-   * @brief Renders text to a GPU texture for SDL3_GPU rendering
+   * @brief Prepare an atlas-backed GPU text object for subsequent draw data queries
+   * @param key Stable identifier for the GPU text object lifetime
    * @param text Text string to render
    * @param fontID Unique identifier of the font to use
-   * @param color Text color for rendering
-   * @return Pointer to GPUTextData, or nullptr if failed (cached, do not delete)
+   * @param width Optional pointer to receive the logical text width
+   * @param height Optional pointer to receive the logical text height
+   * @return true if the text object is ready, false otherwise
    */
-  const GPUTextData* renderTextGPU(const std::string& text, const std::string& fontID,
-                                    SDL_Color color);
+  bool prepareGPUText(const std::string& key, const std::string& text,
+                      const std::string& fontID, int* width = nullptr,
+                      int* height = nullptr);
 
   /**
-   * @brief Draw text using GPU renderer to the swapchain
-   * @param text Text string to draw
-   * @param fontID Unique identifier of the font to use
-   * @param x X coordinate (center point of text)
-   * @param y Y coordinate (center point of text)
-   * @param color Text color for drawing
-   * @param gpuRenderer GPU renderer instance
-   * @param pass Active render pass (swapchain pass)
+   * @brief Set the upper-left position of a prepared GPU text object in pixels
+   * @param key Stable identifier passed to prepareGPUText()
+   * @param x X offset of the text's upper-left corner
+   * @param y Y offset of the text's upper-left corner
+   * @return true if the position was updated, false otherwise
    */
-  void drawTextGPU(const std::string& text, const std::string& fontID,
-                   int x, int y, SDL_Color color,
-                   HammerEngine::GPURenderer& gpuRenderer,
-                   SDL_GPURenderPass* pass);
+  bool setGPUTextPosition(const std::string& key, int x, int y);
 
   /**
-   * @brief Clear GPU text cache (call on state transitions or when memory is needed)
+   * @brief Get SDL3_ttf GPU draw data for a prepared text object
+   * @param key Stable identifier passed to prepareGPUText()
+   * @return Draw sequence list owned by SDL3_ttf, or nullptr if unavailable
+   */
+  TTF_GPUAtlasDrawSequence* getGPUTextDrawData(const std::string& key);
+
+  /**
+   * @brief Clear prepared GPU text objects (call on state transitions or when memory is needed)
    */
   void clearGPUTextCache();
 #endif
@@ -311,8 +300,19 @@ class FontManager {
   std::string m_lastFontPath{};
 
 #ifdef USE_SDL3_GPU
-  // GPU text cache for SDL3_GPU rendering
-  std::unordered_map<TextCacheKey, std::unique_ptr<GPUTextData>, TextCacheKeyHash> m_gpuTextCache{};
+  struct GPUTextEntry {
+    TTF_Text* text{nullptr};
+    std::string fontID{};
+    std::string stringValue{};
+    int width{0};
+    int height{0};
+  };
+
+  bool ensureGPUTextEngine();
+  void destroyGPUTextObjects();
+
+  TTF_TextEngine* mp_gpuTextEngine{nullptr};
+  std::unordered_map<std::string, GPUTextEntry> m_gpuTextEntries{};
 #endif
 
   // Delete copy constructor and assignment operator

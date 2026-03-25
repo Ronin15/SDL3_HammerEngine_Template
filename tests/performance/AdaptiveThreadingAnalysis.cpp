@@ -43,6 +43,8 @@ namespace {
 
 class AnalysisFixture {
 public:
+    static bool& initializedFlag() { return s_initialized; }
+
     AnalysisFixture() {
         if (!s_initialized) {
             HAMMER_ENABLE_BENCHMARK_MODE();
@@ -60,13 +62,15 @@ public:
         m_rng.seed(42);
     }
 
+    ~AnalysisFixture() = default;
+
     void reset() {
         EntityDataManager::Instance().prepareForStateTransition();
         CollisionManager::Instance().prepareForStateTransition();
         AIManager::Instance().prepareForStateTransition();
         ParticleManager::Instance().prepareForStateTransition();
         EventManager::Instance().prepareForStateTransition();
-        // Note: WorkerBudget state persists across resets (learned thresholds)
+        HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
     }
 
     float calculateWorldSize(size_t entityCount) {
@@ -103,6 +107,26 @@ protected:
 };
 
 bool AnalysisFixture::s_initialized = false;
+
+struct AnalysisModuleCleanup {
+    ~AnalysisModuleCleanup() {
+        if (!AnalysisFixture::initializedFlag()) {
+            return;
+        }
+
+        EventManager::Instance().clean();
+        ParticleManager::Instance().clean();
+        AIManager::Instance().clean();
+        CollisionManager::Instance().clean();
+        PathfinderManager::Instance().clean();
+        EntityDataManager::Instance().clean();
+        HammerEngine::ThreadSystem::Instance().clean();
+
+        AnalysisFixture::initializedFlag() = false;
+    }
+};
+
+BOOST_GLOBAL_FIXTURE(AnalysisModuleCleanup);
 
 } // anonymous namespace
 
@@ -392,22 +416,20 @@ BOOST_AUTO_TEST_CASE(ThreadingStateSummary) {
         {HammerEngine::SystemType::Pathfinding, "Pathfinding"},
     };
 
-    std::cout << "System       Threshold   Active    BatchMult   SingleTP     MultiTP" << std::endl;
-    std::cout << "-----------  ---------   ------    ---------   --------     -------" << std::endl;
+    std::cout << "System       Threshold   Active    BatchMult   MultiTP" << std::endl;
+    std::cout << "-----------  ---------   ------    ---------   -------" << std::endl;
 
     for (const auto& [sysType, name] : systems) {
         size_t threshold = budgetMgr.getLearnedThreshold(sysType);
         bool active = budgetMgr.isThresholdActive(sysType);
         float batchMult = budgetMgr.getBatchMultiplier(sysType);
-        double singleTP = budgetMgr.getExpectedThroughput(sysType, false);
         double multiTP = budgetMgr.getExpectedThroughput(sysType, true);
 
         std::cout << std::setw(11) << std::left << name
                   << "  " << std::setw(9) << std::right << threshold
                   << "   " << std::setw(6) << (active ? "true" : "false")
                   << "    " << std::setw(9) << std::fixed << std::setprecision(2) << batchMult
-                  << "   " << std::setw(8) << std::setprecision(0) << singleTP
-                  << "     " << std::setw(7) << multiTP << std::endl;
+                  << "   " << std::setw(7) << std::setprecision(0) << multiTP << std::endl;
     }
 
     std::cout << "\nConstants:" << std::endl;

@@ -143,6 +143,12 @@ public:
   const std::string &getGroupTag() const { return m_groupTag; }
 
   /**
+   * @brief Get the sound effect name
+   * @return Sound effect name string (empty if none)
+   */
+  const std::string &getSoundEffect() const { return m_soundEffect; }
+
+  /**
    * @brief Set the effect type
    * @param effectType New effect type
    */

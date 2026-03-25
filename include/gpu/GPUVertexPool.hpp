@@ -66,11 +66,12 @@ public:
      * Upload vertex data to the GPU buffer.
      * Must be called during a copy pass.
      * @param copyPass Active copy pass
+     * @return true on success
      */
-    void upload(SDL_GPUCopyPass* copyPass);
+    bool upload(SDL_GPUCopyPass* copyPass);
 
     // Accessors
-    SDL_GPUBuffer* getGPUBuffer() const { return m_gpuBuffer.get(); }
+    SDL_GPUBuffer* getGPUBuffer() const { return m_gpuBuffers[m_frameIndex].get(); }
     size_t getVertexCount() const { return m_currentVertexCount; }
     size_t getMaxVertices() const { return m_maxVertices; }
     uint32_t getVertexSize() const { return m_vertexSize; }
@@ -102,8 +103,8 @@ private:
     // CPU-side staging (triple-buffered)
     std::array<GPUTransferBuffer, FRAME_COUNT> m_transferBuffers;
 
-    // GPU-side persistent buffer
-    GPUBuffer m_gpuBuffer;
+    // GPU-side buffers are triple-buffered to avoid overwriting in-flight vertices.
+    std::array<GPUBuffer, FRAME_COUNT> m_gpuBuffers;
 
     uint32_t m_frameIndex{0};
     uint32_t m_vertexSize{0};

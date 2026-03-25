@@ -1,15 +1,12 @@
-# WeatherController Documentation
+# WeatherController
 
-**Where to find the code:**
-- Header: `include/controllers/world/WeatherController.hpp`
-- Implementation: `src/controllers/world/WeatherController.cpp`
-- Tests: `tests/controllers/WeatherControllerTests.cpp`
+**Code:** `include/controllers/world/WeatherController.hpp`, `src/controllers/world/WeatherController.cpp`, `tests/controllers/WeatherControllerTests.cpp`
 
 **Ownership:** GameState owns the controller instance (not a singleton).
 
 ## Overview
 
-WeatherController is a lightweight controller that bridges GameTime weather checks to actual weather changes. It subscribes to `WeatherCheckEvent` (dispatched by GameTime) and triggers actual weather changes via `EventManager::changeWeather()`, which then dispatches `WeatherEvent` for visual effects.
+WeatherController is a lightweight controller that bridges `GameTimeManager` weather checks to actual weather changes. It subscribes to `WeatherCheckEvent` (dispatched by `GameTimeManager`) and triggers actual weather changes via `EventManager::changeWeather()`, which then dispatches `WeatherEvent` for visual effects.
 
 ## Event Flow
 
@@ -50,7 +47,7 @@ m_weatherController.unsubscribe();
 void subscribe();
 ```
 
-Subscribe to weather check events from GameTime.
+Subscribe to weather check events from `GameTimeManager`.
 
 **Note:** Called when a world state enters, NOT in GameEngine::init().
 
@@ -77,7 +74,7 @@ Get the current weather type.
 ### getCurrentWeatherString()
 
 ```cpp
-const char* getCurrentWeatherString() const;
+std::string_view getCurrentWeatherString() const;
 ```
 
 Get current weather as a string (zero allocation).
@@ -121,7 +118,7 @@ private:
 #include "managers/GameTimeManager.hpp"
 
 bool GamePlayState::enter() {
-    // Enable automatic weather in GameTime
+    // Enable automatic weather in GameTimeManager
     GameTimeManager::Instance().enableAutoWeather(true);
     GameTimeManager::Instance().setWeatherCheckInterval(4.0f);  // Every 4 game hours
 
@@ -134,7 +131,7 @@ bool GamePlayState::enter() {
 void GamePlayState::update(float deltaTime) {
     // Display current weather
     WeatherType weather = m_weatherController.getCurrentWeather();
-    const char* weatherStr = m_weatherController.getCurrentWeatherString();
+    std::string_view weatherStr = m_weatherController.getCurrentWeatherString();
 
     // Use in UI or game logic
     if (weather == WeatherType::Rainy || weather == WeatherType::Stormy) {
@@ -179,6 +176,6 @@ EventManager::Instance().changeWeather(WeatherType::Stormy);
 ## Related Documentation
 
 - **Controller Pattern:** `docs/controllers/README.md`
-- **GameTime:** `docs/core/GameTime.md`
+- **GameTimeManager:** `../managers/GameTimeManager.md`
 - **ParticleManager:** `docs/managers/ParticleManager.md`
 - **EventManager:** `docs/events/EventManager.md`

@@ -6,7 +6,6 @@
 #include "managers/TextureManager.hpp"
 #include "core/Logger.hpp"
 #include "utils/FrameProfiler.hpp"
-#include "utils/ResourcePath.hpp"
 #include <cstring>
 #include <format>
 
@@ -23,7 +22,7 @@ bool GPURenderer::init() {
         return true;
     }
 
-    auto& gpuDevice = GPUDevice::Instance();
+    const auto& gpuDevice = GPUDevice::Instance();
     if (!gpuDevice.isInitialized()) {
         GAMEENGINE_ERROR("GPURenderer::init: GPUDevice not initialized");
         return false;
@@ -111,13 +110,13 @@ bool GPURenderer::init() {
     }
 
     // Initialize sprite batches
-    if (!m_spriteBatch.init(m_device)) {
+    if (!m_spriteBatch.init(m_device, "SpriteBatch")) {
         GAMEENGINE_ERROR("GPURenderer: failed to init sprite batch");
         cleanupPartialInit();
         return false;
     }
 
-    if (!m_entityBatch.init(m_device)) {
+    if (!m_entityBatch.init(m_device, "EntityBatch")) {
         GAMEENGINE_ERROR("GPURenderer: failed to init entity batch");
         cleanupPartialInit();
         return false;
@@ -151,6 +150,8 @@ void GPURenderer::shutdown() {
     m_primitivePipeline.release();
     m_compositePipeline.release();
     m_uiSpritePipeline.release();
+    m_uiTextAlphaPipeline.release();
+    m_uiTextSDFPipeline.release();
     m_uiPrimitivePipeline.release();
 
     // Release textures and samplers
@@ -163,6 +164,7 @@ void GPURenderer::shutdown() {
 
     m_device = nullptr;
     m_window = nullptr;
+    resetFrameState();
     m_initialized = false;
 
     GAMEENGINE_INFO("GPURenderer shutdown complete");
@@ -187,6 +189,8 @@ void GPURenderer::cleanupPartialInit() {
     m_primitivePipeline.release();
     m_compositePipeline.release();
     m_uiSpritePipeline.release();
+    m_uiTextAlphaPipeline.release();
+    m_uiTextSDFPipeline.release();
     m_uiPrimitivePipeline.release();
 
     m_sceneTexture.reset();
@@ -197,14 +201,16 @@ void GPURenderer::cleanupPartialInit() {
 
     m_device = nullptr;
     m_window = nullptr;
+    resetFrameState();
 }
 
-void GPURenderer::beginFrame() {
+bool GPURenderer::beginFrame() {
     if (!m_initialized) {
-        return;
+        return false;
     }
 
     auto& profiler = FrameProfiler::Instance();
+    resetFrameState();
 
     // Acquire command buffer
     profiler.beginRender(RenderPhase::GPUCmdBuffer);
@@ -213,35 +219,76 @@ void GPURenderer::beginFrame() {
 
     if (!m_commandBuffer) {
         GAMEENGINE_ERROR(std::format("Failed to acquire GPU command buffer: {}", SDL_GetError()));
-        return;
+        return false;
     }
 
-    // Acquire swapchain texture - blocks for VSync/frame pacing
-    // NOTE: For GPU path, VSync wait happens here (at acquire), not at present.
-    // This is different from SDL_Renderer where VSync is at SDL_RenderPresent.
-    // The profiler will show this as part of Render phase, which is expected.
-    profiler.beginRender(RenderPhase::GPUSwapchain);
+    // Begin vertex pool frames (maps transfer buffers)
+    profiler.beginRender(RenderPhase::GPUVertexMap);
+    const bool spriteMapped = m_spriteVertexPool.beginFrame() != nullptr;
+    const bool entityMapped = m_entityVertexPool.beginFrame() != nullptr;
+    const bool particleMapped = m_particleVertexPool.beginFrame() != nullptr;
+    const bool primitiveMapped = m_primitiveVertexPool.beginFrame() != nullptr;
+    const bool uiMapped = m_uiVertexPool.beginFrame() != nullptr;
+    if (!spriteMapped || !entityMapped || !particleMapped || !primitiveMapped || !uiMapped) {
+        profiler.endRender(RenderPhase::GPUVertexMap);
+        GAMEENGINE_ERROR("GPURenderer::beginFrame: failed to map one or more vertex pools");
+        m_spriteVertexPool.endFrame(0);
+        m_entityVertexPool.endFrame(0);
+        m_particleVertexPool.endFrame(0);
+        m_primitiveVertexPool.endFrame(0);
+        m_uiVertexPool.endFrame(0);
+        SDL_CancelGPUCommandBuffer(m_commandBuffer);
+        resetFrameState();
+        return false;
+    }
+    profiler.endRender(RenderPhase::GPUVertexMap);
+
+    // Begin copy pass for uploads
+    profiler.beginRender(RenderPhase::GPUCopyPass);
+    m_copyPass = SDL_BeginGPUCopyPass(m_commandBuffer);
+    profiler.endRender(RenderPhase::GPUCopyPass);
+    if (!m_copyPass) {
+        GAMEENGINE_ERROR(std::format("Failed to begin GPU copy pass: {}", SDL_GetError()));
+        m_spriteVertexPool.endFrame(0);
+        m_entityVertexPool.endFrame(0);
+        m_particleVertexPool.endFrame(0);
+        m_primitiveVertexPool.endFrame(0);
+        m_uiVertexPool.endFrame(0);
+        SDL_CancelGPUCommandBuffer(m_commandBuffer);
+        resetFrameState();
+        return false;
+    }
+
+    m_frameActive = true;
+    return true;
+}
+
+bool GPURenderer::acquireSwapchainTexture() {
+    if (!m_commandBuffer || !m_frameActive) {
+        return false;
+    }
+
+    if (m_swapchainTexture != nullptr) {
+        return true;
+    }
+
+    auto& profiler = FrameProfiler::Instance();
+    profiler.beginRender(RenderPhase::GPUSwapchainWait);
     if (!SDL_WaitAndAcquireGPUSwapchainTexture(
             m_commandBuffer, m_window, &m_swapchainTexture,
             &m_swapchainWidth, &m_swapchainHeight)) {
-        profiler.endRender(RenderPhase::GPUSwapchain);
+        profiler.endRender(RenderPhase::GPUSwapchainWait);
         GAMEENGINE_ERROR(std::format("Failed to acquire swapchain texture: {}", SDL_GetError()));
-        m_swapchainTexture = nullptr;
-        // Cancel the command buffer to avoid resource leak
-        SDL_CancelGPUCommandBuffer(m_commandBuffer);
-        m_commandBuffer = nullptr;
-        return;
+        return false;
     }
-    profiler.endRender(RenderPhase::GPUSwapchain);
+    profiler.endRender(RenderPhase::GPUSwapchainWait);
 
     if (!m_swapchainTexture) {
-        // Window minimized or not visible - cancel command buffer and skip frame
-        SDL_CancelGPUCommandBuffer(m_commandBuffer);
-        m_commandBuffer = nullptr;
-        return;
+        return false;
     }
 
-    // Sync viewport to swapchain size (authoritative source from resize events)
+    // Sync viewport before scene recording so the scene texture matches the
+    // swapchain dimensions for this frame.
     if (m_swapchainWidth != m_viewportWidth || m_swapchainHeight != m_viewportHeight) {
         GAMEENGINE_INFO(std::format("Swapchain size changed: {}x{} -> {}x{}",
                                     m_viewportWidth, m_viewportHeight,
@@ -249,23 +296,11 @@ void GPURenderer::beginFrame() {
         updateViewport(m_swapchainWidth, m_swapchainHeight);
     }
 
-    // Begin vertex pool frames (maps transfer buffers)
-    profiler.beginRender(RenderPhase::GPUVertexMap);
-    m_spriteVertexPool.beginFrame();
-    m_entityVertexPool.beginFrame();
-    m_particleVertexPool.beginFrame();
-    m_primitiveVertexPool.beginFrame();
-    m_uiVertexPool.beginFrame();
-    profiler.endRender(RenderPhase::GPUVertexMap);
-
-    // Begin copy pass for uploads
-    profiler.beginRender(RenderPhase::GPUCopyPass);
-    m_copyPass = SDL_BeginGPUCopyPass(m_commandBuffer);
-    profiler.endRender(RenderPhase::GPUCopyPass);
+    return true;
 }
 
 SDL_GPURenderPass* GPURenderer::beginScenePass() {
-    if (!m_commandBuffer) {
+    if (!m_commandBuffer || !m_frameActive) {
         return nullptr;
     }
 
@@ -305,15 +340,24 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
         m_uiVertexPool.endFrame(uiVertexCount);
 
         // Upload vertex data
-        m_spriteVertexPool.upload(m_copyPass);
-        m_entityVertexPool.upload(m_copyPass);
-        m_particleVertexPool.upload(m_copyPass);
-        m_primitiveVertexPool.upload(m_copyPass);
-        m_uiVertexPool.upload(m_copyPass);
+        if (!m_spriteVertexPool.upload(m_copyPass) ||
+            !m_entityVertexPool.upload(m_copyPass) ||
+            !m_particleVertexPool.upload(m_copyPass) ||
+            !m_primitiveVertexPool.upload(m_copyPass) ||
+            !m_uiVertexPool.upload(m_copyPass)) {
+            SDL_EndGPUCopyPass(m_copyPass);
+            m_copyPass = nullptr;
+            profiler.endRender(RenderPhase::GPUUpload);
+            return nullptr;
+        }
 
         SDL_EndGPUCopyPass(m_copyPass);
         m_copyPass = nullptr;
         profiler.endRender(RenderPhase::GPUUpload);
+    }
+
+    if (!acquireSwapchainTexture()) {
+        return nullptr;
     }
 
     // Begin scene render pass
@@ -322,10 +366,16 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
         {0.122f, 0.125f, 0.133f, 1.0f}  // HammerGray slate gray (31, 32, 34)
     );
 
+    profiler.beginRender(RenderPhase::GPUScenePass);
     m_currentPass = SDL_BeginGPURenderPass(m_commandBuffer, &colorTarget, 1, nullptr);
+    profiler.endRender(RenderPhase::GPUScenePass);
+    if (!m_currentPass) {
+        GAMEENGINE_ERROR(std::format("Failed to begin scene render pass: {}", SDL_GetError()));
+        return nullptr;
+    }
 
     // Set viewport to match scene texture dimensions
-    // Scene texture is 3x viewport for zoom headroom
+    // Scene texture matches viewport dimensions (zoom handled by composite shader)
     uint32_t sceneW = m_sceneTexture->getWidth();
     uint32_t sceneH = m_sceneTexture->getHeight();
 
@@ -350,7 +400,7 @@ SDL_GPURenderPass* GPURenderer::beginScenePass() {
 }
 
 SDL_GPURenderPass* GPURenderer::beginSwapchainPass() {
-    if (!m_commandBuffer) {
+    if (!m_commandBuffer || !m_frameActive) {
         return nullptr;
     }
 
@@ -360,9 +410,7 @@ SDL_GPURenderPass* GPURenderer::beginSwapchainPass() {
         m_currentPass = nullptr;
     }
 
-    // Swapchain already acquired in beginFrame()
     if (!m_swapchainTexture) {
-        // Window minimized or not visible
         return nullptr;
     }
 
@@ -373,7 +421,14 @@ SDL_GPURenderPass* GPURenderer::beginSwapchainPass() {
     colorTarget.store_op = SDL_GPU_STOREOP_STORE;
     colorTarget.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
 
+    auto& profiler = FrameProfiler::Instance();
+    profiler.beginRender(RenderPhase::GPUSwapPass);
     m_currentPass = SDL_BeginGPURenderPass(m_commandBuffer, &colorTarget, 1, nullptr);
+    profiler.endRender(RenderPhase::GPUSwapPass);
+    if (!m_currentPass) {
+        GAMEENGINE_ERROR(std::format("Failed to begin swapchain render pass: {}", SDL_GetError()));
+        return nullptr;
+    }
 
     // Set viewport to swapchain size (synced in beginFrame)
     SDL_GPUViewport viewport{};
@@ -385,11 +440,13 @@ SDL_GPURenderPass* GPURenderer::beginSwapchainPass() {
     viewport.max_depth = 1.0f;
     SDL_SetGPUViewport(m_currentPass, &viewport);
 
+    m_frameReadyForPresentation = true;
     return m_currentPass;
 }
 
 void GPURenderer::endFrame() {
     if (!m_commandBuffer) {
+        resetFrameState();
         return;
     }
 
@@ -408,11 +465,11 @@ void GPURenderer::endFrame() {
     // Submit command buffer (measure to detect backpressure)
     auto& profiler = FrameProfiler::Instance();
     profiler.beginRender(RenderPhase::GPUSubmit);
-    SDL_SubmitGPUCommandBuffer(m_commandBuffer);
+    if (!SDL_SubmitGPUCommandBuffer(m_commandBuffer)) {
+        GAMEENGINE_ERROR(std::format("Failed to submit GPU command buffer: {}", SDL_GetError()));
+    }
     profiler.endRender(RenderPhase::GPUSubmit);
-
-    m_commandBuffer = nullptr;
-    m_swapchainTexture = nullptr;
+    resetFrameState();
 }
 
 SDL_GPUGraphicsPipeline* GPURenderer::getSpriteOpaquePipeline() const {
@@ -437,6 +494,14 @@ SDL_GPUGraphicsPipeline* GPURenderer::getCompositePipeline() const {
 
 SDL_GPUGraphicsPipeline* GPURenderer::getUISpritePipeline() const {
     return m_uiSpritePipeline.get();
+}
+
+SDL_GPUGraphicsPipeline* GPURenderer::getUITextAlphaPipeline() const {
+    return m_uiTextAlphaPipeline.get();
+}
+
+SDL_GPUGraphicsPipeline* GPURenderer::getUITextSDFPipeline() const {
+    return m_uiTextSDFPipeline.get();
 }
 
 SDL_GPUGraphicsPipeline* GPURenderer::getUIPrimitivePipeline() const {
@@ -560,6 +625,9 @@ bool GPURenderer::loadShaders() {
     ShaderInfo spriteFragInfo{};
     spriteFragInfo.numSamplers = 1;  // Texture sampler
 
+    ShaderInfo textFragInfo{};
+    textFragInfo.numSamplers = 1;
+
     // Color shaders used by both particle and primitive pipelines
     ShaderInfo colorVertInfo{};
     colorVertInfo.numUniformBuffers = 1;
@@ -574,23 +642,29 @@ bool GPURenderer::loadShaders() {
     compositeFragInfo.numSamplers = 1;
     compositeFragInfo.numUniformBuffers = 1;  // CompositeUBO
 
-    // Load all shaders (use ResourcePath::resolve for bundle compatibility)
-    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/sprite.vert"), SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo)) {
+    // Shader manager owns resource resolution for platform-specific shader binaries.
+    if (!shaderMgr.loadShader("res/shaders/sprite.vert", SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/sprite.frag"), SDL_GPU_SHADERSTAGE_FRAGMENT, spriteFragInfo)) {
+    if (!shaderMgr.loadShader("res/shaders/sprite.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, spriteFragInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/color.vert"), SDL_GPU_SHADERSTAGE_VERTEX, colorVertInfo)) {
+    if (!shaderMgr.loadShader("res/shaders/text_alpha.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, textFragInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/color.frag"), SDL_GPU_SHADERSTAGE_FRAGMENT, colorFragInfo)) {
+    if (!shaderMgr.loadShader("res/shaders/text_sdf.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, textFragInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/composite.vert"), SDL_GPU_SHADERSTAGE_VERTEX, compositeVertInfo)) {
+    if (!shaderMgr.loadShader("res/shaders/color.vert", SDL_GPU_SHADERSTAGE_VERTEX, colorVertInfo)) {
         return false;
     }
-    if (!shaderMgr.loadShader(ResourcePath::resolve("res/shaders/composite.frag"), SDL_GPU_SHADERSTAGE_FRAGMENT, compositeFragInfo)) {
+    if (!shaderMgr.loadShader("res/shaders/color.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, colorFragInfo)) {
+        return false;
+    }
+    if (!shaderMgr.loadShader("res/shaders/composite.vert", SDL_GPU_SHADERSTAGE_VERTEX, compositeVertInfo)) {
+        return false;
+    }
+    if (!shaderMgr.loadShader("res/shaders/composite.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, compositeFragInfo)) {
         return false;
     }
 
@@ -598,26 +672,47 @@ bool GPURenderer::loadShaders() {
 }
 
 bool GPURenderer::createPipelines() {
-    auto& shaderMgr = GPUShaderManager::Instance();
+    const auto& shaderMgr = GPUShaderManager::Instance();
+    ShaderInfo spriteVertInfo{};
+    spriteVertInfo.numUniformBuffers = 1;
+
+    ShaderInfo spriteFragInfo{};
+    spriteFragInfo.numSamplers = 1;
+
+    ShaderInfo textFragInfo{};
+    textFragInfo.numSamplers = 1;
+
+    ShaderInfo colorVertInfo{};
+    colorVertInfo.numUniformBuffers = 1;
+
+    ShaderInfo colorFragInfo{};
+
+    ShaderInfo compositeVertInfo{};
+
+    ShaderInfo compositeFragInfo{};
+    compositeFragInfo.numSamplers = 1;
+    compositeFragInfo.numUniformBuffers = 1;
 
     // Scene-rendering pipelines use the scene texture format (RGBA8)
     // Composite pipeline uses the swapchain format (may be BGRA8 on some platforms)
     SDL_GPUTextureFormat sceneFormat = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
     SDL_GPUTextureFormat swapchainFormat = GPUDevice::Instance().getSwapchainFormat();
 
-    // Cache resolved shader paths (must match keys used in loadShaders)
-    const std::string spriteVert = ResourcePath::resolve("res/shaders/sprite.vert");
-    const std::string spriteFrag = ResourcePath::resolve("res/shaders/sprite.frag");
-    const std::string colorVert = ResourcePath::resolve("res/shaders/color.vert");
-    const std::string colorFrag = ResourcePath::resolve("res/shaders/color.frag");
-    const std::string compositeVert = ResourcePath::resolve("res/shaders/composite.vert");
-    const std::string compositeFrag = ResourcePath::resolve("res/shaders/composite.frag");
+    // Cache shader keys; GPUShaderManager resolves platform-specific binaries internally.
+    const std::string spriteVert = "res/shaders/sprite.vert";
+    const std::string spriteFrag = "res/shaders/sprite.frag";
+    const std::string textAlphaFrag = "res/shaders/text_alpha.frag";
+    const std::string textSDFFrag = "res/shaders/text_sdf.frag";
+    const std::string colorVert = "res/shaders/color.vert";
+    const std::string colorFrag = "res/shaders/color.frag";
+    const std::string compositeVert = "res/shaders/composite.vert";
+    const std::string compositeFrag = "res/shaders/composite.frag";
 
     // Sprite opaque pipeline (renders to scene texture)
     {
         auto config = GPUPipeline::createSpriteConfig(
-            shaderMgr.getShader(spriteVert),
-            shaderMgr.getShader(spriteFrag),
+            shaderMgr.getShader(spriteVert, SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo),
+            shaderMgr.getShader(spriteFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, spriteFragInfo),
             sceneFormat,
             false  // opaque
         );
@@ -629,8 +724,8 @@ bool GPURenderer::createPipelines() {
     // Sprite alpha pipeline (renders to scene texture)
     {
         auto config = GPUPipeline::createSpriteConfig(
-            shaderMgr.getShader(spriteVert),
-            shaderMgr.getShader(spriteFrag),
+            shaderMgr.getShader(spriteVert, SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo),
+            shaderMgr.getShader(spriteFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, spriteFragInfo),
             sceneFormat,
             true  // alpha
         );
@@ -642,8 +737,8 @@ bool GPURenderer::createPipelines() {
     // Particle pipeline (renders to scene texture, uses color shaders)
     {
         auto config = GPUPipeline::createParticleConfig(
-            shaderMgr.getShader(colorVert),
-            shaderMgr.getShader(colorFrag),
+            shaderMgr.getShader(colorVert, SDL_GPU_SHADERSTAGE_VERTEX, colorVertInfo),
+            shaderMgr.getShader(colorFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, colorFragInfo),
             sceneFormat
         );
         if (!m_particlePipeline.create(m_device, config)) {
@@ -654,8 +749,8 @@ bool GPURenderer::createPipelines() {
     // Primitive pipeline (renders to scene texture, uses color shaders)
     {
         auto config = GPUPipeline::createPrimitiveConfig(
-            shaderMgr.getShader(colorVert),
-            shaderMgr.getShader(colorFrag),
+            shaderMgr.getShader(colorVert, SDL_GPU_SHADERSTAGE_VERTEX, colorVertInfo),
+            shaderMgr.getShader(colorFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, colorFragInfo),
             sceneFormat
         );
         if (!m_primitivePipeline.create(m_device, config)) {
@@ -666,8 +761,8 @@ bool GPURenderer::createPipelines() {
     // Composite pipeline (renders to swapchain)
     {
         auto config = GPUPipeline::createCompositeConfig(
-            shaderMgr.getShader(compositeVert),
-            shaderMgr.getShader(compositeFrag),
+            shaderMgr.getShader(compositeVert, SDL_GPU_SHADERSTAGE_VERTEX, compositeVertInfo),
+            shaderMgr.getShader(compositeFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, compositeFragInfo),
             swapchainFormat
         );
         if (!m_compositePipeline.create(m_device, config)) {
@@ -678,8 +773,8 @@ bool GPURenderer::createPipelines() {
     // UI sprite pipeline (renders to swapchain for text/icons)
     {
         auto config = GPUPipeline::createSpriteConfig(
-            shaderMgr.getShader(spriteVert),
-            shaderMgr.getShader(spriteFrag),
+            shaderMgr.getShader(spriteVert, SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo),
+            shaderMgr.getShader(spriteFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, spriteFragInfo),
             swapchainFormat,
             true  // alpha blending for text
         );
@@ -688,11 +783,35 @@ bool GPURenderer::createPipelines() {
         }
     }
 
+    {
+        auto config = GPUPipeline::createSpriteConfig(
+            shaderMgr.getShader(spriteVert, SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo),
+            shaderMgr.getShader(textAlphaFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, textFragInfo),
+            swapchainFormat,
+            true
+        );
+        if (!m_uiTextAlphaPipeline.create(m_device, config)) {
+            return false;
+        }
+    }
+
+    {
+        auto config = GPUPipeline::createSpriteConfig(
+            shaderMgr.getShader(spriteVert, SDL_GPU_SHADERSTAGE_VERTEX, spriteVertInfo),
+            shaderMgr.getShader(textSDFFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, textFragInfo),
+            swapchainFormat,
+            true
+        );
+        if (!m_uiTextSDFPipeline.create(m_device, config)) {
+            return false;
+        }
+    }
+
     // UI primitive pipeline (renders to swapchain for UI backgrounds, uses color shaders)
     {
         auto config = GPUPipeline::createPrimitiveConfig(
-            shaderMgr.getShader(colorVert),
-            shaderMgr.getShader(colorFrag),
+            shaderMgr.getShader(colorVert, SDL_GPU_SHADERSTAGE_VERTEX, colorVertInfo),
+            shaderMgr.getShader(colorFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, colorFragInfo),
             swapchainFormat
         );
         if (!m_uiPrimitivePipeline.create(m_device, config)) {
@@ -703,26 +822,44 @@ bool GPURenderer::createPipelines() {
     return true;
 }
 
-bool GPURenderer::createSceneTexture() {
+bool GPURenderer::createSceneTexture()
+{
     // Create scene texture at viewport size (matching SDL_Renderer approach)
     // Zoom is handled in the composite shader, not by rendering at larger scale
     uint32_t sceneWidth = m_viewportWidth;
     uint32_t sceneHeight = m_viewportHeight;
 
-    m_sceneTexture = std::make_unique<GPUTexture>(
+    // Create new texture first, validate before replacing old one
+    auto newTexture = std::make_unique<GPUTexture>(
         m_device,
         sceneWidth, sceneHeight,
         SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
         SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER
     );
 
-    if (!m_sceneTexture->isValid()) {
+    if (!newTexture->isValid())
+    {
         GAMEENGINE_ERROR(std::format("Failed to create scene texture {}x{}", sceneWidth, sceneHeight));
+        // Old m_sceneTexture remains valid if it existed
         return false;
     }
 
+    // Success - now safe to replace the old texture
+    m_sceneTexture = std::move(newTexture);
+
     GAMEENGINE_DEBUG(std::format("Scene texture created: {}x{}", sceneWidth, sceneHeight));
     return true;
+}
+
+void GPURenderer::resetFrameState() {
+    m_commandBuffer = nullptr;
+    m_copyPass = nullptr;
+    m_currentPass = nullptr;
+    m_swapchainTexture = nullptr;
+    m_swapchainWidth = 0;
+    m_swapchainHeight = 0;
+    m_frameActive = false;
+    m_frameReadyForPresentation = false;
 }
 
 } // namespace HammerEngine

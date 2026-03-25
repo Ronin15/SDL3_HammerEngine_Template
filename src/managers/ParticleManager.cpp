@@ -9,6 +9,7 @@
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/SoundManager.hpp"
 #include "events/ParticleEffectEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "utils/SIMDMath.hpp"
@@ -555,29 +556,6 @@ bool ParticleManager::init() {
     m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false;
 
-    // Register EventManager handler for ParticleEffect events
-    {
-      auto &eventMgr = EventManager::Instance();
-      eventMgr.registerHandler(EventTypeId::ParticleEffect, [](const EventData &data) {
-        if (!data.isActive() || !data.event) return;
-        auto pe = std::dynamic_pointer_cast<ParticleEffectEvent>(data.event);
-        if (pe) {
-          pe->execute();
-        }
-      });
-      // Register handler for Weather events to drive weather effects
-      eventMgr.registerHandler(EventTypeId::Weather, [](const EventData &data) {
-        if (!data.isActive() || !data.event) return;
-        auto we = std::dynamic_pointer_cast<WeatherEvent>(data.event);
-        if (we) {
-          const auto &wp = we->getWeatherParams();
-          PARTICLE_INFO(std::format("Weather handler: {}, intensity={:.2f}, transition={:.2f}s",
-                                    we->getWeatherTypeString(), wp.intensity, wp.transitionTime));
-          we->execute();
-        }
-      });
-    }
-
     PARTICLE_INFO("ParticleManager initialized successfully");
     return true;
 
@@ -733,6 +711,77 @@ void ParticleManager::prepareForStateTransition() {
       "{} independent effects, {} regular effects, cleared {} particles",
       weatherEffectsStopped, independentEffectsStopped, regularEffectsStopped,
       particlesCleared));
+
+}
+
+void ParticleManager::handleParticleEffectEvent(const EventData &data) {
+  if (!data.isActive() || !data.event) {
+    return;
+  }
+
+  auto pe = std::dynamic_pointer_cast<ParticleEffectEvent>(data.event);
+  if (!pe) {
+    return;
+  }
+
+  if (!isInitialized() || isShutdown()) {
+    PARTICLE_ERROR(std::format("ParticleManager not available for effect: {}",
+                               pe->getEffectName()));
+    return;
+  }
+
+  const Vector2D &pos = pe->getPosition();
+  float intensity = pe->getIntensity();
+  float duration = pe->getDuration();
+  const std::string &groupTag = pe->getGroupTag();
+  const std::string &soundEffect = pe->getSoundEffect();
+
+  uint32_t effectId = 0;
+  if (duration == -1.0f) {
+    effectId = playIndependentEffect(pe->getEffectType(), pos, intensity,
+                                     duration, groupTag, soundEffect);
+  } else {
+    effectId = playEffect(pe->getEffectType(), pos, intensity);
+  }
+
+  if (!soundEffect.empty()) {
+    try {
+      SoundManager &soundMgr = SoundManager::Instance();
+      soundMgr.playSFX(soundEffect, 0, 100);
+    } catch (const std::exception &e) {
+      PARTICLE_ERROR(std::format("Sound effect failed: {}", e.what()));
+    }
+  }
+
+  if (effectId != 0) {
+    PARTICLE_INFO(std::format(
+        "ParticleEffect '{}' triggered at ({}, {}) intensity={} -> ID: {}",
+        pe->getEffectName(), pos.getX(), pos.getY(), intensity, effectId));
+  }
+}
+
+void ParticleManager::handleWeatherEvent(const EventData &data) {
+  if (!data.isActive() || !data.event) {
+    return;
+  }
+
+  auto we = std::dynamic_pointer_cast<WeatherEvent>(data.event);
+  if (!we) {
+    return;
+  }
+
+  if (!isInitialized() || isShutdown()) {
+    PARTICLE_WARN("ParticleManager not initialized - weather effects disabled");
+    return;
+  }
+
+  const auto &wp = we->getWeatherParams();
+  PARTICLE_INFO(std::format(
+      "Weather handler: {}, intensity={:.2f}, transition={:.2f}s",
+      we->getWeatherTypeString(), wp.intensity, wp.transitionTime));
+
+  triggerWeatherEffect(we->getWeatherTypeString(), wp.intensity,
+                       wp.transitionTime);
 }
 
 void ParticleManager::update(float deltaTime) {
@@ -764,9 +813,16 @@ void ParticleManager::update(float deltaTime) {
       return;
     }
 
-    // Count active particles for accurate threading decision
+    // Count active particles for debug/perf reporting.
     const size_t activeCount = getActiveParticleCount();
     if (activeCount == 0) {
+      return;
+    }
+
+    // WorkerBudget should learn against the actual traversed span because the
+    // particle update iterates every slot up to maxActiveIndex and skips holes.
+    const size_t traversedCount = std::min(bufferSize, m_storage.maxActiveIndex + 1);
+    if (traversedCount == 0) {
       return;
     }
 
@@ -774,10 +830,13 @@ void ParticleManager::update(float deltaTime) {
     m_windPhase += deltaTime * 0.5f;
 
     // Phase 4: Update particle physics with optimal threading strategy
+    // Time only the physics batch for WorkerBudget (preprocessing is fixed overhead)
+    auto batchStartTime = std::chrono::high_resolution_clock::now();
+
     // WorkerBudget is the AUTHORITATIVE source - no manager overrides
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
     auto decision = budgetMgr.shouldUseThreading(
-        HammerEngine::SystemType::Particle, activeCount);
+        HammerEngine::SystemType::Particle, traversedCount);
     bool useThreading = decision.shouldThread;
 
     // Track threading decision for interval logging (local vars, zero overhead in release)
@@ -787,18 +846,16 @@ void ParticleManager::update(float deltaTime) {
       // Use WorkerBudget system if enabled, otherwise fall back to legacy
       // threading
       if (m_useWorkerBudget.load(std::memory_order_acquire)) {
-        // Limit range to the highest potentially-active index + 1
-        const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
-        updateWithWorkerBudget(deltaTime, rangeEnd, threadingInfo);
+        updateWithWorkerBudget(deltaTime, traversedCount, threadingInfo);
       } else {
-        const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
-        updateParticlesThreaded(deltaTime, rangeEnd, threadingInfo);
+        updateParticlesThreaded(deltaTime, traversedCount, threadingInfo);
       }
     } else {
       // Single-threaded: threadingInfo stays at defaults (wasThreaded=false, batchCount=1)
-      const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
-      updateParticlesSingleThreaded(deltaTime, rangeEnd);
+      updateParticlesSingleThreaded(deltaTime, traversedCount);
     }
+
+    auto batchEndTime = std::chrono::high_resolution_clock::now();
 
   // Phase 5: Swap buffers for next frame (lock-free)
   m_storage.swapBuffers();
@@ -860,15 +917,11 @@ void ParticleManager::update(float deltaTime) {
     }
 #endif
 
-    // Report results for adaptive tuning - report for BOTH modes
-    // Even though threaded timing isn't perfectly accurate (fire-and-forget pattern),
-    // having some data lets WorkerBudget make comparisons and transition between modes.
-    // Note: activeCount > 0 guaranteed here due to early return at line 770
-    auto updateEndTime = std::chrono::high_resolution_clock::now();
-    double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
+    // Report ONLY physics batch time for adaptive tuning (not preprocessing/postprocessing)
+    double batchTimeMs = std::chrono::duration<double, std::milli>(batchEndTime - batchStartTime).count();
     budgetMgr.reportExecution(HammerEngine::SystemType::Particle,
-                              activeCount, threadingInfo.wasThreaded,
-                              threadingInfo.batchCount, totalUpdateTime);
+                              traversedCount, threadingInfo.wasThreaded,
+                              threadingInfo.batchCount, batchTimeMs);
 
   } catch (const std::exception &e) {
     PARTICLE_ERROR(std::format("Exception in ParticleManager::update: {}", e.what()));
@@ -1099,6 +1152,12 @@ void ParticleManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
     return;
   }
 
+  const auto* sceneTexture = gpuRenderer.getSceneTexture();
+  if (!sceneTexture) {
+    return;
+  }
+  const float sceneHeight = static_cast<float>(sceneTexture->getHeight());
+
   constexpr size_t VERTICES_PER_QUAD = 6;  // Two triangles
   size_t maxVertices = vertexPool.getMaxVertices();
   size_t vertexOffset = 0;
@@ -1137,7 +1196,7 @@ void ParticleManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
     // Helper to write a ColorVertex
     auto writeVertex = [&](float px, float py) {
       basePtr[vertexOffset].x = px;
-      basePtr[vertexOffset].y = py;
+      basePtr[vertexOffset].y = sceneHeight - py;
       basePtr[vertexOffset].r = r;
       basePtr[vertexOffset].g = g;
       basePtr[vertexOffset].b = b;
@@ -1174,14 +1233,14 @@ void ParticleManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
   if (vertexCount == 0) return;
 
   // Get scene texture for ortho matrix dimensions
-  auto* sceneTexture = gpuRenderer.getSceneTexture();
+  const auto* sceneTexture = gpuRenderer.getSceneTexture();
   if (!sceneTexture) return;
 
   // Create orthographic projection for scene texture
   float orthoMatrix[16];
   HammerEngine::GPURenderer::createOrthoMatrix(
       0.0f, static_cast<float>(sceneTexture->getWidth()),
-      static_cast<float>(sceneTexture->getHeight()), 0.0f,
+      0.0f, static_cast<float>(sceneTexture->getHeight()),
       orthoMatrix);
 
   // Push view-projection matrix
@@ -2276,7 +2335,7 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
   }
 }
 void ParticleManager::updateParticlesThreaded(float deltaTime,
-                                              size_t activeParticleCount,
+                                              size_t traversedParticleCount,
                                               ParticleThreadingInfo& outThreadingInfo) {
   // Use lock-free double buffering for threaded updates
   auto &currentBuffer = m_storage.getCurrentBuffer();
@@ -2291,7 +2350,7 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
       currentBuffer.lives.size() != bufferSize) {
     // Buffer is inconsistent, fall back to single-threaded update
     // outThreadingInfo stays at defaults (wasThreaded=false, batchCount=1)
-    updateParticlesSingleThreaded(deltaTime, activeParticleCount);
+    updateParticlesSingleThreaded(deltaTime, traversedParticleCount);
     return;
   }
 
@@ -2307,11 +2366,11 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
 
   // Get optimal workers (WorkerBudget determines everything dynamically)
   size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-      HammerEngine::SystemType::Particle, activeParticleCount);
+      HammerEngine::SystemType::Particle, traversedParticleCount);
 
   // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on timing)
   auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-      HammerEngine::SystemType::Particle, activeParticleCount, optimalWorkerCount);
+      HammerEngine::SystemType::Particle, traversedParticleCount, optimalWorkerCount);
 
   // Set threading info for interval logging (local struct, zero overhead in release)
   outThreadingInfo.workerCount = optimalWorkerCount;
@@ -2320,8 +2379,8 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   outThreadingInfo.batchCount = batchCount;
   outThreadingInfo.wasThreaded = true;
 
-  size_t particlesPerBatch = activeParticleCount / batchCount;
-  size_t remainingParticles = activeParticleCount % batchCount;
+  size_t particlesPerBatch = traversedParticleCount / batchCount;
+  size_t remainingParticles = traversedParticleCount % batchCount;
 
   // Reuse member buffer instead of creating local vector (eliminates per-frame allocation)
   // Use swap() to preserve capacity on both vectors (avoids reallocation)
@@ -2371,9 +2430,9 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
 }
 
 void ParticleManager::updateParticlesSingleThreaded(
-    float deltaTime, size_t activeParticleCount) {
+    float deltaTime, size_t traversedParticleCount) {
   auto &currentBuffer = m_storage.getCurrentBuffer();
-  updateParticleRange(currentBuffer, 0, activeParticleCount, deltaTime, m_windPhase);
+  updateParticleRange(currentBuffer, 0, traversedParticleCount, deltaTime, m_windPhase);
 }
 
 void ParticleManager::updateParticleRange(
@@ -2397,11 +2456,14 @@ void ParticleManager::updateParticleRange(
   const size_t flagsSize = particles.flags.size();
   const size_t colorsSize = particles.colors.size();
   const size_t effectTypesSize = particles.effectTypes.size();
-  
+  const size_t prevPosXSize = particles.prevPosX.size();
+  const size_t prevPosYSize = particles.prevPosY.size();
+
   // BOUNDS SAFETY: Find minimum consistent size across all vectors
+  // CRITICAL: Include prevPosX/Y - SIMD physics writes to them
   const size_t safeSize = std::min({positionsSize, velocitiesSize, accelerationsSize,
                                    livesSize, maxLivesSize, sizesSize, flagsSize,
-                                   colorsSize, effectTypesSize});
+                                   colorsSize, effectTypesSize, prevPosXSize, prevPosYSize});
   
   // Ensure we don't exceed the actual safe particle buffer size
   endIdx = std::min(endIdx, safeSize);
@@ -2763,7 +2825,7 @@ void ParticleManager::enableWorkerBudgetThreading(bool enable) {
 }
 
 void ParticleManager::updateWithWorkerBudget(float deltaTime,
-                                             size_t particleCount,
+                                             size_t traversedParticleCount,
                                              ParticleThreadingInfo& outThreadingInfo) {
   /**
    * WorkerBudget-optimized particle update path.
@@ -2773,22 +2835,22 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime,
    * threaded update implementation.
    *
    * @param deltaTime Time elapsed since last update
-   * @param particleCount Current number of active particles
+   * @param traversedParticleCount Current traversed particle span
    * @param outThreadingInfo Output struct for threading info (zero overhead in release)
    */
   // WorkerBudget is the AUTHORITATIVE source - no manager overrides
   auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
   auto decision = budgetMgr.shouldUseThreading(
-      HammerEngine::SystemType::Particle, particleCount);
+      HammerEngine::SystemType::Particle, traversedParticleCount);
   if (!decision.shouldThread) {
     // Fall back to regular single-threaded update
     // outThreadingInfo stays at defaults (wasThreaded=false, batchCount=1)
-    updateParticlesSingleThreaded(deltaTime, particleCount);
+    updateParticlesSingleThreaded(deltaTime, traversedParticleCount);
     return;
   }
 
   // Use WorkerBudget-aware threaded update
-  updateParticlesThreaded(deltaTime, particleCount, outThreadingInfo);
+  updateParticlesThreaded(deltaTime, traversedParticleCount, outThreadingInfo);
 }
 
 #ifndef NDEBUG

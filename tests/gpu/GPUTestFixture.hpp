@@ -5,6 +5,8 @@
 #define GPU_TEST_FIXTURE_HPP
 
 #include <SDL3/SDL.h>
+#include "gpu/GPUPlatformConfig.hpp"
+#include "utils/ResourcePath.hpp"
 #include <boost/test/unit_test.hpp>
 
 namespace HammerEngine {
@@ -36,6 +38,7 @@ public:
                 s_gpuAvailable = false;
             } else {
                 s_sdlInitialized = true;
+                HammerEngine::ResourcePath::init();
                 // Check if GPU is available by trying to create a hidden window
                 checkGPUAvailability();
             }
@@ -126,9 +129,9 @@ protected:
 
         // Try to create a GPU device
         SDL_GPUDevice* device = SDL_CreateGPUDevice(
-            SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_MSL,
+            HammerEngine::GPUPlatformConfig::getRequestedShaderFormats(),
             false,  // debug mode
-            nullptr // name
+            HammerEngine::GPUPlatformConfig::getPreferredDriverName()
         );
 
         if (!device) {

@@ -53,7 +53,9 @@ public:
     std::lock_guard<std::mutex> lock(s_logMutex);
     printf("Hammer Game Engine - [%s] %s: %s\n", system, getLevelString(level),
            message.c_str());
-    fflush(stdout);
+    if (level == LogLevel::ERROR_LEVEL || level == LogLevel::CRITICAL) {
+      fflush(stdout);
+    }
   }
   static void Log(LogLevel level, const char *system, const char *message) {
     if (s_benchmarkMode.load(std::memory_order_relaxed)) {
@@ -64,7 +66,9 @@ public:
     std::lock_guard<std::mutex> lock(s_logMutex);
     printf("Hammer Game Engine - [%s] %s: %s\n", system, getLevelString(level),
            message);
-    fflush(stdout);
+    if (level == LogLevel::ERROR_LEVEL || level == LogLevel::CRITICAL) {
+      fflush(stdout);
+    }
   }
 
 private:
@@ -401,6 +405,27 @@ inline std::mutex Logger::s_logMutex{};
 #define ITEM_WARN(msg) HAMMER_WARN("ItemController", msg)
 #define ITEM_INFO(msg) HAMMER_INFO("ItemController", msg)
 #define ITEM_DEBUG(msg) HAMMER_DEBUG("ItemController", msg)
+
+// SocialController logging
+#define SOCIAL_CRITICAL(msg) HAMMER_CRITICAL("SocialController", msg)
+#define SOCIAL_ERROR(msg) HAMMER_ERROR("SocialController", msg)
+#define SOCIAL_WARN(msg) HAMMER_WARN("SocialController", msg)
+#define SOCIAL_INFO(msg) HAMMER_INFO("SocialController", msg)
+#define SOCIAL_DEBUG(msg) HAMMER_DEBUG("SocialController", msg)
+
+// HarvestController logging
+#define HARVEST_CRITICAL(msg) HAMMER_CRITICAL("HarvestController", msg)
+#define HARVEST_ERROR(msg) HAMMER_ERROR("HarvestController", msg)
+#define HARVEST_WARN(msg) HAMMER_WARN("HarvestController", msg)
+#define HARVEST_INFO(msg) HAMMER_INFO("HarvestController", msg)
+#define HARVEST_DEBUG(msg) HAMMER_DEBUG("HarvestController", msg)
+
+#define RESOURCE_RENDER_CRITICAL(msg) HAMMER_CRITICAL("ResourceRenderController", msg)
+#define RESOURCE_RENDER_ERROR(msg) HAMMER_ERROR("ResourceRenderController", msg)
+#define RESOURCE_RENDER_WARN(msg) HAMMER_WARN("ResourceRenderController", msg)
+#define RESOURCE_RENDER_INFO(msg) HAMMER_INFO("ResourceRenderController", msg)
+#define RESOURCE_RENDER_DEBUG(msg) HAMMER_DEBUG("ResourceRenderController", msg)
+#define RESOURCE_RENDER_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "ResourceRenderController", msg)
 
 // Conditional logging macros for common systems
 // Use these when an if-block contains ONLY logging (eliminates condition overhead in release)

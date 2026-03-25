@@ -1,6 +1,6 @@
 # SDL3 HammerEngine Template
 
-A modern, production-ready C++20 SDL3 game engine template for 2D games. Built for rapid prototyping and scalable game development, it features Data-Oriented Design with EntityDataManager as the central data authority, robust multi-threading, high-performance AI supporting 10K+ entities, a professional UI system, and comprehensive resource and event management. Designed for cross-platform deployment (Windows, macOS, Linux) with a focus on performance, safety, and extensibility.
+A modern, production-ready C++20 SDL3 game engine template for 2D games. Built for rapid prototyping and scalable game development, it features Data-Oriented Design with EntityDataManager as the central data authority, robust multi-threading, high-performance AI supporting 10K+ entities, a professional UI system, and comprehensive resource, world, and event systems. Designed for cross-platform deployment (Windows, macOS, Linux) with a focus on performance, safety, and extensibility.
 
 ## Key Features
 
@@ -10,27 +10,27 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Rendering & Engine Core**
 
-    Fixed timestep game loop with smooth interpolation at any display refresh rate. Adaptive VSync, sprite sheet animations, particle effects with camera-aware culling, and pixel-perfect zoomed rendering with smooth sub-pixel scrolling. Optional GPU rendering path (`-DUSE_SDL3_GPU=ON`) for modern graphics with day/night ambient lighting effects.
+    Fixed timestep game loop with smooth interpolation at any display refresh rate. VSync-aware frame pacing, sprite sheet animations, particle effects with camera-aware culling, and pixel-perfect zoomed rendering with smooth sub-pixel scrolling. Optional GPU rendering path (`-DUSE_SDL3_GPU=ON`) for modern graphics with day/night ambient lighting effects.
 
 - **Adaptive Multi-Threading System**
 
-   Hardware-adaptive thread pool with intelligent WorkerBudget batch optimization. Automatically detects logical cores (including SMT/hyperthreading) and reserves one to reduce OS contention. Sequential manager execution gives each system ALL workers during its update window. Throughput-based hill-climbing converges to optimal batch sizes for your hardware. Priority-based scheduling (5 levels) with cache-line aligned atomics for minimal lock contention.
+   Hardware-adaptive thread pool with intelligent WorkerBudget batch optimization. Automatically detects logical cores (including SMT/hyperthreading) and reserves one to reduce OS contention. Sequential manager execution gives each system ALL workers during its update window. Priority-based scheduling (5 levels) and adaptive batch sizing help the engine scale cleanly across hardware.
 
 - **High-Performance AI System**
 
-    Data-Oriented Design with EntityDataManager as single source of truth. Cache-friendly, lock-free, batch-processed AI using Structure-of-Arrays storage. Supports 10K+ entities at 60+ FPS with only 4-6% CPU usage. Includes dynamic behaviors (Wander, Patrol, Guard, Flee, Attack, etc.), simulation tiers (Active/Background/Hibernated), and distance-based culling.
+    Data-Oriented Design with EntityDataManager as single source of truth. Cache-friendly, lock-free, batch-processed AI supports 10K+ entities at 60+ FPS with simulation tiers (Active/Background/Hibernated), rich behaviors, and scalable pathfinding and combat integration.
 
 - **Robust Event & State Management**  
     
-    Event-driven architecture with batch event processing, state machines for entities and game flow, and thread-safe manager updates.
+    Event-driven architecture centered on `EventManager` as the dispatch hub, with deferred event processing, entity/game state machines, and thread-safe manager updates.
 
 - **Flexible UI System**
 
     Content-aware auto-sizing, professional theming (light/dark/custom), and rich component library (buttons, labels, input fields, lists, modals, etc.). Responsive layouts with DPI-aware rendering and animation support. Centralized UI constants with resolution-aware scaling (1920×1080 baseline) and event-driven resize handling. Optimized for PC handheld devices (Steam Deck, ROG Ally, OneXPlayer) with automatic baseline resolution scaling down to 1280×720.
 
-- **Automatic Resource Management**  
+- **Data-Driven Resource Management**  
   
-    JSON-based resource loading for items, materials, currency, and custom types. Handle-based runtime access for performance and extensibility.
+    JSON-based resource loading for items, materials, currency, and gameplay content. Handle-based runtime access keeps systems data-driven, performant, and extensible.
 
 - **Fast, Safe Serialization**
   
@@ -38,7 +38,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Comprehensive Testing & Analysis**
 
-    65+ test executables with Boost.Test framework covering unit, integration, and performance testing. Includes AI+Collision integration tests, GPU rendering tests, SIMD correctness validation, and comprehensive thread safety verification with documented TSAN suppressions. Static analysis (cppcheck, clang-tidy), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration for production-ready quality assurance.
+    70+ test executables with Boost.Test framework covering unit, integration, and performance testing. Includes AI+Collision integration tests, GPU rendering tests, SIMD correctness validation, NPC memory coverage, and comprehensive thread safety verification with documented TSAN suppressions. Static analysis (cppcheck, clang-tidy), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration support production-ready quality assurance.
 
 - **Debug Profiling Tools**
 
@@ -46,11 +46,11 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Cross-Platform Optimizations**
 
-    Unified codebase with platform-specific enhancements: SIMD acceleration (x86-64: SSE2/AVX2, ARM64: NEON), macOS Retina support with borderless fullscreen, Wayland detection, adaptive VSync, and native DPI scaling.
+    Unified codebase with platform-specific enhancements: SIMD acceleration (x86-64: SSE2/AVX2, ARM64: NEON), macOS Retina support, Wayland detection, VSync-aware frame pacing, and native DPI scaling.
 
 - **GameTime & World Simulation**
 
-    Fantasy calendar system with day/night cycles, four seasons, dynamic weather, and temperature simulation. Event-driven controllers for time-based gameplay.
+    Fantasy calendar system with day/night cycles, four seasons, dynamic weather, and temperature simulation. Chunk-based world support includes procedural generation, streaming, and resource interactions.
 
 - **Chunk-Based World System**
 
@@ -58,7 +58,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Robust Combat System**
 
-    Dedicated `CombatController` handles all combat logic, including hit detection, damage calculation, and status effects. Integrated with entity state machines and event system for dynamic combat scenarios.
+    Dedicated combat, harvesting, and social/trading controllers support hit detection, resource gathering, theft/gift flows, and gameplay-specific state transitions without bloating core engine systems.
 
 - **Power Efficient (Race-to-Idle)**
 
@@ -87,13 +87,16 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 ### Prerequisites
 
 - CMake 3.28+, Ninja, C++20 compiler (GCC/Clang) - MSVC support planned
-- Platforms: Linux, macOS (Apple Silicon optimized, Intel supported), Windows (MinGW)
+- Platforms: Linux, macOS (Apple Silicon), Windows (MinGW)
 - [SDL3 dependencies](https://wiki.libsdl.org/SDL3/README-linux) (ttf, mixer)
 - Boost (for tests), cppcheck & clang-tidy (static analysis), Valgrind (optional, Linux only)
-- GPU rendering (optional): glslangValidator, spirv-cross (for `-DUSE_SDL3_GPU=ON`)
+- GPU rendering (optional): platform shader tools for `-DUSE_SDL3_GPU=ON`
+  - Linux: `glslangValidator` for Vulkan SPIR-V shaders
+  - macOS: `glslangValidator` + `spirv-cross` for Metal shaders
+  - Windows: `glslangValidator` + `spirv-cross` + `dxc` for Direct3D 12 DXIL shaders
 
 **Platform notes:**  
-See [Platform Notes](docs/README.md#platform-notes) for detailed Windows, Linux, and macOS setup instructions.
+See the [documentation hub](docs/README.md) and subsystem docs for current setup details and platform-specific notes.
 
 ### Build
 
@@ -107,7 +110,7 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 # Release build (optimized)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
 
-# GPU rendering path (SDL3 GPU API with SPIR-V/Metal shaders)
+# GPU rendering path (SDL3 GPU API with platform-native shaders)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DUSE_SDL3_GPU=ON && ninja -C build
 
 # Run the engine
@@ -137,10 +140,13 @@ export TSAN_OPTIONS="suppressions=$(pwd)/tests/tsan_suppressions.txt"
 
 ## Testing & Static Analysis
 
-- Run all tests: `./run_all_tests.sh`
+- Run all tests: `./tests/test_scripts/run_all_tests.sh`
 - See [tests/TESTING.md](tests/TESTING.md) for comprehensive test documentation and options
-- Static analysis: `./tests/test_scripts/run_cppcheck_focused.sh`
-  See [tests/cppcheck/README.md](tests/cppcheck/README.md) for more.
+- Static analysis:
+  - `cppcheck`: `./tests/test_scripts/run_cppcheck_focused.sh`
+    See [tests/cppcheck/README.md](tests/cppcheck/README.md) for more.
+  - `clang-tidy`: `./tests/test_scripts/run_clang_tidy.sh`
+    See [tests/clang-tidy/README.md](tests/clang-tidy/README.md) for configuration, focused analysis, and full-project analysis details.
 - Memory & thread safety validation: AddressSanitizer (ASAN) and ThreadSanitizer (TSAN) support
   See [docs/core/ThreadSystem.md#threadsanitizer-tsan-support](docs/core/ThreadSystem.md#threadsanitizer-tsan-support) for details
 
@@ -161,24 +167,58 @@ export TSAN_OPTIONS="suppressions=$(pwd)/tests/tsan_suppressions.txt"
 
 ---
 
+## Sprite Atlas Workflow
+
+The repository includes an atlas management tool for extracting sprites, assigning texture IDs, and repacking the atlas and runtime metadata.
+
+### Process
+
+```bash
+# 1. Extract sprites from the current atlas
+python3 tools/atlas_tool.py extract
+
+# 2. Map extracted sprites to texture IDs
+python3 tools/atlas_tool.py map
+
+# 3. Repack the atlas and export updated JSON data
+python3 tools/atlas_tool.py pack
+```
+
+- `extract` pulls sprite regions from `res/img/atlas.png` into `res/sprites/`
+- `map` starts a local browser-based mapper and saves rename mappings to `res/sprites/mappings.json`
+- `pack` applies mappings, rebuilds `atlas.png`, updates `res/data/atlas.json`, exports related JSON metadata, and cleans up temporary sprite files
+
+Use `extract-from` to import sprites from an external image instead of the current atlas:
+
+```bash
+python3 tools/atlas_tool.py extract-from path/to/source.png
+```
+
+For the full workflow, command reference, file locations, and legacy texture mapper details, see [tools/README.md](tools/README.md).
+
+---
+
 ## Documentation
 
 **📚 [Documentation Hub](docs/README.md)** – Full guides, API references, and best practices.
 
-- **Core:** [GameEngine](docs/core/GameEngine.md), [GameTimeManager](docs/managers/GameTimeManager.md), [ThreadSystem](docs/core/ThreadSystem.md), [TimestepManager](docs/managers/TimestepManager.md)
-- **AI System:** [Overview](docs/ai/AIManager.md), [Optimization](docs/ai/AIManager_Optimization_Summary.md), [Behaviors](docs/ai/BehaviorModes.md), [Quick Reference](docs/ai/BehaviorQuickReference.md), [Pathfinding System](docs/ai/PathfindingSystem.md)
+- **Core:** [GameEngine](docs/core/GameEngine.md), [GameTimeManager](docs/managers/GameTimeManager.md), [ThreadSystem](docs/core/ThreadSystem.md), [WorkerBudget](docs/core/WorkerBudget.md), [TimestepManager](docs/core/TimestepManager.md)
+- **AI System:** [Overview](docs/ai/AIManager.md), [Behavior Execution Pipeline](docs/ai/BehaviorExecutionPipeline.md), [Behaviors](docs/ai/BehaviorModes.md), [Quick Reference](docs/ai/BehaviorQuickReference.md), [NPC Memory](docs/ai/NPCMemory.md), [Pathfinding System](docs/ai/PathfindingSystem.md)
 - **Collision & Physics:** [CollisionManager](docs/managers/CollisionManager.md)
 - **Entity System:** [Overview](docs/entities/README.md), [EntityHandle](docs/entities/EntityHandle.md), [EntityDataManager](docs/managers/EntityDataManager.md), [BackgroundSimulationManager](docs/managers/BackgroundSimulationManager.md)
 - **Event System:** [Overview](docs/events/EventManager.md), [Quick Reference](docs/events/EventManager_QuickReference.md), [Advanced](docs/events/EventManager_Advanced.md), [TimeEvents](docs/events/TimeEvents.md), [EventFactory](docs/events/EventFactory.md)
-- **Controllers:** [Overview](docs/controllers/README.md), [ControllerRegistry](docs/controllers/ControllerRegistry.md), [WeatherController](docs/controllers/WeatherController.md), [DayNightController](docs/controllers/DayNightController.md), [CombatController](docs/controllers/CombatController.md)
+- **Controllers:** [Overview](docs/controllers/README.md), [ControllerRegistry](docs/controllers/ControllerRegistry.md), [WeatherController](docs/controllers/WeatherController.md), [DayNightController](docs/controllers/DayNightController.md), [CombatController](docs/controllers/CombatController.md), [HarvestController](docs/controllers/HarvestController.md), [SocialController](docs/controllers/SocialController.md)
 - **Managers:** [BackgroundSimulationManager](docs/managers/BackgroundSimulationManager.md), [CollisionManager](docs/managers/CollisionManager.md), [EntityDataManager](docs/managers/EntityDataManager.md), [FontManager](docs/managers/FontManager.md), [ParticleManager](docs/managers/ParticleManager.md), [PathfinderManager](docs/managers/PathfinderManager.md), [ResourceFactory](docs/managers/ResourceFactory.md), [ResourceTemplateManager](docs/managers/ResourceTemplateManager.md), [SoundManager](docs/managers/SoundManager.md), [TextureManager](docs/managers/TextureManager.md), [WorldManager](docs/managers/WorldManager.md), [WorldResourceManager](docs/managers/WorldResourceManager.md)
 - **UI:** [UIManager Guide](docs/ui/UIManager_Guide.md), [UIConstants Reference](docs/ui/UIConstants.md), [Auto-Sizing](docs/ui/Auto_Sizing_System.md), [DPI-Aware Fonts](docs/ui/DPI_Aware_Font_System.md), [Minimap Implementation](docs/ui/Minimap_Implementation.md)
 - **GPU Rendering:** [GPU System Overview](docs/gpu/GPURendering.md)
+- **GameStates:** [Overview](docs/gameStates/README.md), [LoadingState](docs/gameStates/LoadingState.md), [SettingsMenuState](docs/gameStates/SettingsMenuState.md), [GameOverState](docs/gameStates/GameOverState.md)
 - **Utilities:** [SceneRenderer](docs/utils/SceneRenderer.md), [WorldRenderPipeline](docs/utils/WorldRenderPipeline.md), [FrameProfiler](docs/utils/FrameProfiler.md), [Camera](docs/utils/Camera.md), [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [ResourceHandle System](docs/utils/ResourceHandle_System.md)
 - **Architecture:** [Interpolation System](docs/architecture/InterpolationSystem.md)
 - **Performance:** [Power Efficiency](docs/performance/PowerEfficiency.md), [EntityDataManager Power Analysis](docs/performance_reports/power_profile_edm_comparison_2026-01-29.md)
-- **Development:** [Claude Code Skills](docs/development/ClaudeSkills.md)
+- **Development:** Repo-wide agent guidance lives in [AGENTS.md](AGENTS.md).
 - **Engine Plans & Issues:** [Camera Refactor Plan](docs/Camera_Refactor_Plan.md), [SDL3 macOS Cleanup Issue](docs/issues/SDL3_MACOS_CLEANUP_ISSUE.md)
+
+For the full, up-to-date documentation map, see [docs/README.md](docs/README.md).
 
 ---
 
@@ -206,12 +246,12 @@ Contributions welcome!
 - Player and NPC controls: mouse, keyboard, controller (see `InputManager`)
 - Template can be adapted for 3D (see `GameEngine.cpp` and `TextureManager`)
 - For advanced usage, see [docs/README.md](docs/README.md)
-- This is a work in progress and Art is just a place holder for now. All Art is credited to its authors listed below in the Art section!
+- This is a work in progress, and the bundled art is placeholder content credited below.
 
 ---
 
 ## Art
-All art license follows artists licensing. See thier page below for more details!
+All art follows the original artists' licensing terms. See their pages below for details.
 - World Tiles/Assets : [Pipoya](https://pipoya.itch.io/pipoya-rpg-tileset-32x32)
 - Slimes [patvanmackelberg](https://opengameart.org/users/patvanmackelberg)
 - Player Abigail [adythewolf](https://opengameart.org/users/adythewolf)

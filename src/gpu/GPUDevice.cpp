@@ -2,6 +2,7 @@
  * Licensed under the MIT License */
 
 #include "gpu/GPUDevice.hpp"
+#include "gpu/GPUPlatformConfig.hpp"
 #include "core/Logger.hpp"
 #include <format>
 
@@ -27,20 +28,29 @@ bool GPUDevice::init(SDL_Window* window) {
         return false;
     }
 
-    // Create GPU device with SPIR-V + MSL support (Vulkan + Metal)
-    // Debug mode enabled for validation layers during development
+    const SDL_GPUShaderFormat requestedFormats =
+        GPUPlatformConfig::getRequestedShaderFormats();
+    if (requestedFormats == SDL_GPU_SHADERFORMAT_INVALID) {
+        GAMEENGINE_ERROR("GPUDevice::init: no shader formats were compiled for this platform");
+        return false;
+    }
+
+    const char* const preferredDriver = GPUPlatformConfig::getPreferredDriverName();
+
+    // Create the GPU device using the platform-native backend this build targets.
     m_device = SDL_CreateGPUDevice(
-        SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_MSL,
+        requestedFormats,
 #ifdef DEBUG
         true,   // debug_mode - enable validation in debug builds
 #else
         false,  // no validation in release for performance
 #endif
-        nullptr // let SDL choose best available driver
+        preferredDriver
     );
 
     if (!m_device) {
-        GAMEENGINE_ERROR(std::format("Failed to create GPU device: {}", SDL_GetError()));
+        GAMEENGINE_ERROR(std::format("Failed to create GPU device for preferred driver {}: {}",
+                                     preferredDriver, SDL_GetError()));
         return false;
     }
 
@@ -71,7 +81,13 @@ bool GPUDevice::init(SDL_Window* window) {
 
     GAMEENGINE_INFO("GPUDevice initialized successfully");
     GAMEENGINE_INFO(std::format("  Driver: {}", driver ? driver : "unknown"));
+    GAMEENGINE_INFO(std::format("  Preferred driver: {}", preferredDriver));
     GAMEENGINE_INFO(std::format("  Present mode: {}", swapchainConfigured ? "VSYNC" : "default"));
+    GAMEENGINE_INFO(std::format("  Requested shader formats: SPIRV={}, MSL={}, DXBC={}, DXIL={}",
+        (requestedFormats & SDL_GPU_SHADERFORMAT_SPIRV) != 0,
+        (requestedFormats & SDL_GPU_SHADERFORMAT_MSL) != 0,
+        (requestedFormats & SDL_GPU_SHADERFORMAT_DXBC) != 0,
+        (requestedFormats & SDL_GPU_SHADERFORMAT_DXIL) != 0));
     GAMEENGINE_INFO(std::format("  Shader formats: SPIRV={}, MSL={}, DXBC={}, DXIL={}",
         (formats & SDL_GPU_SHADERFORMAT_SPIRV) != 0,
         (formats & SDL_GPU_SHADERFORMAT_MSL) != 0,

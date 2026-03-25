@@ -11,6 +11,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/TextureManager.hpp"
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <numeric>
 
@@ -1645,14 +1646,13 @@ void UIManager::removeComponentsWithPrefix(const std::string &prefix) {
   }
 
   // Remove collected components
+  // BUGFIX: Use removeComponent() instead of direct erase to properly handle:
+  // - Binding count decrements (m_textBinding/m_listBinding)
+  // - Cache invalidation
+  // - Layout removal
+  // - Focus clearing
   for (const auto &id : componentsToRemove) {
-    m_components.erase(id);
-    // Remove from any layouts
-    for (auto &[layoutId, layout] : m_layouts) {
-      auto &children = layout->m_childComponents;
-      children.erase(std::remove(children.begin(), children.end(), id),
-                     children.end());
-    }
+    removeComponent(id);
   }
 }
 
@@ -1693,6 +1693,7 @@ void UIManager::cleanupForStateTransition() {
 
   // Clear all UI components (reset binding count since we're clearing everything)
   m_components.clear();
+  m_sortedComponentsCache.clear();
   m_activeBindingCount = 0;
   invalidateComponentCache();
 
@@ -1705,6 +1706,15 @@ void UIManager::cleanupForStateTransition() {
 
   // Stop and clear all animations
   m_animations.clear();
+
+  // Clear any queued callbacks and cached GPU draw commands so no UI-owned GPU
+  // resources survive past explicit shutdown.
+  m_deferredCallbacks.clear();
+#ifdef USE_SDL3_GPU
+  m_gpuPrimitiveCommands.clear();
+  m_gpuTextCommands.clear();
+  m_gpuImageCommands.clear();
+#endif
 
   // Clear all interaction state
   m_clickedButtons.clear();
@@ -1856,6 +1866,7 @@ void UIManager::handleInput() {
           if (component->m_onFocus) {
             m_deferredCallbacks.push_back(component->m_onFocus);
           }
+          mouseHandled = true;  // Prevent components below from receiving press
         }
 
         if (mouseJustReleased && component->m_state == UIState::PRESSED) {
@@ -1904,12 +1915,14 @@ void UIManager::handleInput() {
       // Handle list selection
       if (component->m_type == UIComponentType::LIST && mouseJustPressed) {
         // Calculate item height dynamically based on current font metrics
+        // Must match rendering calculation (scaled padding) for accurate click detection
         auto &fontManager = FontManager::Instance();
         int lineHeight = 0;
-        int itemHeight = UIConstants::DEFAULT_LIST_ITEM_HEIGHT; // Default fallback
+        int const scaledPadding = static_cast<int>(UIConstants::LIST_ITEM_PADDING * m_globalScale);
+        int itemHeight = static_cast<int>(UIConstants::DEFAULT_LIST_ITEM_HEIGHT * m_globalScale); // Scaled fallback
         if (fontManager.getFontMetrics(component->m_style.fontID, &lineHeight,
                                        nullptr, nullptr)) {
-          itemHeight = lineHeight + UIConstants::LIST_ITEM_PADDING; // Add padding for better mouse accuracy
+          itemHeight = lineHeight + scaledPadding; // Scaled padding to match rendering
         }
         int itemIndex = static_cast<int>(
             (mousePos.getY() - component->m_bounds.y) / itemHeight);
@@ -3174,6 +3187,132 @@ void UIManager::createLabelAtBottomRight(const std::string &id, const std::strin
   setComponentPositioning(id, {UIPositionMode::BOTTOM_RIGHT, offsetX, offsetY, width, height});
 }
 
+void UIManager::createCombatHUD() {
+  // Combat HUD layout constants (top-left positioning)
+  constexpr int hudMarginLeft = 20;
+  constexpr int hudMarginTop = 40;
+  constexpr int labelWidth = 30;
+  constexpr int barWidth = 150;
+  constexpr int barHeight = 20;
+  constexpr int rowSpacing = 35;
+  constexpr int labelBarGap = 15;
+
+  // Row positions
+  int healthRowY = hudMarginTop;
+  int staminaRowY = hudMarginTop + rowSpacing;
+  int targetRowY = hudMarginTop + rowSpacing * 2 + 10;
+
+  // --- Player Health Bar ---
+  createLabel("hud_health_label",
+              {hudMarginLeft, healthRowY, labelWidth, barHeight}, "HP");
+  setComponentPositioning("hud_health_label",
+                          {UIPositionMode::TOP_ALIGNED, hudMarginLeft, healthRowY,
+                           labelWidth, barHeight});
+
+  createProgressBar("hud_health_bar",
+                    {hudMarginLeft + labelWidth + labelBarGap, healthRowY,
+                     barWidth, barHeight},
+                    0.0f, 100.0f);
+  setComponentPositioning("hud_health_bar",
+                          {UIPositionMode::TOP_ALIGNED,
+                           hudMarginLeft + labelWidth + labelBarGap, healthRowY,
+                           barWidth, barHeight});
+
+  UIStyle healthStyle;
+  healthStyle.backgroundColor = {40, 40, 40, 255};
+  healthStyle.borderColor = {180, 180, 180, 255};
+  healthStyle.hoverColor = {50, 200, 50, 255};
+  healthStyle.borderWidth = 1;
+  setStyle("hud_health_bar", healthStyle);
+
+  // --- Player Stamina Bar ---
+  createLabel("hud_stamina_label",
+              {hudMarginLeft, staminaRowY, labelWidth, barHeight}, "SP");
+  setComponentPositioning("hud_stamina_label",
+                          {UIPositionMode::TOP_ALIGNED, hudMarginLeft, staminaRowY,
+                           labelWidth, barHeight});
+
+  createProgressBar("hud_stamina_bar",
+                    {hudMarginLeft + labelWidth + labelBarGap, staminaRowY,
+                     barWidth, barHeight},
+                    0.0f, 100.0f);
+  setComponentPositioning("hud_stamina_bar",
+                          {UIPositionMode::TOP_ALIGNED,
+                           hudMarginLeft + labelWidth + labelBarGap, staminaRowY,
+                           barWidth, barHeight});
+
+  UIStyle staminaStyle;
+  staminaStyle.backgroundColor = {40, 40, 40, 255};
+  staminaStyle.borderColor = {180, 180, 180, 255};
+  staminaStyle.hoverColor = {255, 200, 50, 255};
+  staminaStyle.borderWidth = 1;
+  setStyle("hud_stamina_bar", staminaStyle);
+
+  // --- Target Frame (label + health bar, no panel wrapper to match health/stamina) ---
+  constexpr int targetBarWidth = barWidth;
+
+  createLabel("hud_target_name",
+              {hudMarginLeft, targetRowY, labelWidth + labelBarGap + targetBarWidth, barHeight}, "");
+  setComponentPositioning("hud_target_name",
+                          {UIPositionMode::TOP_ALIGNED, hudMarginLeft, targetRowY,
+                           labelWidth + labelBarGap + targetBarWidth, barHeight});
+  setComponentVisible("hud_target_name", false);
+
+  createProgressBar("hud_target_health",
+                    {hudMarginLeft + labelWidth + labelBarGap, targetRowY + rowSpacing,
+                     targetBarWidth, barHeight},
+                    0.0f, 100.0f);
+  setComponentPositioning("hud_target_health",
+                          {UIPositionMode::TOP_ALIGNED,
+                           hudMarginLeft + labelWidth + labelBarGap, targetRowY + rowSpacing,
+                           targetBarWidth, barHeight});
+  setComponentVisible("hud_target_health", false);
+
+  UIStyle targetHealthStyle;
+  targetHealthStyle.backgroundColor = {40, 40, 40, 255};
+  targetHealthStyle.borderColor = {180, 180, 180, 255};
+  targetHealthStyle.hoverColor = {200, 50, 50, 255};
+  targetHealthStyle.borderWidth = 1;
+  setStyle("hud_target_health", targetHealthStyle);
+
+  // Add "HP" label for target health bar to match player bars
+  createLabel("hud_target_hp_label",
+              {hudMarginLeft, targetRowY + rowSpacing, labelWidth, barHeight}, "HP");
+  setComponentPositioning("hud_target_hp_label",
+                          {UIPositionMode::TOP_ALIGNED, hudMarginLeft,
+                           targetRowY + rowSpacing, labelWidth, barHeight});
+  setComponentVisible("hud_target_hp_label", false);
+
+  UI_INFO("Combat HUD created");
+}
+
+void UIManager::updateCombatHUD(float playerHealth, float playerStamina,
+                                bool hasTarget, const std::string& targetName,
+                                float targetHealth) {
+  setValue("hud_health_bar", playerHealth);
+  setValue("hud_stamina_bar", playerStamina);
+
+  if (hasTarget) {
+    setComponentVisible("hud_target_name", true);
+    setComponentVisible("hud_target_hp_label", true);
+    setComponentVisible("hud_target_health", true);
+    setText("hud_target_name", targetName);
+    setValue("hud_target_health", targetHealth);
+  } else {
+    setComponentVisible("hud_target_name", false);
+    setComponentVisible("hud_target_hp_label", false);
+    setComponentVisible("hud_target_health", false);
+  }
+}
+
+void UIManager::destroyCombatHUD() {
+  // Use prefix removal for better maintainability
+  // All combat HUD components are prefixed with "hud_"
+  removeComponentsWithPrefix("hud_");
+
+  UI_INFO("Combat HUD destroyed");
+}
+
 // Auto-repositioning system implementation
 void UIManager::onWindowResize(int newLogicalWidth, int newLogicalHeight) {
 
@@ -3335,6 +3474,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
 
   uint32_t primOffset = 0;
   uint32_t uiOffset = 0;
+  const float viewportHeight = static_cast<float>(gpuRenderer.getViewportHeight());
 
   // Helper to add a filled rectangle
   auto addFilledRect = [&](const UIRect& rect, const SDL_Color& color) {
@@ -3344,16 +3484,18 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
     float y = static_cast<float>(rect.y);
     float w = static_cast<float>(rect.width);
     float h = static_cast<float>(rect.height);
+    float top = viewportHeight - y;
+    float bottom = top - h;
 
     HammerEngine::ColorVertex* v = primBase + primOffset;
     // Triangle 1
-    v[0] = {x, y, color.r, color.g, color.b, color.a};
-    v[1] = {x + w, y, color.r, color.g, color.b, color.a};
-    v[2] = {x + w, y + h, color.r, color.g, color.b, color.a};
+    v[0] = {x, top, color.r, color.g, color.b, color.a};
+    v[1] = {x + w, top, color.r, color.g, color.b, color.a};
+    v[2] = {x + w, bottom, color.r, color.g, color.b, color.a};
     // Triangle 2
-    v[3] = {x, y, color.r, color.g, color.b, color.a};
-    v[4] = {x + w, y + h, color.r, color.g, color.b, color.a};
-    v[5] = {x, y + h, color.r, color.g, color.b, color.a};
+    v[3] = {x, top, color.r, color.g, color.b, color.a};
+    v[4] = {x + w, bottom, color.r, color.g, color.b, color.a};
+    v[5] = {x, bottom, color.r, color.g, color.b, color.a};
 
     UIGPUDrawCommand cmd;
     cmd.type = UIGPUDrawCommand::Type::Rect;
@@ -3378,24 +3520,24 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
 
   // Helper to add text with optional background
   auto& fontMgr = FontManager::Instance();
-  auto addText = [&](const std::string& text, const std::string& fontID,
-                     int x, int y, const SDL_Color& color, int alignment,
+  auto addText = [&](const std::string& textKey, const std::string& text,
+                     const std::string& fontID, int x, int y,
+                     const SDL_Color& color, int alignment,
                      bool useBackground = false, const SDL_Color& bgColor = {0,0,0,0},
                      int bgPadding = 0) {
     if (text.empty()) return;
 
-    const GPUTextData* textData = fontMgr.renderTextGPU(text, fontID, color);
-    if (!textData || !textData->texture || !textData->texture->isValid()) {
+    int textWidth = 0;
+    int textHeight = 0;
+    if (!fontMgr.prepareGPUText(textKey, text, fontID, &textWidth, &textHeight)) {
       return;
     }
-
-    if (uiOffset + 4 > GPU_UI_VERTEX_LIMIT) return;  // Safety limit
 
     // Calculate position based on alignment
     float dstX = static_cast<float>(x);
     float dstY = static_cast<float>(y);
-    float dstW = static_cast<float>(textData->width);
-    float dstH = static_cast<float>(textData->height);
+    float dstW = static_cast<float>(textWidth);
+    float dstH = static_cast<float>(textHeight);
 
     switch (alignment) {
       case 1: // Left (vertically centered)
@@ -3436,19 +3578,55 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
       addFilledRect(bgRect, bgColor);
     }
 
-    HammerEngine::SpriteVertex* v = uiBase + uiOffset;
-    v[0] = {dstX, dstY, 0.0f, 0.0f, color.r, color.g, color.b, color.a};
-    v[1] = {dstX + dstW, dstY, 1.0f, 0.0f, color.r, color.g, color.b, color.a};
-    v[2] = {dstX + dstW, dstY + dstH, 1.0f, 1.0f, color.r, color.g, color.b, color.a};
-    v[3] = {dstX, dstY + dstH, 0.0f, 1.0f, color.r, color.g, color.b, color.a};
+    // Raster UI text should land on whole pixels to avoid linear-filter
+    // coverage loss at glyph edges when centered inside integer UI bounds.
+    dstX = std::round(dstX);
+    dstY = std::round(dstY);
 
-    UIGPUDrawCommand cmd;
-    cmd.type = UIGPUDrawCommand::Type::Text;
-    cmd.texture = textData->texture->get();
-    cmd.vertexOffset = uiOffset;
-    cmd.vertexCount = 4;
-    m_gpuTextCommands.push_back(cmd);
-    uiOffset += 4;
+    TTF_GPUAtlasDrawSequence* drawSequence = fontMgr.getGPUTextDrawData(textKey);
+    if (!drawSequence) {
+      return;
+    }
+
+    HammerEngine::SpriteVertex* v = uiBase + uiOffset;
+    for (TTF_GPUAtlasDrawSequence* seq = drawSequence; seq != nullptr; seq = seq->next) {
+      if (!seq->atlas_texture || !seq->xy || !seq->uv || !seq->indices ||
+          seq->num_indices <= 0 || seq->num_vertices <= 0) {
+        continue;
+      }
+
+      if (uiOffset + static_cast<uint32_t>(seq->num_indices) > GPU_UI_VERTEX_LIMIT) {
+        return;
+      }
+
+      v = uiBase + uiOffset;
+      SDL_Color drawColor = color;
+      if (seq->image_type == TTF_IMAGE_COLOR) {
+        drawColor = {255, 255, 255, color.a};
+      }
+      for (int i = 0; i < seq->num_indices; ++i) {
+        int sourceIndex = seq->indices[i];
+        if (sourceIndex < 0 || sourceIndex >= seq->num_vertices) {
+          return;
+        }
+
+        const SDL_FPoint& pos = seq->xy[sourceIndex];
+        const SDL_FPoint& uv = seq->uv[sourceIndex];
+        // SDL3_ttf GPU text already provides UVs in SDL_GPU convention.
+        v[i] = {dstX + pos.x, (viewportHeight - dstY) + pos.y,
+                uv.x, uv.y,
+                drawColor.r, drawColor.g, drawColor.b, drawColor.a};
+      }
+
+      UIGPUDrawCommand cmd;
+      cmd.type = UIGPUDrawCommand::Type::Text;
+      cmd.texture = seq->atlas_texture;
+      cmd.imageType = seq->image_type;
+      cmd.vertexOffset = uiOffset;
+      cmd.vertexCount = static_cast<uint32_t>(seq->num_indices);
+      m_gpuTextCommands.push_back(cmd);
+      uiOffset += static_cast<uint32_t>(seq->num_indices);
+    }
   };
 
   // Render components in z-order
@@ -3496,7 +3674,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
              component->m_type == UIComponentType::BUTTON_WARNING)) {
           int textX = component->m_bounds.x + component->m_bounds.width / 2;
           int textY = component->m_bounds.y + component->m_bounds.height / 2;
-          addText(component->m_text, component->m_style.fontID,
+          addText(component->m_id, component->m_text, component->m_style.fontID,
                   textX, textY, component->m_style.textColor, 0);
         }
         break;
@@ -3551,7 +3729,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
                                  component->m_style.backgroundColor.a == 0;
           int scaledTextBgPadding = static_cast<int>(component->m_style.textBackgroundPadding * m_globalScale);
 
-          addText(component->m_text, component->m_style.fontID,
+          addText(component->m_id, component->m_text, component->m_style.fontID,
                   textX, textY, component->m_style.textColor, alignment,
                   needsBackground, component->m_style.textBackgroundColor,
                   scaledTextBgPadding);
@@ -3607,7 +3785,8 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
           if (component->m_checked) {
             int checkX = boxBounds.x + boxBounds.width / 2;
             int checkY = boxBounds.y + boxBounds.height / 2;
-            addText("X", component->m_style.fontID, checkX, checkY,
+            addText(std::format("{}#check", component->m_id), "X",
+                    component->m_style.fontID, checkX, checkY,
                     component->m_style.textColor, 0);  // Center
           }
 
@@ -3615,7 +3794,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
           if (!component->m_text.empty()) {
             int textX = boxBounds.x + boxBounds.width + scaledPadding;
             int textY = component->m_bounds.y + component->m_bounds.height / 2;
-            addText(component->m_text, component->m_style.fontID, textX, textY,
+            addText(component->m_id, component->m_text, component->m_style.fontID, textX, textY,
                     component->m_style.textColor, 1);  // Left aligned
           }
         }
@@ -3687,7 +3866,8 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
 
             int textX = component->m_bounds.x + scaledPadding;
             int textY = component->m_bounds.y + component->m_bounds.height / 2;
-            addText(displayText, component->m_style.fontID, textX, textY, textColor, 1);  // Left aligned
+            addText(component->m_id, displayText, component->m_style.fontID,
+                    textX, textY, textColor, 1);  // Left aligned
           }
         }
         break;
@@ -3727,8 +3907,9 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
             // Draw item text
             int textX = component->m_bounds.x + scaledPadding * 2;
             int textY = itemY + itemHeight / 2;
-            addText(component->m_listItems[i], component->m_style.fontID,
-                    textX, textY, component->m_style.textColor, 1);  // Left aligned
+              addText(std::format("{}#item{}", component->m_id, i),
+                      component->m_listItems[i], component->m_style.fontID,
+                      textX, textY, component->m_style.textColor, 1);  // Left aligned
 
             itemY += itemHeight;
 
@@ -3771,8 +3952,9 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
           for (size_t i = static_cast<size_t>(startIndex); i < component->m_listItems.size(); ++i) {
             int textX = component->m_bounds.x + scaledPadding * 2;
             int textY = itemY + itemHeight / 2;
-            addText(component->m_listItems[i], component->m_style.fontID,
-                    textX, textY, component->m_style.textColor, 1);  // Left aligned
+              addText(std::format("{}#log{}", component->m_id, i),
+                      component->m_listItems[i], component->m_style.fontID,
+                      textX, textY, component->m_style.textColor, 1);  // Left aligned
 
             itemY += itemHeight;
 
@@ -3811,13 +3993,14 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
       int scaledMouseOffset = static_cast<int>(UIConstants::TOOLTIP_MOUSE_OFFSET * m_globalScale);
 
       // Get tooltip text dimensions for background sizing
-      const GPUTextData* tooltipTextData = fontMgr.renderTextGPU(
-          tooltipComponent->m_text, tooltipComponent->m_style.fontID,
-          tooltipComponent->m_style.textColor);
-
-      if (tooltipTextData && tooltipTextData->texture && tooltipTextData->texture->isValid()) {
-        int tooltipWidth = tooltipTextData->width + scaledPaddingWidth;
-        int tooltipHeight = tooltipTextData->height + scaledPaddingHeight;
+      int tooltipTextWidth = 0;
+      int tooltipTextHeight = 0;
+      std::string tooltipKey = std::format("{}#tooltip", tooltipComponent->m_id);
+      if (fontMgr.prepareGPUText(tooltipKey, tooltipComponent->m_text,
+                                 tooltipComponent->m_style.fontID,
+                                 &tooltipTextWidth, &tooltipTextHeight)) {
+        int tooltipWidth = tooltipTextWidth + scaledPaddingWidth;
+        int tooltipHeight = tooltipTextHeight + scaledPaddingHeight;
 
         // Position tooltip near mouse using m_lastMousePosition (updated in handleInput)
         int tooltipX = static_cast<int>(m_lastMousePosition.getX()) + scaledMouseOffset;
@@ -3844,7 +4027,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
         // Draw tooltip text (centered in the tooltip box)
         int textX = tooltipX + tooltipWidth / 2;
         int textY = tooltipY + tooltipHeight / 2;
-        addText(tooltipComponent->m_text, tooltipComponent->m_style.fontID,
+        addText(tooltipKey, tooltipComponent->m_text, tooltipComponent->m_style.fontID,
                 textX, textY, tooltipComponent->m_style.textColor, 0);
       }
     }
@@ -3861,7 +4044,7 @@ void UIManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderP
   float orthoMatrix[16];
   HammerEngine::GPURenderer::createOrthoMatrix(
       0.0f, static_cast<float>(gpuRenderer.getViewportWidth()),
-      static_cast<float>(gpuRenderer.getViewportHeight()), 0.0f,
+      0.0f, static_cast<float>(gpuRenderer.getViewportHeight()),
       orthoMatrix);
 
   // Render primitives (filled rectangles)
@@ -3883,31 +4066,41 @@ void UIManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderP
     }
   }
 
-  // Render text (each text has a different texture)
+  // Render atlas-backed text triangles
   if (!m_gpuTextCommands.empty()) {
-    SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUISpritePipeline());
-    gpuRenderer.pushViewProjection(pass, orthoMatrix);
-
     SDL_GPUBufferBinding vertexBinding{};
     vertexBinding.buffer = gpuRenderer.getUIVertexPool().getGPUBuffer();
     vertexBinding.offset = 0;
     SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
 
-    // Bind index buffer
-    auto& batch = gpuRenderer.getSpriteBatch();
-    SDL_GPUBufferBinding indexBinding{};
-    indexBinding.buffer = batch.getIndexBuffer();
-    indexBinding.offset = 0;
-    SDL_BindGPUIndexBuffer(pass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-
     for (const auto& cmd : m_gpuTextCommands) {
+      SDL_GPUTexture* textTexture =
+          cmd.textureOwner ? cmd.textureOwner->get() : cmd.texture;
+      if (!textTexture) {
+        continue;
+      }
+
       SDL_GPUTextureSamplerBinding texSampler{};
-      texSampler.texture = cmd.texture;
-      texSampler.sampler = gpuRenderer.getLinearSampler();
+      texSampler.texture = textTexture;
+      switch (cmd.imageType) {
+        case TTF_IMAGE_SDF:
+          texSampler.sampler = gpuRenderer.getLinearSampler();
+          SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUITextSDFPipeline());
+          break;
+        case TTF_IMAGE_COLOR:
+          texSampler.sampler = gpuRenderer.getLinearSampler();
+          SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUISpritePipeline());
+          break;
+        case TTF_IMAGE_ALPHA:
+        default:
+          texSampler.sampler = gpuRenderer.getLinearSampler();
+          SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUITextAlphaPipeline());
+          break;
+      }
+      gpuRenderer.pushViewProjection(pass, orthoMatrix);
       SDL_BindGPUFragmentSamplers(pass, 0, &texSampler, 1);
 
-      uint32_t firstIndex = (cmd.vertexOffset / 4) * 6;
-      SDL_DrawGPUIndexedPrimitives(pass, 6, 1, firstIndex, 0, 0);
+      SDL_DrawGPUPrimitives(pass, cmd.vertexCount, 1, cmd.vertexOffset, 0);
     }
   }
 }

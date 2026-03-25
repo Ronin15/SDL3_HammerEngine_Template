@@ -1,10 +1,6 @@
-# ResourceTemplateManager Documentation
+# ResourceTemplateManager
 
-**Where to find the code:**
-- Implementation: `src/managers/ResourceTemplateManager.cpp`
-- Header: `include/managers/ResourceTemplateManager.hpp`
-- Factory: `include/managers/ResourceFactory.hpp`, `src/managers/ResourceFactory.cpp`
-- Resource Handle: `include/utils/ResourceHandle.hpp`
+**Code:** `include/managers/ResourceTemplateManager.hpp`, `src/managers/ResourceTemplateManager.cpp`, `include/managers/ResourceFactory.hpp`, `src/managers/ResourceFactory.cpp`, `include/utils/ResourceHandle.hpp`
 
 ## Overview
 

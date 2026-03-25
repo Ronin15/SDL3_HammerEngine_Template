@@ -46,8 +46,6 @@ private:
     float m_transitionTimer{0.0f};
     
     // Component IDs with unique prefixes to avoid conflicts
-    static constexpr const char* BACK_BUTTON = "overlay_demo_back_btn";
-    static constexpr const char* NEXT_MODE_BUTTON = "overlay_demo_next_mode_btn";
     static constexpr const char* MODE_LABEL = "overlay_demo_mode_label";
     static constexpr const char* DESCRIPTION_LABEL = "overlay_demo_description_label";
     static constexpr const char* HEALTH_BAR = "overlay_demo_health_bar";

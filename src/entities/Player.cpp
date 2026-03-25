@@ -300,7 +300,8 @@ void Player::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
 
   entityBatch.begin(writePtr, vertexPool.getMaxVertices(),
                     gpuTextureData->texture->get(), gpuRenderer.getNearestSampler(),
-                    texWidth, texHeight);
+                    texWidth, texHeight,
+                    static_cast<float>(gpuRenderer.getSceneTexture()->getHeight()));
 
   // Get interpolated position
   Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
@@ -354,7 +355,7 @@ void Player::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
   float orthoMatrix[16];
   HammerEngine::GPURenderer::createOrthoMatrix(
       0.0f, static_cast<float>(sceneTexture->getWidth()),
-      static_cast<float>(sceneTexture->getHeight()), 0.0f,
+      0.0f, static_cast<float>(sceneTexture->getHeight()),
       orthoMatrix);
 
   // Push view-projection matrix
@@ -419,9 +420,9 @@ void Player::setPosition(const Vector2D &position) {
 }
 
 void Player::initializeInventory() {
-  // Create EDM inventory with 50 slots
+  // Create EDM inventory with 20 slots (forces meaningful inventory decisions)
   auto &edm = EntityDataManager::Instance();
-  m_inventoryIndex = edm.createInventory(50, true);  // 50 slots, world-tracked
+  m_inventoryIndex = edm.createInventory(20, true);  // 20 slots, world-tracked
 
   if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
     PLAYER_ERROR("Failed to create player inventory");
@@ -443,7 +444,8 @@ void Player::initializeInventory() {
 
   auto goldResource = templateManager.getResourceByName("gold");
   if (goldResource) {
-    edm.addToInventory(m_inventoryIndex, goldResource->getHandle(), 100);
+    m_goldHandle = goldResource->getHandle();  // Cache for gold methods
+    edm.addToInventory(m_inventoryIndex, m_goldHandle, 100);
   }
 
   auto healthPotionResource = templateManager.getResourceByName("health_potion");
@@ -510,6 +512,40 @@ bool Player::hasInInventory(HammerEngine::ResourceHandle handle, int quantity) c
   return EntityDataManager::Instance().hasInInventory(m_inventoryIndex, handle, quantity);
 }
 
+// Currency convenience methods
+int Player::getGold() const {
+  if (!m_goldHandle.isValid()) {
+    return 0;
+  }
+  return getInventoryQuantity(m_goldHandle);
+}
+
+bool Player::addGold(int amount) {
+  if (amount <= 0) {
+    return false;
+  }
+  if (!m_goldHandle.isValid()) {
+    PLAYER_WARN("Player::addGold - gold resource not found");
+    return false;
+  }
+  return addToInventory(m_goldHandle, amount);
+}
+
+bool Player::removeGold(int amount) {
+  if (amount <= 0) {
+    return false;
+  }
+  if (!m_goldHandle.isValid()) {
+    PLAYER_WARN("Player::removeGold - gold resource not found");
+    return false;
+  }
+  return removeFromInventory(m_goldHandle, amount);
+}
+
+bool Player::hasGold(int amount) const {
+  return getGold() >= amount;
+}
+
 // Equipment management
 bool Player::equipItem(HammerEngine::ResourceHandle itemHandle) {
   if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
@@ -524,23 +560,20 @@ bool Player::equipItem(HammerEngine::ResourceHandle itemHandle) {
 
   auto &edm = EntityDataManager::Instance();
   if (!edm.hasInInventory(m_inventoryIndex, itemHandle, 1)) {
-    PLAYER_WARN("Player::equipItem - Item not available (handle: " +
-                itemHandle.toString() + ")");
+    PLAYER_WARN(std::format("Player::equipItem - Item not available (handle: {})", itemHandle.toString()));
     return false;
   }
 
   const auto &templateManager = ResourceTemplateManager::Instance();
   auto itemTemplate = templateManager.getResourceTemplate(itemHandle);
   if (!itemTemplate) {
-    PLAYER_ERROR("Player::equipItem - Cannot get template for item handle: " +
-                 itemHandle.toString());
+    PLAYER_ERROR(std::format("Player::equipItem - Cannot get template for item handle: {}", itemHandle.toString()));
     return false;
   }
 
   // Check if it's equipment
   if (itemTemplate->getType() != ResourceType::Equipment) {
-    PLAYER_WARN("Player::equipItem - Item is not equipment (handle: " +
-                itemHandle.toString() + ")");
+    PLAYER_WARN(std::format("Player::equipItem - Item is not equipment (handle: {})", itemHandle.toString()));
     return false;
   }
 
@@ -589,9 +622,7 @@ bool Player::unequipItem(const std::string &slotName) {
     return true;
   }
 
-  PLAYER_WARN(
-      "Player::unequipItem - Could not add item back to inventory (handle: " +
-      itemHandle.toString() + ")");
+  PLAYER_WARN(std::format("Player::unequipItem - Could not add item back to inventory (handle: {})", itemHandle.toString()));
   return false;
 }
 
@@ -634,16 +665,14 @@ bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
 
   auto &edm = EntityDataManager::Instance();
   if (!edm.hasInInventory(m_inventoryIndex, itemHandle, 1)) {
-    PLAYER_WARN("Player::consumeItem - Item not available (handle: " +
-                itemHandle.toString() + ")");
+    PLAYER_WARN(std::format("Player::consumeItem - Item not available (handle: {})", itemHandle.toString()));
     return false;
   }
 
   const auto &templateManager = ResourceTemplateManager::Instance();
   auto itemTemplate = templateManager.getResourceTemplate(itemHandle);
   if (!itemTemplate || !itemTemplate->isConsumable()) {
-    PLAYER_WARN("Player::consumeItem - Item is not consumable (handle: " +
-                itemHandle.toString() + ")");
+    PLAYER_WARN(std::format("Player::consumeItem - Item is not consumable (handle: {})", itemHandle.toString()));
     return false;
   }
 

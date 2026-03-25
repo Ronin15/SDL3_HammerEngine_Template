@@ -35,7 +35,7 @@ void WeatherController::onTimeEvent(const EventData& data)
 
     // Use TimeEventType enum to filter (no RTTI overhead)
     // We registered for EventTypeId::Time, so we know it's a TimeEvent
-    auto* timeEvent = static_cast<TimeEvent*>(data.event.get());
+    const auto* timeEvent = static_cast<const TimeEvent*>(data.event.get());
     if (timeEvent->getTimeEventType() != TimeEventType::WeatherCheck) {
         return;  // Not a weather check event, ignore
     }

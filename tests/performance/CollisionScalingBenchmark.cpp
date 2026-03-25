@@ -58,6 +58,7 @@ public:
     void prepareForTest() {
         CollisionManager::Instance().prepareForStateTransition();
         EntityDataManager::Instance().prepareForStateTransition();
+        HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
     }
 
     // Create movable entities in EDM

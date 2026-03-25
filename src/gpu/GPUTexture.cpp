@@ -84,8 +84,11 @@ GPUTexture& GPUTexture::operator=(GPUTexture&& other) noexcept {
 void GPUTexture::release() {
     if (m_texture && m_device) {
         SDL_ReleaseGPUTexture(m_device, m_texture);
-        m_texture = nullptr;
     }
+    m_texture = nullptr;
+    m_device = nullptr;
+    m_width = 0;
+    m_height = 0;
 }
 
 SDL_GPUColorTargetInfo GPUTexture::asColorTarget(

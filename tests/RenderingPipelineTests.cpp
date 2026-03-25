@@ -95,6 +95,7 @@ BOOST_AUTO_TEST_CASE(TestOnlyGameEngineCallsRenderPresent) {
 
     // Verify GameStates NEVER call SDL_RenderPresent
     std::vector<std::string> gameStateFiles = {
+        "src/gameStates/GameOverState.cpp",
         "src/gameStates/MainMenuState.cpp",
         "src/gameStates/GamePlayState.cpp",
         "src/gameStates/PauseState.cpp",
@@ -124,6 +125,7 @@ BOOST_AUTO_TEST_CASE(TestOnlyGameEngineCallsRenderClear) {
 
     // Verify GameStates NEVER call SDL_RenderClear
     std::vector<std::string> gameStateFiles = {
+        "src/gameStates/GameOverState.cpp",
         "src/gameStates/MainMenuState.cpp",
         "src/gameStates/GamePlayState.cpp",
         "src/gameStates/PauseState.cpp",
@@ -307,6 +309,57 @@ BOOST_AUTO_TEST_CASE(TestCompleteRenderingFlow) {
     BOOST_CHECK(foundStateRender);
 }
 
+BOOST_AUTO_TEST_CASE(TestGPUVertexRecordingPrecedesScenePassAndSwapchainIsAcquiredInScenePass) {
+    const std::string gameEngineFile = "src/core/GameEngine.cpp";
+    const std::string gpuRendererFile = "src/gpu/GPURenderer.cpp";
+
+    std::ifstream gameEngineStream(gameEngineFile);
+    BOOST_REQUIRE(gameEngineStream.is_open());
+
+    std::string gameEngineContent((std::istreambuf_iterator<char>(gameEngineStream)),
+                                  std::istreambuf_iterator<char>());
+
+    const auto recordPos = gameEngineContent.find("mp_gameStateManager->recordGPUVertices");
+    const auto beginScenePassPos = gameEngineContent.find("gpuRenderer.beginScenePass()");
+
+    BOOST_REQUIRE(recordPos != std::string::npos);
+    BOOST_REQUIRE(beginScenePassPos != std::string::npos);
+    BOOST_CHECK_LT(recordPos, beginScenePassPos);
+
+    std::ifstream gpuRendererStream(gpuRendererFile);
+    BOOST_REQUIRE(gpuRendererStream.is_open());
+
+    std::string gpuRendererContent((std::istreambuf_iterator<char>(gpuRendererStream)),
+                                   std::istreambuf_iterator<char>());
+
+    const auto scenePassFuncPos = gpuRendererContent.find("SDL_GPURenderPass* GPURenderer::beginScenePass()");
+    BOOST_REQUIRE(scenePassFuncPos != std::string::npos);
+
+    const auto acquirePos = gpuRendererContent.find("if (!acquireSwapchainTexture())", scenePassFuncPos);
+    const auto beginRenderPassPos = gpuRendererContent.find("SDL_BeginGPURenderPass", scenePassFuncPos);
+
+    BOOST_REQUIRE(acquirePos != std::string::npos);
+    BOOST_REQUIRE(beginRenderPassPos != std::string::npos);
+    BOOST_CHECK_LT(acquirePos, beginRenderPassPos);
+}
+
+BOOST_AUTO_TEST_CASE(TestGamePlayStateGPUResourceDrawOrderMatchesSDLPath) {
+    const std::string gamePlayFile = "src/gameStates/GamePlayState.cpp";
+
+    std::ifstream file(gamePlayFile);
+    BOOST_REQUIRE(file.is_open());
+
+    std::string content((std::istreambuf_iterator<char>(file)),
+                        std::istreambuf_iterator<char>());
+
+    const auto droppedItemsPos = content.find("resourceCtrl->recordGPUDroppedItems");
+    const auto npcPos = content.find("m_npcRenderCtrl.recordGPU(ctx)");
+
+    BOOST_REQUIRE(droppedItemsPos != std::string::npos);
+    BOOST_REQUIRE(npcPos != std::string::npos);
+    BOOST_CHECK_LT(droppedItemsPos, npcPos);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 // ============================================================================
@@ -383,6 +436,7 @@ BOOST_AUTO_TEST_SUITE(DeterministicRenderingTests)
 
 BOOST_AUTO_TEST_CASE(TestNoRandomInRenderMethods) {
     std::vector<std::string> gameStateFiles = {
+        "src/gameStates/GameOverState.cpp",
         "src/gameStates/MainMenuState.cpp",
         "src/gameStates/GamePlayState.cpp",
         "src/gameStates/PauseState.cpp",

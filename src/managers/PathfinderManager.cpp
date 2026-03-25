@@ -25,7 +25,7 @@ PathfinderManager& PathfinderManager::Instance() {
 }
 
 PathfinderManager::~PathfinderManager() {
-    if (!m_isShutdown) {
+    if (!m_isShutdown.load(std::memory_order_acquire)) {
         clean();
     }
 }
@@ -52,7 +52,7 @@ bool PathfinderManager::init() {
         PATHFIND_INFO("Initializing PathfinderManager with clean architecture");
 
         // Reset shutdown flag (allows re-initialization after clean())
-        m_isShutdown = false;
+        m_isShutdown.store(false, std::memory_order_release);
 
         // No queue needed - requests processed directly on ThreadSystem
 
@@ -83,9 +83,12 @@ bool PathfinderManager::isInitialized() const {
 }
 
 void PathfinderManager::update() {
-    if (!m_initialized.load() || m_isShutdown || m_globallyPaused.load(std::memory_order_acquire)) {
+    if (!m_initialized.load() || m_isShutdown.load(std::memory_order_acquire) ||
+        m_globallyPaused.load(std::memory_order_acquire)) {
         return;
     }
+
+    commitCompletedPaths();
 
     // Requests are submitted directly to ThreadSystem in requestPath() - no processing needed here
 
@@ -107,7 +110,7 @@ bool PathfinderManager::isGloballyPaused() const {
 }
 
 void PathfinderManager::clean() {
-    if (m_isShutdown) {
+    if (m_isShutdown.load(std::memory_order_acquire)) {
         return;
     }
 
@@ -119,6 +122,8 @@ void PathfinderManager::clean() {
     // Wait for batch processing to complete before shutdown
     waitForBatchCompletion();
 
+    commitCompletedPaths();
+
     // Unsubscribe from events
     unsubscribeFromEvents();
 
@@ -129,19 +134,24 @@ void PathfinderManager::clean() {
     }
 
     // No queue to clear - using direct ThreadSystem processing
+    {
+        std::lock_guard<std::mutex> lock(m_pathCompletionMutex);
+        m_pendingPathCompletions.clear();
+        m_reusablePathCompletions.clear();
+    }
 
     // Clear grid
     setGrid(nullptr);
 
     m_initialized.store(false);
-    m_isShutdown = true;
+    m_isShutdown.store(true, std::memory_order_release);
     PATHFIND_INFO("PathfinderManager cleaned up");
 }
 
 void PathfinderManager::prepareForStateTransition() {
     PATHFIND_INFO("Preparing PathfinderManager for state transition...");
 
-    if (!m_initialized.load() || m_isShutdown) {
+    if (!m_initialized.load() || m_isShutdown.load(std::memory_order_acquire)) {
         PATHFIND_WARN("PathfinderManager not initialized or already shutdown during state transition");
         return;
     }
@@ -152,6 +162,8 @@ void PathfinderManager::prepareForStateTransition() {
 
     // Wait for batch processing to complete before clearing data
     waitForBatchCompletion();
+
+    commitCompletedPaths();
 
     // Clear path cache completely for fresh state
     {
@@ -193,9 +205,51 @@ void PathfinderManager::prepareForStateTransition() {
     PATHFIND_INFO("PathfinderManager state transition complete - cleared transient data, kept manager initialized");
 }
 
+void PathfinderManager::commitCompletedPaths() {
+    m_reusablePathCompletions.clear();
+    {
+        std::lock_guard<std::mutex> lock(m_pathCompletionMutex);
+        if (m_pendingPathCompletions.empty()) {
+            return;
+        }
+        m_reusablePathCompletions.swap(m_pendingPathCompletions);
+    }
+
+    auto& edm = EntityDataManager::Instance();
+    for (const auto& completion : m_reusablePathCompletions) {
+        if (!completion.targetHandle.isValid() || !edm.hasPathData(completion.edmIndex)) {
+            continue;
+        }
+
+        const size_t resolvedIndex = edm.getIndex(completion.targetHandle);
+        if (resolvedIndex == SIZE_MAX || resolvedIndex != completion.edmIndex) {
+            continue;
+        }
+
+        auto& pd = edm.getPathData(completion.edmIndex);
+        const uint32_t latestToken = pd.latestPathRequestId.load(std::memory_order_acquire);
+        if (completion.requestToken != latestToken) {
+            continue; // Stale completion - a newer request exists for this slot.
+        }
+
+        if (!completion.hasPath || completion.length == 0) {
+            pd.pathRequestPending.store(0, std::memory_order_release);
+            continue;
+        }
+
+        Vector2D* slot = edm.getWaypointSlot(completion.edmIndex);
+        for (uint16_t i = 0; i < completion.length; ++i) {
+            slot[i] = completion.waypoints[i];
+        }
+        edm.finalizePath(completion.edmIndex, completion.length);
+    }
+
+    m_reusablePathCompletions.clear();
+}
+
 
 bool PathfinderManager::isShutdown() const {
-    return m_isShutdown;
+    return m_isShutdown.load(std::memory_order_acquire);
 }
 
 bool PathfinderManager::isGridReady() const {
@@ -220,7 +274,7 @@ uint64_t PathfinderManager::requestPath(
     Priority priority,
     std::function<void(EntityID, const std::vector<Vector2D>&)> callback
 ) {
-    if (!m_initialized.load() || m_isShutdown) {
+    if (!m_initialized.load() || m_isShutdown.load(std::memory_order_acquire)) {
         return 0;
     }
 
@@ -303,7 +357,7 @@ uint64_t PathfinderManager::requestPathToEDM(
     const Vector2D& goal,
     Priority priority
 ) {
-    if (!m_initialized.load() || m_isShutdown) {
+    if (!m_initialized.load() || m_isShutdown.load(std::memory_order_acquire)) {
         return 0;
     }
 
@@ -324,20 +378,29 @@ uint64_t PathfinderManager::requestPathToEDM(
     // Generate unique request ID
     const uint64_t requestId = m_nextRequestId.fetch_add(1, std::memory_order_relaxed);
 
+    uint32_t requestToken = 0;
+    EntityHandle requestHandle{};
     {
         auto& edm = EntityDataManager::Instance();
-        if (edm.hasPathData(edmIndex)) {
-            edm.getPathData(edmIndex).pathRequestPending.store(1, std::memory_order_release);
+        if (!edm.hasPathData(edmIndex)) {
+            return 0;
         }
+        requestHandle = edm.getHandle(edmIndex);
+        if (!requestHandle.isValid()) {
+            return 0;
+        }
+        auto& pd = edm.getPathData(edmIndex);
+        requestToken = pd.latestPathRequestId.fetch_add(1, std::memory_order_acq_rel) + 1;
+        pd.pathRequestPending.store(1, std::memory_order_release);
     }
 
     // ASYNC: Enqueue to ThreadSystem and return immediately (non-blocking)
     auto& threadSystem = HammerEngine::ThreadSystem::Instance();
 
-    auto work = [this, edmIndex, nStart, nGoal, cacheKey, gridSnapshot]() {
+    auto work = [this, requestHandle, edmIndex, requestToken, nStart, nGoal, cacheKey, gridSnapshot]() {
         // CRITICAL: Check shutdown before accessing any member data
         // This prevents use-after-free when PathfinderManager is destroyed while tasks pending
-        if (m_isShutdown) {
+        if (m_isShutdown.load(std::memory_order_acquire)) {
             return;
         }
 
@@ -367,31 +430,39 @@ uint64_t PathfinderManager::requestPathToEDM(
 
         // Compute path if not cached (pass grid to avoid re-fetching)
         if (!cacheHit) {
-            if (m_isShutdown) return;
+            if (m_isShutdown.load(std::memory_order_acquire)) {
+                return;
+            }
             findPathImmediate(nStart, nGoal, path, gridSnapshot, true);
 
             // Store in cache (write lock to ensure cache fills on EDM requests)
             // Double-check shutdown: first check avoids lock acquisition,
             // second check ensures shutdown didn't occur while waiting for lock
-            if (!path.empty() && !m_isShutdown) {
+            if (!path.empty()) {
+                if (m_isShutdown.load(std::memory_order_acquire)) {
+                    return;
+                }
+
                 std::unique_lock<std::shared_mutex> lock(m_cacheMutex);
-                if (!m_isShutdown) {  // NOLINT(bugprone-redundant-branch-condition)
-                    auto now = std::chrono::steady_clock::now();
-                    auto it = m_pathCache.find(cacheKey);
-                    if (it != m_pathCache.end()) {
-                        it->second.path = path;
-                        it->second.lastUsed = now;
-                        it->second.useCount++;
-                    } else {
-                        if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
-                            evictOldestCacheEntry();
-                        }
-                        PathCacheEntry entry;
-                        entry.path = path;
-                        entry.lastUsed = now;
-                        entry.useCount = 1;
-                        m_pathCache[cacheKey] = std::move(entry);
+                if (m_isShutdown.load(std::memory_order_acquire)) {
+                    return;
+                }
+
+                auto now = std::chrono::steady_clock::now();
+                auto it = m_pathCache.find(cacheKey);
+                if (it != m_pathCache.end()) {
+                    it->second.path = path;
+                    it->second.lastUsed = now;
+                    it->second.useCount++;
+                } else {
+                    if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
+                        evictOldestCacheEntry();
                     }
+                    PathCacheEntry entry;
+                    entry.path = path;
+                    entry.lastUsed = now;
+                    entry.useCount = 1;
+                    m_pathCache[cacheKey] = std::move(entry);
                 }
             }
         }
@@ -407,28 +478,35 @@ uint64_t PathfinderManager::requestPathToEDM(
             }
         }
 
-        // Write directly to EDM active slot (legacy path)
-        if (!m_isShutdown) {
-            auto& edm = EntityDataManager::Instance();
-            if (edm.hasPathData(edmIndex)) {
-                if (cacheHit && cachedLen > 0) {
-                    Vector2D* slot = edm.getWaypointSlot(edmIndex);
-                    for (uint16_t i = 0; i < cachedLen; ++i) {
-                        slot[i] = cachedWaypoints[i];
-                    }
-                    edm.finalizePath(edmIndex, cachedLen);
-                } else if (!path.empty()) {
-                    Vector2D* slot = edm.getWaypointSlot(edmIndex);
-                    uint16_t len = static_cast<uint16_t>(std::min(path.size(), size_t{32}));
-                    for (uint16_t i = 0; i < len; ++i) {
-                        slot[i] = path[i];
-                    }
-                    edm.finalizePath(edmIndex, len);
-                } else {
-                    edm.getPathData(edmIndex).pathRequestPending.store(0, std::memory_order_release);
-                }
-            }
+        if (m_isShutdown.load(std::memory_order_acquire)) {
+            return;
         }
+
+        PathCompletion completion;
+        completion.targetHandle = requestHandle;
+        completion.edmIndex = edmIndex;
+        completion.requestToken = requestToken;
+
+        if (cacheHit && cachedLen > 0) {
+            completion.length = cachedLen;
+            completion.hasPath = true;
+            for (uint16_t i = 0; i < cachedLen; ++i) {
+                completion.waypoints[i] = cachedWaypoints[i];
+            }
+        } else if (!path.empty()) {
+            const uint16_t len = static_cast<uint16_t>(std::min(path.size(), PathCompletion::MAX_WAYPOINTS));
+            completion.length = len;
+            completion.hasPath = len > 0;
+            for (uint16_t i = 0; i < len; ++i) {
+                completion.waypoints[i] = path[i];
+            }
+        } else {
+            completion.length = 0;
+            completion.hasPath = false;
+        }
+
+        std::lock_guard<std::mutex> lock(m_pathCompletionMutex);
+        m_pendingPathCompletions.emplace_back(std::move(completion));
 
     };
 
@@ -443,7 +521,7 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     std::vector<Vector2D>& outPath,
     bool skipNormalization
 ) {
-    if (!m_initialized.load() || m_isShutdown) {
+    if (!m_initialized.load() || m_isShutdown.load(std::memory_order_acquire)) {
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
     }
 
@@ -514,7 +592,7 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     const std::shared_ptr<HammerEngine::PathfindingGrid>& grid,
     bool skipNormalization
 ) {
-    if (!m_initialized.load() || m_isShutdown || !grid) {
+    if (!m_initialized.load() || m_isShutdown.load(std::memory_order_acquire) || !grid) {
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
     }
 
@@ -913,9 +991,16 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
         const float worldWidth = currentGrid->getWidth() * gridCellSize;
         const float worldHeight = currentGrid->getHeight() * gridCellSize;
 
+        const float safeMarginX = std::clamp(margin, 0.0f, worldWidth * 0.5f);
+        const float safeMarginY = std::clamp(margin, 0.0f, worldHeight * 0.5f);
+        const float minX = safeMarginX;
+        const float minY = safeMarginY;
+        const float maxX = worldWidth - safeMarginX;
+        const float maxY = worldHeight - safeMarginY;
+
         Vector2D result(
-            std::clamp(position.getX(), margin, worldWidth - margin),
-            std::clamp(position.getY(), margin, worldHeight - margin)
+            std::clamp(position.getX(), minX, maxX),
+            std::clamp(position.getY(), minY, maxY)
         );
 
         return result;
@@ -932,9 +1017,15 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
         const float gridCellSize = 64.0f;
         const float worldWidth = grid->getWidth() * gridCellSize;
         const float worldHeight = grid->getHeight() * gridCellSize;
+        const float safeMarginX = std::clamp(margin, 0.0f, worldWidth * 0.5f);
+        const float safeMarginY = std::clamp(margin, 0.0f, worldHeight * 0.5f);
+        const float minX = safeMarginX;
+        const float minY = safeMarginY;
+        const float maxX = worldWidth - safeMarginX;
+        const float maxY = worldHeight - safeMarginY;
         return Vector2D(
-            std::clamp(position.getX(), margin, worldWidth - margin),
-            std::clamp(position.getY(), margin, worldHeight - margin)
+            std::clamp(position.getX(), minX, maxX),
+            std::clamp(position.getY(), minY, maxY)
         );
     }
     return position;
@@ -958,10 +1049,18 @@ Vector2D PathfinderManager::clampInsideExtents(const Vector2D& position, float h
         const float gridCellSize = 64.0f;
         const float worldWidth = grid->getWidth() * gridCellSize;
         const float worldHeight = grid->getHeight() * gridCellSize;
-        float const minX = halfW + extraMargin;
-        float const minY = halfH + extraMargin;
-        float const maxX = worldWidth - halfW - extraMargin;
-        float const maxY = worldHeight - halfH - extraMargin;
+        float minX = halfW + extraMargin;
+        float minY = halfH + extraMargin;
+        float maxX = worldWidth - halfW - extraMargin;
+        float maxY = worldHeight - halfH - extraMargin;
+        if (maxX < minX) {
+            minX = worldWidth * 0.5f;
+            maxX = minX;
+        }
+        if (maxY < minY) {
+            minY = worldHeight * 0.5f;
+            maxY = minY;
+        }
         return Vector2D(
             std::clamp(position.getX(), minX, maxX),
             std::clamp(position.getY(), minY, maxY)
@@ -994,20 +1093,24 @@ Vector2D PathfinderManager::adjustSpawnToNavigable(const Vector2D& desired, floa
     return pos;
 }
 
-[[maybe_unused]] static inline bool pointInRect(const Vector2D& p, float minX, float minY, float maxX, float maxY) {
-    return p.getX() >= minX && p.getX() <= maxX && p.getY() >= minY && p.getY() <= maxY;
-}
-
 Vector2D PathfinderManager::adjustSpawnToNavigableInRect(const Vector2D& desired,
                                                          float halfW, float halfH,
                                                          float interiorMargin,
                                                          float minX, float minY,
                                                          float maxX, float maxY) const {
     // Clamp area by extents + interior margin
-    float const aminX = minX + halfW + interiorMargin;
-    float const aminY = minY + halfH + interiorMargin;
-    float const amaxX = maxX - halfW - interiorMargin;
-    float const amaxY = maxY - halfH - interiorMargin;
+    float aminX = minX + halfW + interiorMargin;
+    float aminY = minY + halfH + interiorMargin;
+    float amaxX = maxX - halfW - interiorMargin;
+    float amaxY = maxY - halfH - interiorMargin;
+    if (amaxX < aminX) {
+        aminX = (minX + maxX) * 0.5f;
+        amaxX = aminX;
+    }
+    if (amaxY < aminY) {
+        aminY = (minY + maxY) * 0.5f;
+        amaxY = aminY;
+    }
 
     Vector2D pos = clampInsideExtents(desired, halfW, halfH, interiorMargin);
     // Clamp to area rect
@@ -1533,8 +1636,6 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
                 }
             }
         }
-        PATHFIND_DEBUG(std::format("Marked dirty region for obstacle change at grid ({},{}) radius {}",
-                      gridX, gridY, gridRadius));
     }
 }
 

@@ -18,7 +18,7 @@ namespace HammerEngine {
  * Works with GPURenderer's vertex pool system:
  * 1. During beginFrame(), vertex pool is mapped
  * 2. SpriteBatch writes sprites to the mapped buffer
- * 3. During beginScenePass(), vertices are uploaded via copy pass
+ * 3. During GPURenderer::beginScenePass(), vertices are uploaded via the frame copy pass
  * 4. During render pass, draw calls are issued
  *
  * Usage:
@@ -56,7 +56,7 @@ public:
      * @param device GPU device
      * @return true on success
      */
-    bool init(SDL_GPUDevice* device);
+    bool init(SDL_GPUDevice* device, const char* name = "SpriteBatch");
 
     /**
      * Shutdown and release resources.
@@ -71,10 +71,12 @@ public:
      * @param sampler Sampler for the batch
      * @param textureWidth Width of texture in pixels
      * @param textureHeight Height of texture in pixels
+     * @param targetHeight Height of the render target in pixels
      */
     void begin(SpriteVertex* writePtr, size_t maxVertices,
                SDL_GPUTexture* texture, SDL_GPUSampler* sampler,
-               float textureWidth, float textureHeight);
+               float textureWidth, float textureHeight,
+               float targetHeight);
 
     /**
      * Draw a sprite from atlas coordinates.
@@ -167,6 +169,7 @@ private:
     // Texture dimensions for UV calculation
     float m_textureWidth{1.0f};
     float m_textureHeight{1.0f};
+    float m_targetHeight{1.0f};
 
     size_t m_spriteCount{0};
     size_t m_vertexCount{0};

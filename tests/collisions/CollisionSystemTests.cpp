@@ -1258,22 +1258,16 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventPerformanceImpact, CollisionIntegratio
 
     // Process deferred events
     EventManager::Instance().update();
-    
+
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    
-    // The EventManager processes events in batches with a limit (base 32 + worker allocation).
-    // Formula: maxToProcess = 32 + (budget.totalWorkers * 32)
-    // This is expected behavior for performance reasons - verify the batching works correctly.
-    size_t expectedBatchSize = 64; // base when ThreadSystem doesn't exist
-    if (HammerEngine::ThreadSystem::Exists()) {
-        const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
-        expectedBatchSize = 32 + (budget.totalWorkers * 32);
-    }
+
+    // EventManager processes all pending events per update. Batch sizing for threading
+    // is managed by WorkerBudget, not EventManager. All queued events should be processed.
     int actualEvents = eventCount.load();
-    BOOST_CHECK_EQUAL(actualEvents, static_cast<int>(expectedBatchSize));
-    BOOST_TEST_MESSAGE("Event batching performance: " << actualEvents << "/" << numBodies
-                      << " events processed in first batch (expected: " << expectedBatchSize << ")");
+    BOOST_CHECK_EQUAL(actualEvents, static_cast<int>(numBodies));
+    BOOST_TEST_MESSAGE("Event dispatch performance: " << actualEvents << "/" << numBodies
+                      << " events processed");
     
     // Performance check: shouldn't take more than 20ms total (generous for test environment)
     BOOST_CHECK_LT(duration.count(), 20000); // 20ms = 20,000 microseconds

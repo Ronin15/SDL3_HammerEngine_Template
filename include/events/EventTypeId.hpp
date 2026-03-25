@@ -24,8 +24,9 @@ enum class EventTypeId : uint8_t {
   Custom = 11,
   Time = 12,
   Combat = 13,
-  Entity = 14,   // EntityEvents: Damage, Death, Spawn
-  COUNT = 15
+  Entity = 14,            // EntityEvents: Damage, Death, Spawn
+  BehaviorMessage = 15,   // Inter-entity behavior messages (RAISE_ALERT, etc.)
+  COUNT = 16
 };
 
 #endif // EVENT_TYPE_ID_HPP

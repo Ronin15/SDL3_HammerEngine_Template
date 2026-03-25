@@ -463,6 +463,10 @@ private:
     // Previous position for render interpolation (smooth camera at any refresh rate)
     Vector2D m_previousPosition{960.0f, 540.0f};
 
+    // Last rendered center from getRenderOffset() - used by worldToScreen/screenToWorld
+    // to match coordinate conversions with the actual rendered viewport in Follow mode
+    mutable Vector2D m_lastRenderedCenter{0.0f, 0.0f};
+
     // Shake random number generation (mutable for const generateShakeOffset)
     // Per CLAUDE.md: NEVER use static vars in threaded code - use member vars instead
     mutable std::mt19937 m_shakeRng{std::random_device{}()};

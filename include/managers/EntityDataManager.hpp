@@ -36,17 +36,20 @@
  *   EventManager → GameStateManager → AIManager → CollisionManager → BackgroundSimManager
  */
 
+#include "ai/BehaviorConfig.hpp"
 #include "collisions/CollisionBody.hpp"
 #include "collisions/TriggerTag.hpp"
 #include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
+#include "world/HarvestType.hpp"
 #include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <limits>
 #include <mutex>
+#include <random>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -203,7 +206,8 @@ struct CharacterData {
     float maxStamina{100.0f};
     float attackDamage{10.0f};
     float attackRange{50.0f};
-    float moveSpeed{100.0f};   // Base movement speed (NEW)
+    float moveSpeed{100.0f};   // Base movement speed
+    float mass{1.0f};          // Physical mass (affects knockback resistance)
 
     // Identity (creature composition)
     CreatureCategory category{CreatureCategory::NPC};  // NPC, Monster, or Animal
@@ -217,12 +221,27 @@ struct CharacterData {
     uint8_t priority{5};       // AI priority (0-9)
     uint8_t stateFlags{0};     // alive, stunned, invulnerable, etc.
 
+    // Inventory (for merchants and NPCs that carry items)
+    uint32_t inventoryIndex{INVALID_INVENTORY_INDEX};  // EDM inventory index
+
+    // Emotional resilience from class (affects emotion changes)
+    float emotionalResilience{0.5f};
+
     static constexpr uint8_t STATE_ALIVE = 0x01;
     static constexpr uint8_t STATE_STUNNED = 0x02;
     static constexpr uint8_t STATE_INVULNERABLE = 0x04;
+    static constexpr uint8_t STATE_MERCHANT = 0x08;    // Can trade with player
 
     [[nodiscard]] bool isCharacterAlive() const noexcept {
         return stateFlags & STATE_ALIVE;
+    }
+
+    [[nodiscard]] bool isMerchant() const noexcept {
+        return (stateFlags & STATE_MERCHANT) != 0;
+    }
+
+    [[nodiscard]] bool hasInventory() const noexcept {
+        return inventoryIndex != INVALID_INVENTORY_INDEX;
     }
 };
 
@@ -310,7 +329,10 @@ struct ContainerData {
 };
 
 /**
- * @brief Harvestable data for resource nodes (trees, ore)
+ * @brief Harvestable data for resource nodes (trees, ore, gems)
+ *
+ * Used by HarvestController for progress-based harvesting.
+ * harvestType determines duration and action verb via HarvestConfig.
  */
 struct HarvestableData {
     HammerEngine::ResourceHandle yieldResource;
@@ -318,7 +340,7 @@ struct HarvestableData {
     int yieldMax{3};
     float respawnTime{60.0f};   // Seconds until respawn
     float currentRespawn{0.0f}; // Time remaining
-    uint8_t harvestType{0};     // Mining, Chopping, Gathering
+    HammerEngine::HarvestType harvestType{HammerEngine::HarvestType::Gathering};
     bool isDepleted{false};
 };
 
@@ -524,6 +546,16 @@ struct ClassInfo {
 
     // Default faction (can be overridden at spawn)
     uint8_t defaultFaction{0};
+
+    // Commerce flags
+    bool isMerchant{false};  // If true, NPC can trade with player
+
+    // Emotional resilience (0.0 = very emotional, 1.0 = stoic)
+    // Affects how much emotions change when modified
+    float emotionalResilience{0.5f};
+
+    // Starting inventory {resourceId, quantity}
+    std::vector<std::pair<std::string, int>> startingItems;
 };
 
 /**
@@ -802,6 +834,7 @@ struct PathData {
     Vector2D currentWaypoint{0, 0};     // Cached current waypoint for fast access
     bool hasPath{false};                // Quick check if path is valid
     std::atomic<uint8_t> pathRequestPending{0}; // Path request in flight (release/acquire)
+    std::atomic<uint32_t> latestPathRequestId{0}; // Monotonic request token for stale-result filtering
 
     PathData() = default;
     PathData(const PathData&) = delete;
@@ -821,7 +854,11 @@ struct PathData {
             pathRequestPending.store(
                 other.pathRequestPending.load(std::memory_order_relaxed),
                 std::memory_order_relaxed);
+            latestPathRequestId.store(
+                other.latestPathRequestId.load(std::memory_order_relaxed),
+                std::memory_order_relaxed);
             other.pathRequestPending.store(0, std::memory_order_relaxed);
+            other.latestPathRequestId.store(0, std::memory_order_relaxed);
         }
         return *this;
     }
@@ -837,6 +874,7 @@ struct PathData {
         currentWaypoint = Vector2D{0, 0};
         hasPath = false;
         pathRequestPending.store(0, std::memory_order_relaxed);
+        latestPathRequestId.store(0, std::memory_order_relaxed);
     }
 
     [[nodiscard]] bool isFollowingPath() const noexcept {
@@ -854,22 +892,7 @@ struct PathData {
     [[nodiscard]] size_t size() const noexcept { return pathLength; }
 };
 
-/**
- * @brief Behavior type identifiers for AI behaviors
- */
-enum class BehaviorType : uint8_t {
-    Wander = 0,
-    Guard = 1,
-    Patrol = 2,
-    Follow = 3,
-    Chase = 4,
-    Attack = 5,
-    Flee = 6,
-    Idle = 7,
-    Custom = 8,
-    COUNT = 9,
-    None = 0xFF  // Invalid/uninitialized
-};
+// BehaviorType defined in ai/BehaviorConfig.hpp
 
 /**
  * @brief Compact behavior-specific state (indexed by edmIndex like PathData)
@@ -886,6 +909,9 @@ struct BehaviorData {
     uint8_t flags{0};
     uint8_t _pad[2]{};
 
+    // Cached from CharacterData at init (avoids typeLocalIndex indirection every frame)
+    float moveSpeed{0.0f};  // 0 = uninitialized, set from CharacterData in initXxx()
+
     // Common separation state (used by most behaviors)
     float separationTimer{0.0f};
     Vector2D lastSepVelocity;
@@ -894,6 +920,16 @@ struct BehaviorData {
     float lastCrowdAnalysis{0.0f};
     int cachedNearbyCount{0};
     Vector2D cachedClusterCenter;
+
+    // Pending message queue (8 bytes: 4 messages max)
+    // Each message: messageId (1 byte) + param encoded as uint8 (1 byte) = 2 bytes
+    struct PendingMessage {
+        uint8_t messageId{0};   // BehaviorMessage::* constant
+        uint8_t param{0};       // Optional parameter (behavior-specific)
+    };
+    PendingMessage pendingMessages[4];
+    uint8_t pendingMessageCount{0};
+    uint8_t _msgPad[3]{};       // Padding for alignment
 
     static constexpr uint8_t FLAG_VALID = 0x01;
     static constexpr uint8_t FLAG_INITIALIZED = 0x02;
@@ -929,7 +965,7 @@ struct BehaviorData {
             uint8_t _pad[3];
         } idle;
 
-        struct { // GuardState (~112 bytes)
+        struct { // GuardState (~176 bytes with patrol waypoints)
             Vector2D assignedPosition;
             Vector2D lastKnownThreatPosition;
             Vector2D investigationTarget;
@@ -943,15 +979,28 @@ struct BehaviorData {
             float alertDecayTimer;
             float currentHeading;
             float roamTimer;
+            float escalationMultiplier{1.0f};  // Suspicion-based threshold multiplier (lower = faster)
+            float cachedDetectionRange{0.0f};  // Cached detection range (recomputed on mode change)
+            float hostileTimer{0.0f};          // Time spent at alert level HOSTILE (3) for ALARM escalation
             uint32_t currentPatrolIndex;
             uint8_t currentAlertLevel;  // 0=Calm, 1=Suspicious, 2=Alert, 3=Combat
             uint8_t currentMode;
+            uint8_t lastCachedMode{255};       // Track mode for cache invalidation
             bool hasActiveThreat;
             bool isInvestigating;
             bool returningToPost;
             bool onDuty;
             bool alertRaised;
             bool helpCalled;
+
+            // Patrol waypoint system (64 bytes for 8 waypoints)
+            // Note: MAX_PATROL_WAYPOINTS = 8 (defined as global constant)
+            Vector2D patrolWaypoints[8];
+            uint8_t patrolWaypointCount{0};
+            uint8_t currentPatrolWaypointIndex{0};
+            bool reversePatrol{false};       // Ping-pong patrol (A->B->A instead of A->B->A->B)
+            bool patrolForward{true};        // Current direction in ping-pong mode
+            uint8_t _guardPad[4];            // Padding for alignment
         } guard;
 
         struct { // FollowState (~72 bytes)
@@ -970,7 +1019,7 @@ struct BehaviorData {
             bool isStopped;
         } follow;
 
-        struct { // FleeState (~80 bytes)
+        struct { // FleeState (~136 bytes with safe zones)
             Vector2D lastThreatPosition;
             Vector2D fleeDirection;
             Vector2D lastKnownSafeDirection;
@@ -981,14 +1030,23 @@ struct BehaviorData {
             float zigzagTimer;
             float navRadius;
             float backoffTimer;
+            float fearBoost{0.0f};        // Cached from emotions each frame for speed modifier
             int zigzagDirection;
             bool isFleeing;
             bool isInPanic;
             bool hasValidThreat;
             uint8_t _pad;
+
+            // Safe zone system (48 bytes for 4 safe zones + count)
+            // Each zone: center (8 bytes) + radius (4 bytes) + active (1 byte) = ~13 bytes
+            // MAX_SAFE_ZONES = 4, stored inline
+            Vector2D safeZoneCenters[4];      // 32 bytes: Center positions of safe zones
+            float safeZoneRadii[4];           // 16 bytes: Radii of safe zones
+            uint8_t safeZoneCount{0};         // Number of active safe zones (0-4)
+            uint8_t _fleePad[7];              // Padding for alignment
         } flee;
 
-        struct { // ChaseState (~64 bytes)
+        struct { // ChaseState (~80 bytes)
             Vector2D lastKnownTargetPos;      // Last known target position
             Vector2D currentDirection;         // Current movement direction
             Vector2D lastStallPosition;        // Position when stall was detected
@@ -1003,7 +1061,9 @@ struct BehaviorData {
             int cachedChaserCount;             // Cached number of chasers nearby
             bool isChasing;                    // Currently in chase mode
             bool hasLineOfSight;               // Has line of sight to target
-            uint8_t _pad[2];                   // Padding for alignment
+            bool hasExplicitTarget;            // NPC-vs-NPC chase: explicit target set
+            uint8_t _pad[1];                   // Padding for alignment
+            EntityHandle explicitTarget;       // NPC-vs-NPC chase: overrides player targeting
         } chase;
 
         struct { // AttackState (~140 bytes)
@@ -1022,11 +1082,13 @@ struct BehaviorData {
             float targetDistance;
             float attackChargeTime;
             float recoveryTimer;
+            float scanCooldown;
             float preferredAttackAngle;
             int currentCombo;
             int attacksInCombo;
             int strafeDirectionInt;
             uint8_t currentState;  // 0=Seeking, 1=Approaching, 2=Attacking, 3=Recovering, 4=Retreating, 5=Circling
+            uint8_t attackMode;    // 0=Melee, 1=Ranged, 2=Charge, 3=Ambush, 4=Coordinated, 5=HitAndRun, 6=Berserker
             bool inCombat;
             bool hasTarget;
             bool isCharging;
@@ -1036,10 +1098,12 @@ struct BehaviorData {
             bool specialAttackReady;
             bool circleStrafing;
             bool flanking;
-            uint8_t _pad[2];
+            bool hasExplicitTarget;    // NPC-vs-NPC combat: explicit target set
+            bool comboEnabled;         // Whether combo attacks are enabled
+            EntityHandle explicitTarget;  // NPC-vs-NPC combat: overrides player targeting
         } attack;
 
-        uint8_t raw[144]; // Ensure union is large enough
+        uint8_t raw[192]; // Ensure union is large enough (guard state grew for patrol waypoints)
     };
 
     StateUnion state;
@@ -1050,11 +1114,13 @@ struct BehaviorData {
     void clear() noexcept {
         behaviorType = BehaviorType::None;
         flags = 0;
+        moveSpeed = 0.0f;
         separationTimer = 0.0f;
         lastSepVelocity = Vector2D{};
         lastCrowdAnalysis = 0.0f;
         cachedNearbyCount = 0;
         cachedClusterCenter = Vector2D{};
+        pendingMessageCount = 0;
         state = StateUnion{};
     }
 
@@ -1073,8 +1139,294 @@ struct BehaviorData {
     }
 };
 
-// Ensure BehaviorData fits in ~200 bytes (3 cache lines)
-static_assert(sizeof(BehaviorData) <= 200, "BehaviorData exceeds 200 bytes");
+// Ensure BehaviorData fits in ~256 bytes (4 cache lines) - grew for patrol waypoints
+static_assert(sizeof(BehaviorData) <= 256, "BehaviorData exceeds 256 bytes");
+
+// ============================================================================
+// NPC MEMORY SYSTEM
+// ============================================================================
+
+/**
+ * @brief Memory types for NPC memory system
+ *
+ * NPCs can remember various events and interactions. Memory persists across
+ * behavior changes (unlike BehaviorData) for the entity's session lifetime.
+ */
+enum class MemoryType : uint8_t {
+    // Combat memories
+    AttackedBy = 0,      // Who attacked this NPC
+    Attacked = 1,        // Who this NPC attacked
+    DamageDealt = 2,     // Damage dealt to a target
+    DamageReceived = 3,  // Damage received from a source
+
+    // Social memories
+    Interaction = 4,     // Traded, talked, received item
+
+    // Witnessed events
+    WitnessedCombat = 5, // Saw combat between others
+    WitnessedDeath = 6,  // Saw an entity die
+
+    // Awareness memories
+    ThreatSpotted = 7,   // Spotted a hostile entity
+    AllySpotted = 8,     // Spotted a friendly entity
+    LocationVisited = 9, // Visited a significant location
+
+    COUNT = 10
+};
+
+/**
+ * @brief Single memory entry - compact for inline storage (32 bytes)
+ *
+ * Stores who/what was involved, when it happened, and a numeric value.
+ * The interpretation of 'value' depends on MemoryType:
+ * - Damage memories: damage amount
+ * - Interaction: interaction subtype (0=trade, 1=talk, 2=gift)
+ * - Location: distance traveled to reach
+ */
+struct MemoryEntry {
+    EntityHandle subject;      // 12 bytes: Who/what is remembered
+    Vector2D location;         // 8 bytes: Where it happened
+    float timestamp;           // 4 bytes: Game time when it occurred
+    float value;               // 4 bytes: Context-dependent value (damage, etc.)
+    MemoryType type;           // 1 byte: Type of memory
+    uint8_t importance;        // 1 byte: 0-255 importance score
+    uint8_t flags;             // 1 byte: Additional state
+    uint8_t _pad;              // 1 byte: Alignment padding
+
+    static constexpr uint8_t FLAG_VALID = 0x01;
+    static constexpr uint8_t FLAG_FADING = 0x02;  // Memory is decaying
+
+    [[nodiscard]] bool isValid() const noexcept { return flags & FLAG_VALID; }
+
+    void clear() noexcept {
+        subject = EntityHandle{};
+        location = Vector2D{};
+        timestamp = 0.0f;
+        value = 0.0f;
+        type = MemoryType::AttackedBy;
+        importance = 0;
+        flags = 0;
+    }
+};
+
+static_assert(sizeof(MemoryEntry) <= 40, "MemoryEntry exceeds 40 bytes");
+
+/**
+ * @brief NPC emotional state - affects behavior decisions (16 bytes)
+ *
+ * Emotions decay over time during AI processing.
+ * Values are 0.0 to 1.0 representing intensity.
+ */
+struct EmotionalState {
+    float aggression{0.0f};    // Combat readiness, attack likelihood
+    float fear{0.0f};          // Flee threshold, caution level
+    float curiosity{0.0f};     // Investigation tendency
+    float suspicion{0.0f};     // Alertness to threats
+
+    void clear() noexcept {
+        aggression = 0.0f;
+        fear = 0.0f;
+        curiosity = 0.0f;
+        suspicion = 0.0f;
+    }
+
+    /**
+     * @brief Decay all emotions by the given rate
+     * @param decayRate Rate per second (e.g., 0.1 = 10% decay per second)
+     * @param deltaTime Frame time
+     */
+    void decay(float decayRate, float deltaTime) noexcept {
+        float factor = 1.0f - (decayRate * deltaTime);
+        factor = std::max(0.0f, factor);
+        aggression *= factor;
+        fear *= factor;
+        curiosity *= factor;
+        suspicion *= factor;
+    }
+};
+
+static_assert(sizeof(EmotionalState) == 16, "EmotionalState should be 16 bytes");
+
+/**
+ * @brief NPC personality traits - affects emotional responses (16 bytes)
+ *
+ * Generated at spawn time with controlled randomness.
+ * Combined with class resilience for final behavior modulation.
+ * Foundation for future personality expansion (tendencies, quirks, etc.)
+ */
+struct PersonalityTraits {
+    // Core traits (0.0 to 1.0, 0.5 = average)
+    float bravery{0.5f};       // Resistance to fear (high = brave, low = cowardly)
+    float aggression{0.5f};    // Combat eagerness (high = aggressive, low = passive)
+    float composure{0.5f};     // Emotional stability (high = calm, low = reactive)
+    float loyalty{0.5f};       // Faction commitment (affects flee vs fight for allies)
+
+    /**
+     * @brief Generate random personality with bell curve distribution
+     * @param rng Thread-local random engine
+     *
+     * Uses normal distribution centered at 0.5 with std dev 0.15.
+     * Most NPCs cluster around average, with outliers being rarer.
+     */
+    void randomize(std::mt19937& rng) {
+        std::normal_distribution<float> dist(0.5f, 0.15f);  // Mean 0.5, most values 0.2-0.8
+        bravery = std::clamp(dist(rng), 0.0f, 1.0f);
+        aggression = std::clamp(dist(rng), 0.0f, 1.0f);
+        composure = std::clamp(dist(rng), 0.0f, 1.0f);
+        loyalty = std::clamp(dist(rng), 0.0f, 1.0f);
+
+        // Guarantee a spawned NPC does not end up with an effectively all-neutral profile.
+        constexpr float DEFAULT_TRAIT = 0.5f;
+        constexpr float MIN_VARIATION = 0.01f;
+        const bool allNeutral =
+            std::abs(bravery - DEFAULT_TRAIT) < MIN_VARIATION &&
+            std::abs(aggression - DEFAULT_TRAIT) < MIN_VARIATION &&
+            std::abs(composure - DEFAULT_TRAIT) < MIN_VARIATION &&
+            std::abs(loyalty - DEFAULT_TRAIT) < MIN_VARIATION;
+
+        if (allNeutral) {
+            std::uniform_int_distribution<int> directionDist(0, 1);
+            const float offset = directionDist(rng) == 0 ? -0.05f : 0.05f;
+            bravery = std::clamp(DEFAULT_TRAIT + offset, 0.0f, 1.0f);
+        }
+    }
+
+    /**
+     * @brief Effective resilience combines class + personality
+     * @param classResilience Base resilience from class definition
+     * @return Final resilience value (0.0-1.0) affecting emotion changes
+     *
+     * Bravery and composure both contribute to emotional resilience.
+     * Class provides 60% of the factor, personality 40%.
+     */
+    [[nodiscard]] float getEffectiveResilience(float classResilience) const noexcept {
+        float personalityFactor = (bravery + composure) * 0.5f;  // Average of two traits
+        return classResilience * 0.6f + personalityFactor * 0.4f;
+    }
+
+    void clear() noexcept {
+        bravery = 0.5f;
+        aggression = 0.5f;
+        composure = 0.5f;
+        loyalty = 0.5f;
+    }
+};
+
+static_assert(sizeof(PersonalityTraits) == 16, "PersonalityTraits should be 16 bytes");
+
+/**
+ * @brief NPC memory data with inline storage + overflow (384 bytes, 6 cache lines)
+ *
+ * Stores recent memories inline for fast access. When inline slots fill up,
+ * oldest memories are either discarded or moved to overflow (if enabled).
+ *
+ * Indexed by edmIndex (parallel to PathData, BehaviorData).
+ * Persists across behavior changes - unlike BehaviorData.
+ *
+ * Design rationale:
+ * - 6 inline memory slots (192 bytes) covers most NPCs
+ * - 4 location entries (32 bytes) for patrol/wander history
+ * - EmotionalState (16 bytes) for behavior modulation
+ * - Combat stats (40 bytes) for quick aggregate lookups
+ * - Overflow for detailed history when needed (combat-heavy NPCs)
+ */
+struct alignas(64) NPCMemoryData {
+    // Inline memory storage (most recent memories)
+    static constexpr size_t INLINE_MEMORY_COUNT = 6;
+    static constexpr size_t INLINE_LOCATION_COUNT = 4;
+
+    // Memory slots (192 bytes = 6 * 32)
+    MemoryEntry memories[INLINE_MEMORY_COUNT];
+
+    // Location history (32 bytes) - significant positions visited
+    Vector2D locationHistory[INLINE_LOCATION_COUNT];
+
+    // Emotional state (16 bytes)
+    EmotionalState emotions;
+
+    // Personality traits (16 bytes) - random per NPC, affects behavior decisions
+    PersonalityTraits personality;
+
+    // Aggregate combat stats - quick lookup without iterating memories
+    EntityHandle lastAttacker;       // 12 bytes: Most recent attacker
+    EntityHandle lastTarget;         // 12 bytes: Most recent attack target
+    float totalDamageReceived{0.0f}; // 4 bytes: Sum of damage received (session)
+    float totalDamageDealt{0.0f};    // 4 bytes: Sum of damage dealt (session)
+    float lastCombatTime{0.0f};      // 4 bytes: When last combat occurred
+
+    // Metadata
+    uint32_t overflowId{0};          // 4 bytes: ID into overflow map (0 = none)
+    uint16_t memoryCount{0};         // 2 bytes: Total memories (inline + overflow)
+    uint16_t locationCount{0};       // 2 bytes: Locations stored (0-4)
+    float lastDecayTime{0.0f};       // 4 bytes: Last emotional decay update
+    uint8_t flags{0};                // 1 byte: State flags
+    uint8_t nextInlineSlot{0};       // 1 byte: Next slot to write (circular)
+    uint8_t combatEncounters{0};     // 1 byte: Number of combat encounters
+    uint8_t _padding{};              // 1 byte: Alignment padding
+
+    // Flags
+    static constexpr uint8_t FLAG_VALID = 0x01;
+    static constexpr uint8_t FLAG_HAS_OVERFLOW = 0x02;
+    static constexpr uint8_t FLAG_IN_COMBAT = 0x04;
+
+    [[nodiscard]] bool isValid() const noexcept { return flags & FLAG_VALID; }
+    [[nodiscard]] bool hasOverflow() const noexcept { return flags & FLAG_HAS_OVERFLOW; }
+    [[nodiscard]] bool isInCombat() const noexcept { return flags & FLAG_IN_COMBAT; }
+
+    void setValid(bool v) noexcept {
+        if (v) flags |= FLAG_VALID;
+        else flags &= ~FLAG_VALID;
+    }
+
+    void clear() noexcept {
+        for (auto& m : memories) m.clear();
+        std::fill(std::begin(locationHistory), std::end(locationHistory), Vector2D{});
+        emotions.clear();
+        personality.clear();
+        lastAttacker = EntityHandle{};
+        lastTarget = EntityHandle{};
+        totalDamageReceived = 0.0f;
+        totalDamageDealt = 0.0f;
+        lastCombatTime = 0.0f;
+        overflowId = 0;
+        memoryCount = 0;
+        locationCount = 0;
+        lastDecayTime = 0.0f;
+        flags = 0;
+        nextInlineSlot = 0;
+        combatEncounters = 0;
+    }
+};
+
+// Verify size fits in reasonable bounds (under 512 bytes / 8 cache lines)
+static_assert(sizeof(NPCMemoryData) <= 512, "NPCMemoryData exceeds 512 bytes");
+
+/**
+ * @brief Overflow storage for NPCs with extensive memory history
+ *
+ * Used when inline slots are full and full history is desired.
+ * Capped at MAX_OVERFLOW_MEMORIES to prevent unbounded growth.
+ */
+struct MemoryOverflow {
+    static constexpr size_t MAX_OVERFLOW_MEMORIES = 50;
+
+    std::vector<MemoryEntry> extraMemories;
+
+    void clear() noexcept { extraMemories.clear(); }
+
+    void trimToMax() {
+        if (extraMemories.size() > MAX_OVERFLOW_MEMORIES) {
+            // Keep most important and most recent
+            std::sort(extraMemories.begin(), extraMemories.end(),
+                [](const MemoryEntry& a, const MemoryEntry& b) {
+                    // Primary: importance, Secondary: timestamp (recent first)
+                    if (a.importance != b.importance) return a.importance > b.importance;
+                    return a.timestamp > b.timestamp;
+                });
+            extraMemories.resize(MAX_OVERFLOW_MEMORIES);
+        }
+    }
+};
 
 // ============================================================================
 // ENTITY DATA MANAGER
@@ -1274,6 +1626,7 @@ public:
      * @param yieldMax Maximum yield amount
      * @param respawnTime Seconds until respawn after depletion
      * @param worldId World to register with (empty = use active world from WRM)
+     * @param harvestType Type of harvesting required (defaults to Gathering)
      * @return Handle to the created entity
      *
      * Validation:
@@ -1288,7 +1641,8 @@ public:
                                    int yieldMin = 1,
                                    int yieldMax = 3,
                                    float respawnTime = 60.0f,
-                                   const std::string& worldId = "");
+                                   const std::string& worldId = "",
+                                   HammerEngine::HarvestType harvestType = HammerEngine::HarvestType::Gathering);
 
     // ========================================================================
     // PHASE 1: REGISTRATION OF EXISTING ENTITIES (Parallel Storage)
@@ -1418,6 +1772,32 @@ public:
      * - Returns INVALID_INVENTORY_INDEX if allocation fails
      */
     uint32_t createInventory(uint16_t maxSlots, bool worldTracked = false);
+
+    /**
+     * @brief Initialize an NPC as a merchant with an inventory
+     * @param handle NPC entity handle
+     * @param maxSlots Maximum inventory slots (default 20)
+     * @return true if successfully initialized, false on failure
+     *
+     * Creates an inventory for the NPC and sets the STATE_MERCHANT flag.
+     * The inventory index is stored in CharacterData.inventoryIndex.
+     * Use this to enable trading with the NPC via SocialController.
+     */
+    bool initNPCAsMerchant(EntityHandle handle, uint16_t maxSlots = 20);
+
+    /**
+     * @brief Check if an NPC is a merchant
+     * @param handle NPC entity handle
+     * @return true if NPC has merchant capability
+     */
+    [[nodiscard]] bool isNPCMerchant(EntityHandle handle) const;
+
+    /**
+     * @brief Get an NPC's inventory index
+     * @param handle NPC entity handle
+     * @return Inventory index, or INVALID_INVENTORY_INDEX if not a merchant
+     */
+    [[nodiscard]] uint32_t getNPCInventoryIndex(EntityHandle handle) const;
 
     /**
      * @brief Destroy an inventory and release its resources
@@ -1655,6 +2035,13 @@ public:
     [[nodiscard]] CharacterData& getCharacterData(EntityHandle handle);
     [[nodiscard]] const CharacterData& getCharacterData(EntityHandle handle) const;
 
+    /**
+     * @brief Set the faction of a character and update collision layers
+     * @param handle Entity handle
+     * @param newFaction New faction value (0=Friendly, 1=Enemy, 2=Neutral)
+     */
+    void setFaction(EntityHandle handle, uint8_t newFaction);
+
     [[nodiscard]] ItemData& getItemData(EntityHandle handle);
     [[nodiscard]] const ItemData& getItemData(EntityHandle handle) const;
 
@@ -1798,6 +2185,21 @@ public:
     [[nodiscard]] const BehaviorData& getBehaviorData(size_t index) const;
 
     /**
+     * @brief Get behavior config by EDM index
+     * @param index EDM index from getActiveIndices()
+     * @return BehaviorConfigData for the entity (read-only during execution)
+     */
+    [[nodiscard]] HammerEngine::BehaviorConfigData& getBehaviorConfig(size_t index);
+    [[nodiscard]] const HammerEngine::BehaviorConfigData& getBehaviorConfig(size_t index) const;
+
+    /**
+     * @brief Set behavior config for an entity
+     * @param index EDM index
+     * @param config The behavior config to set
+     */
+    void setBehaviorConfig(size_t index, const HammerEngine::BehaviorConfigData& config);
+
+    /**
      * @brief Check if behavior data exists and is valid for an entity
      * @param index EDM index
      * @return true if behavior data exists and is valid
@@ -1816,6 +2218,113 @@ public:
      * @param index EDM index
      */
     void clearBehaviorData(size_t index);
+
+    // ========================================================================
+    // NPC MEMORY DATA ACCESS (indexed by edmIndex, parallel to PathData/BehaviorData)
+    // ========================================================================
+
+    /**
+     * @brief Get memory data by EDM index
+     * @param index EDM index from getActiveIndices()
+     * @return NPCMemoryData for the entity
+     */
+    [[nodiscard]] NPCMemoryData& getMemoryData(size_t index);
+    [[nodiscard]] const NPCMemoryData& getMemoryData(size_t index) const;
+
+    /**
+     * @brief Check if memory data exists and is valid for an entity
+     * @param index EDM index
+     * @return true if memory data storage exists and is initialized
+     */
+    [[nodiscard]] bool hasMemoryData(size_t index) const noexcept;
+
+    /**
+     * @brief Initialize memory data for an entity
+     * @param index EDM index
+     * Called when NPC is created or first needs memory
+     */
+    void initMemoryData(size_t index);
+
+    /**
+     * @brief Clear memory data for an entity (called on destruction)
+     * @param index EDM index
+     */
+    void clearMemoryData(size_t index);
+
+    /**
+     * @brief Add a memory to an NPC
+     * @param index EDM index
+     * @param entry Memory entry to add
+     * @param useOverflow If true, use overflow storage when inline is full
+     */
+    void addMemory(size_t index, const MemoryEntry& entry, bool useOverflow = false);
+
+    /**
+     * @brief Find memories of a specific type
+     * @param index EDM index
+     * @param type Memory type to find
+     * @param outMemories Output vector of matching memories
+     * @param maxResults Maximum results to return (0 = all)
+     */
+    void findMemoriesByType(size_t index, MemoryType type,
+                            std::vector<const MemoryEntry*>& outMemories,
+                            size_t maxResults = 0) const;
+
+    /**
+     * @brief Find memories involving a specific entity
+     * @param index EDM index
+     * @param subject Entity handle to search for
+     * @param outMemories Output vector of matching memories
+     */
+    void findMemoriesOfEntity(size_t index, EntityHandle subject,
+                              std::vector<const MemoryEntry*>& outMemories) const;
+
+    /**
+     * @brief Update emotional state with decay
+     * @param index EDM index
+     * @param deltaTime Frame time for decay calculation
+     * @param decayRate Decay rate per second (default 0.05 = 5%/sec)
+     */
+    void updateEmotionalDecay(size_t index, float deltaTime, float decayRate = 0.05f);
+
+    /**
+     * @brief Modify emotional state
+     * @param index EDM index
+     * @param aggression Delta aggression (-1.0 to 1.0)
+     * @param fear Delta fear (-1.0 to 1.0)
+     * @param curiosity Delta curiosity (-1.0 to 1.0)
+     * @param suspicion Delta suspicion (-1.0 to 1.0)
+     */
+    void modifyEmotions(size_t index, float aggression, float fear,
+                        float curiosity, float suspicion);
+
+    /**
+     * @brief Record a combat event (updates aggregate stats + adds memory)
+     * @param index EDM index of the NPC
+     * @param attacker Who initiated the attack
+     * @param target Who was attacked
+     * @param damage Damage amount
+     * @param wasAttacked true if this NPC was the target
+     * @param gameTime Current game time for timestamp
+     */
+    void recordCombatEvent(size_t index, EntityHandle attacker,
+                           EntityHandle target, float damage, bool wasAttacked,
+                           float gameTime);
+
+    /**
+     * @brief Add a location to history
+     * @param index EDM index
+     * @param location Position to record
+     */
+    void addLocationToHistory(size_t index, const Vector2D& location);
+
+    /**
+     * @brief Get memory overflow data
+     * @param overflowId ID from NPCMemoryData::overflowId
+     * @return Pointer to overflow data, or nullptr if not found
+     */
+    [[nodiscard]] MemoryOverflow* getMemoryOverflow(uint32_t overflowId);
+    [[nodiscard]] const MemoryOverflow* getMemoryOverflow(uint32_t overflowId) const;
 
     // ========================================================================
     // SIMULATION TIER MANAGEMENT
@@ -1987,6 +2496,18 @@ private:
     // Behavior data (indexed by edmIndex, pre-allocated alongside hotData)
     std::vector<BehaviorData> m_behaviorData;
 
+    // Behavior config (indexed by edmIndex, pre-allocated alongside behaviorData)
+    // Config is read-only during behavior execution - set once when behavior assigned
+    std::vector<HammerEngine::BehaviorConfigData> m_behaviorConfig;
+
+    // NPC Memory data (indexed by edmIndex, pre-allocated alongside hotData)
+    // Persists across behavior changes unlike BehaviorData
+    std::vector<NPCMemoryData> m_memoryData;
+
+    // Memory overflow storage (memoryOverflowId -> overflow data)
+    std::unordered_map<uint32_t, MemoryOverflow> m_memoryOverflow;
+    std::atomic<uint32_t> m_nextMemoryOverflowId{1};  // 0 = no overflow
+
     // Type-specific free-lists (reuse indices when entities are destroyed)
     std::vector<uint32_t> m_freeCharacterSlots;
     std::vector<uint32_t> m_freeItemSlots;
@@ -2010,7 +2531,8 @@ private:
     mutable bool m_triggerDetectionDirty{true};
 
     // Kind indices (per-kind dirty flags to avoid full rebuild when querying single kind)
-    // NOTE: Entity creation/destruction is main-thread-only, so these don't need atomics.
+    // NOTE: Entity creation is protected by m_creationMutex (safe from worker threads).
+    // Destruction uses m_destructionMutex. These dirty flags don't need atomics.
     std::array<std::vector<size_t>, static_cast<size_t>(EntityKind::COUNT)> m_kindIndices;
     mutable std::array<bool, static_cast<size_t>(EntityKind::COUNT)> m_kindIndicesDirty{};
 
@@ -2051,8 +2573,9 @@ private:
     std::vector<uint8_t> m_generations;
     std::vector<uint8_t> m_staticGenerations;
 
-    // Thread safety (destruction queue only - structural ops are main-thread-only)
-    std::mutex m_destructionMutex;
+    // Thread safety for entity operations
+    std::mutex m_destructionMutex;  // Protects destruction queue
+    std::mutex m_creationMutex;     // Protects entity creation (allocateSlot + vector growth)
 
     // ========================================================================
     // CREATURE COMPOSITION REGISTRIES
@@ -2138,6 +2661,21 @@ inline const BehaviorData& EntityDataManager::getBehaviorData(size_t index) cons
     return m_behaviorData[index];
 }
 
+inline HammerEngine::BehaviorConfigData& EntityDataManager::getBehaviorConfig(size_t index) {
+    assert(index < m_behaviorConfig.size() && "BehaviorConfig index out of bounds");
+    return m_behaviorConfig[index];
+}
+
+inline const HammerEngine::BehaviorConfigData& EntityDataManager::getBehaviorConfig(size_t index) const {
+    assert(index < m_behaviorConfig.size() && "BehaviorConfig index out of bounds");
+    return m_behaviorConfig[index];
+}
+
+inline void EntityDataManager::setBehaviorConfig(size_t index, const HammerEngine::BehaviorConfigData& config) {
+    assert(index < m_behaviorConfig.size() && "BehaviorConfig index out of bounds");
+    m_behaviorConfig[index] = config;
+}
+
 inline PathData& EntityDataManager::getPathData(size_t index) {
     // PathData is pre-allocated in allocateSlot(), no lazy resize needed
     assert(index < m_pathData.size() && "PathData not pre-allocated for index");
@@ -2159,6 +2697,31 @@ inline Vector2D EntityDataManager::getWaypoint(size_t entityIdx, size_t waypoint
     const auto& pd = m_pathData[entityIdx];
     assert(waypointIdx < pd.pathLength && "Waypoint index out of bounds");
     return m_waypointSlots[entityIdx][waypointIdx];
+}
+
+// NPC Memory data inline accessors
+inline NPCMemoryData& EntityDataManager::getMemoryData(size_t index) {
+    assert(index < m_memoryData.size() && "MemoryData index out of bounds");
+    return m_memoryData[index];
+}
+
+inline const NPCMemoryData& EntityDataManager::getMemoryData(size_t index) const {
+    assert(index < m_memoryData.size() && "MemoryData index out of bounds");
+    return m_memoryData[index];
+}
+
+inline bool EntityDataManager::hasMemoryData(size_t index) const noexcept {
+    return index < m_memoryData.size() && m_memoryData[index].isValid();
+}
+
+inline MemoryOverflow* EntityDataManager::getMemoryOverflow(uint32_t overflowId) {
+    auto it = m_memoryOverflow.find(overflowId);
+    return (it != m_memoryOverflow.end()) ? &it->second : nullptr;
+}
+
+inline const MemoryOverflow* EntityDataManager::getMemoryOverflow(uint32_t overflowId) const {
+    auto it = m_memoryOverflow.find(overflowId);
+    return (it != m_memoryOverflow.end()) ? &it->second : nullptr;
 }
 
 inline Vector2D EntityDataManager::getCurrentWaypoint(size_t entityIdx) const {

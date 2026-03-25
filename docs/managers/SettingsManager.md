@@ -1,4 +1,4 @@
-# SettingsManager Documentation
+# SettingsManager
 
 ## Overview
 

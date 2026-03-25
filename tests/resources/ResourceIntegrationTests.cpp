@@ -435,8 +435,11 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
   const int OPERATIONS_PER_THREAD = 20;
 
   // Pre-populate with resources
+  // Note: Quantities must fit within inventory constraints
+  // NPC has 60 slots, Mithril Ore maxStackSize=15, so max is 900
+  // Player has 50 slots, Platinum Coins maxStackSize=10000, so 10000 fits
   playerAdd(goldHandle, 10000);
-  npcAdd(ironOreHandle, 5000);
+  npcAdd(ironOreHandle, 800);
 
   std::vector<std::future<void>> futures;
   std::atomic<int> successfulPlayerOps{0};
@@ -478,7 +481,7 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
 
   // Verify original resources are still intact
   BOOST_CHECK_EQUAL(playerGetQty(goldHandle), 10000);
-  BOOST_CHECK_EQUAL(npcGetQty(ironOreHandle), 5000);
+  BOOST_CHECK_EQUAL(npcGetQty(ironOreHandle), 800);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

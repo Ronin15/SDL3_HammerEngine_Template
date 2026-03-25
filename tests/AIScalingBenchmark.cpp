@@ -37,67 +37,13 @@
 #include "core/WorkerBudget.hpp"
 #include "core/Logger.hpp"
 
-// Production AI behaviors
-#include "ai/behaviors/WanderBehavior.hpp"
-#include "ai/behaviors/GuardBehavior.hpp"
-#include "ai/behaviors/PatrolBehavior.hpp"
-#include "ai/behaviors/FollowBehavior.hpp"
-#include "ai/behaviors/ChaseBehavior.hpp"
-
 namespace {
-
-/**
- * Synthetic benchmark behavior - NO shared state for contention-free threading.
- * Each entity's state is stored in the BehaviorContext/transform, not in a shared map.
- * This isolates the threading overhead from behavior state contention.
- */
-class SyntheticBehavior : public AIBehavior {
-public:
-    SyntheticBehavior() = default;
-
-    void init(EntityHandle) override {}
-    void clean(EntityHandle) override {}
-
-    std::string getName() const override { return "Synthetic"; }
-
-    std::shared_ptr<AIBehavior> clone() const override {
-        return std::make_shared<SyntheticBehavior>();
-    }
-
-    void onMessage(EntityHandle, const std::string&) override {}
-
-    // NO shared state access - pure computation on context data
-    void executeLogic(BehaviorContext& ctx) override {
-        // Simulate realistic AI work without shared state:
-        // 1. Direction calculation (local computation only)
-        float angle = static_cast<float>(ctx.entityId % 628) * 0.01f;  // Deterministic per entity
-        float dx = std::cos(angle);
-        float dy = std::sin(angle);
-
-        // 2. Normalization
-        float len = std::sqrt(dx * dx + dy * dy);
-        if (len > 0.001f) {
-            dx /= len;
-            dy /= len;
-        }
-
-        // 3. Boundary avoidance (local calculation)
-        float px = ctx.transform.position.getX();
-        float py = ctx.transform.position.getY();
-        if (px < 500.0f) dx += 0.5f;
-        if (px > 9500.0f) dx -= 0.5f;
-        if (py < 500.0f) dy += 0.5f;
-        if (py > 9500.0f) dy -= 0.5f;
-
-        // 4. Apply velocity directly to context (no shared state write)
-        float speed = 100.0f;
-        ctx.transform.velocity = Vector2D(dx * speed, dy * speed);
-    }
-};
 
 // Test fixture for AI scaling benchmarks
 class AIScalingFixture {
 public:
+    static bool& initializedFlag() { return s_initialized; }
+
     AIScalingFixture() {
         // Initialize systems once per fixture
         if (!s_initialized) {
@@ -114,9 +60,6 @@ public:
             BackgroundSimulationManager::Instance().setActiveRadius(50000.0f);
             BackgroundSimulationManager::Instance().setBackgroundRadius(100000.0f);
 
-            // Register production behaviors once
-            registerProductionBehaviors();
-
             s_initialized = true;
         }
         m_rng.seed(42); // Fixed seed for reproducibility
@@ -124,11 +67,13 @@ public:
 
     ~AIScalingFixture() = default;
 
-    // Prepare fresh state for each test
     void prepareForTest() {
         AIManager::Instance().prepareForStateTransition();
-        EntityDataManager::Instance().prepareForStateTransition();
+        BackgroundSimulationManager::Instance().prepareForStateTransition();
         CollisionManager::Instance().prepareForStateTransition();
+        PathfinderManager::Instance().prepareForStateTransition();
+        EntityDataManager::Instance().prepareForStateTransition();
+        HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
     }
 
     // Create AI entities via EntityDataManager
@@ -226,7 +171,7 @@ public:
         }
 
         // Wait for warmup completion
-        aim.waitForAsyncBatchCompletion();
+
 
         // Benchmark (steady-state after hill-climb convergence)
         auto start = std::chrono::high_resolution_clock::now();
@@ -235,7 +180,7 @@ public:
         }
 
         // Wait for all async work to complete
-        aim.waitForAsyncBatchCompletion();
+
 
         auto end = std::chrono::high_resolution_clock::now();
         return std::chrono::duration<double, std::milli>(end - start).count() / iterations;
@@ -256,36 +201,31 @@ public:
     }
 
 private:
-    void registerProductionBehaviors() {
-        auto& aim = AIManager::Instance();
-
-        // Register all production behaviors
-        auto wander = std::make_shared<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 100.0f);
-        aim.registerBehavior("Wander", wander);
-
-        auto guard = std::make_shared<GuardBehavior>(Vector2D(5000.0f, 5000.0f), 500.0f);
-        aim.registerBehavior("Guard", guard);
-
-        std::vector<Vector2D> waypoints = {
-            Vector2D(4000.0f, 5000.0f),
-            Vector2D(6000.0f, 5000.0f)
-        };
-        auto patrol = std::make_shared<PatrolBehavior>(waypoints, 100.0f, true);
-        aim.registerBehavior("Patrol", patrol);
-
-        auto follow = std::make_shared<FollowBehavior>(2.5f, 200.0f, 400.0f);
-        aim.registerBehavior("Follow", follow);
-
-        auto chase = std::make_shared<ChaseBehavior>(100.0f, 500.0f, 50.0f);
-        aim.registerBehavior("Chase", chase);
-    }
-
     std::mt19937 m_rng;
     std::vector<EntityHandle> m_handles;
     static bool s_initialized;
 };
 
 bool AIScalingFixture::s_initialized = false;
+
+struct AIScalingModuleCleanup {
+    ~AIScalingModuleCleanup() {
+        if (!AIScalingFixture::initializedFlag()) {
+            return;
+        }
+
+        BackgroundSimulationManager::Instance().clean();
+        AIManager::Instance().clean();
+        CollisionManager::Instance().clean();
+        PathfinderManager::Instance().clean();
+        EntityDataManager::Instance().clean();
+        HammerEngine::ThreadSystem::Instance().clean();
+
+        AIScalingFixture::initializedFlag() = false;
+    }
+};
+
+BOOST_GLOBAL_FIXTURE(AIScalingModuleCleanup);
 
 } // anonymous namespace
 
@@ -300,14 +240,12 @@ BOOST_AUTO_TEST_CASE(PrintHeader)
 {
     const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
     double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
 
     std::cout << "\n=== AI Scaling Benchmark ===\n";
     std::cout << "Date: " << __DATE__ << " " << __TIME__ << "\n";
     std::cout << "System: " << std::thread::hardware_concurrency() << " hardware threads\n";
     std::cout << "WorkerBudget: " << budget.totalWorkers << " workers\n";
-    std::cout << "Single throughput: " << std::fixed << std::setprecision(2) << singleTP << " items/ms\n";
     std::cout << "Multi throughput:  " << std::fixed << std::setprecision(2) << multiTP << " items/ms\n";
     std::cout << std::endl;
 }
@@ -450,21 +388,17 @@ BOOST_AUTO_TEST_CASE(ThreadingModeComparison)
 }
 
 // ---------------------------------------------------------------------------
-// Synthetic Behavior Threading Test (No shared state - pure threading test)
+// Idle Behavior Threading Test (Simple behavior - pure threading test)
 // ---------------------------------------------------------------------------
-BOOST_AUTO_TEST_CASE(SyntheticBehaviorThreading)
+BOOST_AUTO_TEST_CASE(IdleBehaviorThreading)
 {
-    std::cout << "--- Synthetic Behavior Threading (No Shared State) ---\n";
-    std::cout << "Testing threading overhead without behavior state map contention\n";
+    std::cout << "--- Idle Behavior Threading ---\n";
+    std::cout << "Testing threading overhead with simple behavior\n";
     std::cout << "(Threading uses adaptive threshold from WorkerBudget)\n";
     std::cout << std::setw(10) << "Entities"
               << std::setw(14) << "Single (ms)"
               << std::setw(14) << "Multi (ms)"
               << std::setw(10) << "Speedup\n";
-
-    // Register synthetic behavior (no shared state)
-    auto synthetic = std::make_shared<SyntheticBehavior>();
-    AIManager::Instance().registerBehavior("Synthetic", synthetic);
 
     std::vector<size_t> entityCounts = {500, 1000, 2000, 5000, 10000};
 
@@ -477,7 +411,7 @@ BOOST_AUTO_TEST_CASE(SyntheticBehaviorThreading)
         #ifndef NDEBUG
         AIManager::Instance().enableThreading(false);
         #endif
-        createEntitiesWithBehaviors(count, worldSize, {"Synthetic"});
+        createEntitiesWithBehaviors(count, worldSize, {"Idle"});
         setupWorld(worldSize);
         double singleMs = runBenchmark(iterations);
         cleanup();
@@ -487,7 +421,7 @@ BOOST_AUTO_TEST_CASE(SyntheticBehaviorThreading)
         #ifndef NDEBUG
         AIManager::Instance().enableThreading(true);
         #endif
-        createEntitiesWithBehaviors(count, worldSize, {"Synthetic"});
+        createEntitiesWithBehaviors(count, worldSize, {"Idle"});
         setupWorld(worldSize);
         double multiMs = runBenchmark(iterations);
         cleanup();
@@ -593,7 +527,7 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
         for (int i = 0; i < BATCH_MEASURE_INTERVAL; ++i) {
             aim.update(0.016f);
         }
-        aim.waitForAsyncBatchCompletion();
+
 
         auto end = std::chrono::high_resolution_clock::now();
         double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
@@ -625,11 +559,9 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
     // PART 2: Throughput Tracking (replaces threshold adaptation)
     // =========================================================================
     std::cout << "\nPART 2: Throughput Tracking\n";
-    std::cout << "(Tracks single/multi throughput for mode selection)\n\n";
+    std::cout << "(Tracks multi throughput for batch tuning)\n\n";
 
-    double initialSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
     double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
-    std::cout << "Initial single throughput: " << std::fixed << std::setprecision(2) << initialSingleTP << " items/ms\n";
     std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms\n\n";
 
     constexpr size_t TRACKING_ENTITY_COUNT = 300;
@@ -644,7 +576,6 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
     std::cout << std::setw(8) << "Phase"
               << std::setw(12) << "Frames"
               << std::setw(14) << "Avg Time(ms)"
-              << std::setw(12) << "SingleTP"
               << std::setw(12) << "MultiTP"
               << std::setw(12) << "BatchMult\n";
 
@@ -654,35 +585,27 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
         for (int i = 0; i < FRAMES_PER_PHASE; ++i) {
             aim.update(0.016f);
         }
-        aim.waitForAsyncBatchCompletion();
+
 
         auto end = std::chrono::high_resolution_clock::now();
         double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
         double avgMs = totalMs / FRAMES_PER_PHASE;
 
-        double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
         double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
         float batchMultNow = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
 
         std::cout << std::setw(8) << (phase + 1)
                   << std::setw(12) << ((phase + 1) * FRAMES_PER_PHASE)
                   << std::setw(14) << std::fixed << std::setprecision(3) << avgMs
-                  << std::setw(12) << std::fixed << std::setprecision(2) << singleTP
                   << std::setw(12) << std::fixed << std::setprecision(2) << multiTP
                   << std::setw(12) << std::fixed << std::setprecision(2) << batchMultNow << "\n";
     }
 
-    double finalSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
     double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
     float finalBatchMultTP = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
 
-    std::string modePreferred = (finalMultiTP > finalSingleTP * 1.15) ? "MULTI" :
-                               (finalSingleTP > finalMultiTP * 1.15) ? "SINGLE" : "COMPARABLE";
-
-    std::cout << "\nFinal single throughput: " << std::fixed << std::setprecision(2) << finalSingleTP << " items/ms\n";
-    std::cout << "Final multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms\n";
+    std::cout << "\nFinal multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms\n";
     std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMultTP << "\n";
-    std::cout << "Mode preference:         " << modePreferred << "\n";
 
     cleanup();
 
@@ -701,9 +624,9 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
     }
 
     // Throughput tracking result
-    bool throughputCollected = (finalSingleTP > 0 || finalMultiTP > 0);
+    bool throughputCollected = (finalMultiTP > 0);
     if (throughputCollected) {
-        std::cout << "  Throughput tracking: PASS (data collected, mode=" << modePreferred << ")\n";
+        std::cout << "  Throughput tracking: PASS (data collected)\n";
     } else {
         std::cout << "  Throughput tracking: PASS (system initialized)\n";
     }
@@ -717,20 +640,18 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
 BOOST_AUTO_TEST_CASE(PrintSummary)
 {
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
     double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
     float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
 
     std::cout << "SUMMARY:\n";
     std::cout << "  AI batch processing: O(n) scaling with WorkerBudget\n";
-    std::cout << "  Single throughput: " << std::fixed << std::setprecision(2) << singleTP << " items/ms\n";
     std::cout << "  Multi throughput:  " << std::fixed << std::setprecision(2) << multiTP << " items/ms\n";
     std::cout << "  Batch multiplier:  " << std::fixed << std::setprecision(2) << batchMult << "\n";
     std::cout << "  Entity iteration: Active tier only (via getActiveIndices)\n";
     std::cout << "  Behavior execution: Type-indexed O(1) lookup\n";
     std::cout << "  WorkerBudget adaptive tuning:\n";
     std::cout << "    - Batch sizing: ~100 frames to converge via hill-climbing\n";
-    std::cout << "    - Throughput tracking: Both modes tracked, 15% threshold to switch\n";
+    std::cout << "    - Threshold learning: single-threaded time tracking for mode switch\n";
     std::cout << std::endl;
 }
 

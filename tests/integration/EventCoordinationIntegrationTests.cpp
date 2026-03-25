@@ -27,20 +27,20 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/WorldManager.hpp"
-#include "managers/EntityDataManager.hpp" // For TransformData definition
+#include "managers/EntityDataManager.hpp"
 #include "world/WorldData.hpp"
 
 #include <iostream>
 
 using namespace HammerEngine;
 
-// Test logging helper (kept for backward compatibility within test cases)
+// Test logging helper
 #define TEST_LOG(msg) do { \
     std::cout << "[TEST] " << msg << std::endl; \
 } while(0)
 
 /**
- * @brief Simple test entity for event coordination tests (doesn't use EDM data-driven NPCs)
+ * @brief Simple test entity for event coordination tests
  * NOTE: This is intentionally NOT a data-driven NPC - it's a mock entity for testing
  * event coordination between managers, not NPC AI behavior.
  */
@@ -48,7 +48,7 @@ class TestEntity : public Entity {
 public:
     explicit TestEntity(const Vector2D& pos) {
         // Register with EntityDataManager to get a valid handle
-        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::Player);  // Use Player kind (still class-based)
+        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::Player);
         setTextureID("test_texture");
         setWidth(32);
         setHeight(32);
@@ -64,69 +64,6 @@ public:
     }
     void clean() override {}
     [[nodiscard]] EntityKind getKind() const override { return EntityKind::Player; }
-    // Uses inherited Entity::getID() for EntityID
-};
-
-/**
- * @brief Test AI behavior that responds to weather events
- */
-class WeatherResponseBehavior : public AIBehavior {
-public:
-    WeatherResponseBehavior(const std::string& name) : m_name(name) {}
-
-    void executeLogic(BehaviorContext& ctx) override {
-        // Check if seeking shelter
-        if (m_seekingShelter.load()) {
-            // Move entity toward shelter position (simplified)
-            Vector2D currentPos = ctx.transform.position;
-            Vector2D toShelter = m_shelterPosition - currentPos;
-            float distance = toShelter.length();
-
-            if (distance > 5.0f) {
-                toShelter.normalize();
-                ctx.transform.position = currentPos + toShelter * 2.0f;
-                m_movedTowardShelter.store(true);
-            }
-        }
-    }
-
-    void init(EntityHandle handle) override {
-        (void)handle;
-        m_initialized = true;
-    }
-
-    void clean(EntityHandle handle) override {
-        (void)handle;
-        m_initialized = false;
-    }
-
-    std::string getName() const override { return m_name; }
-
-    std::shared_ptr<AIBehavior> clone() const override {
-        auto cloned = std::make_shared<WeatherResponseBehavior>(m_name);
-        cloned->setActive(m_active);
-        return cloned;
-    }
-
-    void onMessage(EntityHandle handle, const std::string& message) override {
-        (void)handle;
-        if (message == "weather_rain_start") {
-            m_seekingShelter.store(true);
-            m_shelterPosition = Vector2D(100.0f, 100.0f);
-        } else if (message == "weather_clear") {
-            m_seekingShelter.store(false);
-        }
-    }
-
-    bool isSeekingShelter() const { return m_seekingShelter.load(); }
-    bool hasMovedTowardShelter() const { return m_movedTowardShelter.load(); }
-
-private:
-    std::string m_name;
-    std::atomic<bool> m_initialized{false};
-    std::atomic<bool> m_seekingShelter{false};
-    std::atomic<bool> m_movedTowardShelter{false};
-    Vector2D m_shelterPosition;
 };
 
 /**
@@ -137,12 +74,10 @@ struct GlobalEventCoordinationFixture {
         std::cout << "=== EventCoordinationIntegrationTests Global Setup ===" << std::endl;
 
         // Initialize managers in dependency order
-        // Note: Use throw instead of BOOST_REQUIRE in fixture constructors
         if (!ThreadSystem::Instance().init()) {
             throw std::runtime_error("ThreadSystem initialization failed");
         }
 
-        // EntityDataManager must be early - entities need it for registration
         if (!EntityDataManager::Instance().init()) {
             throw std::runtime_error("EntityDataManager initialization failed");
         }
@@ -207,7 +142,7 @@ BOOST_AUTO_TEST_SUITE(EventCoordinationIntegrationTests)
  *
  * Verifies that a single weather event triggers:
  * - ParticleManager: Rain particles start
- * - AIManager: NPCs exhibit "seek shelter" behavior
+ * - AIManager: NPCs receive messages (data-oriented messaging)
  * - WorldManager: Tile properties update (wetness)
  *
  * Success criteria:
@@ -231,10 +166,8 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
     BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(worldConfig));
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    // Setup: Create AI entities with weather-responsive behavior
+    // Setup: Create AI entities with Wander behavior (data-oriented)
     std::vector<std::shared_ptr<TestEntity>> testEntities;
-    auto weatherBehavior = std::make_shared<WeatherResponseBehavior>("WeatherResponse");
-    AIManager::Instance().registerBehavior("WeatherResponse", weatherBehavior);
 
     for (int i = 0; i < 5; ++i) {
         auto entity = TestEntity::create(Vector2D(50.0f + i * 10.0f, 50.0f));
@@ -252,10 +185,9 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
             }
         }
 
-        AIManager::Instance().registerEntity(entity->getHandle(), "WeatherResponse");
+        // DATA-ORIENTED: Use assignBehavior with standard behavior name
+        AIManager::Instance().assignBehavior(entity->getHandle(), "Wander");
     }
-
-    // Process collision body commands
 
     // Process queued assignments
     for (int i = 0; i < 5; ++i) {
@@ -294,6 +226,13 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
             }
         });
 
+    const auto weatherForwarder = EventManager::Instance().registerHandlerWithToken(
+        EventTypeId::Weather,
+        [](const EventData& data) {
+            ParticleManager::Instance().handleWeatherEvent(data);
+        });
+    (void)weatherForwarder;
+
     // Action: Trigger weather change to rain
     TEST_LOG("Triggering weather change to rain");
     BOOST_CHECK(EventManager::Instance().changeWeather(
@@ -304,8 +243,7 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
         "rain", 50.0f, 50.0f, 1.0f, -1.0f, "weather",
         EventManager::DispatchMode::Immediate));
 
-    // Send message to AI entities about weather
-    AIManager::Instance().broadcastMessage("weather_rain_start");
+    // Legacy broadcast message API was removed - message system now uses BehaviorMessage queue
 
     // Update all managers and process events
     const int maxFrames = 30;
@@ -321,17 +259,15 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
 
         // Check if all systems have responded
         if (particleEventReceived.load() && worldEventReceived.load()) {
-            bool anyEntitySeekingShelter = false;
+            bool allEntitiesHaveBehavior = true;
             for (const auto& entity : testEntities) {
-                if (AIManager::Instance().hasBehavior(entity->getHandle())) {
-                    // We can't directly access behavior state in this context,
-                    // but we can verify entities are being updated
-                    anyEntitySeekingShelter = true;
+                if (!AIManager::Instance().hasBehavior(entity->getHandle())) {
+                    allEntitiesHaveBehavior = false;
                     break;
                 }
             }
 
-            if (anyEntitySeekingShelter) {
+            if (allEntitiesHaveBehavior) {
                 TEST_LOG("All systems responded to weather event");
                 break;
             }
@@ -351,13 +287,10 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
 
     // Cleanup
     for (auto& entity : testEntities) {
-        AIManager::Instance().unregisterEntity(entity->getHandle());
         AIManager::Instance().unassignBehavior(entity->getHandle());
         CollisionManager::Instance().removeCollisionBody(entity->getID());
     }
     testEntities.clear();
-    // Note: Don't call WorldManager.clean() here - it will be cleaned in global fixture destructor
-    // Just unload the world if needed
     EventManager::Instance().clearAllHandlers();
 
     TEST_LOG("TestWeatherEventCoordination completed successfully");
@@ -409,9 +342,10 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
                 hot.setCollisionEnabled(true);
             }
         }
-    }
 
-    // Process collision body commands
+        // DATA-ORIENTED: Assign Idle behavior
+        AIManager::Instance().assignBehavior(entity->getHandle(), "Idle");
+    }
 
     // Process registrations
     for (int i = 0; i < 5; ++i) {
@@ -447,7 +381,6 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
 
     // Cleanup old scene entities
     for (auto& entity : oldSceneEntities) {
-        AIManager::Instance().unregisterEntity(entity->getHandle());
         AIManager::Instance().unassignBehavior(entity->getHandle());
         CollisionManager::Instance().removeCollisionBody(entity->getID());
     }
@@ -498,7 +431,6 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
     BOOST_CHECK_EQUAL(height, 15);
 
     // Cleanup
-    // Note: Don't call WorldManager.clean() here - it will be cleaned in global fixture destructor
     EventManager::Instance().clearAllHandlers();
 
     TEST_LOG("TestSceneChangeEventCoordination completed successfully");

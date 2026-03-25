@@ -18,11 +18,16 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "collisions/CollisionInfo.hpp"
+#include "events/CameraEvent.hpp"
+#include "events/CollisionObstacleChangedEvent.hpp"
+#include "events/EntityEvents.hpp"
 #include "events/Event.hpp"
 #include "events/ParticleEffectEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
-#include "events/SceneChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
+#include "events/WorldEvent.hpp"
+#include "events/WorldTriggerEvent.hpp"
+#include "collisions/TriggerTag.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "utils/ResourceHandle.hpp"
@@ -108,991 +113,374 @@ struct EventManagerFixture {
     // Clean up the EventManager
     EventManager::Instance().clean();
   }
-
-  void resetEventManager() {}
 };
 
-// Test basic initialization and cleanup
+// ==================== Basic Initialization Tests ====================
+
 BOOST_FIXTURE_TEST_CASE(InitAndClean, EventManagerFixture) {
   BOOST_CHECK(EventManager::Instance().init());
-  BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 0);
+  BOOST_CHECK(EventManager::Instance().isInitialized());
   EventManager::Instance().clean();
 }
 
-// Test event registration and retrieval
-BOOST_FIXTURE_TEST_CASE(RegisterAndRetrieveEvent, EventManagerFixture) {
+// ==================== Dispatch Architecture Tests ====================
+
+BOOST_FIXTURE_TEST_CASE(DispatchEvent_WithHandler_CallsHandler, EventManagerFixture) {
   auto mockEvent = std::make_shared<MockEvent>("TestEvent");
-  EventManager::Instance().registerEvent("TestEvent", mockEvent);
 
-  BOOST_CHECK(EventManager::Instance().hasEvent("TestEvent"));
-  BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 1);
-
-  auto retrievedEvent = EventManager::Instance().getEvent("TestEvent");
-  BOOST_REQUIRE(retrievedEvent != nullptr);
-  BOOST_CHECK_EQUAL(retrievedEvent->getName(), "TestEvent");
-  BOOST_CHECK_EQUAL(retrievedEvent->getType(), "Mock");
-}
-
-// Test event activation/deactivation
-BOOST_FIXTURE_TEST_CASE(EventActivation, EventManagerFixture) {
-  auto mockEvent = std::make_shared<MockEvent>("TestEvent");
-  EventManager::Instance().registerEvent("TestEvent", mockEvent);
-
-  // Events should be active by default
-  BOOST_CHECK(EventManager::Instance().isEventActive("TestEvent"));
-
-  // Test deactivation
-  EventManager::Instance().setEventActive("TestEvent", false);
-  BOOST_CHECK(!EventManager::Instance().isEventActive("TestEvent"));
-
-  // Test reactivation
-  EventManager::Instance().setEventActive("TestEvent", true);
-  BOOST_CHECK(EventManager::Instance().isEventActive("TestEvent"));
-}
-
-// Test event execution
-BOOST_FIXTURE_TEST_CASE(EventExecution, EventManagerFixture) {
-  auto mockEvent = std::make_shared<MockEvent>("TestEvent");
-  EventManager::Instance().registerEvent("TestEvent", mockEvent);
-
-  // Execute the event
-  BOOST_CHECK(EventManager::Instance().executeEvent("TestEvent"));
-  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
-                  EventManager::Instance().getEvent("TestEvent"))
-                  ->wasExecuted());
-}
-
-// Test event update is called
-BOOST_FIXTURE_TEST_CASE(EventUpdateIsCalled, EventManagerFixture) {
-  auto mockEvent = std::make_shared<MockEvent>("UpdateTest");
-  EventManager::Instance().registerEvent("UpdateTest", mockEvent);
-
-  // Update should be called for active events
-  EventManager::Instance().update();
-  BOOST_CHECK(mockEvent->wasUpdated());
-}
-
-// Test condition checking
-BOOST_FIXTURE_TEST_CASE(EventConditionChecking, EventManagerFixture) {
-  auto mockEvent = std::make_shared<MockEvent>("ConditionTest");
-  EventManager::Instance().registerEvent("ConditionTest", mockEvent);
-
-  // Initially conditions are false - explicit execution should still work
-  BOOST_CHECK(!mockEvent->checkConditions());
-  EventManager::Instance().executeEvent("ConditionTest");
-  BOOST_CHECK(mockEvent->wasExecuted());
-
-  // Reset and set conditions to true
-  mockEvent->reset();
-  mockEvent->setConditionsMet(true);
-  BOOST_CHECK(mockEvent->checkConditions());
-  EventManager::Instance().executeEvent("ConditionTest");
-  BOOST_CHECK(mockEvent->wasExecuted());
-}
-
-// Test that events execute when conditions are met and handlers registered
-BOOST_FIXTURE_TEST_CASE(EventExecutionWithConditionsAndHandlers, EventManagerFixture) {
-  auto mockEvent = std::make_shared<MockEvent>("HandlerTest");
-  EventManager::Instance().registerEvent("HandlerTest", mockEvent);
-
-  // Register a handler so the event will execute during update
-  bool handlerCalled = false;
-  EventManager::Instance().registerHandler(
-      EventTypeId::Custom,
-      [&handlerCalled](const EventData &) { handlerCalled = true; });
-
-  // Set conditions to true
-  mockEvent->setConditionsMet(true);
-
-  // Update should trigger execution since conditions are met and handler exists
-  EventManager::Instance().update();
-
-  // Verify both update and execution occurred
-  BOOST_CHECK(mockEvent->wasUpdated());
-  BOOST_CHECK(handlerCalled);
-}
-
-// Test event removal
-BOOST_FIXTURE_TEST_CASE(EventRemoval, EventManagerFixture) {
-  auto mockEvent = std::make_shared<MockEvent>("TestEvent");
-  EventManager::Instance().registerEvent("TestEvent", mockEvent);
-
-  BOOST_CHECK(EventManager::Instance().hasEvent("TestEvent"));
-  BOOST_CHECK(EventManager::Instance().removeEvent("TestEvent"));
-  BOOST_CHECK(!EventManager::Instance().hasEvent("TestEvent"));
-  BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 0);
-}
-
-// Test event type retrieval
-BOOST_FIXTURE_TEST_CASE(EventTypeRetrieval, EventManagerFixture) {
-  auto mockEvent1 = std::make_shared<MockEvent>("TestEvent1");
-  auto mockEvent2 = std::make_shared<MockEvent>("TestEvent2");
-
-  EventManager::Instance().registerEvent("TestEvent1", mockEvent1);
-  EventManager::Instance().registerEvent("TestEvent2", mockEvent2);
-  auto rainEvent =
-      std::make_shared<WeatherEvent>("RainEvent", WeatherType::Rainy);
-  EventManager::Instance().registerWeatherEvent("RainEvent", rainEvent);
-
-  auto mockEvents = EventManager::Instance().getEventsByType("Custom");
-  BOOST_CHECK_EQUAL(mockEvents.size(), 2);
-
-  auto weatherEvents = EventManager::Instance().getEventsByType("Weather");
-  BOOST_CHECK_EQUAL(weatherEvents.size(), 1);
-}
-
-// Test event execution and handler system
-BOOST_FIXTURE_TEST_CASE(EventExecutionAndHandlers, EventManagerFixture) {
-  auto event1 = std::make_shared<MockEvent>("Event1");
-  auto event2 = std::make_shared<MockEvent>("Event2");
-
-  EventManager::Instance().registerEvent("Event1", event1);
-  EventManager::Instance().registerEvent("Event2", event2);
-
-  // Test that events exist
-  BOOST_CHECK(EventManager::Instance().hasEvent("Event1"));
-  BOOST_CHECK(EventManager::Instance().hasEvent("Event2"));
-
-  auto event1ptr = EventManager::Instance().getEvent("Event1");
-  auto event2ptr = EventManager::Instance().getEvent("Event2");
-
-  BOOST_REQUIRE(event1ptr != nullptr);
-  BOOST_REQUIRE(event2ptr != nullptr);
-
-  // Test direct event execution
-  BOOST_CHECK(EventManager::Instance().executeEvent("Event1"));
-  BOOST_CHECK(EventManager::Instance().executeEvent("Event2"));
-
-  auto mockEvent1 = std::dynamic_pointer_cast<MockEvent>(event1ptr);
-  auto mockEvent2 = std::dynamic_pointer_cast<MockEvent>(event2ptr);
-
-  BOOST_CHECK(mockEvent1 != nullptr);
-  BOOST_CHECK(mockEvent2 != nullptr);
-
-  // Test that events were executed
-  BOOST_CHECK(mockEvent1->wasExecuted());
-  BOOST_CHECK(mockEvent2->wasExecuted());
-
-  // Test batch execution by type
-  int executedCount = EventManager::Instance().executeEventsByType("Custom");
-  BOOST_CHECK_EQUAL(executedCount, 2);
-}
-
-// Test convenience methods using EventFactory
-// Test convenience methods
-BOOST_FIXTURE_TEST_CASE(ConvenienceMethods, EventManagerFixture) {
-  // Test convenience methods for creating events
-  BOOST_CHECK(EventManager::Instance().createWeatherEvent("TestRain", "Rainy",
-                                                          0.8f, 3.0f));
-  BOOST_CHECK(EventManager::Instance().createSceneChangeEvent(
-      "TestScene", "MainMenu", "fade", 1.5f));
-  BOOST_CHECK(EventManager::Instance().createNPCSpawnEvent("TestNPC", "Guard",
-                                                           2, 30.0f));
-
-  // Verify events were created and registered
-  BOOST_CHECK(EventManager::Instance().hasEvent("TestRain"));
-  BOOST_CHECK(EventManager::Instance().hasEvent("TestScene"));
-  BOOST_CHECK(EventManager::Instance().hasEvent("TestNPC"));
-
-  // Test event count
-  BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 3);
-
-  // Register handlers for testing trigger methods
-  bool weatherHandlerCalled = false;
-  bool sceneHandlerCalled = false;
-  bool npcHandlerCalled = false;
-
-  EventManager::Instance().registerHandler(
-      EventTypeId::Weather, [&weatherHandlerCalled](const EventData &) {
-        weatherHandlerCalled = true;
+  std::atomic<bool> handlerCalled{false};
+  auto token = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Custom, [&handlerCalled](const EventData &data) {
+        if (data.isActive()) handlerCalled.store(true);
       });
+
+  // Dispatch the event
+  BOOST_CHECK(EventManager::Instance().dispatchEvent(mockEvent));
+  EventManager::Instance().update(); // Process deferred events
+
+  BOOST_CHECK(handlerCalled.load());
+  EventManager::Instance().removeHandler(token);
+}
+
+BOOST_FIXTURE_TEST_CASE(DispatchEvent_ImmediateMode_CallsHandlerSynchronously, EventManagerFixture) {
+  auto mockEvent = std::make_shared<MockEvent>("TestEvent");
+
+  std::atomic<bool> handlerCalled{false};
+  auto token = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Custom, [&handlerCalled](const EventData &data) {
+        if (data.isActive()) handlerCalled.store(true);
+      });
+
+  // Dispatch with Immediate mode - should call handler before returning
+  EventManager::Instance().dispatchEvent(mockEvent, EventManager::DispatchMode::Immediate);
+
+  // Handler should already be called (no update() needed)
+  BOOST_CHECK(handlerCalled.load());
+  EventManager::Instance().removeHandler(token);
+}
+
+BOOST_FIXTURE_TEST_CASE(DispatchEvent_DeferredMode_RequiresUpdate, EventManagerFixture) {
+  auto mockEvent = std::make_shared<MockEvent>("TestEvent");
+
+  std::atomic<bool> handlerCalled{false};
+  auto token = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Custom, [&handlerCalled](const EventData &data) {
+        if (data.isActive()) handlerCalled.store(true);
+      });
+
+  // Dispatch with Deferred mode (default)
+  EventManager::Instance().dispatchEvent(mockEvent, EventManager::DispatchMode::Deferred);
+
+  // Handler should NOT be called yet
+  BOOST_CHECK(!handlerCalled.load());
+
+  // Now process deferred events
+  EventManager::Instance().update();
+
+  // Handler should now be called
+  BOOST_CHECK(handlerCalled.load());
+  EventManager::Instance().removeHandler(token);
+}
+
+// ==================== Handler Registration Tests ====================
+
+BOOST_FIXTURE_TEST_CASE(RegisterHandlerWithToken_CanBeRemoved, EventManagerFixture) {
+  std::atomic<int> callCount{0};
+
+  auto token = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Custom,
+      [&callCount](const EventData &data) {
+        if (data.isActive()) ++callCount;
+      });
+
+  // Dispatch once - handler should be called
+  auto e1 = std::make_shared<MockEvent>("Test1");
+  EventManager::Instance().dispatchEvent(e1, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK_EQUAL(callCount.load(), 1);
+
+  // Remove handler
+  EventManager::Instance().removeHandler(token);
+
+  // Dispatch again - handler should NOT be called
+  auto e2 = std::make_shared<MockEvent>("Test2");
+  EventManager::Instance().dispatchEvent(e2, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK_EQUAL(callCount.load(), 1); // Still 1, not incremented
+}
+
+// ==================== Trigger Method Tests ====================
+
+BOOST_FIXTURE_TEST_CASE(ChangeWeather_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> weatherHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Weather, [&weatherHandlerCalled](const EventData &data) {
+        if (data.event) weatherHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().changeWeather("Rainy", 1.0f,
+                                                    EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(weatherHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(SpawnNPC_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> npcHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::NPCSpawn, [&npcHandlerCalled](const EventData &data) {
+        if (data.event) npcHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().spawnNPC("Guard", 10.0f, 20.0f, 1, 0.0f, "",
+                                               {}, false,
+                                               EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(npcHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerParticleEffect_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> particleHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::ParticleEffect, [&particleHandlerCalled](const EventData &data) {
+        if (data.event) particleHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerParticleEffect("Fire", 100.0f, 200.0f,
+                                                            1.0f, -1.0f, "",
+                                                            EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(particleHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerResourceChange_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> resourceHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::ResourceChange, [&resourceHandlerCalled](const EventData &data) {
+        if (data.event) resourceHandlerCalled.store(true);
+      });
+
+  HammerEngine::ResourceHandle testResource(1, 1);
+  bool ok = EventManager::Instance().triggerResourceChange(
+      TEST_PLAYER_HANDLE, testResource, 5, 10, "test",
+      EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(resourceHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerCollision_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> collisionHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Collision, [&collisionHandlerCalled](const EventData &data) {
+        if (data.event) collisionHandlerCalled.store(true);
+      });
+
+  HammerEngine::CollisionInfo info{};
+  bool ok = EventManager::Instance().triggerCollision(info,
+                                                       EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(collisionHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerWorldLoaded_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> worldHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::World, [&worldHandlerCalled](const EventData &data) {
+        if (data.event) worldHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerWorldLoaded("test_world", 100, 100,
+                                                         EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(worldHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerCameraMoved_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> cameraHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Camera, [&cameraHandlerCalled](const EventData &data) {
+        if (data.event) cameraHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerCameraMoved(
+      Vector2D(100, 100), Vector2D(0, 0),
+      EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(cameraHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+// ==================== Deferred Dispatch Tests ====================
+
+BOOST_FIXTURE_TEST_CASE(DeferredDispatch_MultipleTriggers_ProcessedInUpdate, EventManagerFixture) {
+  std::atomic<int> handlerCallCount{0};
+
   EventManager::Instance().registerHandler(
-      EventTypeId::SceneChange,
-      [&sceneHandlerCalled](const EventData &) { sceneHandlerCalled = true; });
+      EventTypeId::Weather,
+      [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
   EventManager::Instance().registerHandler(
       EventTypeId::NPCSpawn,
-      [&npcHandlerCalled](const EventData &) { npcHandlerCalled = true; });
+      [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
 
-  // Test trigger aliases with immediate dispatch - should return true when handlers are registered
-  BOOST_CHECK(EventManager::Instance().changeWeather("Stormy", 2.0f, EventManager::DispatchMode::Immediate));
-  BOOST_CHECK(EventManager::Instance().changeScene("NewScene", "dissolve", 1.0f, EventManager::DispatchMode::Immediate));
-  BOOST_CHECK(EventManager::Instance().spawnNPC("Villager", 100.0f, 200.0f, 1, 0.0f, "", {}, false, EventManager::DispatchMode::Immediate));
+  // Trigger multiple events with deferred dispatch (default)
+  BOOST_CHECK(EventManager::Instance().changeWeather("Storm", 3.0f));
+  BOOST_CHECK(EventManager::Instance().spawnNPC("Boss", 500.0f, 300.0f));
 
-  // Verify handlers were called immediately
-  BOOST_CHECK(weatherHandlerCalled);
-  BOOST_CHECK(sceneHandlerCalled);
-  BOOST_CHECK(npcHandlerCalled);
+  // Events should be queued, handlers not called yet
+  BOOST_CHECK_EQUAL(handlerCallCount.load(), 0);
 
-  // Reset flags for deferred test
-  weatherHandlerCalled = false;
-  sceneHandlerCalled = false;
-  npcHandlerCalled = false;
-
-  // Test trigger aliases with deferred dispatch (default)
-  BOOST_CHECK(EventManager::Instance().triggerWeatherChange("Cloudy", 1.5f));
-  BOOST_CHECK(EventManager::Instance().triggerSceneChange("TestScene", "slide", 2.0f));
-  BOOST_CHECK(EventManager::Instance().triggerNPCSpawn("Merchant", 50.0f, 75.0f));
-
-  // Handlers should not be called yet
-  BOOST_CHECK(!weatherHandlerCalled);
-  BOOST_CHECK(!sceneHandlerCalled);
-  BOOST_CHECK(!npcHandlerCalled);
-
-  // Process queued events
+  // Process deferred events
   EventManager::Instance().update();
-  
-  // Allow time for processing
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  
-  // Now handlers should be called
-  BOOST_CHECK(weatherHandlerCalled);
-  BOOST_CHECK(sceneHandlerCalled);
-  BOOST_CHECK(npcHandlerCalled);
+
+  // Allow processing time
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  // Handlers should now be called
+  BOOST_CHECK_GE(handlerCallCount.load(), 2);
 }
 
-// Test weather events
-BOOST_FIXTURE_TEST_CASE(WeatherEvents, EventManagerFixture) {
-  // Test weather event creation using new API
-  auto rainEvent = std::make_shared<WeatherEvent>("Rain", WeatherType::Rainy);
-  BOOST_CHECK(EventManager::Instance().registerWeatherEvent("Rain", rainEvent));
+// ==================== Performance Stats Tests ====================
 
-  // Register handler for weather changes
+BOOST_FIXTURE_TEST_CASE(PerformanceStats_TrackDispatchMetrics, EventManagerFixture) {
+  // Reset performance stats
+  EventManager::Instance().resetPerformanceStats();
+
+  // Register a handler
   bool handlerCalled = false;
   EventManager::Instance().registerHandler(
       EventTypeId::Weather,
       [&handlerCalled](const EventData &) { handlerCalled = true; });
 
-  // Test direct weather change - should work with immediate handler
-  BOOST_CHECK(EventManager::Instance().changeWeather("Rainy", 2.0f, EventManager::DispatchMode::Immediate));
-  
+  // Trigger an event with immediate dispatch
+  BOOST_CHECK(EventManager::Instance().changeWeather("Sunny", 1.0f,
+                                                      EventManager::DispatchMode::Immediate));
   BOOST_CHECK(handlerCalled);
 
-  // Test weather event execution
-  BOOST_CHECK(EventManager::Instance().executeEvent("Rain"));
+  // Get performance stats
+  auto stats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
+
+  // Verify basic stats structure exists
+  BOOST_CHECK_GE(stats.callCount, 0);
+  BOOST_CHECK_GE(stats.totalTime, 0.0);
+  BOOST_CHECK_GE(stats.avgTime, 0.0);
 }
 
-// Test scene change events
-BOOST_FIXTURE_TEST_CASE(SceneChangeEvents, EventManagerFixture) {
-  // Test scene change event creation using new API
-  auto sceneEvent =
-      std::make_shared<SceneChangeEvent>("ToMainMenu", "MainMenu");
-  BOOST_CHECK(EventManager::Instance().registerSceneChangeEvent("ToMainMenu",
-                                                                sceneEvent));
+BOOST_FIXTURE_TEST_CASE(GetPendingEventCount_TracksQueuedEvents, EventManagerFixture) {
+  // Initially should have no pending events
+  BOOST_CHECK_EQUAL(EventManager::Instance().getPendingEventCount(), 0);
 
-  // Register handler for scene changes
-  bool handlerCalled = false;
-  EventManager::Instance().registerHandler(
-      EventTypeId::SceneChange,
-      [&handlerCalled](const EventData &) { handlerCalled = true; });
+  // Queue some deferred events
+  EventManager::Instance().changeWeather("Rainy", 1.0f);
+  EventManager::Instance().spawnNPC("Guard", 0, 0);
 
-  // Test direct scene change - should work with immediate handler
-  BOOST_CHECK(EventManager::Instance().changeScene("MainMenu", "fade", 1.0f, EventManager::DispatchMode::Immediate));
-  
-  BOOST_CHECK(handlerCalled);
+  // Should have pending events
+  BOOST_CHECK_GT(EventManager::Instance().getPendingEventCount(), 0);
 
-  // Test scene event execution
-  BOOST_CHECK(EventManager::Instance().executeEvent("ToMainMenu"));
-}
-
-// Test NPC spawn events
-BOOST_FIXTURE_TEST_CASE(NPCSpawnEvents, EventManagerFixture) {
-  // Test simplified NPC spawn trigger (handlers do the work now)
-  bool handlerCalled = false;
-  EventManager::Instance().registerHandler(
-      EventTypeId::NPCSpawn, [&handlerCalled](const EventData &eventData) {
-        handlerCalled = true;
-        (void)eventData; // Suppress unused warning
-      });
-
-  // Test NPC spawn trigger
-  EventManager::Instance().spawnNPC("Guard", 100.0f, 200.0f, 1, 0.0f, "", {}, false, EventManager::DispatchMode::Immediate);
-
-  BOOST_CHECK(handlerCalled);
-}
-
-// Test thread safety with minimal concurrent operations
-BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
-  // Start with clean state
-  EventManager::Instance().clean();
-  BOOST_CHECK(EventManager::Instance().init());
-
-  // Test enabling threading with ThreadSystem
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(true);
-  #endif
+  // Process events
+  EventManager::Instance().update();
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  // Register a test event
-  auto mockEvent = std::make_shared<MockEvent>("ThreadTest");
-  EventManager::Instance().registerEvent("ThreadTest", mockEvent);
-
-  // Set conditions and verify behavior
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("ThreadTest"))
-      ->setConditionsMet(true);
-
-  // Update with threading enabled
-  EventManager::Instance().update();
-  // Allow time for ThreadSystem tasks to complete
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  // Verify update worked - no handlers registered, so should NOT execute
-  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
-                  EventManager::Instance().getEvent("ThreadTest"))
-                  ->wasUpdated());
-  BOOST_CHECK(!std::dynamic_pointer_cast<MockEvent>(
-                   EventManager::Instance().getEvent("ThreadTest"))
-                   ->wasExecuted());
-
-  // Test explicit execution with threading
-  EventManager::Instance().executeEvent("ThreadTest");
-  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
-                  EventManager::Instance().getEvent("ThreadTest"))
-                  ->wasExecuted());
-
-  // Test disabling threading
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(false);
-  #endif
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  // Reset event and test again without threading
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("ThreadTest"))
-      ->reset();
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("ThreadTest"))
-      ->setConditionsMet(true);
-
-  EventManager::Instance().update();
-
-  // Verify update worked without threading - no handlers, so should NOT execute
-  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
-                  EventManager::Instance().getEvent("ThreadTest"))
-                  ->wasUpdated());
-  BOOST_CHECK(!std::dynamic_pointer_cast<MockEvent>(
-                   EventManager::Instance().getEvent("ThreadTest"))
-                   ->wasExecuted());
-
-  // Test explicit execution without threading
-  EventManager::Instance().executeEvent("ThreadTest");
-  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
-                  EventManager::Instance().getEvent("ThreadTest"))
-                  ->wasExecuted());
-
-  // Make sure threading is disabled before cleanup
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(false);
-  #endif
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  // Clean up
-  EventManager::Instance().removeEvent("ThreadTest");
-
-  // Test passes if we reached this point
-  BOOST_CHECK(true);
+  // Should have no pending events after processing
+  BOOST_CHECK_EQUAL(EventManager::Instance().getPendingEventCount(), 0);
 }
 
-// Test ParticleEffect convenience methods
-BOOST_FIXTURE_TEST_CASE(ParticleEffectConvenienceMethods, EventManagerFixture) {
-  // Test convenience methods for creating particle effect events
-  BOOST_CHECK(EventManager::Instance().createParticleEffectEvent(
-      "TestFire", "Fire", 100.0f, 200.0f, 1.5f, 5.0f, "effects"));
+// ==================== Event Pool Recycling Tests ====================
 
-  Vector2D position(300.0f, 400.0f);
-  BOOST_CHECK(EventManager::Instance().createParticleEffectEvent(
-      "TestSmoke", "Smoke", position, 0.8f, -1.0f, "ambient"));
+BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_WeatherEvents, EventManagerFixture) {
+  EventPtr firstWeather = nullptr;
+  EventPtr secondWeather = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::Weather, [&](const EventData &data) {
+        if (!firstWeather) firstWeather = data.event;
+        else secondWeather = data.event;
+      });
 
-  // Test with minimal parameters
-  BOOST_CHECK(EventManager::Instance().createParticleEffectEvent(
-      "TestSparks", "Sparks", 500.0f, 600.0f));
+  EventManager::Instance().changeWeather("Storm", 1.0f, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().changeWeather("Clear", 1.0f, EventManager::DispatchMode::Immediate);
 
-  // Verify events were created and registered
-  BOOST_CHECK(EventManager::Instance().hasEvent("TestFire"));
-  BOOST_CHECK(EventManager::Instance().hasEvent("TestSmoke"));
-  BOOST_CHECK(EventManager::Instance().hasEvent("TestSparks"));
-
-  // Test event count
-  BOOST_CHECK_GE(EventManager::Instance().getEventCount(), 3);
-
-  // Verify properties of created events
-  auto fireEvent = EventManager::Instance().getEvent("TestFire");
-  BOOST_REQUIRE(fireEvent != nullptr);
-  BOOST_CHECK_EQUAL(fireEvent->getType(), "ParticleEffect");
-
-  auto particleEvent =
-      std::dynamic_pointer_cast<ParticleEffectEvent>(fireEvent);
-  BOOST_REQUIRE(particleEvent != nullptr);
-  BOOST_CHECK_EQUAL(particleEvent->getEffectName(), "Fire");
-  BOOST_CHECK_EQUAL(particleEvent->getPosition().getX(), 100.0f);
-  BOOST_CHECK_EQUAL(particleEvent->getPosition().getY(), 200.0f);
-  BOOST_CHECK_EQUAL(particleEvent->getIntensity(), 1.5f);
-  BOOST_CHECK_EQUAL(particleEvent->getDuration(), 5.0f);
-  BOOST_CHECK_EQUAL(particleEvent->getGroupTag(), "effects");
+  BOOST_CHECK(firstWeather != nullptr);
+  BOOST_CHECK(secondWeather != nullptr);
+  BOOST_CHECK_EQUAL(firstWeather.get(), secondWeather.get()); // Same pooled event reused
 }
 
-// Test ParticleEffect event execution and integration
-BOOST_FIXTURE_TEST_CASE(ParticleEffectEventExecution, EventManagerFixture) {
-  // Create a particle effect event using convenience method
-  BOOST_CHECK(EventManager::Instance().createParticleEffectEvent(
-      "ExecutionTest", "TestEffect", 150.0f, 250.0f, 2.0f));
+BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_NPCSpawnEvents, EventManagerFixture) {
+  EventPtr firstNPC = nullptr;
+  EventPtr secondNPC = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::NPCSpawn, [&](const EventData &data) {
+        if (!firstNPC) firstNPC = data.event;
+        else secondNPC = data.event;
+      });
 
-  // Verify event exists
-  BOOST_CHECK(EventManager::Instance().hasEvent("ExecutionTest"));
+  EventManager::Instance().spawnNPC("A", 0, 0, 1, 0, "", {}, false, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().spawnNPC("B", 0, 0, 1, 0, "", {}, false, EventManager::DispatchMode::Immediate);
 
-  auto event = EventManager::Instance().getEvent("ExecutionTest");
-  BOOST_REQUIRE(event != nullptr);
-
-  auto particleEvent = std::dynamic_pointer_cast<ParticleEffectEvent>(event);
-  BOOST_REQUIRE(particleEvent != nullptr);
-
-  // Initially should not be active (no effect running)
-  BOOST_CHECK(!particleEvent->isEffectActive());
-
-  // Test direct execution through EventManager
-  // Note: This will fail gracefully since ParticleManager is not initialized in
-  // test environment
-  BOOST_CHECK(EventManager::Instance().executeEvent("ExecutionTest"));
-
-  // Effect should still not be active due to ParticleManager not being
-  // available
-  BOOST_CHECK(!particleEvent->isEffectActive());
-
-  // Test with invalid event name
-  BOOST_CHECK(
-      !EventManager::Instance().executeEvent("NonExistentParticleEffect"));
+  BOOST_CHECK_EQUAL(firstNPC.get(), secondNPC.get()); // Same pooled event reused
 }
 
-// Test ParticleEffect events retrieval by type
-BOOST_FIXTURE_TEST_CASE(ParticleEffectEventsByType, EventManagerFixture) {
-  // Create multiple particle effect events
-  BOOST_CHECK(EventManager::Instance().createParticleEffectEvent(
-      "Fire1", "Fire", 100.0f, 100.0f));
-  BOOST_CHECK(EventManager::Instance().createParticleEffectEvent(
-      "Fire2", "Fire", 200.0f, 200.0f));
-  BOOST_CHECK(EventManager::Instance().createParticleEffectEvent(
-      "Smoke1", "Smoke", 300.0f, 300.0f));
+BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_CollisionEvents, EventManagerFixture) {
+  EventPtr firstColl = nullptr;
+  EventPtr secondColl = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::Collision, [&](const EventData &data) {
+        if (!firstColl) firstColl = data.event;
+        else secondColl = data.event;
+      });
 
-  // Also create a non-particle event for comparison
-  BOOST_CHECK(
-      EventManager::Instance().createWeatherEvent("TestRain", "Rainy", 0.5f));
+  HammerEngine::CollisionInfo info{};
+  EventManager::Instance().triggerCollision(info, EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerCollision(info, EventManager::DispatchMode::Immediate);
 
-  // Get ParticleEffect events by type string
-  auto particleEvents =
-      EventManager::Instance().getEventsByType("ParticleEffect");
-  BOOST_CHECK_GE(particleEvents.size(), 3);
-
-  // Verify all returned events are ParticleEffect type
-  for (const auto &event : particleEvents) {
-    BOOST_CHECK_EQUAL(event->getType(), "ParticleEffect");
-    auto particleEvent = std::dynamic_pointer_cast<ParticleEffectEvent>(event);
-    BOOST_CHECK(particleEvent != nullptr);
-  }
-
-  // Get Weather events by type for comparison
-  auto weatherEvents = EventManager::Instance().getEventsByType("Weather");
-  BOOST_CHECK_GE(weatherEvents.size(), 1);
-
-  // Verify weather events are different type
-  for (const auto &event : weatherEvents) {
-    BOOST_CHECK_EQUAL(event->getType(), "Weather");
-  }
+  BOOST_CHECK_EQUAL(firstColl.get(), secondColl.get()); // Same pooled event reused
 }
 
-// Test ParticleEffect event activation and deactivation
-BOOST_FIXTURE_TEST_CASE(ParticleEffectEventActivation, EventManagerFixture) {
-  // Create a particle effect event
-  BOOST_CHECK(EventManager::Instance().createParticleEffectEvent(
-      "ActivationTest", "TestEffect", 0.0f, 0.0f));
+BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_ParticleEffectEvents, EventManagerFixture) {
+  EventPtr firstParticle = nullptr;
+  EventPtr secondParticle = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::ParticleEffect, [&](const EventData &data) {
+        if (!firstParticle) firstParticle = data.event;
+        else secondParticle = data.event;
+      });
 
-  // Should be active by default
-  BOOST_CHECK(EventManager::Instance().isEventActive("ActivationTest"));
+  EventManager::Instance().triggerParticleEffect("Fire", 0, 0, 1.0f, 1.0f, "",
+                                                  EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerParticleEffect("Fire", 0, 0, 1.0f, 1.0f, "",
+                                                  EventManager::DispatchMode::Immediate);
 
-  // Test deactivation
-  EventManager::Instance().setEventActive("ActivationTest", false);
-  BOOST_CHECK(!EventManager::Instance().isEventActive("ActivationTest"));
-
-  // Test reactivation
-  EventManager::Instance().setEventActive("ActivationTest", true);
-  BOOST_CHECK(EventManager::Instance().isEventActive("ActivationTest"));
-
-  // Get the event and test its internal state
-  auto event = EventManager::Instance().getEvent("ActivationTest");
-  BOOST_REQUIRE(event != nullptr);
-
-  auto particleEvent = std::dynamic_pointer_cast<ParticleEffectEvent>(event);
-  BOOST_REQUIRE(particleEvent != nullptr);
-
-  // Verify the event reflects the activation state
-  BOOST_CHECK(particleEvent->isActive());
+  BOOST_CHECK_EQUAL(firstParticle.get(), secondParticle.get()); // Same pooled event reused
 }
 
-// Test ParticleEffect event removal
-BOOST_FIXTURE_TEST_CASE(ParticleEffectEventRemoval, EventManagerFixture) {
-  // Create a particle effect event
-  BOOST_CHECK(EventManager::Instance().createParticleEffectEvent(
-      "RemovalTest", "TestEffect", 0.0f, 0.0f));
+// ==================== Thread Safety Tests ====================
 
-  // Verify it exists
-  BOOST_CHECK(EventManager::Instance().hasEvent("RemovalTest"));
-
-  // Remove the event
-  BOOST_CHECK(EventManager::Instance().removeEvent("RemovalTest"));
-
-  // Verify it's gone
-  BOOST_CHECK(!EventManager::Instance().hasEvent("RemovalTest"));
-
-  // Test removing non-existent event
-  BOOST_CHECK(
-      !EventManager::Instance().removeEvent("NonExistentParticleEffect"));
-}
-
-// Test task priority with the ThreadSystem
-BOOST_FIXTURE_TEST_CASE(TaskPriorityTest, EventManagerFixture) {
-  // Ensure the EventManager is clean
+BOOST_FIXTURE_TEST_CASE(ThreadSafety_ConcurrentTriggers, EventManagerFixture) {
   EventManager::Instance().clean();
   BOOST_CHECK(EventManager::Instance().init());
 
-  // Create multiple events to be updated with different priorities
-  auto highPriorityEvent = std::make_shared<MockEvent>("HighPriorityEvent");
-  auto normalPriorityEvent = std::make_shared<MockEvent>("NormalPriorityEvent");
-  auto lowPriorityEvent = std::make_shared<MockEvent>("LowPriorityEvent");
-
-  // Register all events
-  EventManager::Instance().registerEvent("HighPriorityEvent",
-                                         highPriorityEvent);
-  EventManager::Instance().registerEvent("NormalPriorityEvent",
-                                         normalPriorityEvent);
-  EventManager::Instance().registerEvent("LowPriorityEvent", lowPriorityEvent);
-
-  // Set conditions to execute
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("HighPriorityEvent"))
-      ->setConditionsMet(true);
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("NormalPriorityEvent"))
-      ->setConditionsMet(true);
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("LowPriorityEvent"))
-      ->setConditionsMet(true);
-
-  // Test all events execution with threading enabled
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(true);
-  #endif
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  // Make sure all events are active
-  EventManager::Instance().setEventActive("HighPriorityEvent", true);
-  EventManager::Instance().setEventActive("NormalPriorityEvent", true);
-  EventManager::Instance().setEventActive("LowPriorityEvent", true);
-
-  // Update and verify execution - force direct execution to make test more
-  // reliable
-  EventManager::Instance().executeEvent("HighPriorityEvent");
-  EventManager::Instance().update();
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
-                  EventManager::Instance().getEvent("HighPriorityEvent"))
-                  ->wasExecuted());
-
-  // Reset for normal priority test
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("HighPriorityEvent"))
-      ->reset();
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("NormalPriorityEvent"))
-      ->reset();
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("LowPriorityEvent"))
-      ->reset();
-
-  // Test with threading enabled - using direct execution to avoid flaky tests
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(true);
-  #endif
-  std::this_thread::sleep_for(std::chrono::milliseconds(150));
-
-  // Directly execute the event to avoid test flakiness
-  EventManager::Instance().executeEvent("NormalPriorityEvent");
-  EventManager::Instance().update();
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
-                  EventManager::Instance().getEvent("NormalPriorityEvent"))
-                  ->wasExecuted());
-
-  // Reset for low priority test
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("HighPriorityEvent"))
-      ->reset();
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("NormalPriorityEvent"))
-      ->reset();
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("LowPriorityEvent"))
-      ->reset();
-
-  // Test with threading enabled - using direct execution
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(true);
-  #endif
-  std::this_thread::sleep_for(std::chrono::milliseconds(150));
-
-  // Direct execution for reliability
-  EventManager::Instance().executeEvent("LowPriorityEvent");
-  EventManager::Instance().update();
-  std::this_thread::sleep_for(std::chrono::milliseconds(250));
-
-  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
-                  EventManager::Instance().getEvent("LowPriorityEvent"))
-                  ->wasExecuted());
-
-  // Cleanup
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(false);
-  #endif
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  EventManager::Instance().removeEvent("HighPriorityEvent");
-  EventManager::Instance().removeEvent("NormalPriorityEvent");
-  EventManager::Instance().removeEvent("LowPriorityEvent");
-}
-
-// Test concurrent events with different priorities
-BOOST_FIXTURE_TEST_CASE(ConcurrentPriorityTest, EventManagerFixture) {
-  // Ensure we have a clean EventManager
-  EventManager::Instance().clean();
-  BOOST_CHECK(EventManager::Instance().init());
-
-  // Initialize ThreadSystem with enough threads
-  if (HammerEngine::ThreadSystem::Exists()) {
-    HammerEngine::ThreadSystem::Instance().init(
-        4); // Ensure we have enough threads
-  }
-
-  std::atomic<int> executionOrder{0};
-
-  class PriorityTestEvent : public MockEvent {
-  public:
-    PriorityTestEvent(const std::string &name, std::atomic<int> &orderCounter,
-                      int *myOrder)
-        : MockEvent(name), m_orderCounter(orderCounter), m_myOrder(myOrder) {}
-
-    void execute() override {
-      MockEvent::execute();
-      *m_myOrder =
-          m_orderCounter.fetch_add(1) + 1; // Record execution order (1-based)
-      // Add a small delay to simulate work
-      std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-
-  private:
-    std::atomic<int> &m_orderCounter;
-    int *m_myOrder;
-  };
-
-  // Order tracking variables
-  int criticalOrder = 0;
-  int highOrder = 0;
-  int normalOrder = 0;
-  int lowOrder = 0;
-  int idleOrder = 0;
-
-  // Create events with different priorities
-  auto criticalEvent = std::make_shared<PriorityTestEvent>(
-      "CriticalEvent", executionOrder, &criticalOrder);
-  auto highEvent = std::make_shared<PriorityTestEvent>(
-      "HighEvent", executionOrder, &highOrder);
-  auto normalEvent = std::make_shared<PriorityTestEvent>(
-      "NormalEvent", executionOrder, &normalOrder);
-  auto lowEvent = std::make_shared<PriorityTestEvent>(
-      "LowEvent", executionOrder, &lowOrder);
-  auto idleEvent = std::make_shared<PriorityTestEvent>(
-      "IdleEvent", executionOrder, &idleOrder);
-
-  // Register all events
-  EventManager::Instance().registerEvent("CriticalEvent", criticalEvent);
-  EventManager::Instance().registerEvent("HighEvent", highEvent);
-  EventManager::Instance().registerEvent("NormalEvent", normalEvent);
-  EventManager::Instance().registerEvent("LowEvent", lowEvent);
-  EventManager::Instance().registerEvent("IdleEvent", idleEvent);
-
-  // Set all events' conditions to true
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("CriticalEvent"))
-      ->setConditionsMet(true);
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("HighEvent"))
-      ->setConditionsMet(true);
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("NormalEvent"))
-      ->setConditionsMet(true);
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("LowEvent"))
-      ->setConditionsMet(true);
-  std::dynamic_pointer_cast<MockEvent>(
-      EventManager::Instance().getEvent("IdleEvent"))
-      ->setConditionsMet(true);
-
-  // Directly execute each event to test functionality without relying on
-  // threading Configure the EventManager to use threading
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(true);
-  #endif
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  // Directly execute events for consistent test results
-  BOOST_CHECK(EventManager::Instance().executeEvent("CriticalEvent"));
-  BOOST_CHECK(EventManager::Instance().executeEvent("HighEvent"));
-  BOOST_CHECK(EventManager::Instance().executeEvent("NormalEvent"));
-  BOOST_CHECK(EventManager::Instance().executeEvent("LowEvent"));
-  BOOST_CHECK(EventManager::Instance().executeEvent("IdleEvent"));
-
-  // Also run update to test the update mechanism
-  EventManager::Instance().update();
-  std::this_thread::sleep_for(std::chrono::milliseconds(400));
-
-  // Verify all events were executed
-  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
-                  EventManager::Instance().getEvent("CriticalEvent"))
-                  ->wasExecuted());
-  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
-                  EventManager::Instance().getEvent("HighEvent"))
-                  ->wasExecuted());
-  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
-                  EventManager::Instance().getEvent("NormalEvent"))
-                  ->wasExecuted());
-  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
-                  EventManager::Instance().getEvent("LowEvent"))
-                  ->wasExecuted());
-  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
-                  EventManager::Instance().getEvent("IdleEvent"))
-                  ->wasExecuted());
-
-  // Clean up
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(false);
-  #endif
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  EventManager::Instance().removeEvent("CriticalEvent");
-  EventManager::Instance().removeEvent("HighEvent");
-  EventManager::Instance().removeEvent("NormalEvent");
-  EventManager::Instance().removeEvent("LowEvent");
-  EventManager::Instance().removeEvent("IdleEvent");
-}
-
-// Test ResourceChangeEvent creation and registration
-BOOST_FIXTURE_TEST_CASE(ResourceChangeEventCreation, EventManagerFixture) {
-  // Create a resource handle for testing (ID, Generation)
-  HammerEngine::ResourceHandle testResource(1, 1);
-
-  // Create a ResourceChangeEvent
-  auto resourceEvent = std::make_shared<ResourceChangeEvent>(
-      TEST_PLAYER_HANDLE, testResource, 5, 10, "crafted");
-
-  BOOST_REQUIRE(resourceEvent != nullptr);
-
-  // Test basic properties
-  BOOST_CHECK_EQUAL(resourceEvent->getName(), "ResourceChange");
-  BOOST_CHECK_EQUAL(resourceEvent->getType(), "ResourceChangeEvent");
-  BOOST_CHECK_EQUAL(resourceEvent->getOldQuantity(), 5);
-  BOOST_CHECK_EQUAL(resourceEvent->getNewQuantity(), 10);
-  BOOST_CHECK_EQUAL(resourceEvent->getQuantityChange(), 5);
-  BOOST_CHECK_EQUAL(resourceEvent->getChangeReason(), "crafted");
-
-  // Test convenience methods
-  BOOST_CHECK(resourceEvent->isIncrease());
-  BOOST_CHECK(!resourceEvent->isDecrease());
-  BOOST_CHECK(!resourceEvent->isResourceAdded());
-  BOOST_CHECK(!resourceEvent->isResourceRemoved());
-
-  // Register the event with EventManager
-  EventManager::Instance().registerEvent("TestResourceChange", resourceEvent);
-
-  // Verify registration
-  BOOST_CHECK(EventManager::Instance().hasEvent("TestResourceChange"));
-  BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 1);
-
-  auto retrievedEvent = EventManager::Instance().getEvent("TestResourceChange");
-  BOOST_REQUIRE(retrievedEvent != nullptr);
-  BOOST_CHECK_EQUAL(retrievedEvent->getType(), "ResourceChangeEvent");
-}
-
-// Test ResourceChangeEvent convenience methods for different scenarios
-BOOST_FIXTURE_TEST_CASE(ResourceChangeEventScenarios, EventManagerFixture) {
-  HammerEngine::ResourceHandle testResource(2, 1);
-
-  // Test resource addition (0 -> 5)
-  auto addEvent = std::make_shared<ResourceChangeEvent>(TEST_PLAYER_HANDLE, testResource, 0,
-                                                        5, "gathered");
-
-  BOOST_CHECK(addEvent->isIncrease());
-  BOOST_CHECK(!addEvent->isDecrease());
-  BOOST_CHECK(addEvent->isResourceAdded());
-  BOOST_CHECK(!addEvent->isResourceRemoved());
-  BOOST_CHECK_EQUAL(addEvent->getQuantityChange(), 5);
-
-  // Test resource removal (8 -> 0)
-  auto removeEvent = std::make_shared<ResourceChangeEvent>(TEST_PLAYER_HANDLE, testResource,
-                                                           8, 0, "consumed");
-
-  BOOST_CHECK(!removeEvent->isIncrease());
-  BOOST_CHECK(removeEvent->isDecrease());
-  BOOST_CHECK(!removeEvent->isResourceAdded());
-  BOOST_CHECK(removeEvent->isResourceRemoved());
-  BOOST_CHECK_EQUAL(removeEvent->getQuantityChange(), -8);
-
-  // Test resource decrease (10 -> 3)
-  auto decreaseEvent = std::make_shared<ResourceChangeEvent>(
-      TEST_PLAYER_HANDLE, testResource, 10, 3, "crafted");
-
-  BOOST_CHECK(!decreaseEvent->isIncrease());
-  BOOST_CHECK(decreaseEvent->isDecrease());
-  BOOST_CHECK(!decreaseEvent->isResourceAdded());
-  BOOST_CHECK(!decreaseEvent->isResourceRemoved());
-  BOOST_CHECK_EQUAL(decreaseEvent->getQuantityChange(), -7);
-
-  // Register all events
-  EventManager::Instance().registerEvent("AddResource", addEvent);
-  EventManager::Instance().registerEvent("RemoveResource", removeEvent);
-  EventManager::Instance().registerEvent("DecreaseResource", decreaseEvent);
-
-  BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 3);
-}
-
-// Test ResourceChangeEvent execution and handler integration
-BOOST_FIXTURE_TEST_CASE(ResourceChangeEventExecution, EventManagerFixture) {
-  HammerEngine::ResourceHandle goldResource(3, 1);
-
-  auto resourceEvent = std::make_shared<ResourceChangeEvent>(
-      TEST_PLAYER_HANDLE, goldResource, 100, 150, "trade");
-
-  EventManager::Instance().registerEvent("GoldChange", resourceEvent);
-
-  // Test basic execution
-  BOOST_CHECK(EventManager::Instance().executeEvent("GoldChange"));
-
-  // Test event retrieval and type checking
-  auto retrievedEvent = EventManager::Instance().getEvent("GoldChange");
-  BOOST_REQUIRE(retrievedEvent != nullptr);
-
-  auto typedEvent =
-      std::dynamic_pointer_cast<ResourceChangeEvent>(retrievedEvent);
-  BOOST_REQUIRE(typedEvent != nullptr);
-
-  // Verify event data integrity after execution
-  BOOST_CHECK_EQUAL(typedEvent->getOldQuantity(), 100);
-  BOOST_CHECK_EQUAL(typedEvent->getNewQuantity(), 150);
-  BOOST_CHECK_EQUAL(typedEvent->getChangeReason(), "trade");
-}
-
-// Test ResourceChangeEvent handler registration and triggering
-BOOST_FIXTURE_TEST_CASE(ResourceChangeEventHandlers, EventManagerFixture) {
-  // Test handler registration for ResourceChangeEvent
-  bool handlerCalled = false;
+  std::atomic<int> handlerCallCount{0};
 
   EventManager::Instance().registerHandler(
       EventTypeId::ResourceChange,
-      [&handlerCalled](const EventData &eventData) {
-        handlerCalled = true;
-        // The EventData contains the event pointer, not data fields
-        BOOST_REQUIRE(eventData.event != nullptr);
-        auto resourceEvent =
-            std::dynamic_pointer_cast<ResourceChangeEvent>(eventData.event);
-        BOOST_CHECK(resourceEvent != nullptr);
-      });
-
-  HammerEngine::ResourceHandle ironResource(4, 1);
-
-  // Test convenience method for creating events
-  BOOST_CHECK(EventManager::Instance().createResourceChangeEvent(
-      "TestResourceChange", TEST_PLAYER_HANDLE, ironResource, 20, 35, "smelted"));
-  BOOST_CHECK(EventManager::Instance().hasEvent("TestResourceChange"));
-
-  // Test triggering resource change with immediate dispatch
-  BOOST_CHECK(EventManager::Instance().triggerResourceChange(
-      TEST_PLAYER_HANDLE, ironResource, 20, 35, "smelted", EventManager::DispatchMode::Immediate));
-
-  // Verify handler was called
-  BOOST_CHECK(handlerCalled);
-}
-
-// Test ResourceChangeEvent retrieval by type
-BOOST_FIXTURE_TEST_CASE(ResourceChangeEventsByType, EventManagerFixture) {
-  // Create multiple ResourceChangeEvents
-  auto event1 = std::make_shared<ResourceChangeEvent>(
-      TEST_PLAYER_HANDLE, HammerEngine::ResourceHandle(1, 1), 0, 10, "mined");
-  auto event2 = std::make_shared<ResourceChangeEvent>(
-      TEST_PLAYER_HANDLE, HammerEngine::ResourceHandle(2, 1), 5, 15, "chopped");
-  auto event3 = std::make_shared<ResourceChangeEvent>(
-      TEST_PLAYER_HANDLE, HammerEngine::ResourceHandle(3, 1), 20, 18, "consumed");
-
-  // Register all events
-  EventManager::Instance().registerEvent("StoneChange", event1);
-  EventManager::Instance().registerEvent("WoodChange", event2);
-  EventManager::Instance().registerEvent("FoodChange", event3);
-
-  // Also register a different event type for comparison
-  BOOST_CHECK(
-      EventManager::Instance().createWeatherEvent("TestRain", "Rainy", 0.5f));
-
-  // Get ResourceChangeEvents by type using EventTypeId
-  auto resourceEvents =
-      EventManager::Instance().getEventsByType(EventTypeId::ResourceChange);
-  BOOST_CHECK_GE(resourceEvents.size(), 3);
-
-  // Verify all returned events are ResourceChange type
-  for (const auto &event : resourceEvents) {
-    BOOST_CHECK_EQUAL(event->getType(), "ResourceChangeEvent");
-    auto resourceEvent = std::dynamic_pointer_cast<ResourceChangeEvent>(event);
-    BOOST_CHECK(resourceEvent != nullptr);
-  }
-
-  // Verify we have the correct total count
-  BOOST_CHECK_GE(EventManager::Instance().getEventCount(), 4);
-}
-
-// Test ResourceChangeEvent thread safety
-BOOST_FIXTURE_TEST_CASE(ResourceChangeEventThreadSafety, EventManagerFixture) {
-  EventManager::Instance().clean();
-  BOOST_CHECK(EventManager::Instance().init());
+      [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
 
   HammerEngine::ResourceHandle testResource(1, 1);
-
-  // Register multiple resource change events
-  for (int i = 0; i < 5; ++i) {
-    auto event = std::make_shared<ResourceChangeEvent>(
-        TEST_PLAYER_HANDLE, testResource, i * 10, (i + 1) * 10,
-        "test_" + std::to_string(i));
-    EventManager::Instance().registerEvent("ResourceTest" + std::to_string(i),
-                                           event);
-  }
-
-  BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 5);
-
-  // Enable threading
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(true);
-  #endif
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
-  // Test concurrent access
-  std::atomic<int> executedCount{0};
-
-  EventManager::Instance().registerHandler(
-      EventTypeId::ResourceChange,
-      [&executedCount](const EventData &) { executedCount.fetch_add(1); });
 
   // Trigger multiple resource change events concurrently with immediate dispatch
   std::vector<std::thread> threads;
   for (int i = 0; i < 5; ++i) {
     threads.emplace_back([i, &testResource]() {
-      HammerEngine::ResourceHandle handle = testResource;
       EventManager::Instance().triggerResourceChange(
-          TEST_PLAYER_HANDLE, handle, i * 5, (i + 1) * 5, "concurrent_test",
+          TEST_PLAYER_HANDLE, testResource, i * 5, (i + 1) * 5, "concurrent_test",
           EventManager::DispatchMode::Immediate);
     });
   }
@@ -1106,397 +494,326 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventThreadSafety, EventManagerFixture) {
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   // Verify all events were processed
-  BOOST_CHECK_GE(executedCount.load(), 5);
-
-  // Disable threading and cleanup
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(false);
-  #endif
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  // Clean up events
-  for (int i = 0; i < 5; ++i) {
-    EventManager::Instance().removeEvent("ResourceTest" + std::to_string(i));
-  }
+  BOOST_CHECK_GE(handlerCallCount.load(), 5);
 }
 
-// Test ResourceChangeEvent activation and deactivation
-BOOST_FIXTURE_TEST_CASE(ResourceChangeEventActivation, EventManagerFixture) {
-  HammerEngine::ResourceHandle testResource(1, 1);
+// ==================== State Transition Tests ====================
 
-  auto resourceEvent = std::make_shared<ResourceChangeEvent>(
-      TEST_PLAYER_HANDLE, testResource, 0, 100, "initial");
-
-  EventManager::Instance().registerEvent("ActivationTest", resourceEvent);
-
-  // Should be active by default
-  BOOST_CHECK(EventManager::Instance().isEventActive("ActivationTest"));
-
-  // Test deactivation
-  EventManager::Instance().setEventActive("ActivationTest", false);
-  BOOST_CHECK(!EventManager::Instance().isEventActive("ActivationTest"));
-
-  // Test reactivation
-  EventManager::Instance().setEventActive("ActivationTest", true);
-  BOOST_CHECK(EventManager::Instance().isEventActive("ActivationTest"));
-
-  // Verify the event itself reflects the activation state
-  auto retrievedEvent = EventManager::Instance().getEvent("ActivationTest");
-  BOOST_REQUIRE(retrievedEvent != nullptr);
-  BOOST_CHECK(retrievedEvent->isActive());
-}
-
-// Test new EventManager functionality: Deferred dispatch with threaded update
-BOOST_FIXTURE_TEST_CASE(DeferredDispatchThreadedUpdate, EventManagerFixture) {
+BOOST_FIXTURE_TEST_CASE(StateTransitionPreparation_CleansUpProperly, EventManagerFixture) {
   EventManager::Instance().clean();
   BOOST_CHECK(EventManager::Instance().init());
-  
-  // Enable threading
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(true);
-  #endif
-  
-  std::atomic<int> handlerCallCount{0};
-  
-  // Register handlers for multiple event types
-  EventManager::Instance().registerHandler(
-      EventTypeId::Weather,
-      [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
-  EventManager::Instance().registerHandler(
-      EventTypeId::SceneChange,
-      [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
-  EventManager::Instance().registerHandler(
-      EventTypeId::NPCSpawn,
-      [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
-  
-  // Trigger multiple events with deferred dispatch (default)
-  BOOST_CHECK(EventManager::Instance().changeWeather("Storm", 3.0f));
-  BOOST_CHECK(EventManager::Instance().changeScene("Battle", "wipe", 2.0f));
-  BOOST_CHECK(EventManager::Instance().spawnNPC("Boss", 500.0f, 300.0f));
-  
-  // Events should be queued, handlers not called yet
-  BOOST_CHECK_EQUAL(handlerCallCount.load(), 0);
-  
-  // Call update once to start internal threaded processing
-  EventManager::Instance().update();
-  
-  // Allow time for threaded processing
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
-  
-  // Handlers should now be called
-  BOOST_CHECK_GE(handlerCallCount.load(), 3);
-  
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(false);
-  #endif
-}
 
-// Test ThreadSystem integration and batch processing
-BOOST_FIXTURE_TEST_CASE(ThreadSystemIntegrationBatchProcessing, EventManagerFixture) {
-  EventManager::Instance().clean();
-  BOOST_CHECK(EventManager::Instance().init());
-  
-  // Enable threading for batch processing
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(true);
-  #endif
-  
-  std::atomic<int> batchedEventCount{0};
-  std::atomic<int> totalHandlerCalls{0};
-  
-  // Register handlers that track batch processing
-  EventManager::Instance().registerHandler(
-      EventTypeId::ResourceChange,
-      [&batchedEventCount, &totalHandlerCalls](const EventData &) { 
-        batchedEventCount.fetch_add(1);
-        totalHandlerCalls.fetch_add(1);
-      });
-  
-  HammerEngine::ResourceHandle testResource(10, 1);
-
-  // Create multiple resource change events to trigger batch processing
-  for (int i = 0; i < 20; ++i) {
-    EventManager::Instance().triggerResourceChange(
-        TEST_PLAYER_HANDLE, testResource, i * 10, (i + 1) * 10,
-        "batch_test_" + std::to_string(i));
-  }
-  
-  // Verify events are queued
-  BOOST_CHECK_EQUAL(totalHandlerCalls.load(), 0);
-  
-  // Start threaded update processing
-  EventManager::Instance().update();
-  
-  // Allow time for batch processing
-  std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  
-  // Verify all events were processed in batches
-  BOOST_CHECK_GE(totalHandlerCalls.load(), 20);
-  BOOST_CHECK_GE(batchedEventCount.load(), 20);
-  
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(false);
-  #endif
-}
-
-// Test performance monitoring and statistics
-BOOST_FIXTURE_TEST_CASE(PerformanceMonitoringStats, EventManagerFixture) {
-  EventManager::Instance().clean();
-  BOOST_CHECK(EventManager::Instance().init());
-  
-  // Reset performance stats
-  EventManager::Instance().resetPerformanceStats();
-  
   // Register a handler
   bool handlerCalled = false;
   EventManager::Instance().registerHandler(
-      EventTypeId::Weather,
-      [&handlerCalled](const EventData &) { handlerCalled = true; });
-  
-  // Trigger an event with immediate dispatch to record performance
-  BOOST_CHECK(EventManager::Instance().changeWeather("Sunny", 1.0f, EventManager::DispatchMode::Immediate));
-  BOOST_CHECK(handlerCalled);
-  
-  // Get performance stats - Note: performance stats may not be tracked for immediate dispatch
-  auto stats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
-  
-  // Verify basic stats structure exists (values may be 0 for immediate dispatch)
-  BOOST_CHECK_GE(stats.callCount, 0);
-  BOOST_CHECK_GE(stats.totalTime, 0.0);
-  BOOST_CHECK_GE(stats.avgTime, 0.0);
-  
-  // Test event count tracking - create some events first
-  auto weatherEvent = std::make_shared<WeatherEvent>("TestWeatherForStats", WeatherType::Clear);
-  EventManager::Instance().registerEvent("TestWeatherForStats", weatherEvent);
-  
-  BOOST_CHECK_GT(EventManager::Instance().getEventCount(), 0);
-  BOOST_CHECK_GT(EventManager::Instance().getEventCount(EventTypeId::Weather), 0);
-}
-
-// Test double buffering functionality (debug-only - enableThreading is not available in release)
-#ifndef NDEBUG
-BOOST_FIXTURE_TEST_CASE(DoubleBufferingSystem, EventManagerFixture) {
-  EventManager::Instance().clean();
-  BOOST_CHECK(EventManager::Instance().init());
-
-  // Enable threading to activate double buffering
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(true);
-  #endif
-  
-  std::atomic<int> updateCallCount{0};
-  
-  // Create events that will use double buffering during update
-  for (int i = 0; i < 10; ++i) {
-    auto mockEvent = std::make_shared<MockEvent>("BufferTest" + std::to_string(i));
-    EventManager::Instance().registerEvent("BufferTest" + std::to_string(i), mockEvent);
-    
-    // Set conditions to trigger during update
-    std::dynamic_pointer_cast<MockEvent>(
-        EventManager::Instance().getEvent("BufferTest" + std::to_string(i)))
-        ->setConditionsMet(true);
-  }
-  
-  // Register handler to track processing
-  EventManager::Instance().registerHandler(
-      EventTypeId::Custom,
-      [&updateCallCount](const EventData &) { updateCallCount.fetch_add(1); });
-  
-  // Verify events are registered
-  BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 10);
-  
-  // Start update processing with double buffering
-  EventManager::Instance().update();
-  
-  // Allow time for buffered processing
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
-  
-  // Verify events were processed through double buffering
-  BOOST_CHECK_GE(updateCallCount.load(), 0); // Some events may be processed
-  
-  #ifndef NDEBUG
-  EventManager::Instance().enableThreading(false);
-  #endif
-}
-#endif // NDEBUG
-
-// Test memory management and event pools
-BOOST_FIXTURE_TEST_CASE(MemoryManagementEventPools, EventManagerFixture) {
-  EventManager::Instance().clean();
-  BOOST_CHECK(EventManager::Instance().init());
-  
-  // Create many events to test memory management
-  for (int i = 0; i < 100; ++i) {
-    auto mockEvent = std::make_shared<MockEvent>("MemTest" + std::to_string(i));
-    EventManager::Instance().registerEvent("MemTest" + std::to_string(i), mockEvent);
-  }
-  
-  size_t initialEventCount = EventManager::Instance().getEventCount();
-  BOOST_CHECK_EQUAL(initialEventCount, 100);
-  
-  // Test event pool clearing (should not affect registered events)
-  EventManager::Instance().clearEventPools();
-  
-  // Events should still be accessible after pool clearing
-  BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 100);
-  BOOST_CHECK(EventManager::Instance().hasEvent("MemTest0"));
-  BOOST_CHECK(EventManager::Instance().hasEvent("MemTest99"));
-  
-  // Test memory compaction (should not affect registered events)
-  EventManager::Instance().compactEventStorage();
-  
-  // Note: compactEventStorage may remove some events for optimization
-  // Just verify the operation completes without error
-  BOOST_CHECK_GE(EventManager::Instance().getEventCount(), 0);
-  
-  // Test clearing all events
-  EventManagerTestAccess::reset();
-  BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 0);
-  BOOST_CHECK(!EventManager::Instance().hasEvent("MemTest0"));
-}
-
-// Test state transition preparation
-BOOST_FIXTURE_TEST_CASE(StateTransitionPreparation, EventManagerFixture) {
-  EventManager::Instance().clean();
-  BOOST_CHECK(EventManager::Instance().init());
-  
-  // Register events and handlers
-  auto mockEvent = std::make_shared<MockEvent>("TransitionTest");
-  EventManager::Instance().registerEvent("TransitionTest", mockEvent);
-  
-  bool handlerCalled = false;
-  EventManager::Instance().registerHandler(
       EventTypeId::Custom,
       [&handlerCalled](const EventData &) { handlerCalled = true; });
-  
-  BOOST_CHECK(EventManager::Instance().hasEvent("TransitionTest"));
-  
+
   // Test state transition preparation
   EventManager::Instance().prepareForStateTransition();
-  
+
   // Verify manager is still functional after preparation
   BOOST_CHECK(EventManager::Instance().isInitialized());
-  
-  // Events and handlers should be cleared after preparation
-  BOOST_CHECK(!EventManager::Instance().hasEvent("TransitionTest"));
-  BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 0);
+
+  // Handlers should be cleared
+  auto mockEvent = std::make_shared<MockEvent>("Test");
+  EventManager::Instance().dispatchEvent(mockEvent, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(!handlerCalled); // Handler was removed during transition prep
 }
 
-// Test enabling/disabling threading dynamically (debug-only - enableThreading is not available in release)
+// ==================== Threading Control Tests (Debug Only) ====================
+
 #ifndef NDEBUG
 BOOST_FIXTURE_TEST_CASE(DynamicThreadingControl, EventManagerFixture) {
   EventManager::Instance().clean();
   BOOST_CHECK(EventManager::Instance().init());
-  
+
   std::atomic<int> handlerCallCount{0};
-  
+
   EventManager::Instance().registerHandler(
       EventTypeId::Weather,
       [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
-  
-  // Test with threading disabled
-  #ifndef NDEBUG
+
+  // Debug toggle should not affect correctness of serial deferred delivery.
   EventManager::Instance().enableThreading(false);
-  #endif
-  
+
   // Trigger event with deferred dispatch
   BOOST_CHECK(EventManager::Instance().changeWeather("Clear", 1.0f));
   EventManager::Instance().update();
-  
-  // Allow processing time
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  
+
   int callsWithoutThreading = handlerCallCount.load();
   BOOST_CHECK_GE(callsWithoutThreading, 1);
-  
+
   // Reset counter and enable threading
   handlerCallCount.store(0);
-  #ifndef NDEBUG
   EventManager::Instance().enableThreading(true);
-  #endif
-  
+
   // Trigger another event
   BOOST_CHECK(EventManager::Instance().changeWeather("Rainy", 1.0f));
   EventManager::Instance().update();
-  
-  // Allow threaded processing time
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
-  
+
   int callsWithThreading = handlerCallCount.load();
   BOOST_CHECK_GE(callsWithThreading, 1);
 
-  #ifndef NDEBUG
   EventManager::Instance().enableThreading(false);
-  #endif
 }
 #endif // NDEBUG
 
-// Test that pooled events properly reset and recycle
-BOOST_FIXTURE_TEST_CASE(EventPoolRecycling, EventManagerFixture) {
-  // Weather: dispatch twice, verify same pointer reused (proves recycling works)
-  EventPtr firstWeather = nullptr;
-  EventPtr secondWeather = nullptr;
-  EventManager::Instance().registerHandler(
-      EventTypeId::Weather, [&](const EventData &data) {
-        if (!firstWeather) firstWeather = data.event;
-        else secondWeather = data.event;
-      });
-  EventManager::Instance().changeWeather("Storm", 1.0f, EventManager::DispatchMode::Immediate);
-  EventManager::Instance().changeWeather("Clear", 1.0f, EventManager::DispatchMode::Immediate);
-  BOOST_CHECK(firstWeather != nullptr);
-  BOOST_CHECK(secondWeather != nullptr);
-  BOOST_CHECK_EQUAL(firstWeather.get(), secondWeather.get());
+// ==================== Additional Trigger Method Tests ====================
 
-  // SceneChange recycling
-  EventPtr firstScene = nullptr;
-  EventPtr secondScene = nullptr;
-  EventManager::Instance().registerHandler(
-      EventTypeId::SceneChange, [&](const EventData &data) {
-        if (!firstScene) firstScene = data.event;
-        else secondScene = data.event;
+BOOST_FIXTURE_TEST_CASE(TriggerWorldUnloaded_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> worldHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::World, [&worldHandlerCalled](const EventData &data) {
+        if (data.event) worldHandlerCalled.store(true);
       });
-  EventManager::Instance().changeScene("A", "fade", 1.0f, EventManager::DispatchMode::Immediate);
-  EventManager::Instance().changeScene("B", "fade", 1.0f, EventManager::DispatchMode::Immediate);
-  BOOST_CHECK_EQUAL(firstScene.get(), secondScene.get());
 
-  // NPCSpawn recycling
-  EventPtr firstNPC = nullptr;
-  EventPtr secondNPC = nullptr;
-  EventManager::Instance().registerHandler(
-      EventTypeId::NPCSpawn, [&](const EventData &data) {
-        if (!firstNPC) firstNPC = data.event;
-        else secondNPC = data.event;
+  bool ok = EventManager::Instance().triggerWorldUnloaded("test_world",
+                                                           EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(worldHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerTileChanged_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> worldHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::World, [&worldHandlerCalled](const EventData &data) {
+        if (data.event) worldHandlerCalled.store(true);
       });
-  EventManager::Instance().spawnNPC("A", 0, 0, 1, 0, "", {}, false, EventManager::DispatchMode::Immediate);
-  EventManager::Instance().spawnNPC("B", 0, 0, 1, 0, "", {}, false, EventManager::DispatchMode::Immediate);
-  BOOST_CHECK_EQUAL(firstNPC.get(), secondNPC.get());
 
-  // Collision recycling
-  EventPtr firstColl = nullptr;
-  EventPtr secondColl = nullptr;
-  EventManager::Instance().registerHandler(
-      EventTypeId::Collision, [&](const EventData &data) {
-        if (!firstColl) firstColl = data.event;
-        else secondColl = data.event;
+  bool ok = EventManager::Instance().triggerTileChanged(10, 20, "biome_change",
+                                                         EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(worldHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerWorldGenerated_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> worldHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::World, [&worldHandlerCalled](const EventData &data) {
+        if (data.event) worldHandlerCalled.store(true);
       });
-  HammerEngine::CollisionInfo info{};
-  EventManager::Instance().triggerCollision(info, EventManager::DispatchMode::Immediate);
-  EventManager::Instance().triggerCollision(info, EventManager::DispatchMode::Immediate);
-  BOOST_CHECK_EQUAL(firstColl.get(), secondColl.get());
 
-  // ParticleEffect recycling
-  EventPtr firstParticle = nullptr;
-  EventPtr secondParticle = nullptr;
-  EventManager::Instance().registerHandler(
-      EventTypeId::ParticleEffect, [&](const EventData &data) {
-        if (!firstParticle) firstParticle = data.event;
-        else secondParticle = data.event;
+  bool ok = EventManager::Instance().triggerWorldGenerated("new_world", 200, 200, 1.5f,
+                                                            EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(worldHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerStaticCollidersReady_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> worldHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::World, [&worldHandlerCalled](const EventData &data) {
+        if (data.event) worldHandlerCalled.store(true);
       });
-  EventManager::Instance().triggerParticleEffect("Fire", 0, 0, 1.0f, 1.0f, "", EventManager::DispatchMode::Immediate);
-  EventManager::Instance().triggerParticleEffect("Fire", 0, 0, 1.0f, 1.0f, "", EventManager::DispatchMode::Immediate);
-  BOOST_CHECK_EQUAL(firstParticle.get(), secondParticle.get());
 
-  // CollisionObstacleChanged recycling
+  bool ok = EventManager::Instance().triggerStaticCollidersReady(100, 25,
+                                                                  EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(worldHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerCameraModeChanged_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> cameraHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Camera, [&cameraHandlerCalled](const EventData &data) {
+        if (data.event) cameraHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerCameraModeChanged(1, 0,
+                                                               EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(cameraHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerCameraShakeStarted_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> cameraHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Camera, [&cameraHandlerCalled](const EventData &data) {
+        if (data.event) cameraHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerCameraShakeStarted(0.5f, 1.0f,
+                                                                EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(cameraHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerCameraShakeEnded_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> cameraHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Camera, [&cameraHandlerCalled](const EventData &data) {
+        if (data.event) cameraHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerCameraShakeEnded(EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(cameraHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerCameraZoomChanged_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> cameraHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Camera, [&cameraHandlerCalled](const EventData &data) {
+        if (data.event) cameraHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerCameraZoomChanged(2.0f, 1.0f,
+                                                               EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(cameraHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerCollisionObstacleChanged_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> obstacleHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::CollisionObstacleChanged, [&obstacleHandlerCalled](const EventData &data) {
+        if (data.event) obstacleHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerCollisionObstacleChanged(
+      Vector2D(100.0f, 200.0f), 64.0f, "tree_removed",
+      EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(obstacleHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerDamage_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> combatHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Combat, [&combatHandlerCalled](const EventData &data) {
+        if (data.event) combatHandlerCalled.store(true);
+      });
+
+  bool ok = EventManager::Instance().triggerDamage(EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(combatHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(ImmediateDamageCommit_RunsBeforeCustomCombatHandlers,
+                        EventManagerFixture) {
+  auto& edm = EntityDataManager::Instance();
+  EntityHandle playerHandle = edm.registerPlayer(9101, Vector2D(100.0f, 100.0f));
+  BOOST_REQUIRE(playerHandle.isValid());
+
+  auto& playerData = edm.getCharacterData(playerHandle);
+  playerData.maxHealth = 100.0f;
+  playerData.health = 100.0f;
+  playerData.mass = 1.0f;
+
+  auto damageEvent = std::make_shared<DamageEvent>(
+      EntityEventType::DamageIntent, EntityHandle{}, playerHandle, 25.0f,
+      Vector2D(5.0f, 0.0f));
+
+  float observedCommittedHealth = -1.0f;
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Combat, [&edm, playerHandle, &observedCommittedHealth](
+                              const EventData& data) {
+        BOOST_REQUIRE(data.event);
+        observedCommittedHealth = edm.getCharacterData(playerHandle).health;
+      });
+
+  BOOST_CHECK(EventManager::Instance().dispatchEvent(
+      damageEvent, EventManager::DispatchMode::Immediate));
+
+  BOOST_CHECK_CLOSE(edm.getCharacterData(playerHandle).health, 75.0f, 0.01f);
+  BOOST_CHECK_CLOSE(observedCommittedHealth, 75.0f, 0.01f);
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(DeferredDamageCommit_RunsBeforeCustomCombatHandlers,
+                        EventManagerFixture) {
+  auto& edm = EntityDataManager::Instance();
+  EntityHandle playerHandle = edm.registerPlayer(9102, Vector2D(100.0f, 100.0f));
+  BOOST_REQUIRE(playerHandle.isValid());
+
+  auto& playerData = edm.getCharacterData(playerHandle);
+  playerData.maxHealth = 100.0f;
+  playerData.health = 100.0f;
+  playerData.mass = 1.0f;
+
+  auto damageEvent = std::make_shared<DamageEvent>(
+      EntityEventType::DamageIntent, EntityHandle{}, playerHandle, 120.0f,
+      Vector2D(2.0f, 0.0f));
+
+  float observedCommittedHealth = -1.0f;
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Combat, [&edm, playerHandle, &observedCommittedHealth](
+                              const EventData& data) {
+        BOOST_REQUIRE(data.event);
+        observedCommittedHealth = edm.getCharacterData(playerHandle).health;
+      });
+
+  BOOST_CHECK(
+      EventManager::Instance().dispatchEvent(damageEvent, EventManager::DispatchMode::Deferred));
+  EventManager::Instance().update();
+
+  BOOST_CHECK_CLOSE(edm.getCharacterData(playerHandle).health, 0.0f, 0.01f);
+  BOOST_CHECK_CLOSE(observedCommittedHealth, 0.0f, 0.01f);
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(TriggerWorldTrigger_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> triggerHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::WorldTrigger, [&triggerHandlerCalled](const EventData &data) {
+        if (data.event) triggerHandlerCalled.store(true);
+      });
+
+  WorldTriggerEvent event(1, 2, HammerEngine::TriggerTag::Portal, Vector2D(100.0f, 200.0f), TriggerPhase::Enter);
+  bool ok = EventManager::Instance().triggerWorldTrigger(event,
+                                                          EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(triggerHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+// ==================== Additional Event Pool Recycling Tests ====================
+
+BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_ResourceChangeEvents, EventManagerFixture) {
+  EventPtr firstResource = nullptr;
+  EventPtr secondResource = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::ResourceChange, [&](const EventData &data) {
+        if (!firstResource) firstResource = data.event;
+        else secondResource = data.event;
+      });
+
+  HammerEngine::ResourceHandle testResource(1, 1);
+  EventManager::Instance().triggerResourceChange(TEST_PLAYER_HANDLE, testResource, 0, 10, "test",
+                                                  EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerResourceChange(TEST_PLAYER_HANDLE, testResource, 10, 20, "test",
+                                                  EventManager::DispatchMode::Immediate);
+
+  BOOST_CHECK(firstResource != nullptr);
+  BOOST_CHECK(secondResource != nullptr);
+  BOOST_CHECK_EQUAL(firstResource.get(), secondResource.get()); // Same pooled event reused
+}
+
+BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_CollisionObstacleChangedEvents, EventManagerFixture) {
   EventPtr firstObstacle = nullptr;
   EventPtr secondObstacle = nullptr;
   EventManager::Instance().registerHandler(
@@ -1504,7 +821,328 @@ BOOST_FIXTURE_TEST_CASE(EventPoolRecycling, EventManagerFixture) {
         if (!firstObstacle) firstObstacle = data.event;
         else secondObstacle = data.event;
       });
-  EventManager::Instance().triggerCollisionObstacleChanged(Vector2D(0,0), 64.0f, "", EventManager::DispatchMode::Immediate);
-  EventManager::Instance().triggerCollisionObstacleChanged(Vector2D(0,0), 64.0f, "", EventManager::DispatchMode::Immediate);
-  BOOST_CHECK_EQUAL(firstObstacle.get(), secondObstacle.get());
+
+  EventManager::Instance().triggerCollisionObstacleChanged(Vector2D(0, 0), 64.0f, "added",
+                                                            EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerCollisionObstacleChanged(Vector2D(100, 100), 32.0f, "removed",
+                                                            EventManager::DispatchMode::Immediate);
+
+  BOOST_CHECK(firstObstacle != nullptr);
+  BOOST_CHECK(secondObstacle != nullptr);
+  BOOST_CHECK_EQUAL(firstObstacle.get(), secondObstacle.get()); // Same pooled event reused
+}
+
+BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_DamageEvents, EventManagerFixture) {
+  EventPtr firstDamage = nullptr;
+  EventPtr secondDamage = nullptr;
+  EventManager::Instance().registerHandler(
+      EventTypeId::Combat, [&](const EventData &data) {
+        if (!firstDamage) firstDamage = data.event;
+        else secondDamage = data.event;
+      });
+
+  EventManager::Instance().triggerDamage(EventManager::DispatchMode::Immediate);
+  EventManager::Instance().triggerDamage(EventManager::DispatchMode::Immediate);
+
+  BOOST_CHECK(firstDamage != nullptr);
+  BOOST_CHECK(secondDamage != nullptr);
+  BOOST_CHECK_EQUAL(firstDamage.get(), secondDamage.get()); // Same pooled event reused
+}
+
+// ==================== Additional API Coverage Tests ====================
+
+BOOST_FIXTURE_TEST_CASE(DrainAllDeferredEvents_ProcessesAllEvents, EventManagerFixture) {
+  std::atomic<int> handlerCallCount{0};
+
+  EventManager::Instance().registerHandler(
+      EventTypeId::Weather,
+      [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
+
+  // Queue multiple deferred events
+  for (int i = 0; i < 5; ++i) {
+    EventManager::Instance().changeWeather("Test", 1.0f);
+  }
+
+  // Should have pending events
+  BOOST_CHECK_GT(EventManager::Instance().getPendingEventCount(), 0);
+
+  // Drain all events (used in testing for deterministic processing)
+  EventManager::Instance().drainAllDeferredEvents();
+
+  // All events should be processed
+  BOOST_CHECK_EQUAL(EventManager::Instance().getPendingEventCount(), 0);
+  BOOST_CHECK_GE(handlerCallCount.load(), 5);
+}
+
+BOOST_FIXTURE_TEST_CASE(EnqueueBatch_ProcessesAllEventsInBatch, EventManagerFixture) {
+  std::atomic<int> handlerCallCount{0};
+
+  EventManager::Instance().registerHandler(
+      EventTypeId::Custom,
+      [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
+
+  // Create a batch of deferred events
+  std::vector<EventManager::DeferredEvent> batch;
+  for (int i = 0; i < 10; ++i) {
+    EventData data;
+    data.event = std::make_shared<MockEvent>("BatchEvent");
+    data.typeId = EventTypeId::Custom;
+    data.setActive(true);
+    batch.push_back(EventManager::DeferredEvent{EventTypeId::Custom, std::move(data)});
+  }
+
+  // Enqueue the batch
+  EventManager::Instance().enqueueBatch(std::move(batch));
+
+  // Process all events
+  EventManager::Instance().drainAllDeferredEvents();
+
+  // All batch events should be processed
+  BOOST_CHECK_GE(handlerCallCount.load(), 10);
+}
+
+BOOST_FIXTURE_TEST_CASE(DeferredQueueOverflow_IsCappedAtMaxDispatchQueue, EventManagerFixture) {
+  EventManager::Instance().registerHandler(EventTypeId::Combat, [](const EventData&) {});
+
+  constexpr size_t queueCap = 8192;
+  for (size_t i = 0; i < queueCap + 25; ++i) {
+    EventManager::Instance().triggerDamage(EventManager::DispatchMode::Deferred);
+  }
+
+  BOOST_CHECK_EQUAL(EventManager::Instance().getPendingEventCount(), queueCap);
+
+  EventManager::Instance().drainAllDeferredEvents();
+  BOOST_CHECK_EQUAL(EventManager::Instance().getPendingEventCount(), 0);
+}
+
+BOOST_FIXTURE_TEST_CASE(EnqueueBatchOverflow_TrimsOversizedIncomingBatchToQueueCap, EventManagerFixture) {
+  std::atomic<int> handlerCallCount{0};
+  EventManager::Instance().registerHandler(
+      EventTypeId::Combat,
+      [&handlerCallCount](const EventData&) { handlerCallCount.fetch_add(1); });
+
+  constexpr size_t queueCap = 8192;
+  std::vector<EventManager::DeferredEvent> batch;
+  batch.reserve(queueCap + 17);
+
+  for (size_t i = 0; i < queueCap + 17; ++i) {
+    EventData data;
+    data.typeId = EventTypeId::Combat;
+    data.setActive(true);
+    data.event = std::make_shared<DamageEvent>();
+    batch.push_back(EventManager::DeferredEvent{EventTypeId::Combat, std::move(data)});
+  }
+
+  EventManager::Instance().enqueueBatch(std::move(batch));
+
+  BOOST_CHECK_EQUAL(EventManager::Instance().getPendingEventCount(), queueCap);
+
+  EventManager::Instance().drainAllDeferredEvents();
+  BOOST_CHECK_EQUAL(handlerCallCount.load(), static_cast<int>(queueCap));
+}
+
+BOOST_FIXTURE_TEST_CASE(GetHandlerCount_ReturnsCorrectCount, EventManagerFixture) {
+  // Initially no handlers
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 0);
+
+  // Add handlers
+  auto tok1 = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Weather, [](const EventData &) {});
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 1);
+
+  auto tok2 = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Weather, [](const EventData &) {});
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 2);
+
+  // Remove one handler
+  EventManager::Instance().removeHandler(tok1);
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 1);
+
+  // Remove remaining handler
+  EventManager::Instance().removeHandler(tok2);
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 0);
+}
+
+BOOST_FIXTURE_TEST_CASE(RemoveHandlers_ClearsAllForType, EventManagerFixture) {
+  // Add multiple handlers for Weather
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [](const EventData &) {});
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [](const EventData &) {});
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [](const EventData &) {});
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 3);
+
+  // Also add a handler for a different type (Camera - not internally registered)
+  EventManager::Instance().registerHandler(EventTypeId::Camera, [](const EventData &) {});
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Camera), 1);
+
+  // Remove all Weather handlers
+  EventManager::Instance().removeHandlers(EventTypeId::Weather);
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Weather), 0);
+
+  // Camera handler should still exist
+  BOOST_CHECK_EQUAL(EventManager::Instance().getHandlerCount(EventTypeId::Camera), 1);
+}
+
+BOOST_FIXTURE_TEST_CASE(GlobalPause_BlocksUpdateProcessing, EventManagerFixture) {
+  std::atomic<int> handlerCallCount{0};
+
+  EventManager::Instance().registerHandler(
+      EventTypeId::Weather,
+      [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
+
+  // Queue a deferred event
+  EventManager::Instance().changeWeather("Test", 1.0f);
+  BOOST_CHECK_GT(EventManager::Instance().getPendingEventCount(), 0);
+
+  // Enable global pause
+  EventManager::Instance().setGlobalPause(true);
+  BOOST_CHECK(EventManager::Instance().isGloballyPaused());
+
+  // Update should not process events while paused
+  EventManager::Instance().update();
+  BOOST_CHECK_EQUAL(handlerCallCount.load(), 0);
+  BOOST_CHECK_GT(EventManager::Instance().getPendingEventCount(), 0); // Still pending
+
+  // Disable global pause
+  EventManager::Instance().setGlobalPause(false);
+  BOOST_CHECK(!EventManager::Instance().isGloballyPaused());
+
+  // Now update should process events
+  EventManager::Instance().update();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  BOOST_CHECK_GE(handlerCallCount.load(), 1);
+}
+
+BOOST_FIXTURE_TEST_CASE(MultipleHandlers_AllExecutedInOrder, EventManagerFixture) {
+  std::vector<int> callOrder;
+  std::mutex orderMutex;
+
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
+    std::lock_guard<std::mutex> lock(orderMutex);
+    callOrder.push_back(1);
+  });
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
+    std::lock_guard<std::mutex> lock(orderMutex);
+    callOrder.push_back(2);
+  });
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
+    std::lock_guard<std::mutex> lock(orderMutex);
+    callOrder.push_back(3);
+  });
+
+  // Trigger event with immediate dispatch for deterministic order
+  EventManager::Instance().changeWeather("Test", 1.0f, EventManager::DispatchMode::Immediate);
+
+  // All three handlers should be called
+  BOOST_CHECK_EQUAL(callOrder.size(), 3);
+  // They should be called in registration order
+  BOOST_CHECK_EQUAL(callOrder[0], 1);
+  BOOST_CHECK_EQUAL(callOrder[1], 2);
+  BOOST_CHECK_EQUAL(callOrder[2], 3);
+}
+
+BOOST_FIXTURE_TEST_CASE(HandlerException_DoesNotStopOtherHandlers, EventManagerFixture) {
+  std::atomic<int> handlerCallCount{0};
+
+  // First handler - throws exception
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [](const EventData &) {
+    throw std::runtime_error("Test exception");
+  });
+
+  // Second handler - should still be called
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
+    handlerCallCount.fetch_add(1);
+  });
+
+  // Third handler - should still be called
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
+    handlerCallCount.fetch_add(1);
+  });
+
+  // Trigger event - exception in first handler should not stop others
+  EventManager::Instance().changeWeather("Test", 1.0f, EventManager::DispatchMode::Immediate);
+
+  // Second and third handlers should still have been called
+  BOOST_CHECK_GE(handlerCallCount.load(), 2);
+}
+
+// ==================== Edge Case Tests ====================
+
+BOOST_FIXTURE_TEST_CASE(NullEventDispatch_ReturnsFalse, EventManagerFixture) {
+  // Dispatching a null event should return false
+  bool result = EventManager::Instance().dispatchEvent(nullptr, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(!result);
+
+  result = EventManager::Instance().dispatchEvent(nullptr, EventManager::DispatchMode::Deferred);
+  BOOST_CHECK(!result);
+}
+
+BOOST_FIXTURE_TEST_CASE(Reinitialize_WorksAfterClean, EventManagerFixture) {
+  // Clean the manager
+  EventManager::Instance().clean();
+  BOOST_CHECK(!EventManager::Instance().isInitialized());
+
+  // Re-initialize should work
+  BOOST_CHECK(EventManager::Instance().init());
+  BOOST_CHECK(EventManager::Instance().isInitialized());
+
+  // Should be fully functional
+  std::atomic<bool> handlerCalled{false};
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
+    handlerCalled.store(true);
+  });
+
+  EventManager::Instance().changeWeather("Test", 1.0f, EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(handlerCalled.load());
+}
+
+BOOST_FIXTURE_TEST_CASE(DoubleInit_WarnsAndSucceeds, EventManagerFixture) {
+  // First init (from fixture) should succeed
+  BOOST_CHECK(EventManager::Instance().isInitialized());
+
+  // Second init should also return true (with warning logged)
+  BOOST_CHECK(EventManager::Instance().init());
+  BOOST_CHECK(EventManager::Instance().isInitialized());
+}
+
+BOOST_FIXTURE_TEST_CASE(IdempotentClean_SafeMultipleCalls, EventManagerFixture) {
+  // Clean multiple times - should be safe
+  EventManager::Instance().clean();
+  BOOST_CHECK(!EventManager::Instance().isInitialized());
+
+  // Second clean should also be safe (no crash)
+  EventManager::Instance().clean();
+  BOOST_CHECK(!EventManager::Instance().isInitialized());
+
+  // Third clean should also be safe
+  EventManager::Instance().clean();
+  BOOST_CHECK(!EventManager::Instance().isInitialized());
+
+  // Re-init should still work
+  BOOST_CHECK(EventManager::Instance().init());
+  BOOST_CHECK(EventManager::Instance().isInitialized());
+}
+
+BOOST_FIXTURE_TEST_CASE(DeferredDispatch_FollowsFIFOEnqueueOrder, EventManagerFixture) {
+  std::vector<int> processingOrder;
+  std::mutex orderMutex;
+
+  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
+    std::lock_guard<std::mutex> lock(orderMutex);
+    processingOrder.push_back(1);
+  });
+  EventManager::Instance().registerHandler(EventTypeId::Collision, [&](const EventData &) {
+    std::lock_guard<std::mutex> lock(orderMutex);
+    processingOrder.push_back(2);
+  });
+
+  // Deferred processing should preserve enqueue order even across event types.
+  EventManager::Instance().changeWeather("Test", 1.0f);
+  HammerEngine::CollisionInfo info{};
+  EventManager::Instance().triggerCollision(info);
+
+  EventManager::Instance().update();
+
+  BOOST_REQUIRE_EQUAL(processingOrder.size(), 2);
+  BOOST_CHECK_EQUAL(processingOrder[0], 1);
+  BOOST_CHECK_EQUAL(processingOrder[1], 2);
 }

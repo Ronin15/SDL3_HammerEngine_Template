@@ -138,6 +138,42 @@ inline std::ostream& operator<<(std::ostream& os, const DecorationType& decorati
     }
 }
 
+// String conversion functions for std::format compatibility
+[[nodiscard]] constexpr std::string_view biomeToString(Biome biome) noexcept {
+    switch (biome) {
+        case Biome::DESERT: return "DESERT";
+        case Biome::FOREST: return "FOREST";
+        case Biome::PLAINS: return "PLAINS";
+        case Biome::MOUNTAIN: return "MOUNTAIN";
+        case Biome::SWAMP: return "SWAMP";
+        case Biome::HAUNTED: return "HAUNTED";
+        case Biome::CELESTIAL: return "CELESTIAL";
+        case Biome::OCEAN: return "OCEAN";
+        default: return "UNKNOWN";
+    }
+}
+
+[[nodiscard]] constexpr std::string_view obstacleTypeToString(ObstacleType obstacle) noexcept {
+    switch (obstacle) {
+        case ObstacleType::NONE: return "NONE";
+        case ObstacleType::ROCK: return "ROCK";
+        case ObstacleType::TREE: return "TREE";
+        case ObstacleType::WATER: return "WATER";
+        case ObstacleType::BUILDING: return "BUILDING";
+        case ObstacleType::IRON_DEPOSIT: return "IRON_DEPOSIT";
+        case ObstacleType::GOLD_DEPOSIT: return "GOLD_DEPOSIT";
+        case ObstacleType::COPPER_DEPOSIT: return "COPPER_DEPOSIT";
+        case ObstacleType::MITHRIL_DEPOSIT: return "MITHRIL_DEPOSIT";
+        case ObstacleType::LIMESTONE_DEPOSIT: return "LIMESTONE_DEPOSIT";
+        case ObstacleType::COAL_DEPOSIT: return "COAL_DEPOSIT";
+        case ObstacleType::EMERALD_DEPOSIT: return "EMERALD_DEPOSIT";
+        case ObstacleType::RUBY_DEPOSIT: return "RUBY_DEPOSIT";
+        case ObstacleType::SAPPHIRE_DEPOSIT: return "SAPPHIRE_DEPOSIT";
+        case ObstacleType::DIAMOND_DEPOSIT: return "DIAMOND_DEPOSIT";
+        default: return "UNKNOWN";
+    }
+}
+
 struct Tile {
     Biome biome;
     ObstacleType obstacleType = ObstacleType::NONE;
@@ -150,6 +186,13 @@ struct Tile {
     uint32_t buildingId = 0;        // 0 = no building, >0 = unique building ID
     uint8_t buildingSize = 0;       // 0 = no building, 1-4 = connected building count
     bool isTopLeftOfBuilding = false;  // Pre-computed flag for render optimization
+
+    // Harvestable deposit support (ore, gem deposits)
+    // Lazy-created EDM entity index for tile-based deposits
+    // UINT32_MAX = no entity created yet
+    // TODO: Connect to tile-based deposit system when implemented
+    // Currently harvestables are spawned at obstacle positions via WorldManager::spawnHarvestablesAtObstacles
+    uint32_t harvestableIndex = UINT32_MAX;
 };
 
 struct WorldData {

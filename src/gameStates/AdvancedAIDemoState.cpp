@@ -4,24 +4,23 @@
  */
 
 #include "gameStates/AdvancedAIDemoState.hpp"
-#include "ai/behaviors/AttackBehavior.hpp"
-#include "ai/behaviors/FleeBehavior.hpp"
-#include "ai/behaviors/FollowBehavior.hpp"
-#include "ai/behaviors/GuardBehavior.hpp"
-#include "ai/behaviors/IdleBehavior.hpp"
 #include "controllers/combat/CombatController.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
+#include "gameStates/GameOverState.hpp"
 #include "gameStates/LoadingState.hpp"
+#include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
-#include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "core/WorkerBudget.hpp"
 #include "utils/WorldRenderPipeline.hpp"
 
 #ifdef USE_SDL3_GPU
@@ -76,10 +75,6 @@ void AdvancedAIDemoState::handleInput() {
 
     // Set global AI pause state in AIManager
     aiMgr.setGlobalPause(m_aiPaused);
-
-    // Also send messages for behaviors that need them
-    std::string message = m_aiPaused ? "pause" : "resume";
-    aiMgr.broadcastMessage(message, true);
 
     // Simple feedback
     GAMESTATE_INFO(
@@ -153,6 +148,11 @@ void AdvancedAIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_RIGHTBRACKET) && m_camera) {
     m_camera->zoomOut(); // ] key = zoom out (objects smaller)
   }
+
+  // Combat - F key to attack (SPACE is used for AI pause)
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_F) && m_player) {
+    m_controllers.get<CombatController>()->tryAttack();
+  }
 }
 
 bool AdvancedAIDemoState::enter() {
@@ -166,6 +166,7 @@ bool AdvancedAIDemoState::enter() {
 
   // Reset transition flag when entering state
   m_transitioningToLoading = false;
+  m_transitioningToGameOver = false;
 
   // Check if already initialized (resuming after LoadingState)
   if (m_initialized) {
@@ -192,8 +193,8 @@ bool AdvancedAIDemoState::enter() {
     float worldMinX, worldMinY, worldMaxX, worldMaxY;
     if (worldManager.getWorldBounds(worldMinX, worldMinY, worldMaxX,
                                     worldMaxY)) {
-      m_worldWidth = worldMaxX;
-      m_worldHeight = worldMaxY;
+      m_worldWidth = std::max(0.0f, worldMaxX - worldMinX);
+      m_worldHeight = std::max(0.0f, worldMaxY - worldMinY);
       GAMESTATE_INFO(std::format("World dimensions: {} x {} pixels",
                                  m_worldWidth, m_worldHeight));
     } else {
@@ -240,17 +241,13 @@ bool AdvancedAIDemoState::enter() {
     EntityPtr playerAsEntity = std::static_pointer_cast<Entity>(m_player);
     aiMgr.setPlayerHandle(playerAsEntity->getHandle());
 
-    // Setup advanced AI behaviors AFTER world is initialized and player is set
-    // This ensures Guard behavior uses correct world dimensions and Follow has
-    // player target
-    setupAdvancedAIBehaviors();
-
     // Register CombatController (follows GamePlayState pattern)
     m_controllers.add<CombatController>(m_player);
     m_controllers.subscribeAll();
+    registerEventHandlers();
 
-    // Create NPCs with optimized counts for behavior showcasing
-    createAdvancedNPCs();
+    // Spawn test village with merchants, guards, and villagers
+    setupTestVillage();
 
     // Create advanced HUD UI (matches EventDemoState spacing pattern)
     auto &ui = UIManager::Instance();
@@ -266,18 +263,16 @@ bool AdvancedAIDemoState::enter() {
                                 UIConstants::TITLE_TOP_OFFSET, -1,
                                 UIConstants::DEFAULT_TITLE_HEIGHT});
 
+    // Create centered instruction labels
     ui.createLabel(
         "advanced_ai_instructions_line1",
-        {UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_FIRST_LINE_Y,
-         gameEngine.getLogicalWidth() - 2 * UIConstants::INFO_LABEL_MARGIN_X,
+        {0, UIConstants::INFO_FIRST_LINE_Y, gameEngine.getLogicalWidth(),
          UIConstants::INFO_LABEL_HEIGHT},
-        "Advanced AI Demo: [B] Exit | [SPACE] Pause/Resume | [1] Idle | [2] "
-        "Flee | [3] Follow");
-    // Set auto-repositioning: top-aligned, full width minus margins
+        "[B] Exit | [SPACE] Pause/Resume | [1] Idle | [2] Flee | [3] Follow");
+    ui.setLabelAlignment("advanced_ai_instructions_line1", UIAlignment::CENTER_CENTER);
     ui.setComponentPositioning(
         "advanced_ai_instructions_line1",
-        {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X,
-         UIConstants::INFO_FIRST_LINE_Y, -2 * UIConstants::INFO_LABEL_MARGIN_X,
+        {UIPositionMode::CENTERED_H, 0, UIConstants::INFO_FIRST_LINE_Y, -1,
          UIConstants::INFO_LABEL_HEIGHT});
 
     const int line2Y = UIConstants::INFO_FIRST_LINE_Y +
@@ -285,30 +280,27 @@ bool AdvancedAIDemoState::enter() {
                        UIConstants::INFO_LINE_SPACING;
     ui.createLabel(
         "advanced_ai_instructions_line2",
-        {UIConstants::INFO_LABEL_MARGIN_X, line2Y,
-         gameEngine.getLogicalWidth() - 2 * UIConstants::INFO_LABEL_MARGIN_X,
-         UIConstants::INFO_LABEL_HEIGHT},
-        "Combat & Social: [4] Guard | [5] Attack");
-    // Set auto-repositioning: top-aligned, full width minus margins
+        {0, line2Y, gameEngine.getLogicalWidth(), UIConstants::INFO_LABEL_HEIGHT},
+        "[F] Player Attack | [4] Guard | [5] Attack NPCs");
+    ui.setLabelAlignment("advanced_ai_instructions_line2", UIAlignment::CENTER_CENTER);
     ui.setComponentPositioning("advanced_ai_instructions_line2",
-                               {UIPositionMode::TOP_ALIGNED,
-                                UIConstants::INFO_LABEL_MARGIN_X, line2Y,
-                                -2 * UIConstants::INFO_LABEL_MARGIN_X,
+                               {UIPositionMode::CENTERED_H, 0, line2Y, -1,
                                 UIConstants::INFO_LABEL_HEIGHT});
 
     const int statusY = line2Y + UIConstants::INFO_LABEL_HEIGHT +
                         UIConstants::INFO_LINE_SPACING +
                         UIConstants::INFO_STATUS_SPACING;
     ui.createLabel("advanced_ai_status",
-                   {UIConstants::INFO_LABEL_MARGIN_X, statusY, 400,
+                   {0, statusY, gameEngine.getLogicalWidth(),
                     UIConstants::INFO_LABEL_HEIGHT},
                    "FPS: -- | NPCs: -- | AI: RUNNING | Combat: ON");
-    // Set auto-repositioning: top-aligned with calculated position (fixes
-    // fullscreen transition)
+    ui.setLabelAlignment("advanced_ai_status", UIAlignment::CENTER_CENTER);
     ui.setComponentPositioning("advanced_ai_status",
-                               {UIPositionMode::TOP_ALIGNED,
-                                UIConstants::INFO_LABEL_MARGIN_X, statusY, 400,
+                               {UIPositionMode::CENTERED_H, 0, statusY, -1,
                                 UIConstants::INFO_LABEL_HEIGHT});
+
+    // Initialize combat HUD (health/stamina bars, target frame)
+    UIManager::Instance().createCombatHUD();
 
     // Log status
     GAMESTATE_INFO(std::format("Created {} NPCs with advanced AI behaviors",
@@ -337,11 +329,13 @@ bool AdvancedAIDemoState::exit() {
 
   // Cache manager references for better performance
   AIManager &aiMgr = AIManager::Instance();
+  BackgroundSimulationManager &bgSimMgr = BackgroundSimulationManager::Instance();
   EntityDataManager &edm = EntityDataManager::Instance();
   CollisionManager &collisionMgr = CollisionManager::Instance();
   PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
   UIManager &ui = UIManager::Instance();
   WorldManager &worldMgr = WorldManager::Instance();
+  EventManager &eventMgr = EventManager::Instance();
 
   if (m_transitioningToLoading) {
     // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded
@@ -349,6 +343,7 @@ bool AdvancedAIDemoState::exit() {
 
     // Reset the flag after using it
     m_transitioningToLoading = false;
+    m_transitioningToGameOver = false;
 
     // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
     // NPCs hold EDM indices - must be destroyed while EDM data is still valid
@@ -357,20 +352,22 @@ bool AdvancedAIDemoState::exit() {
       m_player.reset();
     }
 
-    // Now safe to clear manager state
-    // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
-    // Pending path tasks hold captured edmIndex values - they must complete or
-    // see the transition flag before EDM clears its data
-    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-      pathfinderMgr.prepareForStateTransition();
-    }
-
+    unregisterEventHandlers();
     aiMgr.prepareForStateTransition();
-    edm.prepareForStateTransition();
+    bgSimMgr.prepareForStateTransition();
+
+    eventMgr.prepareForStateTransition();
 
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
     }
+
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
+    }
+
+    edm.prepareForStateTransition();
+    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
     // Clean up camera and scene renderer
     m_camera.reset();
@@ -378,6 +375,9 @@ bool AdvancedAIDemoState::exit() {
 
     // Clean up UI
     ui.prepareForStateTransition();
+
+    // Destroy all controllers so re-entry creates fresh instances with valid refs
+    m_controllers.clear();
 
     // Unload world (LoadingState will reload it)
     if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
@@ -400,6 +400,7 @@ bool AdvancedAIDemoState::exit() {
   }
 
   // Full exit (going to main menu, other states, or shutting down)
+  m_transitioningToGameOver = false;
 
   // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
   // NPCs hold EDM indices - must be destroyed while EDM data is still valid
@@ -408,21 +409,23 @@ bool AdvancedAIDemoState::exit() {
     m_player.reset();
   }
 
-  // Now safe to clear manager state
-  // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
-  // Pending path tasks hold captured edmIndex values - they must complete or
-  // see the transition flag before EDM clears its data
-  if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-    pathfinderMgr.prepareForStateTransition();
-  }
-
+  unregisterEventHandlers();
   aiMgr.prepareForStateTransition();
-  edm.prepareForStateTransition();
+  bgSimMgr.prepareForStateTransition();
+
+  eventMgr.prepareForStateTransition();
 
   // Clean collision state
   if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
     collisionMgr.prepareForStateTransition();
   }
+
+  if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+    pathfinderMgr.prepareForStateTransition();
+  }
+
+  edm.prepareForStateTransition();
+  HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
   // Clean up camera and scene renderer first to stop world rendering
   m_camera.reset();
@@ -430,6 +433,9 @@ bool AdvancedAIDemoState::exit() {
 
   // Clean up UI components using simplified method
   ui.prepareForStateTransition();
+
+  // Destroy all controllers so re-entry creates fresh instances with valid refs
+  m_controllers.clear();
 
   // Unload the world when fully exiting, but only if there's actually a world
   // loaded This matches EventDemoState's safety pattern and prevents crashes
@@ -448,6 +454,14 @@ bool AdvancedAIDemoState::exit() {
 
   GAMESTATE_INFO("AdvancedAIDemoState exit complete");
   return true;
+}
+
+void AdvancedAIDemoState::registerEventHandlers() {
+  (void)EventManager::Instance();
+}
+
+void AdvancedAIDemoState::unregisterEventHandlers() {
+  (void)EventManager::Instance();
 }
 
 void AdvancedAIDemoState::update(float deltaTime) {
@@ -488,6 +502,12 @@ void AdvancedAIDemoState::update(float deltaTime) {
     // Update player
     if (m_player) {
       m_player->update(deltaTime);
+
+      if (!m_player->isAlive() && !m_transitioningToGameOver) {
+        m_transitioningToGameOver = true;
+        mp_stateManager->changeState("GameOverState");
+        return;
+      }
     }
 
     // Cache manager references for better performance
@@ -502,13 +522,25 @@ void AdvancedAIDemoState::update(float deltaTime) {
     // Update camera (follows player automatically)
     updateCamera(deltaTime);
 
+#ifndef USE_SDL3_GPU
     // Prepare chunks via WorldRenderPipeline (predictive prefetching + dirty chunk updates)
+    // GPU path renders tiles directly from atlas coords each frame — no chunk textures needed
     if (m_renderPipeline && m_camera) {
       m_renderPipeline->prepareChunks(*m_camera, deltaTime);
     }
+#endif
 
     // Update controllers (CombatController handles cooldowns, stamina regen)
     m_controllers.updateAll(deltaTime);
+
+    // Update combat HUD (health/stamina bars, target frame)
+    auto& combatCtrl = *m_controllers.get<CombatController>();
+    UIManager::Instance().updateCombatHUD(
+        m_player->getHealth(),
+        m_player->getStamina(),
+        combatCtrl.hasActiveTarget(),
+        "Target",
+        combatCtrl.getTargetHealth());
 
     // Update UI (moved from render path for consistent frame timing)
     if (!ui.isShutdown()) {
@@ -547,9 +579,6 @@ void AdvancedAIDemoState::render(SDL_Renderer *renderer,
     // Render player (sub-pixel smoothness from entity's own interpolation)
     if (m_player) {
       m_player->render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
-
-      // TODO: Player health bar rendering using m_player->getHealth() /
-      // m_player->getMaxHealth()
     }
   }
 
@@ -585,120 +614,151 @@ void AdvancedAIDemoState::render(SDL_Renderer *renderer,
   ui.render(renderer);
 }
 
-void AdvancedAIDemoState::setupAdvancedAIBehaviors() {
-  GAMESTATE_INFO("AdvancedAIDemoState: Setting up advanced AI behaviors...");
-
-  // Cache AIManager reference for better performance
-  AIManager &aiMgr = AIManager::Instance();
-  // TODO: Need to see if we can move all of these behaviors into the AIManager
-  // and just have events trigger NPCs creation with behavior
-  //  Register Idle behavior
-  if (!aiMgr.hasBehavior("Idle")) {
-    auto idleBehavior = std::make_unique<IdleBehavior>(
-        IdleBehavior::IdleMode::LIGHT_FIDGET, 50.0f);
-    aiMgr.registerBehavior("Idle", std::move(idleBehavior));
-    GAMESTATE_INFO("AdvancedAIDemoState: Registered Idle behavior");
+void AdvancedAIDemoState::setupTestVillage() {
+  if (!m_player) {
+    GAMESTATE_WARN("Cannot setup test village: no player");
+    return;
   }
 
-  // Register Flee behavior
-  if (!aiMgr.hasBehavior("Flee")) {
-    auto fleeBehavior = std::make_unique<FleeBehavior>(
-        60.0f, 150.0f, 200.0f); // speed, detection range, safe distance
-    aiMgr.registerBehavior("Flee", std::move(fleeBehavior));
-    GAMESTATE_INFO("AdvancedAIDemoState: Registered Flee behavior");
-  }
+  auto& edm = EntityDataManager::Instance();
+  auto& aiMgr = AIManager::Instance();
 
-  // Register Follow behavior
-  if (!aiMgr.hasBehavior("Follow")) {
-    auto followBehavior = std::make_unique<FollowBehavior>(
-        80.0f, 50.0f, 300.0f); // follow speed, follow distance, max distance
-    followBehavior->setStopWhenTargetStops(
-        false); // Always follow, even if player is stationary
-    aiMgr.registerBehavior("Follow", std::move(followBehavior));
-    GAMESTATE_INFO("AdvancedAIDemoState: Registered Follow behavior");
-  }
+  Vector2D playerPos = m_player->getPosition();
 
-  // Register Guard behavior
-  if (!aiMgr.hasBehavior("Guard")) {
-    auto guardBehavior = std::make_unique<GuardBehavior>(
-        Vector2D(m_worldWidth / 2, m_worldHeight / 2), 150.0f,
-        200.0f); // position, guard radius, alert radius
-    aiMgr.registerBehavior("Guard", std::move(guardBehavior));
-    GAMESTATE_INFO("AdvancedAIDemoState: Registered Guard behavior");
-  }
+  // Village center is offset from player to give them room to approach
+  Vector2D villageCenter = playerPos + Vector2D(200.0f, 0.0f);
 
-  // Register Attack behavior
-  if (!aiMgr.hasBehavior("Attack")) {
-    auto attackBehavior = std::make_unique<AttackBehavior>(
-        80.0f, 1.0f, 63.75f); // range, cooldown, speed
-    aiMgr.registerBehavior("Attack", std::move(attackBehavior));
-    GAMESTATE_INFO("AdvancedAIDemoState: Registered Attack behavior");
-  }
+  GAMESTATE_INFO(std::format("Setting up test village at ({:.0f}, {:.0f})",
+                            villageCenter.getX(), villageCenter.getY()));
 
-  GAMESTATE_INFO("AdvancedAIDemoState: Advanced AI behaviors setup complete.");
-}
+  // Random race selection for village diversity
+  static thread_local std::mt19937 rng{std::random_device{}()};
+  static constexpr const char* friendlyRaces[] = {"Human", "Elf", "Dwarf"};
+  std::uniform_int_distribution<size_t> raceDist(0, 2);
+  auto getRandomFriendlyRace = [&]() { return friendlyRaces[raceDist(rng)]; };
 
-void AdvancedAIDemoState::createAdvancedNPCs() {
-  // TODO: Make an event for advanced NPC's
-  //  Cache AIManager reference for better performance
-  AIManager &aiMgr = AIManager::Instance();
-  EntityDataManager &edm = EntityDataManager::Instance();
+  // ========================================================================
+  // MERCHANTS - Arranged in a semi-circle for easy access
+  // ========================================================================
+  struct MerchantSpawn {
+    const char* npcClass;
+    Vector2D offset;
+  };
 
-  try {
-    // Random number generation for positioning near player
-    std::random_device rd;
-    std::mt19937 gen(rd());
+  std::vector<MerchantSpawn> merchants = {
+      {"Blacksmith",      Vector2D(-80.0f, -60.0f)},   // Top-left
+      {"Armourer",        Vector2D(80.0f, -60.0f)},    // Top-right
+      {"Alchemist",       Vector2D(-120.0f, 20.0f)},   // Left
+      {"GeneralMerchant", Vector2D(120.0f, 20.0f)},    // Right
+      {"Innkeeper",       Vector2D(-60.0f, 80.0f)},    // Bottom-left
+      {"TavernKeeper",    Vector2D(60.0f, 80.0f)},     // Bottom-right
+      {"Jeweler",         Vector2D(0.0f, -100.0f)},    // Top-center
+  };
 
-    // Player is at world center - spawn NPCs in a reasonable radius around
-    // player
-    Vector2D playerPos = m_player->getPosition();
-    float spawnRadius =
-        400.0f; // Spawn within ~400 pixels of player (visible on screen)
-    std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
-    std::uniform_real_distribution<float> radiusDist(100.0f, spawnRadius);
-
-    // Create NPCs with optimized counts for behavior demonstration
-    for (int i = 0; i < m_totalNPCCount; ++i) {
-      try {
-        // Create NPC with strategic positioning near player for behavior
-        // showcase
-        Vector2D position;
-
-        // Position all NPCs in a circle around the player for easy visibility
-        float angle = angleDist(gen);
-        float distance = radiusDist(gen);
-
-        position = Vector2D(playerPos.getX() + distance * std::cos(angle),
-                            playerPos.getY() + distance * std::sin(angle));
-
-        // Create NPC using race/class composition system
-        // EDM auto-registers with AIManager using class's suggestedBehavior
-        EntityHandle handle = edm.createNPCWithRaceClass(position, "Human", "Guard");
-
-        if (!handle.isValid()) {
-          GAMESTATE_ERROR(std::format("Failed to create data-driven NPC {}", i));
-          continue;
-        }
-
-        // Override to Follow behavior for this demo (Guard's default is Patrol)
-        aiMgr.assignBehavior(handle, "Follow");
-
-      } catch (const std::exception &e) {
-        GAMESTATE_ERROR(
-            std::format("Exception creating advanced NPC {}: {}", i, e.what()));
-        continue;
-      }
+  int merchantCount = 0;
+  for (const auto& spawn : merchants) {
+    Vector2D pos = villageCenter + spawn.offset;
+    const char* race = getRandomFriendlyRace();
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, race, spawn.npcClass);
+    if (handle.isValid()) {
+      // Merchants stay idle at their posts
+      aiMgr.assignBehavior(handle, "Idle");
+      merchantCount++;
+      GAMESTATE_DEBUG(std::format("Spawned {} {} at ({:.0f}, {:.0f})",
+                                 race, spawn.npcClass, pos.getX(), pos.getY()));
     }
-
-    GAMESTATE_INFO(
-        std::format("AdvancedAIDemoState: Created {} NPCs",
-                    edm.getEntityCount(EntityKind::NPC)));
-  } catch (const std::exception &e) {
-    GAMESTATE_ERROR(
-        std::format("Exception in createAdvancedNPCs(): {}", e.what()));
-  } catch (...) {
-    GAMESTATE_ERROR("Unknown exception in createAdvancedNPCs()");
   }
+
+  // ========================================================================
+  // GUARDS - Patrolling the village perimeter
+  // ========================================================================
+  std::vector<Vector2D> guardOffsets = {
+      Vector2D(-180.0f, -120.0f),  // NW corner
+      Vector2D(180.0f, -120.0f),   // NE corner
+      Vector2D(-180.0f, 140.0f),   // SW corner
+      Vector2D(180.0f, 140.0f),    // SE corner
+      Vector2D(0.0f, -160.0f),     // North entrance
+      Vector2D(0.0f, 180.0f),      // South entrance
+  };
+
+  int guardCount = 0;
+  for (const auto& offset : guardOffsets) {
+    Vector2D pos = villageCenter + offset;
+    const char* race = getRandomFriendlyRace();
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, race, "Guard");
+    if (handle.isValid()) {
+      // Guards use Guard behavior (stationary but alert)
+      aiMgr.assignBehavior(handle, "Guard");
+      guardCount++;
+    }
+  }
+
+  // ========================================================================
+  // WANDERING VILLAGERS - Farmer, Miner, Woodcutter around the edges
+  // ========================================================================
+  struct VillagerSpawn {
+    const char* npcClass;
+    Vector2D offset;
+    const char* behavior;
+  };
+
+  std::vector<VillagerSpawn> villagers = {
+      {"Farmer",     Vector2D(-250.0f, 50.0f),  "Wander"},
+      {"Farmer",     Vector2D(250.0f, 30.0f),   "Wander"},
+      {"Miner",      Vector2D(-200.0f, -180.0f), "Wander"},
+      {"Woodcutter", Vector2D(220.0f, -150.0f),  "Wander"},
+      {"Woodcutter", Vector2D(-180.0f, 200.0f),  "Wander"},
+  };
+
+  int villagerCount = 0;
+  for (const auto& spawn : villagers) {
+    Vector2D pos = villageCenter + spawn.offset;
+    const char* race = getRandomFriendlyRace();
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, race, spawn.npcClass);
+    if (handle.isValid()) {
+      aiMgr.assignBehavior(handle, spawn.behavior);
+      villagerCount++;
+    }
+  }
+
+  // ========================================================================
+  // COMBAT NPCs - A few hostile NPCs for testing combat
+  // ========================================================================
+  std::vector<Vector2D> hostileOffsets = {
+      Vector2D(-350.0f, 0.0f),     // West of village
+      Vector2D(350.0f, -50.0f),    // East of village
+      Vector2D(0.0f, -300.0f),     // North of village
+  };
+
+  int hostileCount = 0;
+  const char* hostileClasses[] = {"Warrior", "Rogue", "Ranger"};
+  for (size_t i = 0; i < hostileOffsets.size(); ++i) {
+    Vector2D pos = villageCenter + hostileOffsets[i];
+    // Orcs spawn neutral (faction 2) — Attack behavior scans for nearest target dynamically
+    EntityHandle handle = edm.createNPCWithRaceClass(
+        pos, "Orc", hostileClasses[i % 3], Sex::Unknown, 2);
+    if (handle.isValid()) {
+      aiMgr.assignBehavior(handle, "Attack");
+      hostileCount++;
+    }
+  }
+
+  // Add an Orc Mage for ranged combat testing
+  {
+    Vector2D pos = villageCenter + Vector2D(300.0f, 200.0f);
+    EntityHandle handle = edm.createNPCWithRaceClass(pos, "Orc", "Mage", Sex::Unknown, 2);
+    if (handle.isValid()) {
+      aiMgr.assignBehavior(handle, "Attack");
+      hostileCount++;
+    }
+  }
+
+  // ========================================================================
+  // SUMMARY
+  // ========================================================================
+  GAMESTATE_INFO(std::format("Test village spawned: {} merchants, {} guards, "
+                            "{} villagers, {} hostile NPCs",
+                            merchantCount, guardCount, villagerCount, hostileCount));
 }
 
 void AdvancedAIDemoState::initializeCamera() {

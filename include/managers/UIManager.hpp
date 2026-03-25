@@ -10,6 +10,7 @@
 #include <SDL3/SDL.h>
 #ifdef USE_SDL3_GPU
 #include <SDL3/SDL_gpu.h>
+#include <SDL3_ttf/SDL_ttf.h>
 #endif
 #include <array>
 #include <functional>
@@ -29,6 +30,7 @@ struct SDL_GPURenderPass;
 
 namespace HammerEngine {
 class GPURenderer;
+class GPUTexture;
 }
 
 #ifdef USE_SDL3_GPU
@@ -36,14 +38,16 @@ class GPURenderer;
 struct UIGPUDrawCommand {
     enum class Type { Rect, Text, Image };
     Type type{Type::Rect};
+    std::shared_ptr<HammerEngine::GPUTexture> textureOwner{};
     SDL_GPUTexture* texture{nullptr};  // For text/image
+    TTF_ImageType imageType{TTF_IMAGE_INVALID};
     uint32_t vertexOffset{0};
     uint32_t vertexCount{0};
 };
 
 // GPU command buffer capacities (avoids per-frame reallocations)
 constexpr size_t GPU_PRIMITIVE_COMMAND_CAPACITY = 256;
-constexpr size_t GPU_TEXT_COMMAND_CAPACITY = 64;
+constexpr size_t GPU_TEXT_COMMAND_CAPACITY = 256;
 constexpr size_t GPU_IMAGE_COMMAND_CAPACITY = 32;
 
 // GPU vertex safety limits
@@ -533,6 +537,13 @@ public:
                                 int width, int height,
                                 int offsetX = UIConstants::BOTTOM_RIGHT_OFFSET_X,
                                 int offsetY = UIConstants::BOTTOM_RIGHT_OFFSET_Y);
+
+  // Combat HUD helpers
+  void createCombatHUD();
+  void updateCombatHUD(float playerHealth, float playerStamina,
+                       bool hasTarget, const std::string& targetName,
+                       float targetHealth);
+  void destroyCombatHUD();
 
   // Utility methods
   void setGlobalFont(const std::string &fontID);

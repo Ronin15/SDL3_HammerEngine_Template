@@ -52,6 +52,8 @@ Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
     m_targetPosition.setY(y);
     m_previousPosition.setX(x);
     m_previousPosition.setY(y);
+    m_lastRenderedCenter.setX(x);
+    m_lastRenderedCenter.setY(y);
 
     if (!m_viewport.isValid()) {
         CAMERA_WARN("Invalid viewport dimensions provided, using defaults");
@@ -92,13 +94,16 @@ void Camera::update(float deltaTime) {
             }
         }
 
-        // SNAP directly to target's position - no smoothing.
-        // This ensures camera and target use identical interpolation paths during render,
-        // eliminating diagonal movement jitter. Both will interpolate from the same
-        // previous/current position values.
+        // Blend toward target's position with subtle damping for smoother tracking.
+        // Both position and previousPosition are blended to preserve interpolation sync
+        // and prevent diagonal movement jitter while reducing high-zoom tracking jitter.
+        // The 0.9/0.1 blend adds ~1 frame of subtle lag but significantly smooths movement.
         if (auto targetPtr = m_target.lock()) {
-            m_position = targetPtr->getPosition();
-            m_previousPosition = targetPtr->getPreviousPosition();
+            constexpr float blendFactor = 0.9f;  // 0.9 = subtle damping, 1.0 = snap (original)
+            Vector2D targetPos = targetPtr->getPosition();
+            Vector2D targetPrevPos = targetPtr->getPreviousPosition();
+            m_position = m_position * (1.0f - blendFactor) + targetPos * blendFactor;
+            m_previousPosition = m_previousPosition * (1.0f - blendFactor) + targetPrevPos * blendFactor;
         } else if (m_positionGetter) {
             // Function-based target: use smoothing since we can't access previous position
             Vector2D const targetPos = m_positionGetter();
@@ -125,8 +130,10 @@ void Camera::setPosition(float x, float y) {
     Vector2D const oldPosition = m_position;
     m_position.setX(x);
     m_position.setY(y);
-    m_targetPosition = m_position; // Update target position to avoid interpolation
-    
+    m_targetPosition = m_position;      // Update target position to avoid interpolation
+    m_previousPosition = m_position;    // Prevents interpolation sliding (matches Entity pattern)
+    m_lastRenderedCenter = m_position;  // Sync coordinate conversions with new position
+
     // Fire position changed event if enabled
     if (m_eventFiringEnabled) {
         firePositionChangedEvent(oldPosition, m_position);
@@ -327,6 +334,9 @@ Vector2D Camera::getRenderOffset(float& offsetX, float& offsetY, float interpola
     // Compute screen offset from the center position
     computeOffsetFromCenter(center.getX(), center.getY(), offsetX, offsetY);
 
+    // Cache rendered center for coordinate conversion consistency
+    m_lastRenderedCenter = center;
+
     // Return the center position we used
     return center;
 }
@@ -350,10 +360,12 @@ bool Camera::isRectVisible(float x, float y, float width, float height) const {
 }
 
 void Camera::worldToScreen(float worldX, float worldY, float& screenX, float& screenY) const {
-    // Use the same offset calculation as rendering (computeOffsetFromCenter)
-    // This ensures world-to-screen conversion matches what's actually displayed
+    // Use the last rendered center in Follow mode to match what's actually displayed
+    // (m_position lags behind the actual rendered viewport center due to blend factor)
     float offsetX, offsetY;
-    computeOffsetFromCenter(m_position.getX(), m_position.getY(), offsetX, offsetY);
+    float const centerX = (m_mode == Mode::Follow) ? m_lastRenderedCenter.getX() : m_position.getX();
+    float const centerY = (m_mode == Mode::Follow) ? m_lastRenderedCenter.getY() : m_position.getY();
+    computeOffsetFromCenter(centerX, centerY, offsetX, offsetY);
 
     // Transform world position to screen position
     screenX = worldX - offsetX;
@@ -366,10 +378,12 @@ void Camera::screenToWorld(float screenX, float screenY, float& worldX, float& w
     float const logicalX = screenX / m_zoom;
     float const logicalY = screenY / m_zoom;
 
-    // Use the same offset calculation as rendering (computeOffsetFromCenter)
-    // This ensures screen-to-world conversion matches what's actually displayed
+    // Use the last rendered center in Follow mode to match what's actually displayed
+    // (m_position lags behind the actual rendered viewport center due to blend factor)
     float offsetX, offsetY;
-    computeOffsetFromCenter(m_position.getX(), m_position.getY(), offsetX, offsetY);
+    float const centerX = (m_mode == Mode::Follow) ? m_lastRenderedCenter.getX() : m_position.getX();
+    float const centerY = (m_mode == Mode::Follow) ? m_lastRenderedCenter.getY() : m_position.getY();
+    computeOffsetFromCenter(centerX, centerY, offsetX, offsetY);
 
     // Inverse of worldToScreen: worldPos = screenPos + cameraOffset
     worldX = logicalX + offsetX;

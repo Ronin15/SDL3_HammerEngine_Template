@@ -81,8 +81,9 @@ GPUSampler& GPUSampler::operator=(GPUSampler&& other) noexcept {
 void GPUSampler::release() {
     if (m_sampler && m_device) {
         SDL_ReleaseGPUSampler(m_device, m_sampler);
-        m_sampler = nullptr;
     }
+    m_sampler = nullptr;
+    m_device = nullptr;
 }
 
 GPUSampler GPUSampler::createNearest(SDL_GPUDevice* device) {

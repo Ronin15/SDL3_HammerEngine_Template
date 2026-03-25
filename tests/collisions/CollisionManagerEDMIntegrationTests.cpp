@@ -34,10 +34,26 @@
 
 using namespace HammerEngine;
 
+namespace {
+
+struct ThreadSystemTestLifetime {
+    ThreadSystemTestLifetime() {
+        BOOST_REQUIRE_MESSAGE(ThreadSystem::Instance().init(),
+                              "Failed to initialize ThreadSystem for Collision EDM tests");
+    }
+
+    ~ThreadSystemTestLifetime() {
+        ThreadSystem::Instance().clean();
+    }
+};
+
+ThreadSystemTestLifetime g_threadSystemTestLifetime{};
+
+} // namespace
+
 // Test fixture
 struct CollisionEDMFixture {
     CollisionEDMFixture() {
-        ThreadSystem::Instance().init();
         EventManager::Instance().init();
         EntityDataManager::Instance().init();
         BackgroundSimulationManager::Instance().init();
@@ -52,7 +68,6 @@ struct CollisionEDMFixture {
         BackgroundSimulationManager::Instance().clean();
         EntityDataManager::Instance().clean();
         EventManager::Instance().clean();
-        ThreadSystem::Instance().clean();
     }
 
     // Helper: Create test NPC with collision enabled via EDM

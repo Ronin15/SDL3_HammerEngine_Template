@@ -202,6 +202,29 @@ BOOST_FIXTURE_TEST_CASE(FrameCycleAdvances, VertexPoolTestFixture) {
     pool.shutdown();
 }
 
+BOOST_FIXTURE_TEST_CASE(GPUBufferRotatesPerFrame, VertexPoolTestFixture) {
+    SKIP_IF_NO_GPU();
+    BOOST_REQUIRE(device->isInitialized());
+
+    GPUVertexPool pool;
+    pool.init(device->get(), sizeof(SpriteVertex));
+    BOOST_REQUIRE(pool.isInitialized());
+
+    BOOST_REQUIRE(pool.beginFrame() != nullptr);
+    SDL_GPUBuffer* firstGPUBuffer = pool.getGPUBuffer();
+    pool.endFrame(1);
+
+    BOOST_REQUIRE(pool.beginFrame() != nullptr);
+    SDL_GPUBuffer* secondGPUBuffer = pool.getGPUBuffer();
+    pool.endFrame(1);
+
+    BOOST_CHECK(firstGPUBuffer != nullptr);
+    BOOST_CHECK(secondGPUBuffer != nullptr);
+    BOOST_CHECK_NE(firstGPUBuffer, secondGPUBuffer);
+
+    pool.shutdown();
+}
+
 BOOST_FIXTURE_TEST_CASE(NoGPUStallWithTripleBuffering, VertexPoolTestFixture) {
     SKIP_IF_NO_GPU();
     BOOST_REQUIRE(device->isInitialized());

@@ -481,7 +481,7 @@ bool TextureManager::loadSingleGPUTexture(const std::string& fileName, const std
                         SDL_PIXELFORMAT_ABGR8888, convertedSurface->pixels, convertedSurface->pitch,
                         false);
 
-  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+  const auto& gpuDevice = HammerEngine::GPUDevice::Instance();
   if (!gpuDevice.isInitialized()) {
     TEXTURE_ERROR("GPU texture: GPUDevice not initialized");
     SDL_DestroySurface(convertedSurface);
@@ -531,7 +531,7 @@ void TextureManager::processPendingUploads(SDL_GPUCopyPass* copyPass) {
 
   std::lock_guard<std::mutex> lock(m_gpuTextureMutex);
 
-  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+  const auto& gpuDevice = HammerEngine::GPUDevice::Instance();
   if (!gpuDevice.isInitialized()) {
     TEXTURE_ERROR("GPU texture upload: GPUDevice not initialized");
     return;

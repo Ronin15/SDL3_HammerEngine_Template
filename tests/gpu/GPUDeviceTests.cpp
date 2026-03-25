@@ -11,7 +11,9 @@
 
 #include "GPUTestFixture.hpp"
 #include "gpu/GPUDevice.hpp"
+#include "gpu/GPUPlatformConfig.hpp"
 #include <SDL3/SDL.h>
+#include <string>
 
 using namespace HammerEngine;
 using namespace HammerEngine::Test;
@@ -172,6 +174,10 @@ BOOST_FIXTURE_TEST_CASE(GetShaderFormats, GPUTestFixture) {
     // Should have at least one of these
     BOOST_CHECK(hasSPIRV || hasMSL || hasDXBC || hasDXIL);
 
+    const SDL_GPUShaderFormat requestedFormats =
+        HammerEngine::GPUPlatformConfig::getRequestedShaderFormats();
+    BOOST_CHECK((formats & requestedFormats) == requestedFormats);
+
     BOOST_TEST_MESSAGE("Shader formats - SPIRV: " << hasSPIRV
                        << ", MSL: " << hasMSL
                        << ", DXBC: " << hasDXBC
@@ -229,6 +235,8 @@ BOOST_FIXTURE_TEST_CASE(GetDriverName, GPUTestFixture) {
     // Driver name should be non-null and non-empty
     BOOST_CHECK(driverName != nullptr);
     BOOST_CHECK(strlen(driverName) > 0);
+    BOOST_CHECK_EQUAL(std::string(driverName),
+                      std::string(HammerEngine::GPUPlatformConfig::getPreferredDriverName()));
 
     BOOST_TEST_MESSAGE("GPU driver: " << driverName);
 

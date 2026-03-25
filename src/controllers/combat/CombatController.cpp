@@ -6,12 +6,16 @@
 #include "controllers/combat/CombatController.hpp"
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
-#include "events/CombatEvent.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/UIManager.hpp"
 #include <format>
+
+namespace {
+    constexpr const char* GAMEPLAY_EVENT_LOG = "gameplay_event_log";
+}
 
 void CombatController::subscribe() {
   if (checkAlreadySubscribed()) {
@@ -84,13 +88,6 @@ bool CombatController::tryAttack() {
   // Perform hit detection using AIManager
   performAttack(player.get());
 
-  // Dispatch player attacked event
-  auto attackEvent = std::make_shared<CombatEvent>(
-      CombatEventType::PlayerAttacked, player.get(), nullptr,
-      player->getAttackDamage());
-  EventManager::Instance().dispatchEvent(attackEvent,
-                                         EventManager::DispatchMode::Immediate);
-
   return true;
 }
 
@@ -98,6 +95,11 @@ void CombatController::performAttack(Player *player) {
   if (!player) {
     return;
   }
+
+  // Cache manager references at function scope
+  auto& edm = EntityDataManager::Instance();
+  auto& aiMgr = AIManager::Instance();
+  auto& uiMgr = UIManager::Instance();
 
   const Vector2D playerPos = player->getPosition();
   const float attackRange = player->getAttackRange();
@@ -107,12 +109,10 @@ void CombatController::performAttack(Player *player) {
   float attackDirX = (player->getFlip() == SDL_FLIP_HORIZONTAL) ? -1.0f : 1.0f;
 
   // Query nearby entity handles from AIManager (EntityHandle-based API)
-  std::vector<EntityHandle> nearbyHandles;
-  AIManager::Instance().queryHandlesInRadius(playerPos, attackRange,
-                                             nearbyHandles, true);
-
-  // Get EntityDataManager for position lookups
-  auto &edm = EntityDataManager::Instance();
+  // Reuse buffer to avoid per-frame allocation
+  m_nearbyHandlesBuffer.clear();  // Keeps capacity
+  aiMgr.scanActiveHandlesInRadius(playerPos, attackRange,
+                             m_nearbyHandlesBuffer, true);
 
   // Check all nearby entities for hits
   EntityHandle closestHandle{}; // Invalid handle by default
@@ -121,7 +121,7 @@ void CombatController::performAttack(Player *player) {
   // Get player's EntityHandle for event-driven damage
   EntityHandle playerHandle = player->getHandle();
 
-  for (const auto &handle : nearbyHandles) {
+  for (const auto &handle : m_nearbyHandlesBuffer) {
     if (!handle.isValid())
       continue;
 
@@ -156,50 +156,41 @@ void CombatController::performAttack(Player *player) {
     // Hit detected - calculate knockback direction
     Vector2D knockback = diff.normalized() * 20.0f;
 
-    // Phase 2 EDM Migration: Use CharacterData for health
-    auto &charData = edm.getCharacterData(handle);
-    float oldHealth = charData.health;
+    // Record pre-damage health for UI logging
+    float oldHealth = edm.getCharacterData(handle).health;
 
-    // Fire DamageIntent event for any observers
-    auto damageIntent = std::make_shared<DamageEvent>(
-        EntityEventType::DamageIntent, playerHandle, handle, attackDamage,
-        knockback);
-    EventManager::Instance().dispatchEvent(
-        damageIntent, EventManager::DispatchMode::Immediate);
+    // Dispatch DamageEvent via Combat type. EventManager applies combat results
+    // on the main thread immediately for player attacks.
+    auto& eventMgr = EventManager::Instance();
+    auto damageEvent = eventMgr.acquireDamageEvent();
+    damageEvent->configure(playerHandle, handle, attackDamage, knockback);
+    eventMgr.dispatchEvent(
+        damageEvent, EventManager::DispatchMode::Immediate);
 
-    // Apply damage directly to CharacterData
-    charData.health = std::max(0.0f, charData.health - attackDamage);
-
-    // Apply knockback via velocity
-    hotData.transform.velocity = hotData.transform.velocity + knockback;
+    const float newHealth = edm.getCharacterData(handle).health;
+    const bool wasLethal = newHealth <= 0.0f;
 
     COMBAT_INFO(
         std::format("Hit entity {} for {:.1f} damage! HP: {:.1f} -> {:.1f}",
-                    handle.getId(), attackDamage, oldHealth, charData.health));
+                    handle.getId(), attackDamage, oldHealth, newHealth));
 
-    // Track closest hit for targeting (using handle for now)
+    uiMgr.addEventLogEntry(
+        GAMEPLAY_EVENT_LOG,
+        std::format("Hit Enemy #{} for {:.0f} damage!", handle.getId(), attackDamage));
+
+    // Track closest hit for targeting
     if (distance < closestDist) {
       closestDist = distance;
       closestHandle = handle;
     }
 
-    // Fire CombatEvent for UI/sound observers (using handles)
-    // Note: CombatEvent may need updating to use handles instead of EntityPtr
-    // For now, dispatch DamageEvent which already uses handles
-
-    // Check for kill
-    if (charData.health <= 0.0f) {
-      // Mark as dead in HotData
-      hotData.flags &= ~EntityHotData::FLAG_ALIVE;
-
+    // Kill notification for UI
+    if (wasLethal) {
       COMBAT_INFO(std::format("Entity {} killed!", handle.getId()));
 
-      // Fire DeathEvent for entity lifecycle observers
-      auto deathEvent = std::make_shared<DeathEvent>(
-          EntityEventType::DeathCompleted, handle, playerHandle);
-      deathEvent->setDeathPosition(npcPos);
-      EventManager::Instance().dispatchEvent(
-          deathEvent, EventManager::DispatchMode::Immediate);
+      uiMgr.addEventLogEntry(
+          GAMEPLAY_EVENT_LOG,
+          std::format("Defeated Enemy #{}!", handle.getId()));
     }
   }
 
@@ -248,4 +239,18 @@ bool CombatController::hasActiveTarget() const {
   }
 
   return edm.getHotDataByIndex(idx).isAlive();
+}
+
+float CombatController::getTargetHealth() const {
+  if (!m_targetedHandle.isValid()) {
+    return 0.0f;
+  }
+
+  auto &edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(m_targetedHandle);
+  if (idx == SIZE_MAX) {
+    return 0.0f;
+  }
+
+  return edm.getCharacterDataByIndex(idx).health;
 }

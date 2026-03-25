@@ -1,8 +1,6 @@
-# InputManager Documentation
+# InputManager
 
-**Where to find the code:**
-- Implementation: `src/managers/InputManager.cpp`
-- Header: `include/managers/InputManager.hpp`
+**Code:** `include/managers/InputManager.hpp`, `src/managers/InputManager.cpp`
 
 **Singleton Access:** Use `InputManager::Instance()` to access the manager.
 

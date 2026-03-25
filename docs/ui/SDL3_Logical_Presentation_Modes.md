@@ -1,4 +1,4 @@
-# SDL3 Logical Presentation Modes Documentation
+# SDL3 Logical Presentation Modes
 
 ## Overview
 

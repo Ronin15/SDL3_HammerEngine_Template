@@ -52,28 +52,32 @@ This is **not** an application bug but rather an SDL3 internal issue on macOS.
 
 ### Current Working Solution
 
-The current implementation follows the documented pattern:
+The current implementation closes open gamepad handles and clears input state before shutdown:
 
 ```cpp
 void InputManager::clean() {
   if(m_gamePadInitialized) {
-    [[maybe_unused]] int gamepadCount{0};
+    size_t count = m_joysticks.size();
     // Close all gamepads if detected
     for (auto& gamepad : m_joysticks) {
-      SDL_CloseGamepad(gamepad);
-      gamepadCount++;
+      if (gamepad) {
+        SDL_CloseGamepad(gamepad);
+        gamepad = nullptr;
+      }
     }
 
     m_joysticks.clear();
     m_joystickValues.clear();
+    m_buttonStates.clear();
     m_gamePadInitialized = false;
-    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
-    // Trace trap occurs here during SDL_Quit()
+    if (count > 0) {
+      INPUT_INFO(std::format("Closed {} gamepad handles", count));
+    }
   }
 }
 ```
 
-**This provides full gamepad functionality with the trade-off of a trace trap during shutdown.**
+This keeps gamepad functionality active during gameplay while the underlying SDL3 macOS shutdown issue remains under investigation.
 
 ## Testing Results
 

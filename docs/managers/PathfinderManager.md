@@ -1,4 +1,4 @@
-# PathfinderManager Documentation
+# PathfinderManager
 
 ## Overview
 

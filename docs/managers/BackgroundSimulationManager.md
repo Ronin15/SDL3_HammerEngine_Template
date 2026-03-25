@@ -1,8 +1,6 @@
-# BackgroundSimulationManager Documentation
+# BackgroundSimulationManager
 
-**Where to find the code:**
-- Header: `include/managers/BackgroundSimulationManager.hpp`
-- Implementation: `src/managers/BackgroundSimulationManager.cpp`
+**Code:** `include/managers/BackgroundSimulationManager.hpp`, `src/managers/BackgroundSimulationManager.cpp`
 
 **Singleton Access:** Use `BackgroundSimulationManager::Instance()` to access the manager.
 

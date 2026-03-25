@@ -1,5 +1,6 @@
 @echo off
 REM Helper script to run Buffer Utilization tests on Windows
+setlocal
 
 REM Enable ANSI escape sequences (Windows 10+)
 for /F %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"
@@ -42,10 +43,13 @@ echo %BLUE%Running Buffer Utilization tests...%NC%
 
 REM Get the directory where this script is located and find project root
 set "SCRIPT_DIR=%~dp0"
-set "PROJECT_ROOT=%SCRIPT_DIR%..\..\"
+for %%i in ("%SCRIPT_DIR%..\..") do set "PROJECT_ROOT=%%~fi"
+
+REM Always execute from the script folder so relative paths are stable
+pushd "%SCRIPT_DIR%" >nul 2>&1
 
 REM Check if test executable exists
-set "TEST_EXECUTABLE=%PROJECT_ROOT%bin\debug\buffer_utilization_tests.exe"
+set "TEST_EXECUTABLE=%PROJECT_ROOT%\bin\debug\buffer_utilization_tests.exe"
 if not exist "%TEST_EXECUTABLE%" (
     echo %RED%Test executable not found at %TEST_EXECUTABLE%%NC%
     echo %YELLOW%Searching for test executable...%NC%
@@ -70,13 +74,14 @@ echo %GREEN%Running WorkerBudget buffer utilization tests...%NC%
 echo %BLUE%================================================%NC%
 
 REM Create test_results directory if it doesn't exist
-if not exist "%PROJECT_ROOT%test_results" mkdir "%PROJECT_ROOT%test_results"
+if not exist "%PROJECT_ROOT%\test_results" mkdir "%PROJECT_ROOT%\test_results"
+set "OUTPUT_LOG=%PROJECT_ROOT%\test_results\buffer_utilization_test_output.txt"
 
 REM Run with appropriate options
 if "%VERBOSE%"=="true" (
-    "%TEST_EXECUTABLE%" --log_level=all > test_output.log 2>&1
+    "%TEST_EXECUTABLE%" --log_level=all > "%OUTPUT_LOG%" 2>&1
 ) else (
-    "%TEST_EXECUTABLE%" > test_output.log 2>&1
+    "%TEST_EXECUTABLE%" > "%OUTPUT_LOG%" 2>&1
 )
 
 set TEST_RESULT=%ERRORLEVEL%
@@ -84,10 +89,8 @@ echo %BLUE%================================================%NC%
 
 REM Save test results
 echo %YELLOW%Saving test results and allocation metrics...%NC%
-if exist test_output.log (
-    copy test_output.log "%PROJECT_ROOT%test_results\buffer_utilization_test_output.txt" >nul
-    type test_output.log
-    del test_output.log
+if exist "%OUTPUT_LOG%" (
+    type "%OUTPUT_LOG%"
 )
 
 REM Report test results
@@ -99,4 +102,5 @@ if %TEST_RESULT% equ 0 (
     echo %YELLOW%Check saved results in test_results\ directory for detailed analysis%NC%
 )
 
+popd >nul 2>&1
 exit /b %TEST_RESULT%

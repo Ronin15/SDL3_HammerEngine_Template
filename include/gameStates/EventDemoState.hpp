@@ -61,22 +61,19 @@ public:
 
 private:
   // Demo management methods
-  void setupEventSystem();
+  void registerEventHandlers();
   void unregisterEventHandlers();
 
   // Event demonstration methods (manual triggers only)
   void triggerWeatherDemo();
   void triggerNPCSpawnDemo();
-  void triggerSceneTransitionDemo();
   void triggerResourceDemo();
   void triggerMassNPCSpawnDemo();
   void triggerConvenienceMethodsDemo();
   void resetAllEvents();
 
   // Event handler methods
-  void onWeatherChanged(const std::string &message);
   void onNPCSpawned(const EventData &data);
-  void onSceneChanged(const std::string &message);
   void onResourceChanged(const EventData &data);
 
   // Controllers (owned by ControllerRegistry, following GamePlayState pattern)
@@ -129,15 +126,9 @@ private:
   size_t m_currentWeatherIndex{0};
 
   // NPC spawn demo variables
-  std::vector<std::string> m_npcTypes{"Guard", "Villager", "Merchant",
+  std::vector<std::string> m_npcTypes{"Guard", "Farmer", "GeneralMerchant",
                                       "Warrior"};
   size_t m_currentNPCTypeIndex{0};
-
-  // Scene transition demo variables
-  std::vector<std::string> m_sceneNames{"Forest", "Village", "Castle",
-                                        "Dungeon"};
-  size_t m_currentSceneIndex{0};
-
 
   // Event trigger debouncing
   float m_totalDemoTime{0.0f};
@@ -171,9 +162,6 @@ private:
   void logResourceAnalytics(HammerEngine::ResourceHandle handle, int oldQty,
                             int newQty, const std::string &source);
 
-  // AI behavior integration methods
-  void setupAIBehaviors();
-  
   // Camera management methods
   void initializeCamera();
   void updateCamera(float deltaTime);
@@ -194,12 +182,13 @@ private:
   size_t m_lastDisplayedNPCCount{0};
   std::string m_lastDisplayedWeather{};
 
+  // Lazy weather string caching — only recomputed when m_currentWeather changes
+  std::string m_cachedWeatherStr{"Clear"};
+  WeatherType m_lastCachedWeatherType{WeatherType::Clear};
+
   // Cached NPC count (updated in update(), used in render())
   size_t m_cachedNPCCount{0};
 
-  // Lazy-cached weather string (computed only when underlying enum changes)
-  WeatherType m_lastCachedWeather{WeatherType::Custom};  // Initialize to invalid to force first compute
-  std::string m_cachedWeatherStr{};
 };
 
 #endif // EVENT_DEMO_STATE_HPP

@@ -7,15 +7,21 @@
 #include "entities/Player.hpp"
 #include "utils/WorldRenderPipeline.hpp"
 #include "controllers/combat/CombatController.hpp"
+#include "controllers/social/SocialController.hpp"
 #include "controllers/world/DayNightController.hpp"
+#include "controllers/world/HarvestController.hpp"
 #include "controllers/world/ItemController.hpp"
 #include "controllers/world/WeatherController.hpp"
 #include "controllers/render/ResourceRenderController.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
+#include "gameStates/GameOverState.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "gameStates/PauseState.hpp"
+#include "events/HarvestResourceEvent.hpp"
+#include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/GameStateManager.hpp"
@@ -27,6 +33,8 @@
 #include "managers/UIConstants.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "managers/WorldResourceManager.hpp"
+#include "core/WorkerBudget.hpp"
 #include "utils/Camera.hpp"
 #include "world/WorldData.hpp"
 #include <algorithm>
@@ -41,9 +49,9 @@
 
 // Constructor/destructor defined here where GPUSceneRenderer is complete (for unique_ptr)
 GamePlayState::GamePlayState()
-    : m_transitioningToLoading{false},
+    : m_transitioningToLoading{false}, m_transitioningToGameOver{false},
       mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false},
-      m_dayNightEventToken{}, m_weatherEventToken{} {}
+      m_dayNightEventToken{}, m_weatherEventToken{}, m_harvestEventToken{} {}
 
 GamePlayState::~GamePlayState() = default;
 
@@ -56,6 +64,7 @@ bool GamePlayState::enter() {
 
   // Reset transition flag when entering state
   m_transitioningToLoading = false;
+  m_transitioningToGameOver = false;
 
   // Check if world needs to be loaded
   if (!m_worldLoaded) {
@@ -72,9 +81,6 @@ bool GamePlayState::enter() {
   try {
     // Local references for init-only managers (not cached as members)
     auto &gameTimeMgr = GameTimeManager::Instance();
-
-    // Initialize resource handles first
-    initializeResourceHandles();
 
     // Create player and position at screen center
     mp_Player = std::make_shared<Player>();
@@ -108,7 +114,11 @@ bool GamePlayState::enter() {
     m_controllers.add<DayNightController>();
     m_controllers.add<CombatController>(mp_Player);
     m_controllers.add<ItemController>(mp_Player);
+    m_controllers.add<HarvestController>(mp_Player);
     m_controllers.add<ResourceRenderController>();
+
+    // Social controller (handles both relationship management and trade UI)
+    m_controllers.add<SocialController>(mp_Player);
 
     // Enable automatic weather changes
     gameTimeMgr.enableAutoWeather(true);
@@ -176,22 +186,9 @@ bool GamePlayState::enter() {
     m_controllers.subscribeAll();
 
     // Initialize combat HUD (health/stamina bars, target frame)
-    initializeCombatHUD();
+    UIManager::Instance().createCombatHUD();
 
-    // Cache EventManager reference for event subscriptions
-    auto &eventMgr = EventManager::Instance();
-
-    // Subscribe to TimePeriodChangedEvent for day/night overlay rendering
-    m_dayNightEventToken = eventMgr.registerHandlerWithToken(
-        EventTypeId::Time,
-        [this](const EventData &data) { onTimePeriodChanged(data); });
-    m_dayNightSubscribed = true;
-
-    // Subscribe to WeatherChangedEvent for ambient particle management
-    m_weatherEventToken = eventMgr.registerHandlerWithToken(
-        EventTypeId::Weather,
-        [this](const EventData &data) { onWeatherChanged(data); });
-    m_weatherSubscribed = true;
+    registerEventHandlers();
 
     // Mark as initialized for future pause/resume cycles
     m_initialized = true;
@@ -252,17 +249,40 @@ void GamePlayState::update(float deltaTime) {
     // Update all IUpdatable controllers (combat cooldowns, stamina regen, etc.)
     m_controllers.updateAll(deltaTime);
 
+    // Update data-driven NPCs (animations handled by NPCRenderController)
+    m_npcRenderCtrl.update(deltaTime);
+
     // Update combat HUD (health/stamina bars, target frame)
-    updateCombatHUD();
+    auto& combatCtrl = *m_controllers.get<CombatController>();
+    UIManager::Instance().updateCombatHUD(
+        mp_Player->getHealth(),
+        mp_Player->getStamina(),
+        combatCtrl.hasActiveTarget(),
+        "Target",
+        combatCtrl.getTargetHealth());
+
+    if (!mp_Player->isAlive() && !m_transitioningToGameOver) {
+      m_transitioningToGameOver = true;
+
+      if (!mp_stateManager->hasState("GameOverState")) {
+        mp_stateManager->addState(std::make_unique<GameOverState>());
+      }
+
+      mp_stateManager->changeState("GameOverState");
+      return;
+    }
   }
 
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
 
+#ifndef USE_SDL3_GPU
   // Prepare chunks via WorldRenderPipeline (predictive prefetching + dirty chunk updates)
+  // GPU path renders tiles directly from atlas coords each frame — no chunk textures needed
   if (m_renderPipeline && m_camera) {
     m_renderPipeline->prepareChunks(*m_camera, deltaTime);
   }
+#endif
 
   // Update resource animations (dropped items bobbing, etc.) - camera-based culling
   if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>(); resourceCtrl && m_camera) {
@@ -331,6 +351,9 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
       resourceCtrl->renderContainers(renderer, *m_camera, ctx.cameraX, ctx.cameraY, interpolationAlpha);
     }
 
+    // Render NPCs (data-driven via NPCRenderController)
+    m_npcRenderCtrl.renderNPCs(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
+
     // Render player (sub-pixel smoothness from entity's own interpolation)
     if (mp_Player) {
       mp_Player->render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
@@ -376,6 +399,7 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
 bool GamePlayState::exit() {
   // Cache manager references for better performance
   AIManager &aiMgr = AIManager::Instance();
+  BackgroundSimulationManager &bgSimMgr = BackgroundSimulationManager::Instance();
   EntityDataManager &edm = EntityDataManager::Instance();
   CollisionManager &collisionMgr = CollisionManager::Instance();
   PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
@@ -383,6 +407,8 @@ bool GamePlayState::exit() {
   auto &ui = UIManager::Instance();
   WorldManager &worldMgr = WorldManager::Instance();
   GameTimeManager &gameTimeMgr = GameTimeManager::Instance();
+  auto &wrm = WorldResourceManager::Instance();
+  auto &eventMgr = EventManager::Instance();
 
   if (m_transitioningToLoading) {
     // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded
@@ -390,21 +416,35 @@ bool GamePlayState::exit() {
 
     // Reset the flag after using it
     m_transitioningToLoading = false;
+    m_transitioningToGameOver = false;
 
-    // Clean up managers (same as full exit)
-    // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
-    // Pending path tasks hold captured edmIndex values - they must complete or
-    // see the transition flag before EDM clears its data
-    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-      pathfinderMgr.prepareForStateTransition();
-    }
+    // Clear NPCs before manager cleanup (NPCs hold EDM indices)
+    m_npcRenderCtrl.clearSpawnedNPCs();
+
+    // Unsubscribe event handlers before clearing controllers
+    // (handlers capture `this` and call m_controllers.get<>() which returns
+    // nullptr after clear)
+    unregisterEventHandlers();
 
     aiMgr.prepareForStateTransition();
-    edm.prepareForStateTransition();
+    bgSimMgr.prepareForStateTransition();
+
+    if (wrm.isInitialized()) {
+      wrm.prepareForStateTransition();
+    }
+
+    eventMgr.prepareForStateTransition();
 
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
     }
+
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
+    }
+
+    edm.prepareForStateTransition();
+    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
     if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
       particleMgr.prepareForStateTransition();
@@ -424,6 +464,9 @@ bool GamePlayState::exit() {
     // Clean up UI
     ui.prepareForStateTransition();
 
+    // Destroy all controllers so re-entry creates fresh instances with valid refs
+    m_controllers.clear();
+
     // Reset player
     mp_Player = nullptr;
 
@@ -435,22 +478,33 @@ bool GamePlayState::exit() {
   }
 
   // Full exit (going to main menu, other states, or shutting down)
+  m_transitioningToGameOver = false;
 
-  // Use manager prepareForStateTransition methods for deterministic cleanup
-  // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
-  // Pending path tasks hold captured edmIndex values - they must complete or
-  // see the transition flag before EDM clears its data
+  // Clear NPCs before manager cleanup (NPCs hold EDM indices)
+  m_npcRenderCtrl.clearSpawnedNPCs();
+
+  // Unsubscribe from event handlers before EventManager teardown.
+  unregisterEventHandlers();
+
+  aiMgr.prepareForStateTransition();
+  bgSimMgr.prepareForStateTransition();
+
+  if (wrm.isInitialized()) {
+    wrm.prepareForStateTransition();
+  }
+
+  eventMgr.prepareForStateTransition();
+
+  if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+    collisionMgr.prepareForStateTransition();
+  }
+
   if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
     pathfinderMgr.prepareForStateTransition();
   }
 
-  aiMgr.prepareForStateTransition();
   edm.prepareForStateTransition();
-
-  // Clean collision state before other systems
-  if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
-    collisionMgr.prepareForStateTransition();
-  }
+  HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
   // Simple particle cleanup
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
@@ -476,27 +530,12 @@ bool GamePlayState::exit() {
   // Reset player
   mp_Player = nullptr;
 
-  // Unsubscribe all controllers at once
-  m_controllers.unsubscribeAll();
+  // Destroy all controllers so re-entry creates fresh instances with valid refs
+  m_controllers.clear();
   gameTimeMgr.enableAutoWeather(false);
 
-  // Stop ambient particles before unsubscribing
+  // Stop ambient particles after event teardown so no new weather callbacks fire.
   stopAmbientParticles();
-
-  // Unsubscribe from event handlers
-  if (m_dayNightSubscribed || m_weatherSubscribed) {
-    auto &eventMgr = EventManager::Instance();
-
-    if (m_dayNightSubscribed) {
-      eventMgr.removeHandler(m_dayNightEventToken);
-      m_dayNightSubscribed = false;
-    }
-
-    if (m_weatherSubscribed) {
-      eventMgr.removeHandler(m_weatherEventToken);
-      m_weatherSubscribed = false;
-    }
-  }
 
   // Reset initialization flag for next fresh start
   m_initialized = false;
@@ -505,6 +544,60 @@ bool GamePlayState::exit() {
 }
 
 std::string GamePlayState::getName() const { return "GamePlayState"; }
+
+void GamePlayState::registerEventHandlers() {
+  auto &eventMgr = EventManager::Instance();
+
+  m_dayNightEventToken = eventMgr.registerHandlerWithToken(
+      EventTypeId::Time,
+      [this](const EventData &data) { onTimePeriodChanged(data); });
+  m_dayNightSubscribed = true;
+
+  m_weatherEventToken = eventMgr.registerHandlerWithToken(
+      EventTypeId::Weather,
+      [this](const EventData &data) {
+        ParticleManager::Instance().handleWeatherEvent(data);
+        onWeatherChanged(data);
+      });
+  m_weatherSubscribed = true;
+
+  m_harvestEventToken = eventMgr.registerHandlerWithToken(
+      EventTypeId::Harvest, [](const EventData &data) {
+        if (!data.isActive() || !data.event) {
+          return;
+        }
+
+        auto harvestEvent =
+            std::dynamic_pointer_cast<HarvestResourceEvent>(data.event);
+        if (!harvestEvent) {
+          return;
+        }
+
+        WorldManager::Instance().handleHarvestResource(
+            harvestEvent->getEntityId(), harvestEvent->getTargetX(),
+            harvestEvent->getTargetY());
+      });
+  m_harvestSubscribed = true;
+}
+
+void GamePlayState::unregisterEventHandlers() {
+  auto &eventMgr = EventManager::Instance();
+
+  if (m_dayNightSubscribed) {
+    eventMgr.removeHandler(m_dayNightEventToken);
+    m_dayNightSubscribed = false;
+  }
+
+  if (m_weatherSubscribed) {
+    eventMgr.removeHandler(m_weatherEventToken);
+    m_weatherSubscribed = false;
+  }
+
+  if (m_harvestSubscribed) {
+    eventMgr.removeHandler(m_harvestEventToken);
+    m_harvestSubscribed = false;
+  }
+}
 
 void GamePlayState::pause() {
   // Hide gameplay UI when paused (PauseState overlays on top)
@@ -518,8 +611,8 @@ void GamePlayState::pause() {
   ui.setComponentVisible("hud_health_bar", false);
   ui.setComponentVisible("hud_stamina_label", false);
   ui.setComponentVisible("hud_stamina_bar", false);
-  ui.setComponentVisible("hud_target_panel", false);
   ui.setComponentVisible("hud_target_name", false);
+  ui.setComponentVisible("hud_target_hp_label", false);
   ui.setComponentVisible("hud_target_health", false);
 
   // Also hide inventory components if visible
@@ -611,18 +704,55 @@ void GamePlayState::handleInput() {
     ui.setComponentVisible("gameplay_fps", m_fpsVisible);
   }
 
-  // Combat - spacebar to attack
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE) && mp_Player) {
+  // Combat - F or spacebar to attack (F matches AdvancedAIDemoState)
+  if ((inputMgr.wasKeyPressed(SDL_SCANCODE_F) || inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) && mp_Player) {
     m_controllers.get<CombatController>()->tryAttack();
   }
 
-  // Item interaction - E to pickup/harvest
+  // Interaction - E to trade/pickup/harvest
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_E) && mp_Player) {
-    auto& itemCtrl = *m_controllers.get<ItemController>();
-    if (!itemCtrl.attemptPickup()) {
-      itemCtrl.attemptHarvest();
+    auto& socialCtrl = *m_controllers.get<SocialController>();
+
+    // If already trading, close the trade UI
+    if (socialCtrl.isTrading()) {
+      socialCtrl.closeTrade();
+    } else {
+      // Try to find a nearby merchant NPC to trade with
+      bool openedTrade = false;
+      auto& edm = EntityDataManager::Instance();
+      auto& aiMgr = AIManager::Instance();
+      Vector2D playerPos = mp_Player->getPosition();
+
+      // Query nearby NPCs
+      m_nearbyHandlesBuffer.clear();
+      aiMgr.scanActiveHandlesInRadius(playerPos, 100.0f, m_nearbyHandlesBuffer, true);
+
+      for (const auto& handle : m_nearbyHandlesBuffer) {
+        if (!handle.isValid() || handle.getKind() != EntityKind::NPC) {
+          continue;
+        }
+        // Check if this NPC is a merchant
+        if (edm.isNPCMerchant(handle)) {
+          if (socialCtrl.openTrade(handle)) {
+            openedTrade = true;
+            break;
+          }
+        }
+      }
+
+      // If no merchant found, try pickup/harvest
+      if (!openedTrade) {
+        auto& itemCtrl = *m_controllers.get<ItemController>();
+        if (!itemCtrl.attemptPickup()) {
+          // Try to start progress-based harvesting
+          auto& harvestCtrl = *m_controllers.get<HarvestController>();
+          harvestCtrl.startHarvest();
+        }
+      }
     }
   }
+  // Note: HarvestController handles movement cancellation automatically in update()
+  // via position-based detection (MOVEMENT_CANCEL_THRESHOLD)
 
   // Camera zoom controls
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_LEFTBRACKET) && m_camera) {
@@ -645,23 +775,6 @@ void GamePlayState::handleInput() {
     ui.addEventLogEntry("gameplay_event_log", "Time: MAX speed (3600x)");
   }
 #endif
-
-  // Resource addition demo keys
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
-    addDemoResource(m_goldHandle, 10);
-  }
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
-    addDemoResource(m_healthPotionHandle, 1);
-  }
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
-    addDemoResource(m_ironOreHandle, 5);
-  }
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
-    addDemoResource(m_woodHandle, 3);
-  }
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
-    removeDemoResource(m_goldHandle, 5);
-  }
 
   // Mouse input for world interaction
   if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
@@ -696,11 +809,22 @@ void GamePlayState::initializeInventoryUI() {
   // Create inventory panel (initially hidden) matching EventDemoState layout
   // Using TOP_RIGHT positioning - UIManager handles all resize repositioning
   constexpr int inventoryWidth = 280;
-  constexpr int inventoryHeight = 400;
   constexpr int panelMarginRight = 20; // 20px from right edge
   constexpr int panelMarginTop = 170;  // 170px from top
   constexpr int childInset = 10;       // Children are 10px inside panel
   constexpr int childWidth = inventoryWidth - (childInset * 2); // 260px
+  constexpr int headerHeight = 110;    // Title + status label area
+  constexpr int itemHeight = 20;       // Height per inventory item row
+  constexpr int bottomPadding = 15;    // Padding below list
+
+  // Calculate inventory panel size based on slot count
+  uint32_t invIdx = mp_Player->getInventoryIndex();
+  const auto& invData = EntityDataManager::Instance().getInventoryData(invIdx);
+  int slotCount = static_cast<int>(invData.maxSlots);
+
+  // Calculate list and panel heights dynamically
+  int listHeight = slotCount * itemHeight;
+  int inventoryHeight = headerHeight + listHeight + bottomPadding;
 
   // Initial position (will be auto-repositioned by UIManager)
   int inventoryX = windowWidth - inventoryWidth - panelMarginRight;
@@ -726,21 +850,21 @@ void GamePlayState::initializeInventoryUI() {
   // Status label: 75px below panel top
   ui.createLabel("gameplay_inventory_status",
                  {inventoryX + childInset, inventoryY + 75, childWidth, 25},
-                 "Capacity: 0/50");
+                 "Capacity: 0/20");
   ui.setComponentVisible("gameplay_inventory_status", false);
   ui.setComponentPositioning("gameplay_inventory_status",
                              {UIPositionMode::TOP_RIGHT,
                               panelMarginRight + childInset,
                               panelMarginTop + 75, childWidth, 25});
 
-  // Inventory list: 110px below panel top
+  // Inventory list: 110px below panel top, height based on slot count
   ui.createList("gameplay_inventory_list",
-                {inventoryX + childInset, inventoryY + 110, childWidth, 270});
+                {inventoryX + childInset, inventoryY + 110, childWidth, listHeight});
   ui.setComponentVisible("gameplay_inventory_list", false);
   ui.setComponentPositioning("gameplay_inventory_list",
                              {UIPositionMode::TOP_RIGHT,
                               panelMarginRight + childInset,
-                              panelMarginTop + 110, childWidth, 270});
+                              panelMarginTop + 110, childWidth, listHeight});
 
   // --- DATA BINDING SETUP ---
   // Bind the inventory capacity label to a function that gets the data
@@ -813,67 +937,6 @@ void GamePlayState::toggleInventoryDisplay() {
   ui.setComponentVisible("gameplay_inventory_title", m_inventoryVisible);
   ui.setComponentVisible("gameplay_inventory_status", m_inventoryVisible);
   ui.setComponentVisible("gameplay_inventory_list", m_inventoryVisible);
-}
-
-void GamePlayState::addDemoResource(HammerEngine::ResourceHandle resourceHandle,
-                                    int quantity) {
-  if (!mp_Player) {
-    return;
-  }
-
-  if (!resourceHandle.isValid()) {
-    return;
-  }
-
-  mp_Player->addToInventory(resourceHandle, quantity);
-
-  // Mark inventory UI bindings dirty so they refresh
-  auto &ui = UIManager::Instance();
-  ui.markBindingDirty("gameplay_inventory_status");
-  ui.markBindingDirty("gameplay_inventory_list");
-}
-
-void GamePlayState::removeDemoResource(
-    HammerEngine::ResourceHandle resourceHandle, int quantity) {
-  if (!mp_Player) {
-    return;
-  }
-
-  if (!resourceHandle.isValid()) {
-    return;
-  }
-
-  mp_Player->removeFromInventory(resourceHandle, quantity);
-
-  // Mark inventory UI bindings dirty so they refresh
-  auto &ui = UIManager::Instance();
-  ui.markBindingDirty("gameplay_inventory_status");
-  ui.markBindingDirty("gameplay_inventory_list");
-}
-
-void GamePlayState::initializeResourceHandles() {
-  // Resolve resource names to handles once during initialization (resource
-  // handle system compliance)
-  const auto &templateManager = ResourceTemplateManager::Instance();
-
-  // Only perform name-based lookups during initialization, not at runtime
-  auto goldResource = templateManager.getResourceByName("gold");
-  m_goldHandle =
-      goldResource ? goldResource->getHandle() : HammerEngine::ResourceHandle();
-
-  auto healthPotionResource =
-      templateManager.getResourceByName("health_potion");
-  m_healthPotionHandle = healthPotionResource
-                             ? healthPotionResource->getHandle()
-                             : HammerEngine::ResourceHandle();
-
-  auto ironOreResource = templateManager.getResourceByName("iron_ore");
-  m_ironOreHandle = ironOreResource ? ironOreResource->getHandle()
-                                    : HammerEngine::ResourceHandle();
-
-  auto woodResource = templateManager.getResourceByName("wood");
-  m_woodHandle =
-      woodResource ? woodResource->getHandle() : HammerEngine::ResourceHandle();
 }
 
 void GamePlayState::initializeCamera() {
@@ -969,8 +1032,8 @@ void GamePlayState::onTimePeriodChanged(const EventData &data) {
       "gameplay_event_log",
       std::string(m_controllers.get<DayNightController>()->getCurrentPeriodDescription()));
 
-  GAMEPLAY_DEBUG("Day/night transition started to period: " +
-                 std::string(periodEvent->getPeriodName()));
+  GAMEPLAY_DEBUG(std::format("Day/night transition started to period: {}",
+                             periodEvent->getPeriodName()));
 }
 
 void GamePlayState::updateDayNightOverlay(float deltaTime) {
@@ -1109,175 +1172,6 @@ void GamePlayState::onWeatherChanged(const EventData &data) {
   GAMEPLAY_DEBUG(weatherEvent->getWeatherTypeString());
 }
 
-void GamePlayState::initializeCombatHUD() {
-  auto &ui = UIManager::Instance();
-
-  // Combat HUD layout constants (top-left positioning)
-  constexpr int hudMarginLeft = 20;
-  constexpr int hudMarginTop = 40; // Below time label area
-  constexpr int labelWidth = 30;
-  constexpr int barWidth = 150;
-  constexpr int barHeight = 20;
-  constexpr int rowSpacing = 35;
-  constexpr int labelBarGap = 15;
-
-  // Row positions
-  int healthRowY = hudMarginTop;
-  int staminaRowY = hudMarginTop + rowSpacing;
-  int targetRowY =
-      hudMarginTop + rowSpacing * 2 + 10; // Extra spacing before target
-
-  // --- Player Health Bar ---
-  ui.createLabel("hud_health_label",
-                 {hudMarginLeft, healthRowY, labelWidth, barHeight}, "HP");
-  UIPositioning healthLabelPos;
-  healthLabelPos.mode = UIPositionMode::TOP_ALIGNED;
-  healthLabelPos.offsetX = hudMarginLeft;
-  healthLabelPos.offsetY = healthRowY;
-  healthLabelPos.fixedWidth = labelWidth;
-  healthLabelPos.fixedHeight = barHeight;
-  ui.setComponentPositioning("hud_health_label", healthLabelPos);
-
-  ui.createProgressBar("hud_health_bar",
-                       {hudMarginLeft + labelWidth + labelBarGap, healthRowY,
-                        barWidth, barHeight},
-                       0.0f, 100.0f);
-  UIPositioning healthBarPos;
-  healthBarPos.mode = UIPositionMode::TOP_ALIGNED;
-  healthBarPos.offsetX = hudMarginLeft + labelWidth + labelBarGap;
-  healthBarPos.offsetY = healthRowY;
-  healthBarPos.fixedWidth = barWidth;
-  healthBarPos.fixedHeight = barHeight;
-  ui.setComponentPositioning("hud_health_bar", healthBarPos);
-
-  // Set green fill color for health bar
-  UIStyle healthStyle;
-  healthStyle.backgroundColor = {40, 40, 40, 255};
-  healthStyle.borderColor = {180, 180, 180, 255};
-  healthStyle.hoverColor = {50, 200, 50, 255}; // Green fill
-  healthStyle.borderWidth = 1;
-  ui.setStyle("hud_health_bar", healthStyle);
-
-  // --- Player Stamina Bar ---
-  ui.createLabel("hud_stamina_label",
-                 {hudMarginLeft, staminaRowY, labelWidth, barHeight}, "SP");
-  UIPositioning staminaLabelPos;
-  staminaLabelPos.mode = UIPositionMode::TOP_ALIGNED;
-  staminaLabelPos.offsetX = hudMarginLeft;
-  staminaLabelPos.offsetY = staminaRowY;
-  staminaLabelPos.fixedWidth = labelWidth;
-  staminaLabelPos.fixedHeight = barHeight;
-  ui.setComponentPositioning("hud_stamina_label", staminaLabelPos);
-
-  ui.createProgressBar("hud_stamina_bar",
-                       {hudMarginLeft + labelWidth + labelBarGap, staminaRowY,
-                        barWidth, barHeight},
-                       0.0f, 100.0f);
-  UIPositioning staminaBarPos;
-  staminaBarPos.mode = UIPositionMode::TOP_ALIGNED;
-  staminaBarPos.offsetX = hudMarginLeft + labelWidth + labelBarGap;
-  staminaBarPos.offsetY = staminaRowY;
-  staminaBarPos.fixedWidth = barWidth;
-  staminaBarPos.fixedHeight = barHeight;
-  ui.setComponentPositioning("hud_stamina_bar", staminaBarPos);
-
-  // Set yellow fill color for stamina bar
-  UIStyle staminaStyle;
-  staminaStyle.backgroundColor = {40, 40, 40, 255};
-  staminaStyle.borderColor = {180, 180, 180, 255};
-  staminaStyle.hoverColor = {255, 200, 50, 255}; // Yellow fill
-  staminaStyle.borderWidth = 1;
-  ui.setStyle("hud_stamina_bar", staminaStyle);
-
-  // --- Target Frame (NPC health when attacked) ---
-  constexpr int targetPanelWidth = 190;
-  constexpr int targetPanelHeight = 50;
-
-  ui.createPanel("hud_target_panel", {hudMarginLeft, targetRowY,
-                                      targetPanelWidth, targetPanelHeight});
-  UIPositioning targetPanelPos;
-  targetPanelPos.mode = UIPositionMode::TOP_ALIGNED;
-  targetPanelPos.offsetX = hudMarginLeft;
-  targetPanelPos.offsetY = targetRowY;
-  targetPanelPos.fixedWidth = targetPanelWidth;
-  targetPanelPos.fixedHeight = targetPanelHeight;
-  ui.setComponentPositioning("hud_target_panel", targetPanelPos);
-  ui.setComponentVisible("hud_target_panel", false);
-
-  ui.createLabel("hud_target_name",
-                 {hudMarginLeft + 5, targetRowY + 5, targetPanelWidth - 10, 18},
-                 "");
-  UIPositioning targetNamePos;
-  targetNamePos.mode = UIPositionMode::TOP_ALIGNED;
-  targetNamePos.offsetX = hudMarginLeft + 5;
-  targetNamePos.offsetY = targetRowY + 5;
-  targetNamePos.fixedWidth = targetPanelWidth - 10;
-  targetNamePos.fixedHeight = 18;
-  ui.setComponentPositioning("hud_target_name", targetNamePos);
-  ui.setComponentVisible("hud_target_name", false);
-
-  ui.createProgressBar(
-      "hud_target_health",
-      {hudMarginLeft + 5, targetRowY + 26, targetPanelWidth - 10, 18}, 0.0f,
-      100.0f);
-  UIPositioning targetHealthPos;
-  targetHealthPos.mode = UIPositionMode::TOP_ALIGNED;
-  targetHealthPos.offsetX = hudMarginLeft + 5;
-  targetHealthPos.offsetY = targetRowY + 26;
-  targetHealthPos.fixedWidth = targetPanelWidth - 10;
-  targetHealthPos.fixedHeight = 18;
-  ui.setComponentPositioning("hud_target_health", targetHealthPos);
-  ui.setComponentVisible("hud_target_health", false);
-
-  // Set red fill color for target health bar
-  UIStyle targetHealthStyle;
-  targetHealthStyle.backgroundColor = {40, 40, 40, 255};
-  targetHealthStyle.borderColor = {180, 180, 180, 255};
-  targetHealthStyle.hoverColor = {200, 50, 50, 255}; // Red fill
-  targetHealthStyle.borderWidth = 1;
-  ui.setStyle("hud_target_health", targetHealthStyle);
-
-  // Initialize bars with player stats
-  if (mp_Player) {
-    ui.setValue("hud_health_bar", mp_Player->getHealth());
-    ui.setValue("hud_stamina_bar", mp_Player->getStamina());
-  }
-
-  GAMEPLAY_INFO("Combat HUD initialized");
-}
-
-void GamePlayState::updateCombatHUD() {
-  if (!mp_Player) {
-    return;
-  }
-
-  auto &ui = UIManager::Instance();
-  auto &combatCtrl = *m_controllers.get<CombatController>();
-
-  // Update player health and stamina bars
-  ui.setValue("hud_health_bar", mp_Player->getHealth());
-  ui.setValue("hud_stamina_bar", mp_Player->getStamina());
-
-  // Update target frame visibility and content (data-driven via EDM)
-  if (combatCtrl.hasActiveTarget()) {
-    EntityHandle targetHandle = combatCtrl.getTargetedHandle();
-    auto& edm = EntityDataManager::Instance();
-    size_t idx = edm.getIndex(targetHandle);
-    if (idx != SIZE_MAX) {
-      const auto& charData = edm.getCharacterDataByIndex(idx);
-      ui.setComponentVisible("hud_target_panel", true);
-      ui.setComponentVisible("hud_target_name", true);
-      ui.setComponentVisible("hud_target_health", true);
-      ui.setText("hud_target_name", "Target");  // Data-driven NPCs don't have names
-      ui.setValue("hud_target_health", charData.health);
-    }
-  } else {
-    ui.setComponentVisible("hud_target_panel", false);
-    ui.setComponentVisible("hud_target_name", false);
-    ui.setComponentVisible("hud_target_health", false);
-  }
-}
-
 #ifdef USE_SDL3_GPU
 void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
                                       float interpolationAlpha) {
@@ -1296,6 +1190,16 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   auto &worldMgr = WorldManager::Instance();
   worldMgr.recordGPU(*ctx.spriteBatch, ctx.cameraX, ctx.cameraY,
                      ctx.viewWidth, ctx.viewHeight, ctx.zoom);
+
+  // Record world resources to sprite batch (dropped items, harvestables, containers)
+  if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>()) {
+    resourceCtrl->recordGPUDroppedItems(ctx, *m_camera);
+    resourceCtrl->recordGPUHarvestables(ctx, *m_camera);
+    resourceCtrl->recordGPUContainers(ctx, *m_camera);
+  }
+
+  // Record NPCs after resources to preserve SDL render-order parity.
+  m_npcRenderCtrl.recordGPU(ctx);
 
   // End sprite batch recording before switching to entity batch
   m_gpuSceneRenderer->endSpriteBatch();
@@ -1339,7 +1243,7 @@ void GamePlayState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
     return;
   }
 
-  // Render world tiles (sprite batch)
+  // Render world tiles (sprite batch) - includes world tiles, NPCs, and world resources
   m_gpuSceneRenderer->renderScene(gpuRenderer, scenePass);
 
   // Render player (entity batch)

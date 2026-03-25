@@ -6,8 +6,99 @@
 #ifndef BEHAVIOR_CONFIG_HPP
 #define BEHAVIOR_CONFIG_HPP
 
+#include <cstdint>
+
+enum class BehaviorType : uint8_t {
+    Wander = 0,
+    Guard = 1,
+    Patrol = 2,
+    Follow = 3,
+    Chase = 4,
+    Attack = 5,
+    Flee = 6,
+    Idle = 7,
+    Custom = 8,
+    COUNT = 9,
+    None = 0xFF  // Invalid/uninitialized
+};
+
 namespace HammerEngine
 {
+
+/**
+ * Configuration for IdleBehavior
+ *
+ * Controls idle animation modes: stationary, subtle swaying, occasional turns,
+ * or light fidgeting movements.
+ */
+struct IdleBehaviorConfig
+{
+    enum class IdleMode : uint8_t {
+        STATIONARY = 0,      // Completely still
+        SUBTLE_SWAY = 1,     // Small swaying motion
+        OCCASIONAL_TURN = 2, // Turn around occasionally
+        LIGHT_FIDGET = 3     // Small random movements
+    };
+
+    IdleMode mode{IdleMode::SUBTLE_SWAY};
+    float idleRadius{20.0f};           // Movement radius for sway/fidget modes
+    float movementFrequency{3.0f};     // Seconds between movements
+    float turnFrequency{5.0f};         // Seconds between turns
+    float swaySpeed{35.0f};            // Movement speed for SUBTLE_SWAY mode (px/s)
+    float fidgetSpeed{40.0f};          // Movement speed for LIGHT_FIDGET mode (px/s)
+
+    /**
+     * Create stationary configuration (completely still)
+     */
+    static IdleBehaviorConfig createStationary()
+    {
+        IdleBehaviorConfig config;
+        config.mode = IdleMode::STATIONARY;
+        config.idleRadius = 0.0f;
+        config.movementFrequency = 0.0f;
+        config.turnFrequency = 0.0f;
+        return config;
+    }
+
+    /**
+     * Create subtle sway configuration
+     */
+    static IdleBehaviorConfig createSubtleSway()
+    {
+        IdleBehaviorConfig config;
+        config.mode = IdleMode::SUBTLE_SWAY;
+        config.idleRadius = 30.0f;
+        config.movementFrequency = 2.0f;
+        config.turnFrequency = 8.0f;
+        return config;
+    }
+
+    /**
+     * Create occasional turn configuration (rotation only)
+     */
+    static IdleBehaviorConfig createOccasionalTurn()
+    {
+        IdleBehaviorConfig config;
+        config.mode = IdleMode::OCCASIONAL_TURN;
+        config.idleRadius = 0.0f;
+        config.movementFrequency = 0.0f;
+        config.turnFrequency = 4.0f;
+        return config;
+    }
+
+    /**
+     * Create light fidget configuration
+     */
+    static IdleBehaviorConfig createLightFidget()
+    {
+        IdleBehaviorConfig config;
+        config.mode = IdleMode::LIGHT_FIDGET;
+        config.idleRadius = 50.0f;
+        config.movementFrequency = 1.5f;
+        config.turnFrequency = 3.0f;
+        return config;
+    }
+};
 
 /**
  * Configuration for WanderBehavior
@@ -35,10 +126,49 @@ struct WanderBehaviorConfig
     // Pathfinding parameters
     float pathRequestCooldown = 30.0f;            // Seconds between pathfinding requests (reduces load)
     float minGoalChangeDistance = 200.0f;         // Minimum distance change to justify new path request
+    float pathRefreshInterval = 25.0f;            // Seconds before path recalculation (TTL)
 
     // Stuck detection
     float stallSpeed = 0.5f;                      // Speed threshold (px/s) to consider entity stalled
     float stallTimeout = 0.6f;                    // Seconds without progress before triggering unstuck
+
+    // Goal/distance parameters
+    float baseGoalDistance{600.0f};               // Base distance for wander goal selection (px)
+    float jitterThresholdMultiplier{1.5f};        // Multiplier on moveSpeed for jitter detection
+    float crowdSlowdownHeavy{0.5f};              // Speed multiplier when crowdCount > 10
+    float crowdSlowdownLight{0.7f};              // Speed multiplier when crowdCount 5-10
+
+    // Factory methods for common presets
+    static WanderBehaviorConfig createSmallWander()
+    {
+        WanderBehaviorConfig config;
+        config.changeDirectionIntervalMin = 1000.0f;  // Faster changes
+        config.changeDirectionIntervalMax = 3000.0f;
+        config.minGoalChangeDistance = 80.0f;         // Smaller goals
+        config.pathRefreshInterval = 10.0f;
+        return config;
+    }
+
+    static WanderBehaviorConfig createLargeWander()
+    {
+        WanderBehaviorConfig config;
+        config.changeDirectionIntervalMin = 8000.0f;  // Slower changes
+        config.changeDirectionIntervalMax = 15000.0f;
+        config.minGoalChangeDistance = 500.0f;        // Larger goals
+        config.pathRefreshInterval = 45.0f;
+        return config;
+    }
+
+    static WanderBehaviorConfig createEventWander(float areaRadius = 300.0f)
+    {
+        WanderBehaviorConfig config;
+        config.changeDirectionIntervalMin = 2000.0f;
+        config.changeDirectionIntervalMax = 5000.0f;
+        config.minGoalChangeDistance = areaRadius * 0.5f;
+        config.worldPaddingMargin = areaRadius;       // Constrain to area
+        config.edgeThreshold = areaRadius * 0.8f;
+        return config;
+    }
 };
 
 /**
@@ -69,6 +199,21 @@ struct ChaseBehaviorConfig
     // Line-of-sight
     float losCheckInterval = 0.5f;                // Seconds between LOS checks
     float catchRadius = 20.0f;                    // Distance to consider target "caught"
+
+    // Movement range/nav parameters
+    float navRadius{64.0f};                       // Waypoint reached radius (px)
+    float maxChaseRange{1000.0f};                 // Maximum range to chase target (px)
+    float minChaseRange{50.0f};                   // Minimum range (stop chasing when within) (px)
+    float speedMultiplier{1.1f};                  // Urgent movement multiplier applied to moveSpeed
+
+    // Factory method for event targeting
+    static ChaseBehaviorConfig createEventTarget()
+    {
+        ChaseBehaviorConfig config;
+        config.pathRefreshInterval = 5.0f;        // Fast updates for event
+        config.catchRadius = 50.0f;               // Larger arrival radius
+        return config;
+    }
 };
 
 /**
@@ -98,6 +243,24 @@ struct PatrolBehaviorConfig
 
     // Boundary padding
     float boundaryPadding = 80.0f;                // Keep patrol paths this far from world edges
+
+    // Factory methods for common presets
+    static PatrolBehaviorConfig createRandomPatrol()
+    {
+        PatrolBehaviorConfig config;
+        config.randomWaypointGenerationAttempts = 100;  // More attempts for variety
+        config.waypointCooldown = 1.5f;                 // Longer pause at points
+        return config;
+    }
+
+    static PatrolBehaviorConfig createCirclePatrol(float radius = 200.0f)
+    {
+        PatrolBehaviorConfig config;
+        config.waypointReachedRadius = radius * 0.15f;  // Scale with circle size
+        config.waypointCooldown = 0.5f;                 // Quick transitions
+        config.boundaryPadding = radius * 0.1f;
+        return config;
+    }
 };
 
 /**
@@ -118,6 +281,30 @@ struct FleeBehaviorConfig
     float pathTTL = 2.5f;                         // Path time-to-live in seconds
     float noProgressWindow = 0.4f;                // Seconds without progress before repath
     float goalChangeThreshold = 180.0f;           // Distance threat must move to trigger repath
+
+    // Stamina system
+    float maxStamina = 100.0f;                    // Maximum stamina pool
+    float staminaDrain = 10.0f;                   // Stamina drain per second while fleeing
+    float staminaRecovery = 5.0f;                 // Stamina recovery per second when not fleeing
+    bool useStamina = true;                       // Whether stamina affects flee speed
+
+    // Panic settings
+    float panicDuration = 5.0f;                   // Duration of panic mode in seconds
+    float panicSpeedMultiplier = 1.3f;            // Speed multiplier during panic
+
+    // Zigzag/evasive settings
+    float zigzagInterval = 0.5f;                  // Seconds between zigzag direction changes
+    float zigzagAngle = 30.0f;                    // Angle of zigzag deviation in degrees
+
+    // Strategic retreat
+    float strategicSpeedMultiplier = 0.8f;        // Speed multiplier for strategic retreat
+
+    // Additional flee parameters
+    float baseFleeSpeedMultiplier{1.3f};          // Urgent movement multiplier applied to moveSpeed
+    float distressBroadcastInterval{2.0f};        // Seconds between distress calls while fleeing
+    float navRadius{18.0f};                       // Waypoint reached radius (px)
+    float strategicRetreatDistance{800.0f};       // Base retreat destination distance (px)
+    float coverSeekDistance{720.0f};              // Base cover-seek destination distance (px)
 };
 
 /**
@@ -146,6 +333,11 @@ struct FollowBehaviorConfig
     // Arrival
     float arrivalRadius = 25.0f;                  // Distance to consider arrived at leader
     float velocityThreshold = 10.0f;              // Speed threshold for arrival detection
+
+    // Speed adjustment parameters
+    float pathCooldown{1.0f};                     // Seconds between path requests
+    float catchupSpeedMultiplier{1.3f};           // Speed multiplier when far behind leader
+    float slowdownSpeedMultiplier{0.5f};          // Speed multiplier when too close to leader
 };
 
 /**
@@ -156,7 +348,7 @@ struct FollowBehaviorConfig
 struct GuardBehaviorConfig
 {
     // Movement parameters
-    float guardSpeed = 45.0f;                     // Speed when returning to guard position
+    float guardSpeed = 45.0f;                     // Base speed when guarding
 
     // Guard parameters
     float guardRadius = 50.0f;                    // Radius around guard position to patrol
@@ -168,6 +360,34 @@ struct GuardBehaviorConfig
 
     // Stall recovery
     float stallSpeedMultiplier = 0.5f;            // Fraction of guard speed to trigger stall
+
+    // Mode-specific speed multipliers (applied to guardSpeed)
+    float staticSpeedMultiplier = 1.0f;           // Speed when static (usually 0 movement)
+    float patrolSpeedMultiplier = 1.5f;           // Speed when patrolling waypoints
+    float areaSpeedMultiplier = 1.2f;             // Speed when guarding an area
+    float roamingSpeedMultiplier = 1.8f;          // Speed when roaming freely
+    float alertSpeedMultiplier = 2.5f;            // Speed when in alert mode
+
+    // Alert radius multipliers (affect detection range)
+    float staticAlertRadiusMultiplier = 1.5f;     // Detection range when static
+    float patrolAlertRadiusMultiplier = 1.8f;     // Detection range when patrolling
+    float areaAlertRadiusMultiplier = 2.0f;       // Detection range when area guarding
+    float roamingAlertRadiusMultiplier = 1.6f;    // Detection range when roaming
+    float alertModeAlertRadiusMultiplier = 2.5f;  // Detection range in alert mode
+
+    // Investigation and alert
+    float investigationTime = 10.0f;              // Seconds to investigate before giving up
+    float alertDecayTime = 15.0f;                 // Seconds for alert level to decay one level
+    float returnToPostTime = 5.0f;                // Delay before returning to post after all-clear
+
+    // Help call system
+    bool canCallForHelp = true;                   // Whether guard can call nearby guards
+    float helpCallRadius = 300.0f;                // Radius to call for help
+    int guardGroupId = 0;                         // Group ID for coordinated response
+
+    // ALARM escalation (alert level 4)
+    float alarmEscalationTime{8.0f};              // Seconds at HOSTILE before escalating to ALARM
+    float alarmHelpCallRadius{600.0f};            // Wider scan radius for ALARM state
 };
 
 /**
@@ -185,7 +405,7 @@ struct AttackBehaviorConfig
 
     // Combat parameters
     float attackSpeed = 1.0f;                     // Attacks per second
-    float movementSpeed = 2.0f;                   // Movement speed during combat (px/frame)
+    float movementSpeed = 55.0f;                  // Movement speed during combat (px/s)
     float attackCooldown = 1.0f;                  // Seconds between attacks
     float recoveryTime = 0.5f;                    // Seconds to recover after attack
 
@@ -228,7 +448,7 @@ struct AttackBehaviorConfig
         config.optimalRangeMultiplier = 0.8f;
         config.minimumRangeMultiplier = 0.3f;
         config.attackSpeed = 1.2f;
-        config.movementSpeed = 2.5f;
+        config.movementSpeed = 60.0f;
         config.attackDamage = 10.0f;
         return config;
     }
@@ -244,7 +464,7 @@ struct AttackBehaviorConfig
         config.optimalRangeMultiplier = 0.7f;
         config.minimumRangeMultiplier = 0.4f;
         config.attackSpeed = 0.8f;
-        config.movementSpeed = 2.0f;
+        config.movementSpeed = 50.0f;
         config.attackDamage = 8.0f;
         return config;
     }
@@ -260,7 +480,7 @@ struct AttackBehaviorConfig
         config.optimalRangeMultiplier = 1.0f;    // Optimal range is max range for charge
         config.minimumRangeMultiplier = 0.0f;    // No minimum for charge
         config.attackSpeed = 0.5f;
-        config.movementSpeed = 3.5f;
+        config.movementSpeed = 80.0f;
         config.attackDamage = 15.0f;
         config.chargeDamageMultiplier = 2.0f;
         return config;
@@ -277,7 +497,7 @@ struct AttackBehaviorConfig
         config.optimalRangeMultiplier = 0.6f;
         config.minimumRangeMultiplier = 0.3f;
         config.attackSpeed = 2.0f;
-        config.movementSpeed = 1.5f;
+        config.movementSpeed = 40.0f;
         config.criticalHitChance = 0.3f;
         config.attackDamage = 12.0f;
         return config;
@@ -294,7 +514,7 @@ struct AttackBehaviorConfig
         config.optimalRangeMultiplier = 0.8f;
         config.minimumRangeMultiplier = 0.3f;
         config.attackSpeed = 1.0f;
-        config.movementSpeed = 2.2f;
+        config.movementSpeed = 55.0f;
         config.teamwork = true;
         config.flankingEnabled = true;
         config.attackDamage = 10.0f;
@@ -312,7 +532,7 @@ struct AttackBehaviorConfig
         config.optimalRangeMultiplier = 0.8f;
         config.minimumRangeMultiplier = 0.3f;
         config.attackSpeed = 1.5f;
-        config.movementSpeed = 3.0f;
+        config.movementSpeed = 70.0f;
         config.retreatThreshold = 0.8f;          // Retreat early
         config.attackDamage = 8.0f;
         return config;
@@ -329,7 +549,7 @@ struct AttackBehaviorConfig
         config.optimalRangeMultiplier = 0.8f;
         config.minimumRangeMultiplier = 0.3f;
         config.attackSpeed = 1.8f;
-        config.movementSpeed = 2.8f;
+        config.movementSpeed = 65.0f;
         config.aggression = 1.0f;               // Maximum aggression
         config.retreatThreshold = 0.1f;         // Almost never retreat
         config.comboAttacks = true;
@@ -338,6 +558,110 @@ struct AttackBehaviorConfig
         return config;
     }
 };
+
+// ============================================================================
+// BEHAVIOR CONFIG DATA UNION
+// ============================================================================
+
+/**
+ * @brief Unified behavior configuration storage (data-oriented design)
+ *
+ * Stores the configuration for any behavior type in a single union.
+ * Config is read-only during behavior execution - set once when behavior assigned.
+ * Paired with BehaviorData (state) in EDM for complete behavior storage.
+ *
+ * Usage:
+ *   auto config = BehaviorConfigData::makeWander({.speed = 50.0f});
+ *   edm.setBehaviorConfig(edmIndex, config);
+ */
+struct BehaviorConfigData {
+    BehaviorType type{static_cast<BehaviorType>(0xFF)};  // BehaviorType::None
+    uint8_t _pad[3]{};
+
+    union ConfigUnion {
+        ConfigUnion() : raw{} {}
+
+        IdleBehaviorConfig idle;
+        WanderBehaviorConfig wander;
+        ChaseBehaviorConfig chase;
+        PatrolBehaviorConfig patrol;
+        GuardBehaviorConfig guard;
+        AttackBehaviorConfig attack;
+        FleeBehaviorConfig flee;
+        FollowBehaviorConfig follow;
+
+        uint8_t raw[384];  // Sized to accommodate largest config (AttackBehaviorConfig)
+    } config;
+
+    BehaviorConfigData() = default;
+
+    // Factory methods for type-safe construction
+    static BehaviorConfigData makeIdle(const IdleBehaviorConfig& cfg = {});
+    static BehaviorConfigData makeWander(const WanderBehaviorConfig& cfg = {});
+    static BehaviorConfigData makeChase(const ChaseBehaviorConfig& cfg = {});
+    static BehaviorConfigData makePatrol(const PatrolBehaviorConfig& cfg = {});
+    static BehaviorConfigData makeGuard(const GuardBehaviorConfig& cfg = {});
+    static BehaviorConfigData makeAttack(const AttackBehaviorConfig& cfg = {});
+    static BehaviorConfigData makeFlee(const FleeBehaviorConfig& cfg = {});
+    static BehaviorConfigData makeFollow(const FollowBehaviorConfig& cfg = {});
+};
+
+// Inline factory implementations
+inline BehaviorConfigData BehaviorConfigData::makeIdle(const IdleBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = BehaviorType::Idle;
+    data.config.idle = cfg;
+    return data;
+}
+
+inline BehaviorConfigData BehaviorConfigData::makeWander(const WanderBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = BehaviorType::Wander;
+    data.config.wander = cfg;
+    return data;
+}
+
+inline BehaviorConfigData BehaviorConfigData::makeChase(const ChaseBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = BehaviorType::Chase;
+    data.config.chase = cfg;
+    return data;
+}
+
+inline BehaviorConfigData BehaviorConfigData::makePatrol(const PatrolBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = BehaviorType::Patrol;
+    data.config.patrol = cfg;
+    return data;
+}
+
+inline BehaviorConfigData BehaviorConfigData::makeGuard(const GuardBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = BehaviorType::Guard;
+    data.config.guard = cfg;
+    return data;
+}
+
+inline BehaviorConfigData BehaviorConfigData::makeAttack(const AttackBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = BehaviorType::Attack;
+    data.config.attack = cfg;
+    return data;
+}
+
+inline BehaviorConfigData BehaviorConfigData::makeFlee(const FleeBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = BehaviorType::Flee;
+    data.config.flee = cfg;
+    return data;
+}
+
+inline BehaviorConfigData BehaviorConfigData::makeFollow(const FollowBehaviorConfig& cfg) {
+    BehaviorConfigData data;
+    data.type = BehaviorType::Follow;
+    data.config.follow = cfg;
+    return data;
+}
 
 } // namespace HammerEngine
 

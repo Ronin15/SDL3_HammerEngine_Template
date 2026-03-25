@@ -47,12 +47,23 @@ public:
     /**
      * Begin a new frame.
      * - Acquires command buffer
+     * - Maps upload buffers
      * - Begins copy pass for uploads
+     * @return true if the frame can proceed
      */
-    void beginFrame();
+    bool beginFrame();
 
     /**
-     * End copy pass and begin scene render pass.
+     * Finalize uploads and acquire the swapchain texture for this frame.
+     * SDL_GPU presents the acquired swapchain texture when the owning command
+     * buffer is submitted, so acquisition remains part of the render command
+     * buffer flow.
+     * @return true if a swapchain texture is ready for this frame
+     */
+    bool acquireSwapchainTexture();
+
+    /**
+     * End copy pass, upload frame data, and begin scene render pass.
      * @return Active render pass for scene rendering
      */
     SDL_GPURenderPass* beginScenePass();
@@ -79,6 +90,8 @@ public:
 
     // Pipeline accessors (UI rendering - to swapchain)
     SDL_GPUGraphicsPipeline* getUISpritePipeline() const;
+    SDL_GPUGraphicsPipeline* getUITextAlphaPipeline() const;
+    SDL_GPUGraphicsPipeline* getUITextSDFPipeline() const;
     SDL_GPUGraphicsPipeline* getUIPrimitivePipeline() const;
 
     // Sampler accessors
@@ -176,6 +189,7 @@ private:
     bool createPipelines();
     bool createSceneTexture();
     void cleanupPartialInit();  // Clean up resources on init failure
+    void resetFrameState();
 
     // Device reference
     SDL_GPUDevice* m_device{nullptr};
@@ -186,10 +200,12 @@ private:
     SDL_GPUCopyPass* m_copyPass{nullptr};
     SDL_GPURenderPass* m_currentPass{nullptr};
 
-    // Swapchain state (acquired in beginFrame for authoritative dimensions)
+    // Swapchain state (acquired explicitly before the swapchain render pass)
     SDL_GPUTexture* m_swapchainTexture{nullptr};
     uint32_t m_swapchainWidth{0};
     uint32_t m_swapchainHeight{0};
+    bool m_frameActive{false};
+    bool m_frameReadyForPresentation{false};
 
     // Intermediate scene texture
     std::unique_ptr<GPUTexture> m_sceneTexture;
@@ -207,6 +223,8 @@ private:
 
     // Pipelines (UI rendering - to swapchain)
     GPUPipeline m_uiSpritePipeline;
+    GPUPipeline m_uiTextAlphaPipeline;
+    GPUPipeline m_uiTextSDFPipeline;
     GPUPipeline m_uiPrimitivePipeline;
 
     // Vertex pools

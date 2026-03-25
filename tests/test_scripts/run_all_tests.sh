@@ -61,7 +61,7 @@ for arg in "$@"; do
       echo -e "                    GameTimeManager, Controllers (Time, Weather, DayNight), GPU (if SDL3_GPU enabled),"
       echo -e "                    Integration tests (AI-Collision, Event Coordination)"
       echo -e "  Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision system, Pathfinder,"
-      echo -e "                    SIMD performance, and Integrated system benchmarks"
+      echo -e "                    SIMD performance, GPU frame timing, and Integrated system benchmarks"
       echo -e "\nExecution Time:"
       echo -e "  Core tests:       ~2-5 minutes total"
       echo -e "  Benchmarks:       ~5-15 minutes total"
@@ -119,6 +119,7 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_ai_manager_edm_integration_tests.sh"
   "$SCRIPT_DIR/run_collision_manager_edm_integration_tests.sh"
   "$SCRIPT_DIR/run_pathfinder_manager_edm_integration_tests.sh"
+  "$SCRIPT_DIR/run_npc_memory_tests.sh"
   "$SCRIPT_DIR/run_gpu_tests.sh"
 )
 
@@ -131,6 +132,7 @@ BENCHMARK_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_collision_scaling_benchmark.sh"
   "$SCRIPT_DIR/run_pathfinder_benchmark.sh"
   "$SCRIPT_DIR/run_simd_benchmark.sh"
+  "$SCRIPT_DIR/run_gpu_frame_benchmark.sh"
   "$SCRIPT_DIR/run_integrated_benchmark.sh"
   "$SCRIPT_DIR/run_background_simulation_manager_benchmark.sh"
   "$SCRIPT_DIR/run_adaptive_threading_analysis.sh"
@@ -260,15 +262,6 @@ echo -e "${CYAN}Found ${#TEST_SCRIPTS[@]} test scripts to run${NC}"
 # Run each test script
 for script in "${TEST_SCRIPTS[@]}"; do
   run_test_script "$script"
-
-  # Add delay for benchmarks and stress tests to ensure proper resource cleanup
-  if [[ "$(basename "$script")" == *"benchmark"* ]] || [[ "$(basename "$script")" == *"scaling"* ]] || [[ "$(basename "$script")" == *"stress"* ]]; then
-    echo -e "${YELLOW}Allowing time for resource cleanup after benchmark...${NC}"
-    sleep 2
-  else
-    # Add a small delay between tests to ensure resources are released
-    sleep 2
-  fi
 done
 
 # Print summary

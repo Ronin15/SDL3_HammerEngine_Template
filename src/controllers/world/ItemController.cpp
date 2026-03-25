@@ -6,14 +6,31 @@
 #include "controllers/world/ItemController.hpp"
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
+#include "entities/Resource.hpp"
+#include "events/ResourceChangeEvent.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
+#include "managers/UIManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include <format>
-#include <random>
 
 void ItemController::subscribe() {
-    // No event subscriptions needed - purely on-demand queries
-    ITEM_DEBUG("ItemController subscribed");
+    if (checkAlreadySubscribed()) {
+        return;
+    }
+
+    auto& eventMgr = EventManager::Instance();
+
+    // Subscribe to ResourceChangeEvent for inventory UI synchronization
+    auto token = eventMgr.registerHandlerWithToken(
+        EventTypeId::ResourceChange,
+        [this](const EventData& data) { onResourceChange(data); }
+    );
+    addHandlerToken(token);
+
+    setSubscribed(true);
+    ITEM_DEBUG("ItemController subscribed to ResourceChangeEvent");
 }
 
 bool ItemController::attemptPickup() {
@@ -71,98 +88,43 @@ bool ItemController::attemptPickup() {
     return true;
 }
 
-bool ItemController::attemptHarvest() {
+void ItemController::onResourceChange(const EventData& data) {
+    // Cast to ResourceChangeEvent to get details
+    const auto* event = dynamic_cast<const ResourceChangeEvent*>(data.event.get());
+    if (!event) {
+        return;
+    }
+
+    // Only process if this is for the player's inventory
     auto player = mp_player.lock();
-    if (!player) {
-        return false;
+    if (!player || event->getOwnerHandle() != player->getHandle()) {
+        return;
     }
 
-    auto& wrm = WorldResourceManager::Instance();
-    auto& edm = EntityDataManager::Instance();
+    auto& ui = UIManager::Instance();
 
-    Vector2D playerPos = player->getPosition();
+    // Mark inventory UI bindings as dirty for refresh
+    ui.markBindingDirty(INVENTORY_STATUS_ID);
+    ui.markBindingDirty(INVENTORY_LIST_ID);
 
-    // Query harvestables on-demand
-    std::vector<size_t> harvestables;
-    if (wrm.queryHarvestablesInRadius(playerPos, HARVEST_RADIUS, harvestables) == 0) {
-        return false;
-    }
+    // Add event log notification for inventory changes
+    int delta = event->getQuantityChange();
+    if (delta != 0) {
+        // Get resource display name (prefer template name, fallback to handle string)
+        const auto& rtm = ResourceTemplateManager::Instance();
+        auto resourceTemplate = rtm.getResourceTemplate(event->getResourceHandle());
 
-    // Find closest non-depleted harvestable
-    float closestDistSq = std::numeric_limits<float>::max();
-    size_t closestIdx = std::numeric_limits<size_t>::max();
-
-    for (size_t idx : harvestables) {
-        const auto& hot = edm.getStaticHotDataByIndex(idx);  // Static pool
-        if (!hot.isAlive() || hot.kind != EntityKind::Harvestable) {
-            continue;
+        // Reuse buffer to avoid per-event allocation
+        if (resourceTemplate) {
+            m_resourceNameBuffer = delta > 0
+                ? std::format("+{} {}", delta, resourceTemplate->getName())
+                : std::format("{} {}", delta, resourceTemplate->getName());
+        } else {
+            m_resourceNameBuffer = delta > 0
+                ? std::format("+{} {}", delta, event->getResourceHandle().toString())
+                : std::format("{} {}", delta, event->getResourceHandle().toString());
         }
 
-        const auto& harvestData = edm.getHarvestableData(hot.typeLocalIndex);
-        if (harvestData.isDepleted) {
-            continue;
-        }
-
-        const auto& pos = hot.transform.position;
-        float dx = pos.getX() - playerPos.getX();
-        float dy = pos.getY() - playerPos.getY();
-        float distSq = dx * dx + dy * dy;
-
-        if (distSq < closestDistSq) {
-            closestDistSq = distSq;
-            closestIdx = idx;
-        }
+        ui.addEventLogEntry(EVENT_LOG_ID, m_resourceNameBuffer);
     }
-
-    if (closestIdx == std::numeric_limits<size_t>::max()) {
-        return false;
-    }
-
-    // Validate harvestable still valid (static pool)
-    const auto& hot = edm.getStaticHotDataByIndex(closestIdx);
-    if (!hot.isAlive() || hot.kind != EntityKind::Harvestable) {
-        return false;
-    }
-
-    // Get harvestable data
-    auto& harvestData = edm.getHarvestableData(hot.typeLocalIndex);
-    if (harvestData.isDepleted) {
-        return false;
-    }
-
-    // Calculate yield
-    int yield = harvestData.yieldMin;
-    if (harvestData.yieldMax > harvestData.yieldMin) {
-        static thread_local std::mt19937 rng(std::random_device{}());
-        std::uniform_int_distribution<int> dist(harvestData.yieldMin, harvestData.yieldMax);
-        yield = dist(rng);
-    }
-
-    // Try to add directly to player inventory
-    uint32_t playerInvIdx = player->getInventoryIndex();
-    bool addedToInventory = false;
-
-    if (playerInvIdx != INVALID_INVENTORY_INDEX) {
-        addedToInventory = edm.addToInventory(playerInvIdx, harvestData.yieldResource, yield);
-    }
-
-    // If inventory full, spawn as dropped item
-    if (!addedToInventory) {
-        // Spawn slightly offset from harvestable position
-        Vector2D spawnPos = hot.transform.position;
-        spawnPos.setX(spawnPos.getX() + 16.0f);
-
-        const std::string& worldId = wrm.getActiveWorld();
-
-        edm.createDroppedItem(spawnPos, harvestData.yieldResource, yield, worldId);
-        ITEM_INFO(std::format("Harvested {} x{} (dropped)", harvestData.yieldResource.toString(), yield));
-    } else {
-        ITEM_INFO(std::format("Harvested {} x{}", harvestData.yieldResource.toString(), yield));
-    }
-
-    // Mark harvestable as depleted
-    harvestData.isDepleted = true;
-    harvestData.currentRespawn = harvestData.respawnTime;
-
-    return true;
 }

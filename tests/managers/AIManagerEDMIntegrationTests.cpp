@@ -22,16 +22,37 @@
 #include <boost/test/unit_test.hpp>
 
 #include "core/ThreadSystem.hpp"
+#include "ai/AICommandBus.hpp"
+#include "ai/BehaviorExecutors.hpp"
+#include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include <atomic>
 #include <chrono>
 #include <memory>
 #include <thread>
 #include <vector>
+
+namespace {
+
+struct ThreadSystemTestLifetime {
+    ThreadSystemTestLifetime() {
+        BOOST_REQUIRE_MESSAGE(HammerEngine::ThreadSystem::Instance().init(),
+                              "Failed to initialize ThreadSystem for AIManager EDM tests");
+    }
+
+    ~ThreadSystemTestLifetime() {
+        HammerEngine::ThreadSystem::Instance().clean();
+    }
+};
+
+ThreadSystemTestLifetime g_threadSystemTestLifetime{};
+
+} // namespace
 
 // Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
 class AITestNPC {
@@ -76,57 +97,24 @@ private:
     Vector2D m_initialPosition;
 };
 
-// Simple test behavior that modifies position via BehaviorContext
-class EDMTestBehavior : public AIBehavior {
-public:
-    EDMTestBehavior() = default;
-
-    void executeLogic(BehaviorContext& ctx) override {
-        // Move entity slightly to verify EDM write
-        ctx.transform.velocity = Vector2D(1.0f, 1.0f);
-        m_executionCount++;
-    }
-
-    void init(EntityHandle) override { m_initialized = true; }
-    void clean(EntityHandle) override { m_initialized = false; }
-    std::string getName() const override { return "EDMTestBehavior"; }
-
-    std::shared_ptr<AIBehavior> clone() const override {
-        return std::make_shared<EDMTestBehavior>();
-    }
-
-    int getExecutionCount() const { return m_executionCount.load(); }
-    bool isInitialized() const { return m_initialized; }
-
-private:
-    std::atomic<int> m_executionCount{0};
-    bool m_initialized{false};
-};
-
 // Test fixture that initializes all required managers
 struct AIManagerEDMFixture {
     AIManagerEDMFixture() {
-        HammerEngine::ThreadSystem::Instance().init();
         EntityDataManager::Instance().init();
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
+        EventManager::Instance().init();
         AIManager::Instance().init();
         BackgroundSimulationManager::Instance().init();
-
-        // Register test behavior
-        AIManager::Instance().registerBehavior(
-            "EDMTestBehavior",
-            std::make_shared<EDMTestBehavior>()
-        );
     }
 
     ~AIManagerEDMFixture() {
         BackgroundSimulationManager::Instance().clean();
         AIManager::Instance().clean();
+        EventManager::Instance().clean();
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
         EntityDataManager::Instance().clean();
-        HammerEngine::ThreadSystem::Instance().clean();
     }
 };
 
@@ -145,8 +133,8 @@ BOOST_AUTO_TEST_CASE(TestBehaviorAssignmentCreatesEdmIndexMapping) {
     size_t edmIndex = EntityDataManager::Instance().getIndex(handle);
     BOOST_REQUIRE(edmIndex != SIZE_MAX);
 
-    // Assign behavior
-    AIManager::Instance().assignBehavior(handle, "EDMTestBehavior");
+    // Assign behavior using data-oriented API
+    AIManager::Instance().assignBehavior(handle, "Idle");
 
     // Verify behavior is assigned
     BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
@@ -154,6 +142,8 @@ BOOST_AUTO_TEST_CASE(TestBehaviorAssignmentCreatesEdmIndexMapping) {
 
 BOOST_AUTO_TEST_CASE(TestSparseBehaviorVectorHandlesGaps) {
     // Create entities at different positions (will get different EDM indices)
+    // Note: NPCs created via createNPCWithRaceClass auto-register with their
+    // class's suggestedBehavior (e.g., "Guard"), so we must unassign first
     std::vector<std::shared_ptr<AITestNPC>> entities;
     std::vector<EntityHandle> handles;
 
@@ -161,11 +151,13 @@ BOOST_AUTO_TEST_CASE(TestSparseBehaviorVectorHandlesGaps) {
         auto entity = AITestNPC::create(Vector2D(i * 100.0f, 0.0f));
         entities.push_back(entity);
         handles.push_back(entity->getHandle());
+        // Unassign auto-registered behavior to start with clean slate
+        AIManager::Instance().unassignBehavior(entity->getHandle());
     }
 
     // Assign behaviors to only odd-indexed entities (creates gaps)
     for (size_t i = 1; i < handles.size(); i += 2) {
-        AIManager::Instance().assignBehavior(handles[i], "EDMTestBehavior");
+        AIManager::Instance().assignBehavior(handles[i], "Wander");
     }
 
     // Verify correct entities have behaviors
@@ -180,7 +172,7 @@ BOOST_AUTO_TEST_CASE(TestBehaviorUnassignmentClearsSparseBehavior) {
     EntityHandle handle = entity->getHandle();
 
     // Assign then unassign
-    AIManager::Instance().assignBehavior(handle, "EDMTestBehavior");
+    AIManager::Instance().assignBehavior(handle, "Chase");
     BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
 
     AIManager::Instance().unassignBehavior(handle);
@@ -192,11 +184,46 @@ BOOST_AUTO_TEST_CASE(TestBehaviorReassignmentUpdatesSparseBehavior) {
     EntityHandle handle = entity->getHandle();
 
     // Assign, unassign, then reassign
-    AIManager::Instance().assignBehavior(handle, "EDMTestBehavior");
+    AIManager::Instance().assignBehavior(handle, "Patrol");
     AIManager::Instance().unassignBehavior(handle);
-    AIManager::Instance().assignBehavior(handle, "EDMTestBehavior");
+    AIManager::Instance().assignBehavior(handle, "Guard");
 
     BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// COMBAT EVENT ROUTING TESTS
+// ============================================================================
+
+BOOST_FIXTURE_TEST_SUITE(CombatEventRoutingTests, AIManagerEDMFixture)
+
+BOOST_AUTO_TEST_CASE(TestEventManagerCombatHandlerMutatesPlayerHealth) {
+    auto& edm = EntityDataManager::Instance();
+    EntityHandle playerHandle = edm.registerPlayer(9001, Vector2D(100.0f, 100.0f));
+    BOOST_REQUIRE(playerHandle.isValid());
+
+    auto& playerData = edm.getCharacterData(playerHandle);
+    playerData.maxHealth = 100.0f;
+    playerData.health = 100.0f;
+    playerData.mass = 1.0f;
+
+    auto damageEvent = std::make_shared<DamageEvent>(
+        EntityEventType::DamageIntent,
+        EntityHandle{},
+        playerHandle,
+        25.0f,
+        Vector2D(5.0f, 0.0f));
+
+    EventData data;
+    data.typeId = EventTypeId::Combat;
+    data.setActive(true);
+    data.event = damageEvent;
+
+    EventManager::Instance().dispatchEvent(damageEvent, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK_CLOSE(edm.getCharacterData(playerHandle).health, 75.0f, 0.01f);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -211,7 +238,7 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessingWritesToEDMTransform) {
     // Create entity and assign behavior
     auto entity = AITestNPC::create(Vector2D(500.0f, 500.0f));
     EntityHandle handle = entity->getHandle();
-    AIManager::Instance().assignBehavior(handle, "EDMTestBehavior");
+    AIManager::Instance().assignBehavior(handle, "Wander");
 
     // Get EDM index
     auto& edm = EntityDataManager::Instance();
@@ -238,7 +265,9 @@ BOOST_AUTO_TEST_CASE(TestMultipleEntitiesProcessedViaBatch) {
     // Create and assign behaviors to many entities
     for (size_t i = 0; i < ENTITY_COUNT; ++i) {
         auto entity = AITestNPC::create(Vector2D(100.0f + i * 50.0f, 100.0f));
-        AIManager::Instance().assignBehavior(entity->getHandle(), "EDMTestBehavior");
+        // Alternate between different behavior types to test variety
+        const char* behaviorName = (i % 3 == 0) ? "Wander" : (i % 3 == 1) ? "Idle" : "Patrol";
+        AIManager::Instance().assignBehavior(entity->getHandle(), behaviorName);
         entities.push_back(entity);
         handles.push_back(entity->getHandle());
     }
@@ -275,7 +304,7 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsAIData) {
     std::vector<std::shared_ptr<AITestNPC>> entities;
     for (int i = 0; i < 10; ++i) {
         auto entity = AITestNPC::create(Vector2D(i * 100.0f, 0.0f));
-        AIManager::Instance().assignBehavior(entity->getHandle(), "EDMTestBehavior");
+        AIManager::Instance().assignBehavior(entity->getHandle(), "Idle");
         entities.push_back(entity);
     }
 
@@ -298,7 +327,7 @@ BOOST_AUTO_TEST_CASE(TestStateTransitionWhileBatchProcessing) {
     std::vector<std::shared_ptr<AITestNPC>> entities;
     for (int i = 0; i < 100; ++i) {
         auto entity = AITestNPC::create(Vector2D(i * 50.0f, 100.0f));
-        AIManager::Instance().assignBehavior(entity->getHandle(), "EDMTestBehavior");
+        AIManager::Instance().assignBehavior(entity->getHandle(), "Wander");
         entities.push_back(entity);
     }
 
@@ -321,7 +350,7 @@ BOOST_AUTO_TEST_CASE(TestStateTransitionWhileBatchProcessing) {
 BOOST_AUTO_TEST_CASE(TestAIManagerReinitAfterStateTransition) {
     // Create entity and assign behavior
     auto entity1 = AITestNPC::create(Vector2D(100.0f, 100.0f));
-    AIManager::Instance().assignBehavior(entity1->getHandle(), "EDMTestBehavior");
+    AIManager::Instance().assignBehavior(entity1->getHandle(), "Chase");
     BOOST_CHECK(AIManager::Instance().hasBehavior(entity1->getHandle()));
 
     // State transition clears everything
@@ -330,7 +359,7 @@ BOOST_AUTO_TEST_CASE(TestAIManagerReinitAfterStateTransition) {
 
     // Create new entity after transition
     auto entity2 = AITestNPC::create(Vector2D(200.0f, 200.0f));
-    AIManager::Instance().assignBehavior(entity2->getHandle(), "EDMTestBehavior");
+    AIManager::Instance().assignBehavior(entity2->getHandle(), "Flee");
 
     // New entity should have behavior
     BOOST_CHECK(AIManager::Instance().hasBehavior(entity2->getHandle()));
@@ -352,7 +381,7 @@ BOOST_AUTO_TEST_CASE(TestEdmIndexCachedOnBehaviorAssignment) {
     BOOST_REQUIRE(expectedIndex != SIZE_MAX);
 
     // Assign behavior
-    AIManager::Instance().assignBehavior(handle, "EDMTestBehavior");
+    AIManager::Instance().assignBehavior(handle, "Guard");
     BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
 
     // The index should be cached internally (verified indirectly via successful batch processing)
@@ -369,9 +398,9 @@ BOOST_AUTO_TEST_CASE(TestEntityDestructionDoesNotAffectOtherEntities) {
     EntityHandle handle3 = entity3->getHandle();
 
     // Assign behaviors to all
-    AIManager::Instance().assignBehavior(handle1, "EDMTestBehavior");
-    AIManager::Instance().assignBehavior(handle2, "EDMTestBehavior");
-    AIManager::Instance().assignBehavior(handle3, "EDMTestBehavior");
+    AIManager::Instance().assignBehavior(handle1, "Follow");
+    AIManager::Instance().assignBehavior(handle2, "Attack");
+    AIManager::Instance().assignBehavior(handle3, "Patrol");
 
     // Unassign middle entity's behavior
     AIManager::Instance().unassignBehavior(handle2);
@@ -385,19 +414,19 @@ BOOST_AUTO_TEST_CASE(TestEntityDestructionDoesNotAffectOtherEntities) {
 BOOST_AUTO_TEST_SUITE_END()
 
 // ============================================================================
-// BEHAVIOR TEMPLATE CLONING TESTS
+// BEHAVIOR DATA-DRIVEN TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(BehaviorCloningTests, AIManagerEDMFixture)
+BOOST_FIXTURE_TEST_SUITE(BehaviorDataDrivenTests, AIManagerEDMFixture)
 
-BOOST_AUTO_TEST_CASE(TestEachEntityGetsSeparateBehaviorInstance) {
+BOOST_AUTO_TEST_CASE(TestMultipleEntitiesShareBehaviorType) {
     auto entity1 = AITestNPC::create(Vector2D(100.0f, 100.0f));
     auto entity2 = AITestNPC::create(Vector2D(200.0f, 200.0f));
 
-    AIManager::Instance().assignBehavior(entity1->getHandle(), "EDMTestBehavior");
-    AIManager::Instance().assignBehavior(entity2->getHandle(), "EDMTestBehavior");
+    AIManager::Instance().assignBehavior(entity1->getHandle(), "Wander");
+    AIManager::Instance().assignBehavior(entity2->getHandle(), "Wander");
 
-    // Both should have behaviors (cloned instances, not shared)
+    // Both should have behaviors (data-driven, not separate instances)
     BOOST_CHECK(AIManager::Instance().hasBehavior(entity1->getHandle()));
     BOOST_CHECK(AIManager::Instance().hasBehavior(entity2->getHandle()));
 
@@ -405,6 +434,404 @@ BOOST_AUTO_TEST_CASE(TestEachEntityGetsSeparateBehaviorInstance) {
     AIManager::Instance().unassignBehavior(entity1->getHandle());
     BOOST_CHECK(!AIManager::Instance().hasBehavior(entity1->getHandle()));
     BOOST_CHECK(AIManager::Instance().hasBehavior(entity2->getHandle()));
+}
+
+BOOST_AUTO_TEST_CASE(TestAllBehaviorTypesCanBeAssigned) {
+    // Test all available behavior types
+    const char* behaviorTypes[] = {"Idle", "Wander", "Chase", "Patrol", "Guard", "Attack", "Flee", "Follow"};
+
+    std::vector<std::shared_ptr<AITestNPC>> entities;
+    std::vector<EntityHandle> handles;
+
+    for (const char* behaviorName : behaviorTypes) {
+        auto entity = AITestNPC::create(Vector2D(100.0f, 100.0f));
+        handles.push_back(entity->getHandle());
+        entities.push_back(entity);
+
+        // Assign behavior
+        AIManager::Instance().assignBehavior(entity->getHandle(), behaviorName);
+        BOOST_CHECK(AIManager::Instance().hasBehavior(entity->getHandle()));
+    }
+
+    // All entities should have their behaviors
+    for (const auto& handle : handles) {
+        BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(TestBehaviorSwitching) {
+    auto entity = AITestNPC::create(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = entity->getHandle();
+
+    // Assign initial behavior
+    AIManager::Instance().assignBehavior(handle, "Idle");
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
+
+    // Switch to different behavior (unassign + reassign)
+    AIManager::Instance().unassignBehavior(handle);
+    AIManager::Instance().assignBehavior(handle, "Chase");
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
+
+    // Switch again
+    AIManager::Instance().unassignBehavior(handle);
+    AIManager::Instance().assignBehavior(handle, "Flee");
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// GUARD AND FACTION INDEX TESTS
+// ============================================================================
+
+BOOST_FIXTURE_TEST_SUITE(GuardFactionIndexTests, AIManagerEDMFixture)
+
+BOOST_AUTO_TEST_CASE(GuardIndexPopulatedOnAssignment) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto guard = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle handle = guard->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Unassign auto-assigned behavior, verify guard index is empty for this entity
+    aiMgr.unassignBehavior(handle);
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+
+    // Assign Guard — should appear in guard index
+    aiMgr.assignBehavior(handle, "Guard");
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) != results.end());
+}
+
+BOOST_AUTO_TEST_CASE(GuardIndexNotPopulatedForNonGuards) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto npc = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle handle = npc->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Assign non-Guard behavior
+    aiMgr.unassignBehavior(handle);
+    aiMgr.assignBehavior(handle, "Idle");
+
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+}
+
+BOOST_AUTO_TEST_CASE(GuardIndexRemovedOnUnassign) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto guard = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle handle = guard->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    aiMgr.unassignBehavior(handle);
+    aiMgr.assignBehavior(handle, "Guard");
+
+    // Verify present
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_REQUIRE(std::find(results.begin(), results.end(), idx) != results.end());
+
+    // Unassign — should be removed
+    aiMgr.unassignBehavior(handle);
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+}
+
+BOOST_AUTO_TEST_CASE(GuardIndexRemovedOnUnregister) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto guard = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle handle = guard->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Auto-assigned Guard from createNPCWithRaceClass — verify present
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_REQUIRE(std::find(results.begin(), results.end(), idx) != results.end());
+
+    // Unregister — should be removed
+    aiMgr.unregisterEntity(handle);
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+}
+
+BOOST_AUTO_TEST_CASE(GuardRadiusFilterExcludesDistantGuards) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto near = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    auto far = AITestNPC::create(Vector2D(2000.0f, 2000.0f));
+
+    // Both auto-assigned Guard from "Human"/"Guard" class
+    size_t nearIdx = edm.getIndex(near->getHandle());
+    size_t farIdx = edm.getIndex(far->getHandle());
+    BOOST_REQUIRE(nearIdx != SIZE_MAX);
+    BOOST_REQUIRE(farIdx != SIZE_MAX);
+
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 500.0f, results, false);
+
+    BOOST_CHECK(std::find(results.begin(), results.end(), nearIdx) != results.end());
+    BOOST_CHECK(std::find(results.begin(), results.end(), farIdx) == results.end());
+}
+
+BOOST_AUTO_TEST_CASE(FactionIndexPopulatedOnAssignment) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto npc = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle handle = npc->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Read the faction assigned by createNPCWithRaceClass
+    uint8_t faction = edm.getCharacterDataByIndex(idx).faction;
+
+    // Should be in faction index after auto-assignment
+    std::vector<size_t> results;
+    aiMgr.scanFactionInRadius(faction, Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) != results.end());
+
+    // Should NOT be in a different faction
+    uint8_t otherFaction = (faction == 0) ? 1 : 0;
+    results.clear();
+    aiMgr.scanFactionInRadius(otherFaction, Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+}
+
+BOOST_AUTO_TEST_CASE(FactionIndexRemovedOnUnassign) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto npc = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle handle = npc->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    uint8_t faction = edm.getCharacterDataByIndex(idx).faction;
+
+    // Verify present
+    std::vector<size_t> results;
+    aiMgr.scanFactionInRadius(faction, Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_REQUIRE(std::find(results.begin(), results.end(), idx) != results.end());
+
+    // Unassign — should be removed from faction index
+    aiMgr.unassignBehavior(handle);
+    results.clear();
+    aiMgr.scanFactionInRadius(faction, Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+}
+
+BOOST_AUTO_TEST_CASE(FactionRadiusFilterExcludesDistantEntities) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto near = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    auto far = AITestNPC::create(Vector2D(2000.0f, 2000.0f));
+
+    size_t nearIdx = edm.getIndex(near->getHandle());
+    size_t farIdx = edm.getIndex(far->getHandle());
+    BOOST_REQUIRE(nearIdx != SIZE_MAX);
+    BOOST_REQUIRE(farIdx != SIZE_MAX);
+
+    // Both should have same faction (same race/class)
+    uint8_t faction = edm.getCharacterDataByIndex(nearIdx).faction;
+    BOOST_REQUIRE(edm.getCharacterDataByIndex(farIdx).faction == faction);
+
+    std::vector<size_t> results;
+    aiMgr.scanFactionInRadius(faction, Vector2D(300.0f, 300.0f), 500.0f, results, false);
+
+    BOOST_CHECK(std::find(results.begin(), results.end(), nearIdx) != results.end());
+    BOOST_CHECK(std::find(results.begin(), results.end(), farIdx) == results.end());
+}
+
+BOOST_AUTO_TEST_CASE(IndicesClearedOnStateTransition) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto guard = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    size_t idx = edm.getIndex(guard->getHandle());
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Verify guard is in indices
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_REQUIRE(!results.empty());
+
+    // State transition should clear all indices
+    aiMgr.prepareForStateTransition();
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(results.empty());
+}
+
+BOOST_AUTO_TEST_CASE(BehaviorReassignmentUpdatesGuardIndex) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto npc = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle handle = npc->getHandle();
+    size_t idx = edm.getIndex(handle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    // Auto-assigned Guard — should be in guard index
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_REQUIRE(std::find(results.begin(), results.end(), idx) != results.end());
+
+    // Reassign to Idle — should be removed from guard index
+    aiMgr.assignBehavior(handle, "Idle");
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+
+    // Reassign back to Guard — should be back in guard index
+    aiMgr.assignBehavior(handle, "Guard");
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) != results.end());
+}
+
+BOOST_AUTO_TEST_CASE(RuntimeSwitchBehaviorUpdatesGuardQueries) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto npc = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    size_t idx = edm.getIndex(npc->getHandle());
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    std::vector<size_t> results;
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_REQUIRE(std::find(results.begin(), results.end(), idx) != results.end());
+
+    // Simulate runtime transition from behavior execution path (bypasses AIManager assignment APIs)
+    Behaviors::switchBehavior(idx, BehaviorType::Attack);
+    aiMgr.update(0.016f);  // Commit queued transition
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) == results.end());
+
+    Behaviors::switchBehavior(idx, BehaviorType::Guard);
+    aiMgr.update(0.016f);  // Commit queued transition
+    results.clear();
+    aiMgr.scanGuardsInRadius(Vector2D(300.0f, 300.0f), 1000.0f, results, false);
+    BOOST_CHECK(std::find(results.begin(), results.end(), idx) != results.end());
+}
+
+BOOST_AUTO_TEST_CASE(StaleHigherSequenceTransitionDoesNotSuppressValidTransition) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto original = AITestNPC::create(Vector2D(300.0f, 300.0f));
+    EntityHandle staleHandle = original->getHandle();
+    const size_t reusedIndex = edm.getIndex(staleHandle);
+    BOOST_REQUIRE(reusedIndex != SIZE_MAX);
+
+    aiMgr.assignBehavior(staleHandle, "Idle");
+    BOOST_REQUIRE(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Idle);
+
+    aiMgr.unregisterEntity(staleHandle);
+    edm.destroyEntity(staleHandle);
+    edm.processDestructionQueue();
+    BOOST_REQUIRE(edm.getIndex(staleHandle) == SIZE_MAX);
+
+    std::vector<std::shared_ptr<AITestNPC>> keepAlive;
+    keepAlive.reserve(8);
+
+    EntityHandle currentHandle{};
+    bool slotReused = false;
+    for (int i = 0; i < 8; ++i) {
+        auto spawned = AITestNPC::create(Vector2D(400.0f + i * 10.0f, 300.0f));
+        const size_t idx = edm.getIndex(spawned->getHandle());
+        keepAlive.push_back(spawned);
+        if (idx == reusedIndex) {
+            currentHandle = spawned->getHandle();
+            slotReused = true;
+            break;
+        }
+    }
+    BOOST_REQUIRE(slotReused);
+    BOOST_REQUIRE(currentHandle.isValid());
+    BOOST_REQUIRE(edm.getIndex(currentHandle) == reusedIndex);
+
+    aiMgr.assignBehavior(currentHandle, "Idle");
+    BOOST_REQUIRE(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Idle);
+
+    // Valid transition first (older sequence): should still apply even if a stale
+    // command with newer sequence is enqueued after it.
+    Behaviors::switchBehavior(reusedIndex, BehaviorType::Attack);
+
+    HammerEngine::BehaviorConfigData staleConfig{};
+    staleConfig.type = BehaviorType::Flee;
+    HammerEngine::AICommandBus::Instance().enqueueBehaviorTransition(
+        staleHandle, reusedIndex, staleConfig);
+
+    aiMgr.update(0.016f);
+    BOOST_CHECK(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Attack);
+}
+
+BOOST_AUTO_TEST_CASE(StaleTransitionSuppressionStressLoop) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    for (int iter = 0; iter < 8; ++iter) {
+        auto original = AITestNPC::create(Vector2D(300.0f + iter * 5.0f, 300.0f));
+        EntityHandle staleHandle = original->getHandle();
+        const size_t reusedIndex = edm.getIndex(staleHandle);
+        BOOST_REQUIRE(reusedIndex != SIZE_MAX);
+
+        aiMgr.assignBehavior(staleHandle, "Idle");
+        BOOST_REQUIRE(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Idle);
+
+        aiMgr.unregisterEntity(staleHandle);
+        edm.destroyEntity(staleHandle);
+        edm.processDestructionQueue();
+        BOOST_REQUIRE(edm.getIndex(staleHandle) == SIZE_MAX);
+
+        std::vector<std::shared_ptr<AITestNPC>> keepAlive;
+        keepAlive.reserve(16);
+        EntityHandle currentHandle{};
+        bool slotReused = false;
+        for (int i = 0; i < 16; ++i) {
+            auto spawned = AITestNPC::create(Vector2D(420.0f + i * 10.0f, 320.0f + iter * 5.0f));
+            keepAlive.push_back(spawned);
+            if (edm.getIndex(spawned->getHandle()) == reusedIndex) {
+                currentHandle = spawned->getHandle();
+                slotReused = true;
+                break;
+            }
+        }
+        BOOST_REQUIRE(slotReused);
+
+        aiMgr.assignBehavior(currentHandle, "Idle");
+        BOOST_REQUIRE(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Idle);
+
+        Behaviors::switchBehavior(reusedIndex, BehaviorType::Attack);
+
+        HammerEngine::BehaviorConfigData staleConfig{};
+        staleConfig.type = BehaviorType::Flee;
+        HammerEngine::AICommandBus::Instance().enqueueBehaviorTransition(
+            staleHandle, reusedIndex, staleConfig);
+
+        aiMgr.update(0.016f);
+        BOOST_CHECK(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Attack);
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

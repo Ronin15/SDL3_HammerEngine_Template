@@ -37,6 +37,9 @@ if /i "%~1"=="--help" (
     echo   --benchmarks-only Run only performance benchmarks
     echo   --no-benchmarks   Run core tests but skip benchmarks
     echo   --help            Show this help message
+    echo.
+    echo Benchmarks include AI, Event, UI, ParticleManager, Collision, Pathfinder,
+    echo SIMD, GPU frame timing, Integrated system, and adaptive threading analysis.
     exit /b 0
 )
 shift
@@ -103,6 +106,7 @@ for %%T in (
     run_ai_manager_edm_integration_tests.bat
     run_collision_manager_edm_integration_tests.bat
     run_pathfinder_manager_edm_integration_tests.bat
+    run_npc_memory_tests.bat
     run_gpu_tests.bat
 ) do (
     echo.
@@ -150,6 +154,7 @@ for %%T in (
     run_collision_scaling_benchmark.bat
     run_pathfinder_benchmark.bat
     run_simd_benchmark.bat
+    run_gpu_frame_benchmark.bat
     run_integrated_benchmark.bat
     run_background_simulation_manager_benchmark.bat
     run_adaptive_threading_analysis.bat

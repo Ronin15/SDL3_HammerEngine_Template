@@ -19,6 +19,7 @@
 #include "managers/TextureManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include "utils/JsonReader.hpp"
+#include "world/HarvestConfig.hpp"
 
 #include "events/HarvestResourceEvent.hpp"
 #include <algorithm>
@@ -46,40 +47,14 @@ bool WorldManager::init() {
 
   try {
     m_tileRenderer = std::make_unique<HammerEngine::TileRenderer>();
-    // Note: Event handlers will be registered later to avoid race conditions
-    // with EventManager
-
     m_isShutdown = false;
     m_initialized.store(true, std::memory_order_release);
-    WORLD_MANAGER_INFO("WorldManager initialized successfully (event handlers "
-                       "will be registered later)");
+    WORLD_MANAGER_INFO("WorldManager initialized successfully");
     return true;
   } catch (const std::exception &ex) {
     WORLD_MANAGER_ERROR(
         std::format("WorldManager::init - Exception: {}", ex.what()));
     return false;
-  }
-}
-
-void WorldManager::setupEventHandlers() {
-  if (!m_initialized.load(std::memory_order_acquire)) {
-    WORLD_MANAGER_ERROR(
-        "WorldManager not initialized - cannot setup event handlers");
-    return;
-  }
-
-  try {
-    registerEventHandlers();
-
-    // Subscribe TileRenderer to season events for seasonal texture switching
-    if (m_tileRenderer) {
-      m_tileRenderer->subscribeToSeasonEvents();
-    }
-
-    WORLD_MANAGER_DEBUG("WorldManager event handlers setup complete");
-  } catch (const std::exception &ex) {
-    WORLD_MANAGER_ERROR(std::format(
-        "WorldManager::setupEventHandlers - Exception: {}", ex.what()));
   }
 }
 
@@ -89,8 +64,6 @@ void WorldManager::clean() {
   }
 
   std::lock_guard<std::shared_mutex> lock(m_worldMutex);
-
-  unregisterEventHandlers();
 
   // Unsubscribe TileRenderer from season events before cleanup
   if (m_tileRenderer) {
@@ -132,8 +105,11 @@ bool WorldManager::loadNewWorld(
     // Set new world
     m_currentWorld = std::move(newWorld);
 
-    // Register world with WorldResourceManager
-    WorldResourceManager::Instance().createWorld(m_currentWorld->worldId);
+    // Register world with WorldResourceManager and set as active immediately
+    // (Must set active BEFORE initializing resources so spatial queries work)
+    auto& wrm = WorldResourceManager::Instance();
+    wrm.createWorld(m_currentWorld->worldId);
+    wrm.setActiveWorld(m_currentWorld->worldId);
 
     // Initialize world resources based on world data
     initializeWorldResources();
@@ -366,8 +342,9 @@ bool WorldManager::handleHarvestResource(int entityId, int targetX,
   HammerEngine::Tile &tile = m_currentWorld->grid[targetY][targetX];
 
   if (tile.obstacleType == HammerEngine::ObstacleType::NONE) {
-    WORLD_MANAGER_WARN(std::format(
-        "No harvestable resource at position: ({}, {})", targetX, targetY));
+    // This is expected for EDM-based harvestables that don't have tile obstacles
+    WORLD_MANAGER_DEBUG(std::format(
+        "No tile obstacle at position: ({}, {}) - EDM harvestable only", targetX, targetY));
     return false;
   }
 
@@ -554,96 +531,6 @@ void WorldManager::fireWorldUnloadedEvent(const std::string &worldId) {
   }
 }
 
-void WorldManager::registerEventHandlers() {
-  try {
-    EventManager &eventMgr = EventManager::Instance();
-    m_handlerTokens.clear();
-
-    // Register handler for world events (to respond to events from other
-    // systems)
-    m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
-        EventTypeId::World, [](const EventData &data) {
-          if (data.isActive() && data.event) {
-            // Handle world-related events from other systems
-            WORLD_MANAGER_DEBUG(
-                std::format("WorldManager received world event: {}",
-                            data.event->getName()));
-          }
-        }));
-
-    // Register handler for camera events (world bounds may affect camera)
-    m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
-        EventTypeId::Camera, [](const EventData &data) {
-          if (data.isActive() && data.event) {
-            // Handle camera events that may require world data updates
-            WORLD_MANAGER_DEBUG(
-                std::format("WorldManager received camera event: {}",
-                            data.event->getName()));
-          }
-        }));
-
-    // Register handler for resource change events (resource changes may affect
-    // world state)
-    m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
-        EventTypeId::ResourceChange, [](const EventData &data) {
-          if (data.isActive() && data.event) {
-            // Handle resource changes that may affect world generation or state
-            auto resourceEvent =
-                std::dynamic_pointer_cast<ResourceChangeEvent>(data.event);
-            WORLD_MANAGER_DEBUG_IF(
-                resourceEvent,
-                std::format(
-                    "WorldManager received resource change: {} changed by {}",
-                    resourceEvent
-                        ? resourceEvent->getResourceHandle().toString()
-                        : "",
-                    resourceEvent ? resourceEvent->getQuantityChange() : 0));
-          }
-        }));
-
-    // Register handler for harvest resource events
-    m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(
-        EventTypeId::Harvest, [this](const EventData &data) {
-          if (data.isActive() && data.event) {
-            auto harvestEvent =
-                std::dynamic_pointer_cast<HarvestResourceEvent>(data.event);
-            if (harvestEvent) {
-              WORLD_MANAGER_DEBUG(std::format(
-                  "WorldManager received harvest request from entity {} at "
-                  "({}, {})",
-                  harvestEvent->getEntityId(), harvestEvent->getTargetX(),
-                  harvestEvent->getTargetY()));
-
-              // Handle the harvest request
-              handleHarvestResource(harvestEvent->getEntityId(),
-                                    harvestEvent->getTargetX(),
-                                    harvestEvent->getTargetY());
-            }
-          }
-        }));
-
-    WORLD_MANAGER_DEBUG("WorldManager event handlers registered");
-  } catch (const std::exception &ex) {
-    WORLD_MANAGER_ERROR(
-        std::format("Failed to register event handlers: {}", ex.what()));
-  }
-}
-
-void WorldManager::unregisterEventHandlers() {
-  try {
-    auto &eventMgr = EventManager::Instance();
-    for (const auto &tok : m_handlerTokens) {
-      (void)eventMgr.removeHandler(tok);
-    }
-    m_handlerTokens.clear();
-    WORLD_MANAGER_DEBUG(
-        "WorldManager event handlers unregistered (tokens cleared)");
-  } catch (const std::exception &ex) {
-    WORLD_MANAGER_ERROR(
-        std::format("Failed to unregister event handlers: {}", ex.what()));
-  }
-}
-
 bool WorldManager::getWorldDimensions(int &width, int &height) const {
   std::shared_lock<std::shared_mutex> lock(m_worldMutex);
 
@@ -743,12 +630,59 @@ void WorldManager::initializeWorldResources() {
     auto& edm = EntityDataManager::Instance();
     const std::string& worldId = m_currentWorld->worldId;
 
-    // Helper lambda to spawn harvestables at appropriate tile positions
-    auto spawnHarvestablesInBiome = [&](HammerEngine::ResourceHandle handle,
+    // Helper to spawn harvestables AT tiles with matching obstacles
+    // This ensures EDM harvestable position = tile obstacle position
+    // When harvested, both EDM entity and tile obstacle are updated together
+    // EVERY obstacle gets a harvestable for visual/gameplay coherence
+    auto spawnHarvestablesAtObstacles = [&](const char* resourceId,
+                                            HammerEngine::ResourceHandle handle,
+                                            HammerEngine::ObstacleType targetObstacle,
+                                            int yieldMin, int yieldMax,
+                                            float respawnTime) {
+      if (!handle.isValid()) {
+        WORLD_MANAGER_ERROR(std::format("Invalid resource handle for obstacle type {}",
+                                        HammerEngine::obstacleTypeToString(targetObstacle)));
+        return;
+      }
+
+      int spawned = 0;
+      const size_t gridHeight = m_currentWorld->grid.size();
+      if (gridHeight == 0) return;
+      const size_t gridWidth = m_currentWorld->grid[0].size();
+
+      // Spawn harvestables at ALL tiles that have the matching obstacle
+      for (size_t y = 0; y < gridHeight; ++y) {
+        for (size_t x = 0; x < gridWidth; ++x) {
+          const auto& tile = m_currentWorld->grid[y][x];
+          if (tile.obstacleType != targetObstacle) continue;
+
+          Vector2D pos(static_cast<float>(x) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
+                       static_cast<float>(y) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
+
+          auto harvestType = HammerEngine::getHarvestTypeForResource(resourceId);
+          EntityHandle h = edm.createHarvestable(pos, handle, yieldMin, yieldMax, respawnTime, worldId, harvestType);
+          if (h.isValid()) {
+            ++spawned;
+          }
+        }
+      }
+      WORLD_MANAGER_INFO(std::format("Spawned {} harvestables of {} at {} obstacles",
+                                     spawned, handle.toString(),
+                                     HammerEngine::obstacleTypeToString(targetObstacle)));
+    };
+
+    // Helper for biome-based resources (for things without tile obstacles)
+    auto spawnHarvestablesInBiome = [&](const char* resourceId,
+                                        HammerEngine::ResourceHandle handle,
                                         HammerEngine::Biome targetBiome,
                                         int count, int yieldMin, int yieldMax,
                                         float respawnTime) {
-      if (!handle.isValid() || count <= 0) return;
+      if (!handle.isValid()) {
+        WORLD_MANAGER_ERROR(std::format("Invalid resource handle for biome {}",
+                                        HammerEngine::biomeToString(targetBiome)));
+        return;
+      }
+      if (count <= 0) return;
 
       int spawned = 0;
       const size_t gridHeight = m_currentWorld->grid.size();
@@ -761,6 +695,8 @@ void WorldManager::initializeWorldResources() {
           const auto& tile = m_currentWorld->grid[y][x];
           if (tile.isWater) continue;
           if (tile.biome != targetBiome) continue;
+          // Skip tiles that already have obstacles (those are handled by spawnHarvestablesAtObstacles)
+          if (tile.obstacleType != HammerEngine::ObstacleType::NONE) continue;
 
           // Skip some tiles for natural distribution (every ~10 tiles)
           if ((x + y * 7) % 10 != 0) continue;
@@ -768,23 +704,32 @@ void WorldManager::initializeWorldResources() {
           Vector2D pos(static_cast<float>(x) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
                        static_cast<float>(y) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
 
-          // createHarvestable auto-registers with WRM using worldId
-          EntityHandle h = edm.createHarvestable(pos, handle, yieldMin, yieldMax, respawnTime, worldId);
+          auto harvestType = HammerEngine::getHarvestTypeForResource(resourceId);
+          EntityHandle h = edm.createHarvestable(pos, handle, yieldMin, yieldMax, respawnTime, worldId, harvestType);
           if (h.isValid()) {
             ++spawned;
           }
         }
       }
-      WORLD_MANAGER_DEBUG(std::format("Spawned {} harvestables of type {} in {}",
-                                      spawned, handle.toString(), worldId));
+      const auto harvestType = HammerEngine::getHarvestTypeForResource(resourceId);
+      WORLD_MANAGER_INFO(std::format("Spawned {} harvestables of type {} ({}) in {} biome",
+                                     spawned, handle.toString(),
+                                     HammerEngine::harvestTypeToString(harvestType),
+                                     HammerEngine::biomeToString(targetBiome)));
     };
 
     // Helper for high-elevation resources
-    auto spawnHarvestablesAtElevation = [&](HammerEngine::ResourceHandle handle,
+    auto spawnHarvestablesAtElevation = [&](const char* resourceId,
+                                            HammerEngine::ResourceHandle handle,
                                             float minElevation, int count,
                                             int yieldMin, int yieldMax,
                                             float respawnTime) {
-      if (!handle.isValid() || count <= 0) return;
+      if (!handle.isValid()) {
+        WORLD_MANAGER_ERROR(std::format("Invalid resource handle for elevation >= {}",
+                                        minElevation));
+        return;
+      }
+      if (count <= 0) return;
 
       int spawned = 0;
       const size_t gridHeight = m_currentWorld->grid.size();
@@ -795,6 +740,8 @@ void WorldManager::initializeWorldResources() {
         for (size_t x = 0; x < gridWidth && spawned < count; ++x) {
           const auto& tile = m_currentWorld->grid[y][x];
           if (tile.isWater || tile.elevation < minElevation) continue;
+          // Skip tiles with obstacles (those are handled by spawnHarvestablesAtObstacles)
+          if (tile.obstacleType != HammerEngine::ObstacleType::NONE) continue;
 
           // Skip some tiles for natural distribution
           if ((x + y * 11) % 12 != 0) continue;
@@ -803,62 +750,91 @@ void WorldManager::initializeWorldResources() {
                        static_cast<float>(y) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
 
           // createHarvestable auto-registers with WRM using worldId
-          EntityHandle h = edm.createHarvestable(pos, handle, yieldMin, yieldMax, respawnTime, worldId);
+          // Use HarvestConfig to derive the correct HarvestType from resource
+          auto harvestType = HammerEngine::getHarvestTypeForResource(resourceId);
+          EntityHandle h = edm.createHarvestable(pos, handle, yieldMin, yieldMax, respawnTime, worldId, harvestType);
           if (h.isValid()) {
             ++spawned;
           }
         }
       }
-      WORLD_MANAGER_DEBUG(std::format("Spawned {} high-elevation harvestables of type {}",
-                                      spawned, handle.toString()));
+      const auto harvestType = HammerEngine::getHarvestTypeForResource(resourceId);
+      WORLD_MANAGER_INFO(std::format("Spawned {} high-elevation harvestables of type {} ({})",
+                                     spawned, handle.toString(),
+                                     HammerEngine::harvestTypeToString(harvestType)));
     };
 
-    // Calculate target harvestable counts based on tile counts
-    const int baseCount = std::max(5, totalTiles / 100);
-
-    // Basic resources - spawn as harvestables in appropriate biomes
+    // Basic resources - spawn AT tile obstacles for visual coherence
+    // When harvested, both EDM entity and tile obstacle are updated
+    // All obstacles of matching type get harvestables (no count limit)
     auto woodHandle = resourceMgr.getHandleById("wood");
-    spawnHarvestablesInBiome(woodHandle, HammerEngine::Biome::FOREST,
-                             baseCount + forestTiles / 20, 1, 3, 60.0f);
+    spawnHarvestablesAtObstacles("wood", woodHandle, HammerEngine::ObstacleType::TREE, 1, 3, 60.0f);
 
+    auto stoneHandle = resourceMgr.getHandleById("stone");
+    spawnHarvestablesAtObstacles("stone", stoneHandle, HammerEngine::ObstacleType::ROCK, 1, 3, 90.0f);
+
+    // Ore deposits
     auto ironHandle = resourceMgr.getHandleById("iron_ore");
-    spawnHarvestablesInBiome(ironHandle, HammerEngine::Biome::MOUNTAIN,
-                             baseCount + mountainTiles / 25, 1, 2, 90.0f);
+    spawnHarvestablesAtObstacles("iron_ore", ironHandle, HammerEngine::ObstacleType::IRON_DEPOSIT, 2, 5, 90.0f);
 
-    // Gold ore - rarer than iron, found in mountains
     auto goldHandle = resourceMgr.getHandleById("gold_ore");
-    spawnHarvestablesInBiome(goldHandle, HammerEngine::Biome::MOUNTAIN,
-                             std::max(1, mountainTiles / 40), 1, 2, 120.0f);
+    spawnHarvestablesAtObstacles("gold_ore", goldHandle, HammerEngine::ObstacleType::GOLD_DEPOSIT, 1, 3, 150.0f);
 
-    // Rare resources
-    if (mountainTiles > 0) {
-      auto mithrilHandle = resourceMgr.getHandleById("mithril_ore");
-      spawnHarvestablesInBiome(mithrilHandle, HammerEngine::Biome::MOUNTAIN,
-                               std::max(1, mountainTiles / 50), 1, 1, 180.0f);
-    }
+    auto coalHandle = resourceMgr.getHandleById("coal");
+    spawnHarvestablesAtObstacles("coal", coalHandle, HammerEngine::ObstacleType::COAL_DEPOSIT, 3, 6, 75.0f);
 
+    auto copperHandle = resourceMgr.getHandleById("copper_ore");
+    spawnHarvestablesAtObstacles("copper_ore", copperHandle, HammerEngine::ObstacleType::COPPER_DEPOSIT, 2, 4, 60.0f);
+
+    auto mithrilHandle = resourceMgr.getHandleById("mithril_ore");
+    spawnHarvestablesAtObstacles("mithril_ore", mithrilHandle, HammerEngine::ObstacleType::MITHRIL_DEPOSIT, 1, 2, 300.0f);
+
+    auto limestoneHandle = resourceMgr.getHandleById("limestone");
+    spawnHarvestablesAtObstacles("limestone", limestoneHandle, HammerEngine::ObstacleType::LIMESTONE_DEPOSIT, 2, 4, 120.0f);
+
+    // Gem deposits
+    auto emeraldHandle = resourceMgr.getHandleById("rough_emerald");
+    spawnHarvestablesAtObstacles("rough_emerald", emeraldHandle, HammerEngine::ObstacleType::EMERALD_DEPOSIT, 1, 2, 180.0f);
+
+    auto rubyHandle = resourceMgr.getHandleById("rough_ruby");
+    spawnHarvestablesAtObstacles("rough_ruby", rubyHandle, HammerEngine::ObstacleType::RUBY_DEPOSIT, 1, 2, 180.0f);
+
+    auto sapphireHandle = resourceMgr.getHandleById("rough_sapphire");
+    spawnHarvestablesAtObstacles("rough_sapphire", sapphireHandle, HammerEngine::ObstacleType::SAPPHIRE_DEPOSIT, 1, 2, 180.0f);
+
+    auto diamondHandle = resourceMgr.getHandleById("rough_diamond");
+    spawnHarvestablesAtObstacles("rough_diamond", diamondHandle, HammerEngine::ObstacleType::DIAMOND_DEPOSIT, 1, 1, 360.0f);
+
+    // Rare biome-based resources (no tile obstacles - for resources without visual tiles)
     if (forestTiles > 0) {
       auto enchantedWoodHandle = resourceMgr.getHandleById("enchanted_wood");
-      spawnHarvestablesInBiome(enchantedWoodHandle, HammerEngine::Biome::FOREST,
+      spawnHarvestablesInBiome("enchanted_wood", enchantedWoodHandle, HammerEngine::Biome::FOREST,
                                std::max(1, forestTiles / 40), 1, 2, 120.0f);
     }
 
     if (celestialTiles > 0) {
       auto crystalHandle = resourceMgr.getHandleById("crystal_essence");
-      spawnHarvestablesInBiome(crystalHandle, HammerEngine::Biome::CELESTIAL,
+      spawnHarvestablesInBiome("crystal_essence", crystalHandle, HammerEngine::Biome::CELESTIAL,
                                std::max(1, celestialTiles / 30), 1, 2, 150.0f);
     }
 
     if (swampTiles > 0) {
       auto voidSilkHandle = resourceMgr.getHandleById("void_silk");
-      spawnHarvestablesInBiome(voidSilkHandle, HammerEngine::Biome::SWAMP,
+      spawnHarvestablesInBiome("void_silk", voidSilkHandle, HammerEngine::Biome::SWAMP,
                                std::max(1, swampTiles / 60), 1, 1, 200.0f);
+    }
+
+    // Mountain biome gets extra stone deposits
+    if (mountainTiles > 0) {
+      auto mountainStoneHandle = resourceMgr.getHandleById("stone");
+      spawnHarvestablesInBiome("stone", mountainStoneHandle, HammerEngine::Biome::MOUNTAIN,
+                               std::max(1, mountainTiles / 25), 2, 5, 90.0f);
     }
 
     // High elevation resources
     if (highElevationTiles > 0) {
-      auto stoneHandle = resourceMgr.getHandleById("enchanted_stone");
-      spawnHarvestablesAtElevation(stoneHandle, 0.7f,
+      auto enchantedStoneHandle = resourceMgr.getHandleById("enchanted_stone");
+      spawnHarvestablesAtElevation("enchanted_stone", enchantedStoneHandle, 0.7f,
                                    std::max(1, highElevationTiles / 30),
                                    1, 3, 90.0f);
     }
@@ -1209,7 +1185,7 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
   // Stumps and rocks - no seasonal variants
   m_cachedTextureIDs.decoration_stump_small = "stump_obstacle_small";
   m_cachedTextureIDs.decoration_stump_medium = "stump_obstacle_medium";
-  m_cachedTextureIDs.decoration_rock_small = "obstacle_rock";
+  m_cachedTextureIDs.decoration_rock_small = "rock_small";
 
   // Logs - no seasonal variants
   m_cachedTextureIDs.decoration_dead_log_hz = "dead_log_hz";
@@ -1336,6 +1312,11 @@ void HammerEngine::TileRenderer::invalidateChunk(int chunkX, int chunkY) {
 }
 
 void HammerEngine::TileRenderer::clearChunkCache() {
+  // Skip in GPU mode - GPU path renders tiles directly from atlas coords each frame,
+  // no chunk textures to invalidate
+  if (!m_gridInitialized) {
+    return;
+  }
   // Mark all chunks as dirty for re-rendering (e.g., on season change)
   m_cachePendingClear.store(true, std::memory_order_release);
   m_hasDirtyChunks = true;
@@ -1858,7 +1839,7 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
     &m_cachedTextures.building_cityhall // size 4
   };
 
-  baseLocalY = static_cast<float>((spriteStartY - startTileY) * tileSize + SPRITE_OVERHANG);
+  baseLocalY = static_cast<float>(SPRITE_OVERHANG);  // spriteStartY == startTileY (no upward extension)
   for (int y = spriteStartY; y < spriteEndY; ++y) {
     const auto &row = world.grid[y];
     float localX = static_cast<float>((spriteStartX - startTileX) * tileSize + SPRITE_OVERHANG);

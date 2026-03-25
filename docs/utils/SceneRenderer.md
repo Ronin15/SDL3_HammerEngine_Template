@@ -1,8 +1,6 @@
-# SceneRenderer Documentation
+# SceneRenderer
 
-**Where to find the code:**
-- Header: `include/utils/SceneRenderer.hpp`
-- Implementation: `src/utils/SceneRenderer.cpp`
+**Code:** `include/utils/SceneRenderer.hpp`, `src/utils/SceneRenderer.cpp`
 
 ## Overview
 

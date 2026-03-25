@@ -20,6 +20,8 @@ using HammerEngine::JsonValue;
 #include <algorithm>
 #include <cassert>
 #include <format>
+#include <limits>
+#include <numeric>
 
 // ============================================================================
 // LIFECYCLE
@@ -70,6 +72,12 @@ bool EntityDataManager::init() {
 
         // Behavior data (indexed by edmIndex, pre-allocated alongside hotData)
         m_behaviorData.reserve(CHARACTER_CAPACITY);
+
+        // Behavior config (indexed by edmIndex, pre-allocated alongside behaviorData)
+        m_behaviorConfig.reserve(CHARACTER_CAPACITY);
+
+        // NPC Memory data (indexed by edmIndex, pre-allocated alongside hotData)
+        m_memoryData.reserve(CHARACTER_CAPACITY);
 
         m_activeIndices.reserve(INITIAL_CAPACITY);
         m_backgroundIndices.reserve(INITIAL_CAPACITY);
@@ -150,6 +158,9 @@ void EntityDataManager::clean() {
     m_pathData.clear();
     m_waypointSlots.clear();  // Clear per-entity waypoint slots
     m_behaviorData.clear();
+    m_memoryData.clear();
+    m_memoryOverflow.clear();
+    m_nextMemoryOverflowId = 1;
 
     // Clear type-specific free-lists
     m_freeCharacterSlots.clear();
@@ -201,7 +212,9 @@ void EntityDataManager::prepareForStateTransition() {
     // Clear all entity data (main thread only - no lock needed)
     m_hotData.clear();
     m_entityIds.clear();
+    m_generations.clear();
     m_idToIndex.clear();
+    m_behaviorConfig.clear();
 
     // Clear static entity storage
     m_staticHotData.clear();
@@ -223,6 +236,9 @@ void EntityDataManager::prepareForStateTransition() {
     m_pathData.clear();
     m_waypointSlots.clear();  // Clear per-entity waypoint slots
     m_behaviorData.clear();
+    m_memoryData.clear();
+    m_memoryOverflow.clear();
+    m_nextMemoryOverflowId = 1;
 
     // Clear type-specific free-lists
     m_freeCharacterSlots.clear();
@@ -288,10 +304,12 @@ size_t EntityDataManager::allocateSlot() {
         m_hotData.emplace_back();
         m_entityIds.emplace_back(0);
         m_generations.emplace_back(0);
-        // Pre-allocate PathData, WaypointSlot, BehaviorData to match - avoids concurrent resize during AI processing
+        // Pre-allocate PathData, WaypointSlot, BehaviorData, BehaviorConfig, MemoryData to match - avoids concurrent resize during AI processing
         m_pathData.emplace_back();
         m_waypointSlots.emplace_back();  // Per-entity waypoint slot (256 bytes)
         m_behaviorData.emplace_back();
+        m_behaviorConfig.emplace_back(); // Behavior config (read-only during execution)
+        m_memoryData.emplace_back();     // NPC memory data
     }
 
     m_tierIndicesDirty = true;
@@ -310,9 +328,10 @@ void EntityDataManager::freeSlot(size_t index) {
     EntityKind kind = m_hotData[index].kind;
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
 
-    // Clear path and behavior data for AI entities
+    // Clear path, behavior, and memory data for AI entities
     clearPathData(index);
     clearBehaviorData(index);
+    clearMemoryData(index);
 
     // Clear the slot
     m_hotData[index] = EntityHotData{};
@@ -330,6 +349,14 @@ void EntityDataManager::freeSlot(size_t index) {
             m_freeCharacterSlots.push_back(typeIndex);
             break;
         case EntityKind::NPC:
+            // Destroy the associated inventory first
+            if (typeIndex < m_characterData.size()) {
+                uint32_t invIdx = m_characterData[typeIndex].inventoryIndex;
+                if (invIdx != INVALID_INVENTORY_INDEX) {
+                    destroyInventory(invIdx);
+                    m_characterData[typeIndex].inventoryIndex = INVALID_INVENTORY_INDEX;
+                }
+            }
             m_freeCharacterSlots.push_back(typeIndex);
             // Clear NPC render data (uses same index as CharacterData)
             if (typeIndex < m_npcRenderData.size()) {
@@ -420,6 +447,8 @@ uint32_t EntityDataManager::allocateCharacterSlot() {
 EntityHandle EntityDataManager::createNPC(const Vector2D& position,
                                           float halfWidth,
                                           float halfHeight) {
+    // Thread safety: Lock for entire creation (may be called from worker thread)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
 
     size_t index = allocateSlot();
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
@@ -443,6 +472,10 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     uint32_t charIndex = allocateCharacterSlot();
     m_characterData[charIndex].stateFlags = CharacterData::STATE_ALIVE;
     // faction defaults to 0 (Friendly) in CharacterData
+
+    // All NPCs get an inventory (20 slots, not world-tracked)
+    uint32_t invIdx = createInventory(20, false);
+    m_characterData[charIndex].inventoryIndex = invIdx;
 
     // Initialize collision data based on faction
     // Friendly/Neutral NPCs: Layer_Default, don't collide with other NPCs
@@ -528,6 +561,9 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     size_t index = getIndex(handle);
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
 
+    // Initialize memory data for emotional states and personality
+    initMemoryData(index);
+
     // Set up CharacterData with computed stats (race base × class multiplier)
     auto& charData = m_characterData[typeIndex];
     charData.category = CreatureCategory::NPC;
@@ -543,6 +579,8 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     charData.moveSpeed = raceInfo.baseMoveSpeed * classInfo.moveSpeedMult;
     charData.priority = classInfo.basePriority;
     charData.faction = (factionOverride != 0xFF) ? factionOverride : classInfo.defaultFaction;
+    charData.emotionalResilience = classInfo.emotionalResilience;
+    charData.mass = raceInfo.sizeMultiplier * raceInfo.sizeMultiplier;  // Mass scales with area
 
     // Apply faction-based collision layers
     applyFactionCollision(index, charData.faction);
@@ -550,9 +588,12 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     // Set up NPCRenderData from race info
     auto& renderData = m_npcRenderData[typeIndex];
     renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
+#ifndef USE_SDL3_GPU
+    // Only error in SDL_Renderer path - GPU path uses SpriteBatch with GPU textures
     if (!renderData.cachedTexture) {
         ENTITY_ERROR("createNPCWithRaceClass: Atlas texture not loaded");
     }
+#endif
 
     // Check for unmapped texture (atlasX and atlasY both 0) - use debug texture as fallback
     if (raceInfo.atlasX == 0 && raceInfo.atlasY == 0) {
@@ -584,9 +625,29 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     renderData.animationAccumulator = 0.0f;
     renderData.flipMode = 0;
 
-    ENTITY_DEBUG(std::format("Created {} {} at ({},{}) HP:{:.0f} DMG:{:.1f} SPD:{:.0f}",
+    // Set merchant flag based on class
+    if (classInfo.isMerchant) {
+        charData.stateFlags |= CharacterData::STATE_MERCHANT;
+    }
+
+    // Add starting items from class definition
+    if (!classInfo.startingItems.empty()) {
+        const auto& rtm = ResourceTemplateManager::Instance();
+        for (const auto& [itemId, qty] : classInfo.startingItems) {
+            auto itemHandle = rtm.getHandleById(itemId);
+            if (itemHandle.isValid()) {
+                addToInventory(charData.inventoryIndex, itemHandle, qty);
+            } else {
+                ENTITY_WARN(std::format("Starting item '{}' not found for class '{}'",
+                                        itemId, classInfo.name));
+            }
+        }
+    }
+
+    ENTITY_DEBUG(std::format("Created {} {} at ({},{}) HP:{:.0f} DMG:{:.1f} SPD:{:.0f}{}",
                             race, charClass, position.getX(), position.getY(),
-                            charData.maxHealth, charData.attackDamage, charData.moveSpeed));
+                            charData.maxHealth, charData.attackDamage, charData.moveSpeed,
+                            classInfo.isMerchant ? " [Merchant]" : ""));
 
     // Auto-register with AIManager using class's suggested behavior
     AIManager::Instance().registerEntity(handle,
@@ -634,6 +695,9 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
     size_t index = getIndex(handle);
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
 
+    // Initialize memory data for emotional states and personality
+    initMemoryData(index);
+
     // Set up CharacterData
     auto& charData = m_characterData[typeIndex];
     charData.category = CreatureCategory::Monster;
@@ -649,6 +713,7 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
     charData.moveSpeed = typeInfo.baseMoveSpeed * variantInfo.moveSpeedMult;
     charData.priority = variantInfo.basePriority;
     charData.faction = (factionOverride != 0xFF) ? factionOverride : typeInfo.defaultFaction;
+    charData.mass = typeInfo.sizeMultiplier * typeInfo.sizeMultiplier;  // Mass scales with area
 
     applyFactionCollision(index, charData.faction);
 
@@ -731,6 +796,9 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
     size_t index = getIndex(handle);
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
 
+    // Initialize memory data for emotional states and personality
+    initMemoryData(index);
+
     // Set up CharacterData
     auto& charData = m_characterData[typeIndex];
     charData.category = CreatureCategory::Animal;
@@ -746,6 +814,7 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
     charData.moveSpeed = speciesInfo.baseMoveSpeed * roleInfo.moveSpeedMult;
     charData.priority = roleInfo.basePriority;
     charData.faction = (factionOverride != 0xFF) ? factionOverride : roleInfo.defaultFaction;
+    charData.mass = speciesInfo.sizeMultiplier * speciesInfo.sizeMultiplier;  // Mass scales with area
 
     applyFactionCollision(index, charData.faction);
 
@@ -803,6 +872,19 @@ void EntityDataManager::applyFactionCollision(size_t index, uint8_t faction) {
                             HammerEngine::CollisionLayer::Layer_Environment |
                             HammerEngine::CollisionLayer::Layer_Projectile;
     }
+}
+
+void EntityDataManager::setFaction(EntityHandle handle, uint8_t newFaction) {
+    size_t index = getIndex(handle);
+    if (index == SIZE_MAX) return;
+
+    auto& charData = getCharacterDataByIndex(index);
+    if (charData.faction == newFaction) return;  // No change
+
+    uint8_t oldFaction = charData.faction;
+    charData.faction = newFaction;
+    applyFactionCollision(index, newFaction);
+    AIManager::Instance().onEntityFactionChanged(index, oldFaction, newFaction);
 }
 
 // Registry getters
@@ -877,6 +959,9 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
         quantity = MAX_STACK_SIZE;
     }
 
+    // Thread safety: Lock for entire creation (may be called from worker thread)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
+
     // Allocate in STATIC pool (resources don't move, not in tier system)
     size_t index;
     if (!m_freeStaticSlots.empty()) {
@@ -940,7 +1025,7 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     auto& renderData = m_itemRenderData[itemIndex];
     renderData.clear();
 
-    // Get atlas texture (single texture for all items)
+    // Get atlas texture for SDL_Renderer path (GPU path uses SpriteBatch directly)
     renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
 
     // Get atlas coords and animation data from resource template
@@ -957,11 +1042,8 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
         if (resource->getAnimSpeed() > 0) {
             renderData.animSpeedMs = static_cast<uint16_t>(resource->getAnimSpeed());
         }
-    }
-
-    // Fallback if no atlas texture
-    if (!renderData.cachedTexture) {
-        ENTITY_WARN(std::format("createDroppedItem: Atlas texture not found for resource {}",
+    } else {
+        ENTITY_WARN(std::format("createDroppedItem: No resource template found for {}",
                                 resourceHandle.toString()));
     }
 
@@ -1011,6 +1093,9 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
         ENTITY_WARN(std::format("createContainer: Clamping lock level {} to 10", lockLevel));
         lockLevel = 10;
     }
+
+    // Thread safety: Lock for entire creation (may be called from worker thread)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
 
     // Auto-create inventory for this container
     uint32_t inventoryIndex = createInventory(maxSlots, false);  // Containers not world-tracked by default
@@ -1113,7 +1198,8 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
                                                   int yieldMin,
                                                   int yieldMax,
                                                   float respawnTime,
-                                                  const std::string& worldId) {
+                                                  const std::string& worldId,
+                                                  HammerEngine::HarvestType harvestType) {
     // Validation: Valid yield resource
     if (!yieldResource.isValid()) {
         ENTITY_ERROR("createHarvestable: Invalid yield resource handle");
@@ -1132,6 +1218,9 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
         ENTITY_WARN("createHarvestable: Negative respawn time, setting to 0");
         respawnTime = 0.0f;
     }
+
+    // Thread safety: Lock for entire creation (called from worker thread during world load)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
 
     // Allocate in STATIC pool (resources don't move, not in tier system)
     size_t index;
@@ -1185,7 +1274,7 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     harvestable.yieldMax = yieldMax;
     harvestable.respawnTime = respawnTime;
     harvestable.currentRespawn = 0.0f;
-    harvestable.harvestType = 0;  // Will be set by caller if needed
+    harvestable.harvestType = harvestType;
     harvestable.isDepleted = false;
     hot.typeLocalIndex = harvestableIndex;
 
@@ -1206,10 +1295,6 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::Harvestable)].fetch_add(1, std::memory_order_relaxed);
 
-    ENTITY_DEBUG(std::format("Created Harvestable (static) entity {} yielding {} [{}-{}] at ({}, {})",
-                             id, yieldResource.getId(), yieldMin, yieldMax,
-                             position.getX(), position.getY()));
-
     // Auto-register with WorldResourceManager for both registry and spatial queries
     auto& wrm = WorldResourceManager::Instance();
     const std::string& targetWorld = worldId.empty() ? wrm.getActiveWorld() : worldId;
@@ -1228,6 +1313,8 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
                                                  EntityHandle owner,
                                                  float damage,
                                                  float lifetime) {
+    // Thread safety: Lock for entire creation (may be called from worker thread)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
 
     size_t index = allocateSlot();
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
@@ -1292,6 +1379,8 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
                                                  EntityHandle owner,
                                                  float damage,
                                                  float duration) {
+    // Thread safety: Lock for entire creation (may be called from worker thread)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
 
     size_t index = allocateSlot();
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
@@ -1349,6 +1438,8 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
 EntityHandle EntityDataManager::createStaticBody(const Vector2D& position,
                                                   float halfWidth,
                                                   float halfHeight) {
+    // Thread safety: Lock for entire creation (may be called from worker thread)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
 
     // Allocate slot in static storage (separate from dynamic m_hotData)
     size_t index;
@@ -1395,6 +1486,9 @@ EntityHandle EntityDataManager::createTrigger(const Vector2D& position,
                                                float halfHeight,
                                                HammerEngine::TriggerTag tag,
                                                HammerEngine::TriggerType type) {
+    // Thread safety: Lock for entire creation (may be called from worker thread)
+    std::lock_guard<std::mutex> lock(m_creationMutex);
+
     // Allocate slot in static storage (triggers don't move)
     size_t index;
     if (!m_freeStaticSlots.empty()) {
@@ -1547,9 +1641,11 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
         m_staticGenerations.push_back(0);
     }
 
-    uint8_t generation = m_staticGenerations[index];
-    ++generation;
-    if (generation == 0) generation = 1;
+    const uint8_t previousGeneration = m_staticGenerations[index];
+    const uint8_t generation =
+        (previousGeneration == std::numeric_limits<uint8_t>::max())
+            ? static_cast<uint8_t>(1)
+            : static_cast<uint8_t>(previousGeneration + 1);
     m_staticGenerations[index] = generation;
 
     // Initialize hot data in static pool
@@ -1829,6 +1925,71 @@ void EntityDataManager::destroyInventory(uint32_t inventoryIndex) {
     ENTITY_DEBUG(std::format("Destroyed inventory {}", inventoryIndex));
 }
 
+bool EntityDataManager::initNPCAsMerchant(EntityHandle handle, uint16_t maxSlots) {
+    if (!handle.isValid() || handle.getKind() != EntityKind::NPC) {
+        ENTITY_ERROR("initNPCAsMerchant: Invalid handle or not an NPC");
+        return false;
+    }
+
+    size_t idx = getIndex(handle);
+    if (idx == SIZE_MAX) {
+        ENTITY_ERROR("initNPCAsMerchant: Entity not found in EDM");
+        return false;
+    }
+
+    // Get character data
+    auto& charData = getCharacterDataByIndex(idx);
+
+    // Check if already has inventory
+    if (charData.hasInventory()) {
+        ENTITY_WARN("initNPCAsMerchant: NPC already has inventory");
+        return true;  // Already set up
+    }
+
+    // Create inventory
+    uint32_t invIdx = createInventory(maxSlots, false);  // Not world-tracked
+    if (invIdx == INVALID_INVENTORY_INDEX) {
+        ENTITY_ERROR("initNPCAsMerchant: Failed to create inventory");
+        return false;
+    }
+
+    // Store inventory index and set merchant flag
+    charData.inventoryIndex = invIdx;
+    charData.stateFlags |= CharacterData::STATE_MERCHANT;
+
+    ENTITY_INFO(std::format("NPC {} initialized as merchant with {} slots",
+                            handle.getId(), maxSlots));
+    return true;
+}
+
+bool EntityDataManager::isNPCMerchant(EntityHandle handle) const {
+    if (!handle.isValid() || handle.getKind() != EntityKind::NPC) {
+        return false;
+    }
+
+    size_t idx = getIndex(handle);
+    if (idx == SIZE_MAX) {
+        return false;
+    }
+
+    const auto& charData = getCharacterDataByIndex(idx);
+    return charData.isMerchant() && charData.hasInventory();
+}
+
+uint32_t EntityDataManager::getNPCInventoryIndex(EntityHandle handle) const {
+    if (!handle.isValid() || handle.getKind() != EntityKind::NPC) {
+        return INVALID_INVENTORY_INDEX;
+    }
+
+    size_t idx = getIndex(handle);
+    if (idx == SIZE_MAX) {
+        return INVALID_INVENTORY_INDEX;
+    }
+
+    const auto& charData = getCharacterDataByIndex(idx);
+    return charData.inventoryIndex;
+}
+
 bool EntityDataManager::addToInventory(uint32_t inventoryIndex,
                                        HammerEngine::ResourceHandle handle,
                                        int quantity) {
@@ -2024,11 +2185,16 @@ int EntityDataManager::getInventoryQuantityLocked(uint32_t inventoryIndex,
     if (inv.overflowId > 0) {
         auto it = m_inventoryOverflow.find(inv.overflowId);
         if (it != m_inventoryOverflow.end()) {
-            for (const auto& slot : it->second.extraSlots) {
-                if (!slot.isEmpty() && slot.resourceHandle == handle) {
-                    total += slot.quantity;
-                }
-            }
+            total += std::accumulate(
+                it->second.extraSlots.begin(),
+                it->second.extraSlots.end(),
+                0,
+                [handle](int sum, const InventorySlotData& slot) {
+                    if (!slot.isEmpty() && slot.resourceHandle == handle) {
+                        return sum + slot.quantity;
+                    }
+                    return sum;
+                });
         }
     }
 
@@ -2520,6 +2686,245 @@ void EntityDataManager::clearBehaviorData(size_t index) {
 }
 
 // ============================================================================
+// NPC MEMORY DATA MANAGEMENT
+// ============================================================================
+
+void EntityDataManager::initMemoryData(size_t index) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+    auto& data = m_memoryData[index];
+    data.clear();
+    data.setValid(true);
+
+    // Generate random personality traits for this NPC
+    static thread_local std::mt19937 s_personalityRng{std::random_device{}()};
+    data.personality.randomize(s_personalityRng);
+}
+
+void EntityDataManager::clearMemoryData(size_t index) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+    auto& data = m_memoryData[index];
+
+    // Clean up overflow if present
+    if (data.hasOverflow() && data.overflowId > 0) {
+        m_memoryOverflow.erase(data.overflowId);
+    }
+
+    data.clear();
+}
+
+// Thread Safety Note: This function is primarily called from the main thread
+// via recordCombatEvent() from CombatController. If called from worker threads
+// during AI batch processing, ensure proper synchronization or that each index
+// is only accessed by one thread.
+void EntityDataManager::addMemory(size_t index, const MemoryEntry& entry, bool useOverflow) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+
+    auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        initMemoryData(index);
+    }
+
+    // Try to add to inline slots (circular buffer)
+    if (data.memoryCount < NPCMemoryData::INLINE_MEMORY_COUNT) {
+        data.memories[data.nextInlineSlot] = entry;
+        data.nextInlineSlot = (data.nextInlineSlot + 1) % NPCMemoryData::INLINE_MEMORY_COUNT;
+        data.memoryCount++;
+    } else if (useOverflow) {
+        // Allocate overflow if needed
+        if (!data.hasOverflow()) {
+            data.overflowId = m_nextMemoryOverflowId++;
+            data.flags |= NPCMemoryData::FLAG_HAS_OVERFLOW;
+            m_memoryOverflow[data.overflowId] = MemoryOverflow{};
+        }
+
+        auto& overflow = m_memoryOverflow[data.overflowId];
+        overflow.extraMemories.push_back(entry);
+        overflow.trimToMax();
+        data.memoryCount = static_cast<uint16_t>(
+            NPCMemoryData::INLINE_MEMORY_COUNT + overflow.extraMemories.size());
+    } else {
+        // Overwrite oldest inline memory (circular buffer)
+        data.memories[data.nextInlineSlot] = entry;
+        data.nextInlineSlot = (data.nextInlineSlot + 1) % NPCMemoryData::INLINE_MEMORY_COUNT;
+        // memoryCount stays at INLINE_MEMORY_COUNT
+    }
+}
+
+void EntityDataManager::findMemoriesByType(size_t index, MemoryType type,
+                                           std::vector<const MemoryEntry*>& outMemories,
+                                           size_t maxResults) const {
+    outMemories.clear();
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+
+    const auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        return;
+    }
+
+    // Search inline memories
+    for (size_t i = 0; i < NPCMemoryData::INLINE_MEMORY_COUNT; ++i) {
+        const auto& mem = data.memories[i];
+        if (mem.isValid() && mem.type == type) {
+            outMemories.push_back(&mem);
+            if (maxResults > 0 && outMemories.size() >= maxResults) {
+                return;
+            }
+        }
+    }
+
+    // Search overflow if present
+    if (data.hasOverflow() && data.overflowId > 0) {
+        auto it = m_memoryOverflow.find(data.overflowId);
+        if (it != m_memoryOverflow.end()) {
+            for (const auto& mem : it->second.extraMemories) {
+                if (mem.isValid() && mem.type == type) {
+                    outMemories.push_back(&mem);
+                    if (maxResults > 0 && outMemories.size() >= maxResults) {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void EntityDataManager::findMemoriesOfEntity(size_t index, EntityHandle subject,
+                                              std::vector<const MemoryEntry*>& outMemories) const {
+    outMemories.clear();
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+
+    const auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        return;
+    }
+
+    // Search inline memories
+    for (const auto& mem : data.memories) {
+        if (mem.isValid() && mem.subject == subject) {
+            outMemories.push_back(&mem);
+        }
+    }
+
+    // Search overflow
+    if (data.hasOverflow() && data.overflowId > 0) {
+        auto it = m_memoryOverflow.find(data.overflowId);
+        if (it != m_memoryOverflow.end()) {
+            for (const auto& mem : it->second.extraMemories) {
+                if (mem.isValid() && mem.subject == subject) {
+                    outMemories.push_back(&mem);
+                }
+            }
+        }
+    }
+}
+
+void EntityDataManager::updateEmotionalDecay(size_t index, float deltaTime, float decayRate) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+
+    auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        return;
+    }
+
+    data.emotions.decay(decayRate, deltaTime);
+    data.lastDecayTime += deltaTime;
+    data.lastCombatTime += deltaTime;  // Enable delta-based combat timing for isUnderRecentAttack()
+
+    // Clear combat flag when enough time has passed since last event
+    constexpr float COMBAT_TIMEOUT = 5.0f;
+    if ((data.flags & NPCMemoryData::FLAG_IN_COMBAT) && data.lastCombatTime > COMBAT_TIMEOUT) {
+        data.flags &= ~NPCMemoryData::FLAG_IN_COMBAT;
+    }
+
+}
+
+void EntityDataManager::modifyEmotions(size_t index, float aggression, float fear,
+                                        float curiosity, float suspicion) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+
+    auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        return;
+    }
+
+    data.emotions.aggression = std::clamp(data.emotions.aggression + aggression, 0.0f, 1.0f);
+    data.emotions.fear = std::clamp(data.emotions.fear + fear, 0.0f, 1.0f);
+    data.emotions.curiosity = std::clamp(data.emotions.curiosity + curiosity, 0.0f, 1.0f);
+    data.emotions.suspicion = std::clamp(data.emotions.suspicion + suspicion, 0.0f, 1.0f);
+}
+
+void EntityDataManager::recordCombatEvent(size_t index, EntityHandle attacker,
+                                           EntityHandle target, float damage, bool wasAttacked,
+                                           float gameTime) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+
+    auto& memData = m_memoryData[index];
+    if (!memData.isValid()) {
+        initMemoryData(index);
+    }
+
+    // Update aggregate stats (pure data)
+    if (wasAttacked) {
+        memData.lastAttacker = attacker;
+        memData.totalDamageReceived += damage;
+    } else {
+        memData.lastTarget = target;
+        memData.totalDamageDealt += damage;
+    }
+
+    memData.lastCombatTime = 0.0f;  // Delta semantics: starts at 0, incremented by updateEmotionalDecay
+    memData.combatEncounters++;
+    memData.flags |= NPCMemoryData::FLAG_IN_COMBAT;
+
+    // Create memory entry
+    MemoryEntry mem;
+    mem.subject = wasAttacked ? attacker : target;
+    if (index < m_hotData.size()) {
+        mem.location = m_hotData[index].transform.position;
+    }
+    mem.timestamp = gameTime;
+    mem.value = damage;
+    mem.type = wasAttacked ? MemoryType::DamageReceived : MemoryType::DamageDealt;
+    mem.importance = static_cast<uint8_t>(std::min(255.0f, damage * 2.0f));
+    mem.flags = MemoryEntry::FLAG_VALID;
+    addMemory(index, mem, true);  // Use overflow for combat (important history)
+}
+
+void EntityDataManager::addLocationToHistory(size_t index, const Vector2D& location) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+
+    auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        return;
+    }
+
+    // Circular buffer for location history
+    size_t slot = data.locationCount % NPCMemoryData::INLINE_LOCATION_COUNT;
+    data.locationHistory[slot] = location;
+    if (data.locationCount < NPCMemoryData::INLINE_LOCATION_COUNT) {
+        data.locationCount++;
+    }
+}
+
+// ============================================================================
 // SIMULATION TIER MANAGEMENT
 // ============================================================================
 
@@ -2595,7 +3000,7 @@ void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
 
 #ifndef NDEBUG
         // Rolling log every 60 seconds using time-based check
-        static auto lastLogTime = std::chrono::steady_clock::now();
+        thread_local auto lastLogTime = std::chrono::steady_clock::now();
         auto now = std::chrono::steady_clock::now();
         if (std::chrono::duration_cast<std::chrono::seconds>(now - lastLogTime).count() >= 60) {
             lastLogTime = now;
@@ -2961,6 +3366,25 @@ void EntityDataManager::initializeClassRegistry() {
                 info.basePriority = c.hasKey("basePriority") ? static_cast<uint8_t>(c["basePriority"].asInt()) : 5;
                 info.defaultFaction = c.hasKey("defaultFaction") ? static_cast<uint8_t>(c["defaultFaction"].asInt()) : 0;
 
+                // Commerce
+                info.isMerchant = c.hasKey("isMerchant") ? c["isMerchant"].asBool() : false;
+
+                // Emotional resilience (0.0 = very emotional, 1.0 = stoic)
+                info.emotionalResilience = c.hasKey("emotionalResilience") ?
+                    static_cast<float>(c["emotionalResilience"].asNumber()) : 0.5f;
+
+                // Starting items
+                if (c.hasKey("startingItems") && c["startingItems"].isArray()) {
+                    for (size_t j = 0; j < c["startingItems"].size(); ++j) {
+                        const auto& item = c["startingItems"][j];
+                        if (item.hasKey("id") && item["id"].isString()) {
+                            std::string itemId = item["id"].asString();
+                            int qty = item.hasKey("quantity") ? item["quantity"].asInt() : 1;
+                            info.startingItems.emplace_back(itemId, qty);
+                        }
+                    }
+                }
+
                 uint8_t classId = static_cast<uint8_t>(m_classIdToName.size());
                 m_classRegistry[id] = info;
                 m_classNameToId[id] = classId;
@@ -2977,23 +3401,24 @@ void EntityDataManager::initializeClassRegistry() {
     // Fallback defaults
     ENTITY_WARN(std::format("Failed to load classes from {}, using defaults", jsonPath));
 
-    m_classRegistry["Warrior"] = {"Warrior", 1.3f, 1.0f, 0.9f, 1.5f, 1.0f, "Chase", 7, 1};
+    // emotionalResilience: 0.7 for warriors, 0.8 for guards, 0.3 for merchants, etc.
+    m_classRegistry["Warrior"] = {"Warrior", 1.3f, 1.0f, 0.9f, 1.5f, 1.0f, "Chase", 7, 1, false, 0.7f, {}};
     m_classNameToId["Warrior"] = 0; m_classIdToName.push_back("Warrior");
 
-    m_classRegistry["Guard"] = {"Guard", 1.2f, 1.1f, 0.8f, 1.2f, 1.0f, "Guard", 6, 0};
+    m_classRegistry["Guard"] = {"Guard", 1.2f, 1.1f, 0.8f, 1.2f, 1.0f, "Guard", 6, 0, false, 0.8f, {}};
     m_classNameToId["Guard"] = 1; m_classIdToName.push_back("Guard");
 
-    m_classRegistry["Merchant"] = {"Merchant", 0.7f, 0.8f, 0.9f, 0.3f, 0.5f, "Idle", 2, 0};
-    m_classNameToId["Merchant"] = 2; m_classIdToName.push_back("Merchant");
+    m_classRegistry["GeneralMerchant"] = {"GeneralMerchant", 0.7f, 0.8f, 0.9f, 0.3f, 0.5f, "Idle", 2, 0, true, 0.3f, {}};
+    m_classNameToId["GeneralMerchant"] = 2; m_classIdToName.push_back("GeneralMerchant");
 
-    m_classRegistry["Rogue"] = {"Rogue", 0.8f, 1.3f, 1.3f, 1.2f, 0.8f, "Chase", 8, 1};
+    m_classRegistry["Rogue"] = {"Rogue", 0.8f, 1.3f, 1.3f, 1.2f, 0.8f, "Chase", 8, 1, false, 0.5f, {}};
     m_classNameToId["Rogue"] = 3; m_classIdToName.push_back("Rogue");
 
-    m_classRegistry["Mage"] = {"Mage", 0.6f, 1.5f, 0.85f, 1.8f, 2.5f, "Attack", 7, 2};
+    m_classRegistry["Mage"] = {"Mage", 0.6f, 1.5f, 0.85f, 1.8f, 2.5f, "Attack", 7, 2, false, 0.4f, {}};
     m_classNameToId["Mage"] = 4; m_classIdToName.push_back("Mage");
 
-    m_classRegistry["Villager"] = {"Villager", 0.8f, 0.9f, 1.0f, 0.5f, 0.5f, "Wander", 3, 0};
-    m_classNameToId["Villager"] = 5; m_classIdToName.push_back("Villager");
+    m_classRegistry["Farmer"] = {"Farmer", 0.9f, 1.1f, 1.0f, 0.5f, 0.5f, "Wander", 3, 0, true, 0.4f, {}};
+    m_classNameToId["Farmer"] = 5; m_classIdToName.push_back("Farmer");
 
     ENTITY_INFO(std::format("Initialized class registry with {} classes (fallback)", m_classRegistry.size()));
 }
