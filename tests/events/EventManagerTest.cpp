@@ -20,7 +20,6 @@
 #include "collisions/CollisionInfo.hpp"
 #include "events/CameraEvent.hpp"
 #include "events/CollisionObstacleChangedEvent.hpp"
-#include "events/CombatEvent.hpp"
 #include "events/EntityEvents.hpp"
 #include "events/Event.hpp"
 #include "events/ParticleEffectEvent.hpp"
@@ -707,42 +706,6 @@ BOOST_FIXTURE_TEST_CASE(TriggerDamage_DispatchesToHandlers, EventManagerFixture)
   bool ok = EventManager::Instance().triggerDamage(EventManager::DispatchMode::Immediate);
   BOOST_CHECK(ok);
   BOOST_CHECK(combatHandlerCalled.load());
-
-  EventManager::Instance().removeHandler(tok);
-}
-
-BOOST_FIXTURE_TEST_CASE(CombatEvent_DoesNotEnterDamagePipeline, EventManagerFixture) {
-  auto& edm = EntityDataManager::Instance();
-  EntityHandle playerHandle = edm.registerPlayer(9150, Vector2D(100.0f, 100.0f));
-  BOOST_REQUIRE(playerHandle.isValid());
-
-  auto& playerData = edm.getCharacterData(playerHandle);
-  playerData.maxHealth = 100.0f;
-  playerData.health = 100.0f;
-
-  std::atomic<int> combatHandlerCalls{0};
-  auto tok = EventManager::Instance().registerHandlerWithToken(
-      EventTypeId::CombatNotification, [&combatHandlerCalls](const EventData& data) {
-        if (data.isActive()) {
-          combatHandlerCalls.fetch_add(1);
-        }
-      });
-
-  auto immediateCombatEvent = std::make_shared<CombatEvent>(
-      CombatEventType::PlayerAttacked, nullptr, nullptr, 25.0f);
-  BOOST_CHECK(EventManager::Instance().dispatchEvent(
-      immediateCombatEvent, EventManager::DispatchMode::Immediate));
-  BOOST_CHECK_EQUAL(combatHandlerCalls.load(), 1);
-  BOOST_CHECK_CLOSE(edm.getCharacterData(playerHandle).health, 100.0f, 0.01f);
-
-  auto deferredCombatEvent = std::make_shared<CombatEvent>(
-      CombatEventType::NPCKilled, nullptr, nullptr, 50.0f);
-  BOOST_CHECK(EventManager::Instance().dispatchEvent(
-      deferredCombatEvent, EventManager::DispatchMode::Deferred));
-  EventManager::Instance().update();
-
-  BOOST_CHECK_EQUAL(combatHandlerCalls.load(), 2);
-  BOOST_CHECK_CLOSE(edm.getCharacterData(playerHandle).health, 100.0f, 0.01f);
 
   EventManager::Instance().removeHandler(tok);
 }

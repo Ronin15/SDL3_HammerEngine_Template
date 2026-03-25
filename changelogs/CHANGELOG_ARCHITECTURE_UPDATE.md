@@ -229,8 +229,6 @@ New CombatController handles:
 **Files Added:**
 - `include/controllers/combat/CombatController.hpp`
 - `src/controllers/combat/CombatController.cpp`
-- `include/events/CombatEvent.hpp`
-- `src/events/CombatEvent.cpp`
 - `docs/controllers/CombatController.md`
 - `docs/events/CombatEvent.md`
 

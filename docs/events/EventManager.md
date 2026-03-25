@@ -112,7 +112,6 @@ Time, Combat, Entity, BehaviorMessage
 Key event types:
 
 - `BehaviorMessage` covers inter-entity AI signaling such as `RAISE_ALERT`
-- `CombatNotification` is the notification/event-log side of combat
 - `DamageEvent` under `EventTypeId::Combat` is the hot path for gameplay damage
 - theft/social flows emit normal event traffic instead of bespoke controller-only state
 - `ResourceChangeEvent` is reused heavily by inventory, harvesting, and UI sync paths
@@ -130,8 +129,6 @@ Key event types:
 7. dispatch subscribed combat handlers after the built-in processing step
 
 Immediate combat events follow the same processing order synchronously. Deferred combat events may use WorkerBudget-guided parallel preparation before their main-thread commit step.
-
-`CombatEvent` instances are routed separately through `EventTypeId::CombatNotification` and skip this mutation pipeline.
 
 ## Common Patterns
 

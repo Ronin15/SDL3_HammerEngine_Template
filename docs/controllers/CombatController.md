@@ -11,7 +11,7 @@
 - short-lived target HUD state
 - reusable query buffers for nearby AI targets
 
-The current branch no longer uses the old `CombatEvent` orchestration described in earlier docs. The controller performs hit detection by querying nearby AI/EDM entities directly, applies damage through the current gameplay path, and updates UI-facing state plus the gameplay event log.
+The controller performs hit detection by querying nearby AI/EDM entities directly, applies damage through the `DamageEvent` gameplay path, and updates UI-facing state plus the gameplay event log.
 
 ## Core API
 

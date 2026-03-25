@@ -746,7 +746,6 @@ BOOST_FIXTURE_TEST_CASE(TimeEventBaseClass, EventTypesFixture) {
 #include "events/CameraEvent.hpp"
 #include "events/CollisionEvent.hpp"
 #include "events/CollisionObstacleChangedEvent.hpp"
-#include "events/CombatEvent.hpp"
 #include "events/HarvestResourceEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "events/WorldEvent.hpp"
@@ -771,8 +770,7 @@ BOOST_AUTO_TEST_CASE(TestEventTypeIdEnumValues) {
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Combat), 13);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Entity), 14);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::BehaviorMessage), 15);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::CombatNotification), 16);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 17);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 16);
 }
 
 // Test ResourceChangeEvent
@@ -934,29 +932,6 @@ BOOST_FIXTURE_TEST_CASE(CollisionObstacleChangedEventBasics, EventTypesFixture) 
     BOOST_CHECK_EQUAL(event.getDescription(), "obstacle_removed");
 }
 
-// Test CombatEvent
-BOOST_FIXTURE_TEST_CASE(CombatEventBasics, EventTypesFixture) {
-    auto attacker = std::make_shared<Player>();
-    auto target = std::make_shared<Player>();
-
-    CombatEvent event(CombatEventType::PlayerAttacked, attacker.get(), target.get());
-
-    BOOST_CHECK_EQUAL(event.getName(), "CombatEvent_PlayerAttacked");
-    BOOST_CHECK_EQUAL(event.getType(), "Combat");
-    BOOST_CHECK(event.getTypeId() == EventTypeId::CombatNotification);
-    BOOST_CHECK(event.getCombatType() == CombatEventType::PlayerAttacked);
-    BOOST_CHECK(event.getAttacker() == attacker.get());
-    BOOST_CHECK(event.getTarget() == target.get());
-
-    // Test different combat event types
-    CombatEvent damageEvent(CombatEventType::NPCDamaged, attacker.get(), target.get(), 25.0f);
-    BOOST_CHECK(damageEvent.getCombatType() == CombatEventType::NPCDamaged);
-    BOOST_CHECK_EQUAL(damageEvent.getDamage(), 25.0f);
-
-    CombatEvent deathEvent(CombatEventType::NPCKilled, attacker.get(), target.get());
-    BOOST_CHECK(deathEvent.getCombatType() == CombatEventType::NPCKilled);
-}
-
 // Test all event types return correct TypeId
 BOOST_FIXTURE_TEST_CASE(AllEventTypesReturnCorrectTypeId, EventTypesFixture) {
   // Weather
@@ -1011,10 +986,4 @@ BOOST_FIXTURE_TEST_CASE(AllEventTypesReturnCorrectTypeId, EventTypesFixture) {
   // Time
   HourChangedEvent timeEvent(12, false);
   BOOST_CHECK(timeEvent.getTypeId() == EventTypeId::Time);
-
-  // Combat
-  auto attacker = std::make_shared<Player>();
-  auto target = std::make_shared<Player>();
-  CombatEvent combatEvent(CombatEventType::PlayerAttacked, attacker.get(), target.get());
-  BOOST_CHECK(combatEvent.getTypeId() == EventTypeId::CombatNotification);
 }
