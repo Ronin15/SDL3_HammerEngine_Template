@@ -10,7 +10,9 @@
 #include "world/WorldGenerator.hpp"
 #include "managers/GameTimeManager.hpp"
 #include "utils/Vector2D.hpp"
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <atomic>
 #include <shared_mutex>
@@ -533,8 +535,9 @@ public:
     bool loadWorld(const std::string& worldId);
     void unloadWorld();
 
-    const HammerEngine::Tile* getTileAt(int x, int y) const;
-    HammerEngine::Tile* getTileAt(int x, int y);
+    std::optional<HammerEngine::Tile> getTileCopyAt(int x, int y) const;
+    std::optional<HammerEngine::Biome> getTileBiomeAt(int x, int y) const;
+    std::optional<HammerEngine::ObstacleType> getTileObstacleTypeAt(int x, int y) const;
 
     bool isValidPosition(int x, int y) const;
     std::string getCurrentWorldId() const;
@@ -622,6 +625,7 @@ public:
 #endif
 
     bool handleHarvestResource(int entityId, int targetX, int targetY);
+    bool modifyTile(int x, int y, const std::function<void(HammerEngine::Tile&)>& mutator);
     bool updateTile(int x, int y, const HammerEngine::Tile& newTile);
 
     void enableRendering(bool enable) { m_renderingEnabled = enable; }
@@ -684,6 +688,7 @@ private:
     void fireWorldUnloadedEvent(const std::string& worldId);
     void initializeWorldResources();
     void unloadWorldUnsafe();  // Internal method - assumes caller already holds lock
+    bool applyTileUpdateLocked(int x, int y, const HammerEngine::Tile& newTile);
 
     std::unique_ptr<HammerEngine::WorldData> m_currentWorld;
     std::unique_ptr<HammerEngine::TileRenderer> m_tileRenderer;

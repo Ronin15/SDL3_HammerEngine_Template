@@ -789,13 +789,14 @@ void GamePlayState::handleInput() {
 
       auto &worldMgr = WorldManager::Instance();
       if (worldMgr.isValidPosition(tileX, tileY)) {
-        const auto *tile = worldMgr.getTileAt(tileX, tileY);
+        const auto biome = worldMgr.getTileBiomeAt(tileX, tileY);
+        const auto obstacleType = worldMgr.getTileObstacleTypeAt(tileX, tileY);
         // Log tile information for debugging
         GAMEPLAY_DEBUG_IF(
-            tile,
+            biome.has_value() && obstacleType.has_value(),
             std::format("Clicked tile ({}, {}) - Biome: {}, Obstacle: {}",
-                        tileX, tileY, tile ? static_cast<int>(tile->biome) : 0,
-                        tile ? static_cast<int>(tile->obstacleType) : 0));
+                        tileX, tileY, static_cast<int>(*biome),
+                        static_cast<int>(*obstacleType)));
       }
     }
   }

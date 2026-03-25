@@ -93,8 +93,12 @@ BOOST_AUTO_TEST_CASE(TestHarvestResourceIntegration) {
     int targetX=-1, targetY=-1;
     for (int y=0; y<cfg.height && targetX==-1; ++y) {
         for (int x=0; x<cfg.width; ++x) {
-            const Tile* t = WorldManager::Instance().getTileAt(x,y);
-            if (t && t->obstacleType != ObstacleType::NONE) { targetX=x; targetY=y; break; }
+            const auto tile = WorldManager::Instance().getTileCopyAt(x, y);
+            if (tile.has_value() && tile->obstacleType != ObstacleType::NONE) {
+                targetX = x;
+                targetY = y;
+                break;
+            }
         }
     }
     BOOST_REQUIRE_MESSAGE(targetX!=-1 && targetY!=-1, "No obstacle tile found to harvest in generated world");
@@ -135,8 +139,8 @@ BOOST_AUTO_TEST_CASE(TestHarvestResourceIntegration) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    const Tile* after = WorldManager::Instance().getTileAt(targetX, targetY);
-    BOOST_REQUIRE(after != nullptr);
+    const auto after = WorldManager::Instance().getTileCopyAt(targetX, targetY);
+    BOOST_REQUIRE(after.has_value());
     BOOST_CHECK_EQUAL(after->obstacleType, ObstacleType::NONE);
     BOOST_CHECK_GE(tileChangedCount.load(), 1);
 

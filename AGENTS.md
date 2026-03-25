@@ -70,6 +70,8 @@ See `tests/TESTING.md` for comprehensive documentation.
 
 **Params**: `const T&` for read-only, `T&` for mutation, value only for primitives. `const std::string&` for map lookups (never string_view→string conversion).
 
+**Access Patterns**: Prefer `std::span`, `std::string_view`, `std::optional`, and explicit read/mutate APIs over raw arrays, raw pointer escape paths, and nullable pointer-return accessors. Do not add new compatibility overloads that preserve legacy raw-pointer access during cleanups unless explicitly required.
+
 **Naming**: UpperCamelCase (classes) | lowerCamelCase (functions/vars) | `m_`/`mp_` prefixes | ALL_CAPS (constants)
 
 **Headers**: `.hpp` C++, `.h` C | Forward declarations | Non-trivial logic in .cpp
@@ -196,6 +198,8 @@ m_controllers.get<WeatherController>()->getCurrentWeather();
 Always use established systems and patterns (UIManager helpers, state architecture, existing constants). NEVER create ad-hoc or one-off implementations when a pattern already exists — read the existing code first.
 
 Prefer minimal, architecturally performant, and efficient solutions. Do not add unnecessary abstractions, statistical analysis, or safety checks beyond what was asked.
+
+When tightening APIs for safety, finish the migration in production code and tests in the same change. Do not leave legacy call paths behind if the new API is intended to replace them.
 
 When the user names a specific file (e.g., "AIDemoState"), work on exactly that file. Do not substitute similar-sounding files.
 

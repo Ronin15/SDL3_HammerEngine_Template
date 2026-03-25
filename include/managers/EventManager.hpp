@@ -31,6 +31,7 @@
 #include <queue>
 #include <shared_mutex>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 #include <limits>
@@ -463,7 +464,6 @@ public:
 
 private:
   struct PreparedCombatEvent {
-    DamageEvent* pDamageEvent{nullptr};
     EntityHandle attackerHandle{};
     EntityHandle targetHandle{};
     size_t targetIdx{SIZE_MAX};
@@ -546,10 +546,10 @@ private:
   mutable std::vector<std::future<void>> m_combatPrepFutures;
 
   void dispatchPendingEvent(const PendingDispatch& pendingDispatch,
-                            const char* errorContext) const;
+                            std::string_view errorContext) const;
   void dispatchPendingEventWithHandlers(const PendingDispatch& pendingDispatch,
                                         const std::vector<HandlerEntry>& typeHandlers,
-                                        const char* errorContext) const;
+                                        std::string_view errorContext) const;
   PreparedCombatEvent prepareCombatEvent(const PendingDispatch& pendingDispatch) const;
   void prepareCombatBatch(size_t startCombatIndex, size_t endCombatIndex) const;
   void commitPreparedCombatEvent(const PendingDispatch& pendingDispatch,
@@ -564,7 +564,7 @@ private:
 
   // Consolidated dispatch helper
   bool dispatchEvent(EventTypeId typeId, EventData& eventData, DispatchMode mode,
-                     const char* errorContext = "dispatchEvent") const;
+                     std::string_view errorContext = "dispatchEvent") const;
 
   // Release pooled events back to their pools after dispatch
   void releaseEventToPool(EventTypeId typeId, const EventPtr& event) const;

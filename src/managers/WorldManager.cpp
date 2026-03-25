@@ -184,24 +184,35 @@ void WorldManager::unloadWorldUnsafe() {
   }
 }
 
-const HammerEngine::Tile *WorldManager::getTileAt(int x, int y) const {
+std::optional<HammerEngine::Tile> WorldManager::getTileCopyAt(int x, int y) const {
   std::shared_lock<std::shared_mutex> lock(m_worldMutex);
 
   if (!m_currentWorld || !isValidPosition(x, y)) {
-    return nullptr;
+    return std::nullopt;
   }
 
-  return &m_currentWorld->grid[y][x];
+  return m_currentWorld->grid[y][x];
 }
 
-HammerEngine::Tile *WorldManager::getTileAt(int x, int y) {
+std::optional<HammerEngine::Biome> WorldManager::getTileBiomeAt(int x, int y) const {
   std::shared_lock<std::shared_mutex> lock(m_worldMutex);
 
   if (!m_currentWorld || !isValidPosition(x, y)) {
-    return nullptr;
+    return std::nullopt;
   }
 
-  return &m_currentWorld->grid[y][x];
+  return m_currentWorld->grid[y][x].biome;
+}
+
+std::optional<HammerEngine::ObstacleType>
+WorldManager::getTileObstacleTypeAt(int x, int y) const {
+  std::shared_lock<std::shared_mutex> lock(m_worldMutex);
+
+  if (!m_currentWorld || !isValidPosition(x, y)) {
+    return std::nullopt;
+  }
+
+  return m_currentWorld->grid[y][x].obstacleType;
 }
 
 bool WorldManager::isValidPosition(int x, int y) const {
@@ -375,7 +386,29 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile &newTile) {
   }
 
   std::lock_guard<std::shared_mutex> lock(m_worldMutex);
+  return applyTileUpdateLocked(x, y, newTile);
+}
 
+bool WorldManager::modifyTile(
+    int x, int y, const std::function<void(HammerEngine::Tile&)>& mutator) {
+  if (!m_initialized.load(std::memory_order_acquire) || !m_currentWorld) {
+    WORLD_MANAGER_ERROR("WorldManager not initialized or no active world");
+    return false;
+  }
+
+  std::lock_guard<std::shared_mutex> lock(m_worldMutex);
+  if (!isValidPosition(x, y)) {
+    WORLD_MANAGER_ERROR(std::format("Invalid tile position: ({}, {})", x, y));
+    return false;
+  }
+
+  HammerEngine::Tile updatedTile = m_currentWorld->grid[y][x];
+  mutator(updatedTile);
+  return applyTileUpdateLocked(x, y, updatedTile);
+}
+
+bool WorldManager::applyTileUpdateLocked(int x, int y,
+                                         const HammerEngine::Tile &newTile) {
   if (!isValidPosition(x, y)) {
     WORLD_MANAGER_ERROR(std::format("Invalid tile position: ({}, {})", x, y));
     return false;
@@ -391,10 +424,9 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile &newTile) {
       oldTile.buildingSize == newTile.buildingSize &&
       oldTile.isTopLeftOfBuilding == newTile.isTopLeftOfBuilding &&
       oldTile.isWater == newTile.isWater) {
-    return true; // No visual change, skip chunk invalidation
+    return true;
   }
 
-  // Check if change affects sprite overhang (obstacles/buildings have tall sprites)
   const bool hasOverhangChange =
       (oldTile.obstacleType != newTile.obstacleType ||
        oldTile.buildingId != newTile.buildingId ||
@@ -403,19 +435,15 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile &newTile) {
 
   m_currentWorld->grid[y][x] = newTile;
 
-  // Invalidate chunk containing this tile AND adjacent chunks only if sprite
-  // overhang is affected. Sprites can extend up to 2 tiles into neighbors.
   if (m_tileRenderer) {
-    constexpr int chunkSize = 16;    // TileRenderer::CHUNK_SIZE
-    constexpr int overhangTiles = 2; // SPRITE_OVERHANG (64) / TILE_SIZE (32)
+    constexpr int chunkSize = 16;
+    constexpr int overhangTiles = 2;
 
     const int chunkX = x / chunkSize;
     const int chunkY = y / chunkSize;
 
-    // Primary chunk always invalidated when tile changes
     m_tileRenderer->invalidateChunk(chunkX, chunkY);
 
-    // Neighbors only invalidated for sprite overhang changes (obstacles/buildings)
     if (hasOverhangChange) {
       const int localX = x % chunkSize;
       const int localY = y % chunkSize;
@@ -437,8 +465,6 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile &newTile) {
       if (nearBottom) {
         m_tileRenderer->invalidateChunk(chunkX, chunkY + 1);
       }
-
-      // Diagonal neighbors only if near both edges
       if (nearLeft && nearTop) {
         m_tileRenderer->invalidateChunk(chunkX - 1, chunkY - 1);
       }
@@ -455,7 +481,6 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile &newTile) {
   }
 
   fireTileChangedEvent(x, y, newTile);
-
   return true;
 }
 

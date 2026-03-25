@@ -448,10 +448,9 @@ bool WeatherEvent::isInRegion() const {
   // If WorldManager is unavailable, permit by default to avoid false negatives
   // in contexts where the world isn't loaded yet
   bool worldAvailable = false;
-  const WorldManager* wmPtr = nullptr;
   try {
-    wmPtr = &WorldManager::Instance();
-    worldAvailable = wmPtr->isInitialized() && wmPtr->hasActiveWorld();
+    const auto& worldManager = WorldManager::Instance();
+    worldAvailable = worldManager.isInitialized() && worldManager.hasActiveWorld();
   } catch (...) {
     worldAvailable = false;
   }
@@ -464,8 +463,8 @@ bool WeatherEvent::isInRegion() const {
   int tx = static_cast<int>(playerPos.getX());
   int ty = static_cast<int>(playerPos.getY());
 
-  const HammerEngine::Tile* tile = wmPtr->getTileAt(tx, ty);
-  if (!tile) {
+  const auto tileBiome = WorldManager::Instance().getTileBiomeAt(tx, ty);
+  if (!tileBiome.has_value()) {
     return false;
   }
 
@@ -483,7 +482,7 @@ bool WeatherEvent::isInRegion() const {
     }
   };
 
-  std::string currentRegion = biomeToString(tile->biome);
+  std::string currentRegion = biomeToString(*tileBiome);
 
   // Normalize m_regionName to uppercase for comparison
   std::string desired = m_regionName;

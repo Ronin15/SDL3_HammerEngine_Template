@@ -10,6 +10,7 @@
 #include "events/WeatherEvent.hpp"
 #include "managers/GameTimeManager.hpp"
 #include <string>
+#include <string_view>
 
 /**
  * @brief Time of day periods for visual effects
@@ -297,7 +298,7 @@ public:
     TimePeriod getPreviousPeriod() const { return m_previousPeriod; }
     const TimePeriodVisuals& getVisuals() const { return m_visuals; }
 
-    const char* getPeriodName() const
+    std::string_view getPeriodName() const
     {
         switch (m_period) {
             case TimePeriod::Morning: return "Morning";

@@ -631,7 +631,7 @@ bool EventManager::dispatchEvent(const EventPtr& event, DispatchMode mode) const
 // ==================== Internal Dispatch ====================
 
 bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
-                                 DispatchMode mode, const char *errorContext) const {
+                                 DispatchMode mode, std::string_view errorContext) const {
   if (mode == DispatchMode::Immediate) {
     const PendingDispatch pendingDispatch{0, typeId, eventData};
     const auto damageEvent = typeId == EventTypeId::Combat && eventData.event
@@ -748,7 +748,7 @@ void EventManager::enqueueBatch(std::vector<DeferredEvent>&& events) const {
 }
 
 void EventManager::dispatchPendingEvent(const PendingDispatch& pendingDispatch,
-                                        const char* errorContext) const {
+                                        std::string_view errorContext) const {
   std::shared_lock<std::shared_mutex> lock(m_handlersMutex);
   const auto& typeHandlers =
       m_handlersByType[static_cast<size_t>(pendingDispatch.typeId)];
@@ -759,7 +759,7 @@ void EventManager::dispatchPendingEvent(const PendingDispatch& pendingDispatch,
 void EventManager::dispatchPendingEventWithHandlers(
     const PendingDispatch& pendingDispatch,
     const std::vector<HandlerEntry>& typeHandlers,
-    const char* errorContext) const {
+    std::string_view errorContext) const {
   if (typeHandlers.empty()) {
     return;
   }
@@ -793,7 +793,6 @@ EventManager::prepareCombatEvent(const PendingDispatch& pendingDispatch) const {
   auto& edm = EntityDataManager::Instance();
   const EntityHandle targetHandle = damageEvent->getTarget();
   const EntityHandle attackerHandle = damageEvent->getSource();
-  preparedCombat.pDamageEvent = damageEvent.get();
   preparedCombat.targetHandle = targetHandle;
   preparedCombat.attackerHandle = attackerHandle;
   const size_t targetIdx = edm.getIndex(targetHandle);

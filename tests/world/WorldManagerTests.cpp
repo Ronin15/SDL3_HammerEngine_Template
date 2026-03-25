@@ -168,27 +168,27 @@ BOOST_AUTO_TEST_CASE(TestGetTileAt) {
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
     
     // Test valid positions
-    const Tile* tile = worldManager->getTileAt(5, 5);
-    BOOST_CHECK(tile != nullptr);
+    auto tile = worldManager->getTileCopyAt(5, 5);
+    BOOST_CHECK(tile.has_value());
     
-    tile = worldManager->getTileAt(0, 0);
-    BOOST_CHECK(tile != nullptr);
+    tile = worldManager->getTileCopyAt(0, 0);
+    BOOST_CHECK(tile.has_value());
     
-    tile = worldManager->getTileAt(9, 9);
-    BOOST_CHECK(tile != nullptr);
+    tile = worldManager->getTileCopyAt(9, 9);
+    BOOST_CHECK(tile.has_value());
     
     // Test invalid positions
-    tile = worldManager->getTileAt(-1, 5);
-    BOOST_CHECK(tile == nullptr);
+    tile = worldManager->getTileCopyAt(-1, 5);
+    BOOST_CHECK(!tile.has_value());
     
-    tile = worldManager->getTileAt(5, -1);
-    BOOST_CHECK(tile == nullptr);
+    tile = worldManager->getTileCopyAt(5, -1);
+    BOOST_CHECK(!tile.has_value());
     
-    tile = worldManager->getTileAt(10, 5);
-    BOOST_CHECK(tile == nullptr);
+    tile = worldManager->getTileCopyAt(10, 5);
+    BOOST_CHECK(!tile.has_value());
     
-    tile = worldManager->getTileAt(5, 10);
-    BOOST_CHECK(tile == nullptr);
+    tile = worldManager->getTileCopyAt(5, 10);
+    BOOST_CHECK(!tile.has_value());
 }
 
 BOOST_AUTO_TEST_CASE(TestIsValidPosition) {
@@ -229,8 +229,8 @@ BOOST_AUTO_TEST_CASE(TestUpdateTile) {
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
     
     // Get original tile
-    const Tile* originalTile = worldManager->getTileAt(2, 2);
-    BOOST_REQUIRE(originalTile != nullptr);
+    const auto originalTile = worldManager->getTileCopyAt(2, 2);
+    BOOST_REQUIRE(originalTile.has_value());
     
     // Create modified tile
     Tile newTile = *originalTile;
@@ -243,8 +243,8 @@ BOOST_AUTO_TEST_CASE(TestUpdateTile) {
     BOOST_CHECK(updateResult);
     
     // Verify the update
-    const Tile* updatedTile = worldManager->getTileAt(2, 2);
-    BOOST_REQUIRE(updatedTile != nullptr);
+    const auto updatedTile = worldManager->getTileCopyAt(2, 2);
+    BOOST_REQUIRE(updatedTile.has_value());
     BOOST_CHECK_EQUAL(updatedTile->biome, Biome::DESERT);
     BOOST_CHECK_EQUAL(updatedTile->obstacleType, ObstacleType::ROCK);
     BOOST_CHECK_CLOSE(updatedTile->elevation, 0.8f, 0.001f);
@@ -270,8 +270,8 @@ BOOST_AUTO_TEST_CASE(TestHarvestResource) {
     int obstacleX = -1, obstacleY = -1;
     for (int y = 0; y < 50; ++y) {
         for (int x = 0; x < 50; ++x) {
-            const Tile* tile = worldManager->getTileAt(x, y);
-            if (tile && tile->obstacleType != ObstacleType::NONE) {
+            const auto tile = worldManager->getTileCopyAt(x, y);
+            if (tile.has_value() && tile->obstacleType != ObstacleType::NONE) {
                 obstacleX = x;
                 obstacleY = y;
                 break;
@@ -285,8 +285,8 @@ BOOST_AUTO_TEST_CASE(TestHarvestResource) {
     BOOST_REQUIRE(obstacleY != -1);
     
     // Verify tile has obstacle before harvesting
-    const Tile* beforeHarvest = worldManager->getTileAt(obstacleX, obstacleY);
-    BOOST_REQUIRE(beforeHarvest != nullptr);
+    const auto beforeHarvest = worldManager->getTileCopyAt(obstacleX, obstacleY);
+    BOOST_REQUIRE(beforeHarvest.has_value());
     BOOST_CHECK(beforeHarvest->obstacleType != ObstacleType::NONE);
     
     // Harvest the resource
@@ -294,8 +294,8 @@ BOOST_AUTO_TEST_CASE(TestHarvestResource) {
     BOOST_CHECK(harvestResult);
     
     // Verify tile no longer has obstacle
-    const Tile* afterHarvest = worldManager->getTileAt(obstacleX, obstacleY);
-    BOOST_REQUIRE(afterHarvest != nullptr);
+    const auto afterHarvest = worldManager->getTileCopyAt(obstacleX, obstacleY);
+    BOOST_REQUIRE(afterHarvest.has_value());
     BOOST_CHECK_EQUAL(afterHarvest->obstacleType, ObstacleType::NONE);
 }
 
@@ -315,8 +315,8 @@ BOOST_AUTO_TEST_CASE(TestHarvestEmptyTile) {
     int emptyX = -1, emptyY = -1;
     for (int y = 0; y < 10; ++y) {
         for (int x = 0; x < 10; ++x) {
-            const Tile* tile = worldManager->getTileAt(x, y);
-            if (tile && tile->obstacleType == ObstacleType::NONE) {
+            const auto tile = worldManager->getTileCopyAt(x, y);
+            if (tile.has_value() && tile->obstacleType == ObstacleType::NONE) {
                 emptyX = x;
                 emptyY = y;
                 break;
@@ -369,8 +369,8 @@ BOOST_AUTO_TEST_CASE(TestUnloadWorld) {
     BOOST_CHECK(worldManager->getCurrentWorldId().empty());
     
     // Verify tile access returns null after unload
-    const Tile* tile = worldManager->getTileAt(5, 5);
-    BOOST_CHECK(tile == nullptr);
+    const auto tile = worldManager->getTileCopyAt(5, 5);
+    BOOST_CHECK(!tile.has_value());
 }
 
 BOOST_AUTO_TEST_CASE(TestMultipleWorldLoads) {
@@ -548,8 +548,8 @@ BOOST_AUTO_TEST_CASE(TestChunkCacheOnTileUpdate) {
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
 
     // Get original tile
-    const Tile* originalTile = worldManager->getTileAt(5, 5);
-    BOOST_REQUIRE(originalTile != nullptr);
+    const auto originalTile = worldManager->getTileCopyAt(5, 5);
+    BOOST_REQUIRE(originalTile.has_value());
 
     // Create modified tile
     Tile newTile = *originalTile;
@@ -560,8 +560,8 @@ BOOST_AUTO_TEST_CASE(TestChunkCacheOnTileUpdate) {
     BOOST_CHECK(updateResult);
 
     // Verify the tile was updated
-    const Tile* updatedTile = worldManager->getTileAt(5, 5);
-    BOOST_REQUIRE(updatedTile != nullptr);
+    const auto updatedTile = worldManager->getTileCopyAt(5, 5);
+    BOOST_REQUIRE(updatedTile.has_value());
     BOOST_CHECK_EQUAL(updatedTile->biome, Biome::CELESTIAL);
 }
 
@@ -643,8 +643,8 @@ BOOST_AUTO_TEST_CASE(TestSeasonChangeUpdatesCache) {
     BOOST_CHECK(worldManager->isInitialized());
 
     // Tile access should still work
-    const Tile* tile = worldManager->getTileAt(5, 5);
-    BOOST_CHECK(tile != nullptr);
+    const auto tile = worldManager->getTileCopyAt(5, 5);
+    BOOST_CHECK(tile.has_value());
 }
 
 BOOST_AUTO_TEST_CASE(TestSeasonEventSubscription) {
@@ -717,8 +717,8 @@ BOOST_AUTO_TEST_CASE(TestChunkCacheClearedOnSeasonChange) {
 
     for (int y = 0; y < 5; ++y) {
         for (int x = 0; x < 5; ++x) {
-            const Tile* tile = worldManager->getTileAt(x, y);
-            BOOST_CHECK(tile != nullptr);
+            const auto tile = worldManager->getTileCopyAt(x, y);
+            BOOST_CHECK(tile.has_value());
         }
     }
 }

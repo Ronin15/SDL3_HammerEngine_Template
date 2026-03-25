@@ -171,9 +171,10 @@ BOOST_FIXTURE_TEST_CASE(RegionNameOnly_MismatchFails_MatchPasses, WeatherEventFi
     BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(cfg));
 
     // Force tile (0,0) biome to FOREST deterministically
-    auto* tile = WorldManager::Instance().getTileAt(0,0);
-    BOOST_REQUIRE(tile != nullptr);
+    auto tile = WorldManager::Instance().getTileCopyAt(0, 0);
+    BOOST_REQUIRE(tile.has_value());
     tile->biome = HammerEngine::Biome::FOREST;
+    BOOST_REQUIRE(WorldManager::Instance().updateTile(0, 0, *tile));
 
     auto evt = std::make_shared<WeatherEvent>("RegionTest", WeatherType::Cloudy);
     evt->setGeographicRegion("FOREST");
@@ -183,6 +184,7 @@ BOOST_FIXTURE_TEST_CASE(RegionNameOnly_MismatchFails_MatchPasses, WeatherEventFi
 
     // Change biome to DESERT, now region should not match
     tile->biome = HammerEngine::Biome::DESERT;
+    BOOST_REQUIRE(WorldManager::Instance().updateTile(0, 0, *tile));
     BOOST_CHECK(!evt->checkConditions());
 }
 
@@ -191,9 +193,10 @@ BOOST_FIXTURE_TEST_CASE(RegionAndBounds_BothMustPass, WeatherEventFixture) {
     HammerEngine::WorldGenerationConfig cfg{};
     cfg.width = 30; cfg.height = 30; cfg.seed = 5678; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
     BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(cfg));
-    auto* tile = WorldManager::Instance().getTileAt(0,0);
-    BOOST_REQUIRE(tile != nullptr);
+    auto tile = WorldManager::Instance().getTileCopyAt(0, 0);
+    BOOST_REQUIRE(tile.has_value());
     tile->biome = HammerEngine::Biome::FOREST;
+    BOOST_REQUIRE(WorldManager::Instance().updateTile(0, 0, *tile));
 
     auto evt = std::make_shared<WeatherEvent>("RegionBoundsTest", WeatherType::Cloudy);
     evt->setGeographicRegion("FOREST");
