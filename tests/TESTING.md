@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 72 test executables covering AI systems, AI behaviors, behavior state transitions, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTime simulation, controller systems, entity state management, entity data management, NPC memory system, background simulation, EDM integration tests, GPU rendering subsystem (when USE_SDL3_GPU=ON), GPU frame timing benchmarks, and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 78 test executables covering AI systems, AI behaviors, behavior state transitions, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTimeManager simulation, controller systems, entity state management, entity data management, NPC memory system, background simulation, EDM integration tests, GPU rendering subsystem (when USE_SDL3_GPU=ON), GPU frame timing benchmarks, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -63,10 +63,10 @@ The Hammer Game Engine has the following test suites:
 7. **Utility System Tests**
    - JsonReader Tests: RFC 8259 compliant JSON parser validation with comprehensive error handling and type safety testing
 
-8. **GameTime System Tests**
-   - GameTime Tests: Validate core time advancement, tick system, and time configuration
-   - GameTime Calendar Tests: Test fantasy calendar (months, days, year cycles)
-   - GameTime Season Tests: Validate seasonal transitions and weather probability changes
+8. **GameTimeManager Tests**
+   - GameTimeManager Tests: Validate core time advancement, tick system, and time configuration
+   - GameTimeManager Calendar Tests: Test fantasy calendar (months, days, year cycles)
+   - GameTimeManager Season Tests: Validate seasonal transitions and weather probability changes
 
 9. **Controller Tests**
    - ControllerRegistry Tests: Type-safe controller registration, lifecycle management, batch operations
@@ -105,10 +105,10 @@ The Hammer Game Engine has the following test suites:
     - GPU Renderer Tests: Full frame flow, pipeline/pool accessors, composite rendering
 
 **Test Execution Categories:**
-- **Core Tests** (17 suites): Fast functional validation (~4-8 minutes total)
-- **Benchmarks** (5 suites): Performance and scalability testing (~8-20 minutes total)
-- **GPU Tests** (8 suites): SDL3 GPU rendering validation (when USE_SDL3_GPU=ON)
-- **Total Coverage**: 71 test executables with comprehensive automation scripts
+- **Core Tests**: Fast functional validation (~4-8 minutes total)
+- **Benchmarks**: Performance and scalability testing (~8-20 minutes total)
+- **GPU Tests**: SDL3 GPU rendering validation (when USE_SDL3_GPU=ON)
+- **Total Coverage**: 78 test executables with comprehensive automation scripts
 
 ## Running Tests
 
@@ -131,7 +131,7 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 ./tests/test_scripts/run_collision_tests.sh             # Collision system and spatial hash tests
 ./tests/test_scripts/run_pathfinding_tests.sh           # Pathfinding algorithm and grid tests
 ./tests/test_scripts/run_pathfinder_ai_contention_tests.sh  # PathfinderManager & AIManager WorkerBudget coordination tests
-./tests/test_scripts/run_game_time_tests.sh               # GameTime system tests
+./tests/test_scripts/run_game_time_tests.sh               # GameTimeManager tests
 ./tests/test_scripts/run_controller_tests.sh              # Controller tests (Registry, Weather, DayNight)
 ./tests/test_scripts/run_entity_state_manager_tests.sh    # Entity state machine tests
 ./tests/test_scripts/run_entity_data_manager_tests.sh     # EntityDataManager and BackgroundSimulationManager tests
@@ -190,7 +190,7 @@ tests/test_scripts/run_save_tests.bat                   # Save manager and Binar
 tests/test_scripts/run_event_tests.bat                  # Event manager tests
 tests/test_scripts/run_collision_tests.bat              # Collision system and spatial hash tests
 tests/test_scripts/run_pathfinding_tests.bat            # Pathfinding algorithm and grid tests
-tests/test_scripts/run_game_time_tests.bat              # GameTime system tests
+tests/test_scripts/run_game_time_tests.bat              # GameTimeManager tests
 tests/test_scripts/run_controller_tests.bat             # Controller tests (Registry, Weather, DayNight)
 tests/test_scripts/run_entity_state_manager_tests.bat   # Entity state machine tests
 tests/test_scripts/run_entity_data_manager_tests.bat    # EntityDataManager and BackgroundSimulationManager tests
@@ -1038,7 +1038,7 @@ Located in `tests/core/`, these tests validate the fantasy calendar and time sim
    - Weather probability changes per season
    - Event dispatching on season change
 
-#### Running GameTime Tests
+#### Running GameTimeManager Tests
 
 ```bash
 # Linux/macOS
