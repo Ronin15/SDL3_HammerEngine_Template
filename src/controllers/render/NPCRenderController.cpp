@@ -15,6 +15,27 @@
 #include "utils/GPUSceneRenderer.hpp"
 #endif
 
+namespace {
+
+struct NPCSpriteView {
+    const std::shared_ptr<SDL_Texture>& textureOwner;
+    SDL_FRect srcRect;
+};
+
+[[nodiscard]] NPCSpriteView buildNPCSpriteView(const NPCRenderData& renderData) {
+    return {
+        renderData.textureOwner,
+        SDL_FRect{
+            static_cast<float>(renderData.atlasX + renderData.currentFrame * renderData.frameWidth),
+            static_cast<float>(renderData.atlasY + renderData.currentRow * renderData.frameHeight),
+            static_cast<float>(renderData.frameWidth),
+            static_cast<float>(renderData.frameHeight)
+        }
+    };
+}
+
+} // namespace
+
 void NPCRenderController::update(float deltaTime) {
     auto& edm = EntityDataManager::Instance();
 
@@ -54,22 +75,14 @@ void NPCRenderController::renderNPCs(SDL_Renderer* renderer, float cameraX, floa
         if (hot.kind != EntityKind::NPC) continue;
 
         const auto& r = edm.getNPCRenderDataByTypeIndex(hot.typeLocalIndex);
-        if (!r.textureOwner) { continue; }
+        const auto spriteView = buildNPCSpriteView(r);
+        if (!spriteView.textureOwner) { continue; }
 
         // Interpolate position
         float interpX = hot.transform.previousPosition.getX() +
             (hot.transform.position.getX() - hot.transform.previousPosition.getX()) * alpha;
         float interpY = hot.transform.previousPosition.getY() +
             (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
-
-        // All render state set by update() - just read and draw
-        // Add atlas offset to source rect for atlas-based rendering
-        SDL_FRect srcRect = {
-            static_cast<float>(r.atlasX + r.currentFrame * r.frameWidth),
-            static_cast<float>(r.atlasY + r.currentRow * r.frameHeight),
-            static_cast<float>(r.frameWidth),
-            static_cast<float>(r.frameHeight)
-        };
 
         float halfW = static_cast<float>(r.frameWidth) * 0.5f;
         float halfH = static_cast<float>(r.frameHeight) * 0.5f;
@@ -81,7 +94,7 @@ void NPCRenderController::renderNPCs(SDL_Renderer* renderer, float cameraX, floa
             static_cast<float>(r.frameHeight)
         };
 
-        SDL_RenderTextureRotated(renderer, r.textureOwner.get(), &srcRect, &destRect,
+        SDL_RenderTextureRotated(renderer, spriteView.textureOwner.get(), &spriteView.srcRect, &destRect,
                                   0.0, nullptr, static_cast<SDL_FlipMode>(r.flipMode));
     }
 }

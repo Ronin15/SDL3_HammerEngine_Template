@@ -71,6 +71,7 @@ See `tests/TESTING.md` for comprehensive documentation.
 **Params**: `const T&` for read-only, `T&` for mutation, value only for primitives. `const std::string&` for map lookups (never string_view→string conversion).
 
 **Access Patterns**: Prefer `std::span`, `std::string_view`, `std::optional`, and explicit read/mutate APIs over raw arrays, raw pointer escape paths, and nullable pointer-return accessors. Do not add new compatibility overloads that preserve legacy raw-pointer access during cleanups unless explicitly required.
+Stored raw pointers are not acceptable as ownership or long-lived cached state when a manager-owned handle/reference can be retained instead. If a C API requires a raw pointer, materialize it only at the final submission boundary.
 
 **Naming**: UpperCamelCase (classes) | lowerCamelCase (functions/vars) | `m_`/`mp_` prefixes | ALL_CAPS (constants)
 
@@ -139,6 +140,10 @@ AIBehaviorState temp; temp.pathPoints = compute(); // LOST!
 PathData& pd = *ctx.pathData; pathfinder().requestPathToEDM(ctx.edmIndex, ...);
 ```
 
+**EDM Render Ownership**: EDM render data stores manager-owned texture handles, not raw `SDL_Texture*`. `TextureManager` remains the texture owner/cache; EDM retains `std::shared_ptr<SDL_Texture>` handles and render/controllers call `.get()` only at the final SDL draw site.
+
+**Render Controller Pattern**: Keep EDM render controllers mechanically aligned: fetch hot data, fetch render data by reference, select the active texture owner, skip null, compute src/dst rects, then submit. Do not copy `shared_ptr` in visible-entity loops.
+
 ## SIMD
 
 Cross-platform: `include/utils/SIMDMath.hpp` (SSE2/NEON). Process 4 elements/iteration + scalar tail. Always provide scalar fallback. Reference: `AIManager::calculateDistancesSIMD()`.
@@ -160,6 +165,7 @@ Modes: ABSOLUTE, CENTERED_H, CENTERED_V, CENTERED_BOTH, TOP_ALIGNED, TOP_RIGHT, 
 **SDL_Renderer Path**: WorldRenderPipeline (4-phase: prepareChunks→beginScene→renderWorld→endScene) wraps SceneRenderer for pixel-perfect zoom and sub-pixel scrolling.
 
 **GPU Path**: Scene pass → composite to swapchain → UI pass. GameStates implement `renderGPUScene()` and `renderGPUUI()`, while the engine ends the frame outside the GameState.
+When SDL and GPU render paths both consume atlas-based EDM render data, treat the GPU atlas interpretation as the standard. SDL source rects must use the same atlas offsets and frame stepping as the GPU path.
 
 **SDL3_GPU UI Text**: Use `TTF_GetGPUTextDrawData()` only. No UV flips, half-texel offsets, or shader hacks. For raster UI/menu text in integer UI layouts, snap final text placement to whole pixels before emitting GPU vertices to avoid bottom-edge shaving with linear filtering.
 
@@ -198,6 +204,7 @@ m_controllers.get<WeatherController>()->getCurrentWeather();
 Always use established systems and patterns (UIManager helpers, state architecture, existing constants). NEVER create ad-hoc or one-off implementations when a pattern already exists — read the existing code first.
 
 Prefer minimal, architecturally performant, and efficient solutions. Do not add unnecessary abstractions, statistical analysis, or safety checks beyond what was asked.
+When standardizing drifting systems, unify data layout and draw semantics first. Prefer small straight-line helpers that remove duplicate hot-path branching without adding new abstraction layers or repeated lookups.
 
 When tightening APIs for safety, finish the migration in production code and tests in the same change. Do not leave legacy call paths behind if the new API is intended to replace them.
 

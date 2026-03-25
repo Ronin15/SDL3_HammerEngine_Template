@@ -18,6 +18,38 @@
 #include "utils/GPUSceneRenderer.hpp"
 #endif
 
+namespace {
+
+struct ResourceSpriteView {
+    const std::shared_ptr<SDL_Texture>& textureOwner;
+    uint16_t atlasX;
+    uint16_t atlasY;
+};
+
+[[nodiscard]] ResourceSpriteView buildItemSpriteView(const ItemRenderData& renderData) {
+    return {renderData.textureOwner, renderData.atlasX, renderData.atlasY};
+}
+
+[[nodiscard]] ResourceSpriteView buildContainerSpriteView(const ContainerRenderData& renderData,
+                                                          bool isOpen) {
+    return {
+        isOpen ? renderData.openTextureOwner : renderData.closedTextureOwner,
+        isOpen ? renderData.openAtlasX : renderData.atlasX,
+        isOpen ? renderData.openAtlasY : renderData.atlasY
+    };
+}
+
+[[nodiscard]] ResourceSpriteView buildHarvestableSpriteView(const HarvestableRenderData& renderData,
+                                                            bool isDepleted) {
+    if (isDepleted && renderData.depletedTextureOwner) {
+        return {renderData.depletedTextureOwner, renderData.depletedAtlasX, renderData.depletedAtlasY};
+    }
+
+    return {renderData.normalTextureOwner, renderData.atlasX, renderData.atlasY};
+}
+
+} // namespace
+
 void ResourceRenderController::update(float deltaTime, const HammerEngine::Camera& camera) {
     updateDroppedItemAnimations(deltaTime, camera);
     updateContainerStates(deltaTime, camera);
@@ -95,9 +127,10 @@ void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const 
         if (!hot.isAlive()) continue;
 
         const auto& r = edm.getItemRenderDataByTypeIndex(hot.typeLocalIndex);
+        const auto spriteView = buildItemSpriteView(r);
 
         // Skip if no texture
-        if (!r.textureOwner) continue;
+        if (!spriteView.textureOwner) continue;
 
         // Interpolate position
         float interpX = hot.transform.previousPosition.getX() +
@@ -110,8 +143,8 @@ void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const 
 
         // Source rect from pre-calculated atlas coords
         SDL_FRect srcRect = {
-            static_cast<float>(r.atlasX + r.currentFrame * r.frameWidth),
-            static_cast<float>(r.atlasY),
+            static_cast<float>(spriteView.atlasX + r.currentFrame * r.frameWidth),
+            static_cast<float>(spriteView.atlasY),
             static_cast<float>(r.frameWidth),
             static_cast<float>(r.frameHeight)
         };
@@ -127,7 +160,7 @@ void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const 
             static_cast<float>(r.frameHeight)
         };
 
-        SDL_RenderTexture(renderer, r.textureOwner.get(), &srcRect, &destRect);
+        SDL_RenderTexture(renderer, spriteView.textureOwner.get(), &srcRect, &destRect);
     }
 }
 
@@ -154,11 +187,9 @@ void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const Ha
 
         const auto& containerData = edm.getContainerData(hot.typeLocalIndex);
         const auto& r = edm.getContainerRenderDataByTypeIndex(hot.typeLocalIndex);
+        const auto spriteView = buildContainerSpriteView(r, containerData.isOpen());
 
-        // Choose texture based on open/closed state
-        const auto& textureOwner = containerData.isOpen() ? r.openTextureOwner : r.closedTextureOwner;
-        SDL_Texture* texture = textureOwner.get();
-        if (!texture) continue;
+        if (!spriteView.textureOwner) continue;
 
         // Interpolate position
         float interpX = hot.transform.previousPosition.getX() +
@@ -168,8 +199,8 @@ void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const Ha
 
         // Calculate source rect
         SDL_FRect srcRect = {
-            static_cast<float>(r.currentFrame * r.frameWidth),
-            0.0f,
+            static_cast<float>(spriteView.atlasX + r.currentFrame * r.frameWidth),
+            static_cast<float>(spriteView.atlasY),
             static_cast<float>(r.frameWidth),
             static_cast<float>(r.frameHeight)
         };
@@ -185,7 +216,7 @@ void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const Ha
             static_cast<float>(r.frameHeight)
         };
 
-        SDL_RenderTexture(renderer, texture, &srcRect, &destRect);
+        SDL_RenderTexture(renderer, spriteView.textureOwner.get(), &srcRect, &destRect);
     }
 }
 
@@ -212,11 +243,9 @@ void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, const 
 
         const auto& harvData = edm.getHarvestableData(hot.typeLocalIndex);
         const auto& r = edm.getHarvestableRenderDataByTypeIndex(hot.typeLocalIndex);
+        const auto spriteView = buildHarvestableSpriteView(r, harvData.isDepleted);
 
-        // Choose texture based on depleted state
-        SDL_Texture* texture = harvData.isDepleted ? r.depletedTextureOwner.get() : r.normalTextureOwner.get();
-        if (!texture) texture = r.normalTextureOwner.get();  // Fallback to normal if no depleted texture
-        if (!texture) continue;
+        if (!spriteView.textureOwner) continue;
 
         // Interpolate position
         float interpX = hot.transform.previousPosition.getX() +
@@ -226,8 +255,8 @@ void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, const 
 
         // Calculate source rect
         SDL_FRect srcRect = {
-            static_cast<float>(r.currentFrame * r.frameWidth),
-            0.0f,
+            static_cast<float>(spriteView.atlasX + r.currentFrame * r.frameWidth),
+            static_cast<float>(spriteView.atlasY),
             static_cast<float>(r.frameWidth),
             static_cast<float>(r.frameHeight)
         };
@@ -243,7 +272,7 @@ void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, const 
             static_cast<float>(r.frameHeight)
         };
 
-        SDL_RenderTexture(renderer, texture, &srcRect, &destRect);
+        SDL_RenderTexture(renderer, spriteView.textureOwner.get(), &srcRect, &destRect);
     }
 }
 
