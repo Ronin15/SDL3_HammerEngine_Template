@@ -559,6 +559,7 @@ private:
   void enqueueDispatch(EventTypeId typeId, EventData&& data) const;
   size_t getPendingQueueSizeUnsafe() const;
   void dropOldestPendingUnsafe() const;
+  void clearPendingDispatchQueues() const;
   void drainDispatchQueueWithBudget();
 
   // Consolidated dispatch helper

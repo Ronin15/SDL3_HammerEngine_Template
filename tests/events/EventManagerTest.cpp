@@ -775,6 +775,67 @@ BOOST_FIXTURE_TEST_CASE(DeferredDamageCommit_RunsBeforeCustomCombatHandlers,
   EventManager::Instance().removeHandler(tok);
 }
 
+BOOST_FIXTURE_TEST_CASE(PrepareForStateTransition_DropsDeferredCombatEvents,
+                        EventManagerFixture) {
+  auto& edm = EntityDataManager::Instance();
+  EntityHandle playerHandle = edm.registerPlayer(9103, Vector2D(120.0f, 120.0f));
+  BOOST_REQUIRE(playerHandle.isValid());
+
+  auto& playerData = edm.getCharacterData(playerHandle);
+  playerData.maxHealth = 100.0f;
+  playerData.health = 100.0f;
+  playerData.mass = 1.0f;
+
+  auto damageEvent = std::make_shared<DamageEvent>(
+      EntityEventType::DamageIntent, EntityHandle{}, playerHandle, 30.0f,
+      Vector2D(4.0f, 0.0f));
+
+  BOOST_CHECK(EventManager::Instance().dispatchEvent(
+      damageEvent, EventManager::DispatchMode::Deferred));
+  BOOST_CHECK_EQUAL(EventManager::Instance().getPendingEventCount(), 1);
+
+  EventManager::Instance().prepareForStateTransition();
+
+  BOOST_CHECK_EQUAL(EventManager::Instance().getPendingEventCount(), 0);
+
+  EventManager::Instance().update();
+
+  BOOST_CHECK_CLOSE(edm.getCharacterData(playerHandle).health, 100.0f, 0.01f);
+
+  edm.destroyEntity(playerHandle);
+}
+
+BOOST_FIXTURE_TEST_CASE(CleanAndInit_DropsDeferredCombatEvents,
+                        EventManagerFixture) {
+  auto& edm = EntityDataManager::Instance();
+  EntityHandle playerHandle = edm.registerPlayer(9104, Vector2D(140.0f, 140.0f));
+  BOOST_REQUIRE(playerHandle.isValid());
+
+  auto& playerData = edm.getCharacterData(playerHandle);
+  playerData.maxHealth = 100.0f;
+  playerData.health = 100.0f;
+  playerData.mass = 1.0f;
+
+  auto damageEvent = std::make_shared<DamageEvent>(
+      EntityEventType::DamageIntent, EntityHandle{}, playerHandle, 45.0f,
+      Vector2D(6.0f, 0.0f));
+
+  BOOST_CHECK(EventManager::Instance().dispatchEvent(
+      damageEvent, EventManager::DispatchMode::Deferred));
+  BOOST_CHECK_EQUAL(EventManager::Instance().getPendingEventCount(), 1);
+
+  EventManager::Instance().clean();
+  BOOST_CHECK(EventManager::Instance().init());
+
+  BOOST_CHECK_EQUAL(EventManager::Instance().getPendingEventCount(), 0);
+
+  EventManager::Instance().update();
+
+  BOOST_CHECK_CLOSE(edm.getCharacterData(playerHandle).health, 100.0f, 0.01f);
+
+  edm.destroyEntity(playerHandle);
+}
+
 BOOST_FIXTURE_TEST_CASE(TriggerWorldTrigger_DispatchesToHandlers, EventManagerFixture) {
   std::atomic<bool> triggerHandlerCalled{false};
   auto tok = EventManager::Instance().registerHandlerWithToken(

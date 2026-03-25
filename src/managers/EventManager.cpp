@@ -81,14 +81,12 @@ bool EventManager::init() {
     handlerContainer.reserve(HANDLER_CONTAINER_CAPACITY);
   }
 
-  // Clear event pools
-  clearEventPools();
+  // Clear any deferred work queued before initialization/reset.
+  clearPendingDispatchQueues();
 
-  // Clear pending dispatch queue
-  {
-    std::lock_guard<std::mutex> lock(m_dispatchMutex);
-    m_pendingDispatch.clear();
-  }
+  // Clear event pools after draining queued events so stale work cannot leak
+  // into the next state or reinitialize into the next pool set.
+  clearEventPools();
 
   // Configure event pools for trigger methods
   m_weatherPool.setCreator([]() {
@@ -162,14 +160,12 @@ void EventManager::clean() {
   // Clear all handlers
   clearAllHandlers();
 
-  // Clear event pools
-  clearEventPools();
+  // Clear any deferred work queued before shutdown.
+  clearPendingDispatchQueues();
 
-  // Clear pending dispatch queue
-  {
-    std::lock_guard<std::mutex> lock(m_dispatchMutex);
-    m_pendingDispatch.clear();
-  }
+  // Clear event pools after draining queued events to avoid carrying stale
+  // combat state across shutdown and subsequent init().
+  clearEventPools();
 
   // Reset performance stats
   resetPerformanceStats();
@@ -196,14 +192,11 @@ void EventManager::prepareForStateTransition() {
   // Clear all handlers
   clearAllHandlers();
 
-  // Clear event pools
-  clearEventPools();
+  // Clear any deferred work queued before the next state takes over.
+  clearPendingDispatchQueues();
 
-  // Clear pending dispatch queue
-  {
-    std::lock_guard<std::mutex> lock(m_dispatchMutex);
-    m_pendingDispatch.clear();
-  }
+  // Clear event pools after queued events have been released and discarded.
+  clearEventPools();
 
   // Reset performance stats
   resetPerformanceStats();
@@ -1207,6 +1200,22 @@ void EventManager::clearEventPools() {
 }
 
 // ==================== Helper Methods ====================
+
+void EventManager::clearPendingDispatchQueues() const {
+  std::lock_guard<std::mutex> lock(m_dispatchMutex);
+
+  while (!m_pendingDispatch.empty()) {
+    releaseEventToPool(m_pendingDispatch.front().typeId,
+                       m_pendingDispatch.front().data.event);
+    m_pendingDispatch.pop_front();
+  }
+
+  while (!m_pendingCombatDispatch.empty()) {
+    releaseEventToPool(EventTypeId::Combat,
+                       m_pendingCombatDispatch.front().data.event);
+    m_pendingCombatDispatch.pop_front();
+  }
+}
 
 uint64_t EventManager::getCurrentTimeNanos() const {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
