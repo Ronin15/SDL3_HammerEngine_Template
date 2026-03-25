@@ -1,4 +1,4 @@
-# EntityStateManager Documentation
+# EntityStateManager
 
 **Where to find the code:**
 - Implementation: `src/managers/EntityStateManager.cpp`

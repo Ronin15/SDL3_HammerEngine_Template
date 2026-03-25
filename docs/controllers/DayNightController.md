@@ -1,4 +1,4 @@
-# DayNightController Documentation
+# DayNightController
 
 **Where to find the code:**
 - Header: `include/controllers/world/DayNightController.hpp`

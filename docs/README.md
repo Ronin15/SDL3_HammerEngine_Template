@@ -1,8 +1,8 @@
-# Hammer Game Engine Documentation
+# Documentation Hub
 
 ## Overview
 
-This documentation hub documents the engine architecture and major subsystems. The engine uses event-driven systems with `EventManager` as the central event processing hub, EDM-backed AI state, controller-owned harvesting and social flows, world-resource orchestration, and the SDL3_GPU rendering path.
+This hub covers the engine architecture and the major subsystem docs. The current branch centers on `EventManager` for event flow, EDM-backed AI state, controller-owned harvesting and social flows, world-resource orchestration, and the SDL3_GPU rendering path.
 
 ## Core Systems
 

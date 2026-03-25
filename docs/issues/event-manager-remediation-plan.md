@@ -1,5 +1,7 @@
 # EventManager Remediation Plan
 
+**Code:** `include/managers/EventManager.hpp`, `src/managers/EventManager.cpp`, `include/core/GameEngine.hpp`, `src/core/GameEngine.cpp`
+
 **Status:** Planned  
 **Priority:** High  
 **Scope:** Event delivery contract, handler safety model, lifecycle integration
@@ -189,3 +191,9 @@ Potential policy model:
 - Regression coverage for world load/unload + collider/pathfinder coordination
 - Handler lifecycle tests for manager reinit/cleanup
 - Profiling before and after any opt-in parallel dispatch
+
+## Related Docs
+
+- [EventManager](../events/EventManager.md)
+- [GameEngine](../core/GameEngine.md)
+- [ThreadSystem](../core/ThreadSystem.md)

@@ -1,4 +1,4 @@
-# SettingsMenuState Documentation
+# SettingsMenuState
 
 ## Overview
 

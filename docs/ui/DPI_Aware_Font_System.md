@@ -1,4 +1,4 @@
-# DPI-Aware Font System Documentation
+# DPI-Aware Font System
 
 ## Overview
 

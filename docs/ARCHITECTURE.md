@@ -1,17 +1,19 @@
-# SDL3 HammerEngine Architecture
+# Architecture
+
+**Code:** `README.md`, `docs/core/GameEngine.md`, `docs/events/EventManager.md`, `docs/managers/EntityDataManager.md`, `docs/managers/WorldResourceManager.md`, `docs/core/TimestepManager.md`, `docs/gpu/GPURendering.md`
 
 ## Overview
 
-The engine is still layered as:
+The engine is layered as:
 
 - Core
 - Managers
 - GameStates
 - Entities / Controllers
 
-The architecture includes:
+Current branch contracts:
 
-- `EventManager` remains part of the event-driven architecture and serves as the central event processing hub with main-thread deferred draining, built-in combat processing, and sequence-preserved ordering across combat and non-combat queues
+- `EventManager` is the central event hub with main-thread deferred draining, built-in combat processing, and sequence-preserved ordering across combat and non-combat queues
 - AI is EDM-backed and executed through `BehaviorExecutors` + `AICommandBus`
 - `WorldResourceManager` is a registry/spatial index over EDM, not a quantity store
 - GPU rendering uses explicit swapchain acquisition
@@ -77,3 +79,11 @@ AI/world-heavy states follow this pattern:
 4. tear down world/entity state
 
 This matters because deferred events, AI command commits, and WRM spatial indices all participate in runtime state now.
+
+## Related Docs
+
+- [GameEngine](core/GameEngine.md)
+- [EventManager](events/EventManager.md)
+- [EntityDataManager](managers/EntityDataManager.md)
+- [WorldResourceManager](managers/WorldResourceManager.md)
+- [TimestepManager](core/TimestepManager.md)

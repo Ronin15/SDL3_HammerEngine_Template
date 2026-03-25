@@ -1,4 +1,4 @@
-# TimestepManager Documentation
+# TimestepManager
 
 This page is kept as a compatibility stub because older docs linked to `docs/managers/TimestepManager.md`.
 

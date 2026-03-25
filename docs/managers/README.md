@@ -1,4 +1,4 @@
-# Manager Documentation Index
+# Manager Index
 
 This directory indexes manager-focused documentation. Some major systems live in sibling folders because their docs are large enough to deserve their own section.
 

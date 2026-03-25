@@ -1,4 +1,4 @@
-# SIMDMath Documentation
+# SIMDMath
 
 ## Overview
 

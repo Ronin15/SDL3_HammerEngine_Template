@@ -1,4 +1,4 @@
-# SaveGameManager Documentation
+# SaveGameManager
 
 **Where to find the code:**
 - Implementation: `src/managers/SaveGameManager.cpp`

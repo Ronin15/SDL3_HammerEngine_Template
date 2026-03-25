@@ -1,4 +1,4 @@
-# Combat Events Documentation
+# Combat Events
 
 **Where to find the code:**
 - Legacy combat event base: `include/events/CombatEvent.hpp`

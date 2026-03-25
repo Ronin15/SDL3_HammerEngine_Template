@@ -1,4 +1,4 @@
-# Interpolation System Documentation
+# Interpolation System
 
 **Where to find the code:**
 - Entity: `include/entities/Entity.hpp`

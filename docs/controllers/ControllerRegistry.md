@@ -1,4 +1,4 @@
-# ControllerRegistry Documentation
+# ControllerRegistry
 
 **Where to find the code:**
 - Header: `include/controllers/ControllerRegistry.hpp`

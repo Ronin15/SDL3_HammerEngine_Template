@@ -1,4 +1,4 @@
-# ResourceTemplateManager Documentation
+# ResourceTemplateManager
 
 **Where to find the code:**
 - Implementation: `src/managers/ResourceTemplateManager.cpp`

@@ -1,4 +1,4 @@
-# SceneRenderer Documentation
+# SceneRenderer
 
 **Where to find the code:**
 - Header: `include/utils/SceneRenderer.hpp`

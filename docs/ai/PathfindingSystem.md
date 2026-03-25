@@ -1,4 +1,4 @@
-# Pathfinding System Documentation
+# Pathfinding System
 
 ## Overview
 

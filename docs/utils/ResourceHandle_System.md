@@ -1,4 +1,4 @@
-# Resource Handle System Documentation
+# Resource Handle System
 
 **Where to find the code:**
 - ResourceHandle: `include/utils/ResourceHandle.hpp`

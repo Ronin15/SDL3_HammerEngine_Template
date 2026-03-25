@@ -1,4 +1,4 @@
-# SoundManager Documentation
+# SoundManager
 
 **Where to find the code:**
 - Implementation: `src/managers/SoundManager.cpp`

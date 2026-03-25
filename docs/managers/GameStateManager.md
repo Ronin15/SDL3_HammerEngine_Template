@@ -1,4 +1,4 @@
-# GameStateManager Documentation
+# GameStateManager
 
 **Where to find the code:**
 - Implementation: `src/managers/GameStateManager.cpp`

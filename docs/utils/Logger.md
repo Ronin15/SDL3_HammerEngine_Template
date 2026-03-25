@@ -1,4 +1,4 @@
-# Logger System Documentation
+# Logger System
 
 ## Overview
 

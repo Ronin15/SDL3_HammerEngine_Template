@@ -1,4 +1,4 @@
-# ResourceFactory Documentation
+# ResourceFactory
 
 **Where to find the code:**
 - Implementation: `src/managers/ResourceFactory.cpp`

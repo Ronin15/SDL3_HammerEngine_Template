@@ -1,8 +1,10 @@
-# Data-Driven Resource Migration - Implementation Plan
+# Data-Driven Resource Migration Plan
+
+**Code:** `include/managers/EntityDataManager.hpp`, `src/managers/EntityDataManager.cpp`, `include/managers/WorldResourceManager.hpp`, `src/managers/WorldResourceManager.cpp`
 
 ## Overview
 
-Migrate DroppedItem, Container, and Harvestable entities to be fully data-driven via EntityDataManager, following the NPCRenderData pattern. This eliminates the DroppedItem class and creates a unified ResourceRenderController.
+Migrate `DroppedItem`, `Container`, and `Harvestable` entities to be fully data-driven via `EntityDataManager`, following the `NPCRenderData` pattern. This eliminates the `DroppedItem` class and creates a unified resource render controller.
 
 ## Architecture Summary
 
@@ -584,3 +586,9 @@ private:
 5. **Full suite**: `./tests/test_scripts/run_all_tests.sh --core-only --errors-only`
 6. **Manual test**: Run game, drop items, open containers, harvest nodes - verify rendering
 
+## Related Docs
+
+- [EntityDataManager](managers/EntityDataManager.md)
+- [WorldResourceManager](managers/WorldResourceManager.md)
+- [ResourceFactory](managers/ResourceFactory.md)
+- [ResourceTemplateManager](managers/ResourceTemplateManager.md)

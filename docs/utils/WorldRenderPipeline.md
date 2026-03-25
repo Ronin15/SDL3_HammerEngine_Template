@@ -1,4 +1,4 @@
-# WorldRenderPipeline Documentation
+# WorldRenderPipeline
 
 **Where to find the code:**
 - Header: `include/utils/WorldRenderPipeline.hpp`

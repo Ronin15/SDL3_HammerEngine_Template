@@ -1,4 +1,4 @@
-# EntityDataManager Documentation
+# EntityDataManager
 
 **Where to find the code:**
 - Header: `include/managers/EntityDataManager.hpp`

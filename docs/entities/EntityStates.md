@@ -1,4 +1,4 @@
-# Entity States Documentation
+# Entity States
 
 ## Overview
 

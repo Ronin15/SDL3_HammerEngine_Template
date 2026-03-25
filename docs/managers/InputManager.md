@@ -1,4 +1,4 @@
-# InputManager Documentation
+# InputManager
 
 **Where to find the code:**
 - Implementation: `src/managers/InputManager.cpp`

@@ -1,4 +1,4 @@
-# FontManager Documentation
+# FontManager
 
 **Where to find the code:**
 - Implementation: `src/managers/FontManager.cpp`

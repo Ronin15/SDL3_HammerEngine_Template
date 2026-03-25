@@ -1,4 +1,4 @@
-# ParticleManager Documentation
+# ParticleManager
 
 **Where to find the code:**
 - Implementation: `src/managers/ParticleManager.cpp`

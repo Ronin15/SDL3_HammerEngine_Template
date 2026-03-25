@@ -1,4 +1,4 @@
-# Utility Systems Documentation
+# Utility Systems
 
 This directory contains documentation for core utility classes and helper systems used throughout the Hammer Game Engine.
 

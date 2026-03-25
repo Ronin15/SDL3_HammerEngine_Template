@@ -1,4 +1,4 @@
-# BackgroundSimulationManager Documentation
+# BackgroundSimulationManager
 
 **Where to find the code:**
 - Header: `include/managers/BackgroundSimulationManager.hpp`

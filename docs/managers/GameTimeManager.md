@@ -1,4 +1,4 @@
-# GameTimeManager Documentation
+# GameTimeManager
 
 **Where to find the code:**
 - Implementation: `src/core/GameTime.cpp`

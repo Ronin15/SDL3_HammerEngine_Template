@@ -1,4 +1,4 @@
-# Time Events Documentation
+# Time Events
 
 **Where to find the code:**
 - Header: `include/events/TimeEvent.hpp`

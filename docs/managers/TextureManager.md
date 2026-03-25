@@ -1,4 +1,4 @@
-# TextureManager Documentation
+# TextureManager
 
 **Where to find the code:**
 - Implementation: `src/managers/TextureManager.cpp`

@@ -1,4 +1,4 @@
-# ThreadSystem Documentation
+# ThreadSystem
 
 **Where to find the code:**
 - Header-only implementation: `include/core/ThreadSystem.hpp`

@@ -1,4 +1,4 @@
-# Entity System Documentation
+# Entity System
 
 ## Overview
 

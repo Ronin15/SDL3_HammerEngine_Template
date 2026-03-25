@@ -1,4 +1,4 @@
-# WeatherController Documentation
+# WeatherController
 
 **Where to find the code:**
 - Header: `include/controllers/world/WeatherController.hpp`

@@ -1,4 +1,4 @@
-# CollisionManager Documentation
+# CollisionManager
 
 ## Overview
 

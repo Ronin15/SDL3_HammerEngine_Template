@@ -1,4 +1,4 @@
-# Power Efficiency Documentation
+# Power Efficiency
 
 **Where to find the code:**
 - ThreadSystem: `include/core/ThreadSystem.hpp`

@@ -215,7 +215,7 @@ For the full workflow, command reference, file locations, and legacy texture map
 - **Utilities:** [SceneRenderer](docs/utils/SceneRenderer.md), [WorldRenderPipeline](docs/utils/WorldRenderPipeline.md), [FrameProfiler](docs/utils/FrameProfiler.md), [Camera](docs/utils/Camera.md), [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [ResourceHandle System](docs/utils/ResourceHandle_System.md)
 - **Architecture:** [Interpolation System](docs/architecture/InterpolationSystem.md)
 - **Performance:** [Power Efficiency](docs/performance/PowerEfficiency.md), [EntityDataManager Power Analysis](docs/performance_reports/power_profile_edm_comparison_2026-01-29.md)
-- **Development:** [Claude Code Skills](docs/development/ClaudeSkills.md)
+- **Development:** Repo-wide agent guidance lives in [AGENTS.md](AGENTS.md).
 - **Engine Plans & Issues:** [Camera Refactor Plan](docs/Camera_Refactor_Plan.md), [SDL3 macOS Cleanup Issue](docs/issues/SDL3_MACOS_CLEANUP_ISSUE.md)
 
 For the full, up-to-date documentation map, see [docs/README.md](docs/README.md).
