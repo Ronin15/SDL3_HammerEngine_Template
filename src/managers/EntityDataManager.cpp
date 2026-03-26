@@ -64,6 +64,49 @@ AtlasRegion lookupAtlasRegion(const std::string& regionId) {
     };
 }
 
+AtlasRegion lookupHarvestableAtlasRegion(const ResourcePtr& resource) {
+    if (!resource) {
+        return {};
+    }
+
+    const std::string& resourceId = resource->getId();
+    std::string regionId;
+
+    if (resourceId == "wood") {
+        regionId = "spring_obstacle_tree";
+    } else if (resourceId == "stone") {
+        regionId = "obstacle_rock";
+    } else if (resourceId == "iron_ore") {
+        regionId = "ore_iron_deposit";
+    } else if (resourceId == "gold_ore") {
+        regionId = "ore_gold_deposit";
+    } else if (resourceId == "copper_ore") {
+        regionId = "ore_copper_deposit";
+    } else if (resourceId == "mithril_ore") {
+        regionId = "ore_mithril_deposit";
+    } else if (resourceId == "limestone") {
+        regionId = "ore_limestone_deposit";
+    } else if (resourceId == "coal") {
+        regionId = "ore_coal_deposit";
+    } else if (resourceId == "rough_emerald") {
+        regionId = "ore_emerald_deposit";
+    } else if (resourceId == "rough_ruby") {
+        regionId = "ore_ruby_deposit";
+    } else if (resourceId == "rough_sapphire") {
+        regionId = "ore_sapphire_deposit";
+    } else if (resourceId == "rough_diamond") {
+        regionId = "ore_diamond_deposit";
+    } else if (!resource->getWorldTextureId().empty()) {
+        regionId = resource->getWorldTextureId();
+    }
+
+    if (regionId.empty()) {
+        return {};
+    }
+
+    return lookupAtlasRegion(regionId);
+}
+
 std::shared_ptr<SDL_Texture> getAtlasTextureOwner() {
     return TextureManager::Instance().getTexture("atlas");
 }
@@ -1388,8 +1431,18 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     auto& renderData = m_harvestableRenderData[harvestableIndex];
     renderData.clear();
     assignAtlasTextureOwner(renderData);
-    renderData.frameWidth = 32;
-    renderData.frameHeight = 32;
+
+    const auto& rtm = ResourceTemplateManager::Instance();
+    ResourcePtr resource = rtm.getResourceTemplate(yieldResource);
+    AtlasRegion region = lookupHarvestableAtlasRegion(resource);
+    if (region.found) {
+        renderData.atlasX = region.x;
+        renderData.atlasY = region.y;
+        renderData.depletedAtlasX = region.x;
+        renderData.depletedAtlasY = region.y;
+        renderData.frameWidth = region.w;
+        renderData.frameHeight = region.h;
+    }
 
     // Store ID and mapping in STATIC pool structures
     m_staticEntityIds[index] = id;

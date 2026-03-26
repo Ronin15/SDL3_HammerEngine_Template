@@ -6,7 +6,12 @@
 #define BOOST_TEST_MODULE EntityDataManagerTests
 #include <boost/test/unit_test.hpp>
 
+#include "core/ThreadSystem.hpp"
+#include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "entities/Entity.hpp"  // For AnimationConfig
 #include "entities/EntityHandle.hpp"
@@ -29,14 +34,24 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
 class EntityDataManagerTestFixture {
 public:
     EntityDataManagerTestFixture() {
+        HammerEngine::ThreadSystem::Instance().init();
         ResourceTemplateManager::Instance().init();
         edm = &EntityDataManager::Instance();
         edm->init();
+        EventManager::Instance().init();
+        CollisionManager::Instance().init();
+        PathfinderManager::Instance().init();
+        AIManager::Instance().init();
     }
 
     ~EntityDataManagerTestFixture() {
+        AIManager::Instance().clean();
+        PathfinderManager::Instance().clean();
+        CollisionManager::Instance().clean();
+        EventManager::Instance().clean();
         edm->clean();
         ResourceTemplateManager::Instance().clean();
+        HammerEngine::ThreadSystem::Instance().clean();
     }
 
 protected:
