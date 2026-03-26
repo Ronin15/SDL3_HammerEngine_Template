@@ -34,7 +34,7 @@ void GameStateManager::addState(std::unique_ptr<GameState> state) {
   // Set state manager reference so state can access transitions and frame data
   state->setStateManager(this);
   // Move the state into the map as shared_ptr
-  m_registeredStates[name] = std::shared_ptr<GameState>(state.release());
+  m_registeredStates[name] = std::shared_ptr<GameState>(std::move(state));
 }
 
 void GameStateManager::pushState(const std::string &stateName) {

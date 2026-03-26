@@ -558,6 +558,7 @@ public:
     /**
      * @brief Set active camera for chunk visibility (called by states with world rendering)
      */
+    // Non-owning observer used for chunk prefetching; callers must clear this before destroying the camera.
     void setActiveCamera(HammerEngine::Camera* camera) { mp_activeCamera = camera; }
 
     /**

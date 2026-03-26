@@ -450,6 +450,11 @@ bool GamePlayState::exit() {
       particleMgr.prepareForStateTransition();
     }
 
+    WorldManager::Instance().setActiveCamera(nullptr);
+    if (mp_Player) {
+      mp_Player->setCamera(nullptr);
+    }
+
     // Clean up camera and scene renderer
     m_camera.reset();
     m_renderPipeline.reset();
@@ -509,6 +514,11 @@ bool GamePlayState::exit() {
   // Simple particle cleanup
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
     particleMgr.prepareForStateTransition();
+  }
+
+  WorldManager::Instance().setActiveCamera(nullptr);
+  if (mp_Player) {
+    mp_Player->setCamera(nullptr);
   }
 
   // Clean up camera and scene renderer first to stop world rendering

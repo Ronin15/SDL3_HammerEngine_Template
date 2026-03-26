@@ -9,6 +9,7 @@
 #include "mocks/MockPlayer.hpp"
 #include "managers/EntityDataManager.hpp"
 #include <filesystem>
+#include <sstream>
 #include <thread>
 
 // Global fixture for test setup and cleanup
@@ -207,6 +208,35 @@ BOOST_AUTO_TEST_CASE(TestBinaryWriterReader) {
     }
 
     std::cout << "Binary writer/reader tests completed successfully" << std::endl;
+}
+
+BOOST_AUTO_TEST_CASE(TestBorrowedStreamWriterReader) {
+    std::cout << "Testing borrowed stream writer/reader..." << std::endl;
+
+    std::stringstream stream(std::ios::in | std::ios::out | std::ios::binary);
+    {
+        BinarySerial::Writer writer(stream);
+        BOOST_CHECK(writer.write(99));
+        BOOST_CHECK(writer.writeString("borrowed stream"));
+        BOOST_CHECK(writer.good());
+    }
+
+    stream.seekg(0);
+
+    {
+        BinarySerial::Reader reader(stream);
+        int intVal = 0;
+        std::string stringVal;
+
+        BOOST_CHECK(reader.read(intVal));
+        BOOST_CHECK(reader.readString(stringVal));
+        BOOST_CHECK(reader.good());
+        BOOST_CHECK_EQUAL(intVal, 99);
+        BOOST_CHECK_EQUAL(stringVal, "borrowed stream");
+    }
+
+    std::cout << "Borrowed stream writer/reader tests completed successfully"
+              << std::endl;
 }
 
 BOOST_AUTO_TEST_CASE(TestVectorSerialization) {

@@ -10,8 +10,7 @@
 BEGIN_SERIALIZE(MockPlayer)
     // Create a temporary stream for using BinarySerial::Writer
     std::ostringstream tempStream(std::ios::binary);
-    auto streamPtr = std::make_shared<std::ostringstream>(std::move(tempStream));
-    BinarySerial::Writer writer(std::static_pointer_cast<std::ostream>(streamPtr));
+    BinarySerial::Writer writer(tempStream);
     
     // Serialize position using Vector2D specialization
     Vector2D pos = getPosition();
@@ -29,7 +28,7 @@ BEGIN_SERIALIZE(MockPlayer)
     SERIALIZE_STRING(writer, m_currentStateName);
     
     // Write the binary data to the original stream
-    std::string binaryData = streamPtr->str();
+    std::string binaryData = tempStream.str();
     stream.write(binaryData.data(), binaryData.size());
 END_SERIALIZE()
 
@@ -38,8 +37,8 @@ BEGIN_DESERIALIZE(MockPlayer)
     std::string binaryData((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
     
     // Create a stringstream from the binary data
-    auto streamPtr = std::make_shared<std::istringstream>(binaryData, std::ios::binary);
-    BinarySerial::Reader reader(std::static_pointer_cast<std::istream>(streamPtr));
+    std::istringstream tempStream(binaryData, std::ios::binary);
+    BinarySerial::Reader reader(tempStream);
     
     // Deserialize position using Vector2D specialization
     Vector2D pos;

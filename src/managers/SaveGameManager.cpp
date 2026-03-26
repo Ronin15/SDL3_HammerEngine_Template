@@ -91,9 +91,7 @@ bool SaveGameManager::save(const std::string &saveFileName,
     std::streampos dataStart = file.tellp();
 
     // Write player data using BinarySerializer
-    auto writer =
-        std::make_unique<BinarySerial::Writer>(std::shared_ptr<std::ostream>(
-            &file, [](std::ostream *) { /* no-op deleter */ }));
+    auto writer = std::make_unique<BinarySerial::Writer>(file);
 
     // Write position
     if (!writer->writeSerializable(player.getPosition())) {
@@ -180,8 +178,7 @@ bool SaveGameManager::load(const std::string &saveFileName,
     }
 
     // Read player data using BinarySerializer
-    auto reader = std::make_unique<BinarySerial::Reader>(
-        std::shared_ptr<std::istream>(&file, [](std::istream *) {}));
+    auto reader = std::make_unique<BinarySerial::Reader>(file);
 
     // Read position
     Vector2D position(0.0f, 0.0f);
@@ -556,19 +553,16 @@ bool SaveGameManager::readHeader(std::ifstream &file,
 // if needed elsewhere
 bool SaveGameManager::writeString(std::ofstream &file,
                                   const std::string &str) const {
-  auto writer = std::make_unique<BinarySerial::Writer>(
-      std::shared_ptr<std::ostream>(&file, [](std::ostream *) {}));
+  auto writer = std::make_unique<BinarySerial::Writer>(file);
   return writer->writeString(str);
 }
 
 bool SaveGameManager::readString(std::ifstream &file, std::string &str) const {
-  auto reader = std::make_unique<BinarySerial::Reader>(
-      std::shared_ptr<std::istream>(&file, [](std::istream *) {}));
+  auto reader = std::make_unique<BinarySerial::Reader>(file);
   return reader->readString(str);
 }
 
 bool SaveGameManager::readVector2D(std::ifstream &file, Vector2D &vec) const {
-  auto reader = std::make_unique<BinarySerial::Reader>(
-      std::shared_ptr<std::istream>(&file, [](std::istream *) {}));
+  auto reader = std::make_unique<BinarySerial::Reader>(file);
   return reader->readSerializable(vec);
 }

@@ -306,7 +306,7 @@ void WorldManager::prewarmChunks(SDL_Renderer* renderer, float cameraX, float ca
 
 void WorldManager::prefetchChunksInternal() {
   if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled ||
-      !mp_renderer || !mp_activeCamera) {
+      !mp_renderer) {
     return;
   }
 
@@ -314,16 +314,21 @@ void WorldManager::prefetchChunksInternal() {
     return;
   }
 
+  HammerEngine::Camera* const activeCamera = mp_activeCamera;
+  if (!activeCamera) {
+    return;
+  }
+
   // Get camera parameters
-  float zoom = mp_activeCamera->getZoom();
-  const auto& viewport = mp_activeCamera->getViewport();
+  float zoom = activeCamera->getZoom();
+  const auto& viewport = activeCamera->getViewport();
   float viewWidth = viewport.width / zoom;
   float viewHeight = viewport.height / zoom;
 
   // Get floored camera position
   float rawX = 0.0f;
   float rawY = 0.0f;
-  mp_activeCamera->getRenderOffset(rawX, rawY, 0.0f);
+  activeCamera->getRenderOffset(rawX, rawY, 0.0f);
   float cameraX = std::floor(rawX);
   float cameraY = std::floor(rawY);
 

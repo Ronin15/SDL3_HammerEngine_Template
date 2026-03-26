@@ -13,34 +13,43 @@
 #include <format>
 #include <iostream>
 #include <memory>
+#include <ostream>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <vector>
 
 /**
- * Fast, header-only binary serialization system using smart pointers internally
+ * Fast, header-only binary serialization system using borrowed streams by default
  * Designed for high performance game save/load operations
  */
 namespace BinarySerial {
 
 /**
- * Main binary writer class using smart pointers for memory management
+ * Main binary writer class using borrowed stream access by default.
  */
 class Writer {
 private:
-  std::shared_ptr<std::ostream> m_stream;
+  std::shared_ptr<std::ostream> m_ownedStream{};
+  std::ostream* mp_stream{nullptr};
+
+  explicit Writer(std::shared_ptr<std::ostream> stream)
+      : m_ownedStream(std::move(stream)), mp_stream(m_ownedStream.get()) {
+    if (!mp_stream || !mp_stream->good()) {
+      throw std::runtime_error("Invalid output stream");
+    }
+  }
 
 public:
-  explicit Writer(std::shared_ptr<std::ostream> stream) : m_stream(stream) {
-    if (!stream || !stream->good()) {
+  explicit Writer(std::ostream& stream) : mp_stream(&stream) {
+    if (!mp_stream->good()) {
       throw std::runtime_error("Invalid output stream");
     }
   }
 
   ~Writer() {
-    if (m_stream) {
-      m_stream->flush();
+    if (mp_stream) {
+      mp_stream->flush();
     }
   }
 
@@ -52,15 +61,15 @@ public:
       return nullptr;
     }
     SAVEGAME_DEBUG(std::format("Created binary writer for file: {}", filename));
-    return std::make_unique<Writer>(stream);
+    return std::unique_ptr<Writer>(new Writer(std::move(stream)));
   }
 
   // Write fundamental types
   template <typename T> bool write(const T &value) {
     static_assert(std::is_trivially_copyable_v<T>,
                   "Type must be trivially copyable");
-    m_stream->write(reinterpret_cast<const char *>(&value), sizeof(T));
-    return m_stream->good();
+    mp_stream->write(reinterpret_cast<const char *>(&value), sizeof(T));
+    return mp_stream->good();
   }
 
   // Write strings
@@ -70,9 +79,9 @@ public:
       return false;
     }
     if (length > 0) {
-      m_stream->write(str.c_str(), length);
+      mp_stream->write(str.c_str(), length);
     }
-    return m_stream->good();
+    return mp_stream->good();
   }
 
   // Write vectors of trivially copyable types
@@ -84,36 +93,44 @@ public:
       return false;
     }
     if (size > 0) {
-      m_stream->write(reinterpret_cast<const char *>(vec.data()),
+      mp_stream->write(reinterpret_cast<const char *>(vec.data()),
                       sizeof(T) * size);
     }
-    return m_stream->good();
+    return mp_stream->good();
   }
 
   // Write custom serializable objects
   template <typename T> bool writeSerializable(const T &obj) {
-    return obj.serialize(*m_stream);
+    return obj.serialize(*mp_stream);
   }
 
-  bool good() const { return m_stream && m_stream->good(); }
+  bool good() const { return mp_stream && mp_stream->good(); }
 
   void flush() {
-    if (m_stream) {
-      m_stream->flush();
+    if (mp_stream) {
+      mp_stream->flush();
     }
   }
 };
 
 /**
- * Main binary reader class using smart pointers for memory management
+ * Main binary reader class using borrowed stream access by default.
  */
 class Reader {
 private:
-  std::shared_ptr<std::istream> m_stream;
+  std::shared_ptr<std::istream> m_ownedStream{};
+  std::istream* mp_stream{nullptr};
+
+  explicit Reader(std::shared_ptr<std::istream> stream)
+      : m_ownedStream(std::move(stream)), mp_stream(m_ownedStream.get()) {
+    if (!mp_stream || !mp_stream->good()) {
+      throw std::runtime_error("Invalid input stream");
+    }
+  }
 
 public:
-  explicit Reader(std::shared_ptr<std::istream> stream) : m_stream(stream) {
-    if (!stream || !stream->good()) {
+  explicit Reader(std::istream& stream) : mp_stream(&stream) {
+    if (!mp_stream->good()) {
       throw std::runtime_error("Invalid input stream");
     }
   }
@@ -126,15 +143,15 @@ public:
       return nullptr;
     }
     SAVEGAME_DEBUG(std::format("Created binary reader for file: {}", filename));
-    return std::make_unique<Reader>(stream);
+    return std::unique_ptr<Reader>(new Reader(std::move(stream)));
   }
 
   // Read fundamental types
   template <typename T> bool read(T &value) {
     static_assert(std::is_trivially_copyable_v<T>,
                   "Type must be trivially copyable");
-    m_stream->read(reinterpret_cast<char *>(&value), sizeof(T));
-    return m_stream->good() && m_stream->gcount() == sizeof(T);
+    mp_stream->read(reinterpret_cast<char *>(&value), sizeof(T));
+    return mp_stream->good() && mp_stream->gcount() == sizeof(T);
   }
 
   // Read strings
@@ -156,9 +173,9 @@ public:
     }
 
     str.resize(length);
-    m_stream->read(&str[0], length);
-    return m_stream->good() &&
-           m_stream->gcount() == static_cast<std::streamsize>(length);
+    mp_stream->read(&str[0], length);
+    return mp_stream->good() &&
+           mp_stream->gcount() == static_cast<std::streamsize>(length);
   }
 
   // Read vectors of trivially copyable types
@@ -182,17 +199,17 @@ public:
     }
 
     vec.resize(size);
-    m_stream->read(reinterpret_cast<char *>(vec.data()), sizeof(T) * size);
-    return m_stream->good() &&
-           m_stream->gcount() == static_cast<std::streamsize>(sizeof(T) * size);
+    mp_stream->read(reinterpret_cast<char *>(vec.data()), sizeof(T) * size);
+    return mp_stream->good() &&
+           mp_stream->gcount() == static_cast<std::streamsize>(sizeof(T) * size);
   }
 
   // Read custom serializable objects
   template <typename T> bool readSerializable(T &obj) {
-    return obj.deserialize(*m_stream);
+    return obj.deserialize(*mp_stream);
   }
 
-  bool good() const { return m_stream && m_stream->good(); }
+  bool good() const { return mp_stream && mp_stream->good(); }
 };
 
 /**

@@ -113,7 +113,7 @@ public:
   // Cache invalidation - call when world changes (e.g., on WorldGeneratedEvent)
   void invalidateWorldBoundsCache() { m_worldBoundsCached = false; }
 
-  // Camera access for player states (non-owning, set by GamePlayState)
+  // Camera access for player states (non-owning, must be cleared before camera teardown)
   void setCamera(HammerEngine::Camera* camera) { mp_camera = camera; }
   HammerEngine::Camera* getCamera() const { return mp_camera; }
 

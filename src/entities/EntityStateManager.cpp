@@ -22,7 +22,7 @@ void EntityStateManager::addState(const std::string& stateName, std::unique_ptr<
     throw std::invalid_argument(std::format("Hammer Game Engine - State already exists: {}", stateName));
   }
   // Convert unique_ptr to shared_ptr and add to container
-  m_states[stateName] = std::shared_ptr<EntityState>(state.release());
+  m_states[stateName] = std::shared_ptr<EntityState>(std::move(state));
 }
 
 void EntityStateManager::setState(const std::string& stateName) {

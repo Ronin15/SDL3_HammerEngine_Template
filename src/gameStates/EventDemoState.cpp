@@ -403,6 +403,11 @@ bool EventDemoState::exit() {
         particleMgr.prepareForStateTransition();
       }
 
+      WorldManager::Instance().setActiveCamera(nullptr);
+      if (m_player) {
+        m_player->setCamera(nullptr);
+      }
+
       // Clean up camera and scene renderer
       m_camera.reset();
       m_renderPipeline.reset();
@@ -428,6 +433,10 @@ bool EventDemoState::exit() {
     }
 
     // Full exit (going to main menu, other states, or shutting down)
+
+    if (m_player) {
+      m_player->setCamera(nullptr);
+    }
 
     // Reset player
     m_player.reset();
@@ -467,6 +476,8 @@ bool EventDemoState::exit() {
       particleMgr.prepareForStateTransition(); // This handles weather effects
                                                // and cleanup
     }
+
+    WorldManager::Instance().setActiveCamera(nullptr);
 
     // Clean up camera and scene renderer first to stop world rendering
     m_camera.reset();

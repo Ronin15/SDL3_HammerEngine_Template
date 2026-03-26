@@ -412,6 +412,11 @@ bool AIDemoState::exit() {
     edm.prepareForStateTransition();
     HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
 
+    WorldManager::Instance().setActiveCamera(nullptr);
+    if (m_player) {
+      m_player->setCamera(nullptr);
+    }
+
     // Clean up camera and scene renderer
     m_camera.reset();
     m_renderPipeline.reset();
@@ -447,6 +452,7 @@ bool AIDemoState::exit() {
   // NPCs hold EDM indices - must be destroyed while EDM data is still valid
   m_npcRenderCtrl.clearSpawnedNPCs();
   if (m_player) {
+    m_player->setCamera(nullptr);
     m_player.reset();
   }
 
@@ -466,6 +472,8 @@ bool AIDemoState::exit() {
 
   edm.prepareForStateTransition();
   HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+
+  WorldManager::Instance().setActiveCamera(nullptr);
 
   // Clean up camera and scene renderer first to stop world rendering
   m_camera.reset();
