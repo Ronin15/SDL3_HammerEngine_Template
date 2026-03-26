@@ -321,9 +321,6 @@ private:
   void commitQueuedBehaviorMessages();
   void commitQueuedBehaviorTransitions();
 
-  // Optimized helper methods
-  BehaviorType inferBehaviorType(const std::string &behaviorName) const;
-
   // Process batch of Active tier entities using EDM indices directly
   // No tier check needed - getActiveIndices() already filters to Active tier
   // Returns collected deferred events from this batch's thread-local buffer
@@ -334,7 +331,6 @@ private:
                     EntityHandle playerHandle, const Vector2D& playerPos,
                     const Vector2D& playerVel, bool playerValid,
                     float gameTime);
-  static uint64_t getCurrentTimeNanos();
 
   // Shutdown state
   bool m_isShutdown{false};

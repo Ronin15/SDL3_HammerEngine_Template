@@ -58,11 +58,14 @@ void upsertPendingBehaviorCandidate(
                MAX_COMPACTED_BEHAVIOR_MESSAGES>& candidates,
     size_t& count,
     const PendingBehaviorMessageCandidate& candidate) {
-  for (size_t i = 0; i < count; ++i) {
-    if (candidates[i].messageId == candidate.messageId) {
-      candidates[i] = candidate;
-      return;
-    }
+  auto begin = candidates.begin();
+  auto end = begin + static_cast<std::ptrdiff_t>(count);
+  auto existing = std::find_if(begin, end, [&](const auto& currentCandidate) {
+    return currentCandidate.messageId == candidate.messageId;
+  });
+  if (existing != end) {
+    *existing = candidate;
+    return;
   }
 
   if (count < candidates.size()) {
@@ -1222,14 +1225,6 @@ size_t AIManager::getTotalAssignmentCount() const {
   return m_totalAssignmentCount.load(std::memory_order_relaxed);
 }
 
-BehaviorType
-AIManager::inferBehaviorType(const std::string &behaviorName) const {
-  // m_behaviorTypeMap is populated once in registerDefaultBehaviors() and never modified.
-  // No lock needed for concurrent reads of an immutable container.
-  auto it = m_behaviorTypeMap.find(behaviorName);
-  return (it != m_behaviorTypeMap.end()) ? it->second : BehaviorType::Custom;
-}
-
 std::vector<EventManager::DeferredEvent> AIManager::processBatch(
                              const std::vector<size_t> &activeIndices,
                              size_t start, size_t end, float deltaTime,
@@ -1459,12 +1454,6 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
   std::vector<EventManager::DeferredEvent> deferredEvents;
   Behaviors::collectDeferredDamageEvents(deferredEvents);
   return deferredEvents;
-}
-
-uint64_t AIManager::getCurrentTimeNanos() {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-             std::chrono::high_resolution_clock::now().time_since_epoch())
-      .count();
 }
 
 int AIManager::getEntityPriority(EntityHandle handle) const {

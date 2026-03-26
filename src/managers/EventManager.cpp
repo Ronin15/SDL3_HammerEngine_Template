@@ -951,9 +951,9 @@ void EventManager::drainDispatchQueueWithBudget() {
       }
     } else if (!m_localNonCombatBuffer.empty()) {
       m_localDispatchBuffer.reserve(nonCombatCount);
-      for (const auto& pendingDispatch : m_localNonCombatBuffer) {
-        m_localDispatchBuffer.emplace_back(pendingDispatch);
-      }
+      m_localDispatchBuffer.insert(m_localDispatchBuffer.end(),
+                                   m_localNonCombatBuffer.begin(),
+                                   m_localNonCombatBuffer.end());
     }
   }
   // Lock released - process events without holding lock

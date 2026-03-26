@@ -208,15 +208,13 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     m_perf.updateAverage(elapsedMs);
 
     // Report ONLY batch time for adaptive tuning (not index retrieval/threading decision)
-    if (entityCount > 0) {
-        budgetMgr.reportExecution(HammerEngine::SystemType::BackgroundSim,
-                                  entityCount, useThreading,
-                                  batchCount, batchMs);
-    }
+    budgetMgr.reportExecution(HammerEngine::SystemType::BackgroundSim,
+                              entityCount, useThreading,
+                              batchCount, batchMs);
 
 #ifndef NDEBUG
     // Rolling log every 60 seconds (600 updates at 10Hz)
-    if (m_perf.totalUpdates % 600 == 0 && entityCount > 0) {
+    if (m_perf.totalUpdates % 600 == 0) {
         BGSIM_DEBUG(std::format(
             "Entities: {}, Avg: {:.2f}ms [{}]",
             entityCount, m_perf.avgUpdateMs,

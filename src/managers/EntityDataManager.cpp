@@ -22,6 +22,7 @@ using HammerEngine::JsonValue;
 #include <format>
 #include <limits>
 #include <numeric>
+#include <ranges>
 
 namespace {
 
@@ -3235,12 +3236,11 @@ std::span<const size_t> EntityDataManager::getIndicesByKind(EntityKind kind) con
         // Rebuild only this specific kind's indices (const_cast for lazy rebuild)
         auto& kindVec = const_cast<std::vector<size_t>&>(m_kindIndices[kindIdx]);
         kindVec.clear();
-
-        for (size_t i = 0; i < m_hotData.size(); ++i) {
-            if (m_hotData[i].isAlive() && m_hotData[i].kind == kind) {
-                kindVec.push_back(i);
-            }
-        }
+        std::ranges::copy_if(std::views::iota(size_t{0}, m_hotData.size()),
+                             std::back_inserter(kindVec),
+                             [&](size_t i) {
+                                 return m_hotData[i].isAlive() && m_hotData[i].kind == kind;
+                             });
 
         m_kindIndicesDirty[kindIdx] = false;
     }
