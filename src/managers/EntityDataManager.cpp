@@ -9,7 +9,6 @@
 #include "managers/AIManager.hpp"  // For auto-registering NPCs with AI
 #include "managers/ResourceTemplateManager.hpp"  // For getMaxStackSize in inventory
 #include "managers/TextureManager.hpp"  // For texture lookup in creature creation
-#include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"  // For unregister on harvestable destruction
 #include "utils/JsonReader.hpp"  // For loading NPC types from JSON
 #include "utils/ResourcePath.hpp"  // For path resolution in JSON loading
@@ -62,74 +61,6 @@ AtlasRegion lookupAtlasRegion(const std::string& regionId) {
         static_cast<uint16_t>(region["h"].asInt()),
         true
     };
-}
-
-AtlasRegion lookupHarvestableObstacleRegion(HammerEngine::ResourceHandle yieldResource) {
-    const auto resource = ResourceTemplateManager::Instance().getResourceTemplate(yieldResource);
-    if (!resource) {
-        return {};
-    }
-
-    struct ObstacleVisualInfo {
-        std::string textureId;
-        bool seasonal{false};
-    };
-
-    static const std::unordered_map<std::string, ObstacleVisualInfo> obstacleVisualsByYieldId = [] {
-        JsonReader worldObjectsReader;
-        if (!worldObjectsReader.loadFromFile(HammerEngine::ResourcePath::resolve("res/data/world_objects.json"))) {
-            return std::unordered_map<std::string, ObstacleVisualInfo>{};
-        }
-
-        const auto& root = worldObjectsReader.getRoot();
-        if (!root.hasKey("obstacles")) {
-            return std::unordered_map<std::string, ObstacleVisualInfo>{};
-        }
-
-        std::unordered_map<std::string, ObstacleVisualInfo> mappings;
-        for (const auto& [_, obstacleValue] : root["obstacles"].asObject()) {
-            if (!obstacleValue.hasKey("yields") || !obstacleValue.hasKey("textureId")) {
-                continue;
-            }
-            if (!obstacleValue["yields"].isString() || obstacleValue["textureId"].isNull()) {
-                continue;
-            }
-
-            ObstacleVisualInfo visualInfo;
-            visualInfo.textureId = obstacleValue["textureId"].asString();
-            if (obstacleValue.hasKey("seasonal")) {
-                visualInfo.seasonal = obstacleValue["seasonal"].asBool();
-            }
-            mappings.emplace(obstacleValue["yields"].asString(), std::move(visualInfo));
-        }
-        return mappings;
-    }();
-
-    const auto it = obstacleVisualsByYieldId.find(resource->getId());
-    if (it == obstacleVisualsByYieldId.end()) {
-        return {};
-    }
-
-    AtlasRegion region = lookupAtlasRegion(it->second.textureId);
-    if (!region.found && it->second.seasonal) {
-        const char* seasonPrefix = "spring_";
-        switch (WorldManager::Instance().getCurrentSeason()) {
-            case Season::Spring:
-                seasonPrefix = "spring_";
-                break;
-            case Season::Summer:
-                seasonPrefix = "summer_";
-                break;
-            case Season::Fall:
-                seasonPrefix = "fall_";
-                break;
-            case Season::Winter:
-                seasonPrefix = "winter_";
-                break;
-        }
-        region = lookupAtlasRegion(std::format("{}{}", seasonPrefix, it->second.textureId));
-    }
-    return region;
 }
 
 std::shared_ptr<SDL_Texture> getAtlasTextureOwner() {
@@ -1456,29 +1387,8 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     auto& renderData = m_harvestableRenderData[harvestableIndex];
     renderData.clear();
     assignAtlasTextureOwner(renderData);
-    const AtlasRegion obstacleRegion = lookupHarvestableObstacleRegion(yieldResource);
-    if (obstacleRegion.found) {
-        renderData.atlasX = obstacleRegion.x;
-        renderData.atlasY = obstacleRegion.y;
-        renderData.depletedAtlasX = obstacleRegion.x;
-        renderData.depletedAtlasY = obstacleRegion.y;
-        renderData.frameWidth = obstacleRegion.w;
-        renderData.frameHeight = obstacleRegion.h;
-    } else if (auto resource = ResourceTemplateManager::Instance().getResourceTemplate(yieldResource)) {
-        renderData.atlasX = static_cast<uint16_t>(resource->getAtlasX());
-        renderData.atlasY = static_cast<uint16_t>(resource->getAtlasY());
-        renderData.depletedAtlasX = renderData.atlasX;
-        renderData.depletedAtlasY = renderData.atlasY;
-        if (resource->getAtlasW() > 0) {
-            renderData.frameWidth = static_cast<uint16_t>(resource->getAtlasW());
-        }
-        if (resource->getAtlasH() > 0) {
-            renderData.frameHeight = static_cast<uint16_t>(resource->getAtlasH());
-        }
-        if (resource->getNumFrames() > 0) {
-            renderData.numFrames = static_cast<uint8_t>(resource->getNumFrames());
-        }
-    }
+    renderData.frameWidth = 32;
+    renderData.frameHeight = 32;
 
     // Store ID and mapping in STATIC pool structures
     m_staticEntityIds[index] = id;
