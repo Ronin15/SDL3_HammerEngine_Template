@@ -344,10 +344,9 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
     // Render world tiles via pipeline (uses pre-computed context)
     m_renderPipeline->renderWorld(renderer, ctx);
 
-    // Render world resources (dropped items, harvestables, containers)
+    // Render world resources managed outside world tiles (dropped items, containers)
     if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>(); resourceCtrl && m_camera) {
       resourceCtrl->renderDroppedItems(renderer, *m_camera, ctx.cameraX, ctx.cameraY, interpolationAlpha);
-      resourceCtrl->renderHarvestables(renderer, *m_camera, ctx.cameraX, ctx.cameraY, interpolationAlpha);
       resourceCtrl->renderContainers(renderer, *m_camera, ctx.cameraX, ctx.cameraY, interpolationAlpha);
     }
 
@@ -1202,10 +1201,9 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   worldMgr.recordGPU(*ctx.spriteBatch, ctx.cameraX, ctx.cameraY,
                      ctx.viewWidth, ctx.viewHeight, ctx.zoom);
 
-  // Record world resources to sprite batch (dropped items, harvestables, containers)
+  // Record world resources managed outside world tiles (dropped items, containers)
   if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>()) {
     resourceCtrl->recordGPUDroppedItems(ctx, *m_camera);
-    resourceCtrl->recordGPUHarvestables(ctx, *m_camera);
     resourceCtrl->recordGPUContainers(ctx, *m_camera);
   }
 
