@@ -1268,7 +1268,7 @@ void HammerEngine::TileRenderer::recordGPUTiles(
     // Pre-fetch seasonal coords (avoids per-tile lookups)
     const auto& sc = m_seasonalCoords[static_cast<int>(season)];
 
-    // Render at 1x scale (matching SDL_Renderer approach)
+    // Render at 1x scale.
     // Zoom is handled in the composite shader, not by scaling tile positions
     const float scaledTileSize = TILE_SIZE;  // 1x scale, no zoom multiplier
     const float baseCameraX = cameraX;       // No zoom multiplier
@@ -1380,7 +1380,7 @@ void HammerEngine::TileRenderer::recordGPUTiles(
       if (tile.obstacleType != ObstacleType::NONE &&
           tile.obstacleType != ObstacleType::WATER) {
 
-        // Handle buildings specially (match SDL_Renderer behavior)
+        // Handle buildings specially to preserve current world draw semantics.
         if (tile.obstacleType == ObstacleType::BUILDING) {
           if (tile.isTopLeftOfBuilding) {
             // Get building coords by size
@@ -1397,7 +1397,7 @@ void HammerEngine::TileRenderer::recordGPUTiles(
             if (buildingCoords && buildingCoords->w > 0) {
               const float spriteW = static_cast<float>(buildingCoords->w);
               const float spriteH = static_cast<float>(buildingCoords->h);
-              // Buildings render at tile position WITHOUT offsets (match SDL_Renderer)
+              // Buildings render at tile position without offsets.
               // sortY = bottom of building (tile.buildingSize tiles down)
               const float sortY = screenY + (tile.buildingSize * scaledTileSize);
 

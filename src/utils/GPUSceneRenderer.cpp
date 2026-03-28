@@ -3,8 +3,6 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#ifdef USE_SDL3_GPU
-
 #include "utils/GPUSceneRenderer.hpp"
 #include "utils/Camera.hpp"
 #include "utils/FrameProfiler.hpp"
@@ -167,5 +165,3 @@ void GPUSceneRenderer::renderScene(GPURenderer& gpuRenderer,
 }
 
 } // namespace HammerEngine
-
-#endif // USE_SDL3_GPU

@@ -8,10 +8,8 @@
 #ifndef NDEBUG
 
 #include "core/Logger.hpp"
-#include "managers/FontManager.hpp"
 #include "managers/UIConstants.hpp"
 #include "managers/UIManager.hpp"
-#include <SDL3/SDL_render.h>
 #include <algorithm>
 #include <format>
 
@@ -256,7 +254,7 @@ void FrameProfiler::endRender(RenderPhase phase)
         std::chrono::duration<double, std::milli>(now - start).count();
 }
 
-void FrameProfiler::renderOverlay(SDL_Renderer* /*renderer*/, FontManager* /*fontMgr*/)
+void FrameProfiler::renderOverlay()
 {
     auto& uiMgr = UIManager::Instance();
 

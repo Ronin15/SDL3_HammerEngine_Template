@@ -127,7 +127,6 @@ CORE_TEST_SCRIPTS=(
 BENCHMARK_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_event_scaling_benchmark.sh"
   "$SCRIPT_DIR/run_ai_benchmark.sh"
-  "$SCRIPT_DIR/run_ui_stress_tests.sh"
   "$SCRIPT_DIR/run_particle_manager_benchmark.sh"
   "$SCRIPT_DIR/run_collision_scaling_benchmark.sh"
   "$SCRIPT_DIR/run_pathfinder_benchmark.sh"

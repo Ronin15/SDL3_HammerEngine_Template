@@ -4,8 +4,6 @@
 #ifndef GPU_SCENE_RENDERER_HPP
 #define GPU_SCENE_RENDERER_HPP
 
-#ifdef USE_SDL3_GPU
-
 #include "utils/Vector2D.hpp"
 
 // Forward declaration of SDL GPU types (must be outside namespace)
@@ -55,7 +53,7 @@ struct GPUSceneContext {
 /**
  * @brief GPU scene rendering coordinator - facade for GPU rendering pipeline
  *
- * Mirrors SceneRenderer (SDL_Renderer path) for GPU rendering coordination.
+ * Coordinates the GPU scene rendering pipeline.
  * Owns sprite batch begin/end lifecycle, integrates with FrameProfiler,
  * and provides GPUSceneContext for systems to draw.
  *
@@ -149,7 +147,5 @@ private:
 };
 
 } // namespace HammerEngine
-
-#endif // USE_SDL3_GPU
 
 #endif // GPU_SCENE_RENDERER_HPP

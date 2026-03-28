@@ -50,7 +50,6 @@ set(SIMPLE_TESTS
     world_generator_tests
     world_manager_tests
     world_manager_event_integration_tests
-    ui_stress_test
     collision_system_tests
     pathfinding_system_tests
     pathfinder_manager_tests
@@ -129,8 +128,6 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "AIOptimizationTest.cpp")
     elseif(${test_name} STREQUAL "buffer_utilization_tests")
         set(test_source "BufferUtilizationTest.cpp")
-    elseif(${test_name} STREQUAL "ui_stress_test")
-        set(test_source "ui/ui_stress_test_main.cpp")
     elseif(${test_name} MATCHES "^resource_")
         string(REPLACE "resource_" "" suffix ${test_name})
         string(REPLACE "_tests" "" suffix ${suffix})
@@ -296,12 +293,10 @@ foreach(test_name ${INVENTORY_TESTS})
 endforeach()
 
 # Special configurations
-target_link_libraries(ui_stress_test PRIVATE Boost::container)
 target_compile_definitions(event_manager_tests PRIVATE RUNNING_TESTS)
 target_sources(event_manager_tests PRIVATE events/EventManagerTestAccess.cpp)
 target_include_directories(event_manager_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/events)
 target_compile_definitions(event_types_tests PRIVATE RUNNING_TESTS)
-target_compile_definitions(ui_stress_test PRIVATE UI_STRESS_TEST_BUILD)
 
 # Add save_manager_tests special mock
 target_sources(save_manager_tests PRIVATE mocks/MockPlayer.cpp)
@@ -317,9 +312,6 @@ foreach(test_name ${ALL_TESTS})
     elseif(${test_name} STREQUAL "collision_scaling_benchmark")
         # Only run MM scaling test by default (fast representative test)
         add_test(NAME ${test_name} COMMAND ${test_name} --run_test=CollisionScalingTests/MMScaling)
-    elseif(${test_name} STREQUAL "ui_stress_test")
-        # Run quick 10-second test for ctest (scripts run full duration)
-        add_test(NAME ${test_name} COMMAND ${test_name} --duration 10)
     elseif(${test_name} STREQUAL "integrated_system_benchmark")
         # Only run quick 60FPS test for ctest (full suite takes ~90s due to sustained perf test)
         add_test(NAME ${test_name} COMMAND ${test_name} --run_test=IntegratedSystemBenchmarkSuite/TestRealisticGameSimulation60FPS)

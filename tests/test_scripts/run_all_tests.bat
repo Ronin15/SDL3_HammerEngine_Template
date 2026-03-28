@@ -149,7 +149,6 @@ echo !MAGENTA!Starting performance benchmarks...!NC!
 for %%T in (
     run_event_scaling_benchmark.bat
     run_ai_benchmark.bat
-    run_ui_stress_tests.bat
     run_particle_manager_benchmark.bat
     run_collision_scaling_benchmark.bat
     run_pathfinder_benchmark.bat

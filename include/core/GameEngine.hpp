@@ -12,11 +12,9 @@
 #include <memory>
 #include <string_view>
 
-#ifdef USE_SDL3_GPU
 namespace HammerEngine {
 class GPURenderer;
 }
-#endif
 
 // Forward declarations
 class AIManager;
@@ -104,7 +102,7 @@ public:
   /**
    * @brief Presents the rendered frame (vsync wait)
    * @details Separated from render() for accurate profiling.
-   *          SDL_RenderPresent blocks on vsync - this is NOT rendering work.
+   *          Swapchain presentation may block on frame pacing, which is not render work.
    */
   void present();
 

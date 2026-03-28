@@ -858,11 +858,10 @@ void GamePlayState::initializeCamera() {
   Vector2D playerPosition =
       mp_Player ? mp_Player->getPosition() : Vector2D(0, 0);
 
-  // Create camera with position, then sync viewport from appropriate source
-  // (GPURenderer in GPU mode, GameEngine in SDL_Renderer mode)
+  // Create camera with position, then sync viewport from the active GPU renderer.
   m_camera = std::make_unique<HammerEngine::Camera>();
   m_camera->setPosition(playerPosition);
-  m_camera->syncViewportWithEngine();  // Gets correct dimensions for current mode
+  m_camera->syncViewportWithEngine();
 
   GAMEPLAY_INFO(std::format("Camera initialized: pos=({}, {}), viewport={}x{}",
                                  playerPosition.getX(), playerPosition.getY(),

@@ -215,7 +215,7 @@ void TimestepManager::updateFPS() {
 }
 
 void TimestepManager::limitFrameRate() const {
-    // If using hardware VSync, skip software limiting - VSync handles timing via SDL_RenderPresent()
+    // If using hardware VSync, skip software limiting because presentation handles frame pacing.
     if (!m_usingSoftwareFrameLimiting) {
         return;
     }

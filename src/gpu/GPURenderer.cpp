@@ -824,7 +824,7 @@ bool GPURenderer::createPipelines() {
 
 bool GPURenderer::createSceneTexture()
 {
-    // Create scene texture at viewport size (matching SDL_Renderer approach)
+    // Create the scene texture at viewport size.
     // Zoom is handled in the composite shader, not by rendering at larger scale
     uint32_t sceneWidth = m_viewportWidth;
     uint32_t sceneHeight = m_viewportHeight;

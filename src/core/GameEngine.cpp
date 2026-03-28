@@ -11,10 +11,8 @@
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 
-#ifdef USE_SDL3_GPU
 #include "gpu/GPUDevice.hpp"
 #include "gpu/GPURenderer.hpp"
-#endif
 #include "utils/FrameProfiler.hpp"
 #include "gameStates/AIDemoState.hpp"
 #include "gameStates/AdvancedAIDemoState.hpp"
@@ -1056,7 +1054,7 @@ void GameEngine::render() {
     return;
   }
 
-  profiler.renderOverlay(nullptr, nullptr);
+  profiler.renderOverlay();
 
   profiler.beginRender(HammerEngine::RenderPhase::WorldTiles);
   mp_gameStateManager->recordGPUVertices(gpuRenderer, interpolationAlpha);

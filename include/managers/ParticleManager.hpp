@@ -382,38 +382,6 @@ public:
   void update(float deltaTime);
 
   /**
-   * @brief Renders all visible particles using optimized batch rendering
-   * @param renderer SDL renderer for drawing
-   * @param cameraX Camera X offset for world-space rendering
-   * @param cameraY Camera Y offset for world-space rendering
-   * @param interpolationAlpha Interpolation factor (0.0-1.0) for smooth rendering
-   */
-  void render(SDL_Renderer *renderer, float cameraX = 0.0f,
-              float cameraY = 0.0f, float interpolationAlpha = 1.0f);
-
-  /**
-   * @brief Renders only background particles (rain, snow) - call before
-   * player/NPCs
-   * @param renderer SDL renderer for drawing
-   * @param cameraX Camera X offset for world-space rendering
-   * @param cameraY Camera Y offset for world-space rendering
-   * @param interpolationAlpha Interpolation factor (0.0-1.0) for smooth rendering
-   */
-  void renderBackground(SDL_Renderer *renderer, float cameraX = 0.0f,
-                        float cameraY = 0.0f, float interpolationAlpha = 1.0f);
-
-  /**
-   * @brief Renders only foreground particles (fog) - call after player/NPCs
-   * @param renderer SDL renderer for drawing
-   * @param cameraX Camera X offset for world-space rendering
-   * @param cameraY Camera Y offset for world-space rendering
-   * @param interpolationAlpha Interpolation factor (0.0-1.0) for smooth rendering
-   */
-  void renderForeground(SDL_Renderer *renderer, float cameraX = 0.0f,
-                        float cameraY = 0.0f, float interpolationAlpha = 1.0f);
-
-#ifdef USE_SDL3_GPU
-  /**
    * @brief Records particle vertices to GPU vertex pool for GPU rendering
    * @param gpuRenderer GPU renderer instance
    * @param cameraX Camera X offset for world-space rendering
@@ -429,7 +397,6 @@ public:
    * @param scenePass Active scene render pass
    */
   void renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* scenePass);
-#endif
 
   /**
    * @brief Checks if ParticleManager has been shut down
@@ -1004,7 +971,7 @@ private:
     // Reset for new batch (no allocation, just counter reset)
     constexpr void reset() noexcept { vertexCount = 0; }
 
-    // Get vertex count for SDL_RenderGeometryRaw
+    // Get the populated vertex count for the current batch.
     [[nodiscard]] constexpr int getVertexCount() const noexcept {
       return static_cast<int>(vertexCount);
     }
@@ -1070,8 +1037,6 @@ private:
   void releaseParticle(size_t index);
   void updateParticleBatch(size_t start, size_t end, float deltaTime);
   void updateParticleBatchOptimized(size_t start, size_t end, float deltaTime);
-  void renderParticleBatch(SDL_Renderer *renderer, size_t start, size_t end,
-                           float cameraX, float cameraY);
   void emitParticles(EffectInstance &effect,
                      const ParticleEffectDefinition &definition,
                      float deltaTime);

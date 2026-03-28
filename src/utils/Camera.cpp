@@ -15,9 +15,7 @@
 #include <random>
 #include <format>
 
-#ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
-#endif
 
 namespace HammerEngine {
 
@@ -624,20 +622,9 @@ bool Camera::setZoomLevel(int levelIndex) {
 }
 
 void Camera::syncViewportWithEngine() {
-    float viewportWidth = 0.0f;
-    float viewportHeight = 0.0f;
-
-#ifdef USE_SDL3_GPU
-    // In GPU mode, use GPURenderer viewport (actual window size)
     const auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
-    viewportWidth = static_cast<float>(gpuRenderer.getViewportWidth());
-    viewportHeight = static_cast<float>(gpuRenderer.getViewportHeight());
-#else
-    // In SDL_Renderer mode, use GameEngine logical size
-    const GameEngine& gameEngine = GameEngine::Instance();
-    viewportWidth = static_cast<float>(gameEngine.getLogicalWidth());
-    viewportHeight = static_cast<float>(gameEngine.getLogicalHeight());
-#endif
+    float const viewportWidth = static_cast<float>(gpuRenderer.getViewportWidth());
+    float const viewportHeight = static_cast<float>(gpuRenderer.getViewportHeight());
 
     // Only update if dimensions actually changed and valid
     if (viewportWidth > 0.0f && viewportHeight > 0.0f &&

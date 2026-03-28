@@ -15,8 +15,6 @@
 
 // Forward declarations
 class Entity;
-struct SDL_Renderer;
-
 namespace HammerEngine {
 
 /**

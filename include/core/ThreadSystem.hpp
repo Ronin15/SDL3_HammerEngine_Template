@@ -857,7 +857,7 @@ public:
     // HARDWARE CONCURRENCY - 1 PATTERN:
     // ThreadSystem allocates (hardware_concurrency - 1) workers to reserve one core
     // for the main rendering thread, which performs active work every frame:
-    //   - SDL_RenderPresent (blocks on VSync)
+    //   - Swapchain presentation / frame pacing
     //   - SDL_PollEvent (event polling)
     //   - Double-buffer coordination (swapBuffers)
     //

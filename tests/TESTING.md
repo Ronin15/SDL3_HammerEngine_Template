@@ -142,7 +142,6 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 # Performance scaling benchmarks (slow execution)
 ./tests/test_scripts/run_event_scaling_benchmark.sh     # Event manager scaling benchmark
 ./tests/test_scripts/run_ai_benchmark.sh                # AI scaling benchmark with realistic automatic threading
-./tests/test_scripts/run_ui_stress_tests.sh             # UI stress and performance tests
 ./tests/test_scripts/run_collision_benchmark.sh         # Collision system performance benchmarks
 ./tests/test_scripts/run_pathfinder_benchmark.sh        # Pathfinder system performance benchmarks
 
@@ -156,10 +155,6 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 ./tests/test_scripts/run_ai_benchmark.sh --threshold-test                  # Threading threshold validation (200 entities)
 
 # Individual UI stress test examples
-./tests/test_scripts/run_ui_stress_tests.sh --level light --duration 30    # Quick UI test
-./tests/test_scripts/run_ui_stress_tests.sh --level heavy --duration 60    # Heavy load test
-./tests/test_scripts/run_ui_stress_tests.sh --benchmark                    # UI benchmark suite
-./tests/test_scripts/run_ui_stress_tests.sh --level medium --verbose       # Detailed output
 
 # Save manager test examples with BinarySerializer
 ./tests/test_scripts/run_save_tests.sh --save-test                         # Basic save/load operations
@@ -203,7 +198,6 @@ tests/test_scripts/run_json_reader_tests.bat            # JSON parser validation
 # Performance scaling benchmarks (slow execution)
 tests/test_scripts/run_event_scaling_benchmark.bat      # Event manager scaling benchmark
 tests/test_scripts/run_ai_benchmark.bat                 # AI scaling benchmark
-tests/test_scripts/run_ui_stress_tests.bat              # UI stress and performance tests
 tests/test_scripts/run_collision_benchmark.bat          # Collision system performance benchmarks
 tests/test_scripts/run_pathfinder_benchmark.bat         # Pathfinder system performance benchmarks
 
@@ -211,10 +205,6 @@ tests/test_scripts/run_pathfinder_benchmark.bat         # Pathfinder system perf
 tests/test_scripts/run_all_tests.bat                    # Run all test scripts sequentially
 
 # Individual UI stress test examples
-tests/test_scripts/run_ui_stress_tests.bat /l light /d 30    # Quick UI test
-tests/test_scripts/run_ui_stress_tests.bat /l heavy /d 60    # Heavy load test
-tests/test_scripts/run_ui_stress_tests.bat /b                # UI benchmark suite
-tests/test_scripts/run_ui_stress_tests.bat /l medium /v      # Detailed output
 
 # Save manager test examples with BinarySerializer
 tests/test_scripts/run_save_tests.bat --save-test                          # Basic save/load operations
@@ -287,7 +277,6 @@ Test results are saved in the `test_results` directory:
 - `thread_safe_ai_test_output.txt` - Output from thread-safe AI tests
 - `thread_safe_ai_performance_metrics.txt` - Performance metrics from thread-safe AI tests
 - `ai_scaling_benchmark_[timestamp].txt` - AI scaling benchmark results
-- `ui_stress/ui_stress_test_[timestamp].log` - UI stress test results with performance metrics
 - `save_test_output.txt` - Output from save manager tests
 - `thread_test_output.txt` - Output from thread system tests
 - `event_test_output.txt` - Output from event manager tests
@@ -412,7 +401,6 @@ Located in `AIScalingBenchmark.cpp`, these tests measure realistic performance c
 
 ### UI Stress Tests
 
-Located in `ui/ui_stress_test_main.cpp`, these tests run in headless mode and measure:
 
 1. **Processing Throughput**: Components processed per second (real UI workload capacity)
 2. **Memory Efficiency**: Memory usage per component and total consumption
@@ -453,16 +441,12 @@ This approach provides actionable insights for UI system optimization rather tha
 **Usage Examples:**
 ```bash
 # Quick development validation
-./tests/test_scripts/run_ui_stress_tests.sh --level light --duration 10
 
 # CI/CD pipeline validation
-./tests/test_scripts/run_ui_stress_tests.sh --level medium --duration 30
 
 # Performance profiling
-./tests/test_scripts/run_ui_stress_tests.sh --benchmark --verbose
 
 # Stress testing with custom parameters
-./tests/test_scripts/run_ui_stress_tests.sh --level extreme --duration 120 --max-components 2000
 ```
 
 ### Save Manager Tests
