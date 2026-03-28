@@ -11,6 +11,7 @@
 #include "managers/GameStateManager.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
+#include "utils/ResourcePath.hpp"
 
 #ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
@@ -171,7 +172,7 @@ void SettingsMenuState::applySettings() {
     settings.set("gameplay", "autosave_interval", m_tempSettings.autosaveInterval);
 
     // Save to disk
-    settings.saveToFile("res/settings.json");
+    settings.saveToFile(HammerEngine::ResourcePath::resolve("res/settings.json"));
 
     GAMESTATE_INFO("Settings saved successfully");
 }

@@ -229,23 +229,21 @@ bool GameEngine::init(std::string_view title) {
   // macOS Game Mode is triggered by Info.plist (LSApplicationCategoryType=games + LSSupportsGameMode)
   // Spaces fullscreen (SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES=1) preserves ProMotion adaptive refresh
 
-#ifdef USE_SDL3_GPU
-  // Initialize GPU device and renderer
   GAMEENGINE_INFO("Initializing SDL3_GPU rendering backend");
-  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
-  if (gpuDevice.init(mp_window.get())) {
-    auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
-    if (gpuRenderer.init()) {
-      m_gpuRendering = true;
-      GAMEENGINE_INFO("SDL3_GPU rendering initialized successfully");
-    } else {
-      GAMEENGINE_WARN("GPURenderer init failed - falling back to SDL_Renderer");
-      gpuDevice.shutdown();
-    }
-  } else {
-    GAMEENGINE_WARN("GPUDevice init failed - falling back to SDL_Renderer");
+  auto &gpuDevice = HammerEngine::GPUDevice::Instance();
+  if (!gpuDevice.init(mp_window.get())) {
+    GAMEENGINE_ERROR("GPUDevice init failed");
+    return false;
   }
-#endif
+
+  auto &gpuRenderer = HammerEngine::GPURenderer::Instance();
+  if (!gpuRenderer.init()) {
+    GAMEENGINE_ERROR("GPURenderer init failed");
+    gpuDevice.shutdown();
+    return false;
+  }
+
+  GAMEENGINE_INFO("SDL3_GPU rendering initialized successfully");
 
   // Set window icon
   GAMEENGINE_INFO("Setting window icon");
@@ -278,34 +276,7 @@ bool GameEngine::init(std::string_view title) {
         std::format("Failed to get window logical size: {}", SDL_GetError()));
   }
 
-  // Create renderer (let SDL3 choose the best available backend)
-#ifdef USE_SDL3_GPU
-  if (!m_gpuRendering) {
-#endif
-    mp_renderer.reset(SDL_CreateRenderer(mp_window.get(), NULL));
-
-    if (!mp_renderer) {
-      GAMEENGINE_ERROR(
-          std::format("Failed to create renderer: {}", SDL_GetError()));
-      return false;
-    }
-
-    // Log which renderer backend SDL3 actually selected
-#ifdef DEBUG
-    auto rendererName = SDL_GetRendererName(mp_renderer.get());
-    if (rendererName) {
-      GAMEENGINE_INFO(
-          std::format("SDL3 selected renderer backend: {}", rendererName));
-    } else {
-      GAMEENGINE_WARN("Could not determine selected renderer backend");
-    }
-#endif
-    GAMEENGINE_DEBUG("SDL_Renderer system online");
-#ifdef USE_SDL3_GPU
-  } else {
-    GAMEENGINE_DEBUG("GPU rendering system online (SDL_Renderer skipped)");
-  }
-#endif
+  GAMEENGINE_DEBUG("GPU rendering system online");
 
   // Unified VSync initialization with automatic fallback
   // Detect platform for logging purposes only (not used to disable VSync)
@@ -350,50 +321,26 @@ bool GameEngine::init(std::string_view title) {
   m_timestepManager = std::make_unique<TimestepManager>();
   updateDisplayRefreshRate();
 
-  // VSync handling - different for GPU vs SDL_Renderer
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    // GPU rendering: configure swapchain present mode based on VSync setting
-    auto& gpuDev = HammerEngine::GPUDevice::Instance();
-    SDL_GPUPresentMode presentMode = vsyncRequested
-        ? SDL_GPU_PRESENTMODE_VSYNC
-        : SDL_GPU_PRESENTMODE_MAILBOX;
+  auto& gpuDev = HammerEngine::GPUDevice::Instance();
+  SDL_GPUPresentMode presentMode = vsyncRequested
+      ? SDL_GPU_PRESENTMODE_VSYNC
+      : SDL_GPU_PRESENTMODE_MAILBOX;
 
-    bool swapchainOk = SDL_SetGPUSwapchainParameters(
-        gpuDev.get(), gpuDev.getWindow(),
-        SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode);
+  bool swapchainOk = SDL_SetGPUSwapchainParameters(
+      gpuDev.get(), gpuDev.getWindow(),
+      SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode);
 
-    if (swapchainOk) {
-      GAMEENGINE_INFO(std::format("GPU rendering: present mode {}",
-                                  vsyncRequested ? "VSYNC" : "MAILBOX"));
-    } else {
-      GAMEENGINE_WARN(std::format("Failed to set GPU present mode: {} — defaulting to VSYNC",
-                                  SDL_GetError()));
-      vsyncRequested = true;
-    }
-
-    // Software frame limiting needed when VSync is off
-    m_timestepManager->setSoftwareFrameLimiting(!vsyncRequested);
+  if (swapchainOk) {
+    GAMEENGINE_INFO(std::format("GPU rendering: present mode {}",
+                                vsyncRequested ? "VSYNC" : "MAILBOX"));
   } else {
-#endif
-    // Attempt to set VSync based on user preference
-    bool vsyncSetSuccessfully =
-        SDL_SetRenderVSync(mp_renderer.get(), vsyncRequested ? 1 : 0);
-
-    GAMEENGINE_WARN_IF(!vsyncSetSuccessfully,
-                       std::format("Failed to {} VSync: {}",
-                                   vsyncRequested ? "enable" : "disable",
-                                   SDL_GetError()));
-
-    // Verify VSync state and configure software frame limiting in TimestepManager
-    if (vsyncSetSuccessfully) {
-      verifyVSyncState(vsyncRequested);
-    } else {
-      m_timestepManager->setSoftwareFrameLimiting(true);
-    }
-#ifdef USE_SDL3_GPU
+    GAMEENGINE_WARN(std::format("Failed to set GPU present mode: {} — defaulting to VSYNC",
+                                SDL_GetError()));
+    vsyncRequested = true;
   }
-#endif
+
+  // Software frame limiting needed when VSync is off
+  m_timestepManager->setSoftwareFrameLimiting(!vsyncRequested);
 
   if (m_timestepManager->isUsingSoftwareFrameLimiting()) {
     TIMESTEP_INFO(std::format("Created: {:.0f} Hz updates, {:.0f} FPS target, "
@@ -411,40 +358,9 @@ bool GameEngine::init(std::string_view title) {
   m_logicalWidth = actualWidth;
   m_logicalHeight = actualHeight;
 
-#ifdef USE_SDL3_GPU
-  if (!m_gpuRendering) {
-#endif
-    if (!SDL_SetRenderDrawColor(
-            mp_renderer.get(),
-            HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
-      GAMEENGINE_ERROR(std::format("Failed to set initial render draw color: {}",
-                                   SDL_GetError()));
-    }
-    // Use native resolution rendering on all platforms for crisp, sharp text
-    // This eliminates GPU scaling blur and provides consistent cross-platform
-    // behavior
-
-    // Disable logical presentation to render at native resolution
-    SDL_RendererLogicalPresentation const presentationMode =
-        SDL_LOGICAL_PRESENTATION_DISABLED;
-    if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth,
-                                          actualHeight, presentationMode)) {
-      GAMEENGINE_ERROR(std::format(
-          "Failed to set render logical presentation: {}", SDL_GetError()));
-    }
-
-    GAMEENGINE_INFO(
-        std::format("Using native resolution for crisp rendering: {}x{}",
-                    actualWidth, actualHeight));
-    // Render Mode.
-    SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
-#ifdef USE_SDL3_GPU
-  } else {
-    GAMEENGINE_INFO(
-        std::format("GPU rendering at native resolution: {}x{}",
-                    actualWidth, actualHeight));
-  }
-#endif
+  GAMEENGINE_INFO(
+      std::format("GPU rendering at native resolution: {}x{}",
+                  actualWidth, actualHeight));
 
   // Now check if the icon was loaded successfully
   try {
@@ -554,16 +470,7 @@ bool GameEngine::init(std::string_view title) {
   const std::string textureResPath = HammerEngine::ResourcePath::resolve("res/img");
   constexpr std::string_view texturePrefix = "";
 
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    // Load textures for GPU rendering
-    texMgr.loadGPU(textureResPath, std::string(texturePrefix));
-  } else {
-    texMgr.load(textureResPath, std::string(texturePrefix), mp_renderer.get());
-  }
-#else
-  texMgr.load(textureResPath, std::string(texturePrefix), mp_renderer.get());
-#endif
+  texMgr.loadGPU(textureResPath, std::string(texturePrefix));
 
   // Initialize sound manager in a separate thread - #3
   // Resolve paths before lambda capture
@@ -947,8 +854,8 @@ bool GameEngine::init(std::string_view title) {
   try {
     WorldManager &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized()) {
-      worldMgr.setRenderer(mp_renderer.get());
-      GAMEENGINE_INFO("WorldManager renderer setup complete");
+      worldMgr.setRenderer(nullptr);
+      GAMEENGINE_INFO("WorldManager GPU-only setup complete");
     } else {
       GAMEENGINE_ERROR("WorldManager not initialized - cannot set renderer");
       return false;
@@ -979,9 +886,6 @@ void GameEngine::handleEvents() {
 
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
-    // Convert window coordinates to logical coordinates for mouse events
-    SDL_ConvertEventToRenderCoordinates(mp_renderer.get(), &event);
-
     switch (event.type) {
     case SDL_EVENT_QUIT:
       GAMEENGINE_INFO("Shutting down!");
@@ -1146,76 +1050,46 @@ void GameEngine::render() {
   float interpolationAlpha =
       static_cast<float>(m_timestepManager->getInterpolationAlpha());
 
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
-    auto& profiler = HammerEngine::FrameProfiler::Instance();
+  auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
+  auto& profiler = HammerEngine::FrameProfiler::Instance();
 
-    // Begin GPU frame (profiler timing is inside beginFrame for granular breakdown)
-    if (!gpuRenderer.beginFrame()) {
-      return;
-    }
-
-    // Update profiler overlay (creates/updates UIManager components before recording)
-    profiler.renderOverlay(nullptr, nullptr);
-
-    // Record vertices for GPU rendering (before scene pass)
-    profiler.beginRender(HammerEngine::RenderPhase::WorldTiles);
-    mp_gameStateManager->recordGPUVertices(gpuRenderer, interpolationAlpha);
-    profiler.endRender(HammerEngine::RenderPhase::WorldTiles);
-
-    // Begin scene render pass (finalizes uploads, clears scene texture)
-    SDL_GPURenderPass* scenePass = gpuRenderer.beginScenePass();
-
-    // Render scene content
-    profiler.beginRender(HammerEngine::RenderPhase::Entities);
-    if (scenePass) {
-      mp_gameStateManager->renderGPUScene(gpuRenderer, scenePass, interpolationAlpha);
-    }
-    profiler.endRender(HammerEngine::RenderPhase::Entities);
-
-    // Composite scene to swapchain
-    profiler.beginRender(HammerEngine::RenderPhase::EndScene);
-    SDL_GPURenderPass* swapchainPass = gpuRenderer.beginSwapchainPass();
-    if (swapchainPass) {
-      gpuRenderer.renderComposite(swapchainPass);
-    }
-    profiler.endRender(HammerEngine::RenderPhase::EndScene);
-
-    // Render UI to swapchain
-    profiler.beginRender(HammerEngine::RenderPhase::UI);
-    if (swapchainPass) {
-      mp_gameStateManager->renderGPUUI(gpuRenderer, swapchainPass);
-    }
-    profiler.endRender(HammerEngine::RenderPhase::UI);
-
-    // Frame timing is finalized after present() in HammerMain.cpp.
+  if (!gpuRenderer.beginFrame()) {
     return;
   }
-#endif
 
-  // SDL_Renderer path
-  SDL_SetRenderDrawColor(mp_renderer.get(), HAMMER_GRAY);
-  SDL_RenderClear(mp_renderer.get());
+  profiler.renderOverlay(nullptr, nullptr);
 
-  mp_gameStateManager->render(mp_renderer.get(), interpolationAlpha);
+  profiler.beginRender(HammerEngine::RenderPhase::WorldTiles);
+  mp_gameStateManager->recordGPUVertices(gpuRenderer, interpolationAlpha);
+  profiler.endRender(HammerEngine::RenderPhase::WorldTiles);
 
-  // Debug profiler overlay (renders only when visible, compiles out in Release)
-  HammerEngine::FrameProfiler::Instance().renderOverlay(
-      mp_renderer.get(), &FontManager::Instance());
+  SDL_GPURenderPass* scenePass = gpuRenderer.beginScenePass();
+
+  profiler.beginRender(HammerEngine::RenderPhase::Entities);
+  if (scenePass) {
+    mp_gameStateManager->renderGPUScene(gpuRenderer, scenePass, interpolationAlpha);
+  }
+  profiler.endRender(HammerEngine::RenderPhase::Entities);
+
+  profiler.beginRender(HammerEngine::RenderPhase::EndScene);
+  SDL_GPURenderPass* swapchainPass = gpuRenderer.beginSwapchainPass();
+  if (swapchainPass) {
+    gpuRenderer.renderComposite(swapchainPass);
+  }
+  profiler.endRender(HammerEngine::RenderPhase::EndScene);
+
+  profiler.beginRender(HammerEngine::RenderPhase::UI);
+  if (swapchainPass) {
+    mp_gameStateManager->renderGPUUI(gpuRenderer, swapchainPass);
+  }
+  profiler.endRender(HammerEngine::RenderPhase::UI);
 }
 
 void GameEngine::present() {
   // Present is separate from render for accurate profiling.
   // For the GPU path, frame pacing now happens when the swapchain pass acquires
   // the swapchain texture rather than at frame start.
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    HammerEngine::GPURenderer::Instance().endFrame();
-    return;
-  }
-#endif
-  SDL_RenderPresent(mp_renderer.get());
+  HammerEngine::GPURenderer::Instance().endFrame();
 }
 
 void GameEngine::processBackgroundTasks() {
@@ -1237,43 +1111,10 @@ void GameEngine::processBackgroundTasks() {
 void GameEngine::setLogicalPresentationMode(
     SDL_RendererLogicalPresentation mode) {
   m_logicalPresentationMode = mode;
-  if (mp_renderer) {
-    int width = m_windowWidth;
-    int height = m_windowHeight;
-    if (SDL_GetWindowSize(mp_window.get(), &width, &height)) {
-      // width/height updated
-    } else {
-      GAMEENGINE_ERROR(
-          std::format("Failed to get window size for logical presentation: {}",
-                      SDL_GetError()));
-    }
-    if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), width, height,
-                                          mode)) {
-      GAMEENGINE_ERROR(std::format(
-          "Failed to set render logical presentation: {}", SDL_GetError()));
-    }
-  }
 }
 
 bool GameEngine::isVSyncEnabled() const noexcept {
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    // GPU path: VSync is handled by swapchain, return requested state
-    return m_vsyncRequested;
-  }
-#endif
-
-  if (!mp_renderer) {
-    return false;
-  }
-
-  // SDL_Renderer path: Check current VSync setting using SDL3 API
-  int vsync = 0;
-  if (SDL_GetRenderVSync(mp_renderer.get(), &vsync)) {
-    return (vsync > 0); // Any positive value means VSync is enabled
-  }
-
-  return false;
+  return m_vsyncRequested;
 }
 
 SDL_RendererLogicalPresentation
@@ -1304,7 +1145,6 @@ void GameEngine::clean() {
   // Save copies of the smart pointers to resources we'll clean up at the very
   // end
   auto window_to_destroy = std::move(mp_window);
-  auto renderer_to_destroy = std::move(mp_renderer);
 
   // Clean up Managers in the correct order, respecting dependencies.
   // Systems that are used by other systems must be cleaned up last.
@@ -1375,19 +1215,10 @@ void GameEngine::clean() {
 
   // Explicitly reset smart pointers at the end, after all subsystems
   // are done using them - this will trigger their custom deleters
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    GAMEENGINE_INFO("Shutting down GPU renderer...");
-    HammerEngine::GPURenderer::Instance().shutdown();
-    GAMEENGINE_INFO("Shutting down GPU device...");
-    HammerEngine::GPUDevice::Instance().shutdown();
-    m_gpuRendering = false;
-  }
-#endif
-
-  GAMEENGINE_INFO("Destroying renderer...");
-  renderer_to_destroy.reset();
-  GAMEENGINE_INFO("Renderer destroyed successfully");
+  GAMEENGINE_INFO("Shutting down GPU renderer...");
+  HammerEngine::GPURenderer::Instance().shutdown();
+  GAMEENGINE_INFO("Shutting down GPU device...");
+  HammerEngine::GPUDevice::Instance().shutdown();
 
   GAMEENGINE_INFO("Destroying window...");
   window_to_destroy.reset();
@@ -1405,82 +1236,44 @@ bool GameEngine::setVSyncEnabled(bool enable) {
   GAMEENGINE_INFO(
       std::format("{} VSync...", enable ? "Enabling" : "Disabling"));
 
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    auto& gpuDevice = HammerEngine::GPUDevice::Instance();
-    if (!gpuDevice.isInitialized()) {
-      GAMEENGINE_ERROR("Cannot set VSync - GPU device not initialized");
-      return false;
-    }
-
-    // VSYNC blocks until vblank; MAILBOX presents latest frame at vblank without blocking
-    SDL_GPUPresentMode presentMode = enable
-        ? SDL_GPU_PRESENTMODE_VSYNC
-        : SDL_GPU_PRESENTMODE_MAILBOX;
-
-    bool success = SDL_SetGPUSwapchainParameters(
-        gpuDevice.get(), gpuDevice.getWindow(),
-        SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode);
-
-    if (!success) {
-      GAMEENGINE_ERROR(std::format("Failed to {} VSync on GPU swapchain: {}",
-                                   enable ? "enable" : "disable",
-                                   SDL_GetError()));
-      if (m_timestepManager) {
-        m_timestepManager->setSoftwareFrameLimiting(true);
-        GAMEENGINE_INFO("Falling back to software frame limiting");
-      }
-      return false;
-    }
-
-    // Configure software frame limiting: needed when VSync is off
-    if (m_timestepManager) {
-      m_timestepManager->setSoftwareFrameLimiting(!enable);
-    }
-
-    GAMEENGINE_INFO(std::format("GPU VSync {} (present mode: {})",
-                                enable ? "enabled" : "disabled",
-                                enable ? "VSYNC" : "MAILBOX"));
-
-    // Save VSync setting to SettingsManager for persistence
-    auto &settings = HammerEngine::SettingsManager::Instance();
-    settings.set("graphics", "vsync", enable);
-    settings.saveToFile(HammerEngine::ResourcePath::resolve("res/settings.json"));
-
-    return true;
-  }
-#endif
-
-  if (!mp_renderer) {
-    GAMEENGINE_ERROR("Cannot set VSync - renderer not initialized");
+  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+  if (!gpuDevice.isInitialized()) {
+    GAMEENGINE_ERROR("Cannot set VSync - GPU device not initialized");
     return false;
   }
 
-  // Attempt to set VSync
-  bool vsyncSetSuccessfully =
-      SDL_SetRenderVSync(mp_renderer.get(), enable ? 1 : 0);
+  SDL_GPUPresentMode presentMode = enable
+      ? SDL_GPU_PRESENTMODE_VSYNC
+      : SDL_GPU_PRESENTMODE_MAILBOX;
 
-  if (!vsyncSetSuccessfully) {
-    GAMEENGINE_ERROR(std::format("Failed to {} VSync: {}",
+  bool success = SDL_SetGPUSwapchainParameters(
+      gpuDevice.get(), gpuDevice.getWindow(),
+      SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode);
+
+  if (!success) {
+    GAMEENGINE_ERROR(std::format("Failed to {} VSync on GPU swapchain: {}",
                                  enable ? "enable" : "disable",
                                  SDL_GetError()));
-    // Ensure software frame limiting is enabled if VSync enable failed
-    if (enable) {
+    if (m_timestepManager) {
       m_timestepManager->setSoftwareFrameLimiting(true);
       GAMEENGINE_INFO("Falling back to software frame limiting");
     }
     return false;
   }
 
-  // Verify VSync state - this sets TimestepManager's software limiting flag
-  bool const vsyncVerified = verifyVSyncState(enable);
+  if (m_timestepManager) {
+    m_timestepManager->setSoftwareFrameLimiting(!enable);
+  }
 
-  // Save VSync setting to SettingsManager for persistence
+  GAMEENGINE_INFO(std::format("GPU VSync {} (present mode: {})",
+                              enable ? "enabled" : "disabled",
+                              enable ? "VSYNC" : "MAILBOX"));
+
   auto &settings = HammerEngine::SettingsManager::Instance();
-  settings.set("graphics", "vsync", enable && vsyncVerified);
+  settings.set("graphics", "vsync", enable);
   settings.saveToFile(HammerEngine::ResourcePath::resolve("res/settings.json"));
 
-  return vsyncVerified;
+  return true;
 }
 
 void GameEngine::toggleFullscreen() {
@@ -1605,64 +1398,11 @@ int GameEngine::getOptimalDisplayIndex() const {
 }
 
 bool GameEngine::verifyVSyncState(bool requested) {
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    // GPU path: SDL3 GPU API doesn't provide swapchain present mode query,
-    // so trust the result of SDL_SetGPUSwapchainParameters() from setVSyncEnabled().
-    // Configure software frame limiting: needed when VSync is off
-    if (m_timestepManager) {
-      m_timestepManager->setSoftwareFrameLimiting(!requested);
-    }
-    return requested;
-  }
-#endif
-
-  // SDL_Renderer path: verify VSync state matches requested setting
-  int vsyncState = 0;
-  bool vsyncVerified = false;
-
-  if (SDL_GetRenderVSync(mp_renderer.get(), &vsyncState)) {
-    if (requested) {
-      // When enabling, verify it's actually on
-      vsyncVerified = (vsyncState > 0);
-#ifdef DEBUG
-      if (vsyncVerified) {
-        GAMEENGINE_INFO(
-            std::format("VSync enabled and verified (mode: {})", vsyncState));
-      } else {
-        GAMEENGINE_WARN(
-            std::format("VSync set but verification failed (reported mode: {})",
-                        vsyncState));
-      }
-#endif
-    } else {
-      // When disabling, verify it's actually off
-      vsyncVerified = (vsyncState == 0);
-#ifdef DEBUG
-      if (vsyncVerified) {
-        GAMEENGINE_INFO("VSync disabled and verified");
-      } else {
-        GAMEENGINE_WARN(
-            std::format("VSync disable verification failed (reported mode: {})",
-                        vsyncState));
-      }
-#endif
-    }
-  } else {
-    GAMEENGINE_WARN(
-        std::format("Could not verify VSync state: {}", SDL_GetError()));
-    vsyncVerified = false;
-  }
-
-  // Set software frame limiting based on verification result
-  // Use software limiting when: VSync should be on but verification failed, or
-  // VSync is intentionally disabled
-  bool useSoftwareLimiting = requested ? !vsyncVerified : true;
   if (m_timestepManager) {
-    m_timestepManager->setSoftwareFrameLimiting(useSoftwareLimiting);
+    m_timestepManager->setSoftwareFrameLimiting(!requested);
   }
 
-  return vsyncVerified;
+  return requested;
 }
 
 void GameEngine::onWindowResize(const SDL_Event &event) {
@@ -1694,14 +1434,8 @@ void GameEngine::onWindowResize(const SDL_Event &event) {
     actualHeight = newHeight;
   }
 
-#ifdef USE_SDL3_GPU
   // GPURenderer syncs viewport from the swapchain when the GPU frame begins rendering.
   // No manual updateViewport needed - swapchain is authoritative source
-#else
-  // Update renderer to native resolution (no scaling)
-  SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth, actualHeight,
-                                   SDL_LOGICAL_PRESENTATION_DISABLED);
-#endif
 
   // Update GameEngine's cached logical dimensions
   setLogicalSize(actualWidth, actualHeight);
@@ -1753,26 +1487,10 @@ void GameEngine::onWindowEvent(const SDL_Event &event) {
   case SDL_EVENT_WINDOW_FOCUS_GAINED:
     if (m_windowOccluded) {
       m_windowOccluded = false;
-#ifdef USE_SDL3_GPU
-      if (m_gpuRendering) {
-        // GPU rendering: VSync is handled by swapchain, disable software limiting
-        if (m_timestepManager && m_vsyncRequested) {
-          m_timestepManager->setSoftwareFrameLimiting(false);
-        }
-        GAMEENGINE_DEBUG("Window visible - GPU swapchain handles VSync");
-      } else {
-#endif
-        // SDL_Renderer path: verify VSync state
-        bool vsyncVerified = false;
-        if (m_timestepManager) {
-          vsyncVerified = verifyVSyncState(m_vsyncRequested);
-        }
-        GAMEENGINE_DEBUG(std::format("Window visible - VSync {} (requested: {})",
-                                     vsyncVerified ? "verified" : "not verified",
-                                     m_vsyncRequested ? "enabled" : "disabled"));
-#ifdef USE_SDL3_GPU
+      if (m_timestepManager && m_vsyncRequested) {
+        m_timestepManager->setSoftwareFrameLimiting(false);
       }
-#endif
+      GAMEENGINE_DEBUG("Window visible - GPU swapchain handles VSync");
     }
     break;
   default:

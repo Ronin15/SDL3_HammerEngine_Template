@@ -180,20 +180,6 @@ public:
 
 
   /**
-   * @brief Gets the SDL renderer instance
-   * @return Pointer to SDL renderer (nullptr when USE_SDL3_GPU is enabled)
-   */
-  SDL_Renderer *getRenderer() const noexcept { return mp_renderer.get(); }
-
-#ifdef USE_SDL3_GPU
-  /**
-   * @brief Checks if GPU rendering is active
-   * @return true if using SDL3_GPU, false if using SDL_Renderer
-   */
-  bool isGPURendering() const noexcept { return m_gpuRendering; }
-#endif
-
-  /**
    * @brief Gets the SDL window instance
    * @return Pointer to SDL window
    */
@@ -387,8 +373,6 @@ private:
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{
       nullptr, SDL_DestroyWindow};
-  std::unique_ptr<SDL_Renderer, decltype(&SDL_DestroyRenderer)> mp_renderer{
-      nullptr, SDL_DestroyRenderer};
   std::unique_ptr<TimestepManager> m_timestepManager{nullptr};
   bool m_running{false};
   int m_windowWidth{0};
@@ -427,11 +411,6 @@ private:
 
   // Global pause state - propagated to managers which have their own atomics
   bool m_globallyPaused{false};
-
-#ifdef USE_SDL3_GPU
-  // GPU rendering mode flag
-  bool m_gpuRendering{false};
-#endif
 
   // Delete copy constructor and assignment operator
   GameEngine(const GameEngine &) = delete;            // Prevent copying
