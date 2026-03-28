@@ -7,7 +7,7 @@
  * @file ResourceRenderControllerTests.cpp
  * @brief Tests for ResourceRenderController
  *
- * Tests unified rendering of dropped items, containers, and harvestables.
+ * Tests unified rendering of dropped items and containers.
  */
 
 #define BOOST_TEST_MODULE ResourceRenderControllerTests
@@ -140,15 +140,6 @@ BOOST_AUTO_TEST_CASE(TestRenderContainersNullRenderer) {
 
     // Null renderer should be handled gracefully (no crash)
     controller.renderContainers(nullptr, getCamera(), 0.0f, 0.0f, 1.0f);
-
-    BOOST_CHECK(true);
-}
-
-BOOST_AUTO_TEST_CASE(TestRenderHarvestablesNullRenderer) {
-    ResourceRenderController controller;
-
-    // Null renderer should be handled gracefully (no crash)
-    controller.renderHarvestables(nullptr, getCamera(), 0.0f, 0.0f, 1.0f);
 
     BOOST_CHECK(true);
 }

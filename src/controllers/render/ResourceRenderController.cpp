@@ -50,22 +50,11 @@ struct ResourceSpriteView {
     return useOpenVariant ? renderData.openFrameHeight : renderData.frameHeight;
 }
 
-[[nodiscard]] ResourceSpriteView buildHarvestableSpriteView(const HarvestableRenderData& renderData,
-                                                            bool isDepleted) {
-    if (isDepleted && renderData.depletedTextureOwner &&
-        (renderData.depletedAtlasX != 0 || renderData.depletedAtlasY != 0)) {
-        return {renderData.depletedTextureOwner, renderData.depletedAtlasX, renderData.depletedAtlasY};
-    }
-
-    return {renderData.normalTextureOwner, renderData.atlasX, renderData.atlasY};
-}
-
 } // namespace
 
 void ResourceRenderController::update(float deltaTime, const HammerEngine::Camera& camera) {
     updateDroppedItemAnimations(deltaTime, camera);
     updateContainerStates(deltaTime, camera);
-    updateHarvestableStates(deltaTime, camera);
 }
 
 void ResourceRenderController::updateDroppedItemAnimations(float deltaTime, const HammerEngine::Camera& camera) {
@@ -109,12 +98,6 @@ void ResourceRenderController::updateContainerStates([[maybe_unused]] float delt
                                                       [[maybe_unused]] const HammerEngine::Camera& camera) {
     // Container open/close animations will be implemented when containers are added
     // For now, containers are static (just open or closed state)
-}
-
-void ResourceRenderController::updateHarvestableStates([[maybe_unused]] float deltaTime,
-                                                        [[maybe_unused]] const HammerEngine::Camera& camera) {
-    // Harvestable animations (e.g., swaying trees) will be implemented later
-    // For now, harvestables are static
 }
 
 void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
@@ -241,65 +224,6 @@ void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const Ha
     }
 }
 
-void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
-                                                   float cameraX, float cameraY, float alpha) {
-    RESOURCE_RENDER_WARN_IF(!renderer, "renderHarvestables: renderer is null");
-    if (!renderer) { return; }
-
-    auto& edm = EntityDataManager::Instance();
-    auto& wrm = WorldResourceManager::Instance();
-
-    // Use interpolated camera position for spatial query (matches actual render position)
-    Vector2D cameraCenter(cameraX, cameraY);
-    const auto& viewport = camera.getViewport();
-    float visibleRadius = std::sqrt(viewport.width * viewport.width +
-                                    viewport.height * viewport.height) * 0.5f;
-
-    // Query only visible harvestables - O(k) where k = cells in view
-    m_visibleHarvestableIndices.clear();
-    wrm.queryHarvestablesInRadius(cameraCenter, visibleRadius, m_visibleHarvestableIndices);
-
-    // Use passed cameraX/cameraY (interpolated) for actual rendering
-
-    for (size_t idx : m_visibleHarvestableIndices) {
-        const auto& hot = edm.getStaticHotDataByIndex(idx);  // Static pool accessor
-        if (!hot.isAlive()) continue;
-
-        const auto& harvData = edm.getHarvestableData(hot.typeLocalIndex);
-        const auto& r = edm.getHarvestableRenderDataByTypeIndex(hot.typeLocalIndex);
-        const auto spriteView = buildHarvestableSpriteView(r, harvData.isDepleted);
-
-        if (!spriteView.textureOwner) continue;
-
-        // Interpolate position
-        float interpX = hot.transform.previousPosition.getX() +
-            (hot.transform.position.getX() - hot.transform.previousPosition.getX()) * alpha;
-        float interpY = hot.transform.previousPosition.getY() +
-            (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
-
-        // Calculate source rect
-        SDL_FRect srcRect = {
-            static_cast<float>(spriteView.atlasX + r.currentFrame * r.frameWidth),
-            static_cast<float>(spriteView.atlasY),
-            static_cast<float>(r.frameWidth),
-            static_cast<float>(r.frameHeight)
-        };
-
-        // Calculate destination rect (centered)
-        // Sub-pixel rendering - unified with Player/Particles for smooth diagonal movement
-        float halfW = static_cast<float>(r.frameWidth) * 0.5f;
-        float halfH = static_cast<float>(r.frameHeight) * 0.5f;
-        SDL_FRect destRect = {
-            interpX - cameraX - halfW,
-            interpY - cameraY - halfH,
-            static_cast<float>(r.frameWidth),
-            static_cast<float>(r.frameHeight)
-        };
-
-        SDL_RenderTexture(renderer, spriteView.textureOwner.get(), &srcRect, &destRect);
-    }
-}
-
 void ResourceRenderController::clearAll() {
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
@@ -317,11 +241,6 @@ void ResourceRenderController::clearAll() {
     std::vector<size_t> containers;
     wrm.queryContainersInRadius(center, LARGE_RADIUS, containers);
     toDestroy.insert(toDestroy.end(), containers.begin(), containers.end());
-
-    // Collect harvestables
-    std::vector<size_t> harvestables;
-    wrm.queryHarvestablesInRadius(center, LARGE_RADIUS, harvestables);
-    toDestroy.insert(toDestroy.end(), harvestables.begin(), harvestables.end());
 
     // Now destroy all collected entities (using static handle accessor)
     for (size_t idx : toDestroy) {
@@ -446,60 +365,4 @@ void ResourceRenderController::recordGPUContainers(const HammerEngine::GPUSceneC
     }
 }
 
-void ResourceRenderController::recordGPUHarvestables(const HammerEngine::GPUSceneContext& ctx,
-                                                      const HammerEngine::Camera& camera) {
-    RESOURCE_RENDER_WARN_IF(!ctx.spriteBatch, "recordGPUHarvestables: ctx.spriteBatch is null");
-    if (!ctx.spriteBatch) { return; }
-
-    auto& edm = EntityDataManager::Instance();
-    auto& wrm = WorldResourceManager::Instance();
-
-    // Query visible harvestables using rendered camera center (not camera.getPosition()
-    // which lags in Follow mode due to blend factor)
-    Vector2D cameraCenter = ctx.cameraCenter;
-    const auto& viewport = camera.getViewport();
-    float visibleRadius = std::sqrt(viewport.width * viewport.width +
-                                    viewport.height * viewport.height) * 0.5f;
-
-    m_visibleHarvestableIndices.clear();
-    wrm.queryHarvestablesInRadius(cameraCenter, visibleRadius, m_visibleHarvestableIndices);
-
-    const float alpha = ctx.interpolationAlpha;
-
-    for (size_t idx : m_visibleHarvestableIndices) {
-        const auto& hot = edm.getStaticHotDataByIndex(idx);
-        if (!hot.isAlive()) { continue; }
-
-        const auto& harvData = edm.getHarvestableData(hot.typeLocalIndex);
-        const auto& r = edm.getHarvestableRenderDataByTypeIndex(hot.typeLocalIndex);
-
-        // Choose atlas coords based on depleted state
-        const bool useDepletedVariant = harvData.isDepleted && (r.depletedAtlasX != 0 || r.depletedAtlasY != 0);
-        uint16_t atlasX = useDepletedVariant ? r.depletedAtlasX : r.atlasX;
-        uint16_t atlasY = useDepletedVariant ? r.depletedAtlasY : r.atlasY;
-
-        // Skip unmapped textures (both coords 0) - will use default when wired up
-        if (atlasX == 0 && atlasY == 0) { continue; }
-
-        // Interpolate position
-        float interpX = hot.transform.previousPosition.getX() +
-            (hot.transform.position.getX() - hot.transform.previousPosition.getX()) * alpha;
-        float interpY = hot.transform.previousPosition.getY() +
-            (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
-
-        // Source rect from atlas coords
-        float srcX = static_cast<float>(atlasX + r.currentFrame * r.frameWidth);
-        float srcY = static_cast<float>(atlasY);
-        float srcW = static_cast<float>(r.frameWidth);
-        float srcH = static_cast<float>(r.frameHeight);
-
-        // Destination rect (screen space, centered)
-        float halfW = srcW * 0.5f;
-        float halfH = srcH * 0.5f;
-        float dstX = interpX - ctx.cameraX - halfW;
-        float dstY = interpY - ctx.cameraY - halfH;
-
-        ctx.spriteBatch->draw(srcX, srcY, srcW, srcH, dstX, dstY, srcW, srcH);
-    }
-}
 #endif

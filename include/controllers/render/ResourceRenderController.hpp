@@ -8,12 +8,11 @@
 
 /**
  * @file ResourceRenderController.hpp
- * @brief Unified rendering controller for dropped items, containers, and harvestables
+ * @brief Unified rendering controller for dropped items and containers
  *
  * Renders resources using data from EntityDataManager:
  * - DroppedItems: Bobbing animation, frame cycling
  * - Containers: Open/closed state rendering
- * - Harvestables: Normal/depleted state rendering
  *
  * Usage:
  *   - Add as member in GameState
@@ -77,17 +76,6 @@ public:
     void renderContainers(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
                           float cameraX, float cameraY, float alpha);
 
-    /**
-     * @brief Render all visible harvestables using spatial query
-     * @param renderer SDL renderer from GameState::render()
-     * @param camera Camera for viewport and visibility queries
-     * @param cameraX Interpolated camera X offset for rendering
-     * @param cameraY Interpolated camera Y offset for rendering
-     * @param alpha Interpolation alpha for smooth rendering (0.0-1.0)
-     */
-    void renderHarvestables(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
-                            float cameraX, float cameraY, float alpha);
-
 #ifdef USE_SDL3_GPU
     /**
      * @brief Record dropped items to GPU sprite batch
@@ -105,13 +93,6 @@ public:
     void recordGPUContainers(const HammerEngine::GPUSceneContext& ctx,
                              const HammerEngine::Camera& camera);
 
-    /**
-     * @brief Record harvestables to GPU sprite batch
-     * @param ctx Scene context with sprite batch and camera params
-     * @param camera Camera for spatial queries
-     */
-    void recordGPUHarvestables(const HammerEngine::GPUSceneContext& ctx,
-                               const HammerEngine::Camera& camera);
 #endif
 
     /**
@@ -124,12 +105,9 @@ private:
     // Update helpers - use camera-based queries for efficiency
     void updateDroppedItemAnimations(float deltaTime, const HammerEngine::Camera& camera);
     void updateContainerStates(float deltaTime, const HammerEngine::Camera& camera);
-    void updateHarvestableStates(float deltaTime, const HammerEngine::Camera& camera);
-
     // Reusable buffers for spatial queries (avoid per-frame allocations)
     std::vector<size_t> m_visibleItemIndices;
     std::vector<size_t> m_visibleContainerIndices;
-    std::vector<size_t> m_visibleHarvestableIndices;
 
     // Animation constants
     static constexpr float BOB_SPEED = 3.0f;           // Radians per second for bobbing
