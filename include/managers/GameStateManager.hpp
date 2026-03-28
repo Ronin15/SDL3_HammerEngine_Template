@@ -10,15 +10,12 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <SDL3/SDL_gpu.h>
 #include "gameStates/GameState.hpp"
-
-#ifdef USE_SDL3_GPU
-struct SDL_GPURenderPass;
 
 namespace HammerEngine {
 class GPURenderer;
 }
-#endif
 
 class GameStateManager {
 
@@ -30,10 +27,8 @@ class GameStateManager {
   void changeState(const std::string& stateName); // Pops the current state and pushes a new one
 
   void update(float deltaTime);
-  void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f);
   void handleInput();
 
-#ifdef USE_SDL3_GPU
   /**
    * Record vertices for GPU rendering (called before scene pass).
    * Delegates to active state's recordGPUVertices().
@@ -54,7 +49,6 @@ class GameStateManager {
    */
   void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
                     SDL_GPURenderPass* swapchainPass);
-#endif
 
   bool hasState(const std::string& stateName) const;
   std::shared_ptr<GameState> getState(const std::string& stateName) const;

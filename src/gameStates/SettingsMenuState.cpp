@@ -13,9 +13,7 @@
 #include "core/Logger.hpp"
 #include "utils/ResourcePath.hpp"
 
-#ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
-#endif
 
 #include <format>
 #include <thread>
@@ -68,12 +66,6 @@ void SettingsMenuState::update(float deltaTime) {
     if (!ui.isShutdown()) {
         ui.update(deltaTime);
     }
-}
-
-void SettingsMenuState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
-    // Render UI components (input handled in update())
-    auto& ui = UIManager::Instance();
-    ui.render(renderer);
 }
 
 bool SettingsMenuState::exit() {
@@ -492,7 +484,6 @@ void SettingsMenuState::updateTabVisibility() {
     }
 }
 
-#ifdef USE_SDL3_GPU
 void SettingsMenuState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                                            [[maybe_unused]] float interpolationAlpha) {
     auto& ui = UIManager::Instance();
@@ -508,4 +499,3 @@ void SettingsMenuState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
         ui.renderGPU(gpuRenderer, swapchainPass);
     }
 }
-#endif

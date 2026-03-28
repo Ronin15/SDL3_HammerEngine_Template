@@ -13,7 +13,6 @@
 #include "entities/Player.hpp"
 #include "managers/EventManager.hpp"
 #include "utils/Camera.hpp"
-#include "utils/WorldRenderPipeline.hpp"
 
 #include <memory>
 #include <vector>
@@ -22,11 +21,9 @@
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
-#ifdef USE_SDL3_GPU
 namespace HammerEngine {
 class GPUSceneRenderer;
 }
-#endif
 
 class AdvancedAIDemoState : public GameState {
 public:
@@ -34,7 +31,6 @@ public:
     ~AdvancedAIDemoState() override;
 
     void update(float deltaTime) override;
-    void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;
     void handleInput() override;
 
     bool enter() override;
@@ -42,7 +38,6 @@ public:
 
     std::string getName() const override { return "AdvancedAIDemoState"; }
 
-#ifdef USE_SDL3_GPU
     // GPU rendering support
     void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                            float interpolationAlpha) override;
@@ -52,7 +47,6 @@ public:
     void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
                      SDL_GPURenderPass* swapchainPass) override;
     bool supportsGPURendering() const override { return true; }
-#endif
 
     // Get the player entity for AI behaviors to access
     EntityPtr getPlayer() const { return m_player; }
@@ -72,13 +66,8 @@ private:
     PlayerPtr m_player{};
     std::unique_ptr<HammerEngine::Camera> m_camera;
 
-    // World render pipeline for coordinated chunk management and scene rendering
-    std::unique_ptr<HammerEngine::WorldRenderPipeline> m_renderPipeline{nullptr};
-
-#ifdef USE_SDL3_GPU
     // GPU scene renderer for coordinated GPU rendering
     std::unique_ptr<HammerEngine::GPUSceneRenderer> m_gpuSceneRenderer{nullptr};
-#endif
 
     float m_worldWidth{800.0f};
     float m_worldHeight{600.0f};

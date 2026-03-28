@@ -10,9 +10,7 @@
 #include "managers/UIConstants.hpp"
 #include "managers/UIManager.hpp"
 
-#ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
-#endif
 
 bool GameOverState::enter() {
   auto& gameEngine = GameEngine::Instance();
@@ -69,12 +67,6 @@ void GameOverState::update([[maybe_unused]] float deltaTime) {
   }
 }
 
-void GameOverState::render(SDL_Renderer* renderer,
-                           [[maybe_unused]] float interpolationAlpha) {
-  auto& ui = UIManager::Instance();
-  ui.render(renderer);
-}
-
 void GameOverState::handleInput() {
   const auto& inputMgr = InputManager::Instance();
 
@@ -95,7 +87,6 @@ bool GameOverState::exit() {
 
 std::string GameOverState::getName() const { return "GameOverState"; }
 
-#ifdef USE_SDL3_GPU
 void GameOverState::recordGPUVertices(
     HammerEngine::GPURenderer& gpuRenderer,
     [[maybe_unused]] float interpolationAlpha) {
@@ -112,4 +103,3 @@ void GameOverState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
     ui.renderGPU(gpuRenderer, swapchainPass);
   }
 }
-#endif

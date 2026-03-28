@@ -21,12 +21,9 @@
 #include "core/WorkerBudget.hpp"
 #include "utils/Camera.hpp"
 #include "utils/FrameProfiler.hpp"
-#include "utils/WorldRenderPipeline.hpp"
-#ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
 #include "gpu/SpriteBatch.hpp"
 #include "utils/GPUSceneRenderer.hpp"
-#endif
 
 #include <cmath>
 #include <cstddef>
@@ -341,13 +338,8 @@ bool AIDemoState::enter() {
     // Initialize camera (world is already loaded by LoadingState)
     initializeCamera();
 
-    // Create world render pipeline for coordinated chunk management and scene rendering
-    m_renderPipeline = std::make_unique<HammerEngine::WorldRenderPipeline>();
-
-#ifdef USE_SDL3_GPU
     // Create GPU scene renderer for coordinated GPU rendering
     m_gpuSceneRenderer = std::make_unique<HammerEngine::GPUSceneRenderer>();
-#endif
 
     // Pre-allocate status buffer to avoid per-frame allocations
     m_statusBuffer.reserve(64);
@@ -417,9 +409,8 @@ bool AIDemoState::exit() {
       m_player->setCamera(nullptr);
     }
 
-    // Clean up camera and scene renderer
+    // Clean up camera and GPU scene renderer
     m_camera.reset();
-    m_renderPipeline.reset();
 
     // Clean up UI
     ui.prepareForStateTransition();
@@ -475,9 +466,8 @@ bool AIDemoState::exit() {
 
   WorldManager::Instance().setActiveCamera(nullptr);
 
-  // Clean up camera and scene renderer first to stop world rendering
+  // Clean up camera and GPU scene renderer first to stop world rendering
   m_camera.reset();
-  m_renderPipeline.reset();
 
   // Clean up UI components using simplified method
   ui.prepareForStateTransition();
@@ -560,14 +550,6 @@ void AIDemoState::update(float deltaTime) {
     // Update camera (follows player automatically)
     updateCamera(deltaTime);
 
-#ifndef USE_SDL3_GPU
-    // Prepare chunks via WorldRenderPipeline (predictive prefetching + dirty chunk updates)
-    // GPU path renders tiles directly from atlas coords each frame — no chunk textures needed
-    if (m_renderPipeline && m_camera) {
-      m_renderPipeline->prepareChunks(*m_camera, deltaTime);
-    }
-#endif
-
     // Update UI (moved from render path for consistent frame timing)
     if (!ui.isShutdown()) {
       ui.update(deltaTime);
@@ -580,72 +562,6 @@ void AIDemoState::update(float deltaTime) {
     GAMESTATE_ERROR("Unknown exception in AIDemoState::update()");
   }
 }
-
-void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
-  // Cache manager reference for UI
-  UIManager &ui = UIManager::Instance();
-
-  // Use WorldRenderPipeline for coordinated world rendering
-  const bool worldActive = m_camera && m_renderPipeline;
-
-  // ========== BEGIN SCENE (to intermediate target) ==========
-  HammerEngine::WorldRenderPipeline::RenderContext ctx;
-  if (worldActive) {
-    ctx = m_renderPipeline->beginScene(renderer, *m_camera, interpolationAlpha);
-  }
-
-  if (ctx) {
-    // Render world tiles via pipeline (uses pre-computed context)
-    // Note: PROFILE_RENDER(WorldTiles) is inside TileRenderer::render
-    m_renderPipeline->renderWorld(renderer, ctx);
-
-    // Render Active tier NPCs (sub-pixel smoothness from entity interpolation)
-    {
-      PROFILE_RENDER_GPU(HammerEngine::RenderPhase::Entities, renderer);
-      m_npcRenderCtrl.renderNPCs(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
-
-      // Render player (sub-pixel smoothness from entity's own interpolation)
-      if (m_player) {
-        m_player->render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
-      }
-    }
-  }
-
-  // ========== END SCENE (composite with zoom) ==========
-  if (worldActive) {
-    m_renderPipeline->endScene(renderer);
-  }
-
-  // Render UI components (update moved to update() for consistent frame timing)
-  if (!ui.isShutdown()) {
-    // Update status only when values change (C++20 type-safe, zero allocations)
-    // Use m_aiPaused member instead of polling AIManager::isGloballyPaused()
-    // every frame
-    float currentFPS = mp_stateManager->getCurrentFPS();
-    // Use cached entity count from update() to avoid EDM query in render path
-    size_t entityCount = m_cachedEntityCount;
-
-    if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
-        entityCount != m_lastDisplayedEntityCount ||
-        m_aiPaused != m_lastDisplayedPauseState) {
-
-      m_statusBuffer.clear(); // Keeps reserved capacity
-      std::format_to(std::back_inserter(m_statusBuffer),
-                     "FPS: {:.1f} | Entities: {} | AI: {}", currentFPS, entityCount,
-                     m_aiPaused ? "PAUSED" : "RUNNING");
-      ui.setText("ai_status", m_statusBuffer);
-
-      m_lastDisplayedFPS = currentFPS;
-      m_lastDisplayedEntityCount = entityCount;
-      m_lastDisplayedPauseState = m_aiPaused;
-    }
-  }
-  {
-    PROFILE_RENDER_GPU(HammerEngine::RenderPhase::UI, renderer);
-    ui.render(renderer);
-  }
-}
-
 
 void AIDemoState::initializeCamera() {
   const auto &gameEngine = GameEngine::Instance();
@@ -699,7 +615,6 @@ void AIDemoState::updateCamera(float deltaTime) {
   }
 }
 
-#ifdef USE_SDL3_GPU
 void AIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
                                     float interpolationAlpha) {
   if (!m_camera || !m_gpuSceneRenderer) { return; }
@@ -770,4 +685,3 @@ void AIDemoState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
                               SDL_GPURenderPass *swapchainPass) {
   UIManager::Instance().renderGPU(gpuRenderer, swapchainPass);
 }
-#endif

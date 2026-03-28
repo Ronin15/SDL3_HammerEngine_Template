@@ -23,25 +23,7 @@ public:
   ~Player() override;
 
   void update(float deltaTime) override;
-  void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override;
   [[nodiscard]] EntityKind getKind() const override { return EntityKind::Player; }
-
-  /**
-   * @brief Render player at a pre-computed interpolated position
-   *
-   * Use this for unified interpolation where the calling code computes the
-   * interpolated position once and uses it for both camera offset and player
-   * rendering, eliminating any potential divergence.
-   *
-   * @param renderer SDL renderer
-   * @param interpPos Pre-computed interpolated position
-   * @param cameraX Camera X offset
-   * @param cameraY Camera Y offset
-   */
-  void renderAtPosition(SDL_Renderer* renderer, const Vector2D& interpPos,
-                        float cameraX, float cameraY);
-
-#ifdef USE_SDL3_GPU
   /**
    * @brief Record player vertices to GPU vertex pool
    * @param gpuRenderer GPU renderer instance
@@ -58,7 +40,6 @@ public:
    * @param scenePass Active scene render pass
    */
   void renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* scenePass);
-#endif
 
   void clean() override;
 

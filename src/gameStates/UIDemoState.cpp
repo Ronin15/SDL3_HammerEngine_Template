@@ -10,9 +10,7 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
-#ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
-#endif
 
 #include <array>
 #include <format>
@@ -167,12 +165,6 @@ void UIExampleState::update(float deltaTime) {
     }
 }
 
-void UIExampleState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
-    // Render UI components (input handled in update())
-    auto& ui = UIManager::Instance();
-    ui.render(renderer);
-}
-
 bool UIExampleState::exit() {
     GAMESTATE_INFO("Exiting UI Example State");
 
@@ -308,7 +300,6 @@ void UIExampleState::updateEventLogDemo(float deltaTime) {
     }
 }
 
-#ifdef USE_SDL3_GPU
 void UIExampleState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                                         [[maybe_unused]] float interpolationAlpha) {
     auto& ui = UIManager::Instance();
@@ -324,6 +315,5 @@ void UIExampleState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
         ui.renderGPU(gpuRenderer, swapchainPass);
     }
 }
-#endif
 
 // Pure UIManager implementation - no UIScreen needed

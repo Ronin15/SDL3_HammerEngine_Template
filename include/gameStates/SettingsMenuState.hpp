@@ -19,19 +19,16 @@ class SettingsMenuState : public GameState {
 public:
     bool enter() override;
     void update(float deltaTime) override;
-    void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;
     void handleInput() override;
     bool exit() override;
     std::string getName() const override;
 
-#ifdef USE_SDL3_GPU
     // GPU rendering support
     void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                            float interpolationAlpha) override;
     void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
                      SDL_GPURenderPass* swapchainPass) override;
     bool supportsGPURendering() const override { return true; }
-#endif
 
 private:
     /**

@@ -11,9 +11,7 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
-#ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
-#endif
 
 #include <thread>
 #include <chrono>
@@ -108,12 +106,6 @@ void MainMenuState::update([[maybe_unused]] float deltaTime) {
   }
 }
 
-void MainMenuState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
-  // Render UI components (input handled in update())
-  auto& ui = UIManager::Instance();
-  ui.render(renderer);
-}
-
 bool MainMenuState::exit() {
   GAMESTATE_INFO("Exiting MAIN MENU State");
 
@@ -164,7 +156,6 @@ std::string MainMenuState::getName() const {
   return "MainMenuState";
 }
 
-#ifdef USE_SDL3_GPU
 void MainMenuState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                                        [[maybe_unused]] float interpolationAlpha) {
   // MainMenuState uses UIManager for all rendering
@@ -183,5 +174,3 @@ void MainMenuState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
     ui.renderGPU(gpuRenderer, swapchainPass);
   }
 }
-#endif
-

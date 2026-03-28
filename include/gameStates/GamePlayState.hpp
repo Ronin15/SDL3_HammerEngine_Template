@@ -19,10 +19,7 @@
 class Player;
 namespace HammerEngine {
 class Camera;
-class WorldRenderPipeline;
-#ifdef USE_SDL3_GPU
 class GPUSceneRenderer;
-#endif
 }
 
 class GamePlayState : public GameState {
@@ -31,14 +28,12 @@ public:
   ~GamePlayState() override;
   bool enter() override;
   void update(float deltaTime) override;
-  void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;
   void handleInput() override;
   bool exit() override;
   void pause() override;
   void resume() override;
   std::string getName() const override;
 
-#ifdef USE_SDL3_GPU
   // GPU rendering support
   void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                          float interpolationAlpha) override;
@@ -48,7 +43,6 @@ public:
   void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
                    SDL_GPURenderPass* swapchainPass) override;
   bool supportsGPURendering() const override { return true; }
-#endif
 
 private:
   bool m_transitioningToLoading{
@@ -61,13 +55,8 @@ private:
   // Camera for world navigation and player following
   std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
 
-  // World render pipeline for coordinated chunk management and scene rendering
-  std::unique_ptr<HammerEngine::WorldRenderPipeline> m_renderPipeline{nullptr};
-
-#ifdef USE_SDL3_GPU
   // GPU scene renderer for coordinated GPU rendering
   std::unique_ptr<HammerEngine::GPUSceneRenderer> m_gpuSceneRenderer{nullptr};
-#endif
 
   // Track whether world has been loaded (prevents re-entering LoadingState)
   bool m_worldLoaded{false};
@@ -104,27 +93,11 @@ private:
   // Reusable buffer for nearby entity queries (avoids per-interaction allocation)
   std::vector<EntityHandle> m_nearbyHandlesBuffer;
 
-  // Day/night visual overlay state (updated via TimePeriodChangedEvent)
-  // Current interpolated values (what's actually rendered)
-  float m_dayNightOverlayR{0.0f};
-  float m_dayNightOverlayG{0.0f};
-  float m_dayNightOverlayB{0.0f};
-  float m_dayNightOverlayA{0.0f};
-  // Target values (from event, what we're interpolating toward)
-  float m_dayNightTargetR{0.0f};
-  float m_dayNightTargetG{0.0f};
-  float m_dayNightTargetB{0.0f};
-  float m_dayNightTargetA{0.0f};
-  // Transition timing
-  static constexpr float DAY_NIGHT_TRANSITION_DURATION{30.0f};  // seconds
   EventManager::HandlerToken m_dayNightEventToken;
   bool m_dayNightSubscribed{false};
 
   // Day/night event handlers and update
   void onTimePeriodChanged(const EventData& data);
-  void updateDayNightOverlay(float deltaTime);
-  void renderDayNightOverlay(SDL_Renderer* renderer, int width, int height);
-
   // Ambient particle effects (dust motes, fireflies) - managed per time period
   void updateAmbientParticles(TimePeriod period);
   void stopAmbientParticles();

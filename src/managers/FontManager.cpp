@@ -136,241 +136,6 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
     return true;
 }
 
-std::shared_ptr<SDL_Texture> FontManager::renderText(
-                                     const std::string& text, const std::string& fontID,
-                                     SDL_Color color, SDL_Renderer* renderer) {
-  // Skip if we're shutting down
-  if (m_isShutdown) {
-    FONT_WARN("Attempted to use FontManager after shutdown");
-    return nullptr;
-  }
-
-  // Check cache first
-  TextCacheKey key = {text, fontID, color};
-  auto cacheIt = m_textCache.find(key);
-  if (cacheIt != m_textCache.end()) {
-    return cacheIt->second;
-  }
-
-  auto fontIt = m_fontMap.find(fontID);
-  if (fontIt == m_fontMap.end()) {
-    FONT_ERROR(std::format("Font '{}' not found", fontID));
-    return nullptr;
-  }
-
-  // Check if text contains newlines - if so, handle multi-line rendering
-  if (text.find('\n') != std::string::npos) {
-    return renderMultiLineText(text, fontIt->second.get(), color, renderer);
-  }
-
-  // Render single line text to a surface using Blended mode (high quality with alpha) with immediate RAII
-  auto surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
-      TTF_RenderText_Blended(fontIt->second.get(), text.c_str(), 0, color), SDL_DestroySurface);
-  if (!surface) {
-    FONT_ERROR(std::format("Failed to render text: {}", SDL_GetError()));
-    return nullptr;
-  }
-
-  // Create texture from surface with immediate RAII
-  auto texture = std::shared_ptr<SDL_Texture>(
-      SDL_CreateTextureFromSurface(renderer, surface.get()), SDL_DestroyTexture);
-
-  if (!texture) {
-    FONT_ERROR(std::format("Failed to create texture from rendered text: {}", SDL_GetError()));
-    return nullptr;
-  }
-
-  // Set texture scale mode for smooth font rendering - LINEAR provides antialiased scaling
-  SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_LINEAR);
-
-  // Store in cache
-  m_textCache[key] = texture;
-
-  return texture;
-}
-
-std::shared_ptr<SDL_Texture> FontManager::renderMultiLineText(
-                                         const std::string& text, TTF_Font* font,
-                                         SDL_Color color, SDL_Renderer* renderer) {
-  // Split text by newlines
-  std::vector<std::string> lines;
-  std::string currentLine;
-  for (char c : text) {
-    if (c == '\n') {
-      lines.push_back(currentLine);
-      currentLine.clear();
-    } else {
-      currentLine += c;
-    }
-  }
-  if (!currentLine.empty()) {
-    lines.push_back(currentLine);
-  }
-
-  if (lines.empty()) {
-    return nullptr;
-  }
-
-  // Get font height for line spacing
-  int const lineHeight = TTF_GetFontHeight(font);
-
-  // Calculate total dimensions needed
-  int maxWidth = 0;
-  int totalHeight = lineHeight * lines.size();
-
-  // Find the widest line
-  for (const auto& line : lines) {
-    int lineWidth = 0;
-    if (!line.empty()) {
-      TTF_GetStringSize(font, line.c_str(), 0, &lineWidth, nullptr);
-    }
-    maxWidth = std::max(maxWidth, lineWidth);
-  }
-
-  // Create a surface large enough for all lines
-  auto combinedSurface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
-      SDL_CreateSurface(maxWidth, totalHeight, SDL_PIXELFORMAT_RGBA8888), SDL_DestroySurface);
-
-  if (!combinedSurface) {
-    FONT_ERROR(std::format("Failed to create combined surface: {}", SDL_GetError()));
-    return nullptr;
-  }
-
-  // Fill with transparent background
-  SDL_FillSurfaceRect(combinedSurface.get(), nullptr, SDL_MapRGBA(SDL_GetPixelFormatDetails(combinedSurface->format), nullptr, 0, 0, 0, 0));
-
-  // Enable alpha blending for proper text compositing
-  SDL_SetSurfaceBlendMode(combinedSurface.get(), SDL_BLENDMODE_BLEND);
-
-  // Render each line and blit to combined surface
-  int yOffset = 0;
-  for (const auto& line : lines) {
-    if (!line.empty()) {
-      auto lineSurface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
-          TTF_RenderText_Blended(font, line.c_str(), 0, color), SDL_DestroySurface);
-
-      if (lineSurface) {
-        // Ensure proper alpha blending when blitting
-        SDL_SetSurfaceBlendMode(lineSurface.get(), SDL_BLENDMODE_NONE);
-        SDL_Rect dstRect = {0, yOffset, lineSurface->w, lineSurface->h};
-        SDL_BlitSurface(lineSurface.get(), nullptr, combinedSurface.get(), &dstRect);
-      }
-    }
-    yOffset += lineHeight;
-  }
-
-  // Create texture from combined surface
-  auto texture = std::shared_ptr<SDL_Texture>(
-      SDL_CreateTextureFromSurface(renderer, combinedSurface.get()), SDL_DestroyTexture);
-
-  if (!texture) {
-    FONT_ERROR(std::format("Failed to create texture from multi-line text: {}", SDL_GetError()));
-    return nullptr;
-  }
-
-  // Set texture blend mode to preserve alpha
-  SDL_SetTextureBlendMode(texture.get(), SDL_BLENDMODE_BLEND);
-  // Set texture scale mode for smooth font rendering - LINEAR provides antialiased scaling
-  SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_LINEAR);
-
-  return texture;
-}
-
-void FontManager::drawText(const std::string& text, const std::string& fontID,
-                          int x, int y, SDL_Color color, SDL_Renderer* renderer) {
-  // Skip if we're shutting down
-  if (m_isShutdown) {
-    FONT_WARN("Attempted to use FontManager after shutdown");
-    return;
-  }
-
-  auto texture = renderText(text, fontID, color, renderer);
-  if (!texture) return;
-
-  // Get the texture size
-  float w, h;
-  SDL_GetTextureSize(texture.get(), &w, &h);
-  int const width = static_cast<int>(w);
-  int const height = static_cast<int>(h);
-
-  // Create a destination rectangle
-  // Position x,y is considered to be the center of the text
-  // Round coordinates to nearest pixel for crisp rendering
-  SDL_FRect dstRect = {
-    std::roundf(static_cast<float>(x - width/2.0f)), 
-    std::roundf(static_cast<float>(y - height/2.0f)),
-    static_cast<float>(width), 
-    static_cast<float>(height)
-  };
-
-  // Render the texture
-  SDL_RenderTexture(renderer, texture.get(), nullptr, &dstRect);
-
-  // The texture will be automatically cleaned up when the unique_ptr goes out of scope
-}
-
-void FontManager::drawTextAligned(const std::string& text, const std::string& fontID,
-                                 int x, int y, SDL_Color color, SDL_Renderer* renderer,
-                                 int alignment) {
-  // Skip if we're shutting down
-  if (m_isShutdown) {
-    FONT_WARN("Attempted to use FontManager after shutdown");
-    return;
-  }
-
-  auto texture = renderText(text, fontID, color, renderer);
-  if (!texture) return;
-
-  // Get the texture size
-  float w, h;
-  SDL_GetTextureSize(texture.get(), &w, &h);
-  int const width = static_cast<int>(w);
-  int const height = static_cast<int>(h);
-
-  // Calculate position based on alignment
-  float destX, destY;
-
-  switch (alignment) {
-    case 1: // Left alignment
-      destX = static_cast<float>(x);
-      destY = static_cast<float>(y - height/2.0f);
-      break;
-    case 2: // Right alignment
-      destX = static_cast<float>(x - width);
-      destY = static_cast<float>(y - height/2.0f);
-      break;
-    case 3: // Top-left alignment
-      destX = static_cast<float>(x);
-      destY = static_cast<float>(y);
-      break;
-    case 4: // Top-center alignment
-      destX = static_cast<float>(x - width/2.0f);
-      destY = static_cast<float>(y);
-      break;
-    case 5: // Top-right alignment
-      destX = static_cast<float>(x - width);
-      destY = static_cast<float>(y);
-      break;
-    default: // Center alignment (0)
-      destX = static_cast<float>(x - width/2.0f);
-      destY = static_cast<float>(y - height/2.0f);
-      break;
-  }
-
-  // Create a destination rectangle with pixel-aligned coordinates
-  SDL_FRect dstRect = {
-    std::roundf(destX), 
-    std::roundf(destY),
-    static_cast<float>(width), 
-    static_cast<float>(height)
-  };
-
-  // Render the texture using logical coordinates
-  SDL_RenderTexture(renderer, texture.get(), nullptr, &dstRect);
-
-  // The texture will be automatically cleaned up when the unique_ptr goes out of scope
-}
-
 std::vector<std::string> FontManager::wrapTextToLines(const std::string& text, 
                                                      const std::string& fontID, 
                                                      int maxWidth) {
@@ -487,46 +252,6 @@ bool FontManager::measureTextWithWrapping(const std::string& text, const std::st
   return true;
 }
 
-void FontManager::drawTextWithWrapping(const std::string& text, const std::string& fontID,
-                                      int x, int y, int maxWidth, SDL_Color color, 
-                                      SDL_Renderer* renderer) {
-  if (m_isShutdown || !renderer) {
-    FONT_WARN("Attempted to draw wrapped text with invalid parameters");
-    return;
-  }
-
-  auto fontIt = m_fontMap.find(fontID);
-  if (fontIt == m_fontMap.end()) {
-    FONT_ERROR(std::format("Font '{}' not found for wrapped drawing", fontID));
-    return;
-  }
-
-  auto wrappedLines = wrapTextToLines(text, fontID, maxWidth);
-  TTF_Font* font = fontIt->second.get();
-  int const lineHeight = TTF_GetFontHeight(font);
-  int currentY = y;
-
-  // Draw each wrapped line
-  for (const auto& line : wrappedLines) {
-    if (!line.empty()) {
-      auto texture = renderText(line, fontID, color, renderer);
-      if (texture) {
-        float w, h;
-        SDL_GetTextureSize(texture.get(), &w, &h);
-        
-        SDL_FRect dstRect = {
-          static_cast<float>(x), 
-          static_cast<float>(currentY),
-          w, h
-        };
-        
-        SDL_RenderTexture(renderer, texture.get(), nullptr, &dstRect);
-      }
-    }
-    currentY += lineHeight;
-  }
-}
-
 bool FontManager::isFontLoaded(const std::string& fontID) const {
   return m_fontMap.find(fontID) != m_fontMap.end();
 }
@@ -548,10 +273,7 @@ bool FontManager::reloadFontsForDisplay(const std::string& fontPath, int windowW
 
   // Clear existing fonts and caches without shutting down the manager
   m_fontMap.clear();
-  m_textCache.clear();
-#ifdef USE_SDL3_GPU
   destroyGPUTextObjects();
-#endif
   m_fontsLoaded.store(false, std::memory_order_release);
 
   // Reset display tracking
@@ -669,11 +391,7 @@ void FontManager::clean() {
 
   // No need to manually close fonts as the unique_ptr will handle it
   m_fontMap.clear();
-  m_textCache.clear();
-
-#ifdef USE_SDL3_GPU
   destroyGPUTextObjects();
-#endif
 
   // Clear display tracking
   m_lastWindowWidth = 0;
@@ -684,7 +402,6 @@ void FontManager::clean() {
   FONT_INFO("FontManager resources cleaned - TTF will be cleaned by SDL_Quit()");
 }
 
-#ifdef USE_SDL3_GPU
 #include "gpu/GPUDevice.hpp"
 #include <utility>
 
@@ -826,4 +543,3 @@ void FontManager::clearGPUTextCache() {
   destroyGPUTextObjects();
   FONT_DEBUG("GPU text objects cleared");
 }
-#endif

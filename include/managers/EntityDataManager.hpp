@@ -444,9 +444,6 @@ struct AreaEffectData {
     uint8_t effectType{0};      // Poison, Fire, Heal, Slow
 };
 
-// Forward declaration for SDL texture
-struct SDL_Texture;
-
 /**
  * @brief Render data for data-driven NPCs (velocity-based animation)
  *
@@ -455,7 +452,6 @@ struct SDL_Texture;
  * Indexed by typeLocalIndex (same as CharacterData for NPCs).
  */
 struct NPCRenderData {
-    std::shared_ptr<SDL_Texture> textureOwner{};  // Manager-owned texture handle retained for rendering
     uint16_t atlasX{0};                   // X offset in atlas (pixels)
     uint16_t atlasY{0};                   // Y offset in atlas (pixels)
     uint16_t frameWidth{32};              // Single frame width
@@ -472,7 +468,6 @@ struct NPCRenderData {
     float animationAccumulator{0.0f};     // Time accumulator for frame advancement
 
     void clear() noexcept {
-        textureOwner.reset();
         atlasX = 0;
         atlasY = 0;
         frameWidth = 32;
@@ -679,7 +674,6 @@ struct AnimalRoleInfo {
  * Indexed by typeLocalIndex in EntityHotData.
  */
 struct ItemRenderData {
-    std::shared_ptr<SDL_Texture> textureOwner{};  // Manager-owned texture handle retained for rendering
     uint16_t atlasX{0};                   // X offset in atlas (pixels)
     uint16_t atlasY{0};                   // Y offset in atlas (pixels)
     uint16_t frameWidth{16};              // Single frame width
@@ -692,7 +686,6 @@ struct ItemRenderData {
     float bobAmplitude{3.0f};             // Vertical bob amplitude in pixels
 
     void clear() noexcept {
-        textureOwner.reset();
         atlasX = 0;
         atlasY = 0;
         frameWidth = 16;
@@ -713,8 +706,6 @@ struct ItemRenderData {
  * Indexed by typeLocalIndex in EntityHotData.
  */
 struct ContainerRenderData {
-    std::shared_ptr<SDL_Texture> closedTextureOwner{};  // Manager-owned closed-state texture handle
-    std::shared_ptr<SDL_Texture> openTextureOwner{};    // Manager-owned open-state texture handle
     uint16_t atlasX{0};                   // Atlas X offset (0 = unmapped, use default)
     uint16_t atlasY{0};                   // Atlas Y offset (0 = unmapped, use default)
     uint16_t openAtlasX{0};               // Atlas X offset for open state
@@ -728,8 +719,6 @@ struct ContainerRenderData {
     float animTimer{0.0f};                // Animation accumulator
 
     void clear() noexcept {
-        closedTextureOwner.reset();
-        openTextureOwner.reset();
         atlasX = 0;
         atlasY = 0;
         openAtlasX = 0;
@@ -751,8 +740,6 @@ struct ContainerRenderData {
  * Indexed by typeLocalIndex in EntityHotData.
  */
 struct HarvestableRenderData {
-    std::shared_ptr<SDL_Texture> normalTextureOwner{};    // Manager-owned normal-state texture handle
-    std::shared_ptr<SDL_Texture> depletedTextureOwner{};  // Manager-owned depleted-state texture handle
     uint16_t atlasX{0};                     // Atlas X offset (0 = unmapped, use default)
     uint16_t atlasY{0};                     // Atlas Y offset (0 = unmapped, use default)
     uint16_t depletedAtlasX{0};             // Atlas X offset for depleted state
@@ -764,8 +751,6 @@ struct HarvestableRenderData {
     float animTimer{0.0f};                  // Animation accumulator
 
     void clear() noexcept {
-        normalTextureOwner.reset();
-        depletedTextureOwner.reset();
         atlasX = 0;
         atlasY = 0;
         depletedAtlasX = 0;

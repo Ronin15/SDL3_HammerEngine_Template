@@ -8,12 +8,10 @@
 #include "entities/Entity.hpp"  // For AnimationConfig
 #include "managers/AIManager.hpp"  // For auto-registering NPCs with AI
 #include "managers/ResourceTemplateManager.hpp"  // For getMaxStackSize in inventory
-#include "managers/TextureManager.hpp"  // For texture lookup in creature creation
 #include "managers/WorldResourceManager.hpp"  // For unregister on harvestable destruction
 #include "utils/JsonReader.hpp"  // For loading NPC types from JSON
 #include "utils/ResourcePath.hpp"  // For path resolution in JSON loading
 #include "utils/UniqueID.hpp"
-#include <SDL3/SDL.h>  // For SDL_GetTextureSize
 
 using HammerEngine::JsonReader;
 using HammerEngine::JsonValue;
@@ -105,30 +103,6 @@ AtlasRegion lookupHarvestableAtlasRegion(const ResourcePtr& resource) {
     }
 
     return lookupAtlasRegion(regionId);
-}
-
-std::shared_ptr<SDL_Texture> getAtlasTextureOwner() {
-    return TextureManager::Instance().getTexture("atlas");
-}
-
-void assignAtlasTextureOwner(NPCRenderData& renderData) {
-    renderData.textureOwner = getAtlasTextureOwner();
-}
-
-void assignAtlasTextureOwner(ItemRenderData& renderData) {
-    renderData.textureOwner = getAtlasTextureOwner();
-}
-
-void assignAtlasTextureOwner(ContainerRenderData& renderData) {
-    auto atlasOwner = getAtlasTextureOwner();
-    renderData.closedTextureOwner = atlasOwner;
-    renderData.openTextureOwner = std::move(atlasOwner);
-}
-
-void assignAtlasTextureOwner(HarvestableRenderData& renderData) {
-    auto atlasOwner = getAtlasTextureOwner();
-    renderData.normalTextureOwner = atlasOwner;
-    renderData.depletedTextureOwner = std::move(atlasOwner);
 }
 
 } // namespace
@@ -697,18 +671,9 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
 
     // Set up NPCRenderData from race info
     auto& renderData = m_npcRenderData[typeIndex];
-    assignAtlasTextureOwner(renderData);
-#ifndef USE_SDL3_GPU
-    // Only error in SDL_Renderer path - GPU path uses SpriteBatch with GPU textures
-    if (!renderData.textureOwner) {
-        ENTITY_ERROR("createNPCWithRaceClass: Atlas texture not loaded");
-    }
-#endif
-
-    // Check for unmapped texture (atlasX and atlasY both 0) - use debug texture as fallback
+    // Check for unmapped texture (atlasX and atlasY both 0) and keep the default atlas slot.
     if (raceInfo.atlasX == 0 && raceInfo.atlasY == 0) {
-        ENTITY_WARN(std::format("Race '{}' has no atlas mapping, using debug fallback texture", race));
-        renderData.textureOwner = TextureManager::Instance().getTexture("debug");
+        ENTITY_WARN(std::format("Race '{}' has no atlas mapping, using default atlas slot", race));
         renderData.atlasX = 0;
         renderData.atlasY = 0;
         renderData.frameWidth = 32;
@@ -826,11 +791,9 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
 
     // Set up render data
     auto& renderData = m_npcRenderData[typeIndex];
-    assignAtlasTextureOwner(renderData);
-    // Check for unmapped texture - use debug texture as fallback
+    // Check for unmapped texture and keep the default atlas slot.
     if (typeInfo.atlasX == 0 && typeInfo.atlasY == 0) {
-        ENTITY_WARN(std::format("Monster type '{}' has no atlas mapping, using debug fallback texture", monsterType));
-        renderData.textureOwner = TextureManager::Instance().getTexture("debug");
+        ENTITY_WARN(std::format("Monster type '{}' has no atlas mapping, using default atlas slot", monsterType));
         renderData.atlasX = 0;
         renderData.atlasY = 0;
         renderData.frameWidth = 32;
@@ -924,11 +887,9 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
 
     // Set up render data
     auto& renderData = m_npcRenderData[typeIndex];
-    assignAtlasTextureOwner(renderData);
-    // Check for unmapped texture - use debug texture as fallback
+    // Check for unmapped texture and keep the default atlas slot.
     if (speciesInfo.atlasX == 0 && speciesInfo.atlasY == 0) {
-        ENTITY_WARN(std::format("Species '{}' has no atlas mapping, using debug fallback texture", species));
-        renderData.textureOwner = TextureManager::Instance().getTexture("debug");
+        ENTITY_WARN(std::format("Species '{}' has no atlas mapping, using default atlas slot", species));
         renderData.atlasX = 0;
         renderData.atlasY = 0;
         renderData.frameWidth = 32;
@@ -1129,9 +1090,6 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     auto& renderData = m_itemRenderData[itemIndex];
     renderData.clear();
 
-    // Get atlas texture for SDL_Renderer path (GPU path uses SpriteBatch directly)
-    assignAtlasTextureOwner(renderData);
-
     // Get atlas coords and animation data from resource template
     auto& rtm = ResourceTemplateManager::Instance();
     ResourcePtr resource = rtm.getResourceTemplate(resourceHandle);
@@ -1268,7 +1226,6 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
     }
     auto& renderData = m_containerRenderData[containerIndex];
     renderData.clear();
-    assignAtlasTextureOwner(renderData);
     AtlasRegion closedRegion{};
     AtlasRegion openRegion{};
     switch (containerType) {
@@ -1430,7 +1387,6 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     }
     auto& renderData = m_harvestableRenderData[harvestableIndex];
     renderData.clear();
-    assignAtlasTextureOwner(renderData);
 
     const auto& rtm = ResourceTemplateManager::Instance();
     ResourcePtr resource = rtm.getResourceTemplate(yieldResource);
@@ -1843,7 +1799,6 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
     }
     auto& renderData = m_itemRenderData[itemIndex];
     renderData.clear();
-    assignAtlasTextureOwner(renderData);
 
     // Store ID and mapping in static pool
     m_staticEntityIds[index] = entityId;

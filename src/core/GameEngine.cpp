@@ -854,10 +854,9 @@ bool GameEngine::init(std::string_view title) {
   try {
     WorldManager &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized()) {
-      worldMgr.setRenderer(nullptr);
       GAMEENGINE_INFO("WorldManager GPU-only setup complete");
     } else {
-      GAMEENGINE_ERROR("WorldManager not initialized - cannot set renderer");
+      GAMEENGINE_ERROR("WorldManager not initialized");
       return false;
     }
 
@@ -986,7 +985,7 @@ void GameEngine::update(float deltaTime) {
   // - GameStateManager.update() handles player input/movement FIRST
   // - AIManager.update() then reacts to current player position (not stale)
   // - NPCRenderController reads velocity from PREVIOUS frame (1-frame lag OK for animation)
-  // - GameStateManager.render() handles state rendering including NPCRenderController.renderNPCs()
+  // - GameStateManager GPU render hooks handle state scene/UI rendering
   //
   // GLOBAL SYSTEMS (Updated by GameEngine):
   // - EventManager: Global game events (weather, scene changes), batch processing
@@ -1108,18 +1107,8 @@ void GameEngine::processBackgroundTasks() {
   //   resources (SDL rendering, UI state, etc.).
 }
 
-void GameEngine::setLogicalPresentationMode(
-    SDL_RendererLogicalPresentation mode) {
-  m_logicalPresentationMode = mode;
-}
-
 bool GameEngine::isVSyncEnabled() const noexcept {
   return m_vsyncRequested;
-}
-
-SDL_RendererLogicalPresentation
-GameEngine::getLogicalPresentationMode() const noexcept {
-  return m_logicalPresentationMode;
 }
 
 void GameEngine::clean() {

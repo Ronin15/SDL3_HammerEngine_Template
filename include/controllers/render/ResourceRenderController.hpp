@@ -17,19 +17,15 @@
  * Usage:
  *   - Add as member in GameState
  *   - Call update(deltaTime) in GameState::update()
- *   - Call render methods in GameState::render()
+ *   - Call GPU record methods during vertex recording
  */
 
 #include "controllers/ControllerBase.hpp"
 #include <vector>
 
-struct SDL_Renderer;
-
 namespace HammerEngine {
 class Camera;
-#ifdef USE_SDL3_GPU
 struct GPUSceneContext;
-#endif
 }
 
 class ResourceRenderController : public ControllerBase {
@@ -55,29 +51,6 @@ public:
     void update(float deltaTime, const HammerEngine::Camera& camera);
 
     /**
-     * @brief Render all visible dropped items using spatial query
-     * @param renderer SDL renderer from GameState::render()
-     * @param camera Camera for viewport and visibility queries
-     * @param cameraX Interpolated camera X offset for rendering
-     * @param cameraY Interpolated camera Y offset for rendering
-     * @param alpha Interpolation alpha for smooth rendering (0.0-1.0)
-     */
-    void renderDroppedItems(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
-                            float cameraX, float cameraY, float alpha);
-
-    /**
-     * @brief Render all visible containers using spatial query
-     * @param renderer SDL renderer from GameState::render()
-     * @param camera Camera for viewport and visibility queries
-     * @param cameraX Interpolated camera X offset for rendering
-     * @param cameraY Interpolated camera Y offset for rendering
-     * @param alpha Interpolation alpha for smooth rendering (0.0-1.0)
-     */
-    void renderContainers(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
-                          float cameraX, float cameraY, float alpha);
-
-#ifdef USE_SDL3_GPU
-    /**
      * @brief Record dropped items to GPU sprite batch
      * @param ctx Scene context with sprite batch and camera params
      * @param camera Camera for spatial queries
@@ -92,8 +65,6 @@ public:
      */
     void recordGPUContainers(const HammerEngine::GPUSceneContext& ctx,
                              const HammerEngine::Camera& camera);
-
-#endif
 
     /**
      * @brief Clear all spawned resources (cleanup for state transitions)

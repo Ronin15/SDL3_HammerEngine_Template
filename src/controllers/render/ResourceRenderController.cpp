@@ -8,37 +8,13 @@
 #include "managers/EntityDataManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include "utils/Camera.hpp"
+#include "utils/GPUSceneRenderer.hpp"
 #include "utils/Vector2D.hpp"
-#include <SDL3/SDL.h>
+#include "gpu/SpriteBatch.hpp"
 #include <cmath>
 #include <vector>
 
-#ifdef USE_SDL3_GPU
-#include "gpu/SpriteBatch.hpp"
-#include "utils/GPUSceneRenderer.hpp"
-#endif
-
 namespace {
-
-struct ResourceSpriteView {
-    const std::shared_ptr<SDL_Texture>& textureOwner;
-    uint16_t atlasX;
-    uint16_t atlasY;
-};
-
-[[nodiscard]] ResourceSpriteView buildItemSpriteView(const ItemRenderData& renderData) {
-    return {renderData.textureOwner, renderData.atlasX, renderData.atlasY};
-}
-
-[[nodiscard]] ResourceSpriteView buildContainerSpriteView(const ContainerRenderData& renderData,
-                                                          bool isOpen) {
-    const bool useOpenVariant = isOpen && (renderData.openAtlasX != 0 || renderData.openAtlasY != 0);
-    return {
-        useOpenVariant ? renderData.openTextureOwner : renderData.closedTextureOwner,
-        useOpenVariant ? renderData.openAtlasX : renderData.atlasX,
-        useOpenVariant ? renderData.openAtlasY : renderData.atlasY
-    };
-}
 
 [[nodiscard]] uint16_t getContainerFrameWidth(const ContainerRenderData& renderData, bool isOpen) {
     const bool useOpenVariant = isOpen && (renderData.openAtlasX != 0 || renderData.openAtlasY != 0);
@@ -100,130 +76,6 @@ void ResourceRenderController::updateContainerStates([[maybe_unused]] float delt
     // For now, containers are static (just open or closed state)
 }
 
-void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
-                                                   float cameraX, float cameraY, float alpha) {
-    RESOURCE_RENDER_WARN_IF(!renderer, "renderDroppedItems: renderer is null");
-    if (!renderer) { return; }
-
-    auto& edm = EntityDataManager::Instance();
-    auto& wrm = WorldResourceManager::Instance();
-
-    // Use interpolated camera position for spatial query (matches actual render position)
-    Vector2D cameraCenter(cameraX, cameraY);
-    const auto& viewport = camera.getViewport();
-    float visibleRadius = std::sqrt(viewport.width * viewport.width +
-                                    viewport.height * viewport.height) * 0.5f;
-
-    // Query only visible items - O(k) where k = cells in view
-    m_visibleItemIndices.clear();
-    wrm.queryDroppedItemsInRadius(cameraCenter, visibleRadius, m_visibleItemIndices);
-
-    // Use passed cameraX/cameraY (interpolated) for actual rendering
-
-    for (size_t idx : m_visibleItemIndices) {
-        const auto& hot = edm.getStaticHotDataByIndex(idx);  // Static pool accessor
-        if (!hot.isAlive()) continue;
-
-        const auto& r = edm.getItemRenderDataByTypeIndex(hot.typeLocalIndex);
-        const auto spriteView = buildItemSpriteView(r);
-
-        // Skip if no texture
-        if (!spriteView.textureOwner) continue;
-        if (spriteView.atlasX == 0 && spriteView.atlasY == 0) continue;
-
-        // Interpolate position
-        float interpX = hot.transform.previousPosition.getX() +
-            (hot.transform.position.getX() - hot.transform.previousPosition.getX()) * alpha;
-        float interpY = hot.transform.previousPosition.getY() +
-            (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
-
-        // Add bobbing offset
-        float bobOffset = std::sin(r.bobPhase) * r.bobAmplitude;
-
-        // Source rect from pre-calculated atlas coords
-        SDL_FRect srcRect = {
-            static_cast<float>(spriteView.atlasX + r.currentFrame * r.frameWidth),
-            static_cast<float>(spriteView.atlasY),
-            static_cast<float>(r.frameWidth),
-            static_cast<float>(r.frameHeight)
-        };
-
-        // Calculate destination rect (centered on position, with bob)
-        // Sub-pixel rendering - unified with Player/Particles for smooth diagonal movement
-        float halfW = static_cast<float>(r.frameWidth) * 0.5f;
-        float halfH = static_cast<float>(r.frameHeight) * 0.5f;
-        SDL_FRect destRect = {
-            interpX - cameraX - halfW,
-            interpY - cameraY - halfH + bobOffset,
-            static_cast<float>(r.frameWidth),
-            static_cast<float>(r.frameHeight)
-        };
-
-        SDL_RenderTexture(renderer, spriteView.textureOwner.get(), &srcRect, &destRect);
-    }
-}
-
-void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const HammerEngine::Camera& camera,
-                                                 float cameraX, float cameraY, float alpha) {
-    RESOURCE_RENDER_WARN_IF(!renderer, "renderContainers: renderer is null");
-    if (!renderer) { return; }
-
-    auto& edm = EntityDataManager::Instance();
-    auto& wrm = WorldResourceManager::Instance();
-
-    // Use interpolated camera position for spatial query (matches actual render position)
-    Vector2D cameraCenter(cameraX, cameraY);
-    const auto& viewport = camera.getViewport();
-    float visibleRadius = std::sqrt(viewport.width * viewport.width +
-                                    viewport.height * viewport.height) * 0.5f;
-
-    // Query only visible containers - O(k) where k = cells in view
-    m_visibleContainerIndices.clear();
-    wrm.queryContainersInRadius(cameraCenter, visibleRadius, m_visibleContainerIndices);
-
-    // Use passed cameraX/cameraY (interpolated) for actual rendering
-
-    for (size_t idx : m_visibleContainerIndices) {
-        const auto& hot = edm.getStaticHotDataByIndex(idx);  // Static pool accessor
-        if (!hot.isAlive()) continue;
-
-        const auto& containerData = edm.getContainerData(hot.typeLocalIndex);
-        const auto& r = edm.getContainerRenderDataByTypeIndex(hot.typeLocalIndex);
-        const auto spriteView = buildContainerSpriteView(r, containerData.isOpen());
-        const uint16_t frameWidth = getContainerFrameWidth(r, containerData.isOpen());
-        const uint16_t frameHeight = getContainerFrameHeight(r, containerData.isOpen());
-
-        if (!spriteView.textureOwner) continue;
-
-        // Interpolate position
-        float interpX = hot.transform.previousPosition.getX() +
-            (hot.transform.position.getX() - hot.transform.previousPosition.getX()) * alpha;
-        float interpY = hot.transform.previousPosition.getY() +
-            (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
-
-        // Calculate source rect
-        SDL_FRect srcRect = {
-            static_cast<float>(spriteView.atlasX + r.currentFrame * frameWidth),
-            static_cast<float>(spriteView.atlasY),
-            static_cast<float>(frameWidth),
-            static_cast<float>(frameHeight)
-        };
-
-        // Calculate destination rect (centered)
-        // Sub-pixel rendering - unified with Player/Particles for smooth diagonal movement
-        float halfW = static_cast<float>(frameWidth) * 0.5f;
-        float halfH = static_cast<float>(frameHeight) * 0.5f;
-        SDL_FRect destRect = {
-            interpX - cameraX - halfW,
-            interpY - cameraY - halfH,
-            static_cast<float>(frameWidth),
-            static_cast<float>(frameHeight)
-        };
-
-        SDL_RenderTexture(renderer, spriteView.textureOwner.get(), &srcRect, &destRect);
-    }
-}
-
 void ResourceRenderController::clearAll() {
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
@@ -251,7 +103,6 @@ void ResourceRenderController::clearAll() {
     }
 }
 
-#ifdef USE_SDL3_GPU
 void ResourceRenderController::recordGPUDroppedItems(const HammerEngine::GPUSceneContext& ctx,
                                                       const HammerEngine::Camera& camera) {
     RESOURCE_RENDER_WARN_IF(!ctx.spriteBatch, "recordGPUDroppedItems: ctx.spriteBatch is null");
@@ -364,5 +215,3 @@ void ResourceRenderController::recordGPUContainers(const HammerEngine::GPUSceneC
         ctx.spriteBatch->draw(srcX, srcY, srcW, srcH, dstX, dstY, srcW, srcH);
     }
 }
-
-#endif

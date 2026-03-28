@@ -243,18 +243,6 @@ public:
   }
 
   /**
-   * @brief Sets the logical presentation mode for rendering
-   * @param mode SDL logical presentation mode to use
-   */
-  void setLogicalPresentationMode(SDL_RendererLogicalPresentation mode);
-
-  /**
-   * @brief Gets the current logical presentation mode
-   * @return Current logical presentation mode
-   */
-  SDL_RendererLogicalPresentation getLogicalPresentationMode() const noexcept;
-
-  /**
    * @brief Gets the DPI scale factor calculated during initialization
    * @return DPI scale factor (1.0 for standard DPI, higher for high-DPI
    * displays)
@@ -395,10 +383,6 @@ private:
   WorldResourceManager *mp_worldResourceManager{nullptr};
   WorldManager *mp_worldManager{nullptr};
   CollisionManager *mp_collisionManager{nullptr};
-
-  // Logical presentation settings
-  SDL_RendererLogicalPresentation m_logicalPresentationMode{
-      SDL_LOGICAL_PRESENTATION_LETTERBOX};
 
   // DPI scaling
   float m_dpiScale{1.0f};

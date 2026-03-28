@@ -90,20 +90,6 @@ class Entity : public std::enable_shared_from_this<Entity> {
   virtual void update(float deltaTime) = 0;
 
   /**
-   * @brief Render the entity with interpolation support.
-   *
-   * This method is called once per frame for each entity. It should
-   * use getInterpolatedPosition(interpolationAlpha) for smooth rendering
-   * between fixed timestep updates.
-   *
-   * @param renderer SDL renderer from GameState render flow
-   * @param cameraX Interpolated camera X offset (from GameState render)
-   * @param cameraY Interpolated camera Y offset (from GameState render)
-   * @param interpolationAlpha Blend factor between previous and current position (0.0-1.0)
-   */
-  virtual void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) = 0;
-
-  /**
    * @brief Clean up the entity's resources before destruction
    *
    * This method is called explicitly before an entity is destroyed.
@@ -240,11 +226,7 @@ class Entity : public std::enable_shared_from_this<Entity> {
   virtual void setAcceleration(const Vector2D& acceleration);
   virtual void setWidth(int width) { m_width = width; }
   virtual void setHeight(int height) { m_height = height; }
-  virtual void setTextureID(const std::string& id) {
-    m_textureID = id;
-    m_cachedTextureOwner.reset();
-    m_cachedTexture = nullptr;  // Invalidate - next render will re-cache
-  }
+  virtual void setTextureID(const std::string& id) { m_textureID = id; }
   virtual void setCurrentFrame(int frame) { m_currentFrame = frame; }
   virtual void setCurrentRow(int row) { m_currentRow = row; }
   virtual void setNumFrames(int numFrames) { m_numFrames = numFrames; }
@@ -300,8 +282,6 @@ class Entity : public std::enable_shared_from_this<Entity> {
   int m_width{0};
   int m_height{0};
   std::string m_textureID{};
-  std::shared_ptr<SDL_Texture> m_cachedTextureOwner{};
-  SDL_Texture* m_cachedTexture{nullptr};  // Cached for render - no hash lookup per frame
   int m_currentFrame{0};
   int m_currentRow{0};
   int m_numFrames{0};

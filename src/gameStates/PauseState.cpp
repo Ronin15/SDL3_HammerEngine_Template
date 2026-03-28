@@ -10,9 +10,7 @@
 #include "managers/GameStateManager.hpp"
 #include "core/GameEngine.hpp"
 
-#ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
-#endif
 
 bool PauseState::enter() {
   // Cache manager references at function start
@@ -66,11 +64,6 @@ void PauseState::update([[maybe_unused]] float deltaTime) {
     }
 }
 
-void PauseState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
-    // Render UI components (input handled in update())
-    auto& ui = UIManager::Instance();
-    ui.render(renderer);
-}
 bool PauseState::exit() {
   // Resume all game managers via GameEngine (collision, pathfinding, AI, particles, GameTime)
   GameEngine::Instance().setGlobalPause(false);
@@ -103,7 +96,6 @@ void PauseState::handleInput() {
   }
 }
 
-#ifdef USE_SDL3_GPU
 void PauseState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                                     [[maybe_unused]] float interpolationAlpha) {
     auto& ui = UIManager::Instance();
@@ -119,4 +111,3 @@ void PauseState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
         ui.renderGPU(gpuRenderer, swapchainPass);
     }
 }
-#endif

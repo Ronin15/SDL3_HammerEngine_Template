@@ -28,13 +28,9 @@
 #include "managers/WorldResourceManager.hpp"
 #include "core/WorkerBudget.hpp"
 #include "utils/Camera.hpp"
-#include "utils/WorldRenderPipeline.hpp"
-
-#ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
 #include "gpu/SpriteBatch.hpp"
 #include "utils/GPUSceneRenderer.hpp"
-#endif
 
 #include <algorithm>
 #include <array>
@@ -317,13 +313,8 @@ bool EventDemoState::enter() {
     // LoadingState)
     initializeCamera();
 
-    // Create world render pipeline for coordinated chunk management and scene rendering
-    m_renderPipeline = std::make_unique<HammerEngine::WorldRenderPipeline>();
-
-#ifdef USE_SDL3_GPU
     // Create GPU scene renderer for coordinated GPU rendering
     m_gpuSceneRenderer = std::make_unique<HammerEngine::GPUSceneRenderer>();
-#endif
 
     // Pre-allocate status buffer to avoid per-frame allocations
     m_statusBuffer.reserve(64);
@@ -408,9 +399,8 @@ bool EventDemoState::exit() {
         m_player->setCamera(nullptr);
       }
 
-      // Clean up camera and scene renderer
+      // Clean up camera and GPU scene renderer
       m_camera.reset();
-      m_renderPipeline.reset();
 
       // Clean up UI
       ui.prepareForStateTransition();
@@ -479,9 +469,8 @@ bool EventDemoState::exit() {
 
     WorldManager::Instance().setActiveCamera(nullptr);
 
-    // Clean up camera and scene renderer first to stop world rendering
+    // Clean up camera and GPU scene renderer first to stop world rendering
     m_camera.reset();
-    m_renderPipeline.reset();
 
     // Clean up UI components before world cleanup
     ui.prepareForStateTransition();
@@ -574,14 +563,6 @@ void EventDemoState::update(float deltaTime) {
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
 
-#ifndef USE_SDL3_GPU
-  // Prepare chunks via WorldRenderPipeline (predictive prefetching + dirty chunk updates)
-  // GPU path renders tiles directly from atlas coords each frame — no chunk textures needed
-  if (m_renderPipeline && m_camera) {
-    m_renderPipeline->prepareChunks(*m_camera, deltaTime);
-  }
-#endif
-
   // AI Manager is updated globally by GameEngine for optimal performance
   // Entity updates are handled by AIManager::update() in GameEngine
 
@@ -593,83 +574,6 @@ void EventDemoState::update(float deltaTime) {
 
   // Note: EventManager is updated globally by GameEngine in the main update
   // loop for optimal performance and consistency with other global systems
-}
-
-void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
-  // Get manager references at function start
-  auto &particleMgr = ParticleManager::Instance();
-  auto &uiMgr = UIManager::Instance();
-
-  // Use WorldRenderPipeline for coordinated world rendering
-  const bool worldActive = m_camera && m_renderPipeline;
-
-  // ========== BEGIN SCENE (to intermediate target) ==========
-  HammerEngine::WorldRenderPipeline::RenderContext ctx;
-  if (worldActive) {
-    ctx = m_renderPipeline->beginScene(renderer, *m_camera, interpolationAlpha);
-  }
-
-  if (ctx) {
-    // Render background particles (rain, snow) - behind player/NPCs
-    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-      particleMgr.renderBackground(renderer, ctx.cameraX, ctx.cameraY,
-                                   interpolationAlpha);
-    }
-
-    // Render world tiles via pipeline (uses pre-computed context)
-    m_renderPipeline->renderWorld(renderer, ctx);
-
-    // Render player (sub-pixel smoothness from entity's own interpolation)
-    if (m_player) {
-      m_player->render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
-    }
-
-    // Render NPCs (sub-pixel smoothness from entity interpolation)
-    m_npcRenderCtrl.renderNPCs(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
-
-    // Render world-space and foreground particles (after player)
-    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-      particleMgr.render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
-      particleMgr.renderForeground(renderer, ctx.cameraX, ctx.cameraY,
-                                   interpolationAlpha);
-    }
-  }
-
-  // ========== END SCENE (composite with zoom) ==========
-  if (worldActive) {
-    m_renderPipeline->endScene(renderer);
-  }
-
-  // Render UI components (update moved to update() for consistent frame timing)
-  if (!uiMgr.isShutdown()) {
-    // Lazy weather string caching — only recompute on weather type change
-    if (m_currentWeather != m_lastCachedWeatherType) {
-      m_cachedWeatherStr = getCurrentWeatherString();
-      m_lastCachedWeatherType = m_currentWeather;
-    }
-
-    float const currentFPS = mp_stateManager->getCurrentFPS();
-    // Use cached NPC count from update() to avoid EDM query in render path
-    size_t npcCount = m_cachedNPCCount;
-
-    // Update if FPS changed by more than 0.05 (avoids flicker) or other values
-    // changed
-    if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
-        m_cachedWeatherStr != m_lastDisplayedWeather ||
-        npcCount != m_lastDisplayedNPCCount) {
-
-      m_statusBuffer.clear();
-      std::format_to(std::back_inserter(m_statusBuffer),
-                     "FPS: {:.1f} | Weather: {} | NPCs: {}", currentFPS,
-                     m_cachedWeatherStr, npcCount);
-      uiMgr.setText("event_status", m_statusBuffer);
-
-      m_lastDisplayedFPS = currentFPS;
-      m_lastDisplayedWeather = m_cachedWeatherStr;
-      m_lastDisplayedNPCCount = npcCount;
-    }
-  }
-  uiMgr.render(renderer);
 }
 
 void EventDemoState::registerEventHandlers() {
@@ -1355,7 +1259,6 @@ void EventDemoState::toggleInventoryDisplay() {
       std::format("Inventory {}", m_showInventory ? "shown" : "hidden"));
 }
 
-#ifdef USE_SDL3_GPU
 void EventDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
                                        float interpolationAlpha) {
   if (!m_camera || !m_gpuSceneRenderer) { return; }
@@ -1439,4 +1342,3 @@ void EventDemoState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
                                  SDL_GPURenderPass *swapchainPass) {
   UIManager::Instance().renderGPU(gpuRenderer, swapchainPass);
 }
-#endif

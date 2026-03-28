@@ -1282,9 +1282,6 @@ BOOST_AUTO_TEST_CASE(TestNPCRenderDataDefaultsWithoutTexture) {
 
     const auto& renderData = edm->getNPCRenderData(handle);
 
-    // texture owner should be null (no renderer in test environment)
-    BOOST_CHECK(renderData.textureOwner == nullptr);
-
     // Frame dimensions should be set from JSON config
     BOOST_CHECK_GT(renderData.frameWidth, 0);
     BOOST_CHECK_GT(renderData.frameHeight, 0);

@@ -11,9 +11,7 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
-#ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
-#endif
 
 #include <string>
 
@@ -70,12 +68,6 @@ void OverlayDemoState::update(float deltaTime) {
     if (!ui.isShutdown()) {
         ui.update(0.0f);  // UI updates are not time-dependent in this state
     }
-}
-
-void OverlayDemoState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
-    // Render UI components (input handled in update())
-    auto& ui = UIManager::Instance();
-    ui.render(renderer);
 }
 
 bool OverlayDemoState::exit() {
@@ -400,7 +392,6 @@ void OverlayDemoState::handleBackButton() {
     mp_stateManager->changeState("MainMenuState");
 }
 
-#ifdef USE_SDL3_GPU
 void OverlayDemoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                                           [[maybe_unused]] float interpolationAlpha) {
     auto& ui = UIManager::Instance();
@@ -416,6 +407,5 @@ void OverlayDemoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
         ui.renderGPU(gpuRenderer, swapchainPass);
     }
 }
-#endif
 
 // Pure UIManager implementation - no UIScreen needed

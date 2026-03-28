@@ -18,6 +18,8 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "gpu/GPURenderer.hpp"
+#include "gpu/GPUTypes.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -78,26 +80,12 @@ void Player::loadDimensionsFromTexture() {
   float height = 0.0f;
   bool gotDimensions = false;
 
-#ifdef USE_SDL3_GPU
-  // Try GPU texture first (used in GPU rendering mode)
   if (auto gpuData = texMgr.getGPUTextureData(m_textureID); gpuData) {
     width = gpuData->width;
     height = gpuData->height;
     gotDimensions = (width > 0 && height > 0);
     if (gotDimensions) {
       PLAYER_DEBUG(std::format("Got dimensions from GPU texture: {}x{}", width, height));
-    }
-  }
-#endif
-
-  // Fall back to SDL_Renderer texture if GPU texture not available
-  if (!gotDimensions && texMgr.isTextureInMap(m_textureID)) {
-    auto texture = texMgr.getTexture(m_textureID);
-    if (texture != nullptr) {
-      if (SDL_GetTextureSize(texture.get(), &width, &height)) {
-        gotDimensions = true;
-        PLAYER_DEBUG(std::format("Got dimensions from SDL texture: {}x{}", width, height));
-      }
     }
   }
 
@@ -231,51 +219,10 @@ void Player::update(float deltaTime) {
 
   // If the texture dimensions haven't been loaded yet, try loading them
   if (m_frameWidth == 0 &&
-      TextureManager::Instance().isTextureInMap(m_textureID)) {
+      TextureManager::Instance().getGPUTextureData(m_textureID).has_value()) {
     loadDimensionsFromTexture();
   }
 }
-
-void Player::render(SDL_Renderer *renderer, float cameraX, float cameraY,
-                    float interpolationAlpha) {
-  // Get interpolated position for smooth rendering between fixed timestep
-  // updates
-  Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
-  renderAtPosition(renderer, interpPos, cameraX, cameraY);
-}
-
-void Player::renderAtPosition(SDL_Renderer *renderer, const Vector2D &interpPos,
-                              float cameraX, float cameraY) {
-  // Cache texture on first render (like WorldManager pattern - no hash lookup
-  // per frame)
-  if (!m_cachedTexture) {
-    m_cachedTextureOwner = TextureManager::Instance().getTexture(m_textureID);
-    m_cachedTexture = m_cachedTextureOwner.get();
-    if (!m_cachedTexture)
-      return;
-  }
-
-  // Convert world coords to screen coords using passed camera offset
-  // Sub-pixel rendering for smooth motion (matches particle rendering)
-  float renderX = interpPos.getX() - cameraX - (m_frameWidth / 2.0f);
-  float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
-
-  // Direct SDL call with cached texture - no hash lookup!
-  SDL_FRect srcRect = {static_cast<float>(m_frameWidth * m_currentFrame),
-                       static_cast<float>(m_height * (m_currentRow - 1)),
-                       static_cast<float>(m_frameWidth),
-                       static_cast<float>(m_height)};
-  SDL_FRect destRect = {renderX, renderY, static_cast<float>(m_frameWidth),
-                        static_cast<float>(m_height)};
-  SDL_FPoint center = {m_frameWidth / 2.0f, m_height / 2.0f};
-
-  SDL_RenderTextureRotated(renderer, m_cachedTexture, &srcRect, &destRect, 0.0,
-                           &center, m_flip);
-}
-
-#ifdef USE_SDL3_GPU
-#include "gpu/GPURenderer.hpp"
-#include "gpu/GPUTypes.hpp"
 
 void Player::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                                float cameraX, float cameraY,
@@ -366,7 +313,6 @@ void Player::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
   entityBatch.render(scenePass, gpuRenderer.getSpriteAlphaPipeline(),
                      vertexPool.getGPUBuffer());
 }
-#endif
 
 void Player::clean() {
   // Clean up any resources

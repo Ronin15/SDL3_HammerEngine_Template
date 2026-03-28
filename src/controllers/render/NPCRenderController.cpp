@@ -5,36 +5,12 @@
 
 #include "controllers/render/NPCRenderController.hpp"
 #include "entities/EntityHandle.hpp"
-#include "managers/EntityDataManager.hpp"
 #include "managers/AIManager.hpp"
-#include <SDL3/SDL.h>
-#include <cmath>
-
-#ifdef USE_SDL3_GPU
+#include "managers/EntityDataManager.hpp"
 #include "gpu/SpriteBatch.hpp"
 #include "utils/GPUSceneRenderer.hpp"
-#endif
-
-namespace {
-
-struct NPCSpriteView {
-    const std::shared_ptr<SDL_Texture>& textureOwner;
-    SDL_FRect srcRect;
-};
-
-[[nodiscard]] NPCSpriteView buildNPCSpriteView(const NPCRenderData& renderData) {
-    return {
-        renderData.textureOwner,
-        SDL_FRect{
-            static_cast<float>(renderData.atlasX + renderData.currentFrame * renderData.frameWidth),
-            static_cast<float>(renderData.atlasY + renderData.currentRow * renderData.frameHeight),
-            static_cast<float>(renderData.frameWidth),
-            static_cast<float>(renderData.frameHeight)
-        }
-    };
-}
-
-} // namespace
+#include <SDL3/SDL.h>
+#include <cmath>
 
 void NPCRenderController::update(float deltaTime) {
     auto& edm = EntityDataManager::Instance();
@@ -66,39 +42,6 @@ void NPCRenderController::update(float deltaTime) {
     }
 }
 
-void NPCRenderController::renderNPCs(SDL_Renderer* renderer, float cameraX, float cameraY, float alpha) {
-    auto& edm = EntityDataManager::Instance();
-
-    // Only render Active tier NPCs (same as AIManager)
-    for (size_t idx : edm.getActiveIndices()) {
-        const auto& hot = edm.getHotDataByIndex(idx);
-        if (hot.kind != EntityKind::NPC) continue;
-
-        const auto& r = edm.getNPCRenderDataByTypeIndex(hot.typeLocalIndex);
-        const auto spriteView = buildNPCSpriteView(r);
-        if (!spriteView.textureOwner) { continue; }
-
-        // Interpolate position
-        float interpX = hot.transform.previousPosition.getX() +
-            (hot.transform.position.getX() - hot.transform.previousPosition.getX()) * alpha;
-        float interpY = hot.transform.previousPosition.getY() +
-            (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
-
-        float halfW = static_cast<float>(r.frameWidth) * 0.5f;
-        float halfH = static_cast<float>(r.frameHeight) * 0.5f;
-        // Sub-pixel rendering - unified with Player/Particles for smooth diagonal movement
-        SDL_FRect destRect = {
-            interpX - cameraX - halfW,
-            interpY - cameraY - halfH,
-            static_cast<float>(r.frameWidth),
-            static_cast<float>(r.frameHeight)
-        };
-
-        SDL_RenderTextureRotated(renderer, spriteView.textureOwner.get(), &spriteView.srcRect, &destRect,
-                                  0.0, nullptr, static_cast<SDL_FlipMode>(r.flipMode));
-    }
-}
-
 void NPCRenderController::clearSpawnedNPCs() {
     auto& edm = EntityDataManager::Instance();
     auto& aiMgr = AIManager::Instance();
@@ -116,7 +59,6 @@ void NPCRenderController::clearSpawnedNPCs() {
     }
 }
 
-#ifdef USE_SDL3_GPU
 void NPCRenderController::recordGPU(const HammerEngine::GPUSceneContext& ctx) {
     if (!ctx.spriteBatch) { return; }
 
@@ -158,4 +100,3 @@ void NPCRenderController::recordGPU(const HammerEngine::GPUSceneContext& ctx) {
         }
     }
 }
-#endif

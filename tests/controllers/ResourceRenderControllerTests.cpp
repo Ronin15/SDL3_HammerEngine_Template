@@ -121,43 +121,6 @@ BOOST_AUTO_TEST_CASE(TestUpdateMultipleTimes) {
 BOOST_AUTO_TEST_SUITE_END()
 
 // ============================================================================
-// Render Tests (SDL_Renderer path)
-// ============================================================================
-
-BOOST_FIXTURE_TEST_SUITE(ResourceRenderControllerRenderTests, ResourceRenderControllerTestFixture)
-
-BOOST_AUTO_TEST_CASE(TestRenderDroppedItemsNullRenderer) {
-    ResourceRenderController controller;
-
-    // Null renderer should be handled gracefully (no crash)
-    controller.renderDroppedItems(nullptr, getCamera(), 0.0f, 0.0f, 1.0f);
-
-    BOOST_CHECK(true);
-}
-
-BOOST_AUTO_TEST_CASE(TestRenderContainersNullRenderer) {
-    ResourceRenderController controller;
-
-    // Null renderer should be handled gracefully (no crash)
-    controller.renderContainers(nullptr, getCamera(), 0.0f, 0.0f, 1.0f);
-
-    BOOST_CHECK(true);
-}
-
-BOOST_AUTO_TEST_CASE(TestRenderWithDifferentCameraOffsets) {
-    ResourceRenderController controller;
-
-    // Different camera offsets
-    controller.renderDroppedItems(nullptr, getCamera(), 100.0f, 200.0f, 1.0f);
-    controller.renderDroppedItems(nullptr, getCamera(), -100.0f, -200.0f, 1.0f);
-    controller.renderDroppedItems(nullptr, getCamera(), 0.0f, 0.0f, 0.5f);
-
-    BOOST_CHECK(true);
-}
-
-BOOST_AUTO_TEST_SUITE_END()
-
-// ============================================================================
 // ClearAll Tests
 // ============================================================================
 
