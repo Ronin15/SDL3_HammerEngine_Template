@@ -235,8 +235,8 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
       return;
     }
 
-    float dstX = static_cast<float>(x - textWidth / 2);
-    float dstY = static_cast<float>(y - textHeight / 2);
+    float dstX = static_cast<float>(x - textWidth / 2.0);
+    float dstY = static_cast<float>(y - textHeight / 2.0);
 
     TTF_GPUAtlasDrawSequence* drawSequence = fontMgr.getGPUTextDrawData(key);
     if (!drawSequence) {
@@ -280,7 +280,7 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
 
   addText("logo:title", "<]==={ }* Hammer Game Engine *{ }===]>", centerX, m_titleY);
   addText("logo:subtitle", "Powered by SDL3", centerX, m_subtitleY);
-  addText("logo:version", "v0.8.5", centerX, m_versionY);
+  addText("logo:version", "v0.9.0", centerX, m_versionY);
 
   uiPool.setWrittenVertexCount(uiVertexOffset);
 }
