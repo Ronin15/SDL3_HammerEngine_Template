@@ -159,8 +159,7 @@ BOOST_AUTO_TEST_CASE(TestLoadingStateAsyncPattern) {
                       fileContainsPattern(loadingStateFile, ".store(");
     BOOST_CHECK_MESSAGE(usesAtomics, "LoadingState should use atomics for thread-safe state");
 
-    // Verify LoadingState does NOT have blocking loops with manual rendering
-    // (No "while" loops with SDL_RenderPresent inside LoadingState)
+    // Verify LoadingState does NOT have blocking loops with forbidden legacy rendering calls
     std::ifstream file(loadingStateFile);
     BOOST_REQUIRE(file.is_open());
 
@@ -182,13 +181,13 @@ BOOST_AUTO_TEST_CASE(TestLoadingStateAsyncPattern) {
     }
 
     BOOST_CHECK_MESSAGE(!foundBlockingPattern,
-                       "LoadingState should NOT have blocking loops with manual rendering");
+                       "LoadingState should NOT have blocking loops with forbidden legacy present/clear calls");
 }
 
 // ----------------------------------------------------------------------------
 // Test: LoadingState GPU hooks follow correct pattern
 // ----------------------------------------------------------------------------
-// LoadingState should use GPU hooks and avoid manual present/clear
+// LoadingState should use GPU hooks and avoid legacy present/clear calls
 
 BOOST_AUTO_TEST_CASE(TestLoadingStateRenderPattern) {
     const std::string loadingStateFile = "src/gameStates/LoadingState.cpp";
@@ -373,7 +372,7 @@ BOOST_AUTO_TEST_CASE(TestRenderStateIsolation) {
 // ----------------------------------------------------------------------------
 // Test: No mid-frame Present calls
 // ----------------------------------------------------------------------------
-// Managers should never call Present during their render operations
+// Managers should never issue legacy SDL renderer present calls during GPU rendering
 
 BOOST_AUTO_TEST_CASE(TestNoMidFramePresentInManagers) {
     std::vector<std::string> managerFiles = {
@@ -384,7 +383,7 @@ BOOST_AUTO_TEST_CASE(TestNoMidFramePresentInManagers) {
 
     for (const auto& file : managerFiles) {
         bool hasPresent = fileContainsPattern(file, "SDL_RenderPresent");
-        BOOST_CHECK_MESSAGE(!hasPresent, file + " should NOT call SDL_RenderPresent");
+        BOOST_CHECK_MESSAGE(!hasPresent, file + " should NOT call legacy SDL_RenderPresent");
     }
 }
 

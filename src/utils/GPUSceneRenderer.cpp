@@ -28,14 +28,14 @@ GPUSceneContext GPUSceneRenderer::beginScene(GPURenderer& gpuRenderer,
     GPUSceneContext ctx;
 
     if (m_sceneActive) {
-        SCENE_RENDERER_WARN("GPUSceneRenderer::beginScene called while scene already active");
+        GPU_SCENE_RENDERER_WARN("GPUSceneRenderer::beginScene called while scene already active");
         return ctx;
     }
 
     // Get atlas GPU texture for sprite batch
     auto atlasTexture = TextureManager::Instance().getGPUTextureData("atlas");
     if (!atlasTexture || !atlasTexture->texture) {
-        SCENE_RENDERER_ERROR("GPUSceneRenderer: Atlas GPU texture not available");
+        GPU_SCENE_RENDERER_ERROR("GPUSceneRenderer: Atlas GPU texture not available");
         return ctx;
     }
 
@@ -69,7 +69,7 @@ GPUSceneContext GPUSceneRenderer::beginScene(GPURenderer& gpuRenderer,
     // Get mapped vertex buffer (GPURenderer::beginFrame already mapped it)
     auto* writePtr = static_cast<SpriteVertex*>(vertexPool.getMappedPtr());
     if (!writePtr) {
-        SCENE_RENDERER_ERROR("GPUSceneRenderer: Sprite vertex pool not mapped");
+        GPU_SCENE_RENDERER_ERROR("GPUSceneRenderer: Sprite vertex pool not mapped");
         return ctx;
     }
 
@@ -103,7 +103,7 @@ GPUSceneContext GPUSceneRenderer::beginScene(GPURenderer& gpuRenderer,
 
 void GPUSceneRenderer::endSpriteBatch() {
     if (!m_spriteBatchActive || !m_spriteBatch) {
-        SCENE_RENDERER_WARN("GPUSceneRenderer::endSpriteBatch called without active batch");
+        GPU_SCENE_RENDERER_WARN("GPUSceneRenderer::endSpriteBatch called without active batch");
         return;
     }
 
@@ -115,13 +115,13 @@ void GPUSceneRenderer::endScene() {
     PROFILE_RENDER_GPU(RenderPhase::EndScene, nullptr);
 
     if (!m_sceneActive) {
-        SCENE_RENDERER_WARN("GPUSceneRenderer::endScene called without matching beginScene");
+        GPU_SCENE_RENDERER_WARN("GPUSceneRenderer::endScene called without matching beginScene");
         return;
     }
 
     // Ensure sprite batch is ended if caller forgot
     if (m_spriteBatchActive && m_spriteBatch) {
-        SCENE_RENDERER_WARN("GPUSceneRenderer::endScene: sprite batch not ended, ending now");
+        GPU_SCENE_RENDERER_WARN("GPUSceneRenderer::endScene: sprite batch not ended, ending now");
         m_spriteBatch->end();
         m_spriteBatchActive = false;
     }
