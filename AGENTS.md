@@ -24,6 +24,7 @@ Before editing:
 
 - Read the exact code path first.
 - Search for matching patterns in the same subsystem.
+- Never assume an implied system, owner, or hot path. Trace the actual participating systems and verify with code, tests, or benchmarks before making architecture or performance recommendations.
 - Prefer targeted edits over cleanup or opportunistic refactors.
 
 While editing:
