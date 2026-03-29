@@ -62,49 +62,6 @@ AtlasRegion lookupAtlasRegion(const std::string& regionId) {
     };
 }
 
-AtlasRegion lookupHarvestableAtlasRegion(const ResourcePtr& resource) {
-    if (!resource) {
-        return {};
-    }
-
-    const std::string& resourceId = resource->getId();
-    std::string regionId;
-
-    if (resourceId == "wood") {
-        regionId = "spring_obstacle_tree";
-    } else if (resourceId == "stone") {
-        regionId = "obstacle_rock";
-    } else if (resourceId == "iron_ore") {
-        regionId = "ore_iron_deposit";
-    } else if (resourceId == "gold_ore") {
-        regionId = "ore_gold_deposit";
-    } else if (resourceId == "copper_ore") {
-        regionId = "ore_copper_deposit";
-    } else if (resourceId == "mithril_ore") {
-        regionId = "ore_mithril_deposit";
-    } else if (resourceId == "limestone") {
-        regionId = "ore_limestone_deposit";
-    } else if (resourceId == "coal") {
-        regionId = "ore_coal_deposit";
-    } else if (resourceId == "rough_emerald") {
-        regionId = "ore_emerald_deposit";
-    } else if (resourceId == "rough_ruby") {
-        regionId = "ore_ruby_deposit";
-    } else if (resourceId == "rough_sapphire") {
-        regionId = "ore_sapphire_deposit";
-    } else if (resourceId == "rough_diamond") {
-        regionId = "ore_diamond_deposit";
-    } else if (!resource->getWorldTextureId().empty()) {
-        regionId = resource->getWorldTextureId();
-    }
-
-    if (regionId.empty()) {
-        return {};
-    }
-
-    return lookupAtlasRegion(regionId);
-}
-
 } // namespace
 
 // ============================================================================
@@ -145,7 +102,6 @@ bool EntityDataManager::init() {
         m_containerData.reserve(100);
         m_containerRenderData.reserve(100);  // Same capacity as ContainerData
         m_harvestableData.reserve(500);
-        m_harvestableRenderData.reserve(500);  // Same capacity as HarvestableData
         m_areaEffectData.reserve(EFFECT_CAPACITY);
 
         // Path data (indexed by edmIndex, sparse for non-AI entities)
@@ -237,7 +193,6 @@ void EntityDataManager::clean() {
     m_containerData.clear();
     m_containerRenderData.clear();
     m_harvestableData.clear();
-    m_harvestableRenderData.clear();
     m_areaEffectData.clear();
     m_pathData.clear();
     m_waypointSlots.clear();  // Clear per-entity waypoint slots
@@ -315,7 +270,6 @@ void EntityDataManager::prepareForStateTransition() {
     m_containerData.clear();
     m_containerRenderData.clear();
     m_harvestableData.clear();
-    m_harvestableRenderData.clear();
     m_areaEffectData.clear();
     m_pathData.clear();
     m_waypointSlots.clear();  // Clear per-entity waypoint slots
@@ -481,10 +435,6 @@ void EntityDataManager::freeSlot(size_t index) {
             if (WorldResourceManager::Instance().isInitialized()) {
                 WorldResourceManager::Instance().unregisterHarvestable(index);
                 WorldResourceManager::Instance().unregisterHarvestableSpatial(index);
-            }
-            // Clear harvestable render data
-            if (typeIndex < m_harvestableRenderData.size()) {
-                m_harvestableRenderData[typeIndex].clear();
             }
             break;
         case EntityKind::AreaEffect:
@@ -1367,7 +1317,6 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     } else {
         harvestableIndex = static_cast<uint32_t>(m_harvestableData.size());
         m_harvestableData.emplace_back();
-        m_harvestableRenderData.emplace_back();  // Keep in sync
     }
 
     // Initialize HarvestableData
@@ -1380,25 +1329,6 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     harvestable.harvestType = harvestType;
     harvestable.isDepleted = false;
     hot.typeLocalIndex = harvestableIndex;
-
-    // Initialize HarvestableRenderData
-    if (harvestableIndex >= m_harvestableRenderData.size()) {
-        m_harvestableRenderData.resize(harvestableIndex + 1);
-    }
-    auto& renderData = m_harvestableRenderData[harvestableIndex];
-    renderData.clear();
-
-    const auto& rtm = ResourceTemplateManager::Instance();
-    ResourcePtr resource = rtm.getResourceTemplate(yieldResource);
-    AtlasRegion region = lookupHarvestableAtlasRegion(resource);
-    if (region.found) {
-        renderData.atlasX = region.x;
-        renderData.atlasY = region.y;
-        renderData.depletedAtlasX = region.x;
-        renderData.depletedAtlasY = region.y;
-        renderData.frameWidth = region.w;
-        renderData.frameHeight = region.h;
-    }
 
     // Store ID and mapping in STATIC pool structures
     m_staticEntityIds[index] = id;

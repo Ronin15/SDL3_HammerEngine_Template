@@ -734,36 +734,6 @@ struct ContainerRenderData {
 };
 
 /**
- * @brief Render data for harvestable resources (trees, ore nodes)
- *
- * Supports normal/depleted states with different textures.
- * Indexed by typeLocalIndex in EntityHotData.
- */
-struct HarvestableRenderData {
-    uint16_t atlasX{0};                     // Atlas X offset (0 = unmapped, use default)
-    uint16_t atlasY{0};                     // Atlas Y offset (0 = unmapped, use default)
-    uint16_t depletedAtlasX{0};             // Atlas X offset for depleted state
-    uint16_t depletedAtlasY{0};             // Atlas Y offset for depleted state
-    uint16_t frameWidth{32};                // Sprite width
-    uint16_t frameHeight{32};               // Sprite height
-    uint8_t currentFrame{0};                // Animation frame
-    uint8_t numFrames{1};                   // Animation frames (e.g., swaying tree)
-    float animTimer{0.0f};                  // Animation accumulator
-
-    void clear() noexcept {
-        atlasX = 0;
-        atlasY = 0;
-        depletedAtlasX = 0;
-        depletedAtlasY = 0;
-        frameWidth = 32;
-        frameHeight = 32;
-        currentFrame = 0;
-        numFrames = 1;
-        animTimer = 0.0f;
-    }
-};
-
-/**
  * @brief Per-entity fixed-size waypoint storage slot (256 bytes, cache-aligned)
  *
  * Each entity owns one slot with space for MAX_WAYPOINTS_PER_ENTITY waypoints.
@@ -1903,14 +1873,6 @@ public:
     [[nodiscard]] ContainerRenderData& getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex);
     [[nodiscard]] const ContainerRenderData& getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex) const;
 
-    /**
-     * @brief Get harvestable render data by type index
-     * @param typeLocalIndex Index from EntityHotData::typeLocalIndex
-     * @return Reference to harvestable render data
-     */
-    [[nodiscard]] HarvestableRenderData& getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex);
-    [[nodiscard]] const HarvestableRenderData& getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex) const;
-
     // ========================================================================
     // HANDLE VALIDATION
     // ========================================================================
@@ -2465,7 +2427,6 @@ private:
     std::vector<NPCRenderData> m_npcRenderData;      // NPC render data (same index as CharacterData for NPCs)
     std::vector<ItemRenderData> m_itemRenderData;    // DroppedItem render data (same index as ItemData)
     std::vector<ContainerRenderData> m_containerRenderData;  // Container render data
-    std::vector<HarvestableRenderData> m_harvestableRenderData;  // Harvestable render data
 
     // Inventory data (indexed by inventory index from createInventory())
     std::vector<InventoryData> m_inventoryData;
@@ -2772,16 +2733,6 @@ inline ContainerRenderData& EntityDataManager::getContainerRenderDataByTypeIndex
 inline const ContainerRenderData& EntityDataManager::getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
     assert(typeLocalIndex < m_containerRenderData.size() && "Container render data type index out of bounds");
     return m_containerRenderData[typeLocalIndex];
-}
-
-inline HarvestableRenderData& EntityDataManager::getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex) {
-    assert(typeLocalIndex < m_harvestableRenderData.size() && "Harvestable render data type index out of bounds");
-    return m_harvestableRenderData[typeLocalIndex];
-}
-
-inline const HarvestableRenderData& EntityDataManager::getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
-    assert(typeLocalIndex < m_harvestableRenderData.size() && "Harvestable render data type index out of bounds");
-    return m_harvestableRenderData[typeLocalIndex];
 }
 
 // Container/Harvestable data accessors by type index - O(1) access for batch processing

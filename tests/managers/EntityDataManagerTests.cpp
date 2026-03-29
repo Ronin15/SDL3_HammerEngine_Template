@@ -1324,22 +1324,6 @@ BOOST_AUTO_TEST_CASE(TestContainerRenderDataPreservesOpenVariantDimensions) {
     BOOST_CHECK_EQUAL(renderData.openFrameHeight, 31);
 }
 
-BOOST_AUTO_TEST_CASE(TestHarvestableRenderDataUsesObstacleAtlasWhenYieldMatchesWorldNode) {
-    const auto woodHandle = ResourceTemplateManager::Instance().getHandleById("wood");
-    BOOST_REQUIRE(woodHandle.isValid());
-
-    EntityHandle handle = edm->createHarvestable(Vector2D(120.0f, 80.0f), woodHandle, 1, 3, 30.0f);
-    BOOST_REQUIRE(handle.isValid());
-
-    const auto& renderData = edm->getHarvestableRenderDataByTypeIndex(edm->getHotData(handle).typeLocalIndex);
-    BOOST_CHECK_EQUAL(renderData.atlasX, 295);
-    BOOST_CHECK_EQUAL(renderData.atlasY, 845);
-    BOOST_CHECK_EQUAL(renderData.depletedAtlasX, renderData.atlasX);
-    BOOST_CHECK_EQUAL(renderData.depletedAtlasY, renderData.atlasY);
-    BOOST_CHECK_EQUAL(renderData.frameWidth, 63);
-    BOOST_CHECK_EQUAL(renderData.frameHeight, 63);
-}
-
 BOOST_AUTO_TEST_CASE(TestMultipleNPCsGetSeparateRenderData) {
     // Create two NPCs of same type at different positions
     EntityHandle h1 = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");

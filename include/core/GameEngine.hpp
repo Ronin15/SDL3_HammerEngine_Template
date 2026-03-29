@@ -319,11 +319,9 @@ public:
 
 private:
   /**
-   * @brief Verifies VSync state matches the requested setting
-   * @param requested true if VSync should be enabled, false if disabled
-   * @return true if VSync state verified to match requested, false otherwise
-   * @details Sets TimestepManager's software frame limiting based on verification result.
-   *          Used by both init() and setVSyncEnabled() to consolidate VSync logic.
+   * @brief Syncs timestep pacing with the committed frame pacing state
+   * @param requested Legacy parameter retained for call-site compatibility
+   * @return true if hardware VSync is the committed pacing mode, false if using software fallback
    */
   bool verifyVSyncState(bool requested);
 

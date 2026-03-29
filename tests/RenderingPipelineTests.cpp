@@ -505,12 +505,17 @@ BOOST_AUTO_TEST_CASE(TestSDLPerformanceHints) {
 
 BOOST_AUTO_TEST_CASE(TestSoftwareFrameLimitingFallback) {
     const std::string timestepCpp = "src/core/TimestepManager.cpp";
+    const std::string gameEngineCpp = "src/core/GameEngine.cpp";
 
     // Verify software frame limiting exists as VSync fallback
     BOOST_CHECK_MESSAGE(fileContainsPattern(timestepCpp, "preciseFrameWait"),
         "TimestepManager should have preciseFrameWait for software frame limiting");
     BOOST_CHECK_MESSAGE(fileContainsPattern(timestepCpp, "m_usingSoftwareFrameLimiting"),
         "TimestepManager should track software vs hardware frame limiting mode");
+    BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "setSoftwareFrameLimiting(true)"),
+        "GameEngine should explicitly enable software frame limiting on GPU pacing failure");
+    BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "Falling back to software frame limiting"),
+        "GameEngine should log the software frame limiting fallback");
 }
 
 // ----------------------------------------------------------------------------
