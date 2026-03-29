@@ -906,9 +906,20 @@ void GameEngine::handleEvents() {
     case SDL_EVENT_GAMEPAD_BUTTON_UP:
       inputMgr.onGamepadButtonUp(event);
       break;
+    case SDL_EVENT_GAMEPAD_ADDED:
+      inputMgr.onGamepadAdded(event);
+      break;
+    case SDL_EVENT_GAMEPAD_REMOVED:
+      inputMgr.onGamepadRemoved(event);
+      break;
+    case SDL_EVENT_GAMEPAD_REMAPPED:
+      inputMgr.onGamepadRemapped(event);
+      break;
 
     // Window/Display events -> handle directly in GameEngine
     case SDL_EVENT_WINDOW_RESIZED:
+    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+    case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
       onWindowResize(event);
       break;
     case SDL_EVENT_WINDOW_MINIMIZED:
@@ -1398,68 +1409,27 @@ bool GameEngine::verifyVSyncState(bool requested) {
 }
 
 void GameEngine::onWindowResize(const SDL_Event &event) {
-  // Centralized resize pipeline:
-  // 1) Update GameEngine window size (authoritative source)
-  // 2) Update SDL logical presentation (macOS: 1920x1080 letterbox; others:
-  // native) 3) Reload fonts via FontManager for new display characteristics 4)
-  // UI scales from logical size; UIManager layout recalculates on next render
-
-  // Update GameEngine with new window dimensions
-  int const newWidth = event.window.data1;
-  int const newHeight = event.window.data2;
-
-  GAMEENGINE_INFO(std::format("Window resized to: {}x{}", newWidth, newHeight));
-
-  // Update GameEngine window dimensions
-  setWindowSize(newWidth, newHeight);
-  updateDisplayRefreshRate();
-
-  // Use native resolution rendering (all platforms) for crisp, sharp text
-  // This matches the initialization approach in GameEngine and ensures
-  // consistent rendering whether in windowed or fullscreen mode
-  int actualWidth, actualHeight;
-  if (!SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth,
-                                 &actualHeight)) {
-    GAMEENGINE_ERROR(std::format("Failed to get actual window pixel size: {}",
-                                 SDL_GetError()));
-    actualWidth = newWidth;
-    actualHeight = newHeight;
+  const char *eventName = "Window metrics changed";
+  switch (event.type) {
+  case SDL_EVENT_WINDOW_RESIZED:
+    eventName = "Window resized";
+    break;
+  case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+    eventName = "Window pixel size changed";
+    break;
+  case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+    eventName = "Window display scale changed";
+    break;
+  default:
+    break;
   }
 
-  // GPURenderer syncs viewport from the swapchain when the GPU frame begins rendering.
-  // No manual updateViewport needed - swapchain is authoritative source
-
-  // Update GameEngine's cached logical dimensions
-  setLogicalSize(actualWidth, actualHeight);
-
-  GAMEENGINE_INFO(std::format("Updated to native resolution: {}x{}",
-                              actualWidth, actualHeight));
-
-  // Reconfigure tier radii for new screen size
-  mp_backgroundSimManager->configureForScreenSize(actualWidth, actualHeight);
-  GAMEENGINE_INFO(std::format(
-      "Tier radii reconfigured (active: {:.0f}, background: {:.0f})",
-      mp_backgroundSimManager->getActiveRadius(),
-      mp_backgroundSimManager->getBackgroundRadius()));
-
-  // Reload fonts for new display configuration with DPI scale
-  GAMEENGINE_INFO("Reloading fonts for display configuration change...");
-  FontManager &fontManager = FontManager::Instance();
-  const std::string fontsPathReload = HammerEngine::ResourcePath::resolve("res/fonts");
-  if (!fontManager.reloadFontsForDisplay(fontsPathReload, m_windowWidth,
-                                         m_windowHeight, m_dpiScale)) {
-    GAMEENGINE_ERROR("Failed to reinitialize font system after window resize");
-  } else {
-    GAMEENGINE_INFO(
-        "Font system reinitialized successfully after window resize");
-  }
-
-  // UIManager owns all UI positioning - directly call its resize handler
-  UIManager::Instance().onWindowResize(getLogicalWidth(), getLogicalHeight());
-  GAMEENGINE_INFO("UIManager notified for UI component repositioning");
+  refreshWindowMetrics(eventName);
 }
 
 void GameEngine::onWindowEvent(const SDL_Event &event) {
+  InputManager &inputMgr = InputManager::Instance();
+
   switch (event.type) {
   case SDL_EVENT_WINDOW_MINIMIZED:
   case SDL_EVENT_WINDOW_OCCLUDED:
@@ -1467,6 +1437,7 @@ void GameEngine::onWindowEvent(const SDL_Event &event) {
   case SDL_EVENT_WINDOW_FOCUS_LOST:
     if (!m_windowOccluded) {
       m_windowOccluded = true;
+      inputMgr.onFocusLost();
       if (m_timestepManager) {
         m_timestepManager->setSoftwareFrameLimiting(true);
       }
@@ -1491,11 +1462,6 @@ void GameEngine::onWindowEvent(const SDL_Event &event) {
 }
 
 void GameEngine::onDisplayChange(const SDL_Event &event) {
-  // Centralized display-change pipeline:
-  // - Log event and, on Apple, refresh fonts due to DPI/content-scale changes
-  // - Normalize UI scale (UIManager::setGlobalScale(1.0f))
-  // - Force UI layout refresh and reload fonts using GameEngine logical size
-
   const char *eventName = "Unknown";
   switch (event.type) {
   case SDL_EVENT_DISPLAY_ORIENTATION:
@@ -1518,42 +1484,71 @@ void GameEngine::onDisplayChange(const SDL_Event &event) {
   }
 
   GAMEENGINE_INFO(std::format("Display event detected: {}", eventName));
-  updateDisplayRefreshRate();
+  refreshWindowMetrics(eventName);
+}
 
-// On Apple platforms, display changes often invalidate font textures
-// due to different DPI scaling or context changes
+void GameEngine::refreshWindowMetrics(std::string_view reason) {
+  if (!mp_window) {
+    return;
+  }
+
+  int logicalWidth = m_windowWidth;
+  int logicalHeight = m_windowHeight;
+  if (!SDL_GetWindowSize(mp_window.get(), &logicalWidth, &logicalHeight)) {
+    GAMEENGINE_ERROR(std::format("Failed to get logical window size: {}",
+                                 SDL_GetError()));
+  }
+
+  int pixelWidth = logicalWidth;
+  int pixelHeight = logicalHeight;
+  if (!SDL_GetWindowSizeInPixels(mp_window.get(), &pixelWidth, &pixelHeight)) {
+    GAMEENGINE_ERROR(std::format("Failed to get actual window pixel size: {}",
+                                 SDL_GetError()));
+  }
+
+  float displayScale = 1.0f;
 #ifdef __APPLE__
-  GAMEENGINE_INFO(
-      "Apple platform: Reinitializing font system due to display change...");
-#else
-  GAMEENGINE_INFO("Non-Apple platform: Display change handled by existing "
-                  "window resize logic");
+  displayScale = SDL_GetWindowDisplayScale(mp_window.get());
+  if (displayScale <= 0.0f) {
+    displayScale = 1.0f;
+  }
 #endif
 
-  // Update UI systems with consistent scaling and reload fonts ONCE using
-  // logical dimensions
+  GAMEENGINE_INFO(std::format(
+      "{} -> logical: {}x{}, pixels: {}x{}, display scale: {:.2f}",
+      reason, logicalWidth, logicalHeight, pixelWidth, pixelHeight,
+      displayScale));
+
+  setWindowSize(logicalWidth, logicalHeight);
+  setLogicalSize(pixelWidth, pixelHeight);
+  setDPIScale(displayScale);
+  updateDisplayRefreshRate();
+
+  if (mp_backgroundSimManager) {
+    mp_backgroundSimManager->configureForScreenSize(pixelWidth, pixelHeight);
+    GAMEENGINE_INFO(std::format(
+        "Tier radii reconfigured (active: {:.0f}, background: {:.0f})",
+        mp_backgroundSimManager->getActiveRadius(),
+        mp_backgroundSimManager->getBackgroundRadius()));
+  }
+
   try {
     UIManager &uiManager = UIManager::Instance();
     uiManager.setGlobalScale(1.0f);
-    GAMEENGINE_INFO("Updated UIManager with consistent 1.0 scale");
-
-    uiManager.cleanupForStateTransition();
 
     FontManager &fontManager = FontManager::Instance();
-    const std::string fontsPathDisplay = HammerEngine::ResourcePath::resolve("res/fonts");
-    if (!fontManager.reloadFontsForDisplay(fontsPathDisplay, m_windowWidth,
+    const std::string fontsPath = HammerEngine::ResourcePath::resolve("res/fonts");
+    if (!fontManager.reloadFontsForDisplay(fontsPath, m_windowWidth,
                                            m_windowHeight, m_dpiScale)) {
-      GAMEENGINE_WARN("Failed to reload fonts for new display size");
+      GAMEENGINE_WARN("Failed to reload fonts for updated window/display metrics");
     } else {
-      GAMEENGINE_INFO("Successfully reloaded fonts for new display size");
+      GAMEENGINE_INFO("Font system reinitialized successfully after window/display update");
     }
 
-    // UIManager owns all UI positioning - trigger repositioning for display
-    // change
     uiManager.onWindowResize(getLogicalWidth(), getLogicalHeight());
-    GAMEENGINE_INFO("UIManager notified for display change repositioning");
+    GAMEENGINE_INFO("UIManager notified for UI component repositioning");
   } catch (const std::exception &e) {
     GAMEENGINE_ERROR(std::format(
-        "Error updating UI scaling after window resize: {}", e.what()));
+        "Error updating window/display dependent systems: {}", e.what()));
   }
 }

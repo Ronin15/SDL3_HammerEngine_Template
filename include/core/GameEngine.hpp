@@ -348,6 +348,12 @@ private:
   void onDisplayChange(const SDL_Event& event);
 
   /**
+   * @brief Refreshes cached window, pixel, and DPI-dependent state after SDL window/display changes.
+   * @param reason Short description for logging.
+   */
+  void refreshWindowMetrics(std::string_view reason);
+
+  /**
    * @brief Refreshes TimestepManager's view of the active display cadence.
    * @details Reads the window's current display refresh via SDL and pushes it
    *          into TimestepManager so VSync-paced frame deltas can be quantized

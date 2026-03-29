@@ -7,8 +7,9 @@
 #define INPUT_MANAGER_HPP
 
 #include <SDL3/SDL.h>
-#include <utility>
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 #include "utils/Vector2D.hpp"
 
@@ -54,8 +55,8 @@ class InputManager {
     void clearFrameInput();  // Call once per frame to clear pressed keys
 
     // Joystick events
-    int getAxisX(int joy, int stick) const;
-    int getAxisY(int joy, int stick) const;
+    float getAxisX(int joy, int stick) const;
+    float getAxisY(int joy, int stick) const;
     bool getButtonState(int joy, int buttonNumber) const;
 
     // Mouse events
@@ -71,17 +72,26 @@ class InputManager {
     void onGamepadAxisMove(const SDL_Event& event);
     void onGamepadButtonDown(const SDL_Event& event);
     void onGamepadButtonUp(const SDL_Event& event);
+    void onGamepadAdded(const SDL_Event& event);
+    void onGamepadRemoved(const SDL_Event& event);
+    void onGamepadRemapped(const SDL_Event& event);
+    void onFocusLost();
 
  private:
+    struct GamepadState {
+        SDL_JoystickID instanceId{0};
+        SDL_Gamepad* pGamepad{nullptr};
+        Vector2D leftStick{0.0f, 0.0f};
+        Vector2D rightStick{0.0f, 0.0f};
+        std::vector<bool> buttonStates{};
+    };
+
     // Keyboard specific
     const bool* m_keystates{nullptr}; // Owned by SDL, don't delete
     std::vector<SDL_Scancode> m_pressedThisFrame{}; // Keys pressed this frame
 
     // Gamepad specific
-    std::vector<std::pair<std::unique_ptr<Vector2D>, std::unique_ptr<Vector2D>>> m_joystickValues{};
-    // Non-owning pointers to SDL_Gamepad objects, which are closed with SDL_CloseGamepad in clean()
-    std::vector<SDL_Gamepad*> m_joysticks{};
-    std::vector<std::vector<bool>> m_buttonStates{};
+    std::vector<GamepadState> m_gamepads{};
     const int m_joystickDeadZone{10000};
     bool m_gamePadInitialized{false};
     // Mouse specific
@@ -95,6 +105,13 @@ class InputManager {
     // Delete copy constructor and assignment operator
     InputManager(const InputManager&) = delete; // Prevent copying
     InputManager& operator=(const InputManager&) = delete; // Prevent assignment
+
+    std::optional<size_t> findGamepadIndex(SDL_JoystickID instanceId) const;
+    bool openGamepad(SDL_JoystickID instanceId);
+    void closeGamepad(SDL_JoystickID instanceId);
+    void updateMousePositionFromWindowCoords(float x, float y);
+    void clearGamepadState();
+    static float normalizeGamepadAxisValue(Sint16 value, int deadZone);
 
     InputManager();
 };
