@@ -1463,7 +1463,7 @@ void HammerEngine::TileRenderer::recordGPUTiles(
           obs.screenX, obs.screenY, obs.dstW, obs.dstH);
     }
   }
-    // Batch end() is called by GPUSceneRenderer, not here
+    // Batch end() is called by GPUSceneRecorder, not here
   });
 }
 
@@ -1482,7 +1482,7 @@ void WorldManager::recordGPU(HammerEngine::SpriteBatch& spriteBatch,
   // Get current season
   auto season = getCurrentSeason();
 
-  // Delegate to TileRenderer - batch is already begin()-ed by GPUSceneRenderer
+  // Delegate to TileRenderer - batch recording is already begin()-ed by GPUSceneRecorder
   m_tileRenderer->recordGPUTiles(spriteBatch, cameraX, cameraY,
                                  viewWidth, viewHeight, zoom, season);
 }

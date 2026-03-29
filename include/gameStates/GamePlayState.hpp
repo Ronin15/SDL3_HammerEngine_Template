@@ -19,7 +19,7 @@
 class Player;
 namespace HammerEngine {
 class Camera;
-class GPUSceneRenderer;
+class GPUSceneRecorder;
 }
 
 class GamePlayState : public GameState {
@@ -55,8 +55,8 @@ private:
   // Camera for world navigation and player following
   std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
 
-  // GPU scene renderer for coordinated GPU rendering
-  std::unique_ptr<HammerEngine::GPUSceneRenderer> m_gpuSceneRenderer{nullptr};
+  // GPU scene recorder for coordinated scene-data recording
+  std::unique_ptr<HammerEngine::GPUSceneRecorder> m_gpuSceneRecorder{nullptr};
 
   // Track whether world has been loaded (prevents re-entering LoadingState)
   bool m_worldLoaded{false};

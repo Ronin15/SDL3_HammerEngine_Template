@@ -251,11 +251,11 @@ inline std::mutex Logger::s_logMutex{};
 #define CAMERA_INFO(msg) HAMMER_INFO("Camera", msg)
 #define CAMERA_DEBUG(msg) HAMMER_DEBUG("Camera", msg)
 
-#define GPU_SCENE_RENDERER_CRITICAL(msg) HAMMER_CRITICAL("GPUSceneRenderer", msg)
-#define GPU_SCENE_RENDERER_ERROR(msg) HAMMER_ERROR("GPUSceneRenderer", msg)
-#define GPU_SCENE_RENDERER_WARN(msg) HAMMER_WARN("GPUSceneRenderer", msg)
-#define GPU_SCENE_RENDERER_INFO(msg) HAMMER_INFO("GPUSceneRenderer", msg)
-#define GPU_SCENE_RENDERER_DEBUG(msg) HAMMER_DEBUG("GPUSceneRenderer", msg)
+#define GPU_SCENE_RECORDER_CRITICAL(msg) HAMMER_CRITICAL("GPUSceneRecorder", msg)
+#define GPU_SCENE_RECORDER_ERROR(msg) HAMMER_ERROR("GPUSceneRecorder", msg)
+#define GPU_SCENE_RECORDER_WARN(msg) HAMMER_WARN("GPUSceneRecorder", msg)
+#define GPU_SCENE_RECORDER_INFO(msg) HAMMER_INFO("GPUSceneRecorder", msg)
+#define GPU_SCENE_RECORDER_DEBUG(msg) HAMMER_DEBUG("GPUSceneRecorder", msg)
 
 #define SAVEGAME_CRITICAL(msg) HAMMER_CRITICAL("SaveGameManager", msg)
 #define SAVEGAME_ERROR(msg) HAMMER_ERROR("SaveGameManager", msg)

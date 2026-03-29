@@ -50,7 +50,7 @@ public:
      * @param ctx Scene context with sprite batch and camera params
      *
      * Called during vertex recording phase. Uses ctx.spriteBatch->draw()
-     * for atlas-based rendering. Batch lifecycle managed by GPUSceneRenderer.
+     * for atlas-based rendering. Batch lifecycle managed by GPUSceneRecorder.
      */
     void recordGPU(const HammerEngine::GPUSceneContext& ctx);
 

@@ -8,7 +8,7 @@
 #include "managers/EntityDataManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include "utils/Camera.hpp"
-#include "utils/GPUSceneRenderer.hpp"
+#include "utils/GPUSceneRecorder.hpp"
 #include "utils/Vector2D.hpp"
 #include "gpu/SpriteBatch.hpp"
 #include <cmath>

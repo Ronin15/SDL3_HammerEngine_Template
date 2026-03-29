@@ -8,7 +8,7 @@
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "gpu/SpriteBatch.hpp"
-#include "utils/GPUSceneRenderer.hpp"
+#include "utils/GPUSceneRecorder.hpp"
 #include <SDL3/SDL.h>
 #include <cmath>
 

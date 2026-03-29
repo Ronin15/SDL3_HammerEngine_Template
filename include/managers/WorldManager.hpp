@@ -74,7 +74,7 @@ public:
      * @brief Record visible tile vertices for GPU rendering
      *
      * Records all visible tile sprites to the sprite batch using atlas coordinates.
-     * Assumes batch is already begin()-ed by GPUSceneRenderer.
+     * Assumes batch recording is already begin()-ed by GPUSceneRecorder.
      * No chunk textures needed - renders directly from tile data each frame.
      *
      * @param spriteBatch Sprite batch to draw to (already begin()-ed)
@@ -238,7 +238,7 @@ public:
      *
      * Records all visible tile sprites to the sprite batch.
      * Uses the existing atlas texture coordinates for each tile type.
-     * Batch lifecycle is managed by caller (GPUSceneRenderer) - this just draws.
+     * Batch lifecycle is managed by caller (GPUSceneRecorder) - this just draws.
      *
      * @param spriteBatch Sprite batch to draw to (already begin()-ed)
      * @param cameraX Camera X offset (floored for pixel-perfect alignment)

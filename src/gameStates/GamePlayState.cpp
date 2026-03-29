@@ -42,9 +42,9 @@
 
 #include "gpu/GPURenderer.hpp"
 #include "gpu/SpriteBatch.hpp"
-#include "utils/GPUSceneRenderer.hpp"
+#include "utils/GPUSceneRecorder.hpp"
 
-// Constructor/destructor defined here where GPUSceneRenderer is complete (for unique_ptr)
+// Constructor/destructor defined here where GPUSceneRecorder is complete (for unique_ptr)
 GamePlayState::GamePlayState()
     : m_transitioningToLoading{false}, m_transitioningToGameOver{false},
       mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false},
@@ -99,7 +99,7 @@ bool GamePlayState::enter() {
     initializeCamera();
 
     // Create GPU scene renderer for coordinated GPU rendering
-    m_gpuSceneRenderer = std::make_unique<HammerEngine::GPUSceneRenderer>();
+    m_gpuSceneRecorder = std::make_unique<HammerEngine::GPUSceneRecorder>();
 
     // Register controllers with the registry
     m_controllers.add<WeatherController>();
@@ -1049,12 +1049,12 @@ void GamePlayState::onWeatherChanged(const EventData &data) {
 void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
                                       float interpolationAlpha) {
   // Skip if world not active or GPU scene renderer not initialized
-  if (!m_camera || !m_gpuSceneRenderer) {
+  if (!m_camera || !m_gpuSceneRecorder) {
     return;
   }
 
-  // Begin scene - sets up sprite batch with atlas, calculates camera params
-  auto ctx = m_gpuSceneRenderer->beginScene(gpuRenderer, *m_camera, interpolationAlpha);
+  // Begin scene-data recording before the engine-owned scene pass opens
+  auto ctx = m_gpuSceneRecorder->beginRecording(gpuRenderer, *m_camera, interpolationAlpha);
   if (!ctx) {
     return;
   }
@@ -1074,7 +1074,7 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   m_npcRenderCtrl.recordGPU(ctx);
 
   // End sprite batch recording before switching to entity batch
-  m_gpuSceneRenderer->endSpriteBatch();
+  m_gpuSceneRecorder->endSpriteBatch();
 
   // Record player vertices (uses entity batch - separate texture)
   if (mp_Player) {
@@ -1087,8 +1087,8 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
     particleMgr.recordGPUVertices(gpuRenderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
   }
 
-  // End scene recording
-  m_gpuSceneRenderer->endScene();
+  // End scene-data recording before UI vertices are recorded
+  m_gpuSceneRecorder->endRecording();
 
   // Update FPS display if visible (must happen BEFORE recording UI vertices)
   auto &ui = UIManager::Instance();
@@ -1111,12 +1111,12 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
 void GamePlayState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
                                    SDL_GPURenderPass *scenePass,
                                    [[maybe_unused]] float interpolationAlpha) {
-  if (!m_camera || !m_gpuSceneRenderer) {
+  if (!m_camera || !m_gpuSceneRecorder) {
     return;
   }
 
-  // Render world tiles (sprite batch) - includes world tiles, NPCs, and world resources
-  m_gpuSceneRenderer->renderScene(gpuRenderer, scenePass);
+  // Render previously recorded scene data into the engine-owned scene pass
+  m_gpuSceneRecorder->renderRecordedScene(gpuRenderer, scenePass);
 
   // Render player (entity batch)
   if (mp_Player) {

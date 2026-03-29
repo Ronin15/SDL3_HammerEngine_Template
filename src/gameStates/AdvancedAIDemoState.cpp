@@ -23,13 +23,13 @@
 #include "core/WorkerBudget.hpp"
 #include "gpu/GPURenderer.hpp"
 #include "gpu/SpriteBatch.hpp"
-#include "utils/GPUSceneRenderer.hpp"
+#include "utils/GPUSceneRecorder.hpp"
 
 #include <cmath>
 #include <cstddef>
 #include <format>
 
-// Constructor/destructor defined here where GPUSceneRenderer is complete (for unique_ptr)
+// Constructor/destructor defined here where GPUSceneRecorder is complete (for unique_ptr)
 AdvancedAIDemoState::AdvancedAIDemoState() = default;
 
 AdvancedAIDemoState::~AdvancedAIDemoState() {
@@ -209,7 +209,7 @@ bool AdvancedAIDemoState::enter() {
     initializeCamera();
 
     // Create GPU scene renderer for coordinated GPU rendering
-    m_gpuSceneRenderer = std::make_unique<HammerEngine::GPUSceneRenderer>();
+    m_gpuSceneRecorder = std::make_unique<HammerEngine::GPUSceneRecorder>();
 
     // Initialize PathfinderManager for Follow behavior pathfinding
     PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
@@ -745,10 +745,10 @@ void AdvancedAIDemoState::updateCamera(float deltaTime) {
 
 void AdvancedAIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
                                             float interpolationAlpha) {
-  if (!m_camera || !m_gpuSceneRenderer) { return; }
+  if (!m_camera || !m_gpuSceneRecorder) { return; }
 
-  // Begin scene - sets up sprite batch with atlas texture and calculates camera params
-  auto ctx = m_gpuSceneRenderer->beginScene(gpuRenderer, *m_camera, interpolationAlpha);
+  // Begin scene-data recording before the engine-owned scene pass opens
+  auto ctx = m_gpuSceneRecorder->beginRecording(gpuRenderer, *m_camera, interpolationAlpha);
   if (!ctx) { return; }
 
   // Record world tiles to sprite batch
@@ -760,7 +760,7 @@ void AdvancedAIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRender
   m_npcRenderCtrl.recordGPU(ctx);
 
   // End sprite batch recording (finalizes atlas-based sprites)
-  m_gpuSceneRenderer->endSpriteBatch();
+  m_gpuSceneRecorder->endSpriteBatch();
 
   // Record player (entity batch - separate texture)
   if (m_player) {
@@ -792,16 +792,16 @@ void AdvancedAIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRender
   // Record UI vertices
   ui.recordGPUVertices(gpuRenderer);
 
-  m_gpuSceneRenderer->endScene();
+  m_gpuSceneRecorder->endRecording();
 }
 
 void AdvancedAIDemoState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
                                          SDL_GPURenderPass *scenePass,
                                          [[maybe_unused]] float interpolationAlpha) {
-  if (!m_camera || !m_gpuSceneRenderer) { return; }
+  if (!m_camera || !m_gpuSceneRecorder) { return; }
 
-  // Render world tiles (sprite batch)
-  m_gpuSceneRenderer->renderScene(gpuRenderer, scenePass);
+  // Render previously recorded scene data into the engine-owned scene pass
+  m_gpuSceneRecorder->renderRecordedScene(gpuRenderer, scenePass);
 
   // Render player (entity batch)
   if (m_player) {

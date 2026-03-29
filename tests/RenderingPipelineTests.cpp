@@ -116,6 +116,7 @@ BOOST_AUTO_TEST_CASE(TestOnlyGameEngineCallsEndFrame) {
 // Test: Only GameEngine begins the scene pass
 // ----------------------------------------------------------------------------
 // Scene-pass acquisition should be centralized in GameEngine::render()
+// State-side scene recording helpers must not acquire passes themselves
 
 BOOST_AUTO_TEST_CASE(TestOnlyGameEngineBeginsScenePass) {
     const std::string gameEngineFile = "src/core/GameEngine.cpp";

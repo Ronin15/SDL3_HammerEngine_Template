@@ -22,7 +22,7 @@ class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
 namespace HammerEngine {
-class GPUSceneRenderer;
+class GPUSceneRecorder;
 }
 
 class AdvancedAIDemoState : public GameState {
@@ -66,8 +66,8 @@ private:
     PlayerPtr m_player{};
     std::unique_ptr<HammerEngine::Camera> m_camera;
 
-    // GPU scene renderer for coordinated GPU rendering
-    std::unique_ptr<HammerEngine::GPUSceneRenderer> m_gpuSceneRenderer{nullptr};
+    // GPU scene recorder for coordinated scene-data recording
+    std::unique_ptr<HammerEngine::GPUSceneRecorder> m_gpuSceneRecorder{nullptr};
 
     float m_worldWidth{800.0f};
     float m_worldHeight{600.0f};
