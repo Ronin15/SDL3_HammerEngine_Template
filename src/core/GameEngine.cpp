@@ -857,25 +857,6 @@ bool GameEngine::init(std::string_view title) {
   }
   //_______________________________________________________________________________________________________________END
 
-  // Step 3: Post-initialization setup that requires manager dependencies
-  GAMEENGINE_INFO("Setting up manager cross-dependencies");
-  try {
-    WorldManager &worldMgr = WorldManager::Instance();
-    if (worldMgr.isInitialized()) {
-      worldMgr.setupEventHandlers();
-      GAMEENGINE_INFO("WorldManager GPU-only setup complete");
-    } else {
-      GAMEENGINE_ERROR("WorldManager not initialized");
-      return false;
-    }
-
-    GAMEENGINE_INFO("Manager cross-dependencies setup complete");
-  } catch (const std::exception &e) {
-    GAMEENGINE_ERROR(std::format(
-        "Error setting up manager cross-dependencies: {}", e.what()));
-    return false;
-  }
-
   GAMEENGINE_INFO(std::format("Game {} initialized successfully!", title));
   GAMEENGINE_INFO(std::format("Running {}", title));
 
