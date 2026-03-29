@@ -95,7 +95,7 @@ static_assert(sizeof(TransformData) == 32, "TransformData should be 32 bytes");
  * - Statics to be in a compact spatial hash for O(1) queries
  * - Dynamic entities to be tier-filtered efficiently
  */
-struct EntityHotData {
+struct alignas(64) EntityHotData {
     TransformData transform;        // 32 bytes
     float halfWidth{16.0f};         // 4 bytes: Half-width for collision
     float halfHeight{16.0f};        // 4 bytes: Half-height for collision
@@ -167,6 +167,7 @@ struct EntityHotData {
 };
 
 static_assert(sizeof(EntityHotData) == 64, "EntityHotData should be 64 bytes (one cache line)");
+static_assert(alignof(EntityHotData) == 64, "EntityHotData should be 64-byte aligned");
 
 // ============================================================================
 // TYPE-SPECIFIC DATA BLOCKS
