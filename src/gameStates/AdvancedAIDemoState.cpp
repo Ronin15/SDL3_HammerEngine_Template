@@ -346,6 +346,7 @@ bool AdvancedAIDemoState::exit() {
     unregisterEventHandlers();
     aiMgr.prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
+    worldMgr.prepareForStateTransition();
 
     eventMgr.prepareForStateTransition();
 
@@ -408,6 +409,7 @@ bool AdvancedAIDemoState::exit() {
   unregisterEventHandlers();
   aiMgr.prepareForStateTransition();
   bgSimMgr.prepareForStateTransition();
+  worldMgr.prepareForStateTransition();
 
   eventMgr.prepareForStateTransition();
 

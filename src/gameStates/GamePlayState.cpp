@@ -333,6 +333,7 @@ bool GamePlayState::exit() {
 
     aiMgr.prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
+    worldMgr.prepareForStateTransition();
 
     if (wrm.isInitialized()) {
       wrm.prepareForStateTransition();
@@ -397,6 +398,7 @@ bool GamePlayState::exit() {
 
   aiMgr.prepareForStateTransition();
   bgSimMgr.prepareForStateTransition();
+  worldMgr.prepareForStateTransition();
 
   if (wrm.isInitialized()) {
     wrm.prepareForStateTransition();

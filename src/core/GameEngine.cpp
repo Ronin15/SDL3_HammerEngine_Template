@@ -862,6 +862,7 @@ bool GameEngine::init(std::string_view title) {
   try {
     WorldManager &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized()) {
+      worldMgr.setupEventHandlers();
       GAMEENGINE_INFO("WorldManager GPU-only setup complete");
     } else {
       GAMEENGINE_ERROR("WorldManager not initialized");

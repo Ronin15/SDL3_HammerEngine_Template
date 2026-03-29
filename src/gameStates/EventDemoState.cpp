@@ -372,6 +372,7 @@ bool EventDemoState::exit() {
 
       aiMgr.prepareForStateTransition();
       bgSimMgr.prepareForStateTransition();
+      worldMgr.prepareForStateTransition();
 
       if (wrm.isInitialized()) {
         wrm.prepareForStateTransition();
@@ -442,6 +443,7 @@ bool EventDemoState::exit() {
 
     aiMgr.prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
+    worldMgr.prepareForStateTransition();
 
     if (wrm.isInitialized()) {
       wrm.prepareForStateTransition();

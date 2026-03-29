@@ -211,6 +211,8 @@ public:
     void clean();
     bool isInitialized() const { return m_initialized.load(std::memory_order_acquire); }
     bool isShutdown() const { return m_isShutdown; }
+    void prepareForStateTransition();
+    void setupEventHandlers();
 
     bool loadNewWorld(const HammerEngine::WorldGenerationConfig& config,
                      const HammerEngine::WorldGenerationProgressCallback& progressCallback = nullptr);

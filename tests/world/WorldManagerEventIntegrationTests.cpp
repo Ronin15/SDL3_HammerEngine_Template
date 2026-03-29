@@ -12,6 +12,7 @@
 #include "managers/EventManager.hpp"
 #include "events/WorldEvent.hpp"
 #include "events/HarvestResourceEvent.hpp"
+#include "events/TimeEvent.hpp"
 #include "world/WorldData.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
@@ -187,6 +188,59 @@ BOOST_AUTO_TEST_CASE(TestBasicWorldManagerEventIntegration) {
     EventManager::Instance().clean();
 
     WORLD_MANAGER_INFO("Basic WorldManager event integration test completed successfully");
+}
+
+BOOST_AUTO_TEST_CASE(TestSeasonChangeSubscriptionThroughSetup) {
+    BOOST_REQUIRE(EventManager::Instance().init());
+    BOOST_REQUIRE(WorldManager::Instance().init());
+
+    WorldManager::Instance().setupEventHandlers();
+
+    BOOST_CHECK(WorldManager::Instance().getCurrentSeason() == Season::Spring);
+
+    auto seasonEvent = std::make_shared<SeasonChangedEvent>(
+        Season::Winter, Season::Spring, "Winter");
+    EventManager::Instance().dispatchEvent(
+        seasonEvent, EventManager::DispatchMode::Deferred);
+    EventManager::Instance().update();
+
+    BOOST_CHECK(WorldManager::Instance().getCurrentSeason() == Season::Winter);
+
+    WorldManager::Instance().clean();
+    EventManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestSeasonSubscriptionRestoredAfterStateTransitionAndWorldLoad) {
+    BOOST_REQUIRE(EventManager::Instance().init());
+    BOOST_REQUIRE(WorldManager::Instance().init());
+
+    WorldManager::Instance().setupEventHandlers();
+    BOOST_CHECK(WorldManager::Instance().getCurrentSeason() == Season::Spring);
+
+    WorldManager::Instance().prepareForStateTransition();
+    EventManager::Instance().prepareForStateTransition();
+
+    WorldGenerationConfig config{};
+    config.width = 5;
+    config.height = 5;
+    config.seed = 24680;
+    config.elevationFrequency = 0.1f;
+    config.humidityFrequency = 0.1f;
+    config.waterLevel = 0.3f;
+    config.mountainLevel = 0.7f;
+
+    BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(config));
+
+    auto seasonEvent = std::make_shared<SeasonChangedEvent>(
+        Season::Summer, Season::Spring, "Summer");
+    EventManager::Instance().dispatchEvent(
+        seasonEvent, EventManager::DispatchMode::Deferred);
+    EventManager::Instance().update();
+
+    BOOST_CHECK(WorldManager::Instance().getCurrentSeason() == Season::Summer);
+
+    WorldManager::Instance().clean();
+    EventManager::Instance().clean();
 }
 
 /**

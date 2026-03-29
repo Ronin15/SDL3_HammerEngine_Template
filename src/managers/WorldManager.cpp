@@ -52,6 +52,24 @@ bool WorldManager::init() {
   }
 }
 
+void WorldManager::setupEventHandlers() {
+  if (!m_initialized.load(std::memory_order_acquire)) {
+    WORLD_MANAGER_ERROR(
+        "WorldManager not initialized - cannot setup event handlers");
+    return;
+  }
+
+  if (!EventManager::Instance().isInitialized()) {
+    WORLD_MANAGER_ERROR(
+        "EventManager not initialized - cannot setup WorldManager event handlers");
+    return;
+  }
+
+  if (m_tileRenderer) {
+    m_tileRenderer->subscribeToSeasonEvents();
+  }
+}
+
 void WorldManager::clean() {
   if (!m_initialized.load(std::memory_order_acquire) || m_isShutdown) {
     return;
@@ -71,6 +89,16 @@ void WorldManager::clean() {
   m_isShutdown = true;
 
   WORLD_MANAGER_INFO("WorldManager cleaned up");
+}
+
+void WorldManager::prepareForStateTransition() {
+  if (!m_initialized.load(std::memory_order_acquire) || m_isShutdown) {
+    return;
+  }
+
+  if (m_tileRenderer) {
+    m_tileRenderer->unsubscribeFromSeasonEvents();
+  }
 }
 
 bool WorldManager::loadNewWorld(
@@ -107,6 +135,13 @@ bool WorldManager::loadNewWorld(
 
     // Initialize world resources based on world data
     initializeWorldResources();
+
+    // State transitions clear EventManager handlers during the loading path.
+    // Refresh world season wiring here so the tile renderer tracks the
+    // active GameTime season for the newly loaded world.
+    if (EventManager::Instance().isInitialized()) {
+      setupEventHandlers();
+    }
 
     WORLD_MANAGER_INFO(std::format("Successfully loaded new world: {}",
                                    m_currentWorld->worldId));
@@ -1163,7 +1198,7 @@ void HammerEngine::TileRenderer::initAtlasCoords() {
 
 void HammerEngine::TileRenderer::subscribeToSeasonEvents() {
   if (m_subscribedToSeasons) {
-    return;
+    unsubscribeFromSeasonEvents();
   }
 
   auto &eventMgr = EventManager::Instance();
