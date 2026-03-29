@@ -220,19 +220,18 @@ void applyDamageToTarget(EntityHandle targetHandle, float damage, const Vector2D
     t_deferredDamageEvents.push_back({EventTypeId::Combat, std::move(eventData)});
 }
 
-void moveToPosition(size_t edmIndex, const Vector2D& targetPos, float speed) {
-    if (edmIndex == SIZE_MAX || speed <= 0.0f) return;
+void moveToPosition(BehaviorContext& ctx, const Vector2D& targetPos, float speed) {
+    if (speed <= 0.0f) return;
 
-    auto& edm = EntityDataManager::Instance();
-    Vector2D entityPos = edm.getHotDataByIndex(edmIndex).transform.position;
+    Vector2D entityPos = ctx.transform.position;
     Vector2D direction = targetPos - entityPos;
     float distance = direction.length();
 
     if (distance > 5.0f) {
         direction = direction * (1.0f / distance);
-        edm.getHotDataByIndex(edmIndex).transform.velocity = direction * speed;
+        ctx.transform.velocity = direction * speed;
     } else {
-        edm.getHotDataByIndex(edmIndex).transform.velocity = Vector2D(0, 0);
+        ctx.transform.velocity = Vector2D(0, 0);
     }
 }
 
@@ -301,60 +300,47 @@ bool tryAcquireTarget(BehaviorContext& ctx, BehaviorData& data,
     return true;
 }
 
-bool shouldRetreat(size_t edmIndex, const CharacterData* charData, float retreatThreshold, float aggression) {
-    if (edmIndex == SIZE_MAX || !charData) return false;
-
-    auto& edm = EntityDataManager::Instance();
-    float healthRatio = charData->health / charData->maxHealth;
+bool shouldRetreat(const BehaviorContext& ctx, float retreatThreshold, float aggression) {
+    float healthRatio = ctx.characterData.health / ctx.characterData.maxHealth;
 
     float effectiveThreshold = retreatThreshold;
-    if (edm.hasMemoryData(edmIndex)) {
-        const auto& memData = edm.getMemoryData(edmIndex);
-        if (memData.isValid()) {
-            effectiveThreshold *= (1.0f + memData.emotions.fear * 0.5f - memData.emotions.aggression * 0.3f);
-            effectiveThreshold *= (1.0f - memData.personality.bravery * BRAVERY_RETREAT_FACTOR);
-            effectiveThreshold *= (1.0f - memData.personality.aggression * 0.2f);
-            effectiveThreshold = std::clamp(effectiveThreshold, 0.1f, 0.7f);
-        }
+    if (ctx.memoryData.isValid()) {
+        effectiveThreshold *= (1.0f + ctx.memoryData.emotions.fear * 0.5f - ctx.memoryData.emotions.aggression * 0.3f);
+        effectiveThreshold *= (1.0f - ctx.memoryData.personality.bravery * BRAVERY_RETREAT_FACTOR);
+        effectiveThreshold *= (1.0f - ctx.memoryData.personality.aggression * 0.2f);
+        effectiveThreshold = std::clamp(effectiveThreshold, 0.1f, 0.7f);
     }
 
     return healthRatio <= effectiveThreshold && aggression < 0.8f;
 }
 
-void executeAttackAction(size_t edmIndex, const Vector2D& targetPos, BehaviorData& data,
-                         const HammerEngine::AttackBehaviorConfig& config, const CharacterData* charData) {
-    if (edmIndex == SIZE_MAX) return;
-
+void executeAttackAction(BehaviorContext& ctx, const Vector2D& targetPos,
+                         const HammerEngine::AttackBehaviorConfig& config) {
     auto& edm = EntityDataManager::Instance();
+    auto& data = ctx.behaviorData;
     auto& attack = data.state.attack;
-    Vector2D entityPos = edm.getHotDataByIndex(edmIndex).transform.position;
+    Vector2D entityPos = ctx.transform.position;
 
     float damage = calculateDamage(data, config);
 
     // Personality-based damage scaling
-    if (edm.hasMemoryData(edmIndex)) {
-        const auto& memData = edm.getMemoryData(edmIndex);
-        if (memData.isValid()) {
-            float personalityBonus = 1.0f + (memData.personality.aggression * 0.2f);
-            float emotionalBonus = 1.0f + (memData.emotions.aggression * 0.2f);
-            damage *= personalityBonus * emotionalBonus;
-        }
+    if (ctx.memoryData.isValid()) {
+        float personalityBonus = 1.0f + (ctx.memoryData.personality.aggression * 0.2f);
+        float emotionalBonus = 1.0f + (ctx.memoryData.emotions.aggression * 0.2f);
+        damage *= personalityBonus * emotionalBonus;
     }
 
     Vector2D knockback = calculateKnockbackVector(entityPos, targetPos) * config.knockbackForce;
-    EntityHandle attackerHandle = edm.getHandle(edmIndex);
+    EntityHandle attackerHandle = edm.getHandle(ctx.edmIndex);
 
     // Resolve target handle: explicit > memory lastTarget > memory lastAttacker
     EntityHandle targetHandle{};
     if (attack.hasExplicitTarget && attack.explicitTarget.isValid()) {
         targetHandle = attack.explicitTarget;
-    } else if (edm.hasMemoryData(edmIndex)) {
-        const auto& memData = edm.getMemoryData(edmIndex);
-        if (memData.lastTarget.isValid()) {
-            targetHandle = memData.lastTarget;
-        } else if (memData.lastAttacker.isValid()) {
-            targetHandle = memData.lastAttacker;
-        }
+    } else if (ctx.memoryData.lastTarget.isValid()) {
+        targetHandle = ctx.memoryData.lastTarget;
+    } else if (ctx.memoryData.lastAttacker.isValid()) {
+        targetHandle = ctx.memoryData.lastAttacker;
     }
     if (!targetHandle.isValid()) return;  // No valid target — main execute handles re-acquisition
 
@@ -362,18 +348,15 @@ void executeAttackAction(size_t edmIndex, const Vector2D& targetPos, BehaviorDat
 
     // Faction escalation: neutral attacker (faction > 1) attacking a friendly (faction 0)
     // reveals them as hostile (faction 1), which also updates collision layers
-    if (charData && charData->faction > 1) {
+    if (ctx.characterData.faction > 1) {
         size_t targetIdx = edm.getIndex(targetHandle);
         if (targetIdx != SIZE_MAX && edm.getCharacterDataByIndex(targetIdx).faction == 0) {
-            edm.setFaction(edm.getHandle(edmIndex), 1);
+            edm.setFaction(edm.getHandle(ctx.edmIndex), 1);
         }
     }
 
     // Track who we attacked
-    if (edm.hasMemoryData(edmIndex)) {
-        auto& memData = edm.getMemoryData(edmIndex);
-        memData.lastTarget = targetHandle;
-    }
+    ctx.memoryData.lastTarget = targetHandle;
 
     attack.attackTimer = 0.0f;
     attack.lastAttackHit = true;
@@ -397,7 +380,7 @@ void executeAttackAction(size_t edmIndex, const Vector2D& targetPos, BehaviorDat
  * @brief Apply ranged attack positioning (kiting behavior)
  * @return true if we should skip normal positioning, false to continue
  */
-bool applyRangedPositioning(size_t edmIndex, const Vector2D& entityPos, const Vector2D& targetPos,
+bool applyRangedPositioning(BehaviorContext& ctx, const Vector2D& entityPos, const Vector2D& targetPos,
                             BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
     auto& attack = data.state.attack;
     float optimalRange = config.attackRange * config.optimalRangeMultiplier;
@@ -407,13 +390,13 @@ bool applyRangedPositioning(size_t edmIndex, const Vector2D& entityPos, const Ve
     if (attack.targetDistance < minimumRange && minimumRange > 0.0f) {
         Vector2D direction = normalizeDir(entityPos - targetPos);
         Vector2D backoffPos = targetPos + direction * (optimalRange * 0.8f);
-        moveToPosition(edmIndex, backoffPos, data.moveSpeed);
+        moveToPosition(ctx, backoffPos, data.moveSpeed);
         return true;
     }
 
     // Move closer if too far
     if (attack.targetDistance > config.attackRange) {
-        moveToPosition(edmIndex, targetPos, data.moveSpeed);
+        moveToPosition(ctx, targetPos, data.moveSpeed);
         return true;
     }
 
@@ -423,10 +406,9 @@ bool applyRangedPositioning(size_t edmIndex, const Vector2D& entityPos, const Ve
 /**
  * @brief Apply charge attack positioning (rush attacks)
  */
-bool applyChargePositioning(size_t edmIndex, const Vector2D& entityPos, const Vector2D& targetPos,
+bool applyChargePositioning(BehaviorContext& ctx, const Vector2D& entityPos, const Vector2D& targetPos,
                             BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
     auto& attack = data.state.attack;
-    auto& edm = EntityDataManager::Instance();
     float chargeDistance = config.attackRange * CHARGE_DISTANCE_THRESHOLD_MULT;
 
     // If far enough for a charge, start charging
@@ -437,7 +419,7 @@ bool applyChargePositioning(size_t edmIndex, const Vector2D& entityPos, const Ve
     // During charge, move at 2x speed toward target using direct velocity (faster than moveToPosition)
     if (attack.isCharging) {
         Vector2D chargeDir = normalizeDir(targetPos - entityPos);
-        edm.getHotDataByIndex(edmIndex).transform.velocity = chargeDir * (data.moveSpeed * CHARGE_SPEED_MULTIPLIER);
+        ctx.transform.velocity = chargeDir * (data.moveSpeed * CHARGE_SPEED_MULTIPLIER);
         return true;
     }
 
@@ -447,10 +429,9 @@ bool applyChargePositioning(size_t edmIndex, const Vector2D& entityPos, const Ve
 /**
  * @brief Apply hit-and-run positioning (frequent retreats)
  */
-bool applyHitAndRunPositioning(size_t edmIndex, const Vector2D& entityPos, const Vector2D& targetPos,
+bool applyHitAndRunPositioning(BehaviorContext& ctx, const Vector2D& entityPos, const Vector2D& targetPos,
                                BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
     auto& attack = data.state.attack;
-    auto& edm = EntityDataManager::Instance();
 
     // After recovering, force retreat - scale speed by optimal range preference
     if (attack.currentState == static_cast<uint8_t>(AttackState::RECOVERING) ||
@@ -460,7 +441,7 @@ bool applyHitAndRunPositioning(size_t edmIndex, const Vector2D& entityPos, const
         // Retreat faster for longer-range configurations (optimalRangeMultiplier closer to 1.0)
         float rangeScaling = 1.0f + (config.optimalRangeMultiplier - 0.5f) * 0.4f;
         Vector2D retreatVelocity = retreatDir * (data.moveSpeed * RETREAT_SPEED_MULTIPLIER * rangeScaling);
-        edm.getHotDataByIndex(edmIndex).transform.velocity = retreatVelocity;
+        ctx.transform.velocity = retreatVelocity;
         return true;
     }
 
@@ -654,7 +635,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
 
     // Check retreat conditions (respects berserker mode's low threshold)
     if (!berserkerMode && attackMode != AttackMode::BERSERKER &&
-        shouldRetreat(ctx.edmIndex, &ctx.characterData, effectiveRetreatThreshold, config.aggression) &&
+        shouldRetreat(ctx, effectiveRetreatThreshold, config.aggression) &&
         attack.currentState != static_cast<uint8_t>(AttackState::RETREATING)) {
 
         bool shouldFlee = false;
@@ -714,7 +695,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             if (attack.targetDistance <= optimalRange) {
                 changeState(data, AttackState::POSITIONING);
             } else {
-                moveToPosition(ctx.edmIndex, targetPos, data.moveSpeed);
+                moveToPosition(ctx, targetPos, data.moveSpeed);
             }
             break;
 
@@ -726,13 +707,13 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             bool modeHandled = false;
             switch (attackMode) {
                 case AttackMode::RANGED:
-                    modeHandled = applyRangedPositioning(ctx.edmIndex, entityPos, targetPos, data, config);
+                    modeHandled = applyRangedPositioning(ctx, entityPos, targetPos, data, config);
                     break;
                 case AttackMode::CHARGE:
-                    modeHandled = applyChargePositioning(ctx.edmIndex, entityPos, targetPos, data, config);
+                    modeHandled = applyChargePositioning(ctx, entityPos, targetPos, data, config);
                     break;
                 case AttackMode::HIT_AND_RUN:
-                    modeHandled = applyHitAndRunPositioning(ctx.edmIndex, entityPos, targetPos, data, config);
+                    modeHandled = applyHitAndRunPositioning(ctx, entityPos, targetPos, data, config);
                     break;
                 default:
                     // MELEE, AMBUSH, COORDINATED, BERSERKER use standard positioning
@@ -744,7 +725,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             // Enforce minimum range - back off if too close
             if (distToTarget < minimumRange && minimumRange > 0.0f) {
                 Vector2D backoffPos = targetPos + direction * (minimumRange + 10.0f);
-                moveToPosition(ctx.edmIndex, backoffPos, data.moveSpeed * 0.8f);
+                moveToPosition(ctx, backoffPos, data.moveSpeed * 0.8f);
                 break;
             }
 
@@ -761,7 +742,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
                 float strafeSign = attack.circleStrafing ? 1.0f : -1.0f;
                 Vector2D strafePos = targetPos + direction * optimalRange +
                                     perpendicular * (config.strafeRadius * strafeSign * 0.5f);
-                moveToPosition(ctx.edmIndex, strafePos, data.moveSpeed);
+                moveToPosition(ctx, strafePos, data.moveSpeed);
                 break;
             }
 
@@ -772,7 +753,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
             Vector2D optimalPos = targetPos + direction * optimalRange;
 
             if ((entityPos - optimalPos).length() > 15.0f) {
-                moveToPosition(ctx.edmIndex, optimalPos, data.moveSpeed);
+                moveToPosition(ctx, optimalPos, data.moveSpeed);
             } else if (attack.canAttack) {
                 changeState(data, AttackState::ATTACKING);
             }
@@ -826,7 +807,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
                 }
                 attack.specialAttackReady = false;
             } else {
-                executeAttackAction(ctx.edmIndex, targetPos, data, config, &ctx.characterData);
+                executeAttackAction(ctx, targetPos, config);
             }
             changeState(data, AttackState::RECOVERING);
             break;
@@ -838,14 +819,14 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
         case AttackState::RETREATING: {
             Vector2D retreatDir = normalizeDir(entityPos - targetPos);
             Vector2D retreatVelocity = retreatDir * (data.moveSpeed * RETREAT_SPEED_MULTIPLIER);
-            edm.getHotDataByIndex(ctx.edmIndex).transform.velocity = retreatVelocity;
+            ctx.transform.velocity = retreatVelocity;
 
             // Don't exit retreat immediately - require minimum time in state
             // This prevents message-triggered retreats from being instantly cancelled
             constexpr float MIN_RETREAT_TIME = 0.5f;
             if (attack.stateChangeTimer >= MIN_RETREAT_TIME) {
                 if (attack.targetDistance > attackRange * 2.0f ||
-                    !shouldRetreat(ctx.edmIndex, &ctx.characterData, config.retreatThreshold, config.aggression)) {
+                    !shouldRetreat(ctx, config.retreatThreshold, config.aggression)) {
                     attack.isRetreating = false;
                     changeState(data, AttackState::SEEKING);
                 }
