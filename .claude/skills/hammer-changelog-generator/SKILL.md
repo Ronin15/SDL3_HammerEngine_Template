@@ -1,7 +1,7 @@
 ---
 name: hammer-changelog-generator
 description: Generates comprehensive, professionally-formatted changelogs for SDL3 HammerEngine from git history. Analyzes code changes, runs tests, includes architect review, and produces detailed documentation following World Update format. Use when documenting updates, preparing releases, or creating detailed change reports.
-allowed-tools: [Bash, Read, Write, Grep, Glob, Task, AskUserQuestion]
+allowed-tools: [Bash, Read, Write, Grep, Glob, AskUserQuestion]
 ---
 
 # Changelog Generator for SDL3 HammerEngine

@@ -3,7 +3,6 @@ name: game-systems-architect
 description: Code review specialist for SDL3 HammerEngine. Reviews implementations for architectural compliance, thread safety, per-frame allocations, and pattern violations. Invoked proactively after implementing or modifying core systems. Does NOT implement code (that's game-engine-specialist) or run tests (that's quality-engineer).
 tools: Glob, Grep, Read, WebFetch, WebSearch, Bash, TaskStop, AskUserQuestion, Skill
 model: opus
-color: blue
 ---
 
 # SDL3 HammerEngine Code Review Specialist

@@ -2,7 +2,6 @@
 name: quality-engineer
 description: Testing and validation specialist for SDL3 HammerEngine. Runs test suites, benchmarks, static analysis, and build systems. Investigates test failures and validates performance targets. Does NOT do deep code review (that's game-systems-architect).
 model: sonnet
-color: orange
 ---
 
 # SDL3 HammerEngine Testing & Validation Specialist

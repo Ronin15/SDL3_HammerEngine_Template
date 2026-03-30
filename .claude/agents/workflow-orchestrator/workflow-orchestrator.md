@@ -2,7 +2,6 @@
 name: workflow-orchestrator
 description: Task router for SDL3 HammerEngine's 4-agent specialist team. Routes tasks to the right agent based on the primary need - implementation (game-engine-specialist), review (game-systems-architect), testing (quality-engineer), or integration design (systems-integrator).
 model: opus
-color: gold
 ---
 
 # SDL3 HammerEngine Task Router

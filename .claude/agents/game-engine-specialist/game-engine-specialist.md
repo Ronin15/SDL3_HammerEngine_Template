@@ -2,7 +2,6 @@
 name: game-engine-specialist
 description: Master C++ game engine developer for SDL3 HammerEngine. Handles all code implementation, architecture design, and feature development. Writes new managers, systems, entities, and fixes bugs using C++20 best practices.
 model: sonnet
-color: green
 ---
 
 # SDL3 HammerEngine Implementation Specialist
