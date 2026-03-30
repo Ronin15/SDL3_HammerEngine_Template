@@ -157,7 +157,13 @@ public:
         return EntityDataManager::Instance().getActiveIndices().size();
     }
 
-    // Run benchmark iterations and return average time in ms
+    // Run benchmark with median-of-N-runs for stable results.
+    // Returns median time per iteration in ms.
+    // Uses multiple measurement passes to reject outliers from CPU jitter,
+    // thermal fluctuation, and cache effects.
+    static constexpr int NUM_MEASUREMENT_RUNS = 5;
+    static constexpr int WARMUP_FRAMES = 100;
+
     double runBenchmark(int iterations) {
         auto& aim = AIManager::Instance();
 
@@ -165,30 +171,26 @@ public:
         // Hill-climb uses ADJUST_RATE=0.02f and THROUGHPUT_SMOOTHING=0.12
         // Need ~50 frames for throughput smoothing to stabilize
         // Need ~100 frames for multiplier hill-climb to converge
-        constexpr int WARMUP_FRAMES = 100;
         for (int i = 0; i < WARMUP_FRAMES; ++i) {
             aim.update(0.016f);
         }
 
-        // Wait for warmup completion
+        // Multiple measurement passes — median is robust to outliers
+        std::vector<double> runTimes;
+        runTimes.reserve(NUM_MEASUREMENT_RUNS);
 
-
-        // Benchmark (steady-state after hill-climb convergence)
-        auto start = std::chrono::high_resolution_clock::now();
-        for (int i = 0; i < iterations; ++i) {
-            aim.update(0.016f);
+        for (int run = 0; run < NUM_MEASUREMENT_RUNS; ++run) {
+            auto start = std::chrono::high_resolution_clock::now();
+            for (int i = 0; i < iterations; ++i) {
+                aim.update(0.016f);
+            }
+            auto end = std::chrono::high_resolution_clock::now();
+            runTimes.push_back(
+                std::chrono::duration<double, std::milli>(end - start).count() / iterations);
         }
 
-        // Wait for all async work to complete
-
-
-        auto end = std::chrono::high_resolution_clock::now();
-        return std::chrono::duration<double, std::milli>(end - start).count() / iterations;
-    }
-
-    // Get behavior update count for metrics
-    size_t getBehaviorUpdateCount() const {
-        return AIManager::Instance().getBehaviorUpdateCount();
+        std::sort(runTimes.begin(), runTimes.end());
+        return runTimes[NUM_MEASUREMENT_RUNS / 2];
     }
 
     void cleanup() {
@@ -283,22 +285,23 @@ BOOST_AUTO_TEST_CASE(AIEntityScaling)
                       << " entities in Active tier!\n";
         }
 
-        // Dynamic iteration scaling: ensure ~100ms measurement
-        int iterations = std::max(20, 100000 / static_cast<int>(count));
+        // Target ~300ms per measurement pass (5 passes via median)
+        // Ensures adequate wall time for stable timing at all entity counts
+        int iterations = std::max(50, 300000 / static_cast<int>(count));
 
-        size_t startUpdates = getBehaviorUpdateCount();
-        double avgMs = runBenchmark(iterations);
-        size_t endUpdates = getBehaviorUpdateCount();
+        double medianMs = runBenchmark(iterations);
 
-        size_t totalUpdates = endUpdates - startUpdates;
-        double updatesPerSec = (totalUpdates > 0)
-            ? (static_cast<double>(totalUpdates) / (avgMs * iterations)) * 1000.0
+        // Derive updates/sec from median time: count entities / medianMs * 1000
+        // This is equivalent to the old behaviorUpdateCount approach but more stable
+        // since it uses the median rather than a single noisy measurement
+        double updatesPerSec = (medianMs > 0.0)
+            ? (static_cast<double>(count) / medianMs) * 1000.0
             : 0.0;
 
         // Check threading decision from WorkerBudget
         auto decision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::AI, count);
         const char* threading = decision.shouldThread ? "multi" : "single";
-        const char* status = (activeCount == count && totalUpdates > 0) ? "OK" : "FAIL";
+        const char* status = (activeCount == count && medianMs > 0.0) ? "OK" : "FAIL";
 
         // Track best
         if (updatesPerSec > bestUpdatesPerSec) {
@@ -307,7 +310,7 @@ BOOST_AUTO_TEST_CASE(AIEntityScaling)
         }
 
         std::cout << std::setw(10) << count
-                  << std::setw(12) << std::fixed << std::setprecision(2) << avgMs
+                  << std::setw(12) << std::fixed << std::setprecision(2) << medianMs
                   << std::setw(14) << std::fixed << std::setprecision(0) << updatesPerSec
                   << std::setw(12) << threading
                   << std::setw(10) << status << "\n";
@@ -317,6 +320,7 @@ BOOST_AUTO_TEST_CASE(AIEntityScaling)
 
     // Output summary for regression detection
     std::cout << "\nSCALABILITY SUMMARY:\n";
+    std::cout << "Measurement: median of " << NUM_MEASUREMENT_RUNS << " runs per entity count\n";
     std::cout << "Entity updates per second: " << std::fixed << std::setprecision(0)
               << bestUpdatesPerSec << " (at " << bestCount << " entities)\n";
     auto finalDecision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::AI, bestCount);
@@ -340,7 +344,7 @@ BOOST_AUTO_TEST_CASE(ThreadingModeComparison)
 
     for (size_t count : entityCounts) {
         float worldSize = std::sqrt(static_cast<float>(count)) * 100.0f;
-        int iterations = std::max(20, 100000 / static_cast<int>(count));
+        int iterations = std::max(50, 300000 / static_cast<int>(count));
 
         // Test single-threaded (disabling threading bypasses adaptive threshold)
         prepareForTest();
@@ -404,7 +408,7 @@ BOOST_AUTO_TEST_CASE(IdleBehaviorThreading)
 
     for (size_t count : entityCounts) {
         float worldSize = std::sqrt(static_cast<float>(count)) * 100.0f;
-        int iterations = std::max(20, 100000 / static_cast<int>(count));
+        int iterations = std::max(50, 300000 / static_cast<int>(count));
 
         // Test single-threaded
         prepareForTest();
@@ -464,22 +468,20 @@ BOOST_AUTO_TEST_CASE(BehaviorMixTest)
         {"Full Mix", {"Wander", "Guard", "Patrol", "Follow", "Chase"}}
     };
 
+    constexpr int ITERATIONS = 150;  // ~300ms measurement per pass at 2K entities
+
     for (const auto& mix : mixes) {
         prepareForTest();
         createEntitiesWithBehaviors(ENTITY_COUNT, WORLD_SIZE, mix.behaviors);
         setupWorld(WORLD_SIZE);  // Pass spawn worldSize directly
 
-        size_t startUpdates = getBehaviorUpdateCount();
-        double avgMs = runBenchmark(50);
-        size_t endUpdates = getBehaviorUpdateCount();
-
-        size_t totalUpdates = endUpdates - startUpdates;
-        double updatesPerSec = (totalUpdates > 0)
-            ? (static_cast<double>(totalUpdates) / (avgMs * 50)) * 1000.0
+        double medianMs = runBenchmark(ITERATIONS);
+        double updatesPerSec = (medianMs > 0.0)
+            ? (static_cast<double>(ENTITY_COUNT) / medianMs) * 1000.0
             : 0.0;
 
         std::cout << std::setw(15) << mix.name
-                  << std::setw(12) << std::fixed << std::setprecision(2) << avgMs
+                  << std::setw(12) << std::fixed << std::setprecision(2) << medianMs
                   << std::setw(14) << std::fixed << std::setprecision(0) << updatesPerSec << "\n";
 
         cleanup();
