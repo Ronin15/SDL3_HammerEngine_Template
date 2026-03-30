@@ -272,7 +272,6 @@ private:
 
     // Reusable buffers (avoid per-frame allocation)
     std::vector<size_t> m_backgroundIndices;
-    std::vector<size_t> m_simulatableIndices;
 
     // Performance tracking
     PerfStats m_perf;

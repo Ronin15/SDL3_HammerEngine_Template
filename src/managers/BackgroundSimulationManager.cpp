@@ -40,7 +40,6 @@ bool BackgroundSimulationManager::init() {
 
     // Reserve buffers
     m_backgroundIndices.reserve(10000);  // Expect up to 10K background entities
-    m_simulatableIndices.reserve(10000);
     m_batchFutures.reserve(16);          // Reasonable batch count
 
     m_initialized.store(true, std::memory_order_release);
@@ -63,9 +62,7 @@ void BackgroundSimulationManager::clean() {
 
     // Clear buffers
     m_backgroundIndices.clear();
-    m_simulatableIndices.clear();
     m_backgroundIndices.shrink_to_fit();
-    m_simulatableIndices.shrink_to_fit();
 
     m_initialized.store(false, std::memory_order_release);
     BGSIM_INFO("BackgroundSimulationManager cleaned up");
@@ -75,7 +72,6 @@ void BackgroundSimulationManager::prepareForStateTransition() {
     BGSIM_INFO("Preparing for state transition...");
     waitForAsyncCompletion();
     m_backgroundIndices.clear();
-    m_simulatableIndices.clear();
     m_tiersDirty.store(true, std::memory_order_release);
     m_framesSinceTierUpdate = 0;
     m_referencePointSet = false;  // Force reference point update on next state
@@ -145,29 +141,9 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     m_backgroundIndices.insert(m_backgroundIndices.end(),
                                backgroundSpan.begin(), backgroundSpan.end());
 
-    // WorkerBudget should learn against entities that actually run background sim.
-    m_simulatableIndices.clear();
-    m_simulatableIndices.reserve(m_backgroundIndices.size());
-
-    for (size_t index : m_backgroundIndices) {
-        const auto& hot = edm.getHotDataByIndex(index);
-        if (!hot.isAlive()) {
-            continue;
-        }
-
-        if (hot.kind == EntityKind::NPC || hot.kind == EntityKind::DroppedItem) {
-            m_simulatableIndices.push_back(index);
-        }
-    }
-
-    const size_t entityCount = m_simulatableIndices.size();
-    if (entityCount == 0) {
-        m_perf.lastEntitiesProcessed = 0;
-        m_perf.lastUpdateMs = 0.0;
-        m_perf.lastBatchCount = 0;
-        m_perf.lastWasThreaded = false;
-        return;
-    }
+    // Use background indices directly - processBatch already filters by kind/alive.
+    // WorkerBudget learns from the full background count (close enough for threading decisions).
+    const size_t entityCount = m_backgroundIndices.size();
 
     // Use centralized WorkerBudgetManager for smart worker allocation (follows AIManager pattern)
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
@@ -190,11 +166,11 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     auto batchStart = std::chrono::steady_clock::now();
 
     if (useThreading) {
-        processMultiThreaded(fixedDeltaTime, m_simulatableIndices, batchCount, batchSize);
+        processMultiThreaded(fixedDeltaTime, m_backgroundIndices, batchCount, batchSize);
         m_perf.lastWasThreaded = true;
         m_perf.lastBatchCount = batchCount;
     } else {
-        processSingleThreaded(fixedDeltaTime, m_simulatableIndices);
+        processSingleThreaded(fixedDeltaTime, m_backgroundIndices);
         m_perf.lastWasThreaded = false;
         m_perf.lastBatchCount = 1;
     }
