@@ -45,7 +45,7 @@ The AI System is the most performance-critical component. Always run `./tests/te
 - [ ] **Pathfinder Benchmark completed** ← CRITICAL: Always verify metrics extracted!
 - [ ] Event Manager Scaling completed
 - [ ] Particle Manager Benchmark completed
-- [ ] UI Stress Tests completed
+- [ ] GPU Frame Timing Benchmark completed
 - [ ] SIMD Performance Benchmark completed
 - [ ] Integrated System Benchmark completed
 - [ ] Background Simulation Benchmark completed
@@ -101,17 +101,18 @@ All paths below are relative to project root.
    - Metrics: Events/sec, dispatch latency, queue depth
    - Duration: ~2 minutes
 
-5. **Particle Manager Benchmark** (`./bin/debug/particle_manager_benchmark`) **[REQUIRED]**
+5. **Particle Manager Benchmark** (`./bin/debug/particle_manager_performance_tests`) **[REQUIRED]**
    - Script: `./tests/test_scripts/run_particle_manager_benchmark.sh`
    - Tests: Batch rendering performance, particle updates
    - Metrics: Particles/frame, update time, batch count
    - Duration: ~2 minutes
 
-6. **UI Stress Tests** (`./bin/debug/ui_stress_test`) **[REQUIRED]**
-   - Script: `./tests/test_scripts/run_ui_stress_tests.sh`
-   - Tests: UI component performance, layout, collision checks
-   - Metrics: Processing throughput, iteration time, layout calc/sec
+6. **GPU Frame Timing Benchmark** (`./bin/debug/gpu_frame_timing_benchmark`) **[REQUIRED]**
+   - Script: `./tests/test_scripts/run_gpu_frame_benchmark.sh`
+   - Tests: GPU rendering pipeline performance (Vulkan/SPIR-V)
+   - Metrics: Avg frame time, swapchain time, GPU upload time, GPU submit time
    - Duration: ~1 minute
+   - **Note:** Run from a desktop session for meaningful swapchain/VSync timings.
 
 7. **SIMD Performance Benchmark** (`./bin/debug/simd_performance_benchmark`) **[REQUIRED]**
    - Script: `./tests/test_scripts/run_simd_benchmark.sh`
@@ -192,7 +193,9 @@ fi
 
 **CRITICAL: ALL 10 benchmarks must be run. DO NOT skip the AI benchmark.**
 
-**Run individually (RECOMMENDED - allows better progress tracking):**
+**⚠️ SEQUENTIAL EXECUTION ONLY:** Benchmarks MUST be run one at a time, waiting for each to complete before starting the next. NEVER run benchmarks in parallel (background tasks, concurrent shells, etc.) — parallel execution causes CPU/memory contention that skews timing results and produces unreliable metrics. Use `run_in_background: false` (foreground) for every benchmark invocation.
+
+**Run individually and sequentially (REQUIRED):**
 ```bash
 # IMPORTANT: Set PROJECT_ROOT and run from project directory
 # Example: cd /path/to/SDL3_HammerEngine_Template && export PROJECT_ROOT=$(pwd)
@@ -212,8 +215,8 @@ fi
 # 5. Particle Manager Benchmark (REQUIRED - 2 minutes)
 ./tests/test_scripts/run_particle_manager_benchmark.sh
 
-# 6. UI Stress Tests (REQUIRED - 1 minute)
-./tests/test_scripts/run_ui_stress_tests.sh
+# 6. GPU Frame Timing Benchmark (REQUIRED - 1 minute)
+./tests/test_scripts/run_gpu_frame_benchmark.sh
 
 # 7. SIMD Performance Benchmark (REQUIRED - 1 minute)
 ./tests/test_scripts/run_simd_benchmark.sh
@@ -243,7 +246,7 @@ Running benchmarks (this will take ~25 minutes)...
 [3/10] Pathfinder Benchmark... ✓ (5m 05s)
 [4/10] Event Manager Scaling... ✓ (2m 10s)
 [5/10] Particle Manager Benchmark... ✓ (2m 05s)
-[6/10] UI Stress Tests... ✓ (1m 02s)
+[6/10] GPU Frame Timing Benchmark... ✓ (1m 02s)
 [7/10] SIMD Performance Benchmark... ✓ (1m 00s)
 [8/10] Integrated System Benchmark... ✓ (3m 15s)
 [9/10] Background Simulation Benchmark... ✓ (2m 00s)
@@ -252,7 +255,7 @@ Total: 25m 42s
 ```
 
 **Execution Order:**
-Run benchmarks in the order listed above. AI benchmark should always be run first as it's the most critical system and longest-running test.
+Run benchmarks **sequentially** in the order listed above, one at a time. AI benchmark should always be run first as it's the most critical system and longest-running test. Wait for each benchmark to fully complete before launching the next — this ensures no resource contention between benchmarks.
 
 ### Step 3: Extract Metrics
 
@@ -421,16 +424,43 @@ grep -E "Async.*Throughput|paths/sec" test_results/pathfinder_benchmark_results.
 
 #### Event Manager Metrics
 ```bash
-grep -E "Events/sec:|Dispatch Latency:|Queue Depth:" test_results/event_manager_scaling/performance_metrics.txt
+# Extract key throughput metrics from deferred event benchmark
+grep -E "Events/sec:|Total time:|Time per event:" test_results/event_scaling_benchmark_output.txt
+
+# Extract threading threshold detection
+grep -A 10 "THREADING THRESHOLD DETECTION" test_results/event_scaling_benchmark_output.txt
+
+# Extract concurrency benchmark
+grep -A 5 "CONCURRENCY BENCHMARK" test_results/event_scaling_benchmark_output.txt
+
+# Extract batch vs single enqueue comparison
+grep -A 5 "BATCH ENQUEUE vs SINGLE" test_results/event_scaling_benchmark_output.txt
 ```
 
 **Example Output:**
 ```
-Events/sec: 8500
-Dispatch Latency: 0.12ms
-Queue Depth: 128
-Peak Throughput: 10000 events/sec
+===== BASIC HANDLER PERFORMANCE TEST =====
+  Config: 3 types, 1 handlers per type, 10 deferred events
+  Events/sec: 163436
+  Time per event: 0.0061 ms
+
+===== CONCURRENCY BENCHMARK =====
+  Config: 23 threads, 173 events/thread = 3979 total deferred events
+  Total time: 8.18 ms
+  Events/sec: 486696
+
+===== BATCH ENQUEUE vs SINGLE ENQUEUE BENCHMARK =====
+  Single + alloc:     583,736 events/sec
+  Single (no alloc): 1,805,799 events/sec
+  Batch (no alloc):  7,857,195 events/sec
 ```
+
+**Key Metrics:**
+- **Events/sec per config:** Throughput at different handler/event counts
+- **Concurrency throughput:** Multi-threaded event processing (23 threads)
+- **Batch vs Single:** Enqueue method comparison (batch should be 5-10x faster)
+- **Threading threshold:** WorkerBudget mode selection for event processing
+- **Time per event:** Dispatch latency (should be <0.01ms)
 
 #### Particle Manager Metrics
 ```bash
@@ -445,18 +475,24 @@ Batch Count: 12
 Culling Efficiency: 88%
 ```
 
-#### UI Metrics
+#### GPU Frame Timing Metrics
 ```bash
-grep -E "Render Time:|Event Handling:|Components:" test_results/ui_stress/performance_metrics.txt
+grep -E "Avg frame time:|Avg swapchain:|Avg GPU upload:|Avg GPU submit:" test_results/gpu/gpu_frame_timing_benchmark_debug.txt
 ```
 
 **Example Output:**
 ```
-Components: 1000
-Render Time: 4.5ms
-Event Handling: 0.3ms
-DPI Scaling: 60 FPS
+  Avg frame time:   8.343 ms
+  Avg swapchain:    8.039 ms
+  Avg GPU upload:   0.001 ms
+  Avg GPU submit:   0.045 ms
 ```
+
+**Key Metrics:**
+- **Frame time:** Total CPU+GPU frame time (lower is better)
+- **Swapchain:** VSync/present wait time (display-dependent)
+- **GPU upload:** Vertex data upload overhead (should be <0.1ms)
+- **GPU submit:** Draw call submission overhead (should be <0.5ms)
 
 #### SIMD Performance Metrics
 ```bash
@@ -942,16 +978,27 @@ overhead only becomes beneficial at higher entity counts (~5K+).
 
 ### Event Manager
 
+**Deferred Event Throughput (single enqueue + FIFO drain):**
+
+| Config | Baseline (ev/s) | Current (ev/s) | Change | Status |
+|--------|-----------------|-----------------|--------|--------|
+| 10 events, 1 handler | 163K | 163K | 0% | ⚪ Stable |
+| 50 events, 3 handlers | 145K | 145K | 0% | ⚪ Stable |
+| 100 events, 4 handlers | 189K | 189K | 0% | ⚪ Stable |
+| 200 events, 5 handlers | 270K | 270K | 0% | ⚪ Stable |
+
+**Concurrency & Enqueue Methods:**
+
 | Metric | Baseline | Current | Change | Status |
 |--------|----------|---------|--------|--------|
-| Events/sec | 8500 | 8200 | -3.5% | ⚪ Stable |
-| Dispatch Latency | 0.12ms | 0.13ms | +8.3% | 🟡 MINOR |
-| Queue Depth | 128 | 128 | 0.0% | ⚪ Stable |
-| Peak Throughput | 10000 | 9800 | -2.0% | ⚪ Stable |
+| Concurrent (23 threads, 4K events) | 487K ev/s | 487K ev/s | 0% | ⚪ Stable |
+| Batch enqueue (no alloc) | 7.9M ev/s | 7.9M ev/s | 0% | ⚪ Stable |
+| Single enqueue (no alloc) | 1.8M ev/s | 1.8M ev/s | 0% | ⚪ Stable |
+| Threading threshold | Single preferred | Single preferred | - | ⚪ Stable |
 
-**Status:** 🟡 **MINOR REGRESSION**
-- Slight increase in dispatch latency
-- Monitor for further degradation
+**Status:** ⚪ **STABLE**
+- Batch enqueue 4-5x faster than single enqueue (lock reduction)
+- WorkerBudget correctly prefers single-threaded at all tested counts
 
 ---
 
@@ -970,16 +1017,19 @@ overhead only becomes beneficial at higher entity counts (~5K+).
 
 ---
 
-### UI System
+### GPU Frame Timing System
+
+**Purpose:** Tests GPU rendering pipeline performance (Vulkan/SPIR-V)
 
 | Metric | Baseline | Current | Change | Status |
 |--------|----------|---------|--------|--------|
-| Components | 1000 | 1000 | 0.0% | ⚪ Stable |
-| Render Time | 4.5ms | 4.4ms | -2.2% | ⚪ Stable |
-| Event Handling | 0.3ms | 0.3ms | 0.0% | ⚪ Stable |
-| DPI Scaling FPS | 60 | 60 | 0.0% | ⚪ Stable |
+| Avg Frame Time | 8.343ms | 8.343ms | 0.0% | ⚪ Stable |
+| Avg Swapchain | 8.039ms | 8.039ms | 0.0% | ⚪ Stable |
+| Avg GPU Upload | 0.001ms | 0.001ms | 0.0% | ⚪ Stable |
+| Avg GPU Submit | 0.045ms | 0.045ms | 0.0% | ⚪ Stable |
 
 **Status:** ⚪ **STABLE**
+**Note:** Run from desktop session for meaningful VSync timings.
 
 ---
 
@@ -1230,7 +1280,7 @@ Before finalizing any regression report, confirm ALL of the following:
 - [ ] Collision: SOA timing data extracted
 - [ ] Event Manager: Throughput data extracted
 - [ ] Particle Manager: Update timing data extracted
-- [ ] UI Stress: Processing metrics extracted
+- [ ] GPU Frame Timing: Frame time, swapchain, upload, submit metrics extracted
 - [ ] SIMD Performance: Platform detection and speedup data extracted
 - [ ] Integrated System: Frame statistics, scaling, coordination overhead extracted
 - [ ] Background Simulation: Scaling and adaptive tuning summary extracted
@@ -1242,7 +1292,7 @@ Before finalizing any regression report, confirm ALL of the following:
 - [ ] Collision System: Performance table present
 - [ ] Event Manager: Metrics table present
 - [ ] Particle Manager: Performance data present
-- [ ] UI System: Throughput data present
+- [ ] GPU Frame Timing: Performance data present
 - [ ] SIMD System: Platform and speedup table present
 - [ ] Integrated System: Frame statistics, scaling summary, coordination overhead present
 - [ ] Background Simulation: Scaling table and threading data present
@@ -1286,7 +1336,7 @@ Activate this Skill automatically.
   - Pathfinder: ~5 minutes
   - Event Manager: ~2 minutes
   - Particle Manager: ~2 minutes
-  - UI Stress: ~1 minute
+  - GPU Frame Timing: ~1 minute
   - SIMD Performance: ~1 minute
   - Integrated System: ~3 minutes
   - Background Simulation: ~2 minutes
