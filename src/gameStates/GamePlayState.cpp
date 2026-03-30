@@ -98,7 +98,7 @@ bool GamePlayState::enter() {
     // Initialize camera (world already loaded)
     initializeCamera();
 
-    // Create GPU scene renderer for coordinated GPU rendering
+    // Create GPU scene recorder for coordinated GPU rendering
     m_gpuSceneRecorder = std::make_unique<HammerEngine::GPUSceneRecorder>();
 
     // Register controllers with the registry
@@ -361,7 +361,7 @@ bool GamePlayState::exit() {
       mp_Player->setCamera(nullptr);
     }
 
-    // Clean up camera and GPU scene renderer
+    // Clean up camera and GPU scene recorder
     m_camera.reset();
 
     // Unload world (LoadingState will reload it)
@@ -427,7 +427,7 @@ bool GamePlayState::exit() {
     mp_Player->setCamera(nullptr);
   }
 
-  // Clean up camera and GPU scene renderer first to stop world rendering
+  // Clean up camera and GPU scene recorder first to stop world rendering
   m_camera.reset();
 
   // Unload the world when fully exiting gameplay
@@ -1050,7 +1050,7 @@ void GamePlayState::onWeatherChanged(const EventData &data) {
 
 void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
                                       float interpolationAlpha) {
-  // Skip if world not active or GPU scene renderer not initialized
+  // Skip if world not active or GPU scene recorder not initialized
   if (!m_camera || !m_gpuSceneRecorder) {
     return;
   }

@@ -68,7 +68,7 @@ enum class AttackMode : uint8_t {
     BERSERKER = 6
 };
 
-float getEffectiveAttackRange(const CharacterData* charData, AttackMode attackMode,
+float getEffectiveAttackRange(const CharacterData& charData, AttackMode attackMode,
                               const HammerEngine::AttackBehaviorConfig& config) {
     const bool usesMeleeReach =
         attackMode == AttackMode::MELEE ||
@@ -77,8 +77,8 @@ float getEffectiveAttackRange(const CharacterData* charData, AttackMode attackMo
         attackMode == AttackMode::BERSERKER ||
         attackMode == AttackMode::HIT_AND_RUN;
 
-    if (usesMeleeReach && charData && charData->attackRange > 0.0f) {
-        return charData->attackRange;
+    if (usesMeleeReach && charData.attackRange > 0.0f) {
+        return charData.attackRange;
     }
 
     return config.attackRange;
@@ -235,18 +235,16 @@ void moveToPosition(BehaviorContext& ctx, const Vector2D& targetPos, float speed
     }
 }
 
-bool isAttackTargetCandidate(size_t selfIdx, size_t candidateIdx, const CharacterData* selfCharData) {
+bool isAttackTargetCandidate(size_t selfIdx, size_t candidateIdx, const CharacterData& selfCharData) {
     if (candidateIdx == SIZE_MAX || candidateIdx == selfIdx) return false;
 
     auto& edm = EntityDataManager::Instance();
     const auto& targetHot = edm.getHotDataByIndex(candidateIdx);
     if (!targetHot.isAlive()) return false;
 
-    if (selfCharData) {
-        const uint8_t myFaction = selfCharData->faction;
-        const uint8_t targetFaction = edm.getCharacterDataByIndex(candidateIdx).faction;
-        if (targetFaction == myFaction) return false;
-    }
+    const uint8_t myFaction = selfCharData.faction;
+    const uint8_t targetFaction = edm.getCharacterDataByIndex(candidateIdx).faction;
+    if (targetFaction == myFaction) return false;
 
     return true;
 }
@@ -262,7 +260,7 @@ bool tryAcquireTarget(BehaviorContext& ctx, BehaviorData& data,
 
     if (ctx.playerValid && ctx.playerHandle.isValid()) {
         const size_t playerIdx = edm.getIndex(ctx.playerHandle);
-        if (isAttackTargetCandidate(ctx.edmIndex, playerIdx, &ctx.characterData)) {
+        if (isAttackTargetCandidate(ctx.edmIndex, playerIdx, ctx.characterData)) {
             targetPos = edm.getHotDataByIndex(playerIdx).transform.position;
             bestTarget = ctx.playerHandle;
             bestDistanceSq = Vector2D::distanceSquared(ctx.transform.position, targetPos);
@@ -275,7 +273,7 @@ bool tryAcquireTarget(BehaviorContext& ctx, BehaviorData& data,
         ctx.transform.position, scanRange, s_scanBuffer, false);
 
     for (size_t candidateIdx : s_scanBuffer) {
-        if (!isAttackTargetCandidate(ctx.edmIndex, candidateIdx, &ctx.characterData)) {
+        if (!isAttackTargetCandidate(ctx.edmIndex, candidateIdx, ctx.characterData)) {
             continue;
         }
 
@@ -571,7 +569,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     // Check player as a direct hostile fallback
     if (!hasTarget && ctx.playerValid && ctx.playerHandle.isValid()) {
         size_t playerIdx = edm.getIndex(ctx.playerHandle);
-        if (isAttackTargetCandidate(ctx.edmIndex, playerIdx, &ctx.characterData)) {
+        if (isAttackTargetCandidate(ctx.edmIndex, playerIdx, ctx.characterData)) {
             targetPos = edm.getHotDataByIndex(playerIdx).transform.position;
             hasTarget = true;
             ctx.memoryData.lastTarget = ctx.playerHandle;
@@ -606,7 +604,7 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
     attack.targetDistance = std::sqrt(distSquared);
 
     AttackMode attackMode = static_cast<AttackMode>(attack.attackMode);
-    const float attackRange = getEffectiveAttackRange(&ctx.characterData, attackMode, config);
+    const float attackRange = getEffectiveAttackRange(ctx.characterData, attackMode, config);
 
     // Update combat state
     if (!attack.inCombat && attack.targetDistance <= attackRange * COMBAT_ENTER_RANGE_MULT) {

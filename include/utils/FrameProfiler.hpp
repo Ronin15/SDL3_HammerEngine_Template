@@ -333,7 +333,7 @@ private:
 #define PROFILE_PHASE(p) HammerEngine::ScopedPhaseTimer _scopedPhaseTimer##__LINE__(p)
 #define PROFILE_MANAGER(m) HammerEngine::ScopedManagerTimer _scopedManagerTimer##__LINE__(m)
 #define PROFILE_RENDER(r) HammerEngine::ScopedRenderTimer _scopedRenderTimer##__LINE__(r)
-#define PROFILE_RENDER_GPU(r, renderer) HammerEngine::ScopedRenderTimerGPU _scopedRenderTimerGPU##__LINE__(r)
+#define PROFILE_RENDER_GPU(r) HammerEngine::ScopedRenderTimerGPU _scopedRenderTimerGPU##__LINE__(r)
 
 #else  // NDEBUG - Release build
 
@@ -373,7 +373,7 @@ public:
 #define PROFILE_PHASE(p) ((void)0)
 #define PROFILE_MANAGER(m) ((void)0)
 #define PROFILE_RENDER(r) ((void)0)
-#define PROFILE_RENDER_GPU(r, renderer) ((void)0)
+#define PROFILE_RENDER_GPU(r) ((void)0)
 
 #endif  // NDEBUG
 

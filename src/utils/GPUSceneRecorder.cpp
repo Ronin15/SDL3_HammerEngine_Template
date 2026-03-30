@@ -23,7 +23,7 @@ GPUSceneRecorder& GPUSceneRecorder::operator=(GPUSceneRecorder&&) noexcept = def
 GPUSceneContext GPUSceneRecorder::beginRecording(GPURenderer& gpuRenderer,
                                                  Camera& camera,
                                                  float interpolationAlpha) {
-    PROFILE_RENDER_GPU(RenderPhase::BeginScene, nullptr);
+    PROFILE_RENDER_GPU(RenderPhase::BeginScene);
 
     GPUSceneContext ctx;
 
@@ -112,7 +112,7 @@ void GPUSceneRecorder::endSpriteBatch() {
 }
 
 void GPUSceneRecorder::endRecording() {
-    PROFILE_RENDER_GPU(RenderPhase::EndScene, nullptr);
+    PROFILE_RENDER_GPU(RenderPhase::EndScene);
 
     if (!m_recordingActive) {
         GPU_SCENE_RECORDER_WARN("GPUSceneRecorder::endRecording called without matching beginRecording");
@@ -133,7 +133,7 @@ void GPUSceneRecorder::endRecording() {
 
 void GPUSceneRecorder::renderRecordedScene(GPURenderer& gpuRenderer,
                                            SDL_GPURenderPass* scenePass) {
-    PROFILE_RENDER_GPU(RenderPhase::WorldTiles, nullptr);
+    PROFILE_RENDER_GPU(RenderPhase::WorldTiles);
 
     auto& spriteBatch = gpuRenderer.getSpriteBatch();
     auto& vertexPool = gpuRenderer.getSpriteVertexPool();

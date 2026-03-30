@@ -190,8 +190,8 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
       return;
     }
 
-    float dstX = static_cast<float>(x - textWidth / 2.0);
-    float dstY = static_cast<float>(y - textHeight / 2.0);
+    float dstX = static_cast<float>(x) - textWidth / 2.0f;
+    float dstY = static_cast<float>(y) - textHeight / 2.0f;
 
     TTF_GPUAtlasDrawSequence* drawSequence = fontMgr.getGPUTextDrawData(key);
     if (!drawSequence) {
