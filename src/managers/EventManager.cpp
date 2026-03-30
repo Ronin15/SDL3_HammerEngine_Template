@@ -984,11 +984,13 @@ void EventManager::drainDispatchQueueWithBudget() {
   size_t actualBatchCount = 1;
   bool actualWasThreaded = false;
 
-  // Time only the combat prep work that WorkerBudget controls (not full dispatch loop)
-  auto combatPrepStart = std::chrono::steady_clock::now();
+  // Per-path timing: single-threaded feeds threshold learning, batch feeds hill-climbing
+  std::chrono::steady_clock::time_point combatPrepStart;
+  std::chrono::steady_clock::time_point combatPrepEnd;
 
   if (combatEventCount > 0) {
     if (useThreading) {
+      // Compute batch strategy (not timed — only actual work is timed)
       auto& threadSystem = HammerEngine::ThreadSystem::Instance();
       size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
           HammerEngine::SystemType::Event, combatEventCount);
@@ -1000,6 +1002,9 @@ void EventManager::drainDispatchQueueWithBudget() {
         actualBatchCount = batchCount;
         m_combatPrepFutures.clear();
         m_combatPrepFutures.reserve(batchCount);
+
+        // Start timing batch work (enqueue + wait) — feeds hill-climbing
+        combatPrepStart = std::chrono::steady_clock::now();
 
         for (size_t batchIndex = 0; batchIndex < batchCount; ++batchIndex) {
           const size_t startCombatIndex = batchIndex * batchSize;
@@ -1029,15 +1034,17 @@ void EventManager::drainDispatchQueueWithBudget() {
 
           future.get();
         }
+        combatPrepEnd = std::chrono::steady_clock::now();
       }
     }
 
     if (!actualWasThreaded) {
+      // Single-threaded — timing feeds threshold learning
+      combatPrepStart = std::chrono::steady_clock::now();
       prepareCombatBatch(0, combatEventCount);
+      combatPrepEnd = std::chrono::steady_clock::now();
     }
   }
-
-  auto combatPrepEnd = std::chrono::steady_clock::now();
 
   {
     std::shared_lock<std::shared_mutex> handlerLock(m_handlersMutex);

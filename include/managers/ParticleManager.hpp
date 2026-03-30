@@ -329,6 +329,7 @@ struct ParticleThreadingInfo {
   size_t budget{0};
   size_t batchCount{1};
   bool wasThreaded{false};
+  double batchTimeMs{0.0};  // Tight timing around actual work only (feeds WorkerBudget)
 };
 
 /**

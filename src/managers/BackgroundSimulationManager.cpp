@@ -156,29 +156,34 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
 
     size_t actualBatchCount = 1;
 
-    // Time only the batch processing for WorkerBudget (preprocessing is fixed overhead)
-    auto batchStart = std::chrono::steady_clock::now();
+    // Per-path timing: single-threaded feeds threshold learning, batch feeds hill-climbing
+    std::chrono::steady_clock::time_point batchStart;
+    std::chrono::steady_clock::time_point batchEnd;
 
     if (useThreading) {
-        // Only compute batch strategy when threading is actually used
+        // Compute batch strategy (not timed — only actual work is timed)
         size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
             HammerEngine::SystemType::BackgroundSim, entityCount);
         auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
             HammerEngine::SystemType::BackgroundSim, entityCount, optimalWorkerCount);
 
+        batchStart = std::chrono::steady_clock::now();
         processMultiThreaded(fixedDeltaTime, m_backgroundIndices, batchCount, batchSize);
+        batchEnd = std::chrono::steady_clock::now();
         m_perf.lastWasThreaded = true;
         m_perf.lastBatchCount = batchCount;
         actualBatchCount = batchCount;
     } else {
+        batchStart = std::chrono::steady_clock::now();
         processSingleThreaded(fixedDeltaTime, m_backgroundIndices);
+        batchEnd = std::chrono::steady_clock::now();
         m_perf.lastWasThreaded = false;
         m_perf.lastBatchCount = 1;
     }
 
     auto t1 = std::chrono::steady_clock::now();
     double elapsedMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
-    double batchMs = std::chrono::duration<double, std::milli>(t1 - batchStart).count();
+    double batchMs = std::chrono::duration<double, std::milli>(batchEnd - batchStart).count();
 
     m_perf.lastEntitiesProcessed = entityCount;
     m_perf.lastUpdateMs = elapsedMs;

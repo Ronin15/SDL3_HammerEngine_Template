@@ -1575,26 +1575,42 @@ void CollisionManager::broadphase() {
 
   // Query WorkerBudget for threading decision first (avoids wasted batch computation)
   auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  const size_t workloadCount = movableIndices.size();
   auto decision = budgetMgr.shouldUseThreading(
-      HammerEngine::SystemType::Collision, movableIndices.size());
+      HammerEngine::SystemType::Collision, workloadCount);
   bool useThreading = decision.shouldThread;
+
+  // Per-path timing: single-threaded feeds threshold learning, batch feeds hill-climbing
+  std::chrono::steady_clock::time_point batchStart;
+  std::chrono::steady_clock::time_point batchEnd;
 
   if (!useThreading) {
     m_lastBroadphaseWasThreaded = false;
     m_lastBroadphaseBatchCount = 1;
+    batchStart = std::chrono::steady_clock::now();
     broadphaseSingleThreaded();
+    batchEnd = std::chrono::steady_clock::now();
   } else {
-    // Only compute batch strategy when threading is actually used
+    // Compute batch strategy (not timed — only actual work is timed)
     size_t optimalWorkers = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::Collision, movableIndices.size());
+        HammerEngine::SystemType::Collision, workloadCount);
     auto [batchCount, batchSize] =
         budgetMgr.getBatchStrategy(HammerEngine::SystemType::Collision,
-                                   movableIndices.size(), optimalWorkers);
+                                   workloadCount, optimalWorkers);
 
     m_lastBroadphaseWasThreaded = true;
     m_lastBroadphaseBatchCount = batchCount;
+    batchStart = std::chrono::steady_clock::now();
     broadphaseMultiThreaded(batchCount, batchSize);
+    batchEnd = std::chrono::steady_clock::now();
   }
+
+  double batchMs = std::chrono::duration<double, std::milli>(batchEnd - batchStart).count();
+
+  // Report results for unified adaptive tuning (tight timing around batch work only)
+  budgetMgr.reportExecution(HammerEngine::SystemType::Collision,
+                            workloadCount, m_lastBroadphaseWasThreaded,
+                            m_lastBroadphaseBatchCount, batchMs);
 }
 
 void CollisionManager::broadphaseSingleThreaded() {
@@ -2234,19 +2250,6 @@ void CollisionManager::update(float dt) {
   auto t1 = clock::now();
   broadphase();
   auto t2 = clock::now();
-
-  // Report broadphase results for adaptive tuning
-  if (activeMovableBodies > 0) {
-    auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    double broadphaseMs =
-        std::chrono::duration<double, std::milli>(t2 - t1).count();
-
-    // Report results for unified adaptive tuning
-    budgetMgr.reportExecution(HammerEngine::SystemType::Collision,
-                              activeMovableBodies,
-                              m_lastBroadphaseWasThreaded,
-                              m_lastBroadphaseBatchCount, broadphaseMs);
-  }
 
   // NARROWPHASE: Detailed collision detection and response calculation
   const size_t pairCount = m_collisionPool.movableMovablePairs.size() +

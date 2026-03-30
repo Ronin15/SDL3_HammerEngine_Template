@@ -310,9 +310,6 @@ void AIManager::update(float deltaTime) {
         ? edm.getIndex(m_playerHandle)
         : SIZE_MAX;
 
-    // Start timing ONLY the batch work (preprocessing is fixed main-thread overhead)
-    auto startTime = std::chrono::steady_clock::now();
-
     // Determine threading strategy using adaptive threshold from WorkerBudget
     // WorkerBudget is the AUTHORITATIVE source for production decisions
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
@@ -338,8 +335,9 @@ void AIManager::update(float deltaTime) {
     bool logWasThreaded = false;
 #endif
 
-    // endTime is set in each code path (single-batch, multi-threaded, single-threaded)
-    // right after batch work completes but before enqueueBatch — so only batch work is timed.
+    // startTime/endTime set per code path — timing captures ONLY actual processing work.
+    // Single-threaded timing feeds threshold learning; batch timing feeds hill-climbing.
+    std::chrono::steady_clock::time_point startTime;
     std::chrono::steady_clock::time_point endTime;
 
     if (useThreading) {
@@ -365,6 +363,7 @@ void AIManager::update(float deltaTime) {
         if (batchCount <= 1) {
           actualWasThreaded = false;
           actualBatchCount = 1;
+          startTime = std::chrono::steady_clock::now();
           auto damageEvents = processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
                        worldWidth, worldHeight, cachedPlayerHandle,
                        cachedPlayerPosition, cachedPlayerVelocity,
@@ -380,6 +379,9 @@ void AIManager::update(float deltaTime) {
           actualBatchCount = batchCount;
           size_t entitiesPerBatch = entityCount / batchCount;
           size_t remainingEntities = entityCount % batchCount;
+
+          // Start timing batch work (enqueue + wait) — feeds hill-climbing
+          startTime = std::chrono::steady_clock::now();
 
           // Submit batches using futures that return deferred events
           m_batchFutures.clear();
@@ -436,9 +438,10 @@ void AIManager::update(float deltaTime) {
           }
         }
     } else {
-      // Single-threaded processing
+      // Single-threaded processing — timing feeds threshold learning
       actualWasThreaded = false;
       actualBatchCount = 1;
+      startTime = std::chrono::steady_clock::now();
       auto damageEvents = processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth,
                    worldHeight, cachedPlayerHandle, cachedPlayerPosition,
                    cachedPlayerVelocity, cachedPlayerValid, cachedGameTime);

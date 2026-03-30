@@ -830,9 +830,6 @@ void ParticleManager::update(float deltaTime) {
     m_windPhase += deltaTime * 0.5f;
 
     // Phase 4: Update particle physics with optimal threading strategy
-    // Time only the physics batch for WorkerBudget (preprocessing is fixed overhead)
-    auto batchStartTime = std::chrono::steady_clock::now();
-
     // WorkerBudget is the AUTHORITATIVE source - no manager overrides
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
     auto decision = budgetMgr.shouldUseThreading(
@@ -843,19 +840,20 @@ void ParticleManager::update(float deltaTime) {
     ParticleThreadingInfo threadingInfo;
 
     if (useThreading) {
-      // Use WorkerBudget system if enabled, otherwise fall back to legacy
-      // threading
+      // Use WorkerBudget system if enabled, otherwise fall back to legacy threading
+      // Timing captured inside updateParticlesThreaded (after strategy, around actual work)
       if (m_useWorkerBudget.load(std::memory_order_acquire)) {
         updateWithWorkerBudget(deltaTime, traversedCount, threadingInfo);
       } else {
         updateParticlesThreaded(deltaTime, traversedCount, threadingInfo);
       }
     } else {
-      // Single-threaded: threadingInfo stays at defaults (wasThreaded=false, batchCount=1)
+      // Single-threaded — timing feeds threshold learning
+      auto singleStart = std::chrono::steady_clock::now();
       updateParticlesSingleThreaded(deltaTime, traversedCount);
+      auto singleEnd = std::chrono::steady_clock::now();
+      threadingInfo.batchTimeMs = std::chrono::duration<double, std::milli>(singleEnd - singleStart).count();
     }
-
-    auto batchEndTime = std::chrono::steady_clock::now();
 
   // Phase 5: Swap buffers for next frame (lock-free)
   m_storage.swapBuffers();
@@ -917,11 +915,10 @@ void ParticleManager::update(float deltaTime) {
     }
 #endif
 
-    // Report ONLY physics batch time for adaptive tuning (not preprocessing/postprocessing)
-    double batchTimeMs = std::chrono::duration<double, std::milli>(batchEndTime - batchStartTime).count();
+    // Report tight per-path timing for adaptive tuning (not preprocessing/postprocessing)
     budgetMgr.reportExecution(HammerEngine::SystemType::Particle,
                               traversedCount, threadingInfo.wasThreaded,
-                              threadingInfo.batchCount, batchTimeMs);
+                              threadingInfo.batchCount, threadingInfo.batchTimeMs);
 
   } catch (const std::exception &e) {
     PARTICLE_ERROR(std::format("Exception in ParticleManager::update: {}", e.what()));
@@ -2184,6 +2181,9 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   size_t particlesPerBatch = traversedParticleCount / batchCount;
   size_t remainingParticles = traversedParticleCount % batchCount;
 
+  // Start timing batch work (enqueue) — feeds hill-climbing
+  auto workStart = std::chrono::steady_clock::now();
+
   // Reuse member buffer instead of creating local vector (eliminates per-frame allocation)
   // Use swap() to preserve capacity on both vectors (avoids reallocation)
   {
@@ -2229,6 +2229,9 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
     std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
     std::swap(m_batchFutures, m_reusableBatchFutures);  // Swap back, preserves both capacities
   }
+
+  auto workEnd = std::chrono::steady_clock::now();
+  outThreadingInfo.batchTimeMs = std::chrono::duration<double, std::milli>(workEnd - workStart).count();
 }
 
 void ParticleManager::updateParticlesSingleThreaded(
