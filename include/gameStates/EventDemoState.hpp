@@ -41,7 +41,7 @@ public:
   bool enter() override;
   bool exit() override;
 
-  std::string getName() const override { return "EventDemo"; }
+  std::string getName() const override { return "EventDemoState"; }
 
   // GPU rendering support
   void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,

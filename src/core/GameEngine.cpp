@@ -710,7 +710,7 @@ bool GameEngine::init(std::string_view title) {
   mp_gameStateManager->addState(std::make_unique<AIDemoState>());
   mp_gameStateManager->addState(std::make_unique<AdvancedAIDemoState>());
   mp_gameStateManager->addState(std::make_unique<EventDemoState>());
-  mp_gameStateManager->addState(std::make_unique<UIExampleState>());
+  mp_gameStateManager->addState(std::make_unique<UIDemoState>());
   mp_gameStateManager->addState(std::make_unique<OverlayDemoState>());
 
   // Wait for all initialization tasks to complete
@@ -999,7 +999,7 @@ void GameEngine::update(float deltaTime) {
   //
   // STATE-MANAGED SYSTEMS (Updated by individual states):
   // - UIManager: Optional, state-specific, only updated when UI is actually used
-  //   See UIExampleState::update() for proper state-managed pattern
+  //   See UIDemoState::update() for proper state-managed pattern
 
   // Mark frame start for WorkerBudget per-frame caching
   HammerEngine::WorkerBudgetManager::Instance().markFrameStart();

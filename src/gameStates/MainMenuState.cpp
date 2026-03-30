@@ -76,11 +76,11 @@ bool MainMenuState::enter() {
   });
 
   ui.setOnClick("mainmenu_event_demo_btn", [this]() {
-    mp_stateManager->changeState("EventDemo");
+    mp_stateManager->changeState("EventDemoState");
   });
 
   ui.setOnClick("mainmenu_ui_example_btn", [this]() {
-    mp_stateManager->changeState("UIExampleState");
+    mp_stateManager->changeState("UIDemoState");
   });
 
   ui.setOnClick("mainmenu_overlay_demo_btn", [this]() {
@@ -132,11 +132,11 @@ void MainMenuState::handleInput() {
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_E)) {
-      mp_stateManager->changeState("EventDemo");
+      mp_stateManager->changeState("EventDemoState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_U)) {
-      mp_stateManager->changeState("UIExampleState");
+      mp_stateManager->changeState("UIDemoState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_O)) {

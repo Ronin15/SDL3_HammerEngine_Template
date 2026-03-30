@@ -15,12 +15,12 @@
 #include <array>
 #include <format>
 
-// UIExampleState Implementation
-UIExampleState::UIExampleState() {
+// UIDemoState Implementation
+UIDemoState::UIDemoState() {
     // Pure UIManager approach - no UIScreen
 }
 
-bool UIExampleState::enter() {
+bool UIDemoState::enter() {
     GAMESTATE_INFO("Entering UI Example State");
 
     auto& ui = UIManager::Instance();
@@ -148,7 +148,7 @@ bool UIExampleState::enter() {
     return true;
 }
 
-void UIExampleState::update(float deltaTime) {
+void UIDemoState::update(float deltaTime) {
     // Store deltaTime for ui.update() in render()
     m_lastDeltaTime = deltaTime;
 
@@ -165,7 +165,7 @@ void UIExampleState::update(float deltaTime) {
     }
 }
 
-bool UIExampleState::exit() {
+bool UIDemoState::exit() {
     GAMESTATE_INFO("Exiting UI Example State");
 
     // Clean up UI components using simplified method
@@ -174,29 +174,29 @@ bool UIExampleState::exit() {
     return true;
 }
 
-void UIExampleState::handleSliderChange(float value) {
+void UIDemoState::handleSliderChange(float value) {
     m_sliderValue = value;
     updateSliderLabel(value);
     GAMESTATE_DEBUG(std::format("Slider value changed: {}", value));
 }
 
-void UIExampleState::handleCheckboxToggle() {
+void UIDemoState::handleCheckboxToggle() {
     m_checkboxValue = !m_checkboxValue;
     GAMESTATE_DEBUG(std::format("Checkbox toggled: {}", m_checkboxValue ? "checked" : "unchecked"));
 }
 
-void UIExampleState::handleInputChange(const std::string& text) {
+void UIDemoState::handleInputChange(const std::string& text) {
     m_inputText = text;
     updateInputLabel(text);
     GAMESTATE_DEBUG(std::format("Input text changed: {}", text));
 }
 
-void UIExampleState::handleListSelection() {
+void UIDemoState::handleListSelection() {
     m_selectedListItem = UIManager::Instance().getSelectedListItem("uiexample_demo_list");
     GAMESTATE_DEBUG(std::format("List item selected: {}", m_selectedListItem));
 }
 
-void UIExampleState::handleAnimation() {
+void UIDemoState::handleAnimation() {
     // Cache manager reference for better performance
     UIManager &ui = UIManager::Instance();
 
@@ -213,13 +213,13 @@ void UIExampleState::handleAnimation() {
     GAMESTATE_DEBUG("Animation triggered");
 }
 
-void UIExampleState::handleThemeChange() {
+void UIDemoState::handleThemeChange() {
     m_darkTheme = !m_darkTheme;
     applyDarkTheme(m_darkTheme);
     GAMESTATE_DEBUG(std::format("Theme changed to: {}", m_darkTheme ? "dark" : "light"));
 }
 
-void UIExampleState::handleInput() {
+void UIDemoState::handleInput() {
     // Handle B key to go back
     const auto& inputManager = InputManager::Instance();
     if (inputManager.wasKeyPressed(SDL_SCANCODE_B)) {
@@ -229,7 +229,7 @@ void UIExampleState::handleInput() {
 
 
 
-void UIExampleState::updateProgressBar(float deltaTime) {
+void UIDemoState::updateProgressBar(float deltaTime) {
     // Animate progress bar automatically
     if (m_progressIncreasing) {
         m_progressValue += deltaTime * 0.3f; // 30% per second
@@ -251,17 +251,17 @@ void UIExampleState::updateProgressBar(float deltaTime) {
 
 
 
-void UIExampleState::updateSliderLabel(float value) {
+void UIDemoState::updateSliderLabel(float value) {
     UIManager::Instance().setText("uiexample_slider_label",
                                   std::format("Slider: {:.2f}", value));
 }
 
-void UIExampleState::updateInputLabel(const std::string& text) {
+void UIDemoState::updateInputLabel(const std::string& text) {
     UIManager::Instance().setText("uiexample_input_label",
                                   std::format("Input: {}", text.empty() ? "(empty)" : text));
 }
 
-void UIExampleState::applyDarkTheme(bool dark) {
+void UIDemoState::applyDarkTheme(bool dark) {
     // Cache manager reference for better performance
     UIManager &ui = UIManager::Instance();
 
@@ -278,7 +278,7 @@ void UIExampleState::applyDarkTheme(bool dark) {
     // Title styling is handled automatically by UIManager's TITLE component type
 }
 
-void UIExampleState::updateEventLogDemo(float deltaTime) {
+void UIDemoState::updateEventLogDemo(float deltaTime) {
     m_eventLogTimer += deltaTime;
 
     if (m_eventLogTimer >= EVENT_LOG_INTERVAL) {
@@ -300,7 +300,7 @@ void UIExampleState::updateEventLogDemo(float deltaTime) {
     }
 }
 
-void UIExampleState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+void UIDemoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                                         [[maybe_unused]] float interpolationAlpha) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
@@ -308,7 +308,7 @@ void UIExampleState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
     }
 }
 
-void UIExampleState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void UIDemoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
                                   SDL_GPURenderPass* swapchainPass) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {

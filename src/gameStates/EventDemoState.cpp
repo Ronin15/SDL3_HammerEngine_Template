@@ -536,7 +536,7 @@ void EventDemoState::update(float deltaTime) {
     auto *loadingState = dynamic_cast<LoadingState *>(
         mp_stateManager->getState("LoadingState").get());
     if (loadingState) {
-      loadingState->configure("EventDemo", config);
+      loadingState->configure("EventDemoState", config);
       // Set flag before transitioning to preserve m_worldLoaded in exit()
       m_transitioningToLoading = true;
       // Use changeState (called from update) to properly exit and re-enter

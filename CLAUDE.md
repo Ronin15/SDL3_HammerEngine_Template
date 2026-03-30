@@ -35,27 +35,27 @@ export TSAN_OPTIONS="suppressions=$(pwd)/tests/tsan_suppressions.txt"
 
 ## Testing
 
-Uses **Boost.Test** framework with 78+ test executables.
+Uses **Boost.Test** framework with 69 test executables. See `tests/TESTING.md` for comprehensive documentation.
 
 ```bash
-# Run a single test executable
-./bin/debug/<test_executable>
-
-# List available test cases
-./bin/debug/<test_executable> --list_content
-
-# Run specific test by name (use BOOST_AUTO_TEST_CASE name directly)
-./bin/debug/<test_executable> --run_test="TestCase*"
+# Direct test execution (PREFERRED for development - fast feedback)
+./bin/debug/<test_executable>                        # Run all tests in executable
+./bin/debug/<test_executable> --list_content         # List available tests
+./bin/debug/<test_executable> --run_test="TestCase*" # Run specific test
 
 # Examples
 ./bin/debug/entity_data_manager_tests
+./bin/debug/ai_manager_edm_integration_tests
 ./bin/debug/behavior_functionality_tests --run_test="FleeFromAttacker*"
 
 # Run all tests (slow, 7-20 min)
 ./tests/test_scripts/run_all_tests.sh --core-only --errors-only
+./tests/test_scripts/run_controller_tests.sh --verbose
 ```
 
 Prefer direct test executables over wrapper scripts for speed.
+
+**Boost.Test Notes**: Test names use the BOOST_AUTO_TEST_CASE name directly (e.g., `ThreadingModeComparison`, not `TestThreadingModeComparison`). Suite prefix is optional. Use `--list_content` to verify exact names.
 
 ## Architecture
 
@@ -69,25 +69,38 @@ Core → Managers → GameStates → Entities/Controllers
 ### Source Layout
 - `src/` and `include/` mirror each other: `{core, managers, controllers, gameStates, entities, events, ai, collisions, utils, world, gpu}`
 - `tests/` — Boost.Test suites, scripts in `tests/test_scripts/`
-- `res/` — images, shaders, fonts, data, sprites
+- `res/` — img, shaders, fonts, data, sprites
 - `docs/` — comprehensive subsystem documentation
 
 ### Key Systems
 
-- **EntityDataManager (EDM)**: Single source of truth. Structure-of-Arrays storage for all entity state. Pure data storage — no decision logic.
-- **AIManager**: Batch-processes behaviors across worker threads. Behaviors (`BehaviorExecutors.hpp/.cpp`) operate on pre-fetched context from EDM.
-- **EventManager**: Central event hub with deferred main-thread draining. Separate combat/non-combat queues.
-- **ThreadSystem**: Hardware-aware worker pool (`hardware_concurrency - 1`). All threading goes through this, never raw `std::thread`.
-- **WorkerBudget**: Adaptive threading policy with threshold learning. Managers use `shouldUseThreading()` → batch → `reportExecution()` pattern.
-- **ControllerRegistry**: State-scoped controller lifecycle. Controllers added in `enter()`, cleared in `exit()`.
+**Core**: GameEngine (fixed timestep) | ThreadSystem (WorkerBudget) | Logger (thread-safe) | TimestepManager
 
-### Rendering (SDL3 GPU only)
+**Managers**: EntityDataManager (central data store, SoA) | AIManager (10K+ entities, SIMD) | EventManager (16 event types) | CollisionManager (HierarchicalSpatialHash) | ParticleManager (SoA, pooled) | PathfinderManager | WorldManager (chunk-based procedural) | WorldResourceManager (spatial registry) | BackgroundSimulationManager (tiered) | UIManager (theming, DPI) | GameTimeManager | InputManager | TextureManager | FontManager | SoundManager
+
+**Entities**: EntityKind (10 types) | SimulationTier (Active/Background/Hibernated) | EntityHandle (generation-safe)
+
+**AI**: AIBehavior base → 9 behaviors (Idle, Wander, Patrol, Chase, Flee, Follow, Guard, Attack, Custom) | BehaviorContext (lock-free EDM access)
+
+**Controllers**: State-scoped helpers via ControllerRegistry. Dir: `controllers/{combat,social,world,render}/`
+
+**Utils**: Camera (world↔screen) | Vector2D | SIMDMath (SSE2/NEON) | JsonReader | BinarySerializer | UniqueID | FrameProfiler (F3 debug overlay)
+
+**GPU Rendering**: GPUDevice (singleton) | GPURenderer (frame orchestration) | GPUShaderManager (SPIR-V/Metal) | SpriteBatch (50K sprites) | GPUVertexPool (triple-buffered). Shaders: `res/shaders/`
+
+### Rendering
 - Flow: scene pass → composite to swapchain → UI pass. Platform-native shaders (Metal/macOS, DXIL/Windows, SPIR-V/Linux).
 - Game states implement `renderGPUScene()` and `renderGPUUI()`. The engine ends the frame outside the state.
 - Scene texture = viewport dimensions (1x). Zoom handled in composite shader, not by scaling tile positions.
 - Composite shader uses LINEAR sampler for sub-pixel scrolling: `uv = fragTexCoord / zoom + subPixelOffset`.
 
-**Rule**: Exactly one present per frame. `GameEngine::render()` handles scene+UI, `GameEngine::present()` does the present.
+**Rule**: Exactly one present per frame. `GameEngine::render()` handles scene+UI, `GameEngine::present()` does the present. NEVER call SDL_RenderClear/Present in GameStates.
+
+**DayNightController**: Requires `update(dt)` each frame for lighting interpolation (30s transitions). Updates automatically via `GPURenderer::setDayNightParams()`.
+
+**Loading**: Use `LoadingState` with async ThreadSystem ops, not blocking manual rendering.
+
+**Deferred transitions**: Set flag in `enter()`, transition in `update()` to avoid timing issues.
 
 ### AI and Controller Boundaries
 - Decision logic belongs in `Behaviors::` namespace (`BehaviorExecutors.hpp/.cpp`), not in EDM.
@@ -101,26 +114,138 @@ Core → Managers → GameStates → Entities/Controllers
 Cleanup order for AI-heavy states when all managers are initialized:
 AIManager → BackgroundSimulationManager → WorldResourceManager → EventManager → CollisionManager → PathfinderManager → EntityDataManager → WorkerBudgetManager → ParticleManager
 
+Call `prepareForStateTransition()` on managers before cleanup. Pauses work, waits for pending batches, drains message queues.
+
 `ControllerRegistry::clear()` (not just `unsubscribeAll()`) must be called in `GamePlayState::exit()`.
 
-## Coding Conventions
+## Standards
 
-- C++20, 4-space indent, Allman braces
-- **Naming**: UpperCamelCase types, lowerCamelCase functions/variables, `m_`/`mp_` members, `ALL_CAPS` constants
-- `.hpp` headers, non-trivial logic in `.cpp`
-- RAII and smart pointers; no raw `new/delete`
-- `std::format()` for logs; never concatenate with `+`
-- Use `const T&` for read-only non-trivial inputs, value for primitives
-- Avoid per-frame allocations; reuse buffers with `clear()`, `reserve()` when size is known
-- Copyright: `/* Copyright (c) 2025 Hammer Forged Games ... MIT License */`
+**C++20** | 4-space indent, Allman braces | RAII + smart pointers | ThreadSystem (not raw threads) | STL algorithms > loops
+
+**Naming**: UpperCamelCase (classes) | lowerCamelCase (functions/vars) | `m_`/`mp_` prefixes | ALL_CAPS (constants)
+
+**Headers**: `.hpp` C++, `.h` C | Forward declarations | Non-trivial logic in .cpp
+
+**Params**: `const T&` for read-only, `T&` for mutation, value only for primitives. `const std::string&` for map lookups (never string_view→string conversion).
+
+**Logging**: Use `std::format()`, never `+` concatenation. Use `AI_INFO_IF(cond, msg)` macros when condition only gates logging.
+
+**Copyright**: `/* Copyright (c) 2025 Hammer Forged Games ... MIT License */`
+
+### Threading
+
+Sequential execution with parallel batching. Main thread handles SDL (events, render). Worker threads process batches.
+
+**ThreadSystem**: Pool of `hardware_concurrency - 1` workers. 5 priority levels (Critical→Idle). Use `enqueueTaskWithResult()` for futures, `batchEnqueueTasks()` for bulk submission.
+
+**WorkerBudget**: Adaptive batch sizing with unified threshold learning. `shouldUseThreading()` returns threading decision. `getBatchStrategy()` calculates batch count/size. `reportExecution()` for unified throughput tracking.
+
+**Manager Pattern** (AIManager, ParticleManager):
+```cpp
+auto decision = budgetMgr.shouldUseThreading(SystemType::AI, count);
+if (decision.shouldThread) {
+    for (size_t i = 0; i < decision.batchCount; ++i) {
+        m_futures.push_back(threadSystem.enqueueTaskWithResult([...] { processBatch(...); }));
+    }
+    for (auto& f : m_futures) { f.get(); }  // Wait before frame ends
+}
+budgetMgr.reportExecution(SystemType::AI, count, decision.shouldThread, decision.batchCount, elapsedMs);
+```
+
+**Thread-Local**: Use for RNG (`thread_local std::mt19937`), reusable buffers, and spatial caches. Eliminates contention without locks. When collecting from thread_local vectors, use ref-based API with `clear()` to preserve capacity — never `swap()` or return-by-value which destroys capacity and causes per-frame heap allocations per worker thread.
+
+**Synchronization**: `shared_mutex` for reader-writer (entities, behaviors) | `mutex` for exclusive | `atomic<bool>` for flags | `condition_variable` for worker wake.
+
+**Rules**: NEVER static vars in threaded code | Main thread only for SDL | Futures must complete before dependent ops | Cache-line align hot atomics (`alignas(64)`)
+
+## Memory
+
+Avoid per-frame allocations. Reuse buffers:
+```cpp
+class Manager {
+    std::vector<Data> m_buffer;  // Member, reused
+    void update() { m_buffer.clear(); /* use */ }  // clear() keeps capacity
+};
+```
+Always `reserve()` when size known.
+
+## EDM (EntityDataManager) Patterns
+
+**EDM is pure data storage** — it stores, retrieves, and aggregates entity state. AI decision logic (personality-scaled emotions, distance-based intensity, threat evaluation) belongs in the AI layer (`Behaviors::` namespace in `BehaviorExecutors.hpp/.cpp`).
+
+Behaviors access EDM via `BehaviorContext`: `ctx.behaviorData` (state), `ctx.pathData` (navigation), `ctx.memoryData` (combat/emotions). All pre-fetched in `processBatch()`.
+
+**Controller → AI boundary**: Controllers must NEVER directly mutate AI behavior state in EDM. Use `Behaviors::queueBehaviorMessage()` from main thread or `Behaviors::deferBehaviorMessage()` from worker threads.
+
+**CRITICAL:** Data surviving between frames (paths, timers) MUST use EDM, never local variables — temporaries are destroyed each frame causing infinite recomputation.
+
+## SIMD
+
+Cross-platform: `include/utils/SIMDMath.hpp` (SSE2/NEON/AVX2). Process 4 elements/iteration + scalar tail. Always provide scalar fallback.
+
+## UI Positioning
+
+**Always** call `setComponentPositioning()` after creating components for resize/fullscreen support.
+
+Helpers: `createTitleAtTop()`, `createButtonAtBottom()`, `createCenteredButton()`, `createCenteredDialog()`
+
+Manual: `ui.createButton("id", rect, "text"); ui.setComponentPositioning("id", {UIPositionMode::TOP_ALIGNED, ...});`
+
+Modes: ABSOLUTE, TOP_ALIGNED, BOTTOM_ALIGNED, LEFT/RIGHT_ALIGNED, TOP_RIGHT, BOTTOM_RIGHT, BOTTOM_CENTERED, CENTERED_H, CENTERED_V, CENTERED_BOTH
+
+## GameState Architecture
+
+**State Transitions**: Use `mp_stateManager->changeState()`, never `GameEngine::Instance()`. Base class provides `mp_stateManager`.
+
+**Manager/Controller Access**: Local references, not cached member pointers. Cache at function top when used **multiple times**, otherwise call directly.
+```cpp
+void SomeState::update(float dt) {
+    const auto& inputMgr = InputManager::Instance();  // Manager (singleton)
+    auto& combatCtrl = *m_controllers.get<CombatController>();  // Controller (registry)
+    // Use with dot notation throughout function
+}
+// Single use - no caching needed
+m_controllers.get<WeatherController>()->getCurrentWeather();
+```
+`const auto&` for read-only, `auto&` for mutable. Controllers: `m_controllers.add<T>()` in enter(), no cached `mp_*Ctrl` pointers.
+
+**Lazy String Caching**: Cache enum→string conversions, recompute only on change: `if (m_phase != m_lastPhase) { m_str = getPhaseString(); m_lastPhase = m_phase; }`
+
+**Layout Caching**: Compute static positions (LogoState) in `enter()`, use cached values in `render()`.
+
+## Debug Tools
+
+**FrameProfiler** (F3): Three-tier timing (Frame→Manager→Render phases). RAII timers: `ScopedPhaseTimer`, `ScopedManagerTimer`, `ScopedRenderTimer`. Hitch detection (>20ms). No-op in Release builds.
 
 ## Repo-Specific Traps
 
 - Demo states are for testing, not production. `GamePlayState` is the pristine official gameplay state.
-- File/class names don't always match runtime state names: `EventDemoState` → "EventDemo", `UIDemoState.hpp` → `UIExampleState`
-- EDM render data stores `shared_ptr<SDL_Texture>` handles — call `.get()` only at the final SDL draw site, never copy `shared_ptr` in visible-entity loops
 - `WorldResourceManager` is a spatial index over EDM, not a quantity store
 - Do not wire `subscribeWorldEvents()` in init() — `WorldManager` fires deferred events that arrive after new world is populated
+
+## Workflow
+
+Always use established systems and patterns (UIManager helpers, state architecture, existing constants). NEVER create ad-hoc or one-off implementations when a pattern already exists — read the existing code first.
+
+Prefer minimal, architecturally performant, and efficient solutions. Do not add unnecessary abstractions, statistical analysis, or safety checks beyond what was asked.
+
+When the user names a specific file (e.g., "AIDemoState"), work on exactly that file. Do not substitute similar-sounding files.
+
+Search existing patterns before implementing.
+
+**Demo States**: States with "Demo" suffix (EventDemoState, UIDemoState, AIDemoState, AdvancedAIDemoState, OverlayDemoState) are for testing/showcasing features.
+
+**GamePlayState**: The pristine official gameplay state. Keep clean and production-ready.
+
+**Reference States**: SettingsMenuState, MainMenuState for menu patterns.
+
+## Bug Fixing
+
+Fix root causes in production code. NEVER bypass failing tests by modifying test expectations unless explicitly told to.
+
+When debugging rendering issues (jitter, shimmer, flickering), trace the full render pipeline before proposing any fix: camera update → interpolation → floor/round operations → sub-pixel offset → draw. No speculative fixes.
+
+When removing dead code or unused parameters, delete them entirely. Do not comment them out.
 
 ## Working Principles
 
