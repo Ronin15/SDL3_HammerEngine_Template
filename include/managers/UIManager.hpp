@@ -135,7 +135,6 @@ struct UIRect {
     return px >= x && px < x + width && py >= y && py < y + height;
   }
 
-  SDL_Rect toSDLRect() const { return {x, y, width, height}; }
 };
 
 // UI Style structure

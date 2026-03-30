@@ -128,7 +128,7 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
     }
 
     TTF_SetFontHinting(font.get(), TTF_HINTING_NORMAL);
-    TTF_SetFontKerning(font.get(), 1);
+    TTF_SetFontKerning(font.get(), true);
     TTF_SetFontStyle(font.get(), TTF_STYLE_NORMAL);
 
     m_fontMap[fontID] = std::move(font);
