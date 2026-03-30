@@ -1573,17 +1573,8 @@ void CollisionManager::broadphase() {
     return;
   }
 
-  // Query WorkerBudget for optimal configuration
+  // Query WorkerBudget for threading decision first (avoids wasted batch computation)
   auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-  size_t optimalWorkers = budgetMgr.getOptimalWorkers(
-      HammerEngine::SystemType::Collision, movableIndices.size());
-
-  auto [batchCount, batchSize] =
-      budgetMgr.getBatchStrategy(HammerEngine::SystemType::Collision,
-                                 movableIndices.size(), optimalWorkers);
-
-  // Use adaptive threading threshold from WorkerBudget (learns optimal cutoff)
-  // WorkerBudget is the AUTHORITATIVE source - no manager overrides
   auto decision = budgetMgr.shouldUseThreading(
       HammerEngine::SystemType::Collision, movableIndices.size());
   bool useThreading = decision.shouldThread;
@@ -1593,6 +1584,13 @@ void CollisionManager::broadphase() {
     m_lastBroadphaseBatchCount = 1;
     broadphaseSingleThreaded();
   } else {
+    // Only compute batch strategy when threading is actually used
+    size_t optimalWorkers = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::Collision, movableIndices.size());
+    auto [batchCount, batchSize] =
+        budgetMgr.getBatchStrategy(HammerEngine::SystemType::Collision,
+                                   movableIndices.size(), optimalWorkers);
+
     m_lastBroadphaseWasThreaded = true;
     m_lastBroadphaseBatchCount = batchCount;
     broadphaseMultiThreaded(batchCount, batchSize);

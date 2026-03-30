@@ -311,7 +311,7 @@ void AIManager::update(float deltaTime) {
         : SIZE_MAX;
 
     // Start timing ONLY the batch work (preprocessing is fixed main-thread overhead)
-    auto startTime = std::chrono::high_resolution_clock::now();
+    auto startTime = std::chrono::steady_clock::now();
 
     // Determine threading strategy using adaptive threshold from WorkerBudget
     // WorkerBudget is the AUTHORITATIVE source for production decisions
@@ -340,7 +340,7 @@ void AIManager::update(float deltaTime) {
 
     // endTime is set in each code path (single-batch, multi-threaded, single-threaded)
     // right after batch work completes but before enqueueBatch — so only batch work is timed.
-    std::chrono::high_resolution_clock::time_point endTime;
+    std::chrono::steady_clock::time_point endTime;
 
     if (useThreading) {
       auto &threadSystem = HammerEngine::ThreadSystem::Instance();
@@ -369,7 +369,7 @@ void AIManager::update(float deltaTime) {
                        worldWidth, worldHeight, cachedPlayerHandle,
                        cachedPlayerPosition, cachedPlayerVelocity,
                        cachedPlayerValid, cachedGameTime);
-          endTime = std::chrono::high_resolution_clock::now();
+          endTime = std::chrono::steady_clock::now();
 
           // Submit deferred events (single-batch path — outside timing)
           if (!damageEvents.empty()) {
@@ -428,7 +428,7 @@ void AIManager::update(float deltaTime) {
               }
             }
           }
-          endTime = std::chrono::high_resolution_clock::now();
+          endTime = std::chrono::steady_clock::now();
 
           // Submit all accumulated deferred events to EventManager (outside timing)
           if (!m_allDamageEvents.empty()) {
@@ -442,7 +442,7 @@ void AIManager::update(float deltaTime) {
       auto damageEvents = processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth,
                    worldHeight, cachedPlayerHandle, cachedPlayerPosition,
                    cachedPlayerVelocity, cachedPlayerValid, cachedGameTime);
-      endTime = std::chrono::high_resolution_clock::now();
+      endTime = std::chrono::steady_clock::now();
 
       // Submit deferred events (single-threaded path — outside timing)
       if (!damageEvents.empty()) {

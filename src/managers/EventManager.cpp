@@ -963,7 +963,6 @@ void EventManager::drainDispatchQueueWithBudget() {
   const bool allCombatEvents =
       (eventCount > 0 && m_localNonCombatBuffer.empty());
 
-  auto dispatchStartTime = std::chrono::high_resolution_clock::now();
   const float cachedGameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
   auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
   const size_t combatEventCount = m_localCombatDispatchBuffer.size();
@@ -984,6 +983,9 @@ void EventManager::drainDispatchQueueWithBudget() {
   m_preparedCombatBuffer.resize(combatEventCount);
   size_t actualBatchCount = 1;
   bool actualWasThreaded = false;
+
+  // Time only the combat prep work that WorkerBudget controls (not full dispatch loop)
+  auto combatPrepStart = std::chrono::steady_clock::now();
 
   if (combatEventCount > 0) {
     if (useThreading) {
@@ -1035,6 +1037,8 @@ void EventManager::drainDispatchQueueWithBudget() {
     }
   }
 
+  auto combatPrepEnd = std::chrono::steady_clock::now();
+
   {
     std::shared_lock<std::shared_mutex> handlerLock(m_handlersMutex);
     if (allCombatEvents) {
@@ -1082,22 +1086,23 @@ void EventManager::drainDispatchQueueWithBudget() {
     }
   }
 
-  auto dispatchEndTime = std::chrono::high_resolution_clock::now();
-  double measuredRangeMs = std::chrono::duration<double, std::milli>(
-      dispatchEndTime - dispatchStartTime).count();
+  double combatPrepMs = std::chrono::duration<double, std::milli>(
+      combatPrepEnd - combatPrepStart).count();
 
-  if (eventCount > 0 && measuredRangeMs > 0.0) {
-    budgetMgr.reportExecution(HammerEngine::SystemType::Event, eventCount,
+  if (combatEventCount > 0 && combatPrepMs > 0.0) {
+    budgetMgr.reportExecution(HammerEngine::SystemType::Event, combatEventCount,
                               actualWasThreaded, actualBatchCount,
-                              measuredRangeMs);
+                              combatPrepMs);
   }
 
 #ifndef NDEBUG
   // Periodic debug logging (~35 seconds at 60fps)
   static thread_local uint64_t logFrameCounter = 0;
   if (++logFrameCounter % 2100 == 0 && eventCount > 0) {
-    EVENT_DEBUG(std::format("Dispatch: {} deferred events [1 batch, {:.2f}ms]",
-                            eventCount, measuredRangeMs));
+    EVENT_DEBUG(std::format("Dispatch: {} events ({} combat) [{}, {:.2f}ms prep]",
+                            eventCount, combatEventCount,
+                            actualWasThreaded ? std::format("{} batches", actualBatchCount) : "single",
+                            combatPrepMs));
   }
 #endif
 

@@ -794,7 +794,7 @@ void ParticleManager::update(float deltaTime) {
   // ParticleManager batches don't update collision data, so frame overlap is safe
   // This allows better frame pipelining on low-core systems
 
-  auto startTime = std::chrono::high_resolution_clock::now();
+  auto startTime = std::chrono::steady_clock::now();
 
   try {
     // Phase 1: Process pending particle creation requests (lock-free)
@@ -831,7 +831,7 @@ void ParticleManager::update(float deltaTime) {
 
     // Phase 4: Update particle physics with optimal threading strategy
     // Time only the physics batch for WorkerBudget (preprocessing is fixed overhead)
-    auto batchStartTime = std::chrono::high_resolution_clock::now();
+    auto batchStartTime = std::chrono::steady_clock::now();
 
     // WorkerBudget is the AUTHORITATIVE source - no manager overrides
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
@@ -855,7 +855,7 @@ void ParticleManager::update(float deltaTime) {
       updateParticlesSingleThreaded(deltaTime, traversedCount);
     }
 
-    auto batchEndTime = std::chrono::high_resolution_clock::now();
+    auto batchEndTime = std::chrono::steady_clock::now();
 
   // Phase 5: Swap buffers for next frame (lock-free)
   m_storage.swapBuffers();
@@ -888,7 +888,7 @@ void ParticleManager::update(float deltaTime) {
   m_storage.promoteSafeIndices();
 
     // Phase 6: Performance tracking
-    auto endTime = std::chrono::high_resolution_clock::now();
+    auto endTime = std::chrono::steady_clock::now();
     double timeMs = std::chrono::duration_cast<std::chrono::microseconds>(
                         endTime - startTime)
                         .count() /
@@ -2640,18 +2640,8 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime,
    * @param traversedParticleCount Current traversed particle span
    * @param outThreadingInfo Output struct for threading info (zero overhead in release)
    */
-  // WorkerBudget is the AUTHORITATIVE source - no manager overrides
-  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-  auto decision = budgetMgr.shouldUseThreading(
-      HammerEngine::SystemType::Particle, traversedParticleCount);
-  if (!decision.shouldThread) {
-    // Fall back to regular single-threaded update
-    // outThreadingInfo stays at defaults (wasThreaded=false, batchCount=1)
-    updateParticlesSingleThreaded(deltaTime, traversedParticleCount);
-    return;
-  }
-
-  // Use WorkerBudget-aware threaded update
+  // Trust the caller's threading decision (already made in update())
+  // — do NOT re-query shouldUseThreading() as hysteresis state may have changed
   updateParticlesThreaded(deltaTime, traversedParticleCount, outThreadingInfo);
 }
 

@@ -148,27 +148,28 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     // Use centralized WorkerBudgetManager for smart worker allocation (follows AIManager pattern)
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-    // Get optimal workers (WorkerBudget determines everything dynamically)
-    size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::BackgroundSim, entityCount);
-
-    // Get adaptive batch strategy
-    auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::BackgroundSim, entityCount, optimalWorkerCount);
-
-    // Decide threading strategy using adaptive threshold from WorkerBudget
+    // Decide threading strategy first using adaptive threshold from WorkerBudget
     // WorkerBudget is the AUTHORITATIVE source - no manager overrides
     auto decision = budgetMgr.shouldUseThreading(
         HammerEngine::SystemType::BackgroundSim, entityCount);
     bool useThreading = decision.shouldThread;
 
+    size_t actualBatchCount = 1;
+
     // Time only the batch processing for WorkerBudget (preprocessing is fixed overhead)
     auto batchStart = std::chrono::steady_clock::now();
 
     if (useThreading) {
+        // Only compute batch strategy when threading is actually used
+        size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+            HammerEngine::SystemType::BackgroundSim, entityCount);
+        auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+            HammerEngine::SystemType::BackgroundSim, entityCount, optimalWorkerCount);
+
         processMultiThreaded(fixedDeltaTime, m_backgroundIndices, batchCount, batchSize);
         m_perf.lastWasThreaded = true;
         m_perf.lastBatchCount = batchCount;
+        actualBatchCount = batchCount;
     } else {
         processSingleThreaded(fixedDeltaTime, m_backgroundIndices);
         m_perf.lastWasThreaded = false;
@@ -186,7 +187,7 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     // Report ONLY batch time for adaptive tuning (not index retrieval/threading decision)
     budgetMgr.reportExecution(HammerEngine::SystemType::BackgroundSim,
                               entityCount, useThreading,
-                              batchCount, batchMs);
+                              actualBatchCount, batchMs);
 
 #ifndef NDEBUG
     // Rolling log every 60 seconds (600 updates at 10Hz)
@@ -194,7 +195,7 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
         BGSIM_DEBUG(std::format(
             "Entities: {}, Avg: {:.2f}ms [{}]",
             entityCount, m_perf.avgUpdateMs,
-            useThreading ? std::format("{} batches", batchCount) : "single"));
+            useThreading ? std::format("{} batches", actualBatchCount) : "single"));
     }
 #endif
 }
