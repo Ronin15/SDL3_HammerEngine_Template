@@ -383,12 +383,7 @@ void toggleSparksEffect();
 ### Rendering Pipeline
 
 ```cpp
-// Comprehensive rendering (all particles)
-void render(SDL_Renderer* renderer, float cameraX = 0.0f, float cameraY = 0.0f);
-
-// Layered rendering for proper depth
-void renderBackground(SDL_Renderer* renderer, float cameraX = 0.0f, float cameraY = 0.0f);
-void renderForeground(SDL_Renderer* renderer, float cameraX = 0.0f, float cameraY = 0.0f);
+void renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* scenePass);
 ```
 
 ### Global Controls
@@ -452,20 +447,10 @@ private:
         // Other system updates...
     }
     
-    void render(SDL_Renderer* renderer) {
-        // Render background particles (rain, snow, fire)
-        ParticleManager::Instance().renderBackground(renderer, 
-                                                   camera.getX(), camera.getY());
-        
-        // Render game objects (player, NPCs, environment)
-        renderGameObjects(renderer);
-        
-        // Render foreground particles (fog, clouds)
-        ParticleManager::Instance().renderForeground(renderer, 
-                                                    camera.getX(), camera.getY());
-        
-        // Render UI
-        renderUI(renderer);
+    void renderGPUScene(SDL_GPURenderPass* scenePass) {
+        // Render all particles during the GPU scene pass
+        auto& gpuRenderer = GPURenderer::Instance();
+        ParticleManager::Instance().renderGPU(gpuRenderer, scenePass);
     }
 };
 ```

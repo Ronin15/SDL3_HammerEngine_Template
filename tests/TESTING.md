@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 78 test executables covering AI systems, AI behaviors, behavior state transitions, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTimeManager simulation, controller systems, entity state management, entity data management, NPC memory system, background simulation, EDM integration tests, GPU rendering subsystem (when USE_SDL3_GPU=ON), GPU frame timing benchmarks, and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 78 test executables covering AI systems, AI behaviors, behavior state transitions, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTimeManager simulation, controller systems, entity state management, entity data management, NPC memory system, background simulation, EDM integration tests, GPU rendering subsystem, GPU frame timing benchmarks, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -94,7 +94,7 @@ The Hammer Game Engine has the following test suites:
     - Location History Tests: Location tracking, circular buffer, history limits
     - Cleanup Tests: Memory clearing, overflow cleanup, state transition handling
 
-14. **GPU System Tests** (conditional on USE_SDL3_GPU)
+14. **GPU System Tests**
     - GPU Types Tests: Vertex struct layouts (SpriteVertex, ColorVertex), UBO alignment validation
     - GPU Pipeline Config Tests: Pipeline configuration factory methods, blend modes
     - GPU Device Tests: Device lifecycle, shader format queries, swapchain format
@@ -107,7 +107,7 @@ The Hammer Game Engine has the following test suites:
 **Test Execution Categories:**
 - **Core Tests**: Fast functional validation (~4-8 minutes total)
 - **Benchmarks**: Performance and scalability testing (~8-20 minutes total)
-- **GPU Tests**: SDL3 GPU rendering validation (when USE_SDL3_GPU=ON)
+- **GPU Tests**: SDL3 GPU rendering validation
 - **Total Coverage**: 78 test executables with comprehensive automation scripts
 
 ## Running Tests
@@ -1790,7 +1790,6 @@ Located in `tests/gpu/`, these tests validate the SDL3 GPU rendering subsystem. 
 Run it directly:
 
 ```bash
-# Build benchmark (USE_SDL3_GPU must be enabled)
 ninja -C build gpu_frame_timing_benchmark
 
 # Typical run
@@ -1850,10 +1849,10 @@ ctest -L "GPU;Unit" --output-on-failure
 
 ### Build Requirements
 
-GPU tests are only built when `USE_SDL3_GPU=ON`:
+GPU tests are built as part of the standard debug build:
 
 ```bash
-cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DUSE_SDL3_GPU=ON && ninja -C build
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 ```
 
 ### Test Fixture Pattern

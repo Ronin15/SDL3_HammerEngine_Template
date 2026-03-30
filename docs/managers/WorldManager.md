@@ -55,9 +55,8 @@ Some resources are still distributed by biome or elevation when no dedicated til
 
 ## Rendering Notes
 
-- SDL_Renderer path still uses chunk caching through `TileRenderer`.
-- GPU path records tile sprites directly and skips chunk textures for scene submission.
-- season changes update cached texture IDs and invalidate relevant chunk work.
+- GPU path records tile sprites directly; chunk textures are not used for scene submission.
+- Season changes update cached texture IDs and invalidate relevant chunk work.
 
 ## Event Notes
 

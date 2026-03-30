@@ -40,7 +40,6 @@ This hub covers the engine architecture and the major subsystem docs. The curren
 - [UIManager Guide](ui/UIManager_Guide.md)
 - [Camera](utils/Camera.md)
 - [FrameProfiler](utils/FrameProfiler.md)
-- [WorldRenderPipeline](utils/WorldRenderPipeline.md)
 
 ## Entities and GameStates
 
@@ -57,6 +56,7 @@ This hub covers the engine architecture and the major subsystem docs. The curren
 
 ## Notes
 
-- WorkerBudget docs now describe threshold learning and hysteresis rather than the old throughput-comparison model.
-- `TimestepManager` documentation now lives under `docs/core/` and covers display-refresh-aware cadence snapping.
+- WorkerBudget docs describe threshold learning and hysteresis. A 10-sample EMA warmup prevents cold-start spikes from triggering premature threading decisions.
+- InputManager `getAxisX`/`getAxisY` return normalized `float` in [-1.0, 1.0]. Gamepad hotplugging is handled automatically.
+- `TimestepManager` documentation lives under `docs/core/` and covers display-refresh-aware cadence snapping.
 - Performance reports under `docs/performance_reports/` should be treated as dated measurements unless their metadata explicitly matches the current branch and commit.

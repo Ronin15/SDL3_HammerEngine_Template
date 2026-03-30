@@ -6,228 +6,110 @@
 
 ## Overview
 
-The FontManager provides a centralized system for loading, managing, and rendering text in the Hammer Game Engine. It integrates seamlessly with the DPI-aware font system and UI components to provide crisp, professional text rendering across all display types.
+`FontManager` loads and manages TTF/OTF fonts and provides GPU-accelerated text rendering via SDL3_ttf's atlas-backed draw sequences. Text rendering goes through the `prepareGPUText` / `getGPUTextDrawData` pipeline.
 
 ## Key Features
 
-- **TTF/OTF Font Support**: Load TrueType and OpenType fonts with high quality
-- **Cross-Platform Font Sizing**: Automatic font sizing based on screen resolution and platform
-- **Native Resolution Rendering**: Crisp text rendering without scaling blur
-- **Dynamic Auto-Sizing**: Fonts automatically adapt to current display characteristics
-- **Text Measurement**: Precise text dimension calculation for auto-sizing systems
-- **High-Quality Rendering**: TTF hinting, kerning, and pixel-perfect scaling
-- **Directory Loading**: Batch load fonts from directories
-- **Thread Safety**: Safe to use across multiple threads
-- **Memory Management**: Automatic font cleanup with RAII
+- **TTF/OTF Font Support**: TrueType and OpenType fonts with hinting and kerning
+- **Cross-Platform Font Sizing**: `loadFontsForDisplay()` auto-sizes based on window dimensions and DPI scale
+- **Atlas-Backed GPU Rendering**: Text is prepared into `TTF_Text` objects and rendered via `TTF_GPUAtlasDrawSequence` during the swapchain pass
+- **Text Measurement**: `measureText`, `measureMultilineText`, `wrapTextToLines` for UI layout
+- **Thread Safety**: Font load operations are mutex-guarded; GPU text cache is main-thread-only
 
-## Quick Start
-
-### Initialization
+## Font Loading
 
 ```cpp
-// Initialize the font system
-if (!FontManager::Instance().init()) {
-    std::cerr << "Failed to initialize FontManager" << std::endl;
-    return false;
+// Init must be called before loading fonts
+FontManager::Instance().init();
+
+// Load fonts sized for the current window (preferred)
+fontMgr.loadFontsForDisplay("res/fonts", windowWidth, windowHeight, dpiScale);
+// Creates IDs: "fonts", "fonts_UI", "fonts_title", "fonts_tooltip"
+
+// Load a single font manually
+fontMgr.loadFont("res/fonts/myfont.ttf", "hud", 24);
+
+// Reload after DPI or window size change
+fontMgr.reloadFontsForDisplay("res/fonts", newWidth, newHeight, newDpi);
+```
+
+## GPU Text Rendering
+
+Text rendering is a two-step process:
+
+1. **Prepare** — call once per unique text string/position to create or update the `TTF_Text` object.
+2. **Draw** — retrieve the atlas draw sequence during the swapchain render pass and submit it.
+
+```cpp
+// 1. Prepare (during update or on content change)
+int textW = 0, textH = 0;
+fontMgr.prepareGPUText("score_label", "Score: 1234", "fonts_UI", &textW, &textH);
+fontMgr.setGPUTextPosition("score_label", x, y);
+
+// 2. Draw (during swapchain render pass)
+TTF_GPUAtlasDrawSequence* seq = fontMgr.getGPUTextDrawData("score_label");
+if (seq) {
+    TTF_DrawGPUText(textEngine, renderPass, seq);  // SDL3_ttf call
 }
+
+// Clear cache on state transitions
+fontMgr.clearGPUTextCache();
 ```
 
-### Cross-Platform Font Loading
-
-```cpp
-// Load fonts with sizes calculated based on display properties
-FontManager& fontMgr = FontManager::Instance();
-fontMgr.loadFontsForDisplay("res/fonts", windowWidth, windowHeight);
-// Font IDs created:
-// - fonts: Base font for general content
-// - fonts_UI: UI font for interface elements
-// - fonts_title: Title font for headers
-// - fonts_tooltip: Smaller font for tooltips
-```
-
-### Manual Font Loading
-
-```cpp
-// Load specific font with custom size
-bool success = fontMgr.loadFont(
-    "res/fonts/arial.ttf",     // Font file path
-    "custom_font",             // Font ID for reference
-    24                         // Font size (will be DPI-scaled automatically)
-);
-```
-
-## Text Rendering
-
-### Basic Text Rendering
-
-```cpp
-// Render text directly to screen (centered by default)
-fontMgr.drawText(
-    "Hello World",               // Text to render
-    "fonts",                     // Font ID
-    400, 300,                    // Position (x, y)
-    {255, 255, 255, 255},        // Color (white)
-    renderer                     // SDL renderer
-);
-
-// Render text with alignment (0=center, 1=left, 2=right, 3=top-left, 4=top-center, 5=top-right)
-fontMgr.drawTextAligned(
-    "Aligned Text",
-    "fonts_title",
-    400, 300,                    // Position
-    {255, 215, 0, 255},          // Gold color
-    renderer,
-    1                            // Left alignment
-);
-```
-
-### Text to Texture Rendering
-
-```cpp
-// Create text texture for caching or complex layouts
-std::shared_ptr<SDL_Texture> textTexture = fontMgr.renderText(
-    "Cached Text",
-    "fonts_UI",
-    {200, 200, 200, 255},        // Gray color
-    renderer
-);
-
-// Use the texture in your rendering
-SDL_FRect destRect = {x, y, width, height};
-SDL_RenderTexture(renderer, textTexture.get(), nullptr, &destRect);
-```
-
-### Multi-Line and Wrapped Text
-
-```cpp
-// Render multi-line text (handles newlines automatically)
-fontMgr.drawText(
-    "Line 1\nLine 2\nLine 3",
-    "fonts",
-    400, 300,
-    {255, 255, 255, 255},
-    renderer
-);
-
-// Render text with word wrapping
-fontMgr.drawTextWithWrapping(
-    "This is a long string that will wrap to fit within 300px.",
-    "fonts_UI",
-    100, 100,                    // Top-left position
-    300,                         // Max width
-    {255, 255, 255, 255},
-    renderer
-);
-```
+**Important:** `getGPUTextDrawData()` must be called on the main thread during the swapchain pass, after all copy-pass upload work has completed.
 
 ## Text Measurement
 
-### Single-Line Text
-
 ```cpp
-// Measure text dimensions for UI auto-sizing
-int width, height;
-bool success = fontMgr.measureText(
-    "Sample Text",
-    "fonts_UI",
-    &width,
-    &height
-);
-if (success) {
-    std::cout << "Text size: " << width << "x" << height << " pixels" << std::endl;
-}
-```
+int w, h;
+fontMgr.measureText("Hello", "fonts_UI", &w, &h);
 
-### Multi-Line and Wrapped Text
+fontMgr.measureMultilineText("Line1\nLine2", "fonts", 0, &w, &h);
+fontMgr.measureTextWithWrapping("Long text...", "fonts_UI", 300, &w, &h);
 
-```cpp
-// Measure multi-line text (newlines)
-int width, height;
-bool success = fontMgr.measureMultilineText(
-    "Line 1\nLine 2\nLine 3",
-    "fonts",
-    0,      // No max width
-    &width,
-    &height
-);
+int lineH, ascent, descent;
+fontMgr.getFontMetrics("fonts", &lineH, &ascent, &descent);
 
-// Measure text with word wrapping
-success = fontMgr.measureTextWithWrapping(
-    "This is a long string that will wrap.",
-    "fonts_UI",
-    300,    // Max width
-    &width,
-    &height
-);
-```
-
-### Font Metrics
-
-```cpp
-// Get font metrics for layout calculations
-int lineHeight, ascent, descent;
-bool success = fontMgr.getFontMetrics(
-    "fonts",
-    &lineHeight,
-    &ascent,
-    &descent
-);
-```
-
-## Font Management
-
-```cpp
-// Check if a font is loaded
-if (fontMgr.isFontLoaded("fonts_UI")) {
-    // Use the font
-}
-
-// Remove a specific font
-fontMgr.clearFont("custom_font");
-
-// Clean up all fonts and shut down
-fontMgr.clean();
+std::vector<std::string> lines = fontMgr.wrapTextToLines("Long text...", "fonts_UI", 300);
 ```
 
 ## API Reference
 
-### Core Methods
-
 ```cpp
-// Initialization and cleanup
+// Lifecycle
 bool init();
 void clean();
+bool isShutdown() const;
+bool areFontsLoaded() const;
 
 // Font loading
 bool loadFont(const std::string& fontFile, const std::string& fontID, int fontSize);
-bool loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight);
-bool refreshFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight);
-
-// Font management
+bool loadFontsForDisplay(const std::string& fontPath, int w, int h, float dpiScale = 1.0f);
+bool reloadFontsForDisplay(const std::string& fontPath, int w, int h, float dpiScale = 1.0f);
 bool isFontLoaded(const std::string& fontID) const;
 void clearFont(const std::string& fontID);
 
-// Text rendering
-void drawText(const std::string& text, const std::string& fontID, int x, int y, SDL_Color color, SDL_Renderer* renderer);
-void drawTextAligned(const std::string& text, const std::string& fontID, int x, int y, SDL_Color color, SDL_Renderer* renderer, int alignment = 0);
-void drawTextWithWrapping(const std::string& text, const std::string& fontID, int x, int y, int maxWidth, SDL_Color color, SDL_Renderer* renderer);
-std::shared_ptr<SDL_Texture> renderText(const std::string& text, const std::string& fontID, SDL_Color color, SDL_Renderer* renderer);
-std::shared_ptr<SDL_Texture> renderMultiLineText(const std::string& text, TTF_Font* font, SDL_Color color, SDL_Renderer* renderer);
+// GPU text pipeline
+bool prepareGPUText(const std::string& key, const std::string& text,
+                    const std::string& fontID, int* width = nullptr, int* height = nullptr);
+bool setGPUTextPosition(const std::string& key, int x, int y);
+TTF_GPUAtlasDrawSequence* getGPUTextDrawData(const std::string& key);
+void clearGPUTextCache();
 
-// Text measurement
-bool measureText(const std::string& text, const std::string& fontID, int* width, int* height);
-bool measureMultilineText(const std::string& text, const std::string& fontID, int maxWidth, int* width, int* height);
-bool measureTextWithWrapping(const std::string& text, const std::string& fontID, int maxWidth, int* width, int* height);
+// Measurement
+bool measureText(const std::string& text, const std::string& fontID, int* w, int* h);
+bool measureMultilineText(const std::string& text, const std::string& fontID,
+                          int maxWidth, int* w, int* h);
+bool measureTextWithWrapping(const std::string& text, const std::string& fontID,
+                             int maxWidth, int* w, int* h);
 bool getFontMetrics(const std::string& fontID, int* lineHeight, int* ascent, int* descent);
-std::vector<std::string> wrapTextToLines(const std::string& text, const std::string& fontID, int maxWidth);
+std::vector<std::string> wrapTextToLines(const std::string& text,
+                                         const std::string& fontID, int maxWidth);
 ```
 
 ## Integration with Other Systems
 
-The FontManager works seamlessly with:
-- **[UIManager](../ui/UIManager_Guide.md)**: Dynamic text measurement for component auto-sizing and grow-only lists
-- **[GameEngine](../core/GameEngine.md)**: Cross-platform coordinate system and native resolution rendering
-- **[InputManager](InputManager.md)**: Automatic font refresh during window resize events
-- **[Auto-Sizing System](../ui/Auto_Sizing_System.md)**: Real-time text measurement for content-aware sizing
-
-The FontManager serves as the foundation for all text rendering in the engine, providing cross-platform font sizing, crisp rendering, and dynamic measurement capabilities that enable the UI system's advanced features like auto-sizing and resolution adaptation.
+- **[UIManager](../ui/UIManager_Guide.md)**: Uses `measureText` and the GPU text pipeline for component rendering
+- **[InputManager](InputManager.md)**: Window resize events trigger `reloadFontsForDisplay`
+- **[GPURendering](../gpu/GPURendering.md)**: GPU text draw sequences are submitted during the swapchain pass
+- **[DPI Aware Font System](../ui/DPI_Aware_Font_System.md)**: Details on DPI scaling and font size calculation

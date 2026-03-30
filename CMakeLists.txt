@@ -114,7 +114,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(USE_MOLD_LINKER "Use mold linker if available" ON)
-set(USE_SDL3_GPU ON)
 
 if(USE_MOLD_LINKER)
     find_program(MOLD_LINKER mold)
@@ -442,8 +441,6 @@ target_compile_definitions(HammerEngineObjects PRIVATE
     HAMMER_APP_NAME="${PROJECT_NAME}"
 )
 
-# SDL3_GPU compile definition
-target_compile_definitions(HammerEngineObjects PUBLIC USE_SDL3_GPU)
 target_compile_definitions(HammerEngineObjects PUBLIC ${HE_GPU_SHADER_FORMAT_DEFINE})
 
 if(TARGET compile_shaders)
@@ -667,7 +664,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
-# Propagate compile definitions (e.g., USE_SDL3_GPU)
+# Propagate compile definitions
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_COMPILE_DEFINITIONS>
 )

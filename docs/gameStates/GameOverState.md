@@ -4,7 +4,7 @@
 
 ## Overview
 
-`GameOverState` is the dedicated player-death screen. It pauses gameplay globally, builds a simple overlay UI, and supports both SDL_Renderer and SDL3_GPU UI rendering.
+`GameOverState` is the dedicated player-death screen. It pauses gameplay globally and builds a simple overlay UI.
 
 ## Behavior
 

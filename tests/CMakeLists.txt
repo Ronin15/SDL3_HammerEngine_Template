@@ -338,12 +338,11 @@ set_target_properties(PowerProfile PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
 )
 
-# --- GPU Tests (conditional on USE_SDL3_GPU) ---
-if(USE_SDL3_GPU)
-    message(STATUS "Building GPU tests (SDL3_GPU enabled)")
+# --- GPU Tests ---
+message(STATUS "Building GPU tests")
 
-    # GPU test executables
-    set(GPU_UNIT_TESTS
+# GPU test executables
+set(GPU_UNIT_TESTS
         gpu_types_tests
         gpu_pipeline_config_tests
     )
@@ -424,6 +423,3 @@ if(USE_SDL3_GPU)
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             LABELS "GPU;System")
     endforeach()
-else()
-    message(STATUS "Skipping GPU tests (USE_SDL3_GPU not enabled)")
-endif()

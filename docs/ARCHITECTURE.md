@@ -31,15 +31,7 @@ Typical frame shape:
 5. render path draws scene/UI
 6. present completes the frame
 
-## Rendering Paths
-
-### SDL_Renderer
-
-- world scene is rendered and composited once
-- UI renders afterward
-- `GameEngine::present()` performs the one present call for the frame
-
-### SDL3_GPU
+## Rendering Path
 
 ```text
 beginFrame

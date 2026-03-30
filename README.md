@@ -10,7 +10,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Rendering & Engine Core**
 
-    Fixed timestep game loop with smooth interpolation at any display refresh rate. VSync-aware frame pacing, sprite sheet animations, particle effects with camera-aware culling, and pixel-perfect zoomed rendering with smooth sub-pixel scrolling. Optional GPU rendering path (`-DUSE_SDL3_GPU=ON`) for modern graphics with day/night ambient lighting effects.
+    Fixed timestep game loop with smooth interpolation at any display refresh rate. VSync-aware frame pacing, sprite sheet animations, particle effects with camera-aware culling, and sub-pixel smooth scrolling. Platform-native GPU shaders (Metal/macOS, DXIL/Windows, SPIR-V/Linux) with day/night ambient lighting effects.
 
 - **Adaptive Multi-Threading System**
 
@@ -90,7 +90,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 - Platforms: Linux, macOS (Apple Silicon), Windows (MinGW)
 - [SDL3 dependencies](https://wiki.libsdl.org/SDL3/README-linux) (ttf, mixer)
 - Boost (for tests), cppcheck & clang-tidy (static analysis), Valgrind (optional, Linux only)
-- GPU rendering (optional): platform shader tools for `-DUSE_SDL3_GPU=ON`
+- Platform shader tools (required):
   - Linux: `glslangValidator` for Vulkan SPIR-V shaders
   - macOS: `glslangValidator` + `spirv-cross` for Metal shaders
   - Windows: `glslangValidator` + `spirv-cross` + `dxc` for Direct3D 12 DXIL shaders
@@ -110,13 +110,12 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 # Release build (optimized)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
 
-# GPU rendering path (SDL3 GPU API with platform-native shaders)
-cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DUSE_SDL3_GPU=ON && ninja -C build
-
 # Run the engine
 ./bin/debug/SDL3_Template   # Debug build
 ./bin/release/SDL3_Template # Release build
 ```
+
+> Platform shader tools (see Prerequisites) must be installed for the build to compile shaders.
 
 **Sanitizer builds** (for debugging memory/thread issues):
 ```bash
@@ -212,7 +211,7 @@ For the full workflow, command reference, file locations, and legacy texture map
 - **UI:** [UIManager Guide](docs/ui/UIManager_Guide.md), [UIConstants Reference](docs/ui/UIConstants.md), [Auto-Sizing](docs/ui/Auto_Sizing_System.md), [DPI-Aware Fonts](docs/ui/DPI_Aware_Font_System.md), [Minimap Implementation](docs/ui/Minimap_Implementation.md)
 - **GPU Rendering:** [GPU System Overview](docs/gpu/GPURendering.md)
 - **GameStates:** [Overview](docs/gameStates/README.md), [LoadingState](docs/gameStates/LoadingState.md), [SettingsMenuState](docs/gameStates/SettingsMenuState.md), [GameOverState](docs/gameStates/GameOverState.md)
-- **Utilities:** [SceneRenderer](docs/utils/SceneRenderer.md), [WorldRenderPipeline](docs/utils/WorldRenderPipeline.md), [FrameProfiler](docs/utils/FrameProfiler.md), [Camera](docs/utils/Camera.md), [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [ResourceHandle System](docs/utils/ResourceHandle_System.md)
+- **Utilities:** [FrameProfiler](docs/utils/FrameProfiler.md), [Camera](docs/utils/Camera.md), [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [ResourceHandle System](docs/utils/ResourceHandle_System.md)
 - **Architecture:** [Interpolation System](docs/architecture/InterpolationSystem.md)
 - **Performance:** [Power Efficiency](docs/performance/PowerEfficiency.md), [EntityDataManager Power Analysis](docs/performance_reports/power_profile_edm_comparison_2026-01-29.md)
 - **Development:** Repo-wide agent guidance lives in [AGENTS.md](AGENTS.md).
