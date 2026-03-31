@@ -385,6 +385,14 @@ void AIManager::update(float deltaTime) {
           m_batchFutures.clear();
           m_batchFutures.reserve(batchCount);
 
+          // Ensure per-batch event buffers are sized and cleared
+          if (m_batchEventBuffers.size() < batchCount) {
+            m_batchEventBuffers.resize(batchCount);
+          }
+          for (size_t i = 0; i < batchCount; ++i) {
+            m_batchEventBuffers[i].clear();
+          }
+
           for (size_t i = 0; i < batchCount; ++i) {
             size_t start = i * entitiesPerBatch;
             size_t end = start + entitiesPerBatch;
@@ -394,29 +402,30 @@ void AIManager::update(float deltaTime) {
             }
 
             m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
-                [this, start, end, deltaTime, worldWidth, worldHeight,
+                [this, i, start, end, deltaTime, worldWidth, worldHeight,
                  cachedPlayerHandle, cachedPlayerPosition, cachedPlayerVelocity,
-                 cachedPlayerValid, cachedGameTime]() -> std::vector<EventManager::DeferredEvent> {
-                  std::vector<EventManager::DeferredEvent> events;
+                 cachedPlayerValid, cachedGameTime]() {
                   processBatch(m_activeIndicesBuffer, start, end, deltaTime,
                                worldWidth, worldHeight, cachedPlayerHandle,
                                cachedPlayerPosition, cachedPlayerVelocity,
-                               cachedPlayerValid, cachedGameTime, events);
-                  return events;
+                               cachedPlayerValid, cachedGameTime,
+                               m_batchEventBuffers[i]);
                 },
                 HammerEngine::TaskPriority::High, "AI_Batch"));
           }
 
           // Wait for all batches and collect deferred events
-          m_allDamageEvents.clear();
           for (auto& future : m_batchFutures) {
             if (future.valid()) {
-              auto batchEvents = future.get();
-              if (!batchEvents.empty()) {
-                m_allDamageEvents.insert(m_allDamageEvents.end(),
-                                       std::make_move_iterator(batchEvents.begin()),
-                                       std::make_move_iterator(batchEvents.end()));
-              }
+              future.get();
+            }
+          }
+          m_allDamageEvents.clear();
+          for (size_t i = 0; i < batchCount; ++i) {
+            if (!m_batchEventBuffers[i].empty()) {
+              m_allDamageEvents.insert(m_allDamageEvents.end(),
+                                     std::make_move_iterator(m_batchEventBuffers[i].begin()),
+                                     std::make_move_iterator(m_batchEventBuffers[i].end()));
             }
           }
           endTime = std::chrono::steady_clock::now();
@@ -1107,10 +1116,10 @@ void AIManager::commitQueuedBehaviorTransitions() {
   // Coalesce to one transition per target for this commit pass.
   // Multiple worker threads can enqueue conflicting transitions for the same
   // entity in one frame. Resolve by latest logical enqueue sequence.
-  std::vector<HammerEngine::AICommandBus::BehaviorTransitionCommand> selected;
-  selected.reserve(m_pendingBehaviorTransitions.size());
-  std::unordered_map<size_t, size_t> selectedByEdmIndex;
-  selectedByEdmIndex.reserve(m_pendingBehaviorTransitions.size());
+  m_selectedTransitions.clear();
+  m_selectedTransitions.reserve(m_pendingBehaviorTransitions.size());
+  m_selectedTransitionsByEdmIndex.clear();
+  m_selectedTransitionsByEdmIndex.reserve(m_pendingBehaviorTransitions.size());
 
   for (const auto& cmd : m_pendingBehaviorTransitions) {
     if (!cmd.targetHandle.isValid()) {
@@ -1123,25 +1132,25 @@ void AIManager::commitQueuedBehaviorTransitions() {
       continue;
     }
 
-    auto it = selectedByEdmIndex.find(resolvedEdmIndex);
-    if (it == selectedByEdmIndex.end()) {
-      selectedByEdmIndex.emplace(resolvedEdmIndex, selected.size());
-      selected.push_back(cmd);
+    auto it = m_selectedTransitionsByEdmIndex.find(resolvedEdmIndex);
+    if (it == m_selectedTransitionsByEdmIndex.end()) {
+      m_selectedTransitionsByEdmIndex.emplace(resolvedEdmIndex, m_selectedTransitions.size());
+      m_selectedTransitions.push_back(cmd);
       continue;
     }
 
-    auto& existing = selected[it->second];
+    auto& existing = m_selectedTransitions[it->second];
     if (cmd.sequence > existing.sequence) {
       existing = cmd;
     }
   }
 
-  std::sort(selected.begin(), selected.end(),
+  std::sort(m_selectedTransitions.begin(), m_selectedTransitions.end(),
             [](const auto& a, const auto& b) {
               return a.targetEdmIndex < b.targetEdmIndex;
             });
 
-  for (const auto& cmd : selected) {
+  for (const auto& cmd : m_selectedTransitions) {
     if (!cmd.targetHandle.isValid()) {
       continue;
     }

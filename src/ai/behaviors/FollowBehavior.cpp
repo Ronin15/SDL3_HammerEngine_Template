@@ -87,8 +87,9 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
     }
 
     // Throttle follow movement logic — responsive but not every frame
-    follow.backoffTimer += ctx.deltaTime;  // Reused as throttle timer (unused by Follow)
+    follow.backoffTimer += ctx.deltaTime;
     if (follow.backoffTimer < config.updateInterval) return;
+    float elapsed = follow.backoffTimer;
     follow.backoffTimer = 0.0f;
 
     // Get target (leader) position from memory
@@ -150,9 +151,9 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
     // Use pathfinding for navigation
     if (ctx.pathData) {
         auto& pathData = *ctx.pathData;
-        pathData.pathUpdateTimer += config.updateInterval;
+        pathData.pathUpdateTimer += elapsed;
         if (pathData.pathRequestCooldown > 0.0f) {
-            pathData.pathRequestCooldown -= config.updateInterval;
+            pathData.pathRequestCooldown -= elapsed;
         }
 
         bool needsPath = !pathData.hasPath || pathData.navIndex >= pathData.pathLength ||

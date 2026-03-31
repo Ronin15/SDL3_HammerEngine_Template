@@ -294,7 +294,10 @@ private:
   PathfinderManager* mp_pathfinderManager{nullptr};
 
   // Batch futures for parallel processing - reused via clear() each frame
-  std::vector<std::future<std::vector<EventManager::DeferredEvent>>> m_batchFutures;
+  std::vector<std::future<void>> m_batchFutures;
+
+  // Pre-allocated per-batch event buffers (avoids per-frame allocation in threaded path)
+  std::vector<std::vector<EventManager::DeferredEvent>> m_batchEventBuffers;
 
   // Reusable buffer for collecting damage events from batch futures
   std::vector<EventManager::DeferredEvent> m_allDamageEvents;
@@ -316,6 +319,8 @@ private:
   std::array<std::vector<size_t>, MAX_FACTIONS> m_factionEdmIndices;  // Per-faction EDM indices
   std::vector<HammerEngine::AICommandBus::BehaviorMessageCommand> m_pendingBehaviorMessages;
   std::vector<HammerEngine::AICommandBus::BehaviorTransitionCommand> m_pendingBehaviorTransitions;
+  std::vector<HammerEngine::AICommandBus::BehaviorTransitionCommand> m_selectedTransitions;
+  std::unordered_map<size_t, size_t> m_selectedTransitionsByEdmIndex;
   std::vector<HammerEngine::AICommandBus::FactionChangeCommand> m_pendingFactionChanges;
 
   void addToIndices(size_t edmIndex, BehaviorType behaviorType);

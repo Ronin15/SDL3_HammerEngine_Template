@@ -130,9 +130,10 @@ void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfi
     }
 
     // Throttle patrol movement logic — peaceful walking between waypoints
-    guard.alertTimer += ctx.deltaTime;  // Reused as throttle timer (unused by Patrol)
-    if (guard.alertTimer < config.updateInterval) return;
-    guard.alertTimer = 0.0f;
+    guard.patrolThrottleTimer += ctx.deltaTime;
+    if (guard.patrolThrottleTimer < config.updateInterval) return;
+    float elapsed = guard.patrolThrottleTimer;
+    guard.patrolThrottleTimer = 0.0f;
 
     Vector2D currentPos = ctx.transform.position;
     auto& edm = EntityDataManager::Instance();
@@ -143,7 +144,7 @@ void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfi
     // Check if at current waypoint
     Vector2D currentWaypoint = waypointSlot[guard.currentPatrolIndex % 4];
     if (isAtWaypoint(currentPos, currentWaypoint, config.waypointReachedRadius)) {
-        guard.patrolMoveTimer += config.updateInterval;
+        guard.patrolMoveTimer += elapsed;
         if (guard.patrolMoveTimer >= config.waypointCooldown) {
             guard.currentPatrolIndex = (guard.currentPatrolIndex + 1) % 4;
             guard.patrolMoveTimer = 0.0f;
@@ -156,9 +157,9 @@ void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfi
     // Move toward waypoint using pathfinding
     if (ctx.pathData) {
         auto& pathData = *ctx.pathData;
-        pathData.pathUpdateTimer += config.updateInterval;
+        pathData.pathUpdateTimer += elapsed;
         if (pathData.pathRequestCooldown > 0.0f) {
-            pathData.pathRequestCooldown -= config.updateInterval;
+            pathData.pathRequestCooldown -= elapsed;
         }
 
         bool needsPath = !pathData.hasPath || pathData.navIndex >= pathData.pathLength ||
