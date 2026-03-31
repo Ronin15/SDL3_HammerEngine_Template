@@ -1,12 +1,12 @@
 ---
 name: hammer-changelog-generator
-description: Generates comprehensive, professionally-formatted changelogs for SDL3 HammerEngine from git history. Analyzes code changes, runs tests, includes architect review, and produces detailed documentation following World Update format. Use when documenting updates, preparing releases, or creating detailed change reports.
+description: Generates comprehensive, professionally-formatted changelogs for SDL3 HammerEngine from git history. Analyzes code changes, runs tests, includes architect review, and produces detailed documentation as an ongoing engineering log. Use when documenting updates, preparing releases, or creating detailed change reports.
 allowed-tools: [Bash, Read, Write, Grep, Glob, AskUserQuestion]
 ---
 
 # Changelog Generator for SDL3 HammerEngine
 
-You are generating a comprehensive, professionally-formatted changelog for SDL3 HammerEngine following the established World Update format.
+You are generating a comprehensive, professionally-formatted changelog for SDL3 HammerEngine. This is an engineering log — it documents what changed, why, and what the impact is. It is not a bug report or issue tracker. Entries describe code changes and refactors directly and factually, without framing work as "problems" that needed "solutions."
 
 ## Your Task
 
@@ -149,38 +149,48 @@ Create `changelogs/CHANGELOG_[UPDATE_NAME].md` with this structure:
 
 ## Changes Overview
 
-### Core Implementation ([Primary File])
+### Scale
 
-**File:** `path/to/file`
-**Method/Class:** `[affected methods]`
-**Lines Changed:** ~[XX] modified, ~[XX] removed, ~[XX] added
+| Metric | Value |
+|--------|-------|
+| Commits | [X] |
+| Files changed | [X] |
+| Lines added | ~[X] |
+| Lines removed | ~[X] |
+| Net change | [+/-X] |
 
-### Test Fixes ([Test File])
+### Systems Changed
 
-**File:** `path/to/test`
-**Tests Modified:** [test names]
-**Lines Changed:** ~[XX] added
-
----
-
-## Detailed Changes
-
-### 1. [Change Category 1]
-
-**Problem:**
-[Describe what was wrong/missing]
-
-**Solution:**
-[Describe the fix/improvement with code snippets]
-
-**Impact:**
-[What this improves]
-
-**File Location:** `path/to/file:lines`
+| System | Change | Magnitude |
+|--------|--------|-----------|
+| [System 1] | [brief description] | [lines/scope] |
+| [System 2] | [brief description] | [lines/scope] |
 
 ---
 
-### 2. [Change Category 2]
+## Changes
+
+### 1. [Change Title]
+
+[1-2 sentences describing what was changed and why — factual, direct. No "problem/solution" framing.]
+
+**Changes:**
+- [What specifically changed — function renamed, field added, loop removed, etc.]
+- [Next change]
+
+```cpp
+// Before
+[old code snippet if illustrative]
+
+// After
+[new code snippet]
+```
+
+**Files:** `path/to/file`, `path/to/other`
+
+---
+
+### 2. [Change Title]
 
 [Repeat for each major change]
 
@@ -480,24 +490,26 @@ Refs: [Update Name]"
 
 ### Writing Style
 
-1. **Be Specific:** Use concrete numbers, not vague descriptions
+1. **Lead with what changed, not what was wrong.** Every entry describes a change — a refactor, a removal, an addition, a standardization. Write it as a factual record of the engineering decision. Do not frame entries as bug reports or issue tickets.
+   - Good: "`processBatch()` signature changed to `void` with an out-parameter; per-batch return vectors eliminated."
+   - Bad: "There was a problem where processBatch allocated vectors. This was fixed by..."
+
+2. **Be specific.** Use concrete numbers, file paths, and line counts.
    - Good: "Reduced allocations from 200/sec to 50/sec (75% reduction)"
    - Bad: "Reduced allocations significantly"
 
-2. **Show Evidence:** Include code snippets, file locations, line numbers
-   - Good: "AIManager.cpp:941-945 - Fixed threshold consistency"
+3. **Show evidence.** Include before/after code snippets, file locations, line numbers where illustrative.
+   - Good: "`AIManager.cpp:941-945` — threshold comparison standardized to `<=`"
    - Bad: "Fixed threshold"
 
-3. **Use Tables:** For comparisons, benchmarks, grades
-   - Makes information scannable
-   - Easy to compare before/after
+4. **Use tables** for comparisons, benchmarks, and grades — makes information scannable.
 
-4. **Include Context:** Explain WHY changes were made
-   - "Problem → Solution → Impact" structure
-   - Historical context when relevant
+5. **Explain the motivation briefly,** but as context for the change, not as a problem statement.
+   - Good: "Standardized on `steady_clock` across all timing sites for cross-platform monotonic consistency."
+   - Bad: "The problem was that high_resolution_clock could be non-monotonic. The solution was..."
 
-5. **Grade Appropriately:**
-   - A+ (95-100): Exceptional, no issues
+6. **Grade appropriately:**
+   - A+ (95-100): Exceptional, no observations
    - A (90-94): Excellent, minor observations
    - B+ (85-89): Good, some concerns
    - B (80-84): Acceptable, needs improvement
