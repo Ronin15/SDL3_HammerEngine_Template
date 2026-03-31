@@ -2178,7 +2178,7 @@ void CollisionManager::update(float dt) {
   size_t staticBodyCount = m_storage.size();
 
   // EDM-CENTRIC: Also check for active movables in EDM
-  auto &edm = EntityDataManager::Instance();
+  const auto &edm = EntityDataManager::Instance();
   size_t activeMovableCount = edm.getActiveIndices().size();
 
   // Early exit if no active movables - collision detection only matters for moving entities

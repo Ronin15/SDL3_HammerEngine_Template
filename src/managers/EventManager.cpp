@@ -790,7 +790,7 @@ EventManager::prepareCombatEvent(const PendingDispatch& pendingDispatch) const {
     return preparedCombat;
   }
 
-  auto& edm = EntityDataManager::Instance();
+  const auto& edm = EntityDataManager::Instance();
   const EntityHandle targetHandle = damageEvent->getTarget();
   const EntityHandle attackerHandle = damageEvent->getSource();
   preparedCombat.targetHandle = targetHandle;
