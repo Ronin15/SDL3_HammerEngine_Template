@@ -102,6 +102,10 @@ def analyze_manager_coupling(graph, base_dir):
         ('ResourceFactory.hpp', 'ResourceTemplateManager.hpp'),
         ('ResourceTemplateManager.hpp', 'ResourceFactory.hpp'),
         ('WorldResourceManager.hpp', 'EventManager.hpp'),
+        # EDM auto-registers/unregisters static entities (DroppedItem, Harvestable,
+        # Container) with WRM's spatial index on create/destroy. Intentional design
+        # — callers rely on this to avoid having to register separately. .cpp-only.
+        ('EntityDataManager.hpp', 'WorldResourceManager.hpp'),
     }
 
     # Find all manager headers

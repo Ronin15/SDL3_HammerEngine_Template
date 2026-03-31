@@ -78,6 +78,11 @@ Game engines have **necessary functional dependencies** between managers. The fo
 - UIManager → FontManager (UI needs fonts to render text)
 - WorldManager → ResourceManager (world needs tile/sprite resources)
 - ResourceFactory → ResourceTemplateManager (factory pattern requires templates)
+- EntityDataManager → WorldResourceManager (EDM auto-registers static entities with WRM spatial index on create/destroy — intentional, .cpp-only)
+- ResourceTemplateManager ↔ ResourceFactory (.cpp-only bidirectional: RTM initializes/uses RF; RF calls RTM.generateHandle() — no circular headers)
+
+✅ **Approved Layer Exceptions (do not flag):**
+- BinarySerializer.hpp (Utils) includes Logger.hpp (Core) — Logger is a foundational utility used at all layers; this is not a true violation
 
 **Manager-to-Manager Rules:**
 - ✅ GOOD: Functional dependencies for game systems
@@ -539,6 +544,7 @@ FUNCTIONAL_DEPS=(
     "ResourceFactory->ResourceTemplateManager"
     "ResourceTemplateManager->ResourceFactory"
     "WorldResourceManager->EventManager"
+    "EntityDataManager->WorldResourceManager"
 )
 
 # Convert array to grep pattern

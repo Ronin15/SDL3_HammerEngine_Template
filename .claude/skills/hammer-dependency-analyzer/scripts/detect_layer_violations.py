@@ -69,6 +69,16 @@ def extract_includes(file_path):
         pass
     return includes
 
+
+# Known-good exceptions: intentional patterns reviewed and approved by the team.
+# Add entries here to permanently silence a specific include from being flagged.
+# Format: (including_file_basename, included_file_basename)
+APPROVED_EXCEPTIONS = {
+    # Logger is a foundational utility used at all layers — not a layer violation.
+    ('BinarySerializer.hpp', 'Logger.hpp'),
+}
+
+
 def check_layer_violations(base_dir):
     """Check for architectural layer violations"""
     layers = find_headers_by_layer(base_dir)
@@ -123,6 +133,9 @@ def check_layer_violations(base_dir):
                     reason = f"Depends on {include_layer} layer (not allowed)"
 
                 if violates:
+                    key = (os.path.basename(header), os.path.basename(include))
+                    if key in APPROVED_EXCEPTIONS:
+                        continue  # Intentional pattern, skip
                     violation = {
                         'file': os.path.basename(header),
                         'includes': os.path.basename(include),
