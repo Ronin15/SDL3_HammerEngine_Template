@@ -896,7 +896,7 @@ struct BehaviorData {
     union StateUnion {
         // Default constructor initializes raw bytes to zero
         StateUnion() : raw{} {}
-        struct { // WanderState (~64 bytes)
+        struct { // WanderState (~68 bytes)
             Vector2D currentDirection;
             Vector2D previousVelocity;
             Vector2D lastStallPosition;
@@ -906,6 +906,7 @@ struct BehaviorData {
             float stallTimer;
             float stallPositionVariance;
             float unstickTimer;
+            float movementUpdateTimer;  // Throttle heavy logic to run every ~5s
             bool movementStarted;
             uint8_t _pad[3];
         } wander;

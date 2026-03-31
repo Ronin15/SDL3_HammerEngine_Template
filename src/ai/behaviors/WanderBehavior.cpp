@@ -57,12 +57,12 @@ float calculateMoveDistance(BehaviorData& data, const Vector2D& position,
             float randomOffset = (nearbyCount % 60 - 30) * 0.01f;
             escapeDirection.setX(escapeDirection.getX() + randomOffset);
             escapeDirection.setY(escapeDirection.getY() + randomOffset);
-            escapeDirection.normalize();
+            // Skip re-normalize: small offset barely changes unit-length vector
             wander.currentDirection = escapeDirection;
         }
     } else if (nearbyCount > 5) {
         moveDistance = baseDistance * 2.0f;
-        wander.currentDirection = wander.currentDirection.normalized();
+        // Direction is already normalized from init or prior normalization
     } else if (nearbyCount > 2) {
         moveDistance = baseDistance * 1.3f;
     }
@@ -98,15 +98,20 @@ void applyBoundaryAvoidance(BehaviorData& data, const Vector2D& position,
     }
 
     if (boundaryForce.lengthSquared() > 0.01f) {
-        wander.currentDirection = (wander.currentDirection * 0.4f + boundaryForce.normalized() * 0.6f).normalized();
+        // Blend direction toward boundary force without double-normalize
+        Vector2D blended = wander.currentDirection * 0.4f + boundaryForce * 0.6f;
+        float lenSq = blended.lengthSquared();
+        if (lenSq > 0.0001f) {
+            wander.currentDirection = blended * (1.0f / std::sqrt(lenSq));
+        }
     }
 }
 
 void handlePathfinding(const BehaviorContext& ctx, const Vector2D& dest,
                        const HammerEngine::WanderBehaviorConfig& config) {
     Vector2D position = ctx.transform.position;
-    float distanceToGoal = (dest - position).length();
-    if (distanceToGoal < 64.0f || !ctx.pathData) return;
+    float distanceToGoalSq = (dest - position).lengthSquared();
+    if (distanceToGoalSq < 64.0f * 64.0f || !ctx.pathData) return;
 
     auto& pathData = *ctx.pathData;
     const bool skipRefresh = (pathData.pathRequestCooldown > 0.0f && pathData.isFollowingPath() &&
@@ -283,6 +288,7 @@ void initWander(size_t edmIndex, const HammerEngine::WanderBehaviorConfig& confi
     wander.lastStallPosition = Vector2D{0, 0};
     wander.stallPositionVariance = 0.0f;
     wander.unstickTimer = 0.0f;
+    wander.movementUpdateTimer = 0.0f;  // First update runs immediately
 
     float angle = s_angleDistribution(s_rng);
     wander.currentDirection = Vector2D(std::cos(angle), std::sin(angle));
@@ -340,7 +346,14 @@ void executeWander(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfi
     if (!handleStartDelay(ctx)) return;
 
     if (data.state.wander.movementStarted) {
-        handleMovement(ctx, config);
+        // Throttle heavy movement logic — wanderers are peaceful, just coast
+        // on current velocity between updates
+        constexpr float WANDER_UPDATE_INTERVAL = 5.0f;
+        data.state.wander.movementUpdateTimer += ctx.deltaTime;
+        if (data.state.wander.movementUpdateTimer >= WANDER_UPDATE_INTERVAL) {
+            data.state.wander.movementUpdateTimer = 0.0f;
+            handleMovement(ctx, config);
+        }
 
         // Cautious movement when suspicious
         if (isOnAlert(ctx)) {

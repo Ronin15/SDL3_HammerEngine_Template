@@ -281,12 +281,15 @@ void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig&
                     }
 
                     if (chase.cachedChaserCount > 3) {
-                        Vector2D toTarget = (targetPos - entityPos).normalized();
-                        Vector2D lateral(-toTarget.getY(), toTarget.getX());
+                        // Reuse direction (already normalized from toWaypoint/dist above)
+                        Vector2D lateral(-direction.getY(), direction.getX());
                         float lateralBias = ((float)(ctx.entityId % 3) - 1.0f) * 15.0f;
                         Vector2D adjustedTarget = targetPos + lateral * lateralBias;
-                        Vector2D newDir = (adjustedTarget - entityPos).normalized();
-                        ctx.transform.velocity = newDir * data.moveSpeed * chaseSpeed;
+                        Vector2D diff = adjustedTarget - entityPos;
+                        float diffLenSq = diff.lengthSquared();
+                        if (diffLenSq > 0.001f) {
+                            ctx.transform.velocity = diff * ((data.moveSpeed * chaseSpeed) / std::sqrt(diffLenSq));
+                        }
                     }
                 } else {
                     Vector2D direction = (targetPos - entityPos).normalized();
