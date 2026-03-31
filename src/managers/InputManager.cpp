@@ -18,8 +18,7 @@
 // Removed global pointer - now managed as member variable
 
 InputManager::InputManager()
-    : m_keystates(nullptr),
-      m_mousePosition(std::make_unique<Vector2D>(0, 0)) {
+    : m_keystates(nullptr) {
   // Reserve capacity for performance optimization
   m_pressedThisFrame.reserve(16);  // Typical max keys pressed per frame
   m_gamepads.reserve(4);           // Max 4 gamepads typically
@@ -43,11 +42,6 @@ bool InputManager::init() {
   m_keystates = SDL_GetKeyboardState(nullptr);
   if (!m_keystates) {
     INPUT_WARN("No keyboard state available - device may not have keyboard input");
-  }
-
-  // Ensure mouse position is initialized
-  if (!m_mousePosition) {
-    m_mousePosition = std::make_unique<Vector2D>(0, 0);
   }
 
   if (m_mouseButtonStates.empty()) {
@@ -161,7 +155,7 @@ bool InputManager::getMouseButtonState(int buttonNumber) const {
 }
 
 const Vector2D& InputManager::getMousePosition() const {
-  return *m_mousePosition;
+  return m_mousePosition;
 }
 
 bool InputManager::wasKeyPressed(SDL_Scancode key) const {
@@ -185,9 +179,6 @@ void InputManager::update() {
 }
 
 void InputManager::onKeyDown(const SDL_Event& event) {
-  // Store the keyboard state
-  m_keystates = SDL_GetKeyboardState(0);
-
   if (event.key.repeat) {
     return;
   }
@@ -256,7 +247,7 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
   GamepadState& gamepadState = m_gamepads[whichOne];
 
   // Get axis name for debug messages
-  std::string axisName = "Unknown";
+  const char* axisName = "Unknown";
   switch (event.gaxis.axis)
   {
     case SDL_GAMEPAD_AXIS_LEFTX: axisName = "Left Stick X"; break;
@@ -308,7 +299,7 @@ void InputManager::onGamepadButtonDown(const SDL_Event& event) {
   gamepadState.buttonStates[event.gbutton.button] = true;
 
   // Get button name for debug message
-  std::string buttonName = "Unknown";
+  const char* buttonName = "Unknown";
   switch (event.gbutton.button) {
     case 0: buttonName = "A or CROSS"; break;
     case 1: buttonName = "B or CIRCLE"; break;
@@ -479,8 +470,8 @@ void InputManager::updateMousePositionFromWindowCoords(float x, float y) {
     scale = SDL_GetWindowPixelDensity(window);
   }
 
-  m_mousePosition->setX(x * scale);
-  m_mousePosition->setY(y * scale);
+  m_mousePosition.setX(x * scale);
+  m_mousePosition.setY(y * scale);
 }
 
 void InputManager::clearGamepadState() {

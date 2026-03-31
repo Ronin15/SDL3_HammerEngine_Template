@@ -28,8 +28,6 @@ void LoadingState::configure(
   m_loadComplete.store(false, std::memory_order_release);
   m_loadFailed.store(false, std::memory_order_release);
   m_waitingForPathfinding.store(false, std::memory_order_release);
-  m_waitingForPrewarm.store(false, std::memory_order_release);
-  m_prewarmComplete.store(false, std::memory_order_release);
   setStatusText("Initializing...");
 
   // Clear any previous error
@@ -87,14 +85,6 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
       if (!pathfinderManager.isGridReady()) {
         // Grid still building - keep waiting
         return;
-      }
-
-      // GPU rendering uses vertex data directly, so no chunk prewarm step is needed.
-      if (!m_prewarmComplete.load(std::memory_order_acquire)) {
-        setStatusText("Finalizing world...");
-        GAMESTATE_INFO("Pathfinding ready - skipping chunk prewarming");
-        m_waitingForPrewarm.store(true, std::memory_order_release);
-        m_prewarmComplete.store(true, std::memory_order_release);
       }
 
       // All ready - proceed with transition

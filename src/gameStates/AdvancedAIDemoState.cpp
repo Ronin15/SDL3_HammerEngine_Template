@@ -39,10 +39,6 @@ AdvancedAIDemoState::~AdvancedAIDemoState() {
     // Note: Proper cleanup should already have happened in exit()
     // This destructor is just a safety measure in case exit() wasn't called
 
-    // Reset AI behaviors first to clear entity references
-    AIManager &aiMgr = AIManager::Instance();
-    aiMgr.resetBehaviors();
-
     // Clear NPCs via NPCRenderController
     m_npcRenderCtrl.clearSpawnedNPCs();
 
@@ -564,7 +560,7 @@ void AdvancedAIDemoState::setupTestVillage() {
                             villageCenter.getX(), villageCenter.getY()));
 
   // Random race selection for village diversity
-  static thread_local std::mt19937 rng{std::random_device{}()};
+  std::mt19937 rng{std::random_device{}()};
   static constexpr const char* friendlyRaces[] = {"Human", "Elf", "Dwarf"};
   std::uniform_int_distribution<size_t> raceDist(0, 2);
   auto getRandomFriendlyRace = [&]() { return friendlyRaces[raceDist(rng)]; };

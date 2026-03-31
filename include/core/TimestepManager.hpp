@@ -131,9 +131,9 @@ private:
     float m_fixedTimestep;               // Fixed timestep for updates (seconds)
     float m_targetFrameTime;             // Target frame time (1/targetFPS)
     
-    // Frame timing (std::chrono for high precision, consistent with GameLoop)
-    std::chrono::high_resolution_clock::time_point m_frameStart;
-    std::chrono::high_resolution_clock::time_point m_lastFrameTime;
+    // Frame timing (steady_clock for monotonic cross-platform consistency)
+    std::chrono::steady_clock::time_point m_frameStart;
+    std::chrono::steady_clock::time_point m_lastFrameTime;
     
     // Simplified timing pattern (eliminates accumulator drift)
     double m_accumulator;                // Frame timing accumulator

@@ -33,6 +33,8 @@ struct AtlasRegion {
 };
 
 AtlasRegion lookupAtlasRegion(const std::string& regionId) {
+    // Thread-safe: C++11 guarantees thread-safe static local initialization;
+    // map is const (read-only) after initialization so concurrent reads are safe.
     static const std::unordered_map<std::string, JsonValue> atlasRegions = [] {
         JsonReader atlasReader;
         if (!atlasReader.loadFromFile(HammerEngine::ResourcePath::resolve("res/data/atlas.json"))) {

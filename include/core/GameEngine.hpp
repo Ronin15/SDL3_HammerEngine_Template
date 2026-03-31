@@ -319,13 +319,6 @@ public:
 
 private:
   /**
-   * @brief Syncs timestep pacing with the committed frame pacing state
-   * @param requested Legacy parameter retained for call-site compatibility
-   * @return true if hardware VSync is the committed pacing mode, false if using software fallback
-   */
-  bool verifyVSyncState(bool requested);
-
-  /**
    * @brief Handles window resize events from SDL
    * @param event The SDL window resize event
    * @details Updates window dimensions, renderer logical presentation,

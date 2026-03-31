@@ -96,7 +96,7 @@ class InputManager {
     bool m_gamePadInitialized{false};
     // Mouse specific
     std::vector<bool> m_mouseButtonStates{};
-    std::unique_ptr<Vector2D> m_mousePosition{nullptr};
+    Vector2D m_mousePosition{0.0f, 0.0f};
 
     // Initialization and shutdown state
     bool m_isInitialized{false};

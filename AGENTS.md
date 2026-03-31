@@ -111,7 +111,7 @@ Key systems:
 - Managers: `EntityDataManager`, `AIManager`, `EventManager`, `CollisionManager`, `ParticleManager`, `PathfinderManager`, `WorldManager`, `WorldResourceManager`, `BackgroundSimulationManager`, `UIManager`, `GameTimeManager`, `InputManager`, `TextureManager`, `FontManager`, `SoundManager`
 - AI: `AIBehavior` base with Idle, Wander, Patrol, Chase, Flee, Follow, Guard, Attack
 - Controllers are state-scoped via `ControllerRegistry`
-- GPU path: `GPUDevice`, `GPURenderer`, `GPUShaderManager`, `SpriteBatch`, `GPUVertexPool`, `GPUSceneRenderer`
+- GPU path: `GPUDevice`, `GPURenderer`, `GPUShaderManager`, `SpriteBatch`, `GPUVertexPool`, `GPUSceneRecorder`
 
 ## Core Coding Rules
 

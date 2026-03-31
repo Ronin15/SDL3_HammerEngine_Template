@@ -855,6 +855,18 @@ void ParticleManager::update(float deltaTime) {
       threadingInfo.batchTimeMs = std::chrono::duration<double, std::milli>(singleEnd - singleStart).count();
     }
 
+  // Wait for batch workers before buffer operations: the deactivation scan
+  // (Phase 5.5) reads and writes flags[] on the same buffer workers are writing
+  // to, which would corrupt the free-index pool without synchronization.
+  {
+    std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+    for (auto& f : m_batchFutures)
+    {
+      if (f.valid()) { f.get(); }
+    }
+    m_batchFutures.clear();
+  }
+
   // Phase 5: Swap buffers for next frame (lock-free)
   m_storage.swapBuffers();
 

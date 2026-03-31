@@ -58,7 +58,7 @@ See `tests/TESTING.md` for comprehensive documentation.
 
 **Utils**: Camera (world↔screen) | Vector2D | SIMDMath (SSE2/NEON) | JsonReader | BinarySerializer | UniqueID | WorldRenderPipeline (SDL_Renderer facade) | FrameProfiler (F3 debug overlay)
 
-**GPU Rendering** (USE_SDL3_GPU): GPUDevice (singleton) | GPURenderer (frame orchestration) | GPUShaderManager (SPIR-V/Metal) | SpriteBatch (25K sprites) | GPUVertexPool (triple-buffered) | GPUSceneRenderer (scene facade). Shaders: `res/shaders/`
+**GPU Rendering**: GPUDevice (singleton) | GPURenderer (frame orchestration) | GPUShaderManager (SPIR-V/Metal) | SpriteBatch (50K sprites) | GPUVertexPool (triple-buffered) | GPUSceneRecorder (vertex recording). Shaders: `res/shaders/`
 
 **Structure**: `src/{core,managers,controllers,gameStates,entities,events,ai,collisions,utils,world,gpu}` | `include/` mirrors src | `tests/` | `res/`
 

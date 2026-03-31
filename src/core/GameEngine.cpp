@@ -1398,15 +1398,6 @@ int GameEngine::getOptimalDisplayIndex() const {
 #endif
 }
 
-bool GameEngine::verifyVSyncState(bool requested) {
-  (void)requested;
-  if (m_timestepManager) {
-    m_timestepManager->setSoftwareFrameLimiting(!m_vsyncRequested);
-  }
-
-  return m_vsyncRequested;
-}
-
 void GameEngine::onWindowResize(const SDL_Event &event) {
   const char *eventName = "Window metrics changed";
   switch (event.type) {

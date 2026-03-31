@@ -20,7 +20,7 @@ TimestepManager::TimestepManager(float targetFPS, float fixedTimestep)
     , m_shouldRender(true)
     , m_firstFrame(true)
 {
-    auto currentTime = std::chrono::high_resolution_clock::now();
+    auto currentTime = std::chrono::steady_clock::now();
     m_frameStart = currentTime;
     m_lastFrameTime = currentTime;
 
@@ -66,7 +66,7 @@ double TimestepManager::snapDeltaToCadence(double deltaTime) const {
 }
 
 void TimestepManager::startFrame() {
-    auto currentTime = std::chrono::high_resolution_clock::now();
+    auto currentTime = std::chrono::steady_clock::now();
     
     if (m_firstFrame) {
         m_firstFrame = false;
@@ -189,7 +189,7 @@ void TimestepManager::reset() {
     m_currentFPS = 0.0f;
     m_lastDeltaSeconds = 0.0;
 
-    auto currentTime = std::chrono::high_resolution_clock::now();
+    auto currentTime = std::chrono::steady_clock::now();
     m_frameStart = currentTime;
     m_lastFrameTime = currentTime;
 
@@ -226,7 +226,7 @@ void TimestepManager::limitFrameRate() const {
     auto targetEndTime = m_frameStart + std::chrono::nanoseconds(targetFrameNs);
 
     // Calculate remaining time NOW (minimizes overhead between calculation and delay)
-    auto now = std::chrono::high_resolution_clock::now();
+    auto now = std::chrono::steady_clock::now();
     auto remainingNs = std::chrono::duration_cast<std::chrono::nanoseconds>(targetEndTime - now);
 
     // Only delay if we have time remaining

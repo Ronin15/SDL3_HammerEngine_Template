@@ -476,8 +476,6 @@ BOOST_AUTO_TEST_CASE(TestVSyncConfiguration) {
 
     BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "SDL_SetGPUSwapchainParameters"),
         "GameEngine should configure VSync at runtime via SDL_SetGPUSwapchainParameters");
-    BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "verifyVSyncState"),
-        "GameEngine should retain VSync verification through verifyVSyncState()");
 }
 
 // ----------------------------------------------------------------------------
