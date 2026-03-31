@@ -3,8 +3,8 @@
 # Audit & Refactor Update
 
 **Branch:** `audit`
-**Date:** 2026-03-30
-**Review Status:** ✅ APPROVED
+**Date:** 2026-03-30 → 2026-03-31
+**Review Status:** ✅ APPROVED (ongoing)
 **Overall Grade:** A (93/100)
 
 ---
@@ -27,6 +27,7 @@ The branch was validated by 261 tests across 8 executables (all passing) and a f
 - ✅ Controller hotplugging and full SDL3 API compliance
 - ✅ GPUSceneRenderer renamed to GPUSceneRecorder (semantic clarity)
 - ✅ 261/261 tests passing — build clean after all fixes
+- ✅ AI subsystem audit (2026-03-31) — 8 findings resolved, zero per-frame allocations in batch path
 
 ---
 
@@ -545,9 +546,161 @@ e58dbe75 major SDL_renderer code removal almost complete
 
 ## Changelog Version
 
-**Document Version:** 1.0
-**Last Updated:** 2026-03-30
-**Status:** Final — Ready for Merge
+**Document Version:** 1.1
+**Last Updated:** 2026-03-31
+**Status:** Continued Audit — AI Subsystem Pass
+
+---
+
+## Continued Audit (2026-03-31)
+
+Following the initial architectural audit and SDL_Renderer removal, a focused audit of the AI subsystem was conducted targeting: per-frame allocation patterns, redundant pointer indirection in hot-path batch code, and per-frame computation overhead in behavior executors.
+
+**Audit Findings Resolved:** 8
+**Files Modified:** 7
+**Build Status:** ✅ Clean — zero warnings
+
+**Impact:**
+- ✅ Audited `processBatch()` return path — eliminated per-batch heap allocation in threaded and single-threaded paths
+- ✅ Audited `commitQueuedBehaviorTransitions()` — eliminated per-frame local container construction
+- ✅ Audited GuardBehavior memory iteration — eliminated duplicate full memory scan per calm poll cycle
+- ✅ Audited ChaseBehavior vector math — eliminated two redundant normalize calls per grouped-chaser frame
+- ✅ Audited WanderBehavior per-frame computation — heavy logic throttled, lightweight path runs every frame
+- ✅ Audited FollowBehavior per-frame computation — full movement logic throttled via configurable interval
+- ✅ Audited PatrolBehavior per-frame computation — waypoint re-evaluation throttled via configurable interval
+- ✅ Audited `updateEmotionalDecay()` / `hasBehaviorData()` — moved to inline to eliminate cross-TU call overhead on hot paths
+
+---
+
+### Finding 1 — AIManager: Per-Frame Allocations in Batch Return Path
+
+**Commits:** `c0ba5a0c`, `56948e50`
+
+**Audit:**
+`processBatch()` returned `std::vector<EventManager::DeferredEvent>` by value. In the threaded path each `std::future` carried a return vector, causing a heap allocation per batch per frame. In the single-threaded path the return vector was constructed and immediately discarded. Both paths violated the buffer-reuse standard.
+
+**Fix:**
+- `processBatch()` signature changed to `void` with `std::vector<EventManager::DeferredEvent>& outEvents` out-parameter — events appended into caller-owned buffers
+- `m_batchEventBuffers` added (`std::vector<std::vector<...>>`) — pre-allocated to batch count, reused via `clear()` each frame in the threaded path
+- `m_singleBatchEvents` added — reusable buffer for the single-threaded path
+- `m_batchFutures` type changed from `std::future<std::vector<...>>` to `std::future<void>` — futures carry no return value; no intermediate allocation at future resolution
+
+**Files:** `include/managers/AIManager.hpp`, `src/managers/AIManager.cpp`
+
+---
+
+### Finding 2 — AIManager: Per-Frame Local Containers in commitQueuedBehaviorTransitions()
+
+**Commit:** `56948e50`
+
+**Audit:**
+`commitQueuedBehaviorTransitions()` constructed a local `std::vector<BehaviorTransitionCommand> selected` and `std::unordered_map<size_t, size_t> selectedByEdmIndex` on every call. Any frame with pending transitions incurred two heap allocations, violating the buffer-reuse standard established for all other manager buffers.
+
+**Fix:**
+Promoted both to member variables (`m_selectedTransitions`, `m_selectedTransitionsByEdmIndex`). The function now calls `.clear()` at the top of each invocation to preserve capacity.
+
+**Files:** `include/managers/AIManager.hpp`, `src/managers/AIManager.cpp`
+
+---
+
+### Finding 3 — GuardBehavior: Duplicate Memory Array Iteration Per Poll Cycle
+
+**Commit:** `9178adb1`
+
+**Audit:**
+Calm guards iterated `NPCMemoryData::memories` twice per poll cycle — once in a dedicated witness-escalation block in `executeGuard()`, then again inside `detectThreat()` for the same witnessed combat/death entries. The two loops ran back-to-back with no intervening state change, making the first pass redundant.
+
+**Fix:**
+- Witness alert escalation merged into `detectThreat()` as a single-pass operation
+- `detectThreat()` signature extended with `uint8_t& witnessAlertLevel` and `Vector2D& witnessLocation` out-params
+- Separate witness-escalation block in `executeGuard()` removed (~24 lines)
+- Escalation applied once at the `detectThreat()` call site from the out-params
+
+**Files:** `src/ai/behaviors/GuardBehavior.cpp`
+
+---
+
+### Finding 4 — ChaseBehavior: Redundant Vector Normalization in Grouped-Chaser Path
+
+**Commit:** `9178adb1`
+
+**Audit:**
+The lateral spread path for `cachedChaserCount > 3` called `(targetPos - entityPos).normalized()` to build the lateral axis, despite `direction` (a normalized vector to the current waypoint/target) already being computed earlier in the same execution block. A second redundant `normalized()` call was made on the adjusted velocity vector — each `normalized()` involves a `std::sqrt`.
+
+**Fix:**
+- Reuse the already-normalized `direction` vector for the lateral axis — no re-computation
+- Replace final `normalized() * speed` with `diff * (speed / std::sqrt(diffLenSq))` guarded by `diffLenSq > 0.001f` — one sqrt instead of two
+
+**Files:** `src/ai/behaviors/ChaseBehavior.cpp`
+
+---
+
+### Finding 5 — WanderBehavior: Full Logic Evaluated Every Frame
+
+**Commits:** `9178adb1`, `b2da7490`
+
+**Audit:**
+`executeWander()` ran direction selection, stall detection, and unstick logic every frame for every active wandering entity. These operations are behaviorally meaningful at multi-second intervals but provide no benefit at 60Hz. At 10K wandering entities the redundant per-frame computation was measurable in batch timing.
+
+**Fix:**
+- `movementUpdateTimer` field added to `WanderState` in `EntityDataManager.hpp`
+- Heavy logic gated behind a `~5s` throttle (`MOVEMENT_UPDATE_INTERVAL`) — runs only when `movementUpdateTimer >= threshold`
+- Lightweight velocity integration and position application remain per-frame
+
+**Files:** `src/ai/behaviors/WanderBehavior.cpp`, `include/managers/EntityDataManager.hpp`
+
+---
+
+### Finding 6 — FollowBehavior: Full Movement Logic Evaluated Every Frame
+
+**Commit:** `b2da7490`
+
+**Audit:**
+`executeFollow()` ran the full movement stack (pathfinding requests, separation forces, formation slot resolution, target position lookup) every frame for every following entity. Leader position is typically stable between frames; re-evaluating the full stack at 60Hz produced no behavioral improvement and increased batch time proportionally to follower count.
+
+**Fix:**
+- `updateInterval` field added to `FollowBehaviorConfig` (`BehaviorConfig.hpp`)
+- `backoffTimer` (existing `FollowState` field) repurposed as the update throttle — full logic skipped if `backoffTimer < config.updateInterval`
+- `elapsed` (accumulated delta since last execution) used to keep path and cooldown timers accurate across skipped frames
+- `separationTimer` increments by `config.updateInterval` to stay consistent with throttled update semantics
+
+**Files:** `src/ai/behaviors/FollowBehavior.cpp`, `include/ai/BehaviorConfig.hpp`
+
+---
+
+### Finding 7 — PatrolBehavior: Waypoint Re-Evaluation Every Frame
+
+**Commits:** `b2da7490`, `56948e50`
+
+**Audit:**
+`executePatrol()` re-evaluated waypoint selection and approach logic every frame. Patrol waypoints are coarse navigation targets — re-selecting them at 60Hz served no purpose and consumed batch time on every patrol entity.
+
+**Fix:**
+- `patrolThrottleTimer` field added to `GuardState` in `EntityDataManager.hpp` (patrol state resides in the guard union)
+- `updateInterval` field added to patrol config (`BehaviorConfig.hpp`)
+- Heavy patrol logic gated by `patrolThrottleTimer >= config.updateInterval`
+
+**Files:** `src/ai/behaviors/PatrolBehavior.cpp`, `include/managers/EntityDataManager.hpp`, `include/ai/BehaviorConfig.hpp`
+
+---
+
+### Finding 8 — EDM Hot-Path Functions: Unnecessary Cross-TU Call Overhead
+
+**Commit:** `56948e50`
+
+**Audit:**
+`updateEmotionalDecay()` and `hasBehaviorData()` were out-of-line implementations in `EntityDataManager.cpp`. Both are called in the AI batch update hot path (per entity, per frame). Short functions with no non-trivial control flow have no reason to be out-of-line — cross-TU calls prevent inlining at the batch call site.
+
+**Fix:**
+Both moved to inline implementations in `EntityDataManager.hpp`. The compiler can now inline them directly into `processBatch()` at the batch call site.
+
+**Files:** `include/managers/EntityDataManager.hpp`, `src/managers/EntityDataManager.cpp`
+
+---
+
+### Post-Audit Test Status
+
+Build: **clean, zero warnings** (Darwin 25.4.0, Apple Silicon, Metal + Vulkan, SDL3 GPU)
 
 ---
 
