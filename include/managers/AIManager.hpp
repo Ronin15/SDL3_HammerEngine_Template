@@ -299,6 +299,9 @@ private:
   // Reusable buffer for collecting damage events from batch futures
   std::vector<EventManager::DeferredEvent> m_allDamageEvents;
 
+  // Reusable buffer for single-threaded path deferred events (avoids per-call allocation)
+  std::vector<EventManager::DeferredEvent> m_singleBatchEvents;
+
   // Reusable buffer for Active tier EDM indices (avoids per-frame allocation)
   std::vector<size_t> m_activeIndicesBuffer;
 
@@ -323,14 +326,15 @@ private:
 
   // Process batch of Active tier entities using EDM indices directly
   // No tier check needed - getActiveIndices() already filters to Active tier
-  // Returns collected deferred events from this batch's thread-local buffer
-  std::vector<EventManager::DeferredEvent> processBatch(const std::vector<size_t>& activeIndices,
+  // Collects deferred events from this batch's thread-local buffer into outEvents
+  void processBatch(const std::vector<size_t>& activeIndices,
                     size_t start, size_t end,
                     float deltaTime,
                     float worldWidth, float worldHeight,
                     EntityHandle playerHandle, const Vector2D& playerPos,
                     const Vector2D& playerVel, bool playerValid,
-                    float gameTime);
+                    float gameTime,
+                    std::vector<EventManager::DeferredEvent>& outEvents);
 
   // Shutdown state
   bool m_isShutdown{false};

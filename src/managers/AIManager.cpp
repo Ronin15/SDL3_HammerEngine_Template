@@ -363,16 +363,16 @@ void AIManager::update(float deltaTime) {
         if (batchCount <= 1) {
           actualWasThreaded = false;
           actualBatchCount = 1;
+          m_singleBatchEvents.clear();
           startTime = std::chrono::steady_clock::now();
-          auto damageEvents = processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
+          processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
                        worldWidth, worldHeight, cachedPlayerHandle,
                        cachedPlayerPosition, cachedPlayerVelocity,
-                       cachedPlayerValid, cachedGameTime);
+                       cachedPlayerValid, cachedGameTime, m_singleBatchEvents);
           endTime = std::chrono::steady_clock::now();
 
-          // Submit deferred events (single-batch path — outside timing)
-          if (!damageEvents.empty()) {
-            EventManager::Instance().enqueueBatch(std::move(damageEvents));
+          if (!m_singleBatchEvents.empty()) {
+            EventManager::Instance().enqueueBatch(std::move(m_singleBatchEvents));
           }
         } else {
           actualWasThreaded = true;
@@ -380,10 +380,8 @@ void AIManager::update(float deltaTime) {
           size_t entitiesPerBatch = entityCount / batchCount;
           size_t remainingEntities = entityCount % batchCount;
 
-          // Start timing batch work (enqueue + wait) — feeds hill-climbing
           startTime = std::chrono::steady_clock::now();
 
-          // Submit batches using futures that return deferred events
           m_batchFutures.clear();
           m_batchFutures.reserve(batchCount);
 
@@ -391,34 +389,25 @@ void AIManager::update(float deltaTime) {
             size_t start = i * entitiesPerBatch;
             size_t end = start + entitiesPerBatch;
 
-            // Add remaining entities to last batch
             if (i == batchCount - 1) {
               end += remainingEntities;
             }
 
-            // Submit each batch - processBatch returns deferred events directly
             m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
                 [this, start, end, deltaTime, worldWidth, worldHeight,
                  cachedPlayerHandle, cachedPlayerPosition, cachedPlayerVelocity,
                  cachedPlayerValid, cachedGameTime]() -> std::vector<EventManager::DeferredEvent> {
-                  try {
-                    return processBatch(m_activeIndicesBuffer, start, end, deltaTime,
-                                 worldWidth, worldHeight, cachedPlayerHandle,
-                                 cachedPlayerPosition, cachedPlayerVelocity,
-                                 cachedPlayerValid, cachedGameTime);
-                  } catch (const std::exception &e) {
-                    AI_ERROR(
-                        std::format("Exception in AI batch: {}", e.what()));
-                    return {};
-                  } catch (...) {
-                    AI_ERROR("Unknown exception in AI batch");
-                    return {};
-                  }
+                  std::vector<EventManager::DeferredEvent> events;
+                  processBatch(m_activeIndicesBuffer, start, end, deltaTime,
+                               worldWidth, worldHeight, cachedPlayerHandle,
+                               cachedPlayerPosition, cachedPlayerVelocity,
+                               cachedPlayerValid, cachedGameTime, events);
+                  return events;
                 },
                 HammerEngine::TaskPriority::High, "AI_Batch"));
           }
 
-          // Wait for all batches and collect deferred events (lock-free collection)
+          // Wait for all batches and collect deferred events
           m_allDamageEvents.clear();
           for (auto& future : m_batchFutures) {
             if (future.valid()) {
@@ -432,7 +421,6 @@ void AIManager::update(float deltaTime) {
           }
           endTime = std::chrono::steady_clock::now();
 
-          // Submit all accumulated deferred events to EventManager (outside timing)
           if (!m_allDamageEvents.empty()) {
             EventManager::Instance().enqueueBatch(std::move(m_allDamageEvents));
           }
@@ -441,15 +429,16 @@ void AIManager::update(float deltaTime) {
       // Single-threaded processing — timing feeds threshold learning
       actualWasThreaded = false;
       actualBatchCount = 1;
+      m_singleBatchEvents.clear();
       startTime = std::chrono::steady_clock::now();
-      auto damageEvents = processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth,
+      processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth,
                    worldHeight, cachedPlayerHandle, cachedPlayerPosition,
-                   cachedPlayerVelocity, cachedPlayerValid, cachedGameTime);
+                   cachedPlayerVelocity, cachedPlayerValid, cachedGameTime,
+                   m_singleBatchEvents);
       endTime = std::chrono::steady_clock::now();
 
-      // Submit deferred events (single-threaded path — outside timing)
-      if (!damageEvents.empty()) {
-        EventManager::Instance().enqueueBatch(std::move(damageEvents));
+      if (!m_singleBatchEvents.empty()) {
+        EventManager::Instance().enqueueBatch(std::move(m_singleBatchEvents));
       }
     }
     double totalUpdateTime =
@@ -1228,14 +1217,15 @@ size_t AIManager::getTotalAssignmentCount() const {
   return m_totalAssignmentCount.load(std::memory_order_relaxed);
 }
 
-std::vector<EventManager::DeferredEvent> AIManager::processBatch(
+void AIManager::processBatch(
                              const std::vector<size_t> &activeIndices,
                              size_t start, size_t end, float deltaTime,
                              float worldWidth, float worldHeight,
                              EntityHandle playerHandle,
                              const Vector2D &playerPos,
                              const Vector2D &playerVel, bool playerValid,
-                             float gameTime) {
+                             float gameTime,
+                             std::vector<EventManager::DeferredEvent> &outEvents) {
   // Process batch of Active tier entities using EDM indices directly
   // No tier check needed - getActiveIndices() already filters to Active tier
   size_t batchExecutions = 0;
@@ -1368,6 +1358,12 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
     batchCount = 0;
   };
 
+  // Pre-pass: update emotional decay for all active entities in a tight loop
+  // Better cache locality than interleaving with behavior execution
+  for (size_t i = start; i < end && i < activeIndices.size(); ++i) {
+    edm.updateEmotionalDecay(activeIndices[i], deltaTime);
+  }
+
   for (size_t i = start; i < end && i < activeIndices.size(); ++i) {
     size_t edmIdx = activeIndices[i];
 
@@ -1388,15 +1384,11 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
         edmHotData
             .transform; // Direct access, avoid redundant getTransformByIndex()
 
-    // Pre-fetch BehaviorData, PathData, and MemoryData once - avoids repeated Instance()
-    // calls in behaviors BehaviorType is read from EDM BehaviorData (single
-    // source of truth)
     if (!edm.hasBehaviorData(edmIdx)) {
       continue;
     }
     auto &behaviorData = edm.getBehaviorData(edmIdx);
-    if (!behaviorData.isValid() ||
-        behaviorData.behaviorType == BehaviorType::None ||
+    if (behaviorData.behaviorType == BehaviorType::None ||
         behaviorData.behaviorType == BehaviorType::COUNT) {
       continue;
     }
@@ -1404,45 +1396,33 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
 
     assert(edm.hasMemoryData(edmIdx) &&
            "Behavior-executed entities must have initialized memory data");
-    if (!edm.hasMemoryData(edmIdx)) {
-      continue;
-    }
     auto &memoryData = edm.getMemoryData(edmIdx);
-    edm.updateEmotionalDecay(edmIdx, deltaTime);
 
-    // Pre-fetch CharacterData to avoid repeated getCharacterDataByIndex() calls in behaviors
     const CharacterData &characterData = edm.getCharacterDataByIndex(edmIdx);
 
-    // Get behavior config from EDM
     const auto& config = edm.getBehaviorConfig(edmIdx);
     if (config.type == BehaviorType::None) {
-      continue;  // No behavior configured for this entity
+      continue;
     }
 
-    try {
-      // Store previous position for interpolation
-      transform.previousPosition = transform.position;
+    // Store previous position for interpolation
+    transform.previousPosition = transform.position;
 
-      // Execute behavior logic using cached handle ID and EDM index for
-          // contention-free state access
-      BehaviorContext ctx(
-          transform, edmHotData, m_storage.handles[storageIdx].getId(), edmIdx,
-          deltaTime, playerHandle, playerPos, playerVel, playerValid,
-          behaviorData, pathData, memoryData, characterData,
-          0.0f, 0.0f, worldWidth, worldHeight, true, gameTime);
-      Behaviors::execute(ctx, config);
+    BehaviorContext ctx(
+        transform, edmHotData, m_storage.handles[storageIdx].getId(), edmIdx,
+        deltaTime, playerHandle, playerPos, playerVel, playerValid,
+        behaviorData, pathData, memoryData, characterData,
+        0.0f, 0.0f, worldWidth, worldHeight, true, gameTime);
+    Behaviors::execute(ctx, config);
 
-      batchTransforms[batchCount] = &transform;
-      batchHotData[batchCount] = &edmHotData;
-      ++batchCount;
-      if (batchCount == 4) {
-        flushMovementBatch();
-      }
-
-      ++batchExecutions;
-    } catch (const std::exception &e) {
-      AI_ERROR(std::format("Error in batch processing entity: {}", e.what()));
+    batchTransforms[batchCount] = &transform;
+    batchHotData[batchCount] = &edmHotData;
+    ++batchCount;
+    if (batchCount == 4) {
+      flushMovementBatch();
     }
+
+    ++batchExecutions;
   }
 
   flushMovementBatch();
@@ -1452,11 +1432,8 @@ std::vector<EventManager::DeferredEvent> AIManager::processBatch(
                                         std::memory_order_relaxed);
   }
 
-  // Collect all deferred events from this batch's thread-local buffers (lock-free)
-  // Uses ref-based API to preserve thread_local vector capacity across frames
-  std::vector<EventManager::DeferredEvent> deferredEvents;
-  Behaviors::collectDeferredDamageEvents(deferredEvents);
-  return deferredEvents;
+  // Collect deferred events from this batch's thread-local buffers into caller's vector
+  Behaviors::collectDeferredDamageEvents(outEvents);
 }
 
 int AIManager::getEntityPriority(EntityHandle handle) const {

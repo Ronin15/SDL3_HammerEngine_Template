@@ -2666,6 +2666,27 @@ inline bool EntityDataManager::hasMemoryData(size_t index) const noexcept {
     return index < m_memoryData.size() && m_memoryData[index].isValid();
 }
 
+inline bool EntityDataManager::hasBehaviorData(size_t index) const noexcept {
+    return index < m_behaviorData.size() && m_behaviorData[index].isValid();
+}
+
+inline void EntityDataManager::updateEmotionalDecay(size_t index, float deltaTime, float decayRate) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+    auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        return;
+    }
+    data.emotions.decay(decayRate, deltaTime);
+    data.lastDecayTime += deltaTime;
+    data.lastCombatTime += deltaTime;
+    constexpr float COMBAT_TIMEOUT = 5.0f;
+    if ((data.flags & NPCMemoryData::FLAG_IN_COMBAT) && data.lastCombatTime > COMBAT_TIMEOUT) {
+        data.flags &= ~NPCMemoryData::FLAG_IN_COMBAT;
+    }
+}
+
 inline MemoryOverflow* EntityDataManager::getMemoryOverflow(uint32_t overflowId) {
     auto it = m_memoryOverflow.find(overflowId);
     return (it != m_memoryOverflow.end()) ? &it->second : nullptr;

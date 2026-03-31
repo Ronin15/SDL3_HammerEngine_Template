@@ -2713,10 +2713,6 @@ void EntityDataManager::advanceWaypointWithCache(size_t index) {
 
 // getBehaviorData() is now inline in EntityDataManager.hpp
 
-bool EntityDataManager::hasBehaviorData(size_t index) const noexcept {
-    return index < m_behaviorData.size() && m_behaviorData[index].isValid();
-}
-
 void EntityDataManager::initBehaviorData(size_t index, BehaviorType behaviorType) {
     assert(index < m_behaviorData.size() && "BehaviorData index out of bounds");
     auto& data = m_behaviorData[index];
@@ -2872,28 +2868,6 @@ void EntityDataManager::findMemoriesOfEntity(size_t index, EntityHandle subject,
             }
         }
     }
-}
-
-void EntityDataManager::updateEmotionalDecay(size_t index, float deltaTime, float decayRate) {
-    if (index >= m_memoryData.size()) {
-        return;
-    }
-
-    auto& data = m_memoryData[index];
-    if (!data.isValid()) {
-        return;
-    }
-
-    data.emotions.decay(decayRate, deltaTime);
-    data.lastDecayTime += deltaTime;
-    data.lastCombatTime += deltaTime;  // Enable delta-based combat timing for isUnderRecentAttack()
-
-    // Clear combat flag when enough time has passed since last event
-    constexpr float COMBAT_TIMEOUT = 5.0f;
-    if ((data.flags & NPCMemoryData::FLAG_IN_COMBAT) && data.lastCombatTime > COMBAT_TIMEOUT) {
-        data.flags &= ~NPCMemoryData::FLAG_IN_COMBAT;
-    }
-
 }
 
 void EntityDataManager::modifyEmotions(size_t index, float aggression, float fear,
