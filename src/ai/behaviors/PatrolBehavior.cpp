@@ -129,6 +129,11 @@ void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfi
         return;
     }
 
+    // Throttle patrol movement logic — peaceful walking between waypoints
+    guard.alertTimer += ctx.deltaTime;  // Reused as throttle timer (unused by Patrol)
+    if (guard.alertTimer < config.updateInterval) return;
+    guard.alertTimer = 0.0f;
+
     Vector2D currentPos = ctx.transform.position;
     auto& edm = EntityDataManager::Instance();
 
@@ -138,7 +143,7 @@ void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfi
     // Check if at current waypoint
     Vector2D currentWaypoint = waypointSlot[guard.currentPatrolIndex % 4];
     if (isAtWaypoint(currentPos, currentWaypoint, config.waypointReachedRadius)) {
-        guard.patrolMoveTimer += ctx.deltaTime;
+        guard.patrolMoveTimer += config.updateInterval;
         if (guard.patrolMoveTimer >= config.waypointCooldown) {
             guard.currentPatrolIndex = (guard.currentPatrolIndex + 1) % 4;
             guard.patrolMoveTimer = 0.0f;
@@ -151,9 +156,9 @@ void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfi
     // Move toward waypoint using pathfinding
     if (ctx.pathData) {
         auto& pathData = *ctx.pathData;
-        pathData.pathUpdateTimer += ctx.deltaTime;
+        pathData.pathUpdateTimer += config.updateInterval;
         if (pathData.pathRequestCooldown > 0.0f) {
-            pathData.pathRequestCooldown -= ctx.deltaTime;
+            pathData.pathRequestCooldown -= config.updateInterval;
         }
 
         bool needsPath = !pathData.hasPath || pathData.navIndex >= pathData.pathLength ||
@@ -204,7 +209,7 @@ void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfi
     float speedSq = ctx.transform.velocity.lengthSquared();
     float stallThreshold = data.moveSpeed * config.stallSpeedMultiplier;
     if (speedSq < stallThreshold * stallThreshold) {
-        data.separationTimer += ctx.deltaTime;
+        data.separationTimer += config.updateInterval;
         if (data.separationTimer > config.advanceWaypointDelay) {
             // Skip to next waypoint
             guard.currentPatrolIndex = (guard.currentPatrolIndex + 1) % 4;

@@ -348,9 +348,8 @@ void executeWander(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfi
     if (data.state.wander.movementStarted) {
         // Throttle heavy movement logic — wanderers are peaceful, just coast
         // on current velocity between updates
-        constexpr float WANDER_UPDATE_INTERVAL = 5.0f;
         data.state.wander.movementUpdateTimer += ctx.deltaTime;
-        if (data.state.wander.movementUpdateTimer >= WANDER_UPDATE_INTERVAL) {
+        if (data.state.wander.movementUpdateTimer >= config.updateInterval) {
             data.state.wander.movementUpdateTimer = 0.0f;
             handleMovement(ctx, config);
         }

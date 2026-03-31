@@ -138,6 +138,9 @@ struct WanderBehaviorConfig
     float crowdSlowdownHeavy{0.5f};              // Speed multiplier when crowdCount > 10
     float crowdSlowdownLight{0.7f};              // Speed multiplier when crowdCount 5-10
 
+    // Update throttling (peaceful behavior — heavy logic runs at this interval)
+    float updateInterval{5.0f};                   // Seconds between full movement updates
+
     // Factory methods for common presets
     static WanderBehaviorConfig createSmallWander()
     {
@@ -244,6 +247,9 @@ struct PatrolBehaviorConfig
     // Boundary padding
     float boundaryPadding = 80.0f;                // Keep patrol paths this far from world edges
 
+    // Update throttling (peaceful behavior — heavy logic runs at this interval)
+    float updateInterval{3.0f};                   // Seconds between full movement updates
+
     // Factory methods for common presets
     static PatrolBehaviorConfig createRandomPatrol()
     {
@@ -338,6 +344,9 @@ struct FollowBehaviorConfig
     float pathCooldown{1.0f};                     // Seconds between path requests
     float catchupSpeedMultiplier{1.3f};           // Speed multiplier when far behind leader
     float slowdownSpeedMultiplier{0.5f};          // Speed multiplier when too close to leader
+
+    // Update throttling (more responsive than wander/patrol since tracking a moving target)
+    float updateInterval{1.0f};                   // Seconds between full movement updates
 };
 
 /**
