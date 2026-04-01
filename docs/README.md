@@ -19,10 +19,12 @@ This hub covers the engine architecture and the major subsystem docs. The curren
 - [Behavior Modes](ai/BehaviorModes.md)
 - [Behavior Quick Reference](ai/BehaviorQuickReference.md)
 - [NPC Memory](ai/NPCMemory.md)
+- [Pathfinding System](ai/PathfindingSystem.md)
 - [EventManager](events/EventManager.md)
 - [EventManager Quick Reference](events/EventManager_QuickReference.md)
 - [EventManager Advanced](events/EventManager_Advanced.md)
 - [EventFactory](events/EventFactory.md)
+- [Time Events](events/TimeEvents.md)
 
 ## Controllers and World Systems
 
@@ -32,14 +34,15 @@ This hub covers the engine architecture and the major subsystem docs. The curren
 - [SocialController](controllers/SocialController.md)
 - [WorldManager](managers/WorldManager.md)
 - [WorldResourceManager](managers/WorldResourceManager.md)
-- [JSON Resource Loading Guide](utils/JSON_Resource_Loading_Guide.md)
 
 ## Rendering and UI
 
 - [GPU Rendering](gpu/GPURendering.md)
 - [UIManager Guide](ui/UIManager_Guide.md)
-- [Camera](utils/Camera.md)
-- [FrameProfiler](utils/FrameProfiler.md)
+- [UIConstants Reference](ui/UIConstants.md)
+- [Auto-Sizing System](ui/Auto_Sizing_System.md)
+- [DPI-Aware Font System](ui/DPI_Aware_Font_System.md)
+- [Minimap Implementation](ui/Minimap_Implementation.md)
 
 ## Entities and GameStates
 
@@ -48,6 +51,27 @@ This hub covers the engine architecture and the major subsystem docs. The curren
 - [LoadingState](gameStates/LoadingState.md)
 - [SettingsMenuState](gameStates/SettingsMenuState.md)
 - [GameOverState](gameStates/GameOverState.md)
+
+## Utilities
+
+- [FrameProfiler](utils/FrameProfiler.md)
+- [Camera](utils/Camera.md)
+- [JsonReader](utils/JsonReader.md)
+- [JSON Resource Loading Guide](utils/JSON_Resource_Loading_Guide.md)
+- [Serialization](utils/SERIALIZATION.md)
+- [ResourceHandle System](utils/ResourceHandle_System.md)
+
+## Architecture
+
+- [Architecture Overview](ARCHITECTURE.md)
+- [Interpolation System](architecture/InterpolationSystem.md)
+
+## Performance & Development
+
+- [Power Efficiency](performance/PowerEfficiency.md)
+- [Camera Refactor Plan](Camera_Refactor_Plan.md)
+- [SDL3 macOS Cleanup Issue](issues/SDL3_MACOS_CLEANUP_ISSUE.md)
+- [AGENTS.md](../AGENTS.md)
 
 ## Testing and Validation
 
