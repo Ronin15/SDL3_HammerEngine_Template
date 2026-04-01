@@ -120,6 +120,9 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_pathfinder_manager_edm_integration_tests.sh"
   "$SCRIPT_DIR/run_npc_memory_tests.sh"
   "$SCRIPT_DIR/run_gpu_tests.sh"
+  "$SCRIPT_DIR/run_crowd_runtime_tests.sh"
+  "$SCRIPT_DIR/run_manager_runtime_tests.sh"
+  "$SCRIPT_DIR/run_frame_profiler_tests.sh"
 )
 
 # Performance scaling benchmarks (slow execution)

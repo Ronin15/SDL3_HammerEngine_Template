@@ -22,6 +22,7 @@ set RUN_DAYNIGHT=false
 set RUN_HARVEST=false
 set RUN_NPCRENDER=false
 set RUN_ITEM=false
+set RUN_COMBAT=false
 set RUN_RESOURCERENDER=false
 set RUN_SOCIAL=false
 
@@ -68,6 +69,12 @@ if /i "%~1"=="--item" (
     shift
     goto parse_args
 )
+if /i "%~1"=="--combat" (
+    set RUN_ALL=false
+    set RUN_COMBAT=true
+    shift
+    goto parse_args
+)
 if /i "%~1"=="--resourcerender" (
     set RUN_ALL=false
     set RUN_RESOURCERENDER=true
@@ -92,6 +99,7 @@ if /i "%~1"=="--help" (
     echo   --harvest      Run only HarvestController tests
     echo   --npcrender    Run only NPCRenderController tests
     echo   --item         Run only ItemController tests
+    echo   --combat       Run only CombatController tests
     echo   --resourcerender Run only ResourceRenderController tests
     echo   --social       Run only SocialController tests
     echo   --help         Show this help message
@@ -115,6 +123,7 @@ if "%RUN_ALL%"=="true" (
     call :run_single_test harvest_controller_tests
     call :run_single_test npc_render_controller_tests
     call :run_single_test item_controller_tests
+    call :run_single_test combat_controller_tests
     call :run_single_test resource_render_controller_tests
     call :run_single_test social_controller_tests
 ) else (
@@ -124,6 +133,7 @@ if "%RUN_ALL%"=="true" (
     if "%RUN_HARVEST%"=="true" call :run_single_test harvest_controller_tests
     if "%RUN_NPCRENDER%"=="true" call :run_single_test npc_render_controller_tests
     if "%RUN_ITEM%"=="true" call :run_single_test item_controller_tests
+    if "%RUN_COMBAT%"=="true" call :run_single_test combat_controller_tests
     if "%RUN_RESOURCERENDER%"=="true" call :run_single_test resource_render_controller_tests
     if "%RUN_SOCIAL%"=="true" call :run_single_test social_controller_tests
 )
@@ -186,6 +196,7 @@ if !OVERALL_RESULT! neq 0 (
     echo !GREEN!  HarvestController tests!NC!
     echo !GREEN!  NPCRenderController tests!NC!
     echo !GREEN!  ItemController tests!NC!
+    echo !GREEN!  CombatController tests!NC!
     echo !GREEN!  ResourceRenderController tests!NC!
     echo !GREEN!  SocialController tests!NC!
     exit /b 0

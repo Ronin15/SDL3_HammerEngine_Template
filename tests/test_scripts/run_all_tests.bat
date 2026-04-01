@@ -108,6 +108,9 @@ for %%T in (
     run_pathfinder_manager_edm_integration_tests.bat
     run_npc_memory_tests.bat
     run_gpu_tests.bat
+    run_crowd_runtime_tests.bat
+    run_manager_runtime_tests.bat
+    run_frame_profiler_tests.bat
 ) do (
     echo.
     echo Running test: %%T
