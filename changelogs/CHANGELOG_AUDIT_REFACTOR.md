@@ -3,7 +3,7 @@
 # Audit & Refactor Update
 
 **Branch:** `audit`
-**Date:** 2026-03-30 → 2026-03-31
+**Date:** 2026-03-30 → 2026-04-01
 **Review Status:** ✅ APPROVED (ongoing)
 **Overall Grade:** A (93/100)
 
@@ -28,6 +28,7 @@ The branch was validated by 261 tests across 8 executables (all passing) and a f
 - ✅ GPUSceneRenderer renamed to GPUSceneRecorder (semantic clarity)
 - ✅ 261/261 tests passing — build clean after all fixes
 - ✅ AI subsystem audit (2026-03-31) — 8 findings resolved, zero per-frame allocations in batch path
+- ✅ Test suite audit (2026-04-01) — 5 new test executables, 35 files updated, FontManager bug fixed, zero build warnings
 
 ---
 
@@ -695,6 +696,84 @@ The lateral spread path for `cachedChaserCount > 3` called `(targetPos - entityP
 Both moved to inline implementations in `EntityDataManager.hpp`. The compiler can now inline them directly into `processBatch()` at the batch call site.
 
 **Files:** `include/managers/EntityDataManager.hpp`, `src/managers/EntityDataManager.cpp`
+
+---
+
+## Test Suite Audit (2026-04-01)
+
+**Commits:** `50a66819`, `10dff99d`, `be56cc90`
+
+A full audit and expansion of the test suite: 35 test source files touched, 5 new test executables added, test documentation rewritten, build warnings eliminated, and one production bug found and fixed.
+
+### New Test Executables
+
+| Executable | Source | Coverage Area |
+|------------|--------|---------------|
+| `crowd_runtime_tests` | `tests/ai/CrowdRuntimeTests.cpp` | Crowd cache reuse, stat accounting, invalidation, thread-local buffer behavior |
+| `resource_path_tests` | `tests/utils/ResourcePathTests.cpp` | Search-path priority, fallback behavior, resolution rules |
+| `frame_profiler_tests` | `tests/utils/FrameProfilerTests.cpp` | Overlay toggling, suppression, hitch attribution, GPU swapchain-wait exclusion |
+| `manager_runtime_tests` | `tests/managers/ManagerRuntimeTests.cpp` | Direct runtime coverage for SoundManager, FontManager, TextureManager |
+| `combat_controller_tests` | `tests/controllers/CombatControllerTests.cpp` | Controller basics and null-player guard behavior |
+
+### Existing Test Improvements
+
+**Expanded controller test coverage** — NPCRenderControllerTests (+102 lines: animation state, row/frame selection, facing behavior), ResourceRenderControllerTests (+248 lines: lifecycle and update behavior), SocialControllerTests (+20 lines), CombatControllerTests (+62 lines).
+
+**Pathfinder test consolidation** — PathfinderManagerTests rewritten from 251-line reduction, removing redundant mocking and focusing on integration-level validation. PathfinderAIContentionTests restructured for clearer batch contention scenarios (+118 lines).
+
+**Collision system expansion** — CollisionSystemTests gained additional spatial hash validation and tier-filtering assertions (+54 lines).
+
+**AI test hardening** — BehaviorFunctionalityTest (+33 lines), ThreadSafeAIIntegrationTest (+37 lines) with improved state verification after `updateAI()` calls. CrowdRuntimeTests added as a new standalone executable for crowd-query subsystem coverage.
+
+**Event test cleanup** — EventTypesTest and WeatherEventTest refactored for consistency and reduced duplication.
+
+**World/GPU tests** — WorldManagerTests expanded with chunk lifecycle assertions (+40 lines). GPURendererTests streamlined, removing redundant setup code (−26 lines net).
+
+### FontManager Bug Fix
+
+**Commit:** `10dff99d`
+
+During test warning cleanup, discovered that `FontManager::clean()` was not resetting the `m_fontsLoaded` atomic flag. After `clean()`, subsequent `isReady()` checks would return true despite fonts being unloaded — a latent bug that could cause use-after-free on re-initialization paths.
+
+**Fix:** Added `m_fontsLoaded.store(false, std::memory_order_release)` in `FontManager::clean()`.
+
+**File:** `src/managers/FontManager.cpp`
+
+### Build Warning Cleanup
+
+**Commit:** `10dff99d`
+
+Eliminated all test build warnings across 8 test files. Changes included: removing unused variables, fixing signed/unsigned comparison warnings, correcting parameter types, and simplifying redundant test setup code.
+
+**Files:** `tests/PathfinderManagerTests.cpp`, `tests/controllers/NPCRenderControllerTests.cpp`, `tests/controllers/ResourceRenderControllerTests.cpp`, `tests/gpu/GPURendererTests.cpp`, `tests/managers/ManagerRuntimeTests.cpp`, `tests/utils/ResourcePathTests.cpp`, `tests/world/WorldManagerTests.cpp`
+
+### Test Runner Updates
+
+**Commit:** `be56cc90`
+
+Added dedicated test runner scripts for new test executables and updated existing runners for consistency:
+
+- **New scripts:** `run_crowd_runtime_tests.sh/.bat`, `run_frame_profiler_tests.sh/.bat`, `run_manager_runtime_tests.sh/.bat`
+- **Updated:** `run_all_tests.sh` and `run_controller_tests.sh/.bat` to include new executables, `run_resource_tests.bat` alignment
+
+### Test Documentation
+
+`tests/TESTING.md` rewritten to reflect current state: 74 source-controlled test executables (down from inflated count of 78 after removing stale entries). Added coverage descriptions for all new test suites. Renumbered test categories (12→15 sections) to include Utility Runtime Tests.
+
+`tests/BEHAVIOR_TESTING.md` updated with crowd runtime test documentation.
+
+### Post-Audit Scale
+
+| Metric | Value |
+|--------|-------|
+| Test source files modified | 35 |
+| New test executables | 5 |
+| Lines added | ~2,633 |
+| Lines removed | ~773 |
+| Net change | +1,860 |
+| Total test executables | 74 |
+| Build warnings | 0 |
+| Production bugs found | 1 (FontManager `m_fontsLoaded` reset) |
 
 ---
 
