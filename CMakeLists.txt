@@ -335,6 +335,14 @@ if(HAMMER_CAN_COMPILE_GPU_SHADERS)
             set(SHADER_FINAL_OUTPUT "${CMAKE_SOURCE_DIR}/res/shaders/${SHADER_DXIL_NAME}")
 
                 add_custom_command(
+                    OUTPUT ${SHADER_SPV}
+                    COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} -o ${SHADER_SPV}
+                    DEPENDS ${SHADER_SOURCE}
+                    COMMENT "Compiling shader: ${SHADER_NAME} -> ${SHADER_SPV_NAME}"
+                    VERBATIM
+                )
+
+                add_custom_command(
                     OUTPUT ${SHADER_HLSL}
                     COMMAND ${SPIRV_CROSS} ${SHADER_SPV} --hlsl --shader-model 60 --output ${SHADER_HLSL}
                     DEPENDS ${SHADER_SPV}
