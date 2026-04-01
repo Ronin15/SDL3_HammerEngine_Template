@@ -2,6 +2,8 @@
 
 **Code:** `include/managers/EntityDataManager.hpp`, `src/managers/EntityDataManager.cpp`, `include/managers/WorldResourceManager.hpp`, `src/managers/WorldResourceManager.cpp`
 
+> **Note:** This is an implementation plan document. Code examples showing render signatures use the old SDL_Renderer path which has been removed. Current render controllers use `recordGPUVertices(const GPUSceneContext&)`. See [GPURendering](gpu/GPURendering.md) for current patterns.
+
 ## Overview
 
 Migrate resource entities and inventory into `EntityDataManager` following the `NPCRenderData` pattern established in [Data-Driven NPC Entity System Implementation](DATA_DRIVEN_NPC_IMPLEMENTATION.md).

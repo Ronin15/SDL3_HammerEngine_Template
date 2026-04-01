@@ -269,9 +269,7 @@ public:
     m_desiredCapacity = capacity;
 
     if (m_enableProfiling) {
-      THREADSYSTEM_INFO("Task queue capacity manually set to " +
-                        std::to_string(capacity) +
-                        " (deques grow automatically)");
+      THREADSYSTEM_INFO(std::format("Task queue capacity manually set to {} (deques grow automatically)", capacity));
     }
   }
 
@@ -688,12 +686,9 @@ private:
             // Update comprehensive statistics
             m_totalTasksProcessed.fetch_add(1, std::memory_order_relaxed);
           } catch (const std::exception &e) {
-            THREADSYSTEM_ERROR("Error in worker thread " +
-                               std::to_string(threadIndex) + ": " +
-                               std::string(e.what()));
+            THREADSYSTEM_ERROR(std::format("Error in worker thread {}: {}", threadIndex, e.what()));
           } catch (...) {
-            THREADSYSTEM_ERROR("Unknown error in worker thread " +
-                               std::to_string(threadIndex));
+            THREADSYSTEM_ERROR(std::format("Unknown error in worker thread {}", threadIndex));
           }
 
           // Decrement with relaxed ordering - order doesn't matter for simple
@@ -857,7 +852,7 @@ public:
     // HARDWARE CONCURRENCY - 1 PATTERN:
     // ThreadSystem allocates (hardware_concurrency - 1) workers to reserve one core
     // for the main rendering thread, which performs active work every frame:
-    //   - SDL_RenderPresent (blocks on VSync)
+    //   - Swapchain presentation / frame pacing
     //   - SDL_PollEvent (event polling)
     //   - Double-buffer coordination (swapBuffers)
     //

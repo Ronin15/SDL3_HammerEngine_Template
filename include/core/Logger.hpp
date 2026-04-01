@@ -251,11 +251,11 @@ inline std::mutex Logger::s_logMutex{};
 #define CAMERA_INFO(msg) HAMMER_INFO("Camera", msg)
 #define CAMERA_DEBUG(msg) HAMMER_DEBUG("Camera", msg)
 
-#define SCENE_RENDERER_CRITICAL(msg) HAMMER_CRITICAL("SceneRenderer", msg)
-#define SCENE_RENDERER_ERROR(msg) HAMMER_ERROR("SceneRenderer", msg)
-#define SCENE_RENDERER_WARN(msg) HAMMER_WARN("SceneRenderer", msg)
-#define SCENE_RENDERER_INFO(msg) HAMMER_INFO("SceneRenderer", msg)
-#define SCENE_RENDERER_DEBUG(msg) HAMMER_DEBUG("SceneRenderer", msg)
+#define GPU_SCENE_RECORDER_CRITICAL(msg) HAMMER_CRITICAL("GPUSceneRecorder", msg)
+#define GPU_SCENE_RECORDER_ERROR(msg) HAMMER_ERROR("GPUSceneRecorder", msg)
+#define GPU_SCENE_RECORDER_WARN(msg) HAMMER_WARN("GPUSceneRecorder", msg)
+#define GPU_SCENE_RECORDER_INFO(msg) HAMMER_INFO("GPUSceneRecorder", msg)
+#define GPU_SCENE_RECORDER_DEBUG(msg) HAMMER_DEBUG("GPUSceneRecorder", msg)
 
 #define SAVEGAME_CRITICAL(msg) HAMMER_CRITICAL("SaveGameManager", msg)
 #define SAVEGAME_ERROR(msg) HAMMER_ERROR("SaveGameManager", msg)
@@ -296,12 +296,6 @@ inline std::mutex Logger::s_logMutex{};
 #define WORLD_MANAGER_WARN(msg) HAMMER_WARN("WorldManager", msg)
 #define WORLD_MANAGER_INFO(msg) HAMMER_INFO("WorldManager", msg)
 #define WORLD_MANAGER_DEBUG(msg) HAMMER_DEBUG("WorldManager", msg)
-
-#define WORLD_RENDER_PIPELINE_CRITICAL(msg) HAMMER_CRITICAL("WorldRenderPipeline", msg)
-#define WORLD_RENDER_PIPELINE_ERROR(msg) HAMMER_ERROR("WorldRenderPipeline", msg)
-#define WORLD_RENDER_PIPELINE_WARN(msg) HAMMER_WARN("WorldRenderPipeline", msg)
-#define WORLD_RENDER_PIPELINE_INFO(msg) HAMMER_INFO("WorldRenderPipeline", msg)
-#define WORLD_RENDER_PIPELINE_DEBUG(msg) HAMMER_DEBUG("WorldRenderPipeline", msg)
 
 // Entity and State Systems
 #define GAMESTATE_CRITICAL(msg) HAMMER_CRITICAL("GameStateManager", msg)

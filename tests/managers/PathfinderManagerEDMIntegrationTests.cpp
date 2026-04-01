@@ -256,13 +256,18 @@ BOOST_AUTO_TEST_CASE(TestMultiplePathRequestsDoNotCrash) {
 
 BOOST_AUTO_TEST_CASE(TestRequestPathWithInvalidIndex) {
     auto& pm = PathfinderManager::Instance();
+    pm.resetStats();
 
     // Request with invalid index - should handle gracefully
-    [[maybe_unused]] uint64_t requestId = pm.requestPathToEDM(SIZE_MAX,
+    const uint64_t requestId = pm.requestPathToEDM(SIZE_MAX,
         Vector2D(0, 0), Vector2D(100, 100), PathfinderManager::Priority::Normal);
 
     waitForPathCompletion();
-    BOOST_CHECK(true); // Pass if no crash
+    const auto stats = pm.getStats();
+    BOOST_CHECK_EQUAL(requestId, 0U);
+    BOOST_CHECK_EQUAL(stats.totalRequests, 0U);
+    BOOST_CHECK_EQUAL(stats.failedRequests, 0U);
+    BOOST_CHECK_EQUAL(stats.completedRequests, 0U);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -387,7 +392,7 @@ BOOST_AUTO_TEST_CASE(StaleCompletionFromReusedSlotDoesNotOverwriteNewEntityPath)
     BOOST_REQUIRE(pd.hasPath);
     BOOST_REQUIRE(pd.pathLength > 0);
 
-    const Vector2D* waypoints = edm.getWaypointSlot(reusedIndex);
+    auto waypoints = edm.getWaypointSlot(reusedIndex);
     const Vector2D finalWaypoint = waypoints[pd.pathLength - 1];
     const float distToExpected = (finalWaypoint - expectedGoal).length();
     const float distToOldGoal = (finalWaypoint - Vector2D(1900.0f, 1900.0f)).length();
@@ -453,7 +458,7 @@ BOOST_AUTO_TEST_CASE(StaleCompletionFilteringStressLoop) {
         BOOST_REQUIRE(pd.hasPath);
         BOOST_REQUIRE(pd.pathLength > 0);
 
-        const Vector2D* waypoints = edm.getWaypointSlot(reusedIndex);
+        auto waypoints = edm.getWaypointSlot(reusedIndex);
         const Vector2D finalWaypoint = waypoints[pd.pathLength - 1];
         const float distToExpected = (finalWaypoint - expectedGoal).length();
         const float distToOldGoal = (finalWaypoint - Vector2D(1900.0f, 1900.0f)).length();

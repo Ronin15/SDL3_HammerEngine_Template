@@ -62,9 +62,7 @@ Vector2D normalizeVector(const Vector2D& direction) {
  * @return Vector2D of nearest safe zone center, or zero vector if no safe zones
  */
 Vector2D findNearestSafeZone(const BehaviorContext& ctx) {
-    if (!ctx.behaviorData) return Vector2D{0, 0};
-
-    const auto& flee = ctx.behaviorData->state.flee;
+    const auto& flee = ctx.behaviorData.state.flee;
     if (flee.safeZoneCount == 0) return Vector2D{0, 0};
 
     Vector2D currentPos = ctx.transform.position;
@@ -155,9 +153,9 @@ void updateStamina(BehaviorData& data, float deltaTime, bool fleeing,
 
 bool tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& goal, float speed,
                          const HammerEngine::FleeBehaviorConfig& config) {
-    if (!ctx.behaviorData || !ctx.pathData) return false;
+    if (!ctx.pathData) return false;
 
-    const auto& flee = ctx.behaviorData->state.flee;
+    const auto& flee = ctx.behaviorData.state.flee;
     auto& pathData = *ctx.pathData;
     Vector2D currentPos = ctx.transform.position;
 
@@ -218,8 +216,7 @@ bool tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& goal, float speed
 
 void updatePanicFlee(BehaviorContext& ctx, const Vector2D& threatPos,
                      const HammerEngine::FleeBehaviorConfig& config) {
-    if (!ctx.behaviorData) return;
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& flee = data.state.flee;
     Vector2D currentPos = ctx.transform.position;
 
@@ -241,8 +238,7 @@ void updatePanicFlee(BehaviorContext& ctx, const Vector2D& threatPos,
 
 void updateStrategicRetreat(BehaviorContext& ctx, const Vector2D& threatPos,
                             const HammerEngine::FleeBehaviorConfig& config) {
-    if (!ctx.behaviorData) return;
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& flee = data.state.flee;
     Vector2D currentPos = ctx.transform.position;
 
@@ -277,8 +273,7 @@ void updateStrategicRetreat(BehaviorContext& ctx, const Vector2D& threatPos,
 
 void updateEvasiveManeuver(BehaviorContext& ctx, const Vector2D& threatPos,
                            const HammerEngine::FleeBehaviorConfig& config) {
-    if (!ctx.behaviorData) return;
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& flee = data.state.flee;
     Vector2D currentPos = ctx.transform.position;
 
@@ -305,8 +300,7 @@ void updateEvasiveManeuver(BehaviorContext& ctx, const Vector2D& threatPos,
 
 void updateSeekCover(BehaviorContext& ctx, const Vector2D& threatPos,
                      const HammerEngine::FleeBehaviorConfig& config) {
-    if (!ctx.behaviorData) return;
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& flee = data.state.flee;
     Vector2D currentPos = ctx.transform.position;
 
@@ -377,9 +371,9 @@ void initFlee(size_t edmIndex, const HammerEngine::FleeBehaviorConfig& config) {
 }
 
 void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& config) {
-    if (!ctx.behaviorData || !ctx.behaviorData->isValid() || !ctx.pathData) return;
+    if (!ctx.behaviorData.isValid() || !ctx.pathData) return;
 
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& flee = data.state.flee;
     auto& pathData = *ctx.pathData;
 
@@ -399,9 +393,9 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
     }
 
     // Cache fear from emotions
-    if (ctx.memoryData && ctx.memoryData->isValid()) {
-        float braveryFactor = ctx.memoryData->personality.bravery;
-        float baseFear = ctx.memoryData->emotions.fear;
+    if (ctx.memoryData.isValid()) {
+        float braveryFactor = ctx.memoryData.personality.bravery;
+        float baseFear = ctx.memoryData.emotions.fear;
         flee.fearBoost = baseFear * (1.5f - braveryFactor);
     } else {
         flee.fearBoost = 0.0f;
@@ -416,9 +410,9 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
     Vector2D threatPos;
     bool threatValid = false;
 
-    if (ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
+    if (ctx.memoryData.lastAttacker.isValid()) {
         auto& edm = EntityDataManager::Instance();
-        size_t attackerIdx = edm.getIndex(ctx.memoryData->lastAttacker);
+        size_t attackerIdx = edm.getIndex(ctx.memoryData.lastAttacker);
         if (attackerIdx != SIZE_MAX) {
             const auto& attackerHot = edm.getHotDataByIndex(attackerIdx);
             if (attackerHot.isAlive()) {
@@ -482,7 +476,7 @@ void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& c
             float timeSinceLastDistress = std::fmod(flee.fleeTimer - 0.5f, config.distressBroadcastInterval);
             if (timeSinceLastDistress < ctx.deltaTime) {
                 thread_local std::vector<size_t> s_distressBuffer;
-                uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
+                uint8_t myFaction = ctx.characterData.faction;
                 AIManager::Instance().scanGuardsInRadius(
                     ctx.transform.position, 400.0f, s_distressBuffer, true);
                 auto& edm = EntityDataManager::Instance();

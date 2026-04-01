@@ -2,21 +2,22 @@
 
 ## Overview
 
-The Behavior Functionality Test suite (`BehaviorFunctionalityTest.cpp`) provides comprehensive testing for all 8 AI behaviors implemented in the Hammer Game Engine. This test ensures that each behavior works correctly, handles messages properly, and integrates seamlessly with the AIManager.
+The Behavior Functionality Test suite (`BehaviorFunctionalityTest.cpp`) provides broad coverage for the AI behavior system and its integration with `AIManager`, `BehaviorExecutors`, and EDM-backed state.
 
 ## Test Structure
 
 ### Test Suites
 
-1. **BehaviorRegistrationTests** - Verifies all behaviors are properly registered and assignable
-2. **IdleBehaviorTests** - Tests stationary and minimal movement behaviors
-3. **MovementBehaviorTests** - Tests basic movement behaviors (Wander, Chase, Flee)
-4. **ComplexBehaviorTests** - Tests advanced behaviors (Follow, Guard, Attack)
-5. **BehaviorMessageTests** - Tests message handling and communication
-6. **BehaviorModeTests** - Tests different modes for each behavior type
-7. **BehaviorTransitionTests** - Tests switching between behaviors and state management
-8. **BehaviorPerformanceTests** - Tests performance with multiple entities
-9. **AdvancedBehaviorFeatureTests** - Tests specialized features like patrol waypoints
+1. **BehaviorRegistrationTests** - Verifies behavior registration and assignment
+2. **IdleBehaviorTests** - Tests stationary and message-driven idle behavior
+3. **MovementBehaviorTests** - Tests Wander, Chase, and Flee movement behavior
+4. **ComplexBehaviorTests** - Tests Follow, Guard, and Attack behavior
+5. **BehaviorMessageTests** - Tests message queues, broadcasts, and alert propagation
+6. **BehaviorTransitionTests** - Tests switching between behaviors and state preservation
+7. **BehaviorPerformanceTests** - Tests multi-entity behavior execution
+8. **AdvancedBehaviorFeatureTests** - Tests specialized features like patrol waypoints
+9. **MemoryCombatTests** - Tests combat memory, damage scaling, and target tracking
+10. **BehaviorGapFixTests** - Tests regression coverage for recent behavior edge cases
 
 ### Behaviors Tested
 
@@ -35,9 +36,7 @@ The Behavior Functionality Test suite (`BehaviorFunctionalityTest.cpp`) provides
 
 ### Command Line
 ```bash
-cd build
-make behavior_functionality_tests
-./behavior_functionality_tests
+./bin/debug/behavior_functionality_tests
 ```
 
 ### With CTest
@@ -72,10 +71,10 @@ ctest -R BehaviorFunctionalityTests -V
 - Measures update performance
 - Memory management verification
 
-### Behavior Mode Testing
-- Validates all registered behavior variants
-- Tests mode switching via messages
-- Ensures proper mode configuration
+### Behavior Regression Coverage
+- Validates transition-state preservation
+- Exercises message queue merge/overflow behavior
+- Covers combat-memory and alert-propagation regressions
 
 ## Expected Test Results
 
@@ -181,10 +180,10 @@ The behavior functionality tests are included in the automated test suite and wi
 
 The test suite provides coverage for:
 - ✅ **Core Functionality**: All 8 behaviors execute without crashes
-- ✅ **Mode Variants**: All behavior modes are tested
+- ✅ **Transitions and Messages**: Behavior switching, queued messages, and alert propagation
 - ✅ **Message System**: Behavior-specific and broadcast messages
 - ✅ **State Management**: Entity state tracking and cleanup
 - ✅ **Performance**: Multi-entity scenarios and rapid transitions
-- ✅ **Integration**: Full AIManager integration testing
+- ✅ **Integration**: AIManager and EDM-backed behavior state integration
 
 This comprehensive test suite ensures that the AI behavior system is robust, performant, and ready for production use in game development scenarios.

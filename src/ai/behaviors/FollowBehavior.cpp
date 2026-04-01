@@ -39,9 +39,9 @@ void initFollow(size_t edmIndex, const HammerEngine::FollowBehaviorConfig& confi
 }
 
 void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfig& config) {
-    if (!ctx.behaviorData || !ctx.behaviorData->isValid()) return;
+    if (!ctx.behaviorData.isValid()) return;
 
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& follow = data.state.follow;
 
     // Process pending behavior messages
@@ -54,13 +54,13 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
                 switchBehavior(ctx.edmIndex, BehaviorType::Flee);
                 return;
             case BehaviorMessage::CALM_DOWN:
-                if (ctx.memoryData && ctx.memoryData->isValid())
+                if (ctx.memoryData.isValid())
                 {
-                    ctx.memoryData->emotions.fear = std::max(0.0f, ctx.memoryData->emotions.fear - 0.5f);
+                    ctx.memoryData.emotions.fear = std::max(0.0f, ctx.memoryData.emotions.fear - 0.5f);
                 }
                 break;
             case BehaviorMessage::RAISE_ALERT:
-                if (ctx.memoryData && ctx.memoryData->personality.bravery < 0.4f)
+                if (ctx.memoryData.personality.bravery < 0.4f)
                 {
                     data.pendingMessageCount = 0;
                     switchBehavior(ctx.edmIndex, BehaviorType::Flee);
@@ -86,13 +86,19 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
         return;
     }
 
+    // Throttle follow movement logic — responsive but not every frame
+    follow.backoffTimer += ctx.deltaTime;
+    if (follow.backoffTimer < config.updateInterval) return;
+    float elapsed = follow.backoffTimer;
+    follow.backoffTimer = 0.0f;
+
     // Get target (leader) position from memory
     Vector2D targetPos;
     bool targetValid = false;
 
-    if (ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
+    if (ctx.memoryData.lastTarget.isValid()) {
         auto& edm = EntityDataManager::Instance();
-        size_t targetIdx = edm.getIndex(ctx.memoryData->lastTarget);
+        size_t targetIdx = edm.getIndex(ctx.memoryData.lastTarget);
         if (targetIdx != SIZE_MAX) {
             const auto& targetHot = edm.getHotDataByIndex(targetIdx);
             if (targetHot.isAlive()) {
@@ -145,9 +151,9 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
     // Use pathfinding for navigation
     if (ctx.pathData) {
         auto& pathData = *ctx.pathData;
-        pathData.pathUpdateTimer += ctx.deltaTime;
+        pathData.pathUpdateTimer += elapsed;
         if (pathData.pathRequestCooldown > 0.0f) {
-            pathData.pathRequestCooldown -= ctx.deltaTime;
+            pathData.pathRequestCooldown -= elapsed;
         }
 
         bool needsPath = !pathData.hasPath || pathData.navIndex >= pathData.pathLength ||
@@ -213,7 +219,7 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
     float speedSq = ctx.transform.velocity.lengthSquared();
     float stallThreshold = data.moveSpeed * config.stallSpeedMultiplier;
     if (speedSq < stallThreshold * stallThreshold) {
-        data.separationTimer += ctx.deltaTime;
+        data.separationTimer += config.updateInterval;
         if (data.separationTimer > config.stallTimeout) {
             // Try to unstick
             if (ctx.pathData) ctx.pathData->clear();

@@ -12,6 +12,7 @@
 #include "managers/EventManager.hpp"
 #include "events/WorldEvent.hpp"
 #include "events/HarvestResourceEvent.hpp"
+#include "events/TimeEvent.hpp"
 #include "world/WorldData.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
@@ -93,8 +94,12 @@ BOOST_AUTO_TEST_CASE(TestHarvestResourceIntegration) {
     int targetX=-1, targetY=-1;
     for (int y=0; y<cfg.height && targetX==-1; ++y) {
         for (int x=0; x<cfg.width; ++x) {
-            const Tile* t = WorldManager::Instance().getTileAt(x,y);
-            if (t && t->obstacleType != ObstacleType::NONE) { targetX=x; targetY=y; break; }
+            const auto tile = WorldManager::Instance().getTileCopyAt(x, y);
+            if (tile.has_value() && tile->obstacleType != ObstacleType::NONE) {
+                targetX = x;
+                targetY = y;
+                break;
+            }
         }
     }
     BOOST_REQUIRE_MESSAGE(targetX!=-1 && targetY!=-1, "No obstacle tile found to harvest in generated world");
@@ -135,8 +140,8 @@ BOOST_AUTO_TEST_CASE(TestHarvestResourceIntegration) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    const Tile* after = WorldManager::Instance().getTileAt(targetX, targetY);
-    BOOST_REQUIRE(after != nullptr);
+    const auto after = WorldManager::Instance().getTileCopyAt(targetX, targetY);
+    BOOST_REQUIRE(after.has_value());
     BOOST_CHECK_EQUAL(after->obstacleType, ObstacleType::NONE);
     BOOST_CHECK_GE(tileChangedCount.load(), 1);
 
@@ -183,6 +188,59 @@ BOOST_AUTO_TEST_CASE(TestBasicWorldManagerEventIntegration) {
     EventManager::Instance().clean();
 
     WORLD_MANAGER_INFO("Basic WorldManager event integration test completed successfully");
+}
+
+BOOST_AUTO_TEST_CASE(TestSeasonChangeSubscriptionThroughSetup) {
+    BOOST_REQUIRE(EventManager::Instance().init());
+    BOOST_REQUIRE(WorldManager::Instance().init());
+
+    WorldManager::Instance().setupEventHandlers();
+
+    BOOST_CHECK(WorldManager::Instance().getCurrentSeason() == Season::Spring);
+
+    auto seasonEvent = std::make_shared<SeasonChangedEvent>(
+        Season::Winter, Season::Spring, "Winter");
+    EventManager::Instance().dispatchEvent(
+        seasonEvent, EventManager::DispatchMode::Deferred);
+    EventManager::Instance().update();
+
+    BOOST_CHECK(WorldManager::Instance().getCurrentSeason() == Season::Winter);
+
+    WorldManager::Instance().clean();
+    EventManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestSeasonSubscriptionRestoredAfterStateTransitionAndWorldLoad) {
+    BOOST_REQUIRE(EventManager::Instance().init());
+    BOOST_REQUIRE(WorldManager::Instance().init());
+
+    WorldManager::Instance().setupEventHandlers();
+    BOOST_CHECK(WorldManager::Instance().getCurrentSeason() == Season::Spring);
+
+    WorldManager::Instance().prepareForStateTransition();
+    EventManager::Instance().prepareForStateTransition();
+
+    WorldGenerationConfig config{};
+    config.width = 5;
+    config.height = 5;
+    config.seed = 24680;
+    config.elevationFrequency = 0.1f;
+    config.humidityFrequency = 0.1f;
+    config.waterLevel = 0.3f;
+    config.mountainLevel = 0.7f;
+
+    BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(config));
+
+    auto seasonEvent = std::make_shared<SeasonChangedEvent>(
+        Season::Summer, Season::Spring, "Summer");
+    EventManager::Instance().dispatchEvent(
+        seasonEvent, EventManager::DispatchMode::Deferred);
+    EventManager::Instance().update();
+
+    BOOST_CHECK(WorldManager::Instance().getCurrentSeason() == Season::Summer);
+
+    WorldManager::Instance().clean();
+    EventManager::Instance().clean();
 }
 
 /**

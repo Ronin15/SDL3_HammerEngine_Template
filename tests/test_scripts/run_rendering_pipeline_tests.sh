@@ -50,7 +50,7 @@ fi
 "$TEST_EXECUTABLE" $TEST_OPTS 2>&1 | tee "$OUTPUT_FILE"
 TEST_RESULT=${PIPESTATUS[0]}
 
-if [ $TEST_RESULT -ne 0 ] || grep -q "failure\|test cases failed\|fatal error" "$OUTPUT_FILE"; then
+if [ $TEST_RESULT -ne 0 ] || grep -Eq '\*\*\* [0-9]+ failures detected|[0-9]+ test cases out of [0-9]+ failed|fatal error' "$OUTPUT_FILE"; then
   echo -e "${RED}❌ Some tests failed! See $OUTPUT_FILE for details.${NC}"
   exit 1
 else

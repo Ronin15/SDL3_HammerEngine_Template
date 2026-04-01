@@ -265,45 +265,60 @@ void moveToPosition(BehaviorContext& ctx, EntityDataManager& edm, const Vector2D
 
 // Detect threats using memory data (O(1) instead of O(N))
 // Returns threat handle and sets isEnemyFaction to avoid redundant lookup in updateAlertLevel
-EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, bool& isEnemyFaction) {
+// Detect threats using memory data and also check for witness-based alert escalation
+// witnessAlertLevel is set to the highest alert level warranted by witnessed memories
+// witnessLocation is set to the location of the most relevant witness memory
+EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, bool& isEnemyFaction,
+                          uint8_t& witnessAlertLevel, Vector2D& witnessLocation) {
     isEnemyFaction = false;
-    if (!ctx.behaviorData) return EntityHandle{};
+    witnessAlertLevel = 0;
 
-    uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
+    uint8_t myFaction = ctx.characterData.faction;
 
     // 1. Memory: lastAttacker — someone who attacked this guard
-    if (ctx.memoryData && ctx.memoryData->lastAttacker.isValid()) {
-        size_t idx = edm.getIndex(ctx.memoryData->lastAttacker);
+    if (ctx.memoryData.lastAttacker.isValid()) {
+        size_t idx = edm.getIndex(ctx.memoryData.lastAttacker);
         if (idx != SIZE_MAX && edm.getHotDataByIndex(idx).isAlive()) {
             isEnemyFaction = (edm.getCharacterDataByIndex(idx).faction != myFaction);
-            return ctx.memoryData->lastAttacker;
+            return ctx.memoryData.lastAttacker;
         }
     }
 
-    // 3. Memory: lastTarget — previous known threat
-    if (ctx.memoryData && ctx.memoryData->lastTarget.isValid()) {
-        size_t idx = edm.getIndex(ctx.memoryData->lastTarget);
+    // 2. Memory: lastTarget — previous known threat
+    if (ctx.memoryData.lastTarget.isValid()) {
+        size_t idx = edm.getIndex(ctx.memoryData.lastTarget);
         if (idx != SIZE_MAX && edm.getHotDataByIndex(idx).isAlive()) {
             isEnemyFaction = (edm.getCharacterDataByIndex(idx).faction != myFaction);
-            return ctx.memoryData->lastTarget;
+            return ctx.memoryData.lastTarget;
         }
     }
 
-    // 4. Recent witnessed combat/death memories preserve attacker identity for guard response
-    if (ctx.memoryData && ctx.memoryData->isValid()) {
+    // 3. Recent witnessed combat/death memories — single pass for both threat detection
+    //    and witness-based alert escalation (avoids duplicate memory iteration)
+    if (ctx.memoryData.isValid()) {
         EntityHandle recentThreat{};
         float recentTimestamp = -1.0f;
 
         for (size_t i = 0; i < NPCMemoryData::INLINE_MEMORY_COUNT; ++i) {
-            const auto& mem = ctx.memoryData->memories[i];
+            const auto& mem = ctx.memoryData.memories[i];
             if (!mem.isValid()) continue;
             if (mem.type != MemoryType::WitnessedCombat &&
                 mem.type != MemoryType::WitnessedDeath) continue;
-            if (!mem.subject.isValid()) continue;
 
             const float memAge = ctx.gameTime - mem.timestamp;
             if (memAge > 10.0f) continue;
 
+            // Track witness alert level (used when no direct threat found)
+            if (mem.type == MemoryType::WitnessedDeath && witnessAlertLevel < 2) {
+                witnessAlertLevel = 2;  // INVESTIGATING
+                witnessLocation = mem.location;
+            } else if (witnessAlertLevel < 1) {
+                witnessAlertLevel = 1;  // SUSPICIOUS
+                witnessLocation = mem.location;
+            }
+
+            // Track direct threat from witnessed memories
+            if (!mem.subject.isValid()) continue;
             size_t idx = edm.getIndex(mem.subject);
             if (idx == SIZE_MAX || !edm.getHotDataByIndex(idx).isAlive()) continue;
 
@@ -320,9 +335,9 @@ EntityHandle detectThreat(BehaviorContext& ctx, EntityDataManager& edm, bool& is
         }
     }
 
-    // 5. Player proximity check for enemy-faction guards
-    if (ctx.playerValid && ctx.characterData && ctx.characterData->faction == 1) {
-        float detectionRange = ctx.behaviorData->state.guard.cachedDetectionRange;
+    // 4. Player proximity check for enemy-faction guards
+    if (ctx.playerValid && ctx.characterData.faction == 1) {
+        float detectionRange = ctx.behaviorData.state.guard.cachedDetectionRange;
         float distSq = Vector2D::distanceSquared(ctx.transform.position, ctx.playerPosition);
         if (distSq <= detectionRange * detectionRange) {
             isEnemyFaction = true;
@@ -411,13 +426,17 @@ void initGuard(size_t edmIndex, const HammerEngine::GuardBehaviorConfig& config)
 }
 
 void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig& config) {
-    if (!ctx.behaviorData || !ctx.behaviorData->isValid()) return;
+    if (!ctx.behaviorData.isValid()) return;
 
-    auto& data = *ctx.behaviorData;
+    auto& data = ctx.behaviorData;
     auto& guard = data.state.guard;
 
     // Get EDM reference once - avoid multiple Instance() calls
     auto& edm = EntityDataManager::Instance();
+
+    // Cache engage range squared once for all distance comparisons this frame
+    float engageRange = getAttackEngageRange(&ctx.characterData);
+    float engageRangeSq = engageRange * engageRange;
 
     // Process any pending messages before main logic
     processGuardMessages(data, config);
@@ -434,36 +453,12 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
     guard.roamTimer -= ctx.deltaTime;
 
     // Update escalation multiplier from personality
-    if (ctx.memoryData && ctx.memoryData->isValid()) {
-        float suspicion = ctx.memoryData->emotions.suspicion;
-        float loyalty = ctx.memoryData->personality.loyalty;
+    if (ctx.memoryData.isValid()) {
+        float suspicion = ctx.memoryData.emotions.suspicion;
+        float loyalty = ctx.memoryData.personality.loyalty;
         guard.escalationMultiplier = 1.0f / (1.0f + suspicion * 0.5f + loyalty * 0.25f);
     } else {
         guard.escalationMultiplier = 1.0f;
-    }
-
-    // Witness memory-driven alert escalation (throttled to calm poll interval)
-    if (guard.currentAlertLevel == 0 && guard.threatSightingTimer >= CALM_POLL_INTERVAL &&
-        ctx.memoryData && ctx.memoryData->isValid()) {
-        for (size_t i = 0; i < NPCMemoryData::INLINE_MEMORY_COUNT; ++i) {
-            const auto& mem = ctx.memoryData->memories[i];
-            if (!mem.isValid()) continue;
-            if (mem.type != MemoryType::WitnessedCombat &&
-                mem.type != MemoryType::WitnessedDeath) continue;
-
-            float memAge = ctx.gameTime - mem.timestamp;
-            if (memAge > 10.0f) continue;
-
-            if (mem.type == MemoryType::WitnessedDeath) {
-                guard.currentAlertLevel = 2;  // INVESTIGATING
-            } else if (guard.currentAlertLevel < 1) {
-                guard.currentAlertLevel = 1;  // SUSPICIOUS
-            }
-            guard.lastKnownThreatPosition = mem.location;
-            guard.alertTimer = 0.0f;
-            guard.alertDecayTimer = 0.0f;
-            break;
-        }
     }
 
     // Update path timers
@@ -492,13 +487,23 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         : (guard.threatSightingTimer >= THREAT_DETECTION_INTERVAL);
 
     if (shouldPoll) {
-        threat = detectThreat(ctx, edm, isEnemyFaction);
+        uint8_t witnessAlertLevel = 0;
+        Vector2D witnessLocation{};
+        threat = detectThreat(ctx, edm, isEnemyFaction, witnessAlertLevel, witnessLocation);
         threatPresent = threat.isValid();
         guard.threatSightingTimer = 0.0f;
 
         // Persist threat handle in memory for Attack behavior handoff
-        if (threatPresent && ctx.memoryData) {
-            ctx.memoryData->lastTarget = threat;
+        if (threatPresent) {
+            ctx.memoryData.lastTarget = threat;
+        }
+
+        // Apply witness-based alert escalation (merged from separate memory scan)
+        if (!threatPresent && guard.currentAlertLevel == 0 && witnessAlertLevel > 0) {
+            guard.currentAlertLevel = witnessAlertLevel;
+            guard.lastKnownThreatPosition = witnessLocation;
+            guard.alertTimer = 0.0f;
+            guard.alertDecayTimer = 0.0f;
         }
     }
 
@@ -506,10 +511,10 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
     updateAlertLevel(data, threatPresent, isEnemyFaction, guard.escalationMultiplier);
 
     // Overwhelmed guards with very low bravery can flee (+0.1 guard training bonus)
-    if (guard.currentAlertLevel >= 3 && ctx.memoryData && ctx.memoryData->isValid())
+    if (guard.currentAlertLevel >= 3 && ctx.memoryData.isValid())
     {
-        float fear = ctx.memoryData->emotions.fear;
-        float effectiveBravery = ctx.memoryData->personality.bravery + 0.1f;
+        float fear = ctx.memoryData.emotions.fear;
+        float effectiveBravery = ctx.memoryData.personality.bravery + 0.1f;
         if (fear > 0.7f && effectiveBravery < 0.3f)
         {
             switchBehavior(ctx.edmIndex, BehaviorType::Flee);
@@ -521,7 +526,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
     if (guard.currentAlertLevel == 3 && !guard.helpCalled && config.canCallForHelp) {
         guard.helpCalled = true;
         thread_local std::vector<size_t> s_helpBuffer;
-        uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
+        uint8_t myFaction = ctx.characterData.faction;
         AIManager::Instance().scanFactionInRadius(
             myFaction, ctx.transform.position, config.helpCallRadius, s_helpBuffer, true);
         for (size_t idx : s_helpBuffer) {
@@ -557,8 +562,8 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
                         guard.hostileTimer = 0.0f;
                     }
 
-                    float distance = (ctx.transform.position - threatPos).length();
-                    if (distance <= getAttackEngageRange(ctx.characterData)) {
+                    float distSq3 = (ctx.transform.position - threatPos).lengthSquared();
+                    if (distSq3 <= engageRangeSq) {
                         switchBehavior(ctx.edmIndex, BehaviorType::Attack);
                         return;
                     } else {
@@ -567,8 +572,8 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
                     break;
                 }
                 case 4: { // ALARM - like HOSTILE but wider help call and no return-to-post
-                    float distance = (ctx.transform.position - threatPos).length();
-                    if (distance <= getAttackEngageRange(ctx.characterData)) {
+                    float distSq4 = (ctx.transform.position - threatPos).lengthSquared();
+                    if (distSq4 <= engageRangeSq) {
                         switchBehavior(ctx.edmIndex, BehaviorType::Attack);
                         return;
                     } else {
@@ -579,7 +584,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
                     if (!guard.helpCalled && config.canCallForHelp) {
                         guard.helpCalled = true;
                         thread_local std::vector<size_t> s_alarmBuffer;
-                        uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
+                        uint8_t myFaction = ctx.characterData.faction;
                         AIManager::Instance().scanFactionInRadius(
                             myFaction, ctx.transform.position, config.alarmHelpCallRadius, s_alarmBuffer, true);
                         for (size_t idx : s_alarmBuffer) {
@@ -603,8 +608,8 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
             // At HOSTILE level, check last known threat position for attack opportunity
             // (Main threat detection above handles new threat discovery - no need for second scan)
                 if (guard.currentAlertLevel >= 3) {
-                    float distToThreat = (ctx.transform.position - guard.lastKnownThreatPosition).length();
-                    if (distToThreat <= getAttackEngageRange(ctx.characterData)) {
+                    float distToThreatSq = (ctx.transform.position - guard.lastKnownThreatPosition).lengthSquared();
+                    if (distToThreatSq <= engageRangeSq) {
                         switchBehavior(ctx.edmIndex, BehaviorType::Attack);
                         return;
                     }
@@ -700,7 +705,7 @@ void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig&
         if (guard.currentAlertLevel == 0) {
             guard.helpCalled = false;
             thread_local std::vector<size_t> s_calmBuffer;
-            uint8_t myFaction = ctx.characterData ? ctx.characterData->faction : 0;
+            uint8_t myFaction = ctx.characterData.faction;
             AIManager::Instance().scanFactionInRadius(
                 myFaction, ctx.transform.position, config.helpCallRadius, s_calmBuffer, true);
             for (size_t idx : s_calmBuffer) {

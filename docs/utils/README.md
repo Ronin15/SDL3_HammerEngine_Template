@@ -5,18 +5,6 @@ This directory contains documentation for core utility classes and helper system
 ## Available Utilities
 
 ### Rendering & View Systems
-- **[SceneRenderer](SceneRenderer.md)** - Pixel-perfect zoomed scene rendering (SDL_Renderer path)
-  - Intermediate render texture for smooth sub-pixel scrolling
-  - Works with Camera's discrete zoom levels
-  - Eliminates tile/entity relative jitter
-  - Non-singleton pattern (GameState-owned)
-
-- **[WorldRenderPipeline](WorldRenderPipeline.md)** - Unified rendering facade (SDL_Renderer path)
-  - Four-phase architecture: prepareChunks → beginScene → renderWorld → endScene
-  - Coordinates chunk management and scene composition
-  - RenderContext with pre-computed render parameters
-  - Loading-time chunk pre-warming to prevent hitches
-
 - **[Camera](Camera.md)** - 2D camera for world navigation
   - Multiple modes: Free, Follow, Fixed
   - Smooth interpolation for target following

@@ -12,13 +12,11 @@
 #include "managers/GameStateManager.hpp"
 #include <algorithm>
 
-#ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
 #include "gpu/GPUTypes.hpp"
 #include "gpu/GPUVertexPool.hpp"
 #include "gpu/SpriteBatch.hpp"
 #include <SDL3/SDL_gpu.h>
-#endif
 
 
 bool LogoState::enter() {
@@ -83,48 +81,6 @@ void LogoState::update(float deltaTime) {
     }
   }
 }
-void LogoState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
-  // Check if window dimensions changed (fullscreen toggle, etc.)
-  GameEngine& gameEngine = GameEngine::Instance();
-  int currentWidth = gameEngine.getLogicalWidth();
-  int currentHeight = gameEngine.getLogicalHeight();
-  if (currentWidth != m_windowWidth || currentHeight != m_windowHeight) {
-    recalculateLayout();
-  }
-
-  // Cache manager references for better performance
-  TextureManager& texMgr = TextureManager::Instance();
-  FontManager& fontMgr = FontManager::Instance();
-
-  // Draw banner logo (positions cached in enter())
-  texMgr.draw("HammerForgeBanner", m_bannerX, m_bannerY, m_bannerSize, m_bannerSize, renderer);
-
-  // Draw engine logo
-  texMgr.draw("HammerEngine", m_engineX, m_engineY, m_engineSize, m_engineSize, renderer);
-
-  // Draw C++ logo
-  texMgr.draw("cpp", m_cppX, m_cppY, m_cppSize, m_cppSize, renderer);
-
-  // Render text using SDL_TTF
-  SDL_Color fontColor = {200, 200, 200, 255}; // Light gray
-  int centerX = m_windowWidth / 2;
-
-  // Draw title text
-  fontMgr.drawText("<]==={ }* Hammer Game Engine *{ }===]>", "fonts_Arial",
-                   centerX, m_titleY, fontColor, renderer);
-
-  // Draw subtitle text
-  fontMgr.drawText("Powered by SDL3", "fonts_Arial",
-                   centerX, m_subtitleY, fontColor, renderer);
-
-  // Draw version text
-  fontMgr.drawText("v0.8.5", "fonts_Arial",
-                   centerX, m_versionY, fontColor, renderer);
-
-  // Draw SDL logo centered below version text
-  texMgr.draw("sdl_logo", m_sdlX, m_sdlY, m_sdlSize, m_sdlSize, renderer);
-}
-
 bool LogoState::exit() {
   GAMESTATE_INFO("Exiting LOGO State");
 
@@ -141,9 +97,8 @@ std::string LogoState::getName() const {
   return "LogoState";
 }
 
-#ifdef USE_SDL3_GPU
 void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
-                                   [[maybe_unused]] float interpolationAlpha) {
+                                  [[maybe_unused]] float interpolationAlpha) {
   // Check if window dimensions changed
   GameEngine& gameEngine = GameEngine::Instance();
   int currentWidth = gameEngine.getLogicalWidth();
@@ -172,7 +127,7 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
 
   // Helper to add a logo sprite
   auto addLogo = [&](const char* textureName, int x, int y, int size) {
-    const GPUTextureData* texData = texMgr.getGPUTextureData(textureName);
+    auto texData = texMgr.getGPUTextureData(textureName);
     if (!texData || !texData->texture) {
       return;
     }
@@ -235,8 +190,8 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
       return;
     }
 
-    float dstX = static_cast<float>(x - textWidth / 2);
-    float dstY = static_cast<float>(y - textHeight / 2);
+    float dstX = static_cast<float>(x) - textWidth / 2.0f;
+    float dstY = static_cast<float>(y) - textHeight / 2.0f;
 
     TTF_GPUAtlasDrawSequence* drawSequence = fontMgr.getGPUTextDrawData(key);
     if (!drawSequence) {
@@ -280,7 +235,7 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
 
   addText("logo:title", "<]==={ }* Hammer Game Engine *{ }===]>", centerX, m_titleY);
   addText("logo:subtitle", "Powered by SDL3", centerX, m_subtitleY);
-  addText("logo:version", "v0.8.5", centerX, m_versionY);
+  addText("logo:version", "v0.9.0", centerX, m_versionY);
 
   uiPool.setWrittenVertexCount(uiVertexOffset);
 }
@@ -339,7 +294,7 @@ void LogoState::renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
 }
 
 void LogoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
-                             SDL_GPURenderPass* swapchainPass) {
+                            SDL_GPURenderPass* swapchainPass) {
   if (!swapchainPass || m_textDrawCommands.empty()) {
     return;
   }
@@ -392,4 +347,3 @@ void LogoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
                           cmd.vertexOffset, 0);
   }
 }
-#endif // USE_SDL3_GPU

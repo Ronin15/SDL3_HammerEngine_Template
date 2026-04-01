@@ -6,7 +6,13 @@
 #define BOOST_TEST_MODULE EntityDataManagerTests
 #include <boost/test/unit_test.hpp>
 
+#include "core/ThreadSystem.hpp"
+#include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
+#include "managers/PathfinderManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "entities/Entity.hpp"  // For AnimationConfig
 #include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
@@ -28,12 +34,24 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
 class EntityDataManagerTestFixture {
 public:
     EntityDataManagerTestFixture() {
+        HammerEngine::ThreadSystem::Instance().init();
+        ResourceTemplateManager::Instance().init();
         edm = &EntityDataManager::Instance();
         edm->init();
+        EventManager::Instance().init();
+        CollisionManager::Instance().init();
+        PathfinderManager::Instance().init();
+        AIManager::Instance().init();
     }
 
     ~EntityDataManagerTestFixture() {
+        AIManager::Instance().clean();
+        PathfinderManager::Instance().clean();
+        CollisionManager::Instance().clean();
+        EventManager::Instance().clean();
         edm->clean();
+        ResourceTemplateManager::Instance().clean();
+        HammerEngine::ThreadSystem::Instance().clean();
     }
 
 protected:
@@ -299,10 +317,10 @@ BOOST_AUTO_TEST_CASE(TestUnregisterEntity) {
 }
 
 BOOST_AUTO_TEST_CASE(TestUnregisterNonexistentEntity) {
-    // Should not crash
+    BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
     edm->unregisterEntity(99999999);
     edm->unregisterEntity(0);
-    BOOST_CHECK(true);
+    BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -352,10 +370,10 @@ BOOST_AUTO_TEST_CASE(TestDestroyMultipleEntities) {
 }
 
 BOOST_AUTO_TEST_CASE(TestDestroyInvalidHandle) {
-    // Should not crash
+    BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
     edm->destroyEntity(INVALID_ENTITY_HANDLE);
     edm->processDestructionQueue();
-    BOOST_CHECK(true);
+    BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
 }
 
 BOOST_AUTO_TEST_CASE(TestGenerationIncrementAfterDestruction) {
@@ -375,9 +393,9 @@ BOOST_AUTO_TEST_CASE(TestGenerationIncrementAfterDestruction) {
 }
 
 BOOST_AUTO_TEST_CASE(TestProcessEmptyQueue) {
-    // Should not crash
+    BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
     edm->processDestructionQueue();
-    BOOST_CHECK(true);
+    BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -1264,9 +1282,6 @@ BOOST_AUTO_TEST_CASE(TestNPCRenderDataDefaultsWithoutTexture) {
 
     const auto& renderData = edm->getNPCRenderData(handle);
 
-    // cachedTexture should be nullptr (no renderer in test environment)
-    BOOST_CHECK(renderData.cachedTexture == nullptr);
-
     // Frame dimensions should be set from JSON config
     BOOST_CHECK_GT(renderData.frameWidth, 0);
     BOOST_CHECK_GT(renderData.frameHeight, 0);
@@ -1285,6 +1300,28 @@ BOOST_AUTO_TEST_CASE(TestNPCRenderDataMinimumValues) {
     BOOST_CHECK_GE(renderData.numMoveFrames, 1);
     BOOST_CHECK_GE(renderData.idleSpeedMs, 1);
     BOOST_CHECK_GE(renderData.moveSpeedMs, 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestContainerRenderDataUsesMappedAtlasForKnownContainerTypes) {
+    EntityHandle handle = edm->createContainer(Vector2D(100.0f, 100.0f), ContainerType::Chest, 12, 0);
+    BOOST_REQUIRE(handle.isValid());
+
+    const auto& renderData = edm->getContainerRenderDataByTypeIndex(edm->getHotData(handle).typeLocalIndex);
+    BOOST_CHECK(renderData.atlasX != 0 || renderData.atlasY != 0);
+    BOOST_CHECK(renderData.openAtlasX != 0 || renderData.openAtlasY != 0);
+    BOOST_CHECK_GT(renderData.frameWidth, 0);
+    BOOST_CHECK_GT(renderData.frameHeight, 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestContainerRenderDataPreservesOpenVariantDimensions) {
+    EntityHandle handle = edm->createContainer(Vector2D(100.0f, 100.0f), ContainerType::Chest, 12, 0);
+    BOOST_REQUIRE(handle.isValid());
+
+    const auto& renderData = edm->getContainerRenderDataByTypeIndex(edm->getHotData(handle).typeLocalIndex);
+    BOOST_CHECK_EQUAL(renderData.frameWidth, 30);
+    BOOST_CHECK_EQUAL(renderData.frameHeight, 28);
+    BOOST_CHECK_EQUAL(renderData.openFrameWidth, 30);
+    BOOST_CHECK_EQUAL(renderData.openFrameHeight, 31);
 }
 
 BOOST_AUTO_TEST_CASE(TestMultipleNPCsGetSeparateRenderData) {

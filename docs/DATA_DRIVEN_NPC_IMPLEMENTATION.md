@@ -2,6 +2,8 @@
 
 **Code:** `include/managers/EntityDataManager.hpp`, `src/managers/EntityDataManager.cpp`, `include/controllers/render/NPCRenderController.hpp`, `src/controllers/render/NPCRenderController.cpp`
 
+> **Note:** This is an implementation plan document. Code examples showing render signatures use the old SDL_Renderer path which has been removed. Current render controllers use `recordGPUVertices(const GPUSceneContext&)`. See [GPURendering](gpu/GPURendering.md) for current patterns.
+
 ## Overview
 
 Remove the NPC class and make NPCs data-driven entities with:

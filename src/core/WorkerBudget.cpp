@@ -129,6 +129,7 @@ ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, siz
             state.learnedThreshold.store(0, std::memory_order_relaxed);
             state.thresholdActive.store(false, std::memory_order_relaxed);
             state.smoothedSingleTime.store(0.0, std::memory_order_relaxed);  // Reset for fresh learning
+            state.singleSampleCount.store(0, std::memory_order_relaxed);     // Reset warmup for re-learning
 
 #ifndef NDEBUG
             HAMMER_DEBUG("WorkerBudget", std::format(
@@ -176,10 +177,16 @@ void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize
         }
         state.smoothedSingleTime.store(newSmoothed, std::memory_order_relaxed);
 
-        // Learn threshold when SMOOTHED time exceeds limit (not instantaneous)
-        // This prevents spike-triggered oscillation from per-frame variance
+        // Count samples so EMA can stabilize past cold-start transients
+        uint32_t samples = state.singleSampleCount.fetch_add(1, std::memory_order_relaxed) + 1;
+
+        // Learn threshold when SMOOTHED time exceeds limit after warmup
+        // MIN_LEARNING_SAMPLES prevents cold-start spikes (cache-cold burst spawns)
+        // from triggering premature threshold learning on the first few frames
         size_t threshold = state.learnedThreshold.load(std::memory_order_relaxed);
-        if (threshold == 0 && newSmoothed >= SystemTuningState::LEARNING_TIME_THRESHOLD_MS) {
+        if (threshold == 0
+            && samples >= SystemTuningState::MIN_LEARNING_SAMPLES
+            && newSmoothed >= SystemTuningState::LEARNING_TIME_THRESHOLD_MS) {
             state.learnedThreshold.store(workloadSize, std::memory_order_relaxed);
             state.thresholdActive.store(true, std::memory_order_relaxed);
 
@@ -289,6 +296,7 @@ void WorkerBudgetManager::prepareForStateTransition() {
         state.multiplier.store(1.0f, std::memory_order_relaxed);
         state.direction.store(1, std::memory_order_relaxed);
         state.smoothedSingleTime.store(0.0, std::memory_order_relaxed);
+        state.singleSampleCount.store(0, std::memory_order_relaxed);
         state.learnedThreshold.store(0, std::memory_order_relaxed);
         state.thresholdActive.store(false, std::memory_order_relaxed);
     }

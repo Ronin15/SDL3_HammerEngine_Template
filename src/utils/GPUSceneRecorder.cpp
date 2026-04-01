@@ -3,9 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#ifdef USE_SDL3_GPU
-
-#include "utils/GPUSceneRenderer.hpp"
+#include "utils/GPUSceneRecorder.hpp"
 #include "utils/Camera.hpp"
 #include "utils/FrameProfiler.hpp"
 #include "core/Logger.hpp"
@@ -17,27 +15,27 @@
 
 namespace HammerEngine {
 
-GPUSceneRenderer::GPUSceneRenderer() = default;
-GPUSceneRenderer::~GPUSceneRenderer() = default;
-GPUSceneRenderer::GPUSceneRenderer(GPUSceneRenderer&&) noexcept = default;
-GPUSceneRenderer& GPUSceneRenderer::operator=(GPUSceneRenderer&&) noexcept = default;
+GPUSceneRecorder::GPUSceneRecorder() = default;
+GPUSceneRecorder::~GPUSceneRecorder() = default;
+GPUSceneRecorder::GPUSceneRecorder(GPUSceneRecorder&&) noexcept = default;
+GPUSceneRecorder& GPUSceneRecorder::operator=(GPUSceneRecorder&&) noexcept = default;
 
-GPUSceneContext GPUSceneRenderer::beginScene(GPURenderer& gpuRenderer,
-                                              Camera& camera,
-                                              float interpolationAlpha) {
-    PROFILE_RENDER_GPU(RenderPhase::BeginScene, nullptr);
+GPUSceneContext GPUSceneRecorder::beginRecording(GPURenderer& gpuRenderer,
+                                                 Camera& camera,
+                                                 float interpolationAlpha) {
+    PROFILE_RENDER_GPU(RenderPhase::BeginScene);
 
     GPUSceneContext ctx;
 
-    if (m_sceneActive) {
-        SCENE_RENDERER_WARN("GPUSceneRenderer::beginScene called while scene already active");
+    if (m_recordingActive) {
+        GPU_SCENE_RECORDER_WARN("GPUSceneRecorder::beginRecording called while recording is already active");
         return ctx;
     }
 
     // Get atlas GPU texture for sprite batch
-    auto* atlasTexture = TextureManager::Instance().getGPUTextureData("atlas");
+    auto atlasTexture = TextureManager::Instance().getGPUTextureData("atlas");
     if (!atlasTexture || !atlasTexture->texture) {
-        SCENE_RENDERER_ERROR("GPUSceneRenderer: Atlas GPU texture not available");
+        GPU_SCENE_RECORDER_ERROR("GPUSceneRecorder: Atlas GPU texture not available");
         return ctx;
     }
 
@@ -71,7 +69,7 @@ GPUSceneContext GPUSceneRenderer::beginScene(GPURenderer& gpuRenderer,
     // Get mapped vertex buffer (GPURenderer::beginFrame already mapped it)
     auto* writePtr = static_cast<SpriteVertex*>(vertexPool.getMappedPtr());
     if (!writePtr) {
-        SCENE_RENDERER_ERROR("GPUSceneRenderer: Sprite vertex pool not mapped");
+        GPU_SCENE_RECORDER_ERROR("GPUSceneRecorder: Sprite vertex pool not mapped");
         return ctx;
     }
 
@@ -83,7 +81,7 @@ GPUSceneContext GPUSceneRenderer::beginScene(GPURenderer& gpuRenderer,
                       static_cast<float>(gpuRenderer.getSceneTexture()->getHeight()));
 
     // Store state for later phases
-    m_sceneActive = true;
+    m_recordingActive = true;
     m_spriteBatchActive = true;
     m_gpuRenderer = &gpuRenderer;
     m_spriteBatch = &spriteBatch;
@@ -103,9 +101,9 @@ GPUSceneContext GPUSceneRenderer::beginScene(GPURenderer& gpuRenderer,
     return ctx;
 }
 
-void GPUSceneRenderer::endSpriteBatch() {
+void GPUSceneRecorder::endSpriteBatch() {
     if (!m_spriteBatchActive || !m_spriteBatch) {
-        SCENE_RENDERER_WARN("GPUSceneRenderer::endSpriteBatch called without active batch");
+        GPU_SCENE_RECORDER_WARN("GPUSceneRecorder::endSpriteBatch called without an active batch");
         return;
     }
 
@@ -113,29 +111,29 @@ void GPUSceneRenderer::endSpriteBatch() {
     m_spriteBatchActive = false;
 }
 
-void GPUSceneRenderer::endScene() {
-    PROFILE_RENDER_GPU(RenderPhase::EndScene, nullptr);
+void GPUSceneRecorder::endRecording() {
+    PROFILE_RENDER_GPU(RenderPhase::EndScene);
 
-    if (!m_sceneActive) {
-        SCENE_RENDERER_WARN("GPUSceneRenderer::endScene called without matching beginScene");
+    if (!m_recordingActive) {
+        GPU_SCENE_RECORDER_WARN("GPUSceneRecorder::endRecording called without matching beginRecording");
         return;
     }
 
     // Ensure sprite batch is ended if caller forgot
     if (m_spriteBatchActive && m_spriteBatch) {
-        SCENE_RENDERER_WARN("GPUSceneRenderer::endScene: sprite batch not ended, ending now");
+        GPU_SCENE_RECORDER_WARN("GPUSceneRecorder::endRecording: sprite batch not ended, ending now");
         m_spriteBatch->end();
         m_spriteBatchActive = false;
     }
 
-    m_sceneActive = false;
+    m_recordingActive = false;
     m_gpuRenderer = nullptr;
     m_spriteBatch = nullptr;
 }
 
-void GPUSceneRenderer::renderScene(GPURenderer& gpuRenderer,
-                                    SDL_GPURenderPass* scenePass) {
-    PROFILE_RENDER_GPU(RenderPhase::WorldTiles, nullptr);
+void GPUSceneRecorder::renderRecordedScene(GPURenderer& gpuRenderer,
+                                           SDL_GPURenderPass* scenePass) {
+    PROFILE_RENDER_GPU(RenderPhase::WorldTiles);
 
     auto& spriteBatch = gpuRenderer.getSpriteBatch();
     auto& vertexPool = gpuRenderer.getSpriteVertexPool();
@@ -167,5 +165,3 @@ void GPUSceneRenderer::renderScene(GPURenderer& gpuRenderer,
 }
 
 } // namespace HammerEngine
-
-#endif // USE_SDL3_GPU

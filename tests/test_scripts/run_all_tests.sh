@@ -58,9 +58,9 @@ for arg in "$@"; do
       echo -e "\nTest Categories:"
       echo -e "  Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding,"
       echo -e "                    Camera, InputManager, SIMD, BufferReuse, Rendering, LoadingState, UIManager,"
-      echo -e "                    GameTimeManager, Controllers (Time, Weather, DayNight), GPU (if SDL3_GPU enabled),"
+      echo -e "                    GameTimeManager, Controllers (Time, Weather, DayNight, Combat), GPU (if SDL3_GPU enabled),"
       echo -e "                    Integration tests (AI-Collision, Event Coordination)"
-      echo -e "  Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision system, Pathfinder,"
+      echo -e "  Benchmarks:       AI scaling, EventManager scaling, ParticleManager, Collision system, Pathfinder,"
       echo -e "                    SIMD performance, GPU frame timing, and Integrated system benchmarks"
       echo -e "\nExecution Time:"
       echo -e "  Core tests:       ~2-5 minutes total"
@@ -68,8 +68,7 @@ for arg in "$@"; do
       echo -e "  All tests:        ~7-20 minutes total"
       echo -e "\nExamples:"
       echo -e "  ./run_all_tests.sh                 # Run all tests"
-      echo -e "  # Run the test
-  $TEST_EXECUTABLE     # Quick validation"
+      echo -e "  ./run_all_tests.sh --core-only     # Quick validation"
       echo -e "  ./run_all_tests.sh --no-benchmarks # Skip slow benchmarks"
       echo -e "  ./run_all_tests.sh --benchmarks-only --verbose # Performance testing"
       exit 0
@@ -121,13 +120,15 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_pathfinder_manager_edm_integration_tests.sh"
   "$SCRIPT_DIR/run_npc_memory_tests.sh"
   "$SCRIPT_DIR/run_gpu_tests.sh"
+  "$SCRIPT_DIR/run_crowd_runtime_tests.sh"
+  "$SCRIPT_DIR/run_manager_runtime_tests.sh"
+  "$SCRIPT_DIR/run_frame_profiler_tests.sh"
 )
 
 # Performance scaling benchmarks (slow execution)
 BENCHMARK_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_event_scaling_benchmark.sh"
   "$SCRIPT_DIR/run_ai_benchmark.sh"
-  "$SCRIPT_DIR/run_ui_stress_tests.sh"
   "$SCRIPT_DIR/run_particle_manager_benchmark.sh"
   "$SCRIPT_DIR/run_collision_scaling_benchmark.sh"
   "$SCRIPT_DIR/run_pathfinder_benchmark.sh"

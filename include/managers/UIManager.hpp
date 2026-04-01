@@ -8,10 +8,8 @@
 
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
-#ifdef USE_SDL3_GPU
 #include <SDL3/SDL_gpu.h>
 #include <SDL3_ttf/SDL_ttf.h>
-#endif
 #include <array>
 #include <functional>
 #include <memory>
@@ -25,7 +23,6 @@
 // Forward declarations
 class FontManager;
 class InputManager;
-class TextureManager;
 struct SDL_GPURenderPass;
 
 namespace HammerEngine {
@@ -33,7 +30,6 @@ class GPURenderer;
 class GPUTexture;
 }
 
-#ifdef USE_SDL3_GPU
 // GPU draw command for batching UI rendering
 struct UIGPUDrawCommand {
     enum class Type { Rect, Text, Image };
@@ -53,7 +49,6 @@ constexpr size_t GPU_IMAGE_COMMAND_CAPACITY = 32;
 // GPU vertex safety limits
 constexpr uint32_t GPU_PRIMITIVE_VERTEX_LIMIT = 10000;
 constexpr uint32_t GPU_UI_VERTEX_LIMIT = 4000;
-#endif
 
 // UI Component Types
 enum class UIComponentType {
@@ -140,7 +135,6 @@ struct UIRect {
     return px >= x && px < x + width && py >= y && py < y + height;
   }
 
-  SDL_Rect toSDLRect() const { return {x, y, width, height}; }
 };
 
 // UI Style structure
@@ -205,7 +199,6 @@ struct UIComponent {
   float m_maxValue{1.0f};
   bool m_checked{false};
   std::vector<std::string> m_listItems{};
-  std::vector<std::shared_ptr<SDL_Texture>> m_listItemTextures{}; // Texture cache
   bool m_listItemsDirty{true}; // Flag to regenerate textures
   std::function<void(std::vector<std::string>&, std::vector<std::pair<std::string, int>>&)> m_listBinding{}; // Zero-allocation: populates reusable buffers
   mutable std::vector<std::string> m_listBindingBuffer{}; // Reusable buffer for list binding output
@@ -291,15 +284,12 @@ public:
   // Core system methods
   bool init();
   void update(float deltaTime);
-  void render(SDL_Renderer *renderer);
   void clean();
   bool isShutdown() const { return m_isShutdown; }
 
-#ifdef USE_SDL3_GPU
   // GPU rendering methods
   void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer);
   void renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass);
-#endif
 
   // Window resize notification (called by InputManager on SDL_EVENT_WINDOW_RESIZED)
   void onWindowResize(int newLogicalWidth, int newLogicalHeight);
@@ -631,36 +621,11 @@ private:
   void updateAnimations(float deltaTime);
   void updateTooltips(float deltaTime);
   void updateEventLogs(float deltaTime);
-  void renderComponent(SDL_Renderer *renderer,
-                       const std::shared_ptr<UIComponent> &component);
-  void renderTooltip(SDL_Renderer *renderer);
   // PERFORMANCE: Return const reference to avoid vector copy every frame
   const std::vector<std::shared_ptr<UIComponent>>& getSortedComponents() const;
 
   // Performance optimization helper
   void invalidateComponentCache();
-
-  // Component-specific rendering
-  void renderButton(SDL_Renderer *renderer,
-                    const std::shared_ptr<UIComponent> &component);
-  void renderLabel(SDL_Renderer *renderer,
-                   const std::shared_ptr<UIComponent> &component);
-  void renderPanel(SDL_Renderer *renderer,
-                   const std::shared_ptr<UIComponent> &component);
-  void renderProgressBar(SDL_Renderer *renderer,
-                         const std::shared_ptr<UIComponent> &component);
-  void renderInputField(SDL_Renderer *renderer,
-                        const std::shared_ptr<UIComponent> &component);
-  void renderImage(SDL_Renderer *renderer,
-                   const std::shared_ptr<UIComponent> &component);
-  void renderSlider(SDL_Renderer *renderer,
-                    const std::shared_ptr<UIComponent> &component);
-  void renderCheckbox(SDL_Renderer *renderer,
-                      const std::shared_ptr<UIComponent> &component);
-  void renderList(SDL_Renderer *renderer,
-                  const std::shared_ptr<UIComponent> &component);
-  void renderEventLog(SDL_Renderer *renderer,
-                      const std::shared_ptr<UIComponent> &component);
 
   // Layout helpers
   void applyAbsoluteLayout(const std::shared_ptr<UILayout> &layout);
@@ -670,15 +635,6 @@ private:
   void applyAnchorLayout(const std::shared_ptr<UILayout> &layout);
 
   // Utility helpers
-  void drawRect(SDL_Renderer *renderer, const UIRect &rect,
-                const SDL_Color &color, bool filled = true);
-  void drawBorder(SDL_Renderer *renderer, const UIRect &rect,
-                  const SDL_Color &color, int width = 1);
-  void drawTextWithBackground(const std::string &text,
-                              const std::string &fontID, int x, int y,
-                              SDL_Color textColor, SDL_Renderer *renderer,
-                              int alignment, bool useBackground,
-                              SDL_Color backgroundColor, int padding);
   SDL_Color interpolateColor(const SDL_Color &start, const SDL_Color &end,
                              float t);
   UIRect interpolateRect(const UIRect &start, const UIRect &end, float t);
@@ -690,12 +646,10 @@ private:
   // PERFORMANCE: Track active bindings to skip iteration when none exist
   size_t m_activeBindingCount{0};
 
-#ifdef USE_SDL3_GPU
   // GPU rendering state
   std::vector<UIGPUDrawCommand> m_gpuPrimitiveCommands{};  // Filled rects (backgrounds, borders)
   std::vector<UIGPUDrawCommand> m_gpuTextCommands{};      // Text rendering
   std::vector<UIGPUDrawCommand> m_gpuImageCommands{};     // Images/textures
-#endif
 
   // Delete copy constructor and assignment operator
   UIManager(const UIManager &) = delete;

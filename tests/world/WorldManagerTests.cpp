@@ -89,10 +89,11 @@ BOOST_AUTO_TEST_CASE(TestLoadNewWorld) {
     BOOST_CHECK(worldManager->hasActiveWorld());
     BOOST_CHECK(!worldManager->getCurrentWorldId().empty());
     
-    const WorldData* worldData = worldManager->getWorldData();
-    BOOST_REQUIRE(worldData != nullptr);
-    BOOST_CHECK_EQUAL(worldData->grid.size(), 20);
-    BOOST_CHECK_EQUAL(worldData->grid[0].size(), 20);
+    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* worldData) {
+        BOOST_REQUIRE(worldData != nullptr);
+        BOOST_CHECK_EQUAL(worldData->grid.size(), 20);
+        BOOST_CHECK_EQUAL(worldData->grid[0].size(), 20);
+    });
 }
 
 BOOST_AUTO_TEST_CASE(TestHarvestablesUseConfiguredHarvestTypes) {
@@ -106,52 +107,55 @@ BOOST_AUTO_TEST_CASE(TestHarvestablesUseConfiguredHarvestTypes) {
     config.mountainLevel = 0.6f;
 
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
-    const WorldData* worldData = worldManager->getWorldData();
-    BOOST_REQUIRE(worldData != nullptr);
-
     const auto& edm = EntityDataManager::Instance();
     std::vector<size_t> nearbyHarvestables;
 
     bool foundTree = false;
-    for (size_t y = 0; y < worldData->grid.size() && !foundTree; ++y) {
-        for (size_t x = 0; x < worldData->grid[y].size() && !foundTree; ++x) {
-            if (worldData->grid[y][x].obstacleType != ObstacleType::TREE) {
-                continue;
+    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* worldData) {
+        BOOST_REQUIRE(worldData != nullptr);
+        for (size_t y = 0; y < worldData->grid.size() && !foundTree; ++y) {
+            for (size_t x = 0; x < worldData->grid[y].size() && !foundTree; ++x) {
+                if (worldData->grid[y][x].obstacleType != ObstacleType::TREE) {
+                    continue;
+                }
+
+                Vector2D pos(static_cast<float>(x) * TILE_SIZE + TILE_SIZE * 0.5f,
+                             static_cast<float>(y) * TILE_SIZE + TILE_SIZE * 0.5f);
+                nearbyHarvestables.clear();
+                worldResourceManager->queryHarvestablesInRadius(pos, 8.0f, nearbyHarvestables);
+                BOOST_REQUIRE_MESSAGE(!nearbyHarvestables.empty(), "Expected harvestable at tree obstacle");
+
+                const auto handle = edm.getStaticHandle(nearbyHarvestables.front());
+                const auto& harvestable = edm.getHarvestableData(handle);
+                BOOST_CHECK(harvestable.harvestType == HarvestType::Chopping);
+                foundTree = true;
             }
-
-            Vector2D pos(static_cast<float>(x) * TILE_SIZE + TILE_SIZE * 0.5f,
-                         static_cast<float>(y) * TILE_SIZE + TILE_SIZE * 0.5f);
-            nearbyHarvestables.clear();
-            worldResourceManager->queryHarvestablesInRadius(pos, 8.0f, nearbyHarvestables);
-            BOOST_REQUIRE_MESSAGE(!nearbyHarvestables.empty(), "Expected harvestable at tree obstacle");
-
-            const auto handle = edm.getStaticHandle(nearbyHarvestables.front());
-            const auto& harvestable = edm.getHarvestableData(handle);
-            BOOST_CHECK(harvestable.harvestType == HarvestType::Chopping);
-            foundTree = true;
         }
-    }
+    });
     BOOST_REQUIRE_MESSAGE(foundTree, "Expected at least one tree obstacle in generated world");
 
     bool foundIronDeposit = false;
-    for (size_t y = 0; y < worldData->grid.size() && !foundIronDeposit; ++y) {
-        for (size_t x = 0; x < worldData->grid[y].size() && !foundIronDeposit; ++x) {
-            if (worldData->grid[y][x].obstacleType != ObstacleType::IRON_DEPOSIT) {
-                continue;
+    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* worldData) {
+        BOOST_REQUIRE(worldData != nullptr);
+        for (size_t y = 0; y < worldData->grid.size() && !foundIronDeposit; ++y) {
+            for (size_t x = 0; x < worldData->grid[y].size() && !foundIronDeposit; ++x) {
+                if (worldData->grid[y][x].obstacleType != ObstacleType::IRON_DEPOSIT) {
+                    continue;
+                }
+
+                Vector2D pos(static_cast<float>(x) * TILE_SIZE + TILE_SIZE * 0.5f,
+                             static_cast<float>(y) * TILE_SIZE + TILE_SIZE * 0.5f);
+                nearbyHarvestables.clear();
+                worldResourceManager->queryHarvestablesInRadius(pos, 8.0f, nearbyHarvestables);
+                BOOST_REQUIRE_MESSAGE(!nearbyHarvestables.empty(), "Expected harvestable at iron deposit obstacle");
+
+                const auto handle = edm.getStaticHandle(nearbyHarvestables.front());
+                const auto& harvestable = edm.getHarvestableData(handle);
+                BOOST_CHECK(harvestable.harvestType == HarvestType::Mining);
+                foundIronDeposit = true;
             }
-
-            Vector2D pos(static_cast<float>(x) * TILE_SIZE + TILE_SIZE * 0.5f,
-                         static_cast<float>(y) * TILE_SIZE + TILE_SIZE * 0.5f);
-            nearbyHarvestables.clear();
-            worldResourceManager->queryHarvestablesInRadius(pos, 8.0f, nearbyHarvestables);
-            BOOST_REQUIRE_MESSAGE(!nearbyHarvestables.empty(), "Expected harvestable at iron deposit obstacle");
-
-            const auto handle = edm.getStaticHandle(nearbyHarvestables.front());
-            const auto& harvestable = edm.getHarvestableData(handle);
-            BOOST_CHECK(harvestable.harvestType == HarvestType::Mining);
-            foundIronDeposit = true;
         }
-    }
+    });
     BOOST_WARN_MESSAGE(foundIronDeposit, "Generated world had no iron deposit obstacle to validate mining harvest type");
 }
 
@@ -168,27 +172,27 @@ BOOST_AUTO_TEST_CASE(TestGetTileAt) {
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
     
     // Test valid positions
-    const Tile* tile = worldManager->getTileAt(5, 5);
-    BOOST_CHECK(tile != nullptr);
+    auto tile = worldManager->getTileCopyAt(5, 5);
+    BOOST_CHECK(tile.has_value());
     
-    tile = worldManager->getTileAt(0, 0);
-    BOOST_CHECK(tile != nullptr);
+    tile = worldManager->getTileCopyAt(0, 0);
+    BOOST_CHECK(tile.has_value());
     
-    tile = worldManager->getTileAt(9, 9);
-    BOOST_CHECK(tile != nullptr);
+    tile = worldManager->getTileCopyAt(9, 9);
+    BOOST_CHECK(tile.has_value());
     
     // Test invalid positions
-    tile = worldManager->getTileAt(-1, 5);
-    BOOST_CHECK(tile == nullptr);
+    tile = worldManager->getTileCopyAt(-1, 5);
+    BOOST_CHECK(!tile.has_value());
     
-    tile = worldManager->getTileAt(5, -1);
-    BOOST_CHECK(tile == nullptr);
+    tile = worldManager->getTileCopyAt(5, -1);
+    BOOST_CHECK(!tile.has_value());
     
-    tile = worldManager->getTileAt(10, 5);
-    BOOST_CHECK(tile == nullptr);
+    tile = worldManager->getTileCopyAt(10, 5);
+    BOOST_CHECK(!tile.has_value());
     
-    tile = worldManager->getTileAt(5, 10);
-    BOOST_CHECK(tile == nullptr);
+    tile = worldManager->getTileCopyAt(5, 10);
+    BOOST_CHECK(!tile.has_value());
 }
 
 BOOST_AUTO_TEST_CASE(TestIsValidPosition) {
@@ -229,8 +233,8 @@ BOOST_AUTO_TEST_CASE(TestUpdateTile) {
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
     
     // Get original tile
-    const Tile* originalTile = worldManager->getTileAt(2, 2);
-    BOOST_REQUIRE(originalTile != nullptr);
+    const auto originalTile = worldManager->getTileCopyAt(2, 2);
+    BOOST_REQUIRE(originalTile.has_value());
     
     // Create modified tile
     Tile newTile = *originalTile;
@@ -243,8 +247,8 @@ BOOST_AUTO_TEST_CASE(TestUpdateTile) {
     BOOST_CHECK(updateResult);
     
     // Verify the update
-    const Tile* updatedTile = worldManager->getTileAt(2, 2);
-    BOOST_REQUIRE(updatedTile != nullptr);
+    const auto updatedTile = worldManager->getTileCopyAt(2, 2);
+    BOOST_REQUIRE(updatedTile.has_value());
     BOOST_CHECK_EQUAL(updatedTile->biome, Biome::DESERT);
     BOOST_CHECK_EQUAL(updatedTile->obstacleType, ObstacleType::ROCK);
     BOOST_CHECK_CLOSE(updatedTile->elevation, 0.8f, 0.001f);
@@ -270,8 +274,8 @@ BOOST_AUTO_TEST_CASE(TestHarvestResource) {
     int obstacleX = -1, obstacleY = -1;
     for (int y = 0; y < 50; ++y) {
         for (int x = 0; x < 50; ++x) {
-            const Tile* tile = worldManager->getTileAt(x, y);
-            if (tile && tile->obstacleType != ObstacleType::NONE) {
+            const auto tile = worldManager->getTileCopyAt(x, y);
+            if (tile.has_value() && tile->obstacleType != ObstacleType::NONE) {
                 obstacleX = x;
                 obstacleY = y;
                 break;
@@ -285,8 +289,8 @@ BOOST_AUTO_TEST_CASE(TestHarvestResource) {
     BOOST_REQUIRE(obstacleY != -1);
     
     // Verify tile has obstacle before harvesting
-    const Tile* beforeHarvest = worldManager->getTileAt(obstacleX, obstacleY);
-    BOOST_REQUIRE(beforeHarvest != nullptr);
+    const auto beforeHarvest = worldManager->getTileCopyAt(obstacleX, obstacleY);
+    BOOST_REQUIRE(beforeHarvest.has_value());
     BOOST_CHECK(beforeHarvest->obstacleType != ObstacleType::NONE);
     
     // Harvest the resource
@@ -294,8 +298,8 @@ BOOST_AUTO_TEST_CASE(TestHarvestResource) {
     BOOST_CHECK(harvestResult);
     
     // Verify tile no longer has obstacle
-    const Tile* afterHarvest = worldManager->getTileAt(obstacleX, obstacleY);
-    BOOST_REQUIRE(afterHarvest != nullptr);
+    const auto afterHarvest = worldManager->getTileCopyAt(obstacleX, obstacleY);
+    BOOST_REQUIRE(afterHarvest.has_value());
     BOOST_CHECK_EQUAL(afterHarvest->obstacleType, ObstacleType::NONE);
 }
 
@@ -315,8 +319,8 @@ BOOST_AUTO_TEST_CASE(TestHarvestEmptyTile) {
     int emptyX = -1, emptyY = -1;
     for (int y = 0; y < 10; ++y) {
         for (int x = 0; x < 10; ++x) {
-            const Tile* tile = worldManager->getTileAt(x, y);
-            if (tile && tile->obstacleType == ObstacleType::NONE) {
+            const auto tile = worldManager->getTileCopyAt(x, y);
+            if (tile.has_value() && tile->obstacleType == ObstacleType::NONE) {
                 emptyX = x;
                 emptyY = y;
                 break;
@@ -345,10 +349,12 @@ BOOST_AUTO_TEST_CASE(TestRenderingState) {
 BOOST_AUTO_TEST_CASE(TestCameraSettings) {
     worldManager->setCamera(10, 20);
     worldManager->setCameraViewport(80, 25);
-    
-    // Cannot directly test camera position as it's private,
-    // but we can verify the methods don't crash
-    BOOST_CHECK(true);
+
+    // Setters are void — verify they don't crash with valid and boundary values
+    worldManager->setCamera(0, 0);
+    worldManager->setCameraViewport(1, 1);
+    worldManager->setCamera(-100, -200);
+    worldManager->setCameraViewport(3840, 2160);
 }
 
 BOOST_AUTO_TEST_CASE(TestUnloadWorld) {
@@ -369,8 +375,8 @@ BOOST_AUTO_TEST_CASE(TestUnloadWorld) {
     BOOST_CHECK(worldManager->getCurrentWorldId().empty());
     
     // Verify tile access returns null after unload
-    const Tile* tile = worldManager->getTileAt(5, 5);
-    BOOST_CHECK(tile == nullptr);
+    const auto tile = worldManager->getTileCopyAt(5, 5);
+    BOOST_CHECK(!tile.has_value());
 }
 
 BOOST_AUTO_TEST_CASE(TestMultipleWorldLoads) {
@@ -396,17 +402,19 @@ BOOST_AUTO_TEST_CASE(TestMultipleWorldLoads) {
     BOOST_REQUIRE(worldManager->loadNewWorld(config1));
     std::string firstWorldId = worldManager->getCurrentWorldId();
     
-    const WorldData* firstWorldData = worldManager->getWorldData();
-    BOOST_REQUIRE(firstWorldData != nullptr);
-    BOOST_CHECK_EQUAL(firstWorldData->grid.size(), 10);
+    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* firstWorldData) {
+        BOOST_REQUIRE(firstWorldData != nullptr);
+        BOOST_CHECK_EQUAL(firstWorldData->grid.size(), 10);
+    });
     
     // Load second world (should replace first)
     BOOST_REQUIRE(worldManager->loadNewWorld(config2));
     std::string secondWorldId = worldManager->getCurrentWorldId();
     
-    const WorldData* secondWorldData = worldManager->getWorldData();
-    BOOST_REQUIRE(secondWorldData != nullptr);
-    BOOST_CHECK_EQUAL(secondWorldData->grid.size(), 15);
+    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* secondWorldData) {
+        BOOST_REQUIRE(secondWorldData != nullptr);
+        BOOST_CHECK_EQUAL(secondWorldData->grid.size(), 15);
+    });
     
     // World IDs should be different
     BOOST_CHECK_NE(firstWorldId, secondWorldId);
@@ -501,12 +509,11 @@ BOOST_AUTO_TEST_CASE(TestClearChunkCache) {
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
     BOOST_CHECK(worldManager->hasActiveWorld());
 
-    // Clear chunk cache should not crash
     worldManager->clearChunkCache();
 
-    // Manager should still be functional
     BOOST_CHECK(worldManager->hasActiveWorld());
     BOOST_CHECK(worldManager->isInitialized());
+    BOOST_CHECK(worldManager->getTileCopyAt(5, 5).has_value());
 }
 
 BOOST_AUTO_TEST_CASE(TestInvalidateChunk) {
@@ -548,8 +555,8 @@ BOOST_AUTO_TEST_CASE(TestChunkCacheOnTileUpdate) {
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
 
     // Get original tile
-    const Tile* originalTile = worldManager->getTileAt(5, 5);
-    BOOST_REQUIRE(originalTile != nullptr);
+    const auto originalTile = worldManager->getTileCopyAt(5, 5);
+    BOOST_REQUIRE(originalTile.has_value());
 
     // Create modified tile
     Tile newTile = *originalTile;
@@ -560,8 +567,8 @@ BOOST_AUTO_TEST_CASE(TestChunkCacheOnTileUpdate) {
     BOOST_CHECK(updateResult);
 
     // Verify the tile was updated
-    const Tile* updatedTile = worldManager->getTileAt(5, 5);
-    BOOST_REQUIRE(updatedTile != nullptr);
+    const auto updatedTile = worldManager->getTileCopyAt(5, 5);
+    BOOST_REQUIRE(updatedTile.has_value());
     BOOST_CHECK_EQUAL(updatedTile->biome, Biome::CELESTIAL);
 }
 
@@ -606,18 +613,17 @@ BOOST_AUTO_TEST_CASE(TestSetCurrentSeason) {
 
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
 
-    // Set different seasons - should not crash
     worldManager->setCurrentSeason(Season::Spring);
-    BOOST_CHECK(worldManager->hasActiveWorld());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Spring);
 
     worldManager->setCurrentSeason(Season::Summer);
-    BOOST_CHECK(worldManager->hasActiveWorld());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Summer);
 
     worldManager->setCurrentSeason(Season::Fall);
-    BOOST_CHECK(worldManager->hasActiveWorld());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Fall);
 
     worldManager->setCurrentSeason(Season::Winter);
-    BOOST_CHECK(worldManager->hasActiveWorld());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Winter);
 }
 
 BOOST_AUTO_TEST_CASE(TestSeasonChangeUpdatesCache) {
@@ -632,19 +638,17 @@ BOOST_AUTO_TEST_CASE(TestSeasonChangeUpdatesCache) {
 
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
 
-    // Set season to Spring
     worldManager->setCurrentSeason(Season::Spring);
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Spring);
 
-    // Change season to Winter
     worldManager->setCurrentSeason(Season::Winter);
 
-    // Manager should still be functional
     BOOST_CHECK(worldManager->hasActiveWorld());
     BOOST_CHECK(worldManager->isInitialized());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Winter);
 
-    // Tile access should still work
-    const Tile* tile = worldManager->getTileAt(5, 5);
-    BOOST_CHECK(tile != nullptr);
+    const auto tile = worldManager->getTileCopyAt(5, 5);
+    BOOST_CHECK(tile.has_value());
 }
 
 BOOST_AUTO_TEST_CASE(TestSeasonEventSubscription) {
@@ -676,9 +680,9 @@ BOOST_AUTO_TEST_CASE(TestSeasonalTextureIdConsistency) {
         worldManager->setCurrentSeason(Season::Winter);
     }
 
-    // Manager should still be functional after season cycling
     BOOST_CHECK(worldManager->hasActiveWorld());
     BOOST_CHECK(worldManager->isInitialized());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Winter);
 }
 
 BOOST_AUTO_TEST_CASE(TestSeasonChangeWithoutWorld) {
@@ -686,12 +690,12 @@ BOOST_AUTO_TEST_CASE(TestSeasonChangeWithoutWorld) {
     worldManager->unloadWorld();
     BOOST_CHECK(!worldManager->hasActiveWorld());
 
-    // Setting season without world should not crash
     worldManager->setCurrentSeason(Season::Summer);
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Summer);
     worldManager->setCurrentSeason(Season::Winter);
 
-    // Manager should still be functional
     BOOST_CHECK(worldManager->isInitialized());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Winter);
 }
 
 BOOST_AUTO_TEST_CASE(TestChunkCacheClearedOnSeasonChange) {
@@ -706,19 +710,18 @@ BOOST_AUTO_TEST_CASE(TestChunkCacheClearedOnSeasonChange) {
 
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
 
-    // Set initial season
     worldManager->setCurrentSeason(Season::Spring);
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Spring);
 
-    // Change season - should trigger cache clear
     worldManager->setCurrentSeason(Season::Fall);
 
-    // Manager should be functional and tiles accessible
     BOOST_CHECK(worldManager->hasActiveWorld());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Fall);
 
     for (int y = 0; y < 5; ++y) {
         for (int x = 0; x < 5; ++x) {
-            const Tile* tile = worldManager->getTileAt(x, y);
-            BOOST_CHECK(tile != nullptr);
+            const auto tile = worldManager->getTileCopyAt(x, y);
+            BOOST_CHECK(tile.has_value());
         }
     }
 }

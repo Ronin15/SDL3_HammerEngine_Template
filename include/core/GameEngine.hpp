@@ -12,11 +12,9 @@
 #include <memory>
 #include <string_view>
 
-#ifdef USE_SDL3_GPU
 namespace HammerEngine {
 class GPURenderer;
 }
-#endif
 
 // Forward declarations
 class AIManager;
@@ -104,7 +102,7 @@ public:
   /**
    * @brief Presents the rendered frame (vsync wait)
    * @details Separated from render() for accurate profiling.
-   *          SDL_RenderPresent blocks on vsync - this is NOT rendering work.
+   *          Swapchain presentation may block on frame pacing, which is not render work.
    */
   void present();
 
@@ -180,20 +178,6 @@ public:
 
 
   /**
-   * @brief Gets the SDL renderer instance
-   * @return Pointer to SDL renderer (nullptr when USE_SDL3_GPU is enabled)
-   */
-  SDL_Renderer *getRenderer() const noexcept { return mp_renderer.get(); }
-
-#ifdef USE_SDL3_GPU
-  /**
-   * @brief Checks if GPU rendering is active
-   * @return true if using SDL3_GPU, false if using SDL_Renderer
-   */
-  bool isGPURendering() const noexcept { return m_gpuRendering; }
-#endif
-
-  /**
    * @brief Gets the SDL window instance
    * @return Pointer to SDL window
    */
@@ -255,18 +239,6 @@ public:
     m_logicalWidth = width;
     m_logicalHeight = height;
   }
-
-  /**
-   * @brief Sets the logical presentation mode for rendering
-   * @param mode SDL logical presentation mode to use
-   */
-  void setLogicalPresentationMode(SDL_RendererLogicalPresentation mode);
-
-  /**
-   * @brief Gets the current logical presentation mode
-   * @return Current logical presentation mode
-   */
-  SDL_RendererLogicalPresentation getLogicalPresentationMode() const noexcept;
 
   /**
    * @brief Gets the DPI scale factor calculated during initialization
@@ -347,15 +319,6 @@ public:
 
 private:
   /**
-   * @brief Verifies VSync state matches the requested setting
-   * @param requested true if VSync should be enabled, false if disabled
-   * @return true if VSync state verified to match requested, false otherwise
-   * @details Sets TimestepManager's software frame limiting based on verification result.
-   *          Used by both init() and setVSyncEnabled() to consolidate VSync logic.
-   */
-  bool verifyVSyncState(bool requested);
-
-  /**
    * @brief Handles window resize events from SDL
    * @param event The SDL window resize event
    * @details Updates window dimensions, renderer logical presentation,
@@ -378,6 +341,12 @@ private:
   void onDisplayChange(const SDL_Event& event);
 
   /**
+   * @brief Refreshes cached window, pixel, and DPI-dependent state after SDL window/display changes.
+   * @param reason Short description for logging.
+   */
+  void refreshWindowMetrics(std::string_view reason);
+
+  /**
    * @brief Refreshes TimestepManager's view of the active display cadence.
    * @details Reads the window's current display refresh via SDL and pushes it
    *          into TimestepManager so VSync-paced frame deltas can be quantized
@@ -387,8 +356,6 @@ private:
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{
       nullptr, SDL_DestroyWindow};
-  std::unique_ptr<SDL_Renderer, decltype(&SDL_DestroyRenderer)> mp_renderer{
-      nullptr, SDL_DestroyRenderer};
   std::unique_ptr<TimestepManager> m_timestepManager{nullptr};
   bool m_running{false};
   int m_windowWidth{0};
@@ -412,10 +379,6 @@ private:
   WorldManager *mp_worldManager{nullptr};
   CollisionManager *mp_collisionManager{nullptr};
 
-  // Logical presentation settings
-  SDL_RendererLogicalPresentation m_logicalPresentationMode{
-      SDL_LOGICAL_PRESENTATION_LETTERBOX};
-
   // DPI scaling
   float m_dpiScale{1.0f};
 
@@ -427,11 +390,6 @@ private:
 
   // Global pause state - propagated to managers which have their own atomics
   bool m_globallyPaused{false};
-
-#ifdef USE_SDL3_GPU
-  // GPU rendering mode flag
-  bool m_gpuRendering{false};
-#endif
 
   // Delete copy constructor and assignment operator
   GameEngine(const GameEngine &) = delete;            // Prevent copying

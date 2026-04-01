@@ -3,33 +3,30 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#ifndef UI_EXAMPLE_STATE_HPP
-#define UI_EXAMPLE_STATE_HPP
+#ifndef UI_DEMO_STATE_HPP
+#define UI_DEMO_STATE_HPP
 
 #include "gameStates/GameState.hpp"
 
 // Example GameState that demonstrates comprehensive UIManager usage
-class UIExampleState : public GameState {
+class UIDemoState : public GameState {
 public:
-    UIExampleState();
-    ~UIExampleState() override = default;
+    UIDemoState();
+    ~UIDemoState() override = default;
 
     // GameState interface
     bool enter() override;
     void update(float deltaTime) override;
-    void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;
     void handleInput() override;
     bool exit() override;
-    std::string getName() const override { return "UIExampleState"; }
+    std::string getName() const override { return "UIDemoState"; }
 
-#ifdef USE_SDL3_GPU
     // GPU rendering support
     void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                            float interpolationAlpha) override;
     void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
                      SDL_GPURenderPass* swapchainPass) override;
     bool supportsGPURendering() const override { return true; }
-#endif
 
 private:
     // Demo state variables
@@ -65,4 +62,4 @@ private:
     void updateEventLogDemo(float deltaTime);
 };
 
-#endif // UI_EXAMPLE_STATE_HPP
+#endif // UI_DEMO_STATE_HPP

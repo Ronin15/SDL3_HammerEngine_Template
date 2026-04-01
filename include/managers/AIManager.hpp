@@ -294,10 +294,16 @@ private:
   PathfinderManager* mp_pathfinderManager{nullptr};
 
   // Batch futures for parallel processing - reused via clear() each frame
-  std::vector<std::future<std::vector<EventManager::DeferredEvent>>> m_batchFutures;
+  std::vector<std::future<void>> m_batchFutures;
+
+  // Pre-allocated per-batch event buffers (avoids per-frame allocation in threaded path)
+  std::vector<std::vector<EventManager::DeferredEvent>> m_batchEventBuffers;
 
   // Reusable buffer for collecting damage events from batch futures
   std::vector<EventManager::DeferredEvent> m_allDamageEvents;
+
+  // Reusable buffer for single-threaded path deferred events (avoids per-call allocation)
+  std::vector<EventManager::DeferredEvent> m_singleBatchEvents;
 
   // Reusable buffer for Active tier EDM indices (avoids per-frame allocation)
   std::vector<size_t> m_activeIndicesBuffer;
@@ -313,6 +319,8 @@ private:
   std::array<std::vector<size_t>, MAX_FACTIONS> m_factionEdmIndices;  // Per-faction EDM indices
   std::vector<HammerEngine::AICommandBus::BehaviorMessageCommand> m_pendingBehaviorMessages;
   std::vector<HammerEngine::AICommandBus::BehaviorTransitionCommand> m_pendingBehaviorTransitions;
+  std::vector<HammerEngine::AICommandBus::BehaviorTransitionCommand> m_selectedTransitions;
+  std::unordered_map<size_t, size_t> m_selectedTransitionsByEdmIndex;
   std::vector<HammerEngine::AICommandBus::FactionChangeCommand> m_pendingFactionChanges;
 
   void addToIndices(size_t edmIndex, BehaviorType behaviorType);
@@ -321,20 +329,17 @@ private:
   void commitQueuedBehaviorMessages();
   void commitQueuedBehaviorTransitions();
 
-  // Optimized helper methods
-  BehaviorType inferBehaviorType(const std::string &behaviorName) const;
-
   // Process batch of Active tier entities using EDM indices directly
   // No tier check needed - getActiveIndices() already filters to Active tier
-  // Returns collected deferred events from this batch's thread-local buffer
-  std::vector<EventManager::DeferredEvent> processBatch(const std::vector<size_t>& activeIndices,
+  // Collects deferred events from this batch's thread-local buffer into outEvents
+  void processBatch(const std::vector<size_t>& activeIndices,
                     size_t start, size_t end,
                     float deltaTime,
                     float worldWidth, float worldHeight,
                     EntityHandle playerHandle, const Vector2D& playerPos,
                     const Vector2D& playerVel, bool playerValid,
-                    float gameTime);
-  static uint64_t getCurrentTimeNanos();
+                    float gameTime,
+                    std::vector<EventManager::DeferredEvent>& outEvents);
 
   // Shutdown state
   bool m_isShutdown{false};

@@ -243,7 +243,8 @@ private:
 
         // ===== Cache line 2: Single-threaded path (threshold learning only) =====
         std::atomic<double> smoothedSingleTime{0.0};        // EMA of single-threaded ms (8 bytes)
-        char _pad2[64 - 8];  // Pad to 64-byte boundary (56 bytes)
+        std::atomic<uint32_t> singleSampleCount{0};         // Warmup counter for EMA stabilization (4 bytes)
+        char _pad2[64 - 12];  // Pad to 64-byte boundary (52 bytes)
 
         // ===== Cache line 3: Mode state (written occasionally) =====
         std::atomic<size_t> learnedThreshold{0};            // Entity count threshold (8 bytes)
@@ -265,6 +266,8 @@ private:
         static constexpr double LEARNING_TIME_THRESHOLD_MS = 0.9;
         static constexpr double HYSTERESIS_FACTOR = 0.95;
         static constexpr double TIME_SMOOTHING = 0.25;
+
+        static constexpr uint32_t MIN_LEARNING_SAMPLES = 10;
     };
 
     // Cached budget (protected by double-checked locking)

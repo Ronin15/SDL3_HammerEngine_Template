@@ -245,11 +245,6 @@ WorldGenerator::generateWorld(const WorldGenerationConfig &config,
   std::vector<std::vector<float>> elevationMap, humidityMap;
   auto world = generateNoiseMaps(config, elevationMap, humidityMap);
 
-  if (!world) {
-    WORLD_MANAGER_ERROR("Failed to generate noise maps for world");
-    return nullptr;
-  }
-
   // Progress: Noise maps complete (30%)
   if (progressCallback) {
     progressCallback(30.0f, "Generating terrain...");

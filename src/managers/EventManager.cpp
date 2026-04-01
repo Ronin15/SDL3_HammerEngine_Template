@@ -631,7 +631,7 @@ bool EventManager::dispatchEvent(const EventPtr& event, DispatchMode mode) const
 // ==================== Internal Dispatch ====================
 
 bool EventManager::dispatchEvent(EventTypeId typeId, EventData &eventData,
-                                 DispatchMode mode, const char *errorContext) const {
+                                 DispatchMode mode, std::string_view errorContext) const {
   if (mode == DispatchMode::Immediate) {
     const PendingDispatch pendingDispatch{0, typeId, eventData};
     const auto damageEvent = typeId == EventTypeId::Combat && eventData.event
@@ -748,7 +748,7 @@ void EventManager::enqueueBatch(std::vector<DeferredEvent>&& events) const {
 }
 
 void EventManager::dispatchPendingEvent(const PendingDispatch& pendingDispatch,
-                                        const char* errorContext) const {
+                                        std::string_view errorContext) const {
   std::shared_lock<std::shared_mutex> lock(m_handlersMutex);
   const auto& typeHandlers =
       m_handlersByType[static_cast<size_t>(pendingDispatch.typeId)];
@@ -759,7 +759,7 @@ void EventManager::dispatchPendingEvent(const PendingDispatch& pendingDispatch,
 void EventManager::dispatchPendingEventWithHandlers(
     const PendingDispatch& pendingDispatch,
     const std::vector<HandlerEntry>& typeHandlers,
-    const char* errorContext) const {
+    std::string_view errorContext) const {
   if (typeHandlers.empty()) {
     return;
   }
@@ -790,10 +790,9 @@ EventManager::prepareCombatEvent(const PendingDispatch& pendingDispatch) const {
     return preparedCombat;
   }
 
-  auto& edm = EntityDataManager::Instance();
+  const auto& edm = EntityDataManager::Instance();
   const EntityHandle targetHandle = damageEvent->getTarget();
   const EntityHandle attackerHandle = damageEvent->getSource();
-  preparedCombat.pDamageEvent = damageEvent.get();
   preparedCombat.targetHandle = targetHandle;
   preparedCombat.attackerHandle = attackerHandle;
   const size_t targetIdx = edm.getIndex(targetHandle);
@@ -952,9 +951,9 @@ void EventManager::drainDispatchQueueWithBudget() {
       }
     } else if (!m_localNonCombatBuffer.empty()) {
       m_localDispatchBuffer.reserve(nonCombatCount);
-      for (const auto& pendingDispatch : m_localNonCombatBuffer) {
-        m_localDispatchBuffer.emplace_back(pendingDispatch);
-      }
+      m_localDispatchBuffer.insert(m_localDispatchBuffer.end(),
+                                   m_localNonCombatBuffer.begin(),
+                                   m_localNonCombatBuffer.end());
     }
   }
   // Lock released - process events without holding lock
@@ -964,7 +963,6 @@ void EventManager::drainDispatchQueueWithBudget() {
   const bool allCombatEvents =
       (eventCount > 0 && m_localNonCombatBuffer.empty());
 
-  auto dispatchStartTime = std::chrono::high_resolution_clock::now();
   const float cachedGameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
   auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
   const size_t combatEventCount = m_localCombatDispatchBuffer.size();
@@ -986,8 +984,13 @@ void EventManager::drainDispatchQueueWithBudget() {
   size_t actualBatchCount = 1;
   bool actualWasThreaded = false;
 
+  // Per-path timing: single-threaded feeds threshold learning, batch feeds hill-climbing
+  std::chrono::steady_clock::time_point combatPrepStart;
+  std::chrono::steady_clock::time_point combatPrepEnd;
+
   if (combatEventCount > 0) {
     if (useThreading) {
+      // Compute batch strategy (not timed — only actual work is timed)
       auto& threadSystem = HammerEngine::ThreadSystem::Instance();
       size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
           HammerEngine::SystemType::Event, combatEventCount);
@@ -999,6 +1002,9 @@ void EventManager::drainDispatchQueueWithBudget() {
         actualBatchCount = batchCount;
         m_combatPrepFutures.clear();
         m_combatPrepFutures.reserve(batchCount);
+
+        // Start timing batch work (enqueue + wait) — feeds hill-climbing
+        combatPrepStart = std::chrono::steady_clock::now();
 
         for (size_t batchIndex = 0; batchIndex < batchCount; ++batchIndex) {
           const size_t startCombatIndex = batchIndex * batchSize;
@@ -1028,11 +1034,15 @@ void EventManager::drainDispatchQueueWithBudget() {
 
           future.get();
         }
+        combatPrepEnd = std::chrono::steady_clock::now();
       }
     }
 
     if (!actualWasThreaded) {
+      // Single-threaded — timing feeds threshold learning
+      combatPrepStart = std::chrono::steady_clock::now();
       prepareCombatBatch(0, combatEventCount);
+      combatPrepEnd = std::chrono::steady_clock::now();
     }
   }
 
@@ -1083,22 +1093,23 @@ void EventManager::drainDispatchQueueWithBudget() {
     }
   }
 
-  auto dispatchEndTime = std::chrono::high_resolution_clock::now();
-  double measuredRangeMs = std::chrono::duration<double, std::milli>(
-      dispatchEndTime - dispatchStartTime).count();
+  double combatPrepMs = std::chrono::duration<double, std::milli>(
+      combatPrepEnd - combatPrepStart).count();
 
-  if (eventCount > 0 && measuredRangeMs > 0.0) {
-    budgetMgr.reportExecution(HammerEngine::SystemType::Event, eventCount,
+  if (combatEventCount > 0 && combatPrepMs > 0.0) {
+    budgetMgr.reportExecution(HammerEngine::SystemType::Event, combatEventCount,
                               actualWasThreaded, actualBatchCount,
-                              measuredRangeMs);
+                              combatPrepMs);
   }
 
 #ifndef NDEBUG
   // Periodic debug logging (~35 seconds at 60fps)
   static thread_local uint64_t logFrameCounter = 0;
   if (++logFrameCounter % 2100 == 0 && eventCount > 0) {
-    EVENT_DEBUG(std::format("Dispatch: {} deferred events [1 batch, {:.2f}ms]",
-                            eventCount, measuredRangeMs));
+    EVENT_DEBUG(std::format("Dispatch: {} events ({} combat) [{}, {:.2f}ms prep]",
+                            eventCount, combatEventCount,
+                            actualWasThreaded ? std::format("{} batches", actualBatchCount) : "single",
+                            combatPrepMs));
   }
 #endif
 

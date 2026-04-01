@@ -9,9 +9,7 @@
 #include <format>
 #include <cmath>
 
-#ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
-#endif
 
 void DayNightController::subscribe()
 {
@@ -164,7 +162,6 @@ void DayNightController::update(float deltaTime)
 
 void DayNightController::updateGPULighting()
 {
-#ifdef USE_SDL3_GPU
     auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
     // Convert from 0-255 range to 0-1 range for shader
     gpuRenderer.setDayNightParams(
@@ -173,5 +170,4 @@ void DayNightController::updateGPULighting()
         m_currentB / 255.0f,
         m_currentA / 255.0f
     );
-#endif
 }

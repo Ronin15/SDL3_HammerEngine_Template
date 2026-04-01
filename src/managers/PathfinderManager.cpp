@@ -237,7 +237,7 @@ void PathfinderManager::commitCompletedPaths() {
             continue;
         }
 
-        Vector2D* slot = edm.getWaypointSlot(completion.edmIndex);
+        auto slot = edm.getWaypointSlot(completion.edmIndex);
         for (uint16_t i = 0; i < completion.length; ++i) {
             slot[i] = completion.waypoints[i];
         }
@@ -1640,28 +1640,29 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
 }
 
 void PathfinderManager::onStaticCollidersReady() {
-    // Get world dimensions from WorldManager
     const auto& worldManager = WorldManager::Instance();
-    const auto* worldData = worldManager.getWorldData();
-    if (!worldData) {
-        PATHFIND_WARN("StaticCollidersReady received but no world data available");
+    int worldWidth = 0;
+    int worldHeight = 0;
+
+    worldManager.withWorldDataRead([&](const HammerEngine::WorldData* worldData) {
+        if (!worldData) {
+            PATHFIND_WARN("StaticCollidersReady received but no world data available");
+            return;
+        }
+
+        worldHeight = static_cast<int>(worldData->grid.size());
+        worldWidth = worldHeight > 0 ? static_cast<int>(worldData->grid[0].size()) : 0;
+    });
+
+    if (worldWidth <= 0 || worldHeight <= 0) {
         return;
     }
-
-    int worldHeight = static_cast<int>(worldData->grid.size());
-    int worldWidth = worldHeight > 0 ? static_cast<int>(worldData->grid[0].size()) : 0;
 
     PATHFIND_INFO(std::format("Static colliders ready - rebuilding pathfinding grid (world: {}x{})",
                   worldWidth, worldHeight));
 
-    // Clear all cached paths - old world paths are completely invalid
     clearAllCache();
-
-    // Rebuild pathfinding grid from new world data (always full rebuild for world loads)
-    // Note: calculateOptimalCacheSettings() and prewarmPathCache() are called
-    // automatically when the async rebuild completes (see rebuildGrid() implementation)
     rebuildGrid(false); // allowIncremental=false for world loads
-
     PATHFIND_INFO("Pathfinding grid rebuild initiated (async)");
 }
 

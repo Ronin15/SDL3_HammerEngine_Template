@@ -794,7 +794,7 @@ void ParticleManager::update(float deltaTime) {
   // ParticleManager batches don't update collision data, so frame overlap is safe
   // This allows better frame pipelining on low-core systems
 
-  auto startTime = std::chrono::high_resolution_clock::now();
+  auto startTime = std::chrono::steady_clock::now();
 
   try {
     // Phase 1: Process pending particle creation requests (lock-free)
@@ -830,9 +830,6 @@ void ParticleManager::update(float deltaTime) {
     m_windPhase += deltaTime * 0.5f;
 
     // Phase 4: Update particle physics with optimal threading strategy
-    // Time only the physics batch for WorkerBudget (preprocessing is fixed overhead)
-    auto batchStartTime = std::chrono::high_resolution_clock::now();
-
     // WorkerBudget is the AUTHORITATIVE source - no manager overrides
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
     auto decision = budgetMgr.shouldUseThreading(
@@ -843,19 +840,32 @@ void ParticleManager::update(float deltaTime) {
     ParticleThreadingInfo threadingInfo;
 
     if (useThreading) {
-      // Use WorkerBudget system if enabled, otherwise fall back to legacy
-      // threading
+      // Use WorkerBudget system if enabled, otherwise fall back to legacy threading
+      // Timing captured inside updateParticlesThreaded (after strategy, around actual work)
       if (m_useWorkerBudget.load(std::memory_order_acquire)) {
         updateWithWorkerBudget(deltaTime, traversedCount, threadingInfo);
       } else {
         updateParticlesThreaded(deltaTime, traversedCount, threadingInfo);
       }
     } else {
-      // Single-threaded: threadingInfo stays at defaults (wasThreaded=false, batchCount=1)
+      // Single-threaded — timing feeds threshold learning
+      auto singleStart = std::chrono::steady_clock::now();
       updateParticlesSingleThreaded(deltaTime, traversedCount);
+      auto singleEnd = std::chrono::steady_clock::now();
+      threadingInfo.batchTimeMs = std::chrono::duration<double, std::milli>(singleEnd - singleStart).count();
     }
 
-    auto batchEndTime = std::chrono::high_resolution_clock::now();
+  // Wait for batch workers before buffer operations: the deactivation scan
+  // (Phase 5.5) reads and writes flags[] on the same buffer workers are writing
+  // to, which would corrupt the free-index pool without synchronization.
+  {
+    std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+    for (auto& f : m_batchFutures)
+    {
+      if (f.valid()) { f.get(); }
+    }
+    m_batchFutures.clear();
+  }
 
   // Phase 5: Swap buffers for next frame (lock-free)
   m_storage.swapBuffers();
@@ -888,7 +898,7 @@ void ParticleManager::update(float deltaTime) {
   m_storage.promoteSafeIndices();
 
     // Phase 6: Performance tracking
-    auto endTime = std::chrono::high_resolution_clock::now();
+    auto endTime = std::chrono::steady_clock::now();
     double timeMs = std::chrono::duration_cast<std::chrono::microseconds>(
                         endTime - startTime)
                         .count() /
@@ -917,214 +927,16 @@ void ParticleManager::update(float deltaTime) {
     }
 #endif
 
-    // Report ONLY physics batch time for adaptive tuning (not preprocessing/postprocessing)
-    double batchTimeMs = std::chrono::duration<double, std::milli>(batchEndTime - batchStartTime).count();
+    // Report tight per-path timing for adaptive tuning (not preprocessing/postprocessing)
     budgetMgr.reportExecution(HammerEngine::SystemType::Particle,
                               traversedCount, threadingInfo.wasThreaded,
-                              threadingInfo.batchCount, batchTimeMs);
+                              threadingInfo.batchCount, threadingInfo.batchTimeMs);
 
   } catch (const std::exception &e) {
     PARTICLE_ERROR(std::format("Exception in ParticleManager::update: {}", e.what()));
   }
 }
 
-void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
-                              float cameraY, float interpolationAlpha) {
-  // Store camera position for weather particle spawning
-  m_viewport.x = cameraX;
-  m_viewport.y = cameraY;
-
-  if (m_globallyPaused.load(std::memory_order_acquire) ||
-      !m_globallyVisible.load(std::memory_order_acquire)) {
-    return;
-  }
-
-  auto startTime = std::chrono::high_resolution_clock::now();
-
-  // THREAD SAFETY: Get immutable snapshot of particle data for rendering
-  const auto &particles = m_storage.getParticlesForRead();
-  const size_t n = particles.getSafeAccessCount();
-  if (n == 0) return;
-
-  // OPTIMIZATION: Use pre-allocated member buffer to eliminate per-frame std::fill
-  m_renderBuffer.reset();  // Just resets counter, no memory operations
-  size_t quadCount = 0;
-
-  auto flush = [&]() {
-    if (quadCount == 0) return;
-    SDL_RenderGeometryRaw(renderer, nullptr,
-                          m_renderBuffer.xy.data(), sizeof(float) * 2,
-                          m_renderBuffer.cols.data(), sizeof(SDL_FColor),
-                          nullptr, 0,
-                          m_renderBuffer.getVertexCount(),
-                          nullptr, 0, 0);
-    m_renderBuffer.reset();
-    quadCount = 0;
-  };
-
-  for (size_t i = 0; i < n; ++i) {
-    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
-        !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE)) continue;
-    const uint32_t c = particles.colors[i];
-    const uint8_t a8 = c & 0xFF; if (a8 == 0) continue;
-    const float r = ((c >> 24) & 0xFF) / 255.0f;
-    const float g = ((c >> 16) & 0xFF) / 255.0f;
-    const float b = ((c >> 8) & 0xFF) / 255.0f;
-    const float a = a8 / 255.0f;
-
-    const float size = particles.sizes[i];
-    // INTERPOLATION: Smooth position between previous and current for frame-rate independent rendering
-    // Formula: interpPos = prevPos + (currentPos - prevPos) * alpha
-    const float cx = (particles.prevPosX[i] + (particles.posX[i] - particles.prevPosX[i]) * interpolationAlpha) - cameraX;
-    const float cy = (particles.prevPosY[i] + (particles.posY[i] - particles.prevPosY[i]) * interpolationAlpha) - cameraY;
-    const float hx = size * 0.5f;
-    const float hy = size * 0.5f;
-
-    const float x0 = cx - hx, y0 = cy - hy;
-    const float x1 = cx + hx, y1 = cy - hy;
-    const float x2 = cx + hx, y2 = cy + hy;
-    const float x3 = cx - hx, y3 = cy + hy;
-
-    // Safe append using pre-sized buffer (bounds guaranteed by flush logic)
-    SDL_FColor const col{r, g, b, a};
-    m_renderBuffer.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
-
-    ++quadCount;
-    if (quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
-  }
-  flush();
-
-
-
-  auto endTime = std::chrono::high_resolution_clock::now();
-  double timeMs =
-      std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime)
-          .count() /
-      1000.0;
-  recordPerformance(true, timeMs, n);
-}
-
-void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
-                                       float cameraY, float interpolationAlpha) {
-  // Store camera position for weather particle spawning
-  m_viewport.x = cameraX;
-  m_viewport.y = cameraY;
-
-  if (m_globallyPaused.load(std::memory_order_acquire) ||
-      !m_globallyVisible.load(std::memory_order_acquire)) {
-    return;
-  }
-
-  // THREAD SAFETY: Get immutable snapshot of particle data
-  const auto &particles = m_storage.getParticlesForRead();
-  const size_t n = particles.getSafeAccessCount();
-  if (n == 0) return;
-
-  // OPTIMIZATION: Use pre-allocated member buffer to eliminate per-frame std::fill
-  m_renderBuffer.reset();
-  size_t quadCount = 0;
-  auto flush = [&]() {
-    if (quadCount == 0) return;
-    SDL_RenderGeometryRaw(renderer, nullptr,
-                          m_renderBuffer.xy.data(), sizeof(float) * 2,
-                          m_renderBuffer.cols.data(), sizeof(SDL_FColor),
-                          nullptr, 0,
-                          m_renderBuffer.getVertexCount(),
-                          nullptr, 0, 0);
-    m_renderBuffer.reset();
-    quadCount = 0;
-  };
-
-  for (size_t i = 0; i < n; ++i) {
-    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
-        !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE) ||
-        particles.layers[i] != UnifiedParticle::RenderLayer::Background) continue;
-    const uint32_t c = particles.colors[i];
-    const uint8_t a8 = c & 0xFF; if (a8 == 0) continue;
-    const float r = ((c >> 24) & 0xFF) / 255.0f;
-    const float g = ((c >> 16) & 0xFF) / 255.0f;
-    const float b = ((c >> 8) & 0xFF) / 255.0f;
-    const float a = a8 / 255.0f;
-    const float size = particles.sizes[i];
-    // INTERPOLATION: Smooth position between previous and current for frame-rate independent rendering
-    const float cx = (particles.prevPosX[i] + (particles.posX[i] - particles.prevPosX[i]) * interpolationAlpha) - cameraX;
-    const float cy = (particles.prevPosY[i] + (particles.posY[i] - particles.prevPosY[i]) * interpolationAlpha) - cameraY;
-    const float hx = size * 0.5f, hy = size * 0.5f;
-    const float x0 = cx - hx, y0 = cy - hy;
-    const float x1 = cx + hx, y1 = cy - hy;
-    const float x2 = cx + hx, y2 = cy + hy;
-    const float x3 = cx - hx, y3 = cy + hy;
-
-    // Safe append using pre-sized buffer (bounds guaranteed by flush logic)
-    SDL_FColor const col{r, g, b, a};
-    m_renderBuffer.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
-
-    if (++quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
-  }
-  flush();
-}
-
-void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
-                                       float cameraY, float interpolationAlpha) {
-  // Store camera position for weather particle spawning
-  m_viewport.x = cameraX;
-  m_viewport.y = cameraY;
-
-  if (m_globallyPaused.load(std::memory_order_acquire) ||
-      !m_globallyVisible.load(std::memory_order_acquire)) {
-    return;
-  }
-
-  // THREAD SAFETY: Get immutable snapshot of particle data
-  const auto &particles = m_storage.getParticlesForRead();
-  const size_t n = particles.getSafeAccessCount();
-  if (n == 0) return;
-
-  // OPTIMIZATION: Use pre-allocated member buffer to eliminate per-frame std::fill
-  m_renderBuffer.reset();
-  size_t quadCount = 0;
-  auto flush = [&]() {
-    if (quadCount == 0) return;
-    SDL_RenderGeometryRaw(renderer, nullptr,
-                          m_renderBuffer.xy.data(), sizeof(float) * 2,
-                          m_renderBuffer.cols.data(), sizeof(SDL_FColor),
-                          nullptr, 0,
-                          m_renderBuffer.getVertexCount(),
-                          nullptr, 0, 0);
-    m_renderBuffer.reset();
-    quadCount = 0;
-  };
-
-  for (size_t i = 0; i < n; ++i) {
-    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
-        !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE) ||
-        particles.layers[i] != UnifiedParticle::RenderLayer::Foreground) continue;
-    const uint32_t c = particles.colors[i];
-    const uint8_t a8 = c & 0xFF; if (a8 == 0) continue;
-    const float r = ((c >> 24) & 0xFF) / 255.0f;
-    const float g = ((c >> 16) & 0xFF) / 255.0f;
-    const float b = ((c >> 8) & 0xFF) / 255.0f;
-    const float a = a8 / 255.0f;
-    const float size = particles.sizes[i];
-    // INTERPOLATION: Smooth position between previous and current for frame-rate independent rendering
-    const float cx = (particles.prevPosX[i] + (particles.posX[i] - particles.prevPosX[i]) * interpolationAlpha) - cameraX;
-    const float cy = (particles.prevPosY[i] + (particles.posY[i] - particles.prevPosY[i]) * interpolationAlpha) - cameraY;
-    const float hx = size * 0.5f, hy = size * 0.5f;
-    const float x0 = cx - hx, y0 = cy - hy;
-    const float x1 = cx + hx, y1 = cy - hy;
-    const float x2 = cx + hx, y2 = cy + hy;
-    const float x3 = cx - hx, y3 = cy + hy;
-
-    // Safe append using pre-sized buffer (bounds guaranteed by flush logic)
-    SDL_FColor const col{r, g, b, a};
-    m_renderBuffer.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
-
-    if (++quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
-  }
-  flush();
-}
-
-#ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
 #include "gpu/GPUTypes.hpp"
 
@@ -1261,7 +1073,6 @@ void ParticleManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
   // Draw particles
   SDL_DrawGPUPrimitives(scenePass, static_cast<uint32_t>(vertexCount), 1, 0, 0);
 }
-#endif
 
 uint32_t ParticleManager::playEffect(ParticleEffectType effectType,
                                      const Vector2D &position,
@@ -2382,6 +2193,9 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   size_t particlesPerBatch = traversedParticleCount / batchCount;
   size_t remainingParticles = traversedParticleCount % batchCount;
 
+  // Start timing batch work (enqueue) — feeds hill-climbing
+  auto workStart = std::chrono::steady_clock::now();
+
   // Reuse member buffer instead of creating local vector (eliminates per-frame allocation)
   // Use swap() to preserve capacity on both vectors (avoids reallocation)
   {
@@ -2427,6 +2241,9 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
     std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
     std::swap(m_batchFutures, m_reusableBatchFutures);  // Swap back, preserves both capacities
   }
+
+  auto workEnd = std::chrono::steady_clock::now();
+  outThreadingInfo.batchTimeMs = std::chrono::duration<double, std::milli>(workEnd - workStart).count();
 }
 
 void ParticleManager::updateParticlesSingleThreaded(
@@ -2838,18 +2655,8 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime,
    * @param traversedParticleCount Current traversed particle span
    * @param outThreadingInfo Output struct for threading info (zero overhead in release)
    */
-  // WorkerBudget is the AUTHORITATIVE source - no manager overrides
-  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-  auto decision = budgetMgr.shouldUseThreading(
-      HammerEngine::SystemType::Particle, traversedParticleCount);
-  if (!decision.shouldThread) {
-    // Fall back to regular single-threaded update
-    // outThreadingInfo stays at defaults (wasThreaded=false, batchCount=1)
-    updateParticlesSingleThreaded(deltaTime, traversedParticleCount);
-    return;
-  }
-
-  // Use WorkerBudget-aware threaded update
+  // Trust the caller's threading decision (already made in update())
+  // — do NOT re-query shouldUseThreading() as hysteresis state may have changed
   updateParticlesThreaded(deltaTime, traversedParticleCount, outThreadingInfo);
 }
 

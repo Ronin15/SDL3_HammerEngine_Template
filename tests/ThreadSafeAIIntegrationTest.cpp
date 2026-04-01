@@ -163,13 +163,14 @@ BOOST_AUTO_TEST_CASE(TestConcurrentAssignmentAndUpdate) {
     // Get a test entity
     BOOST_REQUIRE(!entities.empty());
     auto entity = entities[0];
+    const size_t initialAssignments = AIManager::Instance().getTotalAssignmentCount();
 
     // Queue a behavior assignment and process it
     AIManager::Instance().assignBehavior(entity->getHandle(), "Wander");
     updateAI(0.016f);
 
-    // Success criteria is simply not crashing
-    BOOST_CHECK(true);
+    BOOST_CHECK(AIManager::Instance().hasBehavior(entity->getHandle()));
+    BOOST_CHECK_GT(AIManager::Instance().getTotalAssignmentCount(), initialAssignments);
 }
 
 // Test message delivery
@@ -181,36 +182,45 @@ BOOST_AUTO_TEST_CASE(TestMessageDelivery) {
     // Ensure the behavior is assigned before messaging
     BOOST_REQUIRE(AIManager::Instance().hasBehavior(testEntity->getHandle()));
 
-    // Legacy string message API was removed - message system now uses BehaviorMessage queue
+    // Legacy string message API was removed - this test now verifies the entity
+    // remains assigned and continues participating in AI updates.
+    const size_t initialUpdates = AIManager::Instance().getBehaviorUpdateCount();
+    updateAI(0.016f);
 
-    // Success if we get here without crashing
-    BOOST_CHECK(true);
+    BOOST_CHECK(AIManager::Instance().hasBehavior(testEntity->getHandle()));
+    BOOST_CHECK_GT(AIManager::Instance().getBehaviorUpdateCount(), initialUpdates);
 }
 
 // Test behavior switching
 BOOST_AUTO_TEST_CASE(TestBehaviorSwitching) {
     BOOST_REQUIRE(!entities.empty());
     auto entity = entities[0];
+    const size_t initialAssignments = AIManager::Instance().getTotalAssignmentCount();
 
     // Switch between different behaviors
     AIManager::Instance().assignBehavior(entity->getHandle(), "Idle");
     updateAI(0.016f);
+    BOOST_CHECK(AIManager::Instance().hasBehavior(entity->getHandle()));
 
     AIManager::Instance().assignBehavior(entity->getHandle(), "Chase");
     updateAI(0.016f);
+    BOOST_CHECK(AIManager::Instance().hasBehavior(entity->getHandle()));
 
     AIManager::Instance().assignBehavior(entity->getHandle(), "Patrol");
     updateAI(0.016f);
+    BOOST_CHECK(AIManager::Instance().hasBehavior(entity->getHandle()));
 
-    // Success if we get here without crashing
-    BOOST_CHECK(true);
+    BOOST_CHECK_GE(AIManager::Instance().getTotalAssignmentCount(), initialAssignments + 3);
 }
 
 // Test multiple entities with same behavior
 BOOST_AUTO_TEST_CASE(TestMultipleSameBehavior) {
+    const size_t initialUpdates = AIManager::Instance().getBehaviorUpdateCount();
+
     // Assign all entities the same behavior
     for (auto& entity : entities) {
         AIManager::Instance().assignBehavior(entity->getHandle(), "Wander");
+        BOOST_CHECK(AIManager::Instance().hasBehavior(entity->getHandle()));
     }
 
     // Process multiple updates
@@ -219,14 +229,19 @@ BOOST_AUTO_TEST_CASE(TestMultipleSameBehavior) {
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
 
-    // Success if we get here without crashing
-    BOOST_CHECK(true);
+    BOOST_CHECK_GT(AIManager::Instance().getBehaviorUpdateCount(), initialUpdates);
 }
 
 // Test cache invalidation - simplest possible implementation
 BOOST_AUTO_TEST_CASE(TestCacheInvalidation) {
-    // Just verify it doesn't crash
-    BOOST_CHECK(true);
+    BOOST_REQUIRE(!entities.empty());
+    auto entity = entities[0];
+    BOOST_REQUIRE(AIManager::Instance().hasBehavior(entity->getHandle()));
+
+    AIManager::Instance().resetBehaviors();
+
+    BOOST_CHECK_EQUAL(AIManager::Instance().getBehaviorUpdateCount(), 0U);
+    BOOST_CHECK(!AIManager::Instance().hasBehavior(entity->getHandle()));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

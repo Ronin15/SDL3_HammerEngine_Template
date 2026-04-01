@@ -170,7 +170,7 @@ BOOST_AUTO_TEST_CASE(ParticleConfigStructure) {
         SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
     );
 
-    // Particles use standard alpha blending (matches SDL_Renderer path)
+    // Particles use the standard alpha blend state for the GPU pipeline
     BOOST_CHECK_EQUAL(config.enableBlend, true);
     BOOST_CHECK(config.srcColorFactor == SDL_GPU_BLENDFACTOR_SRC_ALPHA);
     BOOST_CHECK(config.dstColorFactor == SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA);

@@ -6,10 +6,10 @@
 
 `GameEngine` coordinates the main loop, display/window state, manager initialization, GameState execution, and the render/present split.
 
-Two current branch details matter for timing/render docs:
+Two current details matter for timing/render docs:
 
 - display refresh is propagated into `TimestepManager`
-- GPU VSync is controlled through swapchain present mode, not SDL_Renderer present calls
+- VSync is controlled through swapchain present mode
 
 ## Main Loop Shape
 
@@ -38,14 +38,7 @@ m_timestepManager->setDisplayRefreshHz(refreshHz);
 
 This does not change the fixed simulation rate. It allows `TimestepManager` to quantize render deltas against the real display cadence and reduce drift on VSync-paced systems.
 
-## SDL_Renderer vs SDL3_GPU
-
-### SDL_Renderer path
-
-- frame pacing can be software-limited or renderer-VSync paced
-- scene/UI render through the classic renderer pipeline
-
-### SDL3_GPU path
+## Rendering
 
 - present pacing happens when the swapchain texture is acquired and the frame command buffer is submitted
 - `GPURenderer` owns swapchain present mode and pass sequencing
@@ -55,7 +48,7 @@ This does not change the fixed simulation rate. It allows `TimestepManager` to q
 
 ### GPU backend preference
 
-When `USE_SDL3_GPU=ON`, the engine requests the platform-native backend that matches the compiled shader binaries:
+The engine requests the platform-native backend that matches the compiled shader binaries:
 
 - Windows: Direct3D 12
 - macOS: Metal

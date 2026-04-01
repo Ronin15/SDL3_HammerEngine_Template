@@ -46,19 +46,16 @@ public:
 
     bool enter() override;
     void update(float deltaTime) override;
-    void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;
     void handleInput() override;
     bool exit() override;
     std::string getName() const override;
 
-#ifdef USE_SDL3_GPU
     // GPU rendering support
     void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                            float interpolationAlpha) override;
     void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
                      SDL_GPURenderPass* swapchainPass) override;
     bool supportsGPURendering() const override { return true; }
-#endif
 
     /**
      * @brief Get the last error message from failed loading
@@ -84,9 +81,6 @@ private:
     std::atomic<bool> m_loadComplete{false};
     std::atomic<bool> m_loadFailed{false};
     std::atomic<bool> m_waitingForPathfinding{false};
-    std::atomic<bool> m_waitingForPrewarm{false};  // Pathfinding done, waiting for chunk prewarm
-    std::atomic<bool> m_prewarmComplete{false};    // Chunk prewarm complete
-
     // Status message (mutex-protected for string safety)
     std::string m_statusText{"Initializing..."};
     mutable std::mutex m_statusMutex;

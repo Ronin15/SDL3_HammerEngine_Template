@@ -179,9 +179,9 @@ run_callgrind_profiling() {
     elif [[ "${test_name}" == "event_scaling" ]]; then
         test_args="--run_test=EventManagerScalingTests/TestEventManagerScaling --catch_system_errors=no --no_result_code --log_level=nothing"
         echo -e "${YELLOW}    Using targeted event scaling test for faster profiling...${NC}"
-    elif [[ "${test_name}" == "ui_stress" ]]; then
+    elif [[ "${test_name}" == "ui_manager_functional" ]]; then
         test_args="--catch_system_errors=no --no_result_code --log_level=nothing"
-        echo -e "${YELLOW}    Using optimized test settings for UI stress analysis...${NC}"
+        echo -e "${YELLOW}    Using optimized test settings for UI functional analysis...${NC}"
     fi
     
     # Run Callgrind with timeout
@@ -491,7 +491,7 @@ EOF
 EOF
 
     # Add performance systems analysis
-    for test_name in "particle_core" "particle_performance" "particle_threading" "particle_weather" "buffer_utilization" "save_manager" "ui_stress"; do
+    for test_name in "particle_core" "particle_performance" "particle_threading" "particle_weather" "buffer_utilization" "save_manager" "ui_manager_functional"; do
         if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
             local summary_file="${RESULTS_DIR}/summaries/${test_name}_summary.txt"
             if [[ -f "${summary_file}" ]]; then

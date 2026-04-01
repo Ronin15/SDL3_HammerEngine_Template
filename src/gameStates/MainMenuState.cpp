@@ -11,9 +11,7 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
-#ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
-#endif
 
 #include <thread>
 #include <chrono>
@@ -78,11 +76,11 @@ bool MainMenuState::enter() {
   });
 
   ui.setOnClick("mainmenu_event_demo_btn", [this]() {
-    mp_stateManager->changeState("EventDemo");
+    mp_stateManager->changeState("EventDemoState");
   });
 
   ui.setOnClick("mainmenu_ui_example_btn", [this]() {
-    mp_stateManager->changeState("UIExampleState");
+    mp_stateManager->changeState("UIDemoState");
   });
 
   ui.setOnClick("mainmenu_overlay_demo_btn", [this]() {
@@ -106,12 +104,6 @@ void MainMenuState::update([[maybe_unused]] float deltaTime) {
   if (!ui.isShutdown()) {
     ui.update(0.0f);
   }
-}
-
-void MainMenuState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
-  // Render UI components (input handled in update())
-  auto& ui = UIManager::Instance();
-  ui.render(renderer);
 }
 
 bool MainMenuState::exit() {
@@ -140,11 +132,11 @@ void MainMenuState::handleInput() {
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_E)) {
-      mp_stateManager->changeState("EventDemo");
+      mp_stateManager->changeState("EventDemoState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_U)) {
-      mp_stateManager->changeState("UIExampleState");
+      mp_stateManager->changeState("UIDemoState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_O)) {
@@ -164,7 +156,6 @@ std::string MainMenuState::getName() const {
   return "MainMenuState";
 }
 
-#ifdef USE_SDL3_GPU
 void MainMenuState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                                        [[maybe_unused]] float interpolationAlpha) {
   // MainMenuState uses UIManager for all rendering
@@ -183,5 +174,3 @@ void MainMenuState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
     ui.renderGPU(gpuRenderer, swapchainPass);
   }
 }
-#endif
-

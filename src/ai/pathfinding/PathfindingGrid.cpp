@@ -142,167 +142,149 @@ void PathfindingGrid::initializeArrays() {
 
 void PathfindingGrid::rebuildFromWorld(int rowStart, int rowEnd) {
   const WorldManager &wm = WorldManager::Instance();
-  const auto *world = wm.getWorldData();
-  if (!world) {
-    PATHFIND_WARN("rebuildFromWorld(): no active world");
-    return;
-  }
-
-  // Keep m_w/m_h as constructed (cell-resolution grid). Sample world tiles into
-  // cells.
-  const int cellsW = m_w;
-  const int cellsH = m_h;
-  if (cellsW <= 0 || cellsH <= 0) {
-    PATHFIND_WARN("rebuildFromWorld(): invalid grid dims");
-    return;
-  }
-
-  // Clamp row range to valid bounds
-  rowStart = std::clamp(rowStart, 0, cellsH);
-  rowEnd = std::clamp(rowEnd, 0, cellsH);
-  if (rowStart >= rowEnd) {
-    PATHFIND_WARN("rebuildFromWorld(): invalid row range");
-    return;
-  }
-
-  // Only initialize arrays on full rebuild (rowStart == 0 && rowEnd == cellsH)
-  const bool isFullRebuild = (rowStart == 0 && rowEnd == cellsH);
-  if (isFullRebuild) {
-    m_blocked.assign(static_cast<size_t>(cellsW * cellsH), 0);
-    m_weight.assign(static_cast<size_t>(cellsW * cellsH), 1.0f);
-  }
-
-  const int tilesH = static_cast<int>(world->grid.size());
-  const int tilesW = tilesH > 0 ? static_cast<int>(world->grid[0].size()) : 0;
-  if (tilesW <= 0 || tilesH <= 0) {
-    PATHFIND_WARN("rebuildFromWorld(): world has no tiles");
-    return;
-  }
-
-  constexpr float tileSize = HammerEngine::TILE_SIZE;
-  int blockedCount = 0;
-  int collisionBlockedCount = 0;
-
-  for (int cy = rowStart; cy < rowEnd; ++cy) {
-    // Check if ThreadSystem is shutting down (matches EventManager pattern)
-    // This allows worker thread to exit early during shutdown
-    if (!HammerEngine::ThreadSystem::Exists() ||
-        HammerEngine::ThreadSystem::Instance().isShutdown()) {
-      PATHFIND_DEBUG("Grid rebuild interrupted by ThreadSystem shutdown");
+  wm.withWorldDataRead([&](const HammerEngine::WorldData *world) {
+    if (!world) {
+      PATHFIND_WARN("rebuildFromWorld(): no active world");
       return;
     }
 
-    for (int cx = 0; cx < cellsW; ++cx) {
-      // Compute the world-space rect covered by this cell
-      float const x0 = m_offset.getX() + cx * m_cell;
-      float const y0 = m_offset.getY() + cy * m_cell;
-      float const x1 = x0 + m_cell;
-      float const y1 = y0 + m_cell;
-
-      int tx0 = static_cast<int>(std::floor(x0 / tileSize));
-      int ty0 = static_cast<int>(std::floor(y0 / tileSize));
-      int tx1 = static_cast<int>(std::floor((x1 - 1.0f) / tileSize));
-      int ty1 = static_cast<int>(std::floor((y1 - 1.0f) / tileSize));
-
-      tx0 = std::clamp(tx0, 0, tilesW - 1);
-      ty0 = std::clamp(ty0, 0, tilesH - 1);
-      tx1 = std::clamp(tx1, 0, tilesW - 1);
-      ty1 = std::clamp(ty1, 0, tilesH - 1);
-
-      int totalTiles = 0;
-      int blockedTiles = 0;
-      float weightSum = 0.0f;
-
-      for (int ty = ty0; ty <= ty1; ++ty) {
-        for (int tx = tx0; tx <= tx1; ++tx) {
-          const auto &tile = world->grid[ty][tx];
-          // BUILDING obstacles and MOUNTAIN biome tiles are truly blocked,
-          // ROCK/TREE have movement penalties
-          bool blocked = tile.obstacleType == ObstacleType::BUILDING ||
-                         tile.biome == Biome::MOUNTAIN;
-          if (blocked)
-            blockedTiles++;
-
-          // Movement weight penalties: BUILDING=blocked, WATER=2.0x,
-          // ROCK/TREE=2.5x, normal=1.0x
-          float tw = 1.0f;
-          if (tile.isWater) {
-            tw = 2.0f; // Water movement penalty
-          } else if (tile.obstacleType == ObstacleType::ROCK ||
-                     tile.obstacleType == ObstacleType::TREE) {
-            tw = 2.5f; // Rock/Tree movement penalty
-          }
-          weightSum += tw;
-          totalTiles++;
-        }
-      }
-
-      bool cellBlocked =
-          (totalTiles > 0) &&
-          (static_cast<float>(blockedTiles) / static_cast<float>(totalTiles) >
-           0.50f);
-      float const cellWeight =
-          (totalTiles > 0) ? (weightSum / static_cast<float>(totalTiles))
-                           : 1.0f;
-
-      // COLLISION INTEGRATION: Check for collision obstacles in this cell
-      // Query collision bodies with entity clearance margin (1.75x typical
-      // entity radius) This prevents paths from getting too close to obstacles,
-      // avoiding clipping
-      if (!cellBlocked && CollisionManager::Instance().isInitialized()) {
-        const float ENTITY_CLEARANCE =
-            28.0f; // 1.75x entity radius for safe clearance
-        AABB const cellAABB(x0 + m_cell * 0.5f, y0 + m_cell * 0.5f,
-                            m_cell * 0.5f + ENTITY_CLEARANCE,
-                            m_cell * 0.5f + ENTITY_CLEARANCE);
-        if (CollisionManager::Instance().queryAreaHasStaticOverlap(cellAABB)) {
-          cellBlocked = true;
-          collisionBlockedCount++;
-        }
-      }
-
-      size_t cidx = static_cast<size_t>(cy * cellsW + cx);
-      m_blocked[cidx] = cellBlocked ? 1 : 0;
-      if (cellBlocked)
-        ++blockedCount;
-      m_weight[cidx] = cellWeight;
+    const int cellsW = m_w;
+    const int cellsH = m_h;
+    if (cellsW <= 0 || cellsH <= 0) {
+      PATHFIND_WARN("rebuildFromWorld(): invalid grid dims");
+      return;
     }
-  }
 
-  // Only log and update coarse grid on full rebuild
-  if (isFullRebuild) {
-    PATHFIND_INFO(std::format("Grid rebuilt (sampled): {}x{}, blocked={}/{} "
-                              "({}% blocked), collision-blocked={} cells",
-                              cellsW, cellsH, blockedCount, cellsW * cellsH,
-                              (100.0f * blockedCount) / (cellsW * cellsH),
-                              collisionBlockedCount));
+    rowStart = std::clamp(rowStart, 0, cellsH);
+    rowEnd = std::clamp(rowEnd, 0, cellsH);
+    if (rowStart >= rowEnd) {
+      PATHFIND_WARN("rebuildFromWorld(): invalid row range");
+      return;
+    }
 
-    // Update coarse grid for hierarchical pathfinding
-    if (m_coarseGrid) {
-      updateCoarseGrid();
+    const bool isFullRebuild = (rowStart == 0 && rowEnd == cellsH);
+    if (isFullRebuild) {
+      m_blocked.assign(static_cast<size_t>(cellsW * cellsH), 0);
+      m_weight.assign(static_cast<size_t>(cellsW * cellsH), 1.0f);
+    }
 
-      // Log coarse grid statistics for debugging
-      int coarseW = m_coarseGrid->getWidth();
-      int coarseH = m_coarseGrid->getHeight();
-      int coarseBlockedCount = 0;
-      for (int cy = 0; cy < coarseH; ++cy) {
-        for (int cx = 0; cx < coarseW; ++cx) {
-          if (m_coarseGrid->isBlocked(cx, cy)) {
-            coarseBlockedCount++;
+    const int tilesH = static_cast<int>(world->grid.size());
+    const int tilesW = tilesH > 0 ? static_cast<int>(world->grid[0].size()) : 0;
+    if (tilesW <= 0 || tilesH <= 0) {
+      PATHFIND_WARN("rebuildFromWorld(): world has no tiles");
+      return;
+    }
+
+    constexpr float tileSize = HammerEngine::TILE_SIZE;
+    int blockedCount = 0;
+    int collisionBlockedCount = 0;
+
+    for (int cy = rowStart; cy < rowEnd; ++cy) {
+      if (!HammerEngine::ThreadSystem::Exists() ||
+          HammerEngine::ThreadSystem::Instance().isShutdown()) {
+        PATHFIND_DEBUG("Grid rebuild interrupted by ThreadSystem shutdown");
+        return;
+      }
+
+      for (int cx = 0; cx < cellsW; ++cx) {
+        float const x0 = m_offset.getX() + cx * m_cell;
+        float const y0 = m_offset.getY() + cy * m_cell;
+        float const x1 = x0 + m_cell;
+        float const y1 = y0 + m_cell;
+
+        int tx0 = static_cast<int>(std::floor(x0 / tileSize));
+        int ty0 = static_cast<int>(std::floor(y0 / tileSize));
+        int tx1 = static_cast<int>(std::floor((x1 - 1.0f) / tileSize));
+        int ty1 = static_cast<int>(std::floor((y1 - 1.0f) / tileSize));
+
+        tx0 = std::clamp(tx0, 0, tilesW - 1);
+        ty0 = std::clamp(ty0, 0, tilesH - 1);
+        tx1 = std::clamp(tx1, 0, tilesW - 1);
+        ty1 = std::clamp(ty1, 0, tilesH - 1);
+
+        int totalTiles = 0;
+        int blockedTiles = 0;
+        float weightSum = 0.0f;
+
+        for (int ty = ty0; ty <= ty1; ++ty) {
+          for (int tx = tx0; tx <= tx1; ++tx) {
+            const auto &tile = world->grid[ty][tx];
+            bool blocked = tile.obstacleType == ObstacleType::BUILDING ||
+                           tile.biome == Biome::MOUNTAIN;
+            if (blocked)
+              blockedTiles++;
+
+            float tw = 1.0f;
+            if (tile.isWater) {
+              tw = 2.0f;
+            } else if (tile.obstacleType == ObstacleType::ROCK ||
+                       tile.obstacleType == ObstacleType::TREE) {
+              tw = 2.5f;
+            }
+            weightSum += tw;
+            totalTiles++;
           }
         }
-      }
-      float const coarseBlockedPercent =
-          (coarseW * coarseH > 0)
-              ? (100.0f * coarseBlockedCount) / (coarseW * coarseH)
-              : 0.0f;
 
-      PATHFIND_DEBUG(
-          std::format("Coarse grid updated: {}x{}, blocked={}/{} ({}% blocked)",
-                      coarseW, coarseH, coarseBlockedCount, coarseW * coarseH,
-                      coarseBlockedPercent));
+        bool cellBlocked =
+            (totalTiles > 0) &&
+            (static_cast<float>(blockedTiles) / static_cast<float>(totalTiles) >
+             0.50f);
+        float const cellWeight =
+            (totalTiles > 0) ? (weightSum / static_cast<float>(totalTiles))
+                             : 1.0f;
+
+        if (!cellBlocked && CollisionManager::Instance().isInitialized()) {
+          const float ENTITY_CLEARANCE = 28.0f;
+          AABB const cellAABB(x0 + m_cell * 0.5f, y0 + m_cell * 0.5f,
+                              m_cell * 0.5f + ENTITY_CLEARANCE,
+                              m_cell * 0.5f + ENTITY_CLEARANCE);
+          if (CollisionManager::Instance().queryAreaHasStaticOverlap(cellAABB)) {
+            cellBlocked = true;
+            collisionBlockedCount++;
+          }
+        }
+
+        size_t cidx = static_cast<size_t>(cy * cellsW + cx);
+        m_blocked[cidx] = cellBlocked ? 1 : 0;
+        if (cellBlocked)
+          ++blockedCount;
+        m_weight[cidx] = cellWeight;
+      }
     }
-  }
+
+    if (isFullRebuild) {
+      PATHFIND_INFO(std::format("Grid rebuilt (sampled): {}x{}, blocked={}/{} "
+                                "({}% blocked), collision-blocked={} cells",
+                                cellsW, cellsH, blockedCount, cellsW * cellsH,
+                                (100.0f * blockedCount) / (cellsW * cellsH),
+                                collisionBlockedCount));
+
+      if (m_coarseGrid) {
+        updateCoarseGrid();
+
+        int coarseW = m_coarseGrid->getWidth();
+        int coarseH = m_coarseGrid->getHeight();
+        int coarseBlockedCount = 0;
+        for (int cy = 0; cy < coarseH; ++cy) {
+          for (int cx = 0; cx < coarseW; ++cx) {
+            if (m_coarseGrid->isBlocked(cx, cy)) {
+              coarseBlockedCount++;
+            }
+          }
+        }
+        float const coarseBlockedPercent =
+            (coarseW * coarseH > 0)
+                ? (100.0f * coarseBlockedCount) / (coarseW * coarseH)
+                : 0.0f;
+
+        PATHFIND_DEBUG(std::format(
+            "Coarse grid updated: {}x{}, blocked={}/{} ({}% blocked)",
+            coarseW, coarseH, coarseBlockedCount, coarseW * coarseH,
+            coarseBlockedPercent));
+      }
+    }
+  });
 }
 
 // Incremental Update Implementation

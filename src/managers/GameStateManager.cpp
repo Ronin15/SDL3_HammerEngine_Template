@@ -12,11 +12,6 @@
 #include <format>
 #include <stdexcept>
 
-// Forward declaration for SDL renderer access
-extern "C" {
-#include <SDL3/SDL.h>
-}
-
 // GameStateManager Implementation
 GameStateManager::GameStateManager() {
   // Reserve capacity for typical number of game states (performance
@@ -34,7 +29,7 @@ void GameStateManager::addState(std::unique_ptr<GameState> state) {
   // Set state manager reference so state can access transitions and frame data
   state->setStateManager(this);
   // Move the state into the map as shared_ptr
-  m_registeredStates[name] = std::shared_ptr<GameState>(state.release());
+  m_registeredStates[name] = std::shared_ptr<GameState>(std::move(state));
 }
 
 void GameStateManager::pushState(const std::string &stateName) {
@@ -102,15 +97,6 @@ void GameStateManager::update(float deltaTime) {
   }
 }
 
-void GameStateManager::render(SDL_Renderer* renderer, float interpolationAlpha) {
-  // Only render the current active state (top of stack)
-  // Pause functionality preserves the previous state but doesn't render it
-  if (!m_activeStates.empty()) {
-    m_activeStates.back()->render(renderer, interpolationAlpha);
-  }
-}
-
-#ifdef USE_SDL3_GPU
 void GameStateManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                                           float interpolationAlpha) {
   if (!m_activeStates.empty()) {
@@ -132,7 +118,6 @@ void GameStateManager::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
     m_activeStates.back()->renderGPUUI(gpuRenderer, swapchainPass);
   }
 }
-#endif
 
 void GameStateManager::handleInput() {
   // Only the top state handles input

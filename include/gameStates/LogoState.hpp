@@ -11,24 +11,20 @@
 #include <memory>
 #include <vector>
 
-#ifdef USE_SDL3_GPU
 #include <SDL3_ttf/SDL_ttf.h>
 struct SDL_GPUTexture;
 namespace HammerEngine {
 class GPUTexture;
 }
-#endif
 
 class LogoState : public GameState {
  public:
   bool enter() override;
   void update(float deltaTime) override;
-  void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;
   void handleInput() override;
   bool exit() override;
   std::string getName() const override;
 
-#ifdef USE_SDL3_GPU
   // GPU rendering support
   void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
                           float interpolationAlpha) override;
@@ -38,7 +34,6 @@ class LogoState : public GameState {
   void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
                     SDL_GPURenderPass* swapchainPass) override;
   bool supportsGPURendering() const override { return true; }
-#endif
 
  private:
   void recalculateLayout();
@@ -62,7 +57,6 @@ class LogoState : public GameState {
   int m_subtitleY{0};
   int m_versionY{0};
 
-#ifdef USE_SDL3_GPU
   // GPU draw commands for multiple textures (scene rendering)
   struct GPUDrawCommand {
     std::shared_ptr<HammerEngine::GPUTexture> textureOwner{};
@@ -75,7 +69,6 @@ class LogoState : public GameState {
 
   // GPU draw commands for UI text (swapchain rendering)
   std::vector<GPUDrawCommand> m_textDrawCommands;
-#endif
 };
 
 #endif  // LOGO_STATE_HPP

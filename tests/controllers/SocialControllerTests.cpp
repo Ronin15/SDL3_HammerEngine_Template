@@ -14,6 +14,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "controllers/social/SocialController.hpp"
+#include "events/EntityEvents.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/GameTimeManager.hpp"
@@ -260,8 +261,8 @@ BOOST_AUTO_TEST_CASE(TestRecordInteractionWithInvalidNPC) {
     SocialController controller(nullptr);
 
     EntityHandle invalidHandle;
+    const float initialRelationship = controller.getRelationshipLevel(invalidHandle);
 
-    // Should not crash with invalid handle
     controller.recordInteraction(invalidHandle, InteractionType::Trade, 1.0f);
     controller.recordInteraction(invalidHandle, InteractionType::Gift, 1.0f);
     controller.recordInteraction(invalidHandle, InteractionType::Greeting, 1.0f);
@@ -269,8 +270,8 @@ BOOST_AUTO_TEST_CASE(TestRecordInteractionWithInvalidNPC) {
     controller.recordInteraction(invalidHandle, InteractionType::Theft, -1.0f);
     controller.recordInteraction(invalidHandle, InteractionType::Insult, -1.0f);
 
-    // Just verify no crash occurred
-    BOOST_CHECK(true);
+    BOOST_CHECK_EQUAL(controller.getRelationshipLevel(invalidHandle), initialRelationship);
+    BOOST_CHECK_EQUAL(controller.getRelationshipDescription(invalidHandle), "Neutral");
 }
 
 BOOST_AUTO_TEST_CASE(TestReportTheftWithInvalidVictim) {
@@ -279,11 +280,20 @@ BOOST_AUTO_TEST_CASE(TestReportTheftWithInvalidVictim) {
     EntityHandle thief;
     EntityHandle victim;  // Invalid
     HammerEngine::ResourceHandle stolenItem(1, 1);
+    std::atomic<int> theftEvents{0};
 
-    // Should not crash with invalid handles
+    EventManager::Instance().registerHandler(EventTypeId::Entity,
+        [&theftEvents](const EventData& data) {
+            auto event = std::dynamic_pointer_cast<TheftEvent>(data.event);
+            if (event) {
+                theftEvents.fetch_add(1, std::memory_order_relaxed);
+            }
+        });
+
     controller.reportTheft(thief, victim, stolenItem, 1);
 
-    BOOST_CHECK(true);
+    BOOST_CHECK_EQUAL(theftEvents.load(std::memory_order_relaxed), 0);
+    BOOST_CHECK_EQUAL(controller.getRelationshipLevel(victim), SocialController::RELATIONSHIP_NEUTRAL);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -10,9 +10,8 @@
 #include "utils/BinarySerializer.hpp"
 #include "entities/Entity.hpp"
 #include "managers/EntityDataManager.hpp"
-#include <string>
 #include <memory>
-#include <SDL3/SDL.h>
+#include <string>
 
 // Forward declaration
 namespace HammerEngine {
@@ -30,7 +29,6 @@ public:
         
     // Required Entity interface implementations
     void update(float deltaTime) override { (void)deltaTime; /* Mock implementation */ }
-    void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override { (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha; /* Mock implementation */ }
     void clean() override { /* Mock implementation */ }
     [[nodiscard]] EntityKind getKind() const override { return EntityKind::Player; }
     

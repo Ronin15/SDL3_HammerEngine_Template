@@ -4,17 +4,14 @@
  */
 
 #include "core/GameEngine.hpp"
-#include "SDL3/SDL_render.h"
 #include "SDL3/SDL_surface.h"
 #include "SDL3/SDL_video.h"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 
-#ifdef USE_SDL3_GPU
 #include "gpu/GPUDevice.hpp"
 #include "gpu/GPURenderer.hpp"
-#endif
 #include "utils/FrameProfiler.hpp"
 #include "gameStates/AIDemoState.hpp"
 #include "gameStates/AdvancedAIDemoState.hpp"
@@ -229,23 +226,21 @@ bool GameEngine::init(std::string_view title) {
   // macOS Game Mode is triggered by Info.plist (LSApplicationCategoryType=games + LSSupportsGameMode)
   // Spaces fullscreen (SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES=1) preserves ProMotion adaptive refresh
 
-#ifdef USE_SDL3_GPU
-  // Initialize GPU device and renderer
   GAMEENGINE_INFO("Initializing SDL3_GPU rendering backend");
-  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
-  if (gpuDevice.init(mp_window.get())) {
-    auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
-    if (gpuRenderer.init()) {
-      m_gpuRendering = true;
-      GAMEENGINE_INFO("SDL3_GPU rendering initialized successfully");
-    } else {
-      GAMEENGINE_WARN("GPURenderer init failed - falling back to SDL_Renderer");
-      gpuDevice.shutdown();
-    }
-  } else {
-    GAMEENGINE_WARN("GPUDevice init failed - falling back to SDL_Renderer");
+  auto &gpuDevice = HammerEngine::GPUDevice::Instance();
+  if (!gpuDevice.init(mp_window.get())) {
+    GAMEENGINE_ERROR("GPUDevice init failed");
+    return false;
   }
-#endif
+
+  auto &gpuRenderer = HammerEngine::GPURenderer::Instance();
+  if (!gpuRenderer.init()) {
+    GAMEENGINE_ERROR("GPURenderer init failed");
+    gpuDevice.shutdown();
+    return false;
+  }
+
+  GAMEENGINE_INFO("SDL3_GPU rendering initialized successfully");
 
   // Set window icon
   GAMEENGINE_INFO("Setting window icon");
@@ -278,34 +273,7 @@ bool GameEngine::init(std::string_view title) {
         std::format("Failed to get window logical size: {}", SDL_GetError()));
   }
 
-  // Create renderer (let SDL3 choose the best available backend)
-#ifdef USE_SDL3_GPU
-  if (!m_gpuRendering) {
-#endif
-    mp_renderer.reset(SDL_CreateRenderer(mp_window.get(), NULL));
-
-    if (!mp_renderer) {
-      GAMEENGINE_ERROR(
-          std::format("Failed to create renderer: {}", SDL_GetError()));
-      return false;
-    }
-
-    // Log which renderer backend SDL3 actually selected
-#ifdef DEBUG
-    auto rendererName = SDL_GetRendererName(mp_renderer.get());
-    if (rendererName) {
-      GAMEENGINE_INFO(
-          std::format("SDL3 selected renderer backend: {}", rendererName));
-    } else {
-      GAMEENGINE_WARN("Could not determine selected renderer backend");
-    }
-#endif
-    GAMEENGINE_DEBUG("SDL_Renderer system online");
-#ifdef USE_SDL3_GPU
-  } else {
-    GAMEENGINE_DEBUG("GPU rendering system online (SDL_Renderer skipped)");
-  }
-#endif
+  GAMEENGINE_DEBUG("GPU rendering system online");
 
   // Unified VSync initialization with automatic fallback
   // Detect platform for logging purposes only (not used to disable VSync)
@@ -341,7 +309,6 @@ bool GameEngine::init(std::string_view title) {
   // Load VSync preference from SettingsManager (defaults to enabled)
   auto &settings = HammerEngine::SettingsManager::Instance();
   bool vsyncRequested = settings.get<bool>("graphics", "vsync", true);
-  m_vsyncRequested = vsyncRequested;
   GAMEENGINE_INFO(std::format("VSync setting from SettingsManager: {}",
                               vsyncRequested ? "enabled" : "disabled"));
 
@@ -350,50 +317,44 @@ bool GameEngine::init(std::string_view title) {
   m_timestepManager = std::make_unique<TimestepManager>();
   updateDisplayRefreshRate();
 
-  // VSync handling - different for GPU vs SDL_Renderer
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    // GPU rendering: configure swapchain present mode based on VSync setting
-    auto& gpuDev = HammerEngine::GPUDevice::Instance();
-    SDL_GPUPresentMode presentMode = vsyncRequested
-        ? SDL_GPU_PRESENTMODE_VSYNC
-        : SDL_GPU_PRESENTMODE_MAILBOX;
+  auto& gpuDev = HammerEngine::GPUDevice::Instance();
+  const SDL_GPUPresentMode requestedMode = vsyncRequested
+      ? SDL_GPU_PRESENTMODE_VSYNC
+      : SDL_GPU_PRESENTMODE_MAILBOX;
 
-    bool swapchainOk = SDL_SetGPUSwapchainParameters(
-        gpuDev.get(), gpuDev.getWindow(),
-        SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode);
+  bool committedVSync = false;
+  bool usingSoftwareFallback = false;
 
-    if (swapchainOk) {
-      GAMEENGINE_INFO(std::format("GPU rendering: present mode {}",
-                                  vsyncRequested ? "VSYNC" : "MAILBOX"));
+  if (SDL_SetGPUSwapchainParameters(
+          gpuDev.get(), gpuDev.getWindow(),
+          SDL_GPU_SWAPCHAINCOMPOSITION_SDR, requestedMode)) {
+    committedVSync = vsyncRequested;
+    GAMEENGINE_INFO(std::format("GPU rendering: present mode {}",
+                                committedVSync ? "VSYNC" : "MAILBOX"));
+  } else if (!vsyncRequested) {
+    const std::string mailboxError = SDL_GetError();
+    if (SDL_SetGPUSwapchainParameters(gpuDev.get(), gpuDev.getWindow(),
+                                      SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
+                                      SDL_GPU_PRESENTMODE_VSYNC)) {
+      committedVSync = true;
+      GAMEENGINE_WARN(std::format(
+          "Failed to set GPU present mode to MAILBOX: {}. Falling back to VSYNC.",
+          mailboxError));
     } else {
-      GAMEENGINE_WARN(std::format("Failed to set GPU present mode: {} — defaulting to VSYNC",
-                                  SDL_GetError()));
-      vsyncRequested = true;
+      usingSoftwareFallback = true;
+      GAMEENGINE_WARN(std::format(
+          "Failed to configure GPU present mode: {}. Falling back to software frame limiting.",
+          SDL_GetError()));
     }
-
-    // Software frame limiting needed when VSync is off
-    m_timestepManager->setSoftwareFrameLimiting(!vsyncRequested);
   } else {
-#endif
-    // Attempt to set VSync based on user preference
-    bool vsyncSetSuccessfully =
-        SDL_SetRenderVSync(mp_renderer.get(), vsyncRequested ? 1 : 0);
-
-    GAMEENGINE_WARN_IF(!vsyncSetSuccessfully,
-                       std::format("Failed to {} VSync: {}",
-                                   vsyncRequested ? "enable" : "disable",
-                                   SDL_GetError()));
-
-    // Verify VSync state and configure software frame limiting in TimestepManager
-    if (vsyncSetSuccessfully) {
-      verifyVSyncState(vsyncRequested);
-    } else {
-      m_timestepManager->setSoftwareFrameLimiting(true);
-    }
-#ifdef USE_SDL3_GPU
+    usingSoftwareFallback = true;
+    GAMEENGINE_WARN(std::format(
+        "Failed to configure GPU present mode: {}. Falling back to software frame limiting.",
+        SDL_GetError()));
   }
-#endif
+
+  m_vsyncRequested = committedVSync;
+  m_timestepManager->setSoftwareFrameLimiting(usingSoftwareFallback || !committedVSync);
 
   if (m_timestepManager->isUsingSoftwareFrameLimiting()) {
     TIMESTEP_INFO(std::format("Created: {:.0f} Hz updates, {:.0f} FPS target, "
@@ -411,40 +372,9 @@ bool GameEngine::init(std::string_view title) {
   m_logicalWidth = actualWidth;
   m_logicalHeight = actualHeight;
 
-#ifdef USE_SDL3_GPU
-  if (!m_gpuRendering) {
-#endif
-    if (!SDL_SetRenderDrawColor(
-            mp_renderer.get(),
-            HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
-      GAMEENGINE_ERROR(std::format("Failed to set initial render draw color: {}",
-                                   SDL_GetError()));
-    }
-    // Use native resolution rendering on all platforms for crisp, sharp text
-    // This eliminates GPU scaling blur and provides consistent cross-platform
-    // behavior
-
-    // Disable logical presentation to render at native resolution
-    SDL_RendererLogicalPresentation const presentationMode =
-        SDL_LOGICAL_PRESENTATION_DISABLED;
-    if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth,
-                                          actualHeight, presentationMode)) {
-      GAMEENGINE_ERROR(std::format(
-          "Failed to set render logical presentation: {}", SDL_GetError()));
-    }
-
-    GAMEENGINE_INFO(
-        std::format("Using native resolution for crisp rendering: {}x{}",
-                    actualWidth, actualHeight));
-    // Render Mode.
-    SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
-#ifdef USE_SDL3_GPU
-  } else {
-    GAMEENGINE_INFO(
-        std::format("GPU rendering at native resolution: {}x{}",
-                    actualWidth, actualHeight));
-  }
-#endif
+  GAMEENGINE_INFO(
+      std::format("GPU rendering at native resolution: {}x{}",
+                  actualWidth, actualHeight));
 
   // Now check if the icon was loaded successfully
   try {
@@ -554,16 +484,7 @@ bool GameEngine::init(std::string_view title) {
   const std::string textureResPath = HammerEngine::ResourcePath::resolve("res/img");
   constexpr std::string_view texturePrefix = "";
 
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    // Load textures for GPU rendering
-    texMgr.loadGPU(textureResPath, std::string(texturePrefix));
-  } else {
-    texMgr.load(textureResPath, std::string(texturePrefix), mp_renderer.get());
-  }
-#else
-  texMgr.load(textureResPath, std::string(texturePrefix), mp_renderer.get());
-#endif
+  texMgr.loadGPU(textureResPath, std::string(texturePrefix));
 
   // Initialize sound manager in a separate thread - #3
   // Resolve paths before lambda capture
@@ -795,7 +716,7 @@ bool GameEngine::init(std::string_view title) {
   mp_gameStateManager->addState(std::make_unique<AIDemoState>());
   mp_gameStateManager->addState(std::make_unique<AdvancedAIDemoState>());
   mp_gameStateManager->addState(std::make_unique<EventDemoState>());
-  mp_gameStateManager->addState(std::make_unique<UIExampleState>());
+  mp_gameStateManager->addState(std::make_unique<UIDemoState>());
   mp_gameStateManager->addState(std::make_unique<OverlayDemoState>());
 
   // Wait for all initialization tasks to complete
@@ -942,25 +863,6 @@ bool GameEngine::init(std::string_view title) {
   }
   //_______________________________________________________________________________________________________________END
 
-  // Step 3: Post-initialization setup that requires manager dependencies
-  GAMEENGINE_INFO("Setting up manager cross-dependencies");
-  try {
-    WorldManager &worldMgr = WorldManager::Instance();
-    if (worldMgr.isInitialized()) {
-      worldMgr.setRenderer(mp_renderer.get());
-      GAMEENGINE_INFO("WorldManager renderer setup complete");
-    } else {
-      GAMEENGINE_ERROR("WorldManager not initialized - cannot set renderer");
-      return false;
-    }
-
-    GAMEENGINE_INFO("Manager cross-dependencies setup complete");
-  } catch (const std::exception &e) {
-    GAMEENGINE_ERROR(std::format(
-        "Error setting up manager cross-dependencies: {}", e.what()));
-    return false;
-  }
-
   GAMEENGINE_INFO(std::format("Game {} initialized successfully!", title));
   GAMEENGINE_INFO(std::format("Running {}", title));
 
@@ -979,9 +881,6 @@ void GameEngine::handleEvents() {
 
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
-    // Convert window coordinates to logical coordinates for mouse events
-    SDL_ConvertEventToRenderCoordinates(mp_renderer.get(), &event);
-
     switch (event.type) {
     case SDL_EVENT_QUIT:
       GAMEENGINE_INFO("Shutting down!");
@@ -1013,9 +912,20 @@ void GameEngine::handleEvents() {
     case SDL_EVENT_GAMEPAD_BUTTON_UP:
       inputMgr.onGamepadButtonUp(event);
       break;
+    case SDL_EVENT_GAMEPAD_ADDED:
+      inputMgr.onGamepadAdded(event);
+      break;
+    case SDL_EVENT_GAMEPAD_REMOVED:
+      inputMgr.onGamepadRemoved(event);
+      break;
+    case SDL_EVENT_GAMEPAD_REMAPPED:
+      inputMgr.onGamepadRemapped(event);
+      break;
 
     // Window/Display events -> handle directly in GameEngine
     case SDL_EVENT_WINDOW_RESIZED:
+    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+    case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
       onWindowResize(event);
       break;
     case SDL_EVENT_WINDOW_MINIMIZED:
@@ -1082,7 +992,7 @@ void GameEngine::update(float deltaTime) {
   // - GameStateManager.update() handles player input/movement FIRST
   // - AIManager.update() then reacts to current player position (not stale)
   // - NPCRenderController reads velocity from PREVIOUS frame (1-frame lag OK for animation)
-  // - GameStateManager.render() handles state rendering including NPCRenderController.renderNPCs()
+  // - GameStateManager GPU render hooks handle state scene/UI rendering
   //
   // GLOBAL SYSTEMS (Updated by GameEngine):
   // - EventManager: Global game events (weather, scene changes), batch processing
@@ -1095,7 +1005,7 @@ void GameEngine::update(float deltaTime) {
   //
   // STATE-MANAGED SYSTEMS (Updated by individual states):
   // - UIManager: Optional, state-specific, only updated when UI is actually used
-  //   See UIExampleState::update() for proper state-managed pattern
+  //   See UIDemoState::update() for proper state-managed pattern
 
   // Mark frame start for WorkerBudget per-frame caching
   HammerEngine::WorkerBudgetManager::Instance().markFrameStart();
@@ -1146,76 +1056,46 @@ void GameEngine::render() {
   float interpolationAlpha =
       static_cast<float>(m_timestepManager->getInterpolationAlpha());
 
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
-    auto& profiler = HammerEngine::FrameProfiler::Instance();
+  auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
+  auto& profiler = HammerEngine::FrameProfiler::Instance();
 
-    // Begin GPU frame (profiler timing is inside beginFrame for granular breakdown)
-    if (!gpuRenderer.beginFrame()) {
-      return;
-    }
-
-    // Update profiler overlay (creates/updates UIManager components before recording)
-    profiler.renderOverlay(nullptr, nullptr);
-
-    // Record vertices for GPU rendering (before scene pass)
-    profiler.beginRender(HammerEngine::RenderPhase::WorldTiles);
-    mp_gameStateManager->recordGPUVertices(gpuRenderer, interpolationAlpha);
-    profiler.endRender(HammerEngine::RenderPhase::WorldTiles);
-
-    // Begin scene render pass (finalizes uploads, clears scene texture)
-    SDL_GPURenderPass* scenePass = gpuRenderer.beginScenePass();
-
-    // Render scene content
-    profiler.beginRender(HammerEngine::RenderPhase::Entities);
-    if (scenePass) {
-      mp_gameStateManager->renderGPUScene(gpuRenderer, scenePass, interpolationAlpha);
-    }
-    profiler.endRender(HammerEngine::RenderPhase::Entities);
-
-    // Composite scene to swapchain
-    profiler.beginRender(HammerEngine::RenderPhase::EndScene);
-    SDL_GPURenderPass* swapchainPass = gpuRenderer.beginSwapchainPass();
-    if (swapchainPass) {
-      gpuRenderer.renderComposite(swapchainPass);
-    }
-    profiler.endRender(HammerEngine::RenderPhase::EndScene);
-
-    // Render UI to swapchain
-    profiler.beginRender(HammerEngine::RenderPhase::UI);
-    if (swapchainPass) {
-      mp_gameStateManager->renderGPUUI(gpuRenderer, swapchainPass);
-    }
-    profiler.endRender(HammerEngine::RenderPhase::UI);
-
-    // Frame timing is finalized after present() in HammerMain.cpp.
+  if (!gpuRenderer.beginFrame()) {
     return;
   }
-#endif
 
-  // SDL_Renderer path
-  SDL_SetRenderDrawColor(mp_renderer.get(), HAMMER_GRAY);
-  SDL_RenderClear(mp_renderer.get());
+  profiler.renderOverlay();
 
-  mp_gameStateManager->render(mp_renderer.get(), interpolationAlpha);
+  profiler.beginRender(HammerEngine::RenderPhase::WorldTiles);
+  mp_gameStateManager->recordGPUVertices(gpuRenderer, interpolationAlpha);
+  profiler.endRender(HammerEngine::RenderPhase::WorldTiles);
 
-  // Debug profiler overlay (renders only when visible, compiles out in Release)
-  HammerEngine::FrameProfiler::Instance().renderOverlay(
-      mp_renderer.get(), &FontManager::Instance());
+  SDL_GPURenderPass* scenePass = gpuRenderer.beginScenePass();
+
+  profiler.beginRender(HammerEngine::RenderPhase::Entities);
+  if (scenePass) {
+    mp_gameStateManager->renderGPUScene(gpuRenderer, scenePass, interpolationAlpha);
+  }
+  profiler.endRender(HammerEngine::RenderPhase::Entities);
+
+  profiler.beginRender(HammerEngine::RenderPhase::EndScene);
+  SDL_GPURenderPass* swapchainPass = gpuRenderer.beginSwapchainPass();
+  if (swapchainPass) {
+    gpuRenderer.renderComposite(swapchainPass);
+  }
+  profiler.endRender(HammerEngine::RenderPhase::EndScene);
+
+  profiler.beginRender(HammerEngine::RenderPhase::UI);
+  if (swapchainPass) {
+    mp_gameStateManager->renderGPUUI(gpuRenderer, swapchainPass);
+  }
+  profiler.endRender(HammerEngine::RenderPhase::UI);
 }
 
 void GameEngine::present() {
   // Present is separate from render for accurate profiling.
   // For the GPU path, frame pacing now happens when the swapchain pass acquires
   // the swapchain texture rather than at frame start.
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    HammerEngine::GPURenderer::Instance().endFrame();
-    return;
-  }
-#endif
-  SDL_RenderPresent(mp_renderer.get());
+  HammerEngine::GPURenderer::Instance().endFrame();
 }
 
 void GameEngine::processBackgroundTasks() {
@@ -1234,51 +1114,8 @@ void GameEngine::processBackgroundTasks() {
   //   resources (SDL rendering, UI state, etc.).
 }
 
-void GameEngine::setLogicalPresentationMode(
-    SDL_RendererLogicalPresentation mode) {
-  m_logicalPresentationMode = mode;
-  if (mp_renderer) {
-    int width = m_windowWidth;
-    int height = m_windowHeight;
-    if (SDL_GetWindowSize(mp_window.get(), &width, &height)) {
-      // width/height updated
-    } else {
-      GAMEENGINE_ERROR(
-          std::format("Failed to get window size for logical presentation: {}",
-                      SDL_GetError()));
-    }
-    if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), width, height,
-                                          mode)) {
-      GAMEENGINE_ERROR(std::format(
-          "Failed to set render logical presentation: {}", SDL_GetError()));
-    }
-  }
-}
-
 bool GameEngine::isVSyncEnabled() const noexcept {
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    // GPU path: VSync is handled by swapchain, return requested state
-    return m_vsyncRequested;
-  }
-#endif
-
-  if (!mp_renderer) {
-    return false;
-  }
-
-  // SDL_Renderer path: Check current VSync setting using SDL3 API
-  int vsync = 0;
-  if (SDL_GetRenderVSync(mp_renderer.get(), &vsync)) {
-    return (vsync > 0); // Any positive value means VSync is enabled
-  }
-
-  return false;
-}
-
-SDL_RendererLogicalPresentation
-GameEngine::getLogicalPresentationMode() const noexcept {
-  return m_logicalPresentationMode;
+  return m_vsyncRequested;
 }
 
 void GameEngine::clean() {
@@ -1304,7 +1141,6 @@ void GameEngine::clean() {
   // Save copies of the smart pointers to resources we'll clean up at the very
   // end
   auto window_to_destroy = std::move(mp_window);
-  auto renderer_to_destroy = std::move(mp_renderer);
 
   // Clean up Managers in the correct order, respecting dependencies.
   // Systems that are used by other systems must be cleaned up last.
@@ -1375,19 +1211,10 @@ void GameEngine::clean() {
 
   // Explicitly reset smart pointers at the end, after all subsystems
   // are done using them - this will trigger their custom deleters
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    GAMEENGINE_INFO("Shutting down GPU renderer...");
-    HammerEngine::GPURenderer::Instance().shutdown();
-    GAMEENGINE_INFO("Shutting down GPU device...");
-    HammerEngine::GPUDevice::Instance().shutdown();
-    m_gpuRendering = false;
-  }
-#endif
-
-  GAMEENGINE_INFO("Destroying renderer...");
-  renderer_to_destroy.reset();
-  GAMEENGINE_INFO("Renderer destroyed successfully");
+  GAMEENGINE_INFO("Shutting down GPU renderer...");
+  HammerEngine::GPURenderer::Instance().shutdown();
+  GAMEENGINE_INFO("Shutting down GPU device...");
+  HammerEngine::GPUDevice::Instance().shutdown();
 
   GAMEENGINE_INFO("Destroying window...");
   window_to_destroy.reset();
@@ -1401,86 +1228,70 @@ void GameEngine::clean() {
 }
 
 bool GameEngine::setVSyncEnabled(bool enable) {
-  m_vsyncRequested = enable;
   GAMEENGINE_INFO(
       std::format("{} VSync...", enable ? "Enabling" : "Disabling"));
 
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    auto& gpuDevice = HammerEngine::GPUDevice::Instance();
-    if (!gpuDevice.isInitialized()) {
-      GAMEENGINE_ERROR("Cannot set VSync - GPU device not initialized");
-      return false;
-    }
-
-    // VSYNC blocks until vblank; MAILBOX presents latest frame at vblank without blocking
-    SDL_GPUPresentMode presentMode = enable
-        ? SDL_GPU_PRESENTMODE_VSYNC
-        : SDL_GPU_PRESENTMODE_MAILBOX;
-
-    bool success = SDL_SetGPUSwapchainParameters(
-        gpuDevice.get(), gpuDevice.getWindow(),
-        SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode);
-
-    if (!success) {
-      GAMEENGINE_ERROR(std::format("Failed to {} VSync on GPU swapchain: {}",
-                                   enable ? "enable" : "disable",
-                                   SDL_GetError()));
-      if (m_timestepManager) {
-        m_timestepManager->setSoftwareFrameLimiting(true);
-        GAMEENGINE_INFO("Falling back to software frame limiting");
-      }
-      return false;
-    }
-
-    // Configure software frame limiting: needed when VSync is off
-    if (m_timestepManager) {
-      m_timestepManager->setSoftwareFrameLimiting(!enable);
-    }
-
-    GAMEENGINE_INFO(std::format("GPU VSync {} (present mode: {})",
-                                enable ? "enabled" : "disabled",
-                                enable ? "VSYNC" : "MAILBOX"));
-
-    // Save VSync setting to SettingsManager for persistence
-    auto &settings = HammerEngine::SettingsManager::Instance();
-    settings.set("graphics", "vsync", enable);
-    settings.saveToFile(HammerEngine::ResourcePath::resolve("res/settings.json"));
-
-    return true;
-  }
-#endif
-
-  if (!mp_renderer) {
-    GAMEENGINE_ERROR("Cannot set VSync - renderer not initialized");
+  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+  if (!gpuDevice.isInitialized()) {
+    GAMEENGINE_ERROR("Cannot set VSync - GPU device not initialized");
     return false;
   }
 
-  // Attempt to set VSync
-  bool vsyncSetSuccessfully =
-      SDL_SetRenderVSync(mp_renderer.get(), enable ? 1 : 0);
+  const SDL_GPUPresentMode requestedMode = enable
+      ? SDL_GPU_PRESENTMODE_VSYNC
+      : SDL_GPU_PRESENTMODE_MAILBOX;
 
-  if (!vsyncSetSuccessfully) {
-    GAMEENGINE_ERROR(std::format("Failed to {} VSync: {}",
-                                 enable ? "enable" : "disable",
-                                 SDL_GetError()));
-    // Ensure software frame limiting is enabled if VSync enable failed
-    if (enable) {
-      m_timestepManager->setSoftwareFrameLimiting(true);
-      GAMEENGINE_INFO("Falling back to software frame limiting");
+  bool committedVSync = false;
+  bool usingSoftwareFallback = false;
+
+  if (SDL_SetGPUSwapchainParameters(
+          gpuDevice.get(), gpuDevice.getWindow(),
+          SDL_GPU_SWAPCHAINCOMPOSITION_SDR, requestedMode)) {
+    committedVSync = enable;
+  } else if (!enable) {
+    const std::string mailboxError = SDL_GetError();
+    if (SDL_SetGPUSwapchainParameters(gpuDevice.get(), gpuDevice.getWindow(),
+                                      SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
+                                      SDL_GPU_PRESENTMODE_VSYNC)) {
+      committedVSync = true;
+      GAMEENGINE_WARN(std::format(
+          "Failed to disable VSync via MAILBOX: {}. Falling back to VSYNC.",
+          mailboxError));
+    } else {
+      GAMEENGINE_ERROR(std::format(
+          "Failed to set GPU present mode: {}", SDL_GetError()));
+      usingSoftwareFallback = true;
     }
-    return false;
+  } else {
+    GAMEENGINE_ERROR(std::format(
+        "Failed to enable VSync on GPU swapchain: {}", SDL_GetError()));
+    usingSoftwareFallback = true;
   }
 
-  // Verify VSync state - this sets TimestepManager's software limiting flag
-  bool const vsyncVerified = verifyVSyncState(enable);
+  m_vsyncRequested = committedVSync;
+  if (m_timestepManager) {
+    m_timestepManager->setSoftwareFrameLimiting(usingSoftwareFallback || !committedVSync);
+  }
 
-  // Save VSync setting to SettingsManager for persistence
+  const bool success = !usingSoftwareFallback && (committedVSync == enable);
+
+  if (usingSoftwareFallback) {
+    GAMEENGINE_WARN("Falling back to software frame limiting");
+  } else if (!success) {
+    GAMEENGINE_WARN(std::format(
+        "Requested {} but committed to {} — driver does not support MAILBOX",
+        enable ? "VSYNC" : "MAILBOX",
+        committedVSync ? "VSYNC" : "MAILBOX"));
+  } else {
+    GAMEENGINE_INFO(std::format("GPU frame pacing committed to {}",
+                                committedVSync ? "VSYNC" : "MAILBOX"));
+  }
+
   auto &settings = HammerEngine::SettingsManager::Instance();
-  settings.set("graphics", "vsync", enable && vsyncVerified);
+  settings.set("graphics", "vsync", committedVSync);
   settings.saveToFile(HammerEngine::ResourcePath::resolve("res/settings.json"));
 
-  return vsyncVerified;
+  return success;
 }
 
 void GameEngine::toggleFullscreen() {
@@ -1604,136 +1415,28 @@ int GameEngine::getOptimalDisplayIndex() const {
 #endif
 }
 
-bool GameEngine::verifyVSyncState(bool requested) {
-#ifdef USE_SDL3_GPU
-  if (m_gpuRendering) {
-    // GPU path: SDL3 GPU API doesn't provide swapchain present mode query,
-    // so trust the result of SDL_SetGPUSwapchainParameters() from setVSyncEnabled().
-    // Configure software frame limiting: needed when VSync is off
-    if (m_timestepManager) {
-      m_timestepManager->setSoftwareFrameLimiting(!requested);
-    }
-    return requested;
-  }
-#endif
-
-  // SDL_Renderer path: verify VSync state matches requested setting
-  int vsyncState = 0;
-  bool vsyncVerified = false;
-
-  if (SDL_GetRenderVSync(mp_renderer.get(), &vsyncState)) {
-    if (requested) {
-      // When enabling, verify it's actually on
-      vsyncVerified = (vsyncState > 0);
-#ifdef DEBUG
-      if (vsyncVerified) {
-        GAMEENGINE_INFO(
-            std::format("VSync enabled and verified (mode: {})", vsyncState));
-      } else {
-        GAMEENGINE_WARN(
-            std::format("VSync set but verification failed (reported mode: {})",
-                        vsyncState));
-      }
-#endif
-    } else {
-      // When disabling, verify it's actually off
-      vsyncVerified = (vsyncState == 0);
-#ifdef DEBUG
-      if (vsyncVerified) {
-        GAMEENGINE_INFO("VSync disabled and verified");
-      } else {
-        GAMEENGINE_WARN(
-            std::format("VSync disable verification failed (reported mode: {})",
-                        vsyncState));
-      }
-#endif
-    }
-  } else {
-    GAMEENGINE_WARN(
-        std::format("Could not verify VSync state: {}", SDL_GetError()));
-    vsyncVerified = false;
-  }
-
-  // Set software frame limiting based on verification result
-  // Use software limiting when: VSync should be on but verification failed, or
-  // VSync is intentionally disabled
-  bool useSoftwareLimiting = requested ? !vsyncVerified : true;
-  if (m_timestepManager) {
-    m_timestepManager->setSoftwareFrameLimiting(useSoftwareLimiting);
-  }
-
-  return vsyncVerified;
-}
-
 void GameEngine::onWindowResize(const SDL_Event &event) {
-  // Centralized resize pipeline:
-  // 1) Update GameEngine window size (authoritative source)
-  // 2) Update SDL logical presentation (macOS: 1920x1080 letterbox; others:
-  // native) 3) Reload fonts via FontManager for new display characteristics 4)
-  // UI scales from logical size; UIManager layout recalculates on next render
-
-  // Update GameEngine with new window dimensions
-  int const newWidth = event.window.data1;
-  int const newHeight = event.window.data2;
-
-  GAMEENGINE_INFO(std::format("Window resized to: {}x{}", newWidth, newHeight));
-
-  // Update GameEngine window dimensions
-  setWindowSize(newWidth, newHeight);
-  updateDisplayRefreshRate();
-
-  // Use native resolution rendering (all platforms) for crisp, sharp text
-  // This matches the initialization approach in GameEngine and ensures
-  // consistent rendering whether in windowed or fullscreen mode
-  int actualWidth, actualHeight;
-  if (!SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth,
-                                 &actualHeight)) {
-    GAMEENGINE_ERROR(std::format("Failed to get actual window pixel size: {}",
-                                 SDL_GetError()));
-    actualWidth = newWidth;
-    actualHeight = newHeight;
+  const char *eventName = "Window metrics changed";
+  switch (event.type) {
+  case SDL_EVENT_WINDOW_RESIZED:
+    eventName = "Window resized";
+    break;
+  case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+    eventName = "Window pixel size changed";
+    break;
+  case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+    eventName = "Window display scale changed";
+    break;
+  default:
+    break;
   }
 
-#ifdef USE_SDL3_GPU
-  // GPURenderer syncs viewport from the swapchain when the GPU frame begins rendering.
-  // No manual updateViewport needed - swapchain is authoritative source
-#else
-  // Update renderer to native resolution (no scaling)
-  SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth, actualHeight,
-                                   SDL_LOGICAL_PRESENTATION_DISABLED);
-#endif
-
-  // Update GameEngine's cached logical dimensions
-  setLogicalSize(actualWidth, actualHeight);
-
-  GAMEENGINE_INFO(std::format("Updated to native resolution: {}x{}",
-                              actualWidth, actualHeight));
-
-  // Reconfigure tier radii for new screen size
-  mp_backgroundSimManager->configureForScreenSize(actualWidth, actualHeight);
-  GAMEENGINE_INFO(std::format(
-      "Tier radii reconfigured (active: {:.0f}, background: {:.0f})",
-      mp_backgroundSimManager->getActiveRadius(),
-      mp_backgroundSimManager->getBackgroundRadius()));
-
-  // Reload fonts for new display configuration with DPI scale
-  GAMEENGINE_INFO("Reloading fonts for display configuration change...");
-  FontManager &fontManager = FontManager::Instance();
-  const std::string fontsPathReload = HammerEngine::ResourcePath::resolve("res/fonts");
-  if (!fontManager.reloadFontsForDisplay(fontsPathReload, m_windowWidth,
-                                         m_windowHeight, m_dpiScale)) {
-    GAMEENGINE_ERROR("Failed to reinitialize font system after window resize");
-  } else {
-    GAMEENGINE_INFO(
-        "Font system reinitialized successfully after window resize");
-  }
-
-  // UIManager owns all UI positioning - directly call its resize handler
-  UIManager::Instance().onWindowResize(getLogicalWidth(), getLogicalHeight());
-  GAMEENGINE_INFO("UIManager notified for UI component repositioning");
+  refreshWindowMetrics(eventName);
 }
 
 void GameEngine::onWindowEvent(const SDL_Event &event) {
+  InputManager &inputMgr = InputManager::Instance();
+
   switch (event.type) {
   case SDL_EVENT_WINDOW_MINIMIZED:
   case SDL_EVENT_WINDOW_OCCLUDED:
@@ -1741,6 +1444,7 @@ void GameEngine::onWindowEvent(const SDL_Event &event) {
   case SDL_EVENT_WINDOW_FOCUS_LOST:
     if (!m_windowOccluded) {
       m_windowOccluded = true;
+      inputMgr.onFocusLost();
       if (m_timestepManager) {
         m_timestepManager->setSoftwareFrameLimiting(true);
       }
@@ -1753,26 +1457,10 @@ void GameEngine::onWindowEvent(const SDL_Event &event) {
   case SDL_EVENT_WINDOW_FOCUS_GAINED:
     if (m_windowOccluded) {
       m_windowOccluded = false;
-#ifdef USE_SDL3_GPU
-      if (m_gpuRendering) {
-        // GPU rendering: VSync is handled by swapchain, disable software limiting
-        if (m_timestepManager && m_vsyncRequested) {
-          m_timestepManager->setSoftwareFrameLimiting(false);
-        }
-        GAMEENGINE_DEBUG("Window visible - GPU swapchain handles VSync");
-      } else {
-#endif
-        // SDL_Renderer path: verify VSync state
-        bool vsyncVerified = false;
-        if (m_timestepManager) {
-          vsyncVerified = verifyVSyncState(m_vsyncRequested);
-        }
-        GAMEENGINE_DEBUG(std::format("Window visible - VSync {} (requested: {})",
-                                     vsyncVerified ? "verified" : "not verified",
-                                     m_vsyncRequested ? "enabled" : "disabled"));
-#ifdef USE_SDL3_GPU
+      if (m_timestepManager && m_vsyncRequested) {
+        m_timestepManager->setSoftwareFrameLimiting(false);
       }
-#endif
+      GAMEENGINE_DEBUG("Window visible - GPU swapchain handles VSync");
     }
     break;
   default:
@@ -1781,11 +1469,6 @@ void GameEngine::onWindowEvent(const SDL_Event &event) {
 }
 
 void GameEngine::onDisplayChange(const SDL_Event &event) {
-  // Centralized display-change pipeline:
-  // - Log event and, on Apple, refresh fonts due to DPI/content-scale changes
-  // - Normalize UI scale (UIManager::setGlobalScale(1.0f))
-  // - Force UI layout refresh and reload fonts using GameEngine logical size
-
   const char *eventName = "Unknown";
   switch (event.type) {
   case SDL_EVENT_DISPLAY_ORIENTATION:
@@ -1808,42 +1491,71 @@ void GameEngine::onDisplayChange(const SDL_Event &event) {
   }
 
   GAMEENGINE_INFO(std::format("Display event detected: {}", eventName));
-  updateDisplayRefreshRate();
+  refreshWindowMetrics(eventName);
+}
 
-// On Apple platforms, display changes often invalidate font textures
-// due to different DPI scaling or context changes
+void GameEngine::refreshWindowMetrics(std::string_view reason) {
+  if (!mp_window) {
+    return;
+  }
+
+  int logicalWidth = m_windowWidth;
+  int logicalHeight = m_windowHeight;
+  if (!SDL_GetWindowSize(mp_window.get(), &logicalWidth, &logicalHeight)) {
+    GAMEENGINE_ERROR(std::format("Failed to get logical window size: {}",
+                                 SDL_GetError()));
+  }
+
+  int pixelWidth = logicalWidth;
+  int pixelHeight = logicalHeight;
+  if (!SDL_GetWindowSizeInPixels(mp_window.get(), &pixelWidth, &pixelHeight)) {
+    GAMEENGINE_ERROR(std::format("Failed to get actual window pixel size: {}",
+                                 SDL_GetError()));
+  }
+
+  float displayScale = 1.0f;
 #ifdef __APPLE__
-  GAMEENGINE_INFO(
-      "Apple platform: Reinitializing font system due to display change...");
-#else
-  GAMEENGINE_INFO("Non-Apple platform: Display change handled by existing "
-                  "window resize logic");
+  displayScale = SDL_GetWindowDisplayScale(mp_window.get());
+  if (displayScale <= 0.0f) {
+    displayScale = 1.0f;
+  }
 #endif
 
-  // Update UI systems with consistent scaling and reload fonts ONCE using
-  // logical dimensions
+  GAMEENGINE_INFO(std::format(
+      "{} -> logical: {}x{}, pixels: {}x{}, display scale: {:.2f}",
+      reason, logicalWidth, logicalHeight, pixelWidth, pixelHeight,
+      displayScale));
+
+  setWindowSize(logicalWidth, logicalHeight);
+  setLogicalSize(pixelWidth, pixelHeight);
+  setDPIScale(displayScale);
+  updateDisplayRefreshRate();
+
+  if (mp_backgroundSimManager) {
+    mp_backgroundSimManager->configureForScreenSize(pixelWidth, pixelHeight);
+    GAMEENGINE_INFO(std::format(
+        "Tier radii reconfigured (active: {:.0f}, background: {:.0f})",
+        mp_backgroundSimManager->getActiveRadius(),
+        mp_backgroundSimManager->getBackgroundRadius()));
+  }
+
   try {
     UIManager &uiManager = UIManager::Instance();
     uiManager.setGlobalScale(1.0f);
-    GAMEENGINE_INFO("Updated UIManager with consistent 1.0 scale");
-
-    uiManager.cleanupForStateTransition();
 
     FontManager &fontManager = FontManager::Instance();
-    const std::string fontsPathDisplay = HammerEngine::ResourcePath::resolve("res/fonts");
-    if (!fontManager.reloadFontsForDisplay(fontsPathDisplay, m_windowWidth,
+    const std::string fontsPath = HammerEngine::ResourcePath::resolve("res/fonts");
+    if (!fontManager.reloadFontsForDisplay(fontsPath, m_windowWidth,
                                            m_windowHeight, m_dpiScale)) {
-      GAMEENGINE_WARN("Failed to reload fonts for new display size");
+      GAMEENGINE_WARN("Failed to reload fonts for updated window/display metrics");
     } else {
-      GAMEENGINE_INFO("Successfully reloaded fonts for new display size");
+      GAMEENGINE_INFO("Font system reinitialized successfully after window/display update");
     }
 
-    // UIManager owns all UI positioning - trigger repositioning for display
-    // change
     uiManager.onWindowResize(getLogicalWidth(), getLogicalHeight());
-    GAMEENGINE_INFO("UIManager notified for display change repositioning");
+    GAMEENGINE_INFO("UIManager notified for UI component repositioning");
   } catch (const std::exception &e) {
     GAMEENGINE_ERROR(std::format(
-        "Error updating UI scaling after window resize: {}", e.what()));
+        "Error updating window/display dependent systems: {}", e.what()));
   }
 }

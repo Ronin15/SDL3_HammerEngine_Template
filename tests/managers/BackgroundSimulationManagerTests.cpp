@@ -156,15 +156,25 @@ BOOST_AUTO_TEST_CASE(TestNoUpdateWhenPaused) {
 }
 
 BOOST_AUTO_TEST_CASE(TestResumeAfterPause) {
+    bgsm->setActiveRadius(500.0f);
+    bgsm->setBackgroundRadius(1000.0f);
+    EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(750.0f, 0.0f), "Human", "Guard");
+    bgsm->setReferencePoint(Vector2D(0.0f, 0.0f));
+    bgsm->invalidateTiers();
+    bgsm->update(Vector2D(0.0f, 0.0f), 0.0f);
+    bgsm->resetPerfStats();
+
     bgsm->setGlobalPause(true);
     BOOST_CHECK(bgsm->isGloballyPaused());
 
     bgsm->setGlobalPause(false);
     BOOST_CHECK(!bgsm->isGloballyPaused());
 
-    // Updates should work again (no crash)
-    bgsm->update(Vector2D(0.0f, 0.0f), 0.016f);
-    BOOST_CHECK(true);
+    bgsm->update(Vector2D(0.0f, 0.0f), 0.2f);
+    BOOST_CHECK_GT(bgsm->getPerfStats().totalUpdates, 0U);
+
+    edm->destroyEntity(handle);
+    edm->processDestructionQueue();
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -239,9 +249,9 @@ BOOST_AUTO_TEST_CASE(TestHasWorkWithNoEntities) {
     bgsm->invalidateTiers();
     BOOST_CHECK(bgsm->hasWork());
 
-    // After update, should have no background work
+    // After update with no entities, there should be no remaining background work.
     bgsm->update(Vector2D(0.0f, 0.0f), 0.016f);
-    // hasWork may still be true for tier dirty flag
+    BOOST_CHECK(!bgsm->hasWork());
 }
 
 BOOST_AUTO_TEST_CASE(TestHasWorkWithBackgroundEntities) {
@@ -254,12 +264,10 @@ BOOST_AUTO_TEST_CASE(TestHasWorkWithBackgroundEntities) {
 
     bgsm->setReferencePoint(Vector2D(0.0f, 0.0f));
     bgsm->invalidateTiers();  // Force tier recalc
-    bgsm->updateTiers();
+    bgsm->update(Vector2D(0.0f, 0.0f), 0.0f);
 
-    // With a background entity, hasWork should be true
-    // (either due to tiersDirty or hasNonActiveEntities)
-    // Just verify the entity was created and no crash
     BOOST_CHECK(edm->isValidHandle(handle));
+    BOOST_CHECK(bgsm->hasWork());
 
     // Clean up
     edm->destroyEntity(handle);
@@ -332,9 +340,9 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(UpdateTests, BackgroundSimManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestBasicUpdate) {
-    // Should not crash with no entities
+    bgsm->invalidateTiers();
     bgsm->update(Vector2D(0.0f, 0.0f), 0.016f);
-    BOOST_CHECK(true);
+    BOOST_CHECK(!bgsm->hasWork());
 }
 
 BOOST_AUTO_TEST_CASE(TestUpdateWithBackgroundEntities) {
@@ -350,17 +358,17 @@ BOOST_AUTO_TEST_CASE(TestUpdateWithBackgroundEntities) {
 
     bgsm->setReferencePoint(Vector2D(0.0f, 0.0f));
     bgsm->invalidateTiers();
-    bgsm->updateTiers();
+    bgsm->update(Vector2D(0.0f, 0.0f), 0.0f);
+    bgsm->resetPerfStats();
 
     // Verify entities are in background tier (span access, don't need variable)
     (void)edm->getBackgroundIndices();
 
-    // Update should not crash - processing depends on accumulator (100ms at 10Hz)
     for (int i = 0; i < 5; ++i) {
         bgsm->update(Vector2D(0.0f, 0.0f), 0.1f);  // 100ms per update
     }
 
-    // Just verify no crash and handles are still valid
+    BOOST_CHECK_GT(bgsm->getPerfStats().totalUpdates, 0U);
     for (const auto& handle : handles) {
         BOOST_CHECK(edm->isValidHandle(handle));
     }
@@ -382,9 +390,9 @@ BOOST_AUTO_TEST_CASE(TestTierUpdateInterval) {
     // First update should process tier update
     bgsm->update(Vector2D(0.0f, 0.0f), 0.016f);
 
-    // hasWork should reflect current state
-    // (may or may not have work depending on entity placement)
-    BOOST_CHECK(true);  // Just verify no crash
+    // Entity is within the default active radius, so tier recalculation should
+    // clear dirty state without leaving background work pending.
+    BOOST_CHECK(!bgsm->hasWork());
 
     edm->destroyEntity(handle);
     edm->processDestructionQueue();
@@ -422,9 +430,9 @@ BOOST_AUTO_TEST_CASE(TestAccumulatorPattern) {
 }
 
 BOOST_AUTO_TEST_CASE(TestWaitForAsyncCompletion) {
-    // Should not crash even with no pending work
+    const auto before = bgsm->getPerfStats().totalUpdates;
     bgsm->waitForAsyncCompletion();
-    BOOST_CHECK(true);
+    BOOST_CHECK_EQUAL(bgsm->getPerfStats().totalUpdates, before);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -1,10 +1,8 @@
 /* Copyright (c) 2025 Hammer Forged Games
  * Licensed under the MIT License */
 
-#ifndef GPU_SCENE_RENDERER_HPP
-#define GPU_SCENE_RENDERER_HPP
-
-#ifdef USE_SDL3_GPU
+#ifndef GPU_SCENE_RECORDER_HPP
+#define GPU_SCENE_RECORDER_HPP
 
 #include "utils/Vector2D.hpp"
 
@@ -18,7 +16,7 @@ class GPURenderer;
 class SpriteBatch;
 
 /**
- * @brief Context returned by beginScene() containing all render parameters
+ * @brief Context returned by beginRecording() containing all render parameters
  *
  * Systems use this context to draw to the sprite batch without managing
  * batch lifecycle. Camera coordinates are floored for pixel alignment;
@@ -46,53 +44,54 @@ struct GPUSceneContext {
     // Systems call spriteBatch->draw() - no begin/end management needed
     SpriteBatch* spriteBatch{nullptr};
 
-    // Whether the context is valid (beginScene succeeded)
+    // Whether the context is valid (beginRecording succeeded)
     bool valid{false};
 
     explicit operator bool() const { return valid; }
 };
 
 /**
- * @brief GPU scene rendering coordinator - facade for GPU rendering pipeline
+ * @brief GPU scene recording coordinator for state-owned draw preparation
  *
- * Mirrors SceneRenderer (SDL_Renderer path) for GPU rendering coordination.
+ * Coordinates state-side GPU recording before the engine opens the SDL scene pass.
  * Owns sprite batch begin/end lifecycle, integrates with FrameProfiler,
- * and provides GPUSceneContext for systems to draw.
+ * and provides GPUSceneContext for systems to record draw data.
  *
  * ARCHITECTURE:
- * - GPUSceneRenderer owns batch lifecycle (begin/end)
+ * - GPUSceneRecorder owns batch lifecycle (begin/end)
  * - Systems (WorldManager, NPCRenderController, etc.) just call draw()
  * - Sub-pixel camera smoothness handled by composite shader params
  * - Profiler integration via PROFILE_RENDER_GPU macros
+ * - Engine-owned SDL pass lifetime stays in GameEngine/GPURenderer
  *
  * Render flow:
- *   auto ctx = gpuSceneRenderer.beginScene(gpuRenderer, camera, alpha);
+ *   auto ctx = gpuSceneRecorder.beginRecording(gpuRenderer, camera, alpha);
  *   if (ctx) {
  *       worldMgr.recordGPUTiles(ctx);     // calls ctx.spriteBatch->draw()
  *       npcCtrl.recordGPU(ctx);           // calls ctx.spriteBatch->draw()
  *       resourceCtrl.recordGPU(ctx);      // calls ctx.spriteBatch->draw()
- *       gpuSceneRenderer.endSpriteBatch();
+ *       gpuSceneRecorder.endSpriteBatch();
  *
  *       player->recordGPUVertices(...);   // entity batch (separate texture)
  *       particleMgr.recordGPUVertices(...); // particle pool
  *   }
- *   gpuSceneRenderer.endScene();
+ *   gpuSceneRecorder.endRecording();
  */
-class GPUSceneRenderer {
+class GPUSceneRecorder {
 public:
-    GPUSceneRenderer();
-    ~GPUSceneRenderer();
+    GPUSceneRecorder();
+    ~GPUSceneRecorder();
 
     // Non-copyable (owns rendering state)
-    GPUSceneRenderer(const GPUSceneRenderer&) = delete;
-    GPUSceneRenderer& operator=(const GPUSceneRenderer&) = delete;
+    GPUSceneRecorder(const GPUSceneRecorder&) = delete;
+    GPUSceneRecorder& operator=(const GPUSceneRecorder&) = delete;
 
     // Movable
-    GPUSceneRenderer(GPUSceneRenderer&&) noexcept;
-    GPUSceneRenderer& operator=(GPUSceneRenderer&&) noexcept;
+    GPUSceneRecorder(GPUSceneRecorder&&) noexcept;
+    GPUSceneRecorder& operator=(GPUSceneRecorder&&) noexcept;
 
     /**
-     * @brief Begin scene rendering - sets up sprite batch and calculates camera params
+     * @brief Begin scene-data recording for the engine-owned scene pass
      *
      * Sets up the sprite batch with atlas texture and calculates floored camera
      * position. All atlas-based content should use the returned context's
@@ -101,9 +100,9 @@ public:
      * @param gpuRenderer GPU renderer instance
      * @param camera Camera for position and zoom
      * @param interpolationAlpha Interpolation alpha for smooth rendering
-     * @return GPUSceneContext with render parameters, or invalid context on failure
+     * @return GPUSceneContext with recording parameters, or invalid context on failure
      */
-    GPUSceneContext beginScene(GPURenderer& gpuRenderer, Camera& camera, float interpolationAlpha);
+    GPUSceneContext beginRecording(GPURenderer& gpuRenderer, Camera& camera, float interpolationAlpha);
 
     /**
      * @brief End sprite batch recording - finalizes atlas-based sprites
@@ -114,30 +113,30 @@ public:
     void endSpriteBatch();
 
     /**
-     * @brief End scene - cleanup and finalize
+     * @brief End scene-data recording and clear recorder state
      *
-     * Called at the end of recordGPUVertices to finalize scene recording state.
+     * Called at the end of recordGPUVertices to finalize state-side recording.
      */
-    void endScene();
+    void endRecording();
 
     /**
-     * @brief Render the scene pass - issues draw calls for recorded sprites
+     * @brief Render previously recorded scene data into the active scene pass
      *
-     * Called during renderGPUScene to issue the actual draw calls.
+     * Called during renderGPUScene to issue draw calls into the engine-owned pass.
      *
      * @param gpuRenderer GPU renderer instance
      * @param scenePass Active scene render pass
      */
-    void renderScene(GPURenderer& gpuRenderer, SDL_GPURenderPass* scenePass);
+    void renderRecordedScene(GPURenderer& gpuRenderer, SDL_GPURenderPass* scenePass);
 
     /**
-     * @brief Check if a scene is currently active (between beginScene/endScene)
+     * @brief Check if scene-data recording is currently active
      */
-    bool isSceneActive() const { return m_sceneActive; }
+    bool isRecordingActive() const { return m_recordingActive; }
 
 private:
-    // Scene state
-    bool m_sceneActive{false};
+    // Recording state
+    bool m_recordingActive{false};
     bool m_spriteBatchActive{false};
 
     // Cached references for render phase
@@ -150,6 +149,4 @@ private:
 
 } // namespace HammerEngine
 
-#endif // USE_SDL3_GPU
-
-#endif // GPU_SCENE_RENDERER_HPP
+#endif // GPU_SCENE_RECORDER_HPP

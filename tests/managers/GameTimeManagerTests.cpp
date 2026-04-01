@@ -543,8 +543,9 @@ BOOST_AUTO_TEST_CASE(TestDayChangedEventEmission) {
 }
 
 BOOST_AUTO_TEST_CASE(TestSeasonChangedEventEmission) {
-    // Initialize GameTime and advance to trigger season change
     gameTime->init(12.0f, 1.0f);
+    gameTime->setGameDay(30);
+    gameTime->setGameHour(23.95f);
 
     std::atomic<bool> eventReceived{false};
     Season receivedSeason = Season::Spring;
@@ -561,20 +562,12 @@ BOOST_AUTO_TEST_CASE(TestSeasonChangedEventEmission) {
             }
         });
 
-    // For testing, we can use setMonth which may trigger season change
-    // Or advance many days to trigger natural season change
-    // For testing, we can use setGameDay to fast-forward
+    gameTime->update(300.0f);
+    eventManager->update();
 
-    // Instead, advance month which should trigger season change
-    for (int i = 0; i < 100; ++i) {
-        gameTime->update(1440.0f * 30);  // Advance ~30 game days per iteration
-        eventManager->update();
-        if (eventReceived.load()) break;
-    }
-
-    // Season change event may or may not fire depending on initial state
-    // Just verify no crashes and event mechanism works
-    BOOST_CHECK(true);  // Test completed without crash
+    BOOST_CHECK(eventReceived.load());
+    BOOST_CHECK(receivedPreviousSeason == Season::Spring);
+    BOOST_CHECK(receivedSeason == Season::Summer);
 }
 
 BOOST_AUTO_TEST_CASE(TestMultipleTimeEventsInSequence) {
@@ -640,11 +633,12 @@ BOOST_AUTO_TEST_CASE(TestNoEventWhenPaused) {
 }
 
 BOOST_AUTO_TEST_CASE(TestYearChangedEventEmission) {
-    // Initialize and advance enough to trigger year change
     gameTime->init(12.0f, 1.0f);
+    gameTime->setGameDay(120);
+    gameTime->setGameHour(23.95f);
 
     std::atomic<bool> eventReceived{false};
-    [[maybe_unused]] int receivedYear = -1;
+    int receivedYear = -1;
 
     eventManager->registerHandler(EventTypeId::Time,
         [&](const EventData& data) {
@@ -656,16 +650,11 @@ BOOST_AUTO_TEST_CASE(TestYearChangedEventEmission) {
             }
         });
 
-    // Year change requires advancing through 12 months of game time
-    // This is expensive for a unit test, so we just verify the mechanism works
-    // by advancing time and checking no crashes occur
-    for (int i = 0; i < 10; ++i) {
-        gameTime->update(86400.0f);  // 1 day of real time
-        eventManager->update();
-    }
+    gameTime->update(300.0f);
+    eventManager->update();
 
-    // Year change may or may not happen, just verify no crashes
-    BOOST_CHECK(true);
+    BOOST_CHECK(eventReceived.load());
+    BOOST_CHECK_EQUAL(receivedYear, 2);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

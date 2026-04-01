@@ -5,7 +5,6 @@
 
 #include "gameStates/GamePlayState.hpp"
 #include "entities/Player.hpp"
-#include "utils/WorldRenderPipeline.hpp"
 #include "controllers/combat/CombatController.hpp"
 #include "controllers/social/SocialController.hpp"
 #include "controllers/world/DayNightController.hpp"
@@ -41,13 +40,11 @@
 #include <cmath>
 #include <format>
 
-#ifdef USE_SDL3_GPU
 #include "gpu/GPURenderer.hpp"
 #include "gpu/SpriteBatch.hpp"
-#include "utils/GPUSceneRenderer.hpp"
-#endif
+#include "utils/GPUSceneRecorder.hpp"
 
-// Constructor/destructor defined here where GPUSceneRenderer is complete (for unique_ptr)
+// Constructor/destructor defined here where GPUSceneRecorder is complete (for unique_ptr)
 GamePlayState::GamePlayState()
     : m_transitioningToLoading{false}, m_transitioningToGameOver{false},
       mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false},
@@ -101,13 +98,8 @@ bool GamePlayState::enter() {
     // Initialize camera (world already loaded)
     initializeCamera();
 
-    // Create world render pipeline for coordinated chunk management and scene rendering
-    m_renderPipeline = std::make_unique<HammerEngine::WorldRenderPipeline>();
-
-#ifdef USE_SDL3_GPU
-    // Create GPU scene renderer for coordinated GPU rendering
-    m_gpuSceneRenderer = std::make_unique<HammerEngine::GPUSceneRenderer>();
-#endif
+    // Create GPU scene recorder for coordinated GPU rendering
+    m_gpuSceneRecorder = std::make_unique<HammerEngine::GPUSceneRecorder>();
 
     // Register controllers with the registry
     m_controllers.add<WeatherController>();
@@ -276,14 +268,6 @@ void GamePlayState::update(float deltaTime) {
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
 
-#ifndef USE_SDL3_GPU
-  // Prepare chunks via WorldRenderPipeline (predictive prefetching + dirty chunk updates)
-  // GPU path renders tiles directly from atlas coords each frame — no chunk textures needed
-  if (m_renderPipeline && m_camera) {
-    m_renderPipeline->prepareChunks(*m_camera, deltaTime);
-  }
-#endif
-
   // Update resource animations (dropped items bobbing, etc.) - camera-based culling
   if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>(); resourceCtrl && m_camera) {
     resourceCtrl->update(deltaTime, *m_camera);
@@ -293,9 +277,6 @@ void GamePlayState::update(float deltaTime) {
   if (auto* dayNightCtrl = m_controllers.get<DayNightController>()) {
     dayNightCtrl->update(deltaTime);
   }
-
-  // Update day/night overlay interpolation (for SDL_Renderer path)
-  updateDayNightOverlay(deltaTime);
 
   // Update time status bar only when events fire (event-driven, not per-frame)
   if (m_statusBarDirty) {
@@ -320,82 +301,6 @@ void GamePlayState::update(float deltaTime) {
   // Inventory display is now updated automatically via data binding.
 }
 
-void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
-  // Cache manager references for better performance
-  ParticleManager &particleMgr = ParticleManager::Instance();
-  UIManager &ui = UIManager::Instance();
-
-  // Use WorldRenderPipeline for coordinated world rendering
-  const bool worldActive = m_camera && m_renderPipeline;
-
-  // ========== BEGIN SCENE (to intermediate target) ==========
-  HammerEngine::WorldRenderPipeline::RenderContext ctx;
-  if (worldActive) {
-    ctx = m_renderPipeline->beginScene(renderer, *m_camera, interpolationAlpha);
-  }
-
-  if (ctx) {
-    // Background particles (rain, snow behind everything)
-    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-      particleMgr.renderBackground(renderer, ctx.cameraX, ctx.cameraY,
-                                   interpolationAlpha);
-    }
-
-    // Render world tiles via pipeline (uses pre-computed context)
-    m_renderPipeline->renderWorld(renderer, ctx);
-
-    // Render world resources (dropped items, harvestables, containers)
-    if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>(); resourceCtrl && m_camera) {
-      resourceCtrl->renderDroppedItems(renderer, *m_camera, ctx.cameraX, ctx.cameraY, interpolationAlpha);
-      resourceCtrl->renderHarvestables(renderer, *m_camera, ctx.cameraX, ctx.cameraY, interpolationAlpha);
-      resourceCtrl->renderContainers(renderer, *m_camera, ctx.cameraX, ctx.cameraY, interpolationAlpha);
-    }
-
-    // Render NPCs (data-driven via NPCRenderController)
-    m_npcRenderCtrl.renderNPCs(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
-
-    // Render player (sub-pixel smoothness from entity's own interpolation)
-    if (mp_Player) {
-      mp_Player->render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
-    }
-
-    // Render world-space and foreground particles (after player)
-    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-      particleMgr.render(renderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
-      particleMgr.renderForeground(renderer, ctx.cameraX, ctx.cameraY,
-                                   interpolationAlpha);
-    }
-  }
-
-  // ========== END SCENE (composite with zoom) ==========
-  // This composites all world content and resets render scale to 1.0
-  if (worldActive) {
-    m_renderPipeline->endScene(renderer);
-  }
-
-  // Render day/night overlay tint (at 1.0 scale, after zoom reset)
-  if (m_camera) {
-    const auto &viewport = m_camera->getViewport();
-    renderDayNightOverlay(renderer, static_cast<int>(viewport.width),
-                          static_cast<int>(viewport.height));
-  }
-
-  // Update FPS display if visible (zero-allocation, only when changed)
-  if (m_fpsVisible) {
-    float const currentFPS = mp_stateManager->getCurrentFPS();
-    // Only update UI text if FPS changed by more than 0.05 (avoids flicker)
-    if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f) {
-      m_fpsBuffer.clear();
-      std::format_to(std::back_inserter(m_fpsBuffer), "FPS: {:.1f}",
-                     currentFPS);
-      ui.setText("gameplay_fps", m_fpsBuffer);
-      m_lastDisplayedFPS = currentFPS;
-    }
-  }
-
-  // Render UI components (no camera transformation)
-  ui.render(renderer);
-}
 bool GamePlayState::exit() {
   // Cache manager references for better performance
   AIManager &aiMgr = AIManager::Instance();
@@ -428,6 +333,7 @@ bool GamePlayState::exit() {
 
     aiMgr.prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
+    worldMgr.prepareForStateTransition();
 
     if (wrm.isInitialized()) {
       wrm.prepareForStateTransition();
@@ -450,9 +356,13 @@ bool GamePlayState::exit() {
       particleMgr.prepareForStateTransition();
     }
 
-    // Clean up camera and scene renderer
+    WorldManager::Instance().setActiveCamera(nullptr);
+    if (mp_Player) {
+      mp_Player->setCamera(nullptr);
+    }
+
+    // Clean up camera and GPU scene recorder
     m_camera.reset();
-    m_renderPipeline.reset();
 
     // Unload world (LoadingState will reload it)
     if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
@@ -488,6 +398,7 @@ bool GamePlayState::exit() {
 
   aiMgr.prepareForStateTransition();
   bgSimMgr.prepareForStateTransition();
+  worldMgr.prepareForStateTransition();
 
   if (wrm.isInitialized()) {
     wrm.prepareForStateTransition();
@@ -511,9 +422,13 @@ bool GamePlayState::exit() {
     particleMgr.prepareForStateTransition();
   }
 
-  // Clean up camera and scene renderer first to stop world rendering
+  WorldManager::Instance().setActiveCamera(nullptr);
+  if (mp_Player) {
+    mp_Player->setCamera(nullptr);
+  }
+
+  // Clean up camera and GPU scene recorder first to stop world rendering
   m_camera.reset();
-  m_renderPipeline.reset();
 
   // Unload the world when fully exiting gameplay
   if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
@@ -789,13 +704,14 @@ void GamePlayState::handleInput() {
 
       auto &worldMgr = WorldManager::Instance();
       if (worldMgr.isValidPosition(tileX, tileY)) {
-        const auto *tile = worldMgr.getTileAt(tileX, tileY);
+        const auto biome = worldMgr.getTileBiomeAt(tileX, tileY);
+        const auto obstacleType = worldMgr.getTileObstacleTypeAt(tileX, tileY);
         // Log tile information for debugging
         GAMEPLAY_DEBUG_IF(
-            tile,
+            biome.has_value() && obstacleType.has_value(),
             std::format("Clicked tile ({}, {}) - Biome: {}, Obstacle: {}",
-                        tileX, tileY, tile ? static_cast<int>(tile->biome) : 0,
-                        tile ? static_cast<int>(tile->obstacleType) : 0));
+                        tileX, tileY, static_cast<int>(*biome),
+                        static_cast<int>(*obstacleType)));
       }
     }
   }
@@ -944,11 +860,10 @@ void GamePlayState::initializeCamera() {
   Vector2D playerPosition =
       mp_Player ? mp_Player->getPosition() : Vector2D(0, 0);
 
-  // Create camera with position, then sync viewport from appropriate source
-  // (GPURenderer in GPU mode, GameEngine in SDL_Renderer mode)
+  // Create camera with position, then sync viewport from the active GPU renderer.
   m_camera = std::make_unique<HammerEngine::Camera>();
   m_camera->setPosition(playerPosition);
-  m_camera->syncViewportWithEngine();  // Gets correct dimensions for current mode
+  m_camera->syncViewportWithEngine();
 
   GAMEPLAY_INFO(std::format("Camera initialized: pos=({}, {}), viewport={}x{}",
                                  playerPosition.getX(), playerPosition.getY(),
@@ -1013,14 +928,6 @@ void GamePlayState::onTimePeriodChanged(const EventData &data) {
 
   auto periodEvent =
       std::static_pointer_cast<TimePeriodChangedEvent>(data.event);
-  const auto &visuals = periodEvent->getVisuals();
-
-  // Set target values - interpolation happens in updateDayNightOverlay()
-  m_dayNightTargetR = static_cast<float>(visuals.overlayR);
-  m_dayNightTargetG = static_cast<float>(visuals.overlayG);
-  m_dayNightTargetB = static_cast<float>(visuals.overlayB);
-  m_dayNightTargetA = static_cast<float>(visuals.overlayA);
-
   // Track current period for weather change handling
   m_currentTimePeriod = periodEvent->getPeriod();
 
@@ -1034,37 +941,6 @@ void GamePlayState::onTimePeriodChanged(const EventData &data) {
 
   GAMEPLAY_DEBUG(std::format("Day/night transition started to period: {}",
                              periodEvent->getPeriodName()));
-}
-
-void GamePlayState::updateDayNightOverlay(float deltaTime) {
-  // Calculate interpolation speed based on transition duration
-  // Using exponential smoothing for natural-feeling transitions
-  float lerpFactor =
-      1.0f - std::exp(-deltaTime * (3.0f / DAY_NIGHT_TRANSITION_DURATION));
-
-  // Interpolate each channel toward target
-  m_dayNightOverlayR += (m_dayNightTargetR - m_dayNightOverlayR) * lerpFactor;
-  m_dayNightOverlayG += (m_dayNightTargetG - m_dayNightOverlayG) * lerpFactor;
-  m_dayNightOverlayB += (m_dayNightTargetB - m_dayNightOverlayB) * lerpFactor;
-  m_dayNightOverlayA += (m_dayNightTargetA - m_dayNightOverlayA) * lerpFactor;
-}
-
-void GamePlayState::renderDayNightOverlay(SDL_Renderer *renderer, int width,
-                                          int height) {
-  // Skip if no tint (alpha near 0)
-  if (m_dayNightOverlayA < 0.5f) {
-    return;
-  }
-
-  // Blend mode already set globally by GameEngine at init
-  SDL_SetRenderDrawColor(renderer, static_cast<uint8_t>(m_dayNightOverlayR),
-                         static_cast<uint8_t>(m_dayNightOverlayG),
-                         static_cast<uint8_t>(m_dayNightOverlayB),
-                         static_cast<uint8_t>(m_dayNightOverlayA));
-
-  SDL_FRect const rect = {0, 0, static_cast<float>(width),
-                          static_cast<float>(height)};
-  SDL_RenderFillRect(renderer, &rect);
 }
 
 void GamePlayState::updateAmbientParticles(TimePeriod period) {
@@ -1172,16 +1048,15 @@ void GamePlayState::onWeatherChanged(const EventData &data) {
   GAMEPLAY_DEBUG(weatherEvent->getWeatherTypeString());
 }
 
-#ifdef USE_SDL3_GPU
 void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
                                       float interpolationAlpha) {
-  // Skip if world not active or GPU scene renderer not initialized
-  if (!m_camera || !m_gpuSceneRenderer) {
+  // Skip if world not active or GPU scene recorder not initialized
+  if (!m_camera || !m_gpuSceneRecorder) {
     return;
   }
 
-  // Begin scene - sets up sprite batch with atlas, calculates camera params
-  auto ctx = m_gpuSceneRenderer->beginScene(gpuRenderer, *m_camera, interpolationAlpha);
+  // Begin scene-data recording before the engine-owned scene pass opens
+  auto ctx = m_gpuSceneRecorder->beginRecording(gpuRenderer, *m_camera, interpolationAlpha);
   if (!ctx) {
     return;
   }
@@ -1191,10 +1066,9 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   worldMgr.recordGPU(*ctx.spriteBatch, ctx.cameraX, ctx.cameraY,
                      ctx.viewWidth, ctx.viewHeight, ctx.zoom);
 
-  // Record world resources to sprite batch (dropped items, harvestables, containers)
+  // Record world resources managed outside world tiles (dropped items, containers)
   if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>()) {
     resourceCtrl->recordGPUDroppedItems(ctx, *m_camera);
-    resourceCtrl->recordGPUHarvestables(ctx, *m_camera);
     resourceCtrl->recordGPUContainers(ctx, *m_camera);
   }
 
@@ -1202,7 +1076,7 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   m_npcRenderCtrl.recordGPU(ctx);
 
   // End sprite batch recording before switching to entity batch
-  m_gpuSceneRenderer->endSpriteBatch();
+  m_gpuSceneRecorder->endSpriteBatch();
 
   // Record player vertices (uses entity batch - separate texture)
   if (mp_Player) {
@@ -1215,8 +1089,8 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
     particleMgr.recordGPUVertices(gpuRenderer, ctx.cameraX, ctx.cameraY, interpolationAlpha);
   }
 
-  // End scene recording
-  m_gpuSceneRenderer->endScene();
+  // End scene-data recording before UI vertices are recorded
+  m_gpuSceneRecorder->endRecording();
 
   // Update FPS display if visible (must happen BEFORE recording UI vertices)
   auto &ui = UIManager::Instance();
@@ -1239,12 +1113,12 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
 void GamePlayState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
                                    SDL_GPURenderPass *scenePass,
                                    [[maybe_unused]] float interpolationAlpha) {
-  if (!m_camera || !m_gpuSceneRenderer) {
+  if (!m_camera || !m_gpuSceneRecorder) {
     return;
   }
 
-  // Render world tiles (sprite batch) - includes world tiles, NPCs, and world resources
-  m_gpuSceneRenderer->renderScene(gpuRenderer, scenePass);
+  // Render previously recorded scene data into the engine-owned scene pass
+  m_gpuSceneRecorder->renderRecordedScene(gpuRenderer, scenePass);
 
   // Render player (entity batch)
   if (mp_Player) {
@@ -1266,4 +1140,3 @@ void GamePlayState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
   auto &ui = UIManager::Instance();
   ui.renderGPU(gpuRenderer, swapchainPass);
 }
-#endif

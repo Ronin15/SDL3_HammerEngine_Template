@@ -243,9 +243,11 @@ BOOST_AUTO_TEST_CASE(TestIdleMessageHandling) {
     EntityHandle handle = entity->getHandle();
     AIManager::Instance().assignBehavior(handle, "Idle");
 
-    // Legacy message API was removed - message system now uses BehaviorMessage queue
-    // No crashes should occur
-    BOOST_CHECK(true);
+    const auto initialUpdates = AIManager::Instance().getBehaviorUpdateCount();
+    updateAI(0.016f);
+
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
+    BOOST_CHECK_GT(AIManager::Instance().getBehaviorUpdateCount(), initialUpdates);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -668,37 +670,44 @@ BOOST_FIXTURE_TEST_SUITE(BehaviorMessageTests, BehaviorTestFixture)
 BOOST_AUTO_TEST_CASE(TestBehaviorSpecificMessages) {
     auto entity = testEntities[0];
     EntityHandle handle = entity->getHandle();
+    const size_t initialAssignments = AIManager::Instance().getTotalAssignmentCount();
 
     // Test Guard behavior messages
     AIManager::Instance().assignBehavior(handle, "Guard");
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
 
     // Test Follow behavior messages
     AIManager::Instance().assignBehavior(handle, "Follow");
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
 
     // Test Attack behavior messages
     AIManager::Instance().assignBehavior(handle, "Attack");
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
 
     // Test Flee behavior messages
     AIManager::Instance().assignBehavior(handle, "Flee");
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
 
-    // Legacy string message API was removed - message system now uses BehaviorMessage queue
-    // No crashes should occur
-    BOOST_CHECK(true);
+    updateAI(0.016f);
+    BOOST_CHECK_GT(AIManager::Instance().getTotalAssignmentCount(), initialAssignments);
 }
 
 BOOST_AUTO_TEST_CASE(TestBroadcastMessages) {
     EntityHandle handle0 = testEntities[0]->getHandle();
     EntityHandle handle1 = testEntities[1]->getHandle();
     EntityHandle handle2 = testEntities[2]->getHandle();
+    const size_t initialUpdates = AIManager::Instance().getBehaviorUpdateCount();
 
     // Assign different behaviors to multiple entities
     AIManager::Instance().assignBehavior(handle0, "Guard");
     AIManager::Instance().assignBehavior(handle1, "Attack");
     AIManager::Instance().assignBehavior(handle2, "Follow");
 
-    // Legacy broadcast message API was removed - message system now uses BehaviorMessage queue
-    // All entities should receive messages without crashes
-    BOOST_CHECK(true);
+    updateAI(0.016f);
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle0));
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle1));
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle2));
+    BOOST_CHECK_GT(AIManager::Instance().getBehaviorUpdateCount(), initialUpdates);
 }
 
 // ============================================================================
@@ -1246,6 +1255,7 @@ BOOST_AUTO_TEST_CASE(TestLargeNumberOfEntities) {
 BOOST_AUTO_TEST_CASE(TestBehaviorMemoryManagement) {
     auto entity = testEntities[0];
     EntityHandle handle = entity->getHandle();
+    const size_t initialAssignments = AIManager::Instance().getTotalAssignmentCount();
 
     // Rapidly switch between behaviors to test memory management
     std::vector<std::string> behaviors = {
@@ -1263,8 +1273,9 @@ BOOST_AUTO_TEST_CASE(TestBehaviorMemoryManagement) {
         }
     }
 
-    // Should not crash or leak memory
-    BOOST_CHECK(true);
+    BOOST_CHECK(!AIManager::Instance().hasBehavior(handle));
+    BOOST_CHECK_GE(AIManager::Instance().getTotalAssignmentCount(),
+                   initialAssignments + behaviors.size() * 5);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

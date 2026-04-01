@@ -71,30 +71,33 @@ int countPatternInFile(const std::string& filepath, const std::string& pattern) 
 }
 
 // ============================================================================
-// TEST SUITE: SDLRendererComplianceTests
+// TEST SUITE: GPURenderPipelineComplianceTests
 // ============================================================================
-// Tests that validate SDL_Renderer best practices
-// From CLAUDE.md: "exactly one Present() per frame through unified render path"
-// HammerEngine uses SDL_Renderer (not SDL3_GPU), but follows same best practices
-
-BOOST_AUTO_TEST_SUITE(SDLRendererComplianceTests)
+// Tests that validate GPU render-pass best practices
+// From AGENTS.md: one present/end-frame path through GameEngine
+BOOST_AUTO_TEST_SUITE(GPURenderPipelineComplianceTests)
 
 // ----------------------------------------------------------------------------
-// Test: Only GameEngine calls SDL_RenderPresent
+// Test: Only GameEngine ends the GPU frame
 // ----------------------------------------------------------------------------
-// Best practice: exactly ONE SDL_RenderPresent per frame for performance
-// This must only happen in GameEngine::render() for unified render path
+// Best practice: exactly one end-frame path per frame for performance
+// This must only happen in GameEngine::present() for unified render path
 
-BOOST_AUTO_TEST_CASE(TestOnlyGameEngineCallsRenderPresent) {
+BOOST_AUTO_TEST_CASE(TestOnlyGameEngineCallsEndFrame) {
     const std::string gameEngineFile = "src/core/GameEngine.cpp";
+    const std::string gpuRendererFile = "src/gpu/GPURenderer.cpp";
 
-    // Verify GameEngine.cpp calls SDL_RenderPresent (should have exactly 1-2 calls)
-    int presentCalls = countPatternInFile(gameEngineFile, "SDL_RenderPresent");
-    BOOST_CHECK_GT(presentCalls, 0); // At least one call exists
-    BOOST_CHECK_LE(presentCalls, 2); // Should not have excessive calls
+    bool hasPresentMethod = fileContainsPattern(gameEngineFile, "void GameEngine::present()");
+    bool callsEndFrame = fileContainsPattern(gameEngineFile, "GPURenderer::Instance().endFrame()");
+    BOOST_CHECK(hasPresentMethod);
+    BOOST_CHECK(callsEndFrame);
 
-    // Verify GameStates NEVER call SDL_RenderPresent
+    // Verify game states never end the frame directly
     std::vector<std::string> gameStateFiles = {
+        "src/gameStates/AIDemoState.cpp",
+        "src/gameStates/AdvancedAIDemoState.cpp",
+        "src/gameStates/OverlayDemoState.cpp",
+        "src/gameStates/LogoState.cpp",
         "src/gameStates/GameOverState.cpp",
         "src/gameStates/MainMenuState.cpp",
         "src/gameStates/GamePlayState.cpp",
@@ -106,25 +109,31 @@ BOOST_AUTO_TEST_CASE(TestOnlyGameEngineCallsRenderPresent) {
     };
 
     for (const auto& file : gameStateFiles) {
-        bool hasPresent = fileContainsPattern(file, "SDL_RenderPresent");
-        BOOST_CHECK_MESSAGE(!hasPresent, "GameState " + file + " should NOT call SDL_RenderPresent");
+        bool hasEndFrame = fileContainsPattern(file, "endFrame(");
+        BOOST_CHECK_MESSAGE(!hasEndFrame, "GameState " + file + " should NOT end the GPU frame");
     }
+
+    BOOST_CHECK(fileContainsPattern(gpuRendererFile, "void GPURenderer::endFrame()"));
 }
 
 // ----------------------------------------------------------------------------
-// Test: Only GameEngine calls SDL_RenderClear
+// Test: Only GameEngine begins the scene pass
 // ----------------------------------------------------------------------------
-// SDL_RenderClear should only be called once per frame in GameEngine::render()
+// Scene-pass acquisition should be centralized in GameEngine::render()
+// State-side scene recording helpers must not acquire passes themselves
 
-BOOST_AUTO_TEST_CASE(TestOnlyGameEngineCallsRenderClear) {
+BOOST_AUTO_TEST_CASE(TestOnlyGameEngineBeginsScenePass) {
     const std::string gameEngineFile = "src/core/GameEngine.cpp";
 
-    // Verify GameEngine.cpp calls SDL_RenderClear
-    bool hasClear = fileContainsPattern(gameEngineFile, "SDL_RenderClear");
-    BOOST_CHECK(hasClear);
+    bool hasScenePass = fileContainsPattern(gameEngineFile, "gpuRenderer.beginScenePass()");
+    BOOST_CHECK(hasScenePass);
 
-    // Verify GameStates NEVER call SDL_RenderClear
+    // Verify GameStates NEVER begin the pass directly
     std::vector<std::string> gameStateFiles = {
+        "src/gameStates/AIDemoState.cpp",
+        "src/gameStates/AdvancedAIDemoState.cpp",
+        "src/gameStates/OverlayDemoState.cpp",
+        "src/gameStates/LogoState.cpp",
         "src/gameStates/GameOverState.cpp",
         "src/gameStates/MainMenuState.cpp",
         "src/gameStates/GamePlayState.cpp",
@@ -136,8 +145,8 @@ BOOST_AUTO_TEST_CASE(TestOnlyGameEngineCallsRenderClear) {
     };
 
     for (const auto& file : gameStateFiles) {
-        bool hasClear = fileContainsPattern(file, "SDL_RenderClear");
-        BOOST_CHECK_MESSAGE(!hasClear, "GameState " + file + " should NOT call SDL_RenderClear");
+        bool hasScenePass = fileContainsPattern(file, "beginScenePass(");
+        BOOST_CHECK_MESSAGE(!hasScenePass, "GameState " + file + " should NOT begin GPU scene passes");
     }
 }
 
@@ -159,8 +168,7 @@ BOOST_AUTO_TEST_CASE(TestLoadingStateAsyncPattern) {
                       fileContainsPattern(loadingStateFile, ".store(");
     BOOST_CHECK_MESSAGE(usesAtomics, "LoadingState should use atomics for thread-safe state");
 
-    // Verify LoadingState does NOT have blocking loops with manual rendering
-    // (No "while" loops with SDL_RenderPresent inside LoadingState)
+    // Verify LoadingState does NOT have blocking loops with forbidden legacy rendering calls
     std::ifstream file(loadingStateFile);
     BOOST_REQUIRE(file.is_open());
 
@@ -182,62 +190,22 @@ BOOST_AUTO_TEST_CASE(TestLoadingStateAsyncPattern) {
     }
 
     BOOST_CHECK_MESSAGE(!foundBlockingPattern,
-                       "LoadingState should NOT have blocking loops with manual rendering");
+                       "LoadingState should NOT have blocking loops with forbidden legacy present/clear calls");
 }
 
 // ----------------------------------------------------------------------------
-// Test: LoadingState render() follows correct pattern
+// Test: LoadingState GPU hooks follow correct pattern
 // ----------------------------------------------------------------------------
-// LoadingState::render() should only update UI, not call SDL directly
+// LoadingState should use GPU hooks and avoid legacy present/clear calls
 
 BOOST_AUTO_TEST_CASE(TestLoadingStateRenderPattern) {
     const std::string loadingStateFile = "src/gameStates/LoadingState.cpp";
 
-    // Find the render() method
-    std::ifstream file(loadingStateFile);
-    BOOST_REQUIRE(file.is_open());
-
-    bool inRenderMethod = false;
-    bool foundUIManagerCall = false;
-    bool foundManualSDLCall = false;
-
-    std::string line;
-    while (std::getline(file, line)) {
-        // Detect render() method start
-        if (line.find("void LoadingState::render()") != std::string::npos ||
-            line.find("void LoadingState::render(") != std::string::npos) {
-            inRenderMethod = true;
-        }
-
-        if (inRenderMethod) {
-            // Strip comments from line
-            size_t commentPos = line.find("//");
-            std::string codeOnly = (commentPos != std::string::npos) ? line.substr(0, commentPos) : line;
-            size_t blockCommentPos = codeOnly.find("/*");
-            if (blockCommentPos != std::string::npos) {
-                codeOnly = codeOnly.substr(0, blockCommentPos);
-            }
-
-            // Check for UIManager usage (GOOD)
-            if (codeOnly.find("UIManager") != std::string::npos) {
-                foundUIManagerCall = true;
-            }
-
-            // Check for manual SDL calls in actual code (not comments) (BAD)
-            if (codeOnly.find("SDL_RenderPresent") != std::string::npos ||
-                codeOnly.find("SDL_RenderClear") != std::string::npos) {
-                foundManualSDLCall = true;
-            }
-
-            // Exit render method
-            if (line.find("}") != std::string::npos && line.find("{") == std::string::npos) {
-                break;
-            }
-        }
-    }
-
-    BOOST_CHECK_MESSAGE(foundUIManagerCall, "LoadingState::render() should use UIManager");
-    BOOST_CHECK_MESSAGE(!foundManualSDLCall, "LoadingState::render() should NOT call SDL directly");
+    BOOST_CHECK(fileContainsPattern(loadingStateFile, "LoadingState::recordGPUVertices"));
+    BOOST_CHECK(fileContainsPattern(loadingStateFile, "LoadingState::renderGPUUI"));
+    BOOST_CHECK(fileContainsPattern(loadingStateFile, "UIManager::Instance()"));
+    BOOST_CHECK(!fileContainsPattern(loadingStateFile, "SDL_RenderPresent"));
+    BOOST_CHECK(!fileContainsPattern(loadingStateFile, "SDL_RenderClear"));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -257,29 +225,35 @@ BOOST_AUTO_TEST_CASE(TestGameEngineCallsGameStateManager) {
     const std::string gameEngineFile = "src/core/GameEngine.cpp";
 
     // Verify GameEngine::render() delegates to GameStateManager
-    bool callsGSM = fileContainsPattern(gameEngineFile, "mp_gameStateManager->render(") ||
-                    fileContainsPattern(gameEngineFile, "gameStateManager->render(");
+    bool callsRecord = fileContainsPattern(gameEngineFile, "mp_gameStateManager->recordGPUVertices(");
+    bool callsScene = fileContainsPattern(gameEngineFile, "mp_gameStateManager->renderGPUScene(");
+    bool callsUI = fileContainsPattern(gameEngineFile, "mp_gameStateManager->renderGPUUI(");
 
-    BOOST_CHECK_MESSAGE(callsGSM, "GameEngine::render() must call GameStateManager::render()");
+    BOOST_CHECK_MESSAGE(callsRecord, "GameEngine::render() must call GameStateManager::recordGPUVertices()");
+    BOOST_CHECK_MESSAGE(callsScene, "GameEngine::render() must call GameStateManager::renderGPUScene()");
+    BOOST_CHECK_MESSAGE(callsUI, "GameEngine::render() must call GameStateManager::renderGPUUI()");
 }
 
 // ----------------------------------------------------------------------------
-// Test: GameStateManager::render() calls GameState::render()
+// Test: GameStateManager GPU methods call GameState GPU methods
 // ----------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(TestGameStateManagerCallsGameState) {
     const std::string gsmFile = "src/managers/GameStateManager.cpp";
 
-    // Verify GameStateManager::render() delegates to active state
-    bool callsState = fileContainsPattern(gsmFile, "->render(");
+    bool callsRecord = fileContainsPattern(gsmFile, "->recordGPUVertices(");
+    bool callsScene = fileContainsPattern(gsmFile, "->renderGPUScene(");
+    bool callsUI = fileContainsPattern(gsmFile, "->renderGPUUI(");
 
-    BOOST_CHECK_MESSAGE(callsState, "GameStateManager::render() must call GameState::render()");
+    BOOST_CHECK_MESSAGE(callsRecord, "GameStateManager must call GameState::recordGPUVertices()");
+    BOOST_CHECK_MESSAGE(callsScene, "GameStateManager must call GameState::renderGPUScene()");
+    BOOST_CHECK_MESSAGE(callsUI, "GameStateManager must call GameState::renderGPUUI()");
 }
 
 // ----------------------------------------------------------------------------
 // Test: Rendering flow structure verification
 // ----------------------------------------------------------------------------
-// Complete flow: GameEngine → GameStateManager → GameState
+// Complete flow: GameEngine → GameStateManager → GameState GPU hooks
 
 BOOST_AUTO_TEST_CASE(TestCompleteRenderingFlow) {
     // Step 1: GameEngine::render() exists
@@ -287,21 +261,32 @@ BOOST_AUTO_TEST_CASE(TestCompleteRenderingFlow) {
     bool hasGameEngineRender = fileContainsPattern(gameEngineFile, "void GameEngine::render()");
     BOOST_CHECK(hasGameEngineRender);
 
-    // Step 2: GameStateManager::render() exists
+    // Step 2: GameStateManager GPU entrypoints exist
     const std::string gsmFile = "src/managers/GameStateManager.cpp";
-    bool hasGSMRender = fileContainsPattern(gsmFile, "void GameStateManager::render(SDL_Renderer*");
-    BOOST_CHECK(hasGSMRender);
+    bool hasGSMRecord = fileContainsPattern(gsmFile, "void GameStateManager::recordGPUVertices(");
+    bool hasGSMScene = fileContainsPattern(gsmFile, "void GameStateManager::renderGPUScene(");
+    bool hasGSMUI = fileContainsPattern(gsmFile, "void GameStateManager::renderGPUUI(");
+    BOOST_CHECK(hasGSMRecord);
+    BOOST_CHECK(hasGSMScene);
+    BOOST_CHECK(hasGSMUI);
 
-    // Step 3: At least one GameState implements render()
+    // Step 3: At least one GameState implements GPU rendering hooks
     std::vector<std::string> gameStateFiles = {
+        "src/gameStates/AIDemoState.cpp",
+        "src/gameStates/AdvancedAIDemoState.cpp",
         "src/gameStates/MainMenuState.cpp",
         "src/gameStates/GamePlayState.cpp",
-        "src/gameStates/LoadingState.cpp"
+        "src/gameStates/LoadingState.cpp",
+        "src/gameStates/OverlayDemoState.cpp",
+        "src/gameStates/EventDemoState.cpp",
+        "src/gameStates/LogoState.cpp"
     };
 
     bool foundStateRender = false;
     for (const auto& file : gameStateFiles) {
-        if (fileContainsPattern(file, "::render(SDL_Renderer*")) {
+        if (fileContainsPattern(file, "::recordGPUVertices(") ||
+            fileContainsPattern(file, "::renderGPUScene(") ||
+            fileContainsPattern(file, "::renderGPUUI(")) {
             foundStateRender = true;
             break;
         }
@@ -365,47 +350,43 @@ BOOST_AUTO_TEST_SUITE_END()
 // ============================================================================
 // TEST SUITE: RenderingBestPracticesTests
 // ============================================================================
-// Tests that validate rendering best practices for SDL_Renderer
+// Tests that validate rendering best practices for the GPU frame flow
 
 BOOST_AUTO_TEST_SUITE(RenderingBestPracticesTests)
 
 // ----------------------------------------------------------------------------
-// Test: No double-Present pattern in codebase
+// Test: No duplicate end-frame pattern in codebase
 // ----------------------------------------------------------------------------
-// Multiple SDL_RenderPresent calls per frame hurt performance
+// Multiple end-frame paths per frame hurt performance
 
 BOOST_AUTO_TEST_CASE(TestNoDoublePresentPattern) {
     const std::string gameEngineFile = "src/core/GameEngine.cpp";
 
-    // Count SDL_RenderPresent calls in GameEngine::render()
-    // Should be exactly 1 (or 2 if there's error handling/retry logic)
-    int presentCount = countPatternInFile(gameEngineFile, "SDL_RenderPresent");
+    int presentCount = countPatternInFile(gameEngineFile, "endFrame(");
 
-    BOOST_CHECK_GT(presentCount, 0);  // At least one Present
-    BOOST_CHECK_LE(presentCount, 3);  // Not excessive (allows for error paths)
+    BOOST_CHECK_GT(presentCount, 0);
+    BOOST_CHECK_LE(presentCount, 2);
 }
 
 // ----------------------------------------------------------------------------
 // Test: Render state isolation (no state leakage between frames)
 // ----------------------------------------------------------------------------
-// Each render() should be self-contained for deterministic rendering
+// Each frame should be self-contained for deterministic rendering
 
 BOOST_AUTO_TEST_CASE(TestRenderStateIsolation) {
     const std::string gameEngineFile = "src/core/GameEngine.cpp";
 
-    // GameEngine::render() should have Clear at the start
-    bool hasClear = fileContainsPattern(gameEngineFile, "SDL_RenderClear");
-    BOOST_CHECK_MESSAGE(hasClear, "GameEngine::render() must clear at start for state isolation");
+    bool hasScenePass = fileContainsPattern(gameEngineFile, "gpuRenderer.beginScenePass()");
+    BOOST_CHECK_MESSAGE(hasScenePass, "GameEngine::render() must begin the GPU scene pass");
 
-    // GameEngine::render() should have Present at the end
-    bool hasPresent = fileContainsPattern(gameEngineFile, "SDL_RenderPresent");
-    BOOST_CHECK_MESSAGE(hasPresent, "GameEngine::render() must present at end for state isolation");
+    bool hasPresent = fileContainsPattern(gameEngineFile, "GPURenderer::Instance().endFrame()");
+    BOOST_CHECK_MESSAGE(hasPresent, "GameEngine::present() must end the GPU frame");
 }
 
 // ----------------------------------------------------------------------------
 // Test: No mid-frame Present calls
 // ----------------------------------------------------------------------------
-// Managers should never call Present during their render operations
+// Managers should never issue legacy SDL renderer present calls during GPU rendering
 
 BOOST_AUTO_TEST_CASE(TestNoMidFramePresentInManagers) {
     std::vector<std::string> managerFiles = {
@@ -416,7 +397,7 @@ BOOST_AUTO_TEST_CASE(TestNoMidFramePresentInManagers) {
 
     for (const auto& file : managerFiles) {
         bool hasPresent = fileContainsPattern(file, "SDL_RenderPresent");
-        BOOST_CHECK_MESSAGE(!hasPresent, file + " should NOT call SDL_RenderPresent");
+        BOOST_CHECK_MESSAGE(!hasPresent, file + " should NOT call legacy SDL_RenderPresent");
     }
 }
 
@@ -436,11 +417,15 @@ BOOST_AUTO_TEST_SUITE(DeterministicRenderingTests)
 
 BOOST_AUTO_TEST_CASE(TestNoRandomInRenderMethods) {
     std::vector<std::string> gameStateFiles = {
+        "src/gameStates/AIDemoState.cpp",
+        "src/gameStates/AdvancedAIDemoState.cpp",
         "src/gameStates/GameOverState.cpp",
         "src/gameStates/MainMenuState.cpp",
         "src/gameStates/GamePlayState.cpp",
         "src/gameStates/PauseState.cpp",
-        "src/gameStates/SettingsMenuState.cpp"
+        "src/gameStates/SettingsMenuState.cpp",
+        "src/gameStates/OverlayDemoState.cpp",
+        "src/gameStates/LogoState.cpp"
     };
 
     for (const auto& file : gameStateFiles) {
@@ -500,17 +485,14 @@ BOOST_AUTO_TEST_CASE(TestTimestepManagerPattern) {
 }
 
 // ----------------------------------------------------------------------------
-// Test: VSync configuration via SDL API
+// Test: VSync configuration via GPU swapchain API
 // ----------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(TestVSyncConfiguration) {
     const std::string gameEngineCpp = "src/core/GameEngine.cpp";
 
-    // Verify runtime VSync handling via SDL API
-    BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "SDL_SetRenderVSync"),
-        "GameEngine should configure VSync at runtime via SDL_SetRenderVSync");
-    BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "SDL_GetRenderVSync"),
-        "GameEngine should verify VSync state via SDL_GetRenderVSync");
+    BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "SDL_SetGPUSwapchainParameters"),
+        "GameEngine should configure VSync at runtime via SDL_SetGPUSwapchainParameters");
 }
 
 // ----------------------------------------------------------------------------
@@ -538,12 +520,17 @@ BOOST_AUTO_TEST_CASE(TestSDLPerformanceHints) {
 
 BOOST_AUTO_TEST_CASE(TestSoftwareFrameLimitingFallback) {
     const std::string timestepCpp = "src/core/TimestepManager.cpp";
+    const std::string gameEngineCpp = "src/core/GameEngine.cpp";
 
     // Verify software frame limiting exists as VSync fallback
     BOOST_CHECK_MESSAGE(fileContainsPattern(timestepCpp, "preciseFrameWait"),
         "TimestepManager should have preciseFrameWait for software frame limiting");
     BOOST_CHECK_MESSAGE(fileContainsPattern(timestepCpp, "m_usingSoftwareFrameLimiting"),
         "TimestepManager should track software vs hardware frame limiting mode");
+    BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "setSoftwareFrameLimiting(true)"),
+        "GameEngine should explicitly enable software frame limiting on GPU pacing failure");
+    BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "Falling back to software frame limiting"),
+        "GameEngine should log the software frame limiting fallback");
 }
 
 // ----------------------------------------------------------------------------

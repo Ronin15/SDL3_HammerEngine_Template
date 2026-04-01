@@ -38,7 +38,7 @@ void prepareForStateTransition();
 
 ### Threshold learning
 
-Single-threaded samples teach the manager where the switch-over point should be for each subsystem.
+Single-threaded samples teach the manager where the switch-over point should be for each subsystem. A minimum of `MIN_LEARNING_SAMPLES` (10) single-threaded measurements must accumulate before a threshold is written, preventing cold-start cache spikes from triggering premature threading decisions on the first few frames.
 
 ### Hysteresis
 

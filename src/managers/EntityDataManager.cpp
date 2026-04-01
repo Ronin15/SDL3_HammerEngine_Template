@@ -8,12 +8,10 @@
 #include "entities/Entity.hpp"  // For AnimationConfig
 #include "managers/AIManager.hpp"  // For auto-registering NPCs with AI
 #include "managers/ResourceTemplateManager.hpp"  // For getMaxStackSize in inventory
-#include "managers/TextureManager.hpp"  // For texture lookup in creature creation
 #include "managers/WorldResourceManager.hpp"  // For unregister on harvestable destruction
 #include "utils/JsonReader.hpp"  // For loading NPC types from JSON
 #include "utils/ResourcePath.hpp"  // For path resolution in JSON loading
 #include "utils/UniqueID.hpp"
-#include <SDL3/SDL.h>  // For SDL_GetTextureSize
 
 using HammerEngine::JsonReader;
 using HammerEngine::JsonValue;
@@ -22,6 +20,51 @@ using HammerEngine::JsonValue;
 #include <format>
 #include <limits>
 #include <numeric>
+#include <ranges>
+
+namespace {
+
+struct AtlasRegion {
+    uint16_t x{0};
+    uint16_t y{0};
+    uint16_t w{32};
+    uint16_t h{32};
+    bool found{false};
+};
+
+AtlasRegion lookupAtlasRegion(const std::string& regionId) {
+    // Thread-safe: C++11 guarantees thread-safe static local initialization;
+    // map is const (read-only) after initialization so concurrent reads are safe.
+    static const std::unordered_map<std::string, JsonValue> atlasRegions = [] {
+        JsonReader atlasReader;
+        if (!atlasReader.loadFromFile(HammerEngine::ResourcePath::resolve("res/data/atlas.json"))) {
+            return std::unordered_map<std::string, JsonValue>{};
+        }
+
+        const auto& atlasRoot = atlasReader.getRoot();
+        if (!atlasRoot.hasKey("regions")) {
+            return std::unordered_map<std::string, JsonValue>{};
+        }
+
+        return atlasRoot["regions"].asObject();
+    }();
+
+    const auto it = atlasRegions.find(regionId);
+    if (it == atlasRegions.end()) {
+        return {};
+    }
+
+    const auto& region = it->second;
+    return {
+        static_cast<uint16_t>(region["x"].asInt()),
+        static_cast<uint16_t>(region["y"].asInt()),
+        static_cast<uint16_t>(region["w"].asInt()),
+        static_cast<uint16_t>(region["h"].asInt()),
+        true
+    };
+}
+
+} // namespace
 
 // ============================================================================
 // LIFECYCLE
@@ -61,7 +104,6 @@ bool EntityDataManager::init() {
         m_containerData.reserve(100);
         m_containerRenderData.reserve(100);  // Same capacity as ContainerData
         m_harvestableData.reserve(500);
-        m_harvestableRenderData.reserve(500);  // Same capacity as HarvestableData
         m_areaEffectData.reserve(EFFECT_CAPACITY);
 
         // Path data (indexed by edmIndex, sparse for non-AI entities)
@@ -153,7 +195,6 @@ void EntityDataManager::clean() {
     m_containerData.clear();
     m_containerRenderData.clear();
     m_harvestableData.clear();
-    m_harvestableRenderData.clear();
     m_areaEffectData.clear();
     m_pathData.clear();
     m_waypointSlots.clear();  // Clear per-entity waypoint slots
@@ -231,7 +272,6 @@ void EntityDataManager::prepareForStateTransition() {
     m_containerData.clear();
     m_containerRenderData.clear();
     m_harvestableData.clear();
-    m_harvestableRenderData.clear();
     m_areaEffectData.clear();
     m_pathData.clear();
     m_waypointSlots.clear();  // Clear per-entity waypoint slots
@@ -398,10 +438,6 @@ void EntityDataManager::freeSlot(size_t index) {
                 WorldResourceManager::Instance().unregisterHarvestable(index);
                 WorldResourceManager::Instance().unregisterHarvestableSpatial(index);
             }
-            // Clear harvestable render data
-            if (typeIndex < m_harvestableRenderData.size()) {
-                m_harvestableRenderData[typeIndex].clear();
-            }
             break;
         case EntityKind::AreaEffect:
             m_freeAreaEffectSlots.push_back(typeIndex);
@@ -497,6 +533,9 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     hot.triggerTag = 0;
     hot.typeLocalIndex = charIndex;
 
+    // NPC memory is a base creation invariant, not caller-managed setup.
+    initMemoryData(index);
+
     // Store ID and mapping
     m_entityIds[index] = id;
     m_generations[index] = generation;
@@ -561,9 +600,6 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     size_t index = getIndex(handle);
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
 
-    // Initialize memory data for emotional states and personality
-    initMemoryData(index);
-
     // Set up CharacterData with computed stats (race base × class multiplier)
     auto& charData = m_characterData[typeIndex];
     charData.category = CreatureCategory::NPC;
@@ -587,18 +623,9 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
 
     // Set up NPCRenderData from race info
     auto& renderData = m_npcRenderData[typeIndex];
-    renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
-#ifndef USE_SDL3_GPU
-    // Only error in SDL_Renderer path - GPU path uses SpriteBatch with GPU textures
-    if (!renderData.cachedTexture) {
-        ENTITY_ERROR("createNPCWithRaceClass: Atlas texture not loaded");
-    }
-#endif
-
-    // Check for unmapped texture (atlasX and atlasY both 0) - use debug texture as fallback
+    // Check for unmapped texture (atlasX and atlasY both 0) and keep the default atlas slot.
     if (raceInfo.atlasX == 0 && raceInfo.atlasY == 0) {
-        ENTITY_WARN(std::format("Race '{}' has no atlas mapping, using debug fallback texture", race));
-        renderData.cachedTexture = TextureManager::Instance().getTexturePtr("debug");
+        ENTITY_WARN(std::format("Race '{}' has no atlas mapping, using default atlas slot", race));
         renderData.atlasX = 0;
         renderData.atlasY = 0;
         renderData.frameWidth = 32;
@@ -695,9 +722,6 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
     size_t index = getIndex(handle);
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
 
-    // Initialize memory data for emotional states and personality
-    initMemoryData(index);
-
     // Set up CharacterData
     auto& charData = m_characterData[typeIndex];
     charData.category = CreatureCategory::Monster;
@@ -719,11 +743,9 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
 
     // Set up render data
     auto& renderData = m_npcRenderData[typeIndex];
-    renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
-    // Check for unmapped texture - use debug texture as fallback
+    // Check for unmapped texture and keep the default atlas slot.
     if (typeInfo.atlasX == 0 && typeInfo.atlasY == 0) {
-        ENTITY_WARN(std::format("Monster type '{}' has no atlas mapping, using debug fallback texture", monsterType));
-        renderData.cachedTexture = TextureManager::Instance().getTexturePtr("debug");
+        ENTITY_WARN(std::format("Monster type '{}' has no atlas mapping, using default atlas slot", monsterType));
         renderData.atlasX = 0;
         renderData.atlasY = 0;
         renderData.frameWidth = 32;
@@ -796,9 +818,6 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
     size_t index = getIndex(handle);
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
 
-    // Initialize memory data for emotional states and personality
-    initMemoryData(index);
-
     // Set up CharacterData
     auto& charData = m_characterData[typeIndex];
     charData.category = CreatureCategory::Animal;
@@ -820,11 +839,9 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
 
     // Set up render data
     auto& renderData = m_npcRenderData[typeIndex];
-    renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
-    // Check for unmapped texture - use debug texture as fallback
+    // Check for unmapped texture and keep the default atlas slot.
     if (speciesInfo.atlasX == 0 && speciesInfo.atlasY == 0) {
-        ENTITY_WARN(std::format("Species '{}' has no atlas mapping, using debug fallback texture", species));
-        renderData.cachedTexture = TextureManager::Instance().getTexturePtr("debug");
+        ENTITY_WARN(std::format("Species '{}' has no atlas mapping, using default atlas slot", species));
         renderData.atlasX = 0;
         renderData.atlasY = 0;
         renderData.frameWidth = 32;
@@ -1025,9 +1042,6 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     auto& renderData = m_itemRenderData[itemIndex];
     renderData.clear();
 
-    // Get atlas texture for SDL_Renderer path (GPU path uses SpriteBatch directly)
-    renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
-
     // Get atlas coords and animation data from resource template
     auto& rtm = ResourceTemplateManager::Instance();
     ResourcePtr resource = rtm.getResourceTemplate(resourceHandle);
@@ -1164,8 +1178,49 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
     }
     auto& renderData = m_containerRenderData[containerIndex];
     renderData.clear();
-    renderData.frameWidth = 32;
-    renderData.frameHeight = 32;
+    AtlasRegion closedRegion{};
+    AtlasRegion openRegion{};
+    switch (containerType) {
+        case ContainerType::Chest:
+            closedRegion = lookupAtlasRegion("chest_wood");
+            openRegion = lookupAtlasRegion("chest_wood_open");
+            break;
+        case ContainerType::Barrel:
+            closedRegion = lookupAtlasRegion("wood_barrel");
+            openRegion = closedRegion;
+            break;
+        case ContainerType::Crate:
+            closedRegion = lookupAtlasRegion("wood_crate");
+            openRegion = lookupAtlasRegion("wood_crate_opened");
+            break;
+        case ContainerType::Corpse:
+        case ContainerType::COUNT:
+            break;
+    }
+
+    if (closedRegion.found) {
+        renderData.atlasX = closedRegion.x;
+        renderData.atlasY = closedRegion.y;
+        renderData.frameWidth = closedRegion.w;
+        renderData.frameHeight = closedRegion.h;
+        renderData.openFrameWidth = closedRegion.w;
+        renderData.openFrameHeight = closedRegion.h;
+    }
+    if (openRegion.found) {
+        renderData.openAtlasX = openRegion.x;
+        renderData.openAtlasY = openRegion.y;
+        renderData.openFrameWidth = openRegion.w;
+        renderData.openFrameHeight = openRegion.h;
+        if (!closedRegion.found) {
+            renderData.frameWidth = openRegion.w;
+            renderData.frameHeight = openRegion.h;
+        }
+    } else if (closedRegion.found) {
+        renderData.openAtlasX = renderData.atlasX;
+        renderData.openAtlasY = renderData.atlasY;
+        renderData.openFrameWidth = renderData.frameWidth;
+        renderData.openFrameHeight = renderData.frameHeight;
+    }
 
     // Store ID and mapping in STATIC pool structures
     m_staticEntityIds[index] = id;
@@ -1264,7 +1319,6 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     } else {
         harvestableIndex = static_cast<uint32_t>(m_harvestableData.size());
         m_harvestableData.emplace_back();
-        m_harvestableRenderData.emplace_back();  // Keep in sync
     }
 
     // Initialize HarvestableData
@@ -1277,15 +1331,6 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     harvestable.harvestType = harvestType;
     harvestable.isDepleted = false;
     hot.typeLocalIndex = harvestableIndex;
-
-    // Initialize HarvestableRenderData
-    if (harvestableIndex >= m_harvestableRenderData.size()) {
-        m_harvestableRenderData.resize(harvestableIndex + 1);
-    }
-    auto& renderData = m_harvestableRenderData[harvestableIndex];
-    renderData.clear();
-    renderData.frameWidth = 32;
-    renderData.frameHeight = 32;
 
     // Store ID and mapping in STATIC pool structures
     m_staticEntityIds[index] = id;
@@ -1684,7 +1729,8 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
     if (itemIndex >= m_itemRenderData.size()) {
         m_itemRenderData.resize(itemIndex + 1);
     }
-    m_itemRenderData[itemIndex].clear();
+    auto& renderData = m_itemRenderData[itemIndex];
+    renderData.clear();
 
     // Store ID and mapping in static pool
     m_staticEntityIds[index] = entityId;
@@ -2667,10 +2713,6 @@ void EntityDataManager::advanceWaypointWithCache(size_t index) {
 
 // getBehaviorData() is now inline in EntityDataManager.hpp
 
-bool EntityDataManager::hasBehaviorData(size_t index) const noexcept {
-    return index < m_behaviorData.size() && m_behaviorData[index].isValid();
-}
-
 void EntityDataManager::initBehaviorData(size_t index, BehaviorType behaviorType) {
     assert(index < m_behaviorData.size() && "BehaviorData index out of bounds");
     auto& data = m_behaviorData[index];
@@ -2826,28 +2868,6 @@ void EntityDataManager::findMemoriesOfEntity(size_t index, EntityHandle subject,
             }
         }
     }
-}
-
-void EntityDataManager::updateEmotionalDecay(size_t index, float deltaTime, float decayRate) {
-    if (index >= m_memoryData.size()) {
-        return;
-    }
-
-    auto& data = m_memoryData[index];
-    if (!data.isValid()) {
-        return;
-    }
-
-    data.emotions.decay(decayRate, deltaTime);
-    data.lastDecayTime += deltaTime;
-    data.lastCombatTime += deltaTime;  // Enable delta-based combat timing for isUnderRecentAttack()
-
-    // Clear combat flag when enough time has passed since last event
-    constexpr float COMBAT_TIMEOUT = 5.0f;
-    if ((data.flags & NPCMemoryData::FLAG_IN_COMBAT) && data.lastCombatTime > COMBAT_TIMEOUT) {
-        data.flags &= ~NPCMemoryData::FLAG_IN_COMBAT;
-    }
-
 }
 
 void EntityDataManager::modifyEmotions(size_t index, float aggression, float fear,
@@ -3130,12 +3150,11 @@ std::span<const size_t> EntityDataManager::getIndicesByKind(EntityKind kind) con
         // Rebuild only this specific kind's indices (const_cast for lazy rebuild)
         auto& kindVec = const_cast<std::vector<size_t>&>(m_kindIndices[kindIdx]);
         kindVec.clear();
-
-        for (size_t i = 0; i < m_hotData.size(); ++i) {
-            if (m_hotData[i].isAlive() && m_hotData[i].kind == kind) {
-                kindVec.push_back(i);
-            }
-        }
+        std::ranges::copy_if(std::views::iota(size_t{0}, m_hotData.size()),
+                             std::back_inserter(kindVec),
+                             [&](size_t i) {
+                                 return m_hotData[i].isAlive() && m_hotData[i].kind == kind;
+                             });
 
         m_kindIndicesDirty[kindIdx] = false;
     }

@@ -52,7 +52,8 @@ if /i "%~1"=="--help" (
     echo   - ResourceTemplateManager JSON tests
     echo   - ResourceFactory tests
     echo   - InventoryComponent tests
-    echo   - ResourceChangeEvent tests  
+    echo   - ResourceChangeEvent tests
+    echo   - ResourcePath tests
     echo   - Resource Edge Case tests
     echo   - Resource Integration tests
     echo   - Resource Architecture tests
@@ -90,6 +91,7 @@ call :run_test_suite "resource_template_manager_tests" "ResourceTemplateManager"
 call :run_test_suite "resource_template_manager_json_tests" "ResourceTemplateManager JSON"
 call :run_test_suite "resource_factory_tests" "ResourceFactory"
 call :run_test_suite "resource_change_event_tests" "ResourceChangeEvent"
+call :run_test_suite "resource_path_tests" "ResourcePath"
 call :run_test_suite "resource_edge_case_tests" "ResourceEdgeCase"
 call :run_test_suite "resource_integration_tests" "Resource Integration"
 call :run_test_suite "resource_architecture_tests" "Resource Architecture"
@@ -196,7 +198,7 @@ goto :eof
 echo !BLUE!==========================================!NC!
 echo !BLUE!         Resource Tests Summary          !NC!
 echo !BLUE!==========================================!NC!
-echo Total test suites: 7
+echo Total test suites: 8
 echo !GREEN!Passed: !PASSED_COUNT!!NC!
 echo !RED!Failed: !FAILED_COUNT!!NC!
 

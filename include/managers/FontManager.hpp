@@ -55,68 +55,6 @@ class FontManager {
   bool loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight, float dpiScale = 1.0f);
 
   /**
-   * @brief Renders text to a texture using specified font
-   * @param text Text string to render
-   * @param fontID Unique identifier of the font to use
-   * @param color Text color for rendering
-   * @param renderer SDL renderer for texture creation
-   * @return Shared pointer to rendered text texture, or nullptr if failed
-   */
-  std::shared_ptr<SDL_Texture> renderText(
-                          const std::string& text, const std::string& fontID,
-                          SDL_Color color, SDL_Renderer* renderer);
-
-  /**
-   * @brief Renders text to a new texture (caller owns the texture)
-   * @param text Text string to render
-   * @param fontID Unique identifier of the font to use
-   * @param color Text color for rendering
-   * @param renderer SDL renderer for texture creation
-   * @param dummy_for_overload Unused parameter to differentiate overload signature
-   * @return Raw pointer to a new SDL_Texture, or nullptr if failed. The caller is responsible for destroying this texture.
-   */
-  SDL_Texture* renderText(const std::string& text, const std::string& fontID,
-                        SDL_Color color, SDL_Renderer* renderer, bool dummy_for_overload);
-
-  /**
-   * @brief Renders multi-line text to a texture (handles newlines)
-   * @param text Multi-line text string to render
-   * @param font TTF font to use for rendering
-   * @param color Text color for rendering
-   * @param renderer SDL renderer for texture creation
-   * @return Shared pointer to rendered text texture, or nullptr if failed
-   */
-  std::shared_ptr<SDL_Texture> renderMultiLineText(
-                          const std::string& text, TTF_Font* font,
-                          SDL_Color color, SDL_Renderer* renderer);
-
-  /**
-   * @brief Draws text directly to renderer at center position
-   * @param text Text string to draw
-   * @param fontID Unique identifier of the font to use
-   * @param x X coordinate (center point of text)
-   * @param y Y coordinate (center point of text)
-   * @param color Text color for drawing
-   * @param renderer SDL renderer to draw to
-   */
-  void drawText(const std::string& text, const std::string& fontID,
-                int x, int y, SDL_Color color, SDL_Renderer* renderer);
-
-  /**
-   * @brief Draws text with alignment control for UI elements
-   * @param text Text string to draw
-   * @param fontID Unique identifier of the font to use
-   * @param x X coordinate for positioning
-   * @param y Y coordinate for positioning
-   * @param color Text color for drawing
-   * @param renderer SDL renderer to draw to
-   * @param alignment Text alignment (0=center, 1=left, 2=right, 3=top-left, 4=top-center, 5=top-right)
-   */
-  void drawTextAligned(const std::string& text, const std::string& fontID,
-                      int x, int y, SDL_Color color, SDL_Renderer* renderer,
-                      int alignment = 0);
-
-  /**
    * @brief Checks if a font is loaded in memory
    * @param fontID Unique identifier of the font to check
    * @return true if font is loaded, false otherwise
@@ -201,20 +139,6 @@ class FontManager {
                               int maxWidth, int* width, int* height);
 
   /**
-   * @brief Draw text with word wrapping
-   * @param text Text to draw
-   * @param fontID Font identifier to use
-   * @param x X position for text
-   * @param y Y position for text
-   * @param maxWidth Maximum width for wrapping
-   * @param color Text color
-   * @param renderer SDL renderer to draw to
-   */
-  void drawTextWithWrapping(const std::string& text, const std::string& fontID,
-                           int x, int y, int maxWidth, SDL_Color color, 
-                           SDL_Renderer* renderer);
-
-  /**
    * @brief Wrap text into lines that fit within specified width
    * @param text Text to wrap
    * @param fontID Font identifier to use
@@ -225,7 +149,6 @@ class FontManager {
                                           const std::string& fontID,
                                           int maxWidth);
 
-#ifdef USE_SDL3_GPU
   /**
    * @brief Prepare an atlas-backed GPU text object for subsequent draw data queries
    * @param key Stable identifier for the GPU text object lifetime
@@ -259,36 +182,9 @@ class FontManager {
    * @brief Clear prepared GPU text objects (call on state transitions or when memory is needed)
    */
   void clearGPUTextCache();
-#endif
 
  private:
-  // Cache for rendered text textures to avoid re-creation
-  struct TextCacheKey {
-    std::string text;
-    std::string fontID;
-    SDL_Color color;
-
-    bool operator==(const TextCacheKey& other) const {
-      return text == other.text && fontID == other.fontID &&
-             color.r == other.color.r && color.g == other.color.g &&
-             color.b == other.color.b && color.a == other.color.a;
-    }
-  };
-
-  struct TextCacheKeyHash {
-    std::size_t operator()(const TextCacheKey& key) const {
-      // A simple hash combination
-      return std::hash<std::string>()(key.text) ^
-             std::hash<std::string>()(key.fontID) ^
-             (static_cast<std::size_t>(key.color.r) << 24 |
-              static_cast<std::size_t>(key.color.g) << 16 |
-              static_cast<std::size_t>(key.color.b) << 8 |
-              static_cast<std::size_t>(key.color.a));
-    }
-  };
-
   std::unordered_map<std::string, std::shared_ptr<TTF_Font>> m_fontMap{};
-  std::unordered_map<TextCacheKey, std::shared_ptr<SDL_Texture>, TextCacheKeyHash> m_textCache{};
   std::atomic<bool> m_fontsLoaded{false};
   bool m_isShutdown{false};
   std::vector<std::string> m_fontFilePaths{};
@@ -299,7 +195,6 @@ class FontManager {
   int m_lastWindowHeight{0};
   std::string m_lastFontPath{};
 
-#ifdef USE_SDL3_GPU
   struct GPUTextEntry {
     TTF_Text* text{nullptr};
     std::string fontID{};
@@ -313,7 +208,6 @@ class FontManager {
 
   TTF_TextEngine* mp_gpuTextEngine{nullptr};
   std::unordered_map<std::string, GPUTextEntry> m_gpuTextEntries{};
-#endif
 
   // Delete copy constructor and assignment operator
   FontManager(const FontManager&) = delete; // Prevent copying

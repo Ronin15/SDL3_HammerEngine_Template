@@ -40,7 +40,6 @@ bool BackgroundSimulationManager::init() {
 
     // Reserve buffers
     m_backgroundIndices.reserve(10000);  // Expect up to 10K background entities
-    m_simulatableIndices.reserve(10000);
     m_batchFutures.reserve(16);          // Reasonable batch count
 
     m_initialized.store(true, std::memory_order_release);
@@ -63,9 +62,7 @@ void BackgroundSimulationManager::clean() {
 
     // Clear buffers
     m_backgroundIndices.clear();
-    m_simulatableIndices.clear();
     m_backgroundIndices.shrink_to_fit();
-    m_simulatableIndices.shrink_to_fit();
 
     m_initialized.store(false, std::memory_order_release);
     BGSIM_INFO("BackgroundSimulationManager cleaned up");
@@ -75,7 +72,6 @@ void BackgroundSimulationManager::prepareForStateTransition() {
     BGSIM_INFO("Preparing for state transition...");
     waitForAsyncCompletion();
     m_backgroundIndices.clear();
-    m_simulatableIndices.clear();
     m_tiersDirty.store(true, std::memory_order_release);
     m_framesSinceTierUpdate = 0;
     m_referencePointSet = false;  // Force reference point update on next state
@@ -145,82 +141,66 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     m_backgroundIndices.insert(m_backgroundIndices.end(),
                                backgroundSpan.begin(), backgroundSpan.end());
 
-    // WorkerBudget should learn against entities that actually run background sim.
-    m_simulatableIndices.clear();
-    m_simulatableIndices.reserve(m_backgroundIndices.size());
-
-    for (size_t index : m_backgroundIndices) {
-        const auto& hot = edm.getHotDataByIndex(index);
-        if (!hot.isAlive()) {
-            continue;
-        }
-
-        if (hot.kind == EntityKind::NPC || hot.kind == EntityKind::DroppedItem) {
-            m_simulatableIndices.push_back(index);
-        }
-    }
-
-    const size_t entityCount = m_simulatableIndices.size();
-    if (entityCount == 0) {
-        m_perf.lastEntitiesProcessed = 0;
-        m_perf.lastUpdateMs = 0.0;
-        m_perf.lastBatchCount = 0;
-        m_perf.lastWasThreaded = false;
-        return;
-    }
+    // Use background indices directly - processBatch already filters by kind/alive.
+    // WorkerBudget learns from the full background count (close enough for threading decisions).
+    const size_t entityCount = m_backgroundIndices.size();
 
     // Use centralized WorkerBudgetManager for smart worker allocation (follows AIManager pattern)
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-    // Get optimal workers (WorkerBudget determines everything dynamically)
-    size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::BackgroundSim, entityCount);
-
-    // Get adaptive batch strategy
-    auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::BackgroundSim, entityCount, optimalWorkerCount);
-
-    // Decide threading strategy using adaptive threshold from WorkerBudget
+    // Decide threading strategy first using adaptive threshold from WorkerBudget
     // WorkerBudget is the AUTHORITATIVE source - no manager overrides
     auto decision = budgetMgr.shouldUseThreading(
         HammerEngine::SystemType::BackgroundSim, entityCount);
     bool useThreading = decision.shouldThread;
 
-    // Time only the batch processing for WorkerBudget (preprocessing is fixed overhead)
-    auto batchStart = std::chrono::steady_clock::now();
+    size_t actualBatchCount = 1;
+
+    // Per-path timing: single-threaded feeds threshold learning, batch feeds hill-climbing
+    std::chrono::steady_clock::time_point batchStart;
+    std::chrono::steady_clock::time_point batchEnd;
 
     if (useThreading) {
-        processMultiThreaded(fixedDeltaTime, m_simulatableIndices, batchCount, batchSize);
+        // Compute batch strategy (not timed — only actual work is timed)
+        size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+            HammerEngine::SystemType::BackgroundSim, entityCount);
+        auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+            HammerEngine::SystemType::BackgroundSim, entityCount, optimalWorkerCount);
+
+        batchStart = std::chrono::steady_clock::now();
+        processMultiThreaded(fixedDeltaTime, m_backgroundIndices, batchCount, batchSize);
+        batchEnd = std::chrono::steady_clock::now();
         m_perf.lastWasThreaded = true;
         m_perf.lastBatchCount = batchCount;
+        actualBatchCount = batchCount;
     } else {
-        processSingleThreaded(fixedDeltaTime, m_simulatableIndices);
+        batchStart = std::chrono::steady_clock::now();
+        processSingleThreaded(fixedDeltaTime, m_backgroundIndices);
+        batchEnd = std::chrono::steady_clock::now();
         m_perf.lastWasThreaded = false;
         m_perf.lastBatchCount = 1;
     }
 
     auto t1 = std::chrono::steady_clock::now();
     double elapsedMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
-    double batchMs = std::chrono::duration<double, std::milli>(t1 - batchStart).count();
+    double batchMs = std::chrono::duration<double, std::milli>(batchEnd - batchStart).count();
 
     m_perf.lastEntitiesProcessed = entityCount;
     m_perf.lastUpdateMs = elapsedMs;
     m_perf.updateAverage(elapsedMs);
 
     // Report ONLY batch time for adaptive tuning (not index retrieval/threading decision)
-    if (entityCount > 0) {
-        budgetMgr.reportExecution(HammerEngine::SystemType::BackgroundSim,
-                                  entityCount, useThreading,
-                                  batchCount, batchMs);
-    }
+    budgetMgr.reportExecution(HammerEngine::SystemType::BackgroundSim,
+                              entityCount, useThreading,
+                              actualBatchCount, batchMs);
 
 #ifndef NDEBUG
     // Rolling log every 60 seconds (600 updates at 10Hz)
-    if (m_perf.totalUpdates % 600 == 0 && entityCount > 0) {
+    if (m_perf.totalUpdates % 600 == 0) {
         BGSIM_DEBUG(std::format(
             "Entities: {}, Avg: {:.2f}ms [{}]",
             entityCount, m_perf.avgUpdateMs,
-            useThreading ? std::format("{} batches", batchCount) : "single"));
+            useThreading ? std::format("{} batches", actualBatchCount) : "single"));
     }
 #endif
 }

@@ -5,6 +5,7 @@
 
 #define BOOST_TEST_MODULE GameStateManagerTests
 #include <boost/test/unit_test.hpp>
+#include <SDL3/SDL_gpu.h>
 #include "managers/GameStateManager.hpp"
 #include "gameStates/GameState.hpp"
 #include <memory>
@@ -28,7 +29,8 @@ public:
         m_lastDeltaTime = deltaTime;
     }
     
-    void render([[maybe_unused]] SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha = 1.0f) override {
+    void recordGPUVertices([[maybe_unused]] HammerEngine::GPURenderer& gpuRenderer,
+                           [[maybe_unused]] float interpolationAlpha = 1.0f) override {
         m_renderCalled = true;
     }
     
@@ -231,16 +233,18 @@ BOOST_AUTO_TEST_CASE(TestRender) {
     state1Ptr->resetFlags();
     state2Ptr->resetFlags();
     
-    // Render should only call render on the top (current) active state
-    manager.render(nullptr);
+    // GPU vertex recording should only call the top (current) active state
+    auto* gpuRenderer = reinterpret_cast<HammerEngine::GPURenderer*>(0x1);
+    manager.recordGPUVertices(*gpuRenderer, 1.0f);
     
     BOOST_CHECK(!state1Ptr->wasRenderCalled()); // State1 is paused, should not render
     BOOST_CHECK(state2Ptr->wasRenderCalled());  // State2 is active, should render
 }
 
 BOOST_AUTO_TEST_CASE(TestRenderEmptyStack) {
-    // Render with no active states should not crash
-    BOOST_CHECK_NO_THROW(manager.render(nullptr));
+    // GPU vertex recording with no active states should not crash
+    auto* gpuRenderer = reinterpret_cast<HammerEngine::GPURenderer*>(0x1);
+    BOOST_CHECK_NO_THROW(manager.recordGPUVertices(*gpuRenderer, 1.0f));
 }
 
 BOOST_AUTO_TEST_CASE(TestHandleInput) {
@@ -408,7 +412,8 @@ BOOST_AUTO_TEST_CASE(TestStateStackBehavior) {
     state2Ptr->resetFlags();
     state3Ptr->resetFlags();
     
-    manager.render(nullptr);
+    auto* gpuRenderer = reinterpret_cast<HammerEngine::GPURenderer*>(0x1);
+    manager.recordGPUVertices(*gpuRenderer, 1.0f);
 
     BOOST_CHECK(!state1Ptr->wasRenderCalled()); // State1 is paused, should not render
     BOOST_CHECK(!state2Ptr->wasRenderCalled()); // State2 is paused, should not render

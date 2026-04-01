@@ -10,11 +10,12 @@ The InputManager provides centralized input handling for the Hammer Game Engine,
 
 ## Key Features
 
-- **Cross-Platform Coordinate Conversion**: Automatic mouse coordinate transformation for UI accuracy
-- **Event-Driven Input**: Efficient key press/release detection with frame-based tracking
-- **Gamepad Support**: Multi-controller support with SDL3 gamepad API
+- **Cross-Platform Coordinate Conversion**: Mouse events automatically scaled by pixel density for UI accuracy
+- **Event-Driven Input**: Efficient key press/release detection with frame-based tracking; key repeat events are ignored for `wasKeyPressed`
+- **Gamepad Support**: Multi-controller support with SDL3 gamepad API, normalized axis values in [-1.0, 1.0]
+- **Hot-Plug Support**: Gamepads can be connected and disconnected at runtime via `SDL_EVENT_GAMEPAD_ADDED` / `SDL_EVENT_GAMEPAD_REMOVED`
+- **Focus Loss Handling**: Keyboard and gamepad state is cleared on window focus loss to prevent stuck inputs
 - **Window Event Handling**: Automatic window resize detection and system coordination
-- **Memory Efficient**: Optimized data structures with reserved capacity
 
 ## Quick Start
 
@@ -91,13 +92,15 @@ bool middlePressed = input.getMouseButtonState(MIDDLE);
 // Initialize gamepad support (optional, usually handled automatically)
 input.initializeGamePad();
 
-// Get joystick axis values
-int leftStickX = input.getAxisX(0, 1); // 0 = first gamepad, 1 = left stick
-int leftStickY = input.getAxisY(0, 1);
+// Get joystick axis values — normalized to [-1.0, 1.0] with dead zone applied
+float leftStickX = input.getAxisX(0, 1); // 0 = first gamepad, 1 = left stick
+float leftStickY = input.getAxisY(0, 1); // stick 2 = right stick
 
 // Get button state
 bool aButton = input.getButtonState(0, 0); // 0 = first gamepad, 0 = A button
 ```
+
+Gamepads are tracked by `SDL_JoystickID`. Connecting or disconnecting a controller during play is handled automatically — no manual re-initialization is required.
 
 ## Window Event Handling
 
@@ -121,9 +124,9 @@ bool isKeyDown(SDL_Scancode key) const;
 bool wasKeyPressed(SDL_Scancode key) const;
 void clearFrameInput();
 
-// Joystick input
-int getAxisX(int joy, int stick) const;
-int getAxisY(int joy, int stick) const;
+// Joystick input — returns normalized [-1.0, 1.0] float with dead zone applied
+float getAxisX(int joy, int stick) const;
+float getAxisY(int joy, int stick) const;
 bool getButtonState(int joy, int buttonNumber) const;
 
 // Mouse input

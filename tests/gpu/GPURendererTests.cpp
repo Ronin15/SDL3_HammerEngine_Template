@@ -202,9 +202,8 @@ BOOST_FIXTURE_TEST_CASE(EndFrameSubmitsCommandBuffer, RendererTestFixture) {
     renderer->beginSwapchainPass();
     renderer->endFrame();
 
-    // After endFrame, command buffer should be submitted
-    // (Can't easily verify this without checking frame was presented)
-    BOOST_CHECK(true);  // Frame completed without crash
+    BOOST_CHECK(renderer->getCommandBuffer() == nullptr);
+    BOOST_CHECK(renderer->getCopyPass() == nullptr);
 
     GPUTestFixture::hideTestWindow();
 }
@@ -223,9 +222,13 @@ BOOST_FIXTURE_TEST_CASE(MultipleFrameCycles, RendererTestFixture) {
         renderer->beginScenePass();
         renderer->beginSwapchainPass();
         renderer->endFrame();
+
+        BOOST_CHECK(renderer->getCommandBuffer() == nullptr);
+        BOOST_CHECK(renderer->getCopyPass() == nullptr);
     }
 
-    BOOST_CHECK(true);  // Multiple frames completed
+    BOOST_CHECK(renderer->getSceneTexture() != nullptr);
+    BOOST_CHECK(renderer->getSceneTexture()->isValid());
 
     GPUTestFixture::hideTestWindow();
 }
@@ -406,18 +409,20 @@ BOOST_FIXTURE_TEST_CASE(SetCompositeParams, RendererTestFixture) {
     SKIP_IF_NO_GPU();
     BOOST_REQUIRE(rendererInitialized);
 
-    // Should not crash
+    // Setters are void — verify they don't crash with various values
     renderer->setCompositeParams(2.0f, 0.25f, 0.5f);
-    BOOST_CHECK(true);
+    renderer->setCompositeParams(1.0f, 0.0f, 0.0f);
+    renderer->setCompositeParams(4.0f, -0.5f, 0.75f);
 }
 
 BOOST_FIXTURE_TEST_CASE(SetDayNightParams, RendererTestFixture) {
     SKIP_IF_NO_GPU();
     BOOST_REQUIRE(rendererInitialized);
 
-    // Should not crash
+    // Setters are void — verify they don't crash with various values
     renderer->setDayNightParams(0.8f, 0.9f, 1.0f, 0.5f);
-    BOOST_CHECK(true);
+    renderer->setDayNightParams(1.0f, 1.0f, 1.0f, 0.0f);
+    renderer->setDayNightParams(0.0f, 0.0f, 0.0f, 1.0f);
 }
 
 BOOST_FIXTURE_TEST_CASE(RenderCompositeInSwapchainPass, RendererTestFixture) {
@@ -437,7 +442,8 @@ BOOST_FIXTURE_TEST_CASE(RenderCompositeInSwapchainPass, RendererTestFixture) {
     }
 
     renderer->endFrame();
-    BOOST_CHECK(true);
+    BOOST_CHECK(renderer->getCommandBuffer() == nullptr);
+    BOOST_CHECK(renderer->getCopyPass() == nullptr);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

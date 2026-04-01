@@ -64,13 +64,13 @@ void PlayerRunningState::handleMovementInput(float deltaTime) {
 
     // Controller input (secondary priority - only when no keyboard input)
     if (!hasInput) {
-        int joystickX = input.getAxisX(0, 1);
-        int joystickY = input.getAxisY(0, 1);
+        float joystickX = input.getAxisX(0, 1);
+        float joystickY = input.getAxisY(0, 1);
 
-        // InputManager provides pre-normalized directional values: -1 (left/up), 0 (center), 1 (right/down)
+        // InputManager provides normalized analog values after deadzone processing.
         if (joystickX != 0 || joystickY != 0) {
-            velocity.setX(static_cast<float>(joystickX) * speed);
-            velocity.setY(static_cast<float>(joystickY) * speed);
+            velocity.setX(joystickX * speed);
+            velocity.setY(joystickY * speed);
             hasInput = true;
 
             if (joystickX > 0) {

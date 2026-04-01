@@ -9,10 +9,13 @@
 #include <SDL3/SDL.h>
 #include "managers/InputManager.hpp"
 #include "utils/Vector2D.hpp"
+#include <cstdlib>
 
 // Global fixture for SDL and InputManager initialization
 struct InputManagerTestFixture {
     InputManagerTestFixture() {
+        // Tests only inject SDL events; they do not need a real display.
+        setenv("SDL_VIDEODRIVER", "offscreen", 1);
         // Initialize SDL Video subsystem (needed for event processing)
         if (!SDL_Init(SDL_INIT_VIDEO)) {
             throw std::runtime_error("Failed to initialize SDL: " + std::string(SDL_GetError()));
@@ -33,13 +36,13 @@ struct InputManagerTestFixture {
     }
 
     // Helper to inject a keyboard event into SDL's event queue
-    void injectKeyEvent(SDL_Scancode scancode, bool isDown) {
+    void injectKeyEvent(SDL_Scancode scancode, bool isDown, bool repeat = false) {
         SDL_Event event;
         SDL_zero(event);
         event.type = isDown ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
         event.key.scancode = scancode;
         event.key.mod = SDL_KMOD_NONE;
-        event.key.repeat = false;
+        event.key.repeat = repeat;
 
         SDL_PushEvent(&event);
     }
@@ -70,6 +73,14 @@ struct InputManagerTestFixture {
         SDL_PushEvent(&event);
     }
 
+    void injectGamepadDeviceEvent(Uint32 eventType, SDL_JoystickID instanceId) {
+        SDL_Event event;
+        SDL_zero(event);
+        event.type = eventType;
+        event.gdevice.which = instanceId;
+        SDL_PushEvent(&event);
+    }
+
     // Helper to clear all pending events
     void clearEventQueue() {
         SDL_Event event;
@@ -83,13 +94,13 @@ BOOST_GLOBAL_FIXTURE(InputManagerTestFixture);
 
 // Static helper functions for use in tests
 namespace TestHelpers {
-    void injectKeyEvent(SDL_Scancode scancode, bool isDown) {
+    void injectKeyEvent(SDL_Scancode scancode, bool isDown, bool repeat = false) {
         SDL_Event event;
         SDL_zero(event);
         event.type = isDown ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
         event.key.scancode = scancode;
         event.key.mod = SDL_KMOD_NONE;
-        event.key.repeat = false;
+        event.key.repeat = repeat;
         SDL_PushEvent(&event);
     }
 
@@ -113,6 +124,32 @@ namespace TestHelpers {
         event.motion.xrel = 0.0f;
         event.motion.yrel = 0.0f;
         SDL_PushEvent(&event);
+    }
+
+    void injectGamepadDeviceEvent(Uint32 eventType, SDL_JoystickID instanceId) {
+        SDL_Event event;
+        SDL_zero(event);
+        event.type = eventType;
+        event.gdevice.which = instanceId;
+        SDL_PushEvent(&event);
+    }
+
+    SDL_JoystickID attachVirtualGamepad() {
+        SDL_VirtualJoystickDesc desc;
+        SDL_INIT_INTERFACE(&desc);
+        desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+        desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
+        desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+        desc.axis_mask =
+            (1u << SDL_GAMEPAD_AXIS_LEFTX) |
+            (1u << SDL_GAMEPAD_AXIS_LEFTY) |
+            (1u << SDL_GAMEPAD_AXIS_RIGHTX) |
+            (1u << SDL_GAMEPAD_AXIS_RIGHTY) |
+            (1u << SDL_GAMEPAD_AXIS_LEFT_TRIGGER) |
+            (1u << SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
+        desc.button_mask = 0xFFFFFFFFu;
+        desc.name = "Test Virtual Gamepad";
+        return SDL_AttachVirtualJoystick(&desc);
     }
 
     void clearEventQueue() {
@@ -154,6 +191,15 @@ namespace TestHelpers {
                     break;
                 case SDL_EVENT_GAMEPAD_BUTTON_UP:
                     inputMgr.onGamepadButtonUp(event);
+                    break;
+                case SDL_EVENT_GAMEPAD_ADDED:
+                    inputMgr.onGamepadAdded(event);
+                    break;
+                case SDL_EVENT_GAMEPAD_REMOVED:
+                    inputMgr.onGamepadRemoved(event);
+                    break;
+                case SDL_EVENT_GAMEPAD_REMAPPED:
+                    inputMgr.onGamepadRemapped(event);
                     break;
                 default:
                     break;
@@ -225,6 +271,22 @@ BOOST_AUTO_TEST_CASE(TestKeyPressAfterRelease) {
     TestHelpers::injectKeyEvent(SDL_SCANCODE_C, true);
     TestHelpers::processEvents();
     BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_C));
+
+    TestHelpers::clearEventQueue();
+}
+
+BOOST_AUTO_TEST_CASE(TestKeyRepeatIgnoredForPressedThisFrame) {
+    TestHelpers::clearEventQueue();
+
+    TestHelpers::injectKeyEvent(SDL_SCANCODE_J, true, true);
+    TestHelpers::processEvents();
+
+    BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_J));
+
+    TestHelpers::injectKeyEvent(SDL_SCANCODE_J, true, false);
+    TestHelpers::processEvents();
+
+    BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_J));
 
     TestHelpers::clearEventQueue();
 }
@@ -371,8 +433,9 @@ BOOST_AUTO_TEST_CASE(TestMouseButtonWithPosition) {
     // Verify button state
     BOOST_CHECK(InputManager::Instance().getMouseButtonState(LEFT));
 
-    // Note: Mouse position from button event may not update mouse position
-    // depending on implementation. This tests that button events are processed.
+    const Vector2D& pos = InputManager::Instance().getMousePosition();
+    BOOST_CHECK_EQUAL(pos.getX(), 123.0f);
+    BOOST_CHECK_EQUAL(pos.getY(), 456.0f);
 
     TestHelpers::clearEventQueue();
 }
@@ -542,6 +605,76 @@ BOOST_AUTO_TEST_CASE(TestMousePositionWithoutMotionEvent) {
     // Just verify it doesn't crash and returns finite values
     BOOST_CHECK(std::isfinite(pos.getX()));
     BOOST_CHECK(std::isfinite(pos.getY()));
+
+    TestHelpers::clearEventQueue();
+}
+
+BOOST_AUTO_TEST_CASE(TestUnknownGamepadEventsDoNotCreateState) {
+    TestHelpers::clearEventQueue();
+
+    SDL_Event axisEvent;
+    SDL_zero(axisEvent);
+    axisEvent.type = SDL_EVENT_GAMEPAD_AXIS_MOTION;
+    axisEvent.gaxis.which = 999999u;
+    axisEvent.gaxis.axis = SDL_GAMEPAD_AXIS_LEFTX;
+    axisEvent.gaxis.value = SDL_JOYSTICK_AXIS_MAX;
+    InputManager::Instance().onGamepadAxisMove(axisEvent);
+
+    SDL_Event buttonEvent;
+    SDL_zero(buttonEvent);
+    buttonEvent.type = SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+    buttonEvent.gbutton.which = 999999u;
+    buttonEvent.gbutton.button = SDL_GAMEPAD_BUTTON_SOUTH;
+    InputManager::Instance().onGamepadButtonDown(buttonEvent);
+
+    BOOST_CHECK_EQUAL(InputManager::Instance().getAxisX(0, 1), 0.0f);
+    BOOST_CHECK(!InputManager::Instance().getButtonState(0, SDL_GAMEPAD_BUTTON_SOUTH));
+
+    TestHelpers::clearEventQueue();
+}
+
+BOOST_AUTO_TEST_CASE(TestVirtualGamepadLifecycle) {
+    TestHelpers::clearEventQueue();
+
+    const SDL_JoystickID instanceId = TestHelpers::attachVirtualGamepad();
+    BOOST_REQUIRE_NE(instanceId, 0u);
+
+    TestHelpers::injectGamepadDeviceEvent(SDL_EVENT_GAMEPAD_ADDED, instanceId);
+    TestHelpers::processEvents();
+
+    SDL_Event axisEvent;
+    SDL_zero(axisEvent);
+    axisEvent.type = SDL_EVENT_GAMEPAD_AXIS_MOTION;
+    axisEvent.gaxis.which = instanceId;
+    axisEvent.gaxis.axis = SDL_GAMEPAD_AXIS_LEFTX;
+    axisEvent.gaxis.value = SDL_JOYSTICK_AXIS_MAX;
+    InputManager::Instance().onGamepadAxisMove(axisEvent);
+
+    BOOST_CHECK_GT(InputManager::Instance().getAxisX(0, 1), 0.0f);
+
+    TestHelpers::injectGamepadDeviceEvent(SDL_EVENT_GAMEPAD_REMOVED, instanceId);
+    TestHelpers::processEvents();
+
+    BOOST_CHECK_EQUAL(InputManager::Instance().getAxisX(0, 1), 0.0f);
+
+    SDL_DetachVirtualJoystick(instanceId);
+    TestHelpers::clearEventQueue();
+}
+
+BOOST_AUTO_TEST_CASE(TestFocusLostClearsCachedInputState) {
+    TestHelpers::clearEventQueue();
+
+    TestHelpers::injectKeyEvent(SDL_SCANCODE_K, true);
+    TestHelpers::injectMouseButtonEvent(SDL_BUTTON_LEFT, true, 42.0f, 84.0f);
+    TestHelpers::processEvents();
+
+    BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_K));
+    BOOST_CHECK(InputManager::Instance().getMouseButtonState(LEFT));
+
+    InputManager::Instance().onFocusLost();
+
+    BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_K));
+    BOOST_CHECK(!InputManager::Instance().getMouseButtonState(LEFT));
 
     TestHelpers::clearEventQueue();
 }

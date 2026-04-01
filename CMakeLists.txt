@@ -114,7 +114,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(USE_MOLD_LINKER "Use mold linker if available" ON)
-option(USE_SDL3_GPU "Use SDL3_GPU instead of SDL_Renderer" OFF)
 
 if(USE_MOLD_LINKER)
     find_program(MOLD_LINKER mold)
@@ -238,82 +237,89 @@ file(GLOB_RECURSE SOURCES
 # Exclude HammerMain.cpp from library sources (contains main() which conflicts with test frameworks)
 list(FILTER SOURCES EXCLUDE REGEX ".*HammerMain\\.cpp$")
 
-# SDL3_GPU support
-if(USE_SDL3_GPU)
-    # Add GPU module sources
-    file(GLOB GPU_SOURCES "src/gpu/*.cpp")
-    list(APPEND SOURCES ${GPU_SOURCES})
+# SDL3_GPU support is mandatory for this project.
+# Add GPU module sources
+file(GLOB GPU_SOURCES "src/gpu/*.cpp")
+list(APPEND SOURCES ${GPU_SOURCES})
 
-    if(WIN32)
-        set(HE_GPU_PREFERRED_DRIVER "direct3d12")
-        set(HE_GPU_SHADER_FORMAT_DEFINE "HE_GPU_SHADERFORMAT_DXIL_AVAILABLE")
-        set(HE_GPU_SHADER_OUTPUT_LABEL "DXIL")
-    elseif(APPLE)
-        set(HE_GPU_PREFERRED_DRIVER "metal")
-        set(HE_GPU_SHADER_FORMAT_DEFINE "HE_GPU_SHADERFORMAT_MSL_AVAILABLE")
-        set(HE_GPU_SHADER_OUTPUT_LABEL "Metal")
-    else()
-        set(HE_GPU_PREFERRED_DRIVER "vulkan")
-        set(HE_GPU_SHADER_FORMAT_DEFINE "HE_GPU_SHADERFORMAT_SPIRV_AVAILABLE")
-        set(HE_GPU_SHADER_OUTPUT_LABEL "SPIR-V")
-    endif()
+if(WIN32)
+    set(HE_GPU_PREFERRED_DRIVER "direct3d12")
+    set(HE_GPU_SHADER_FORMAT_DEFINE "HE_GPU_SHADERFORMAT_DXIL_AVAILABLE")
+    set(HE_GPU_SHADER_OUTPUT_LABEL "DXIL")
+elseif(APPLE)
+    set(HE_GPU_PREFERRED_DRIVER "metal")
+    set(HE_GPU_SHADER_FORMAT_DEFINE "HE_GPU_SHADERFORMAT_MSL_AVAILABLE")
+    set(HE_GPU_SHADER_OUTPUT_LABEL "Metal")
+else()
+    set(HE_GPU_PREFERRED_DRIVER "vulkan")
+    set(HE_GPU_SHADER_FORMAT_DEFINE "HE_GPU_SHADERFORMAT_SPIRV_AVAILABLE")
+    set(HE_GPU_SHADER_OUTPUT_LABEL "SPIR-V")
+endif()
 
-    # Find glslang/glslangValidator for shader compilation
-    find_program(GLSLANG_VALIDATOR
-        NAMES glslangValidator glslang
-        HINTS ENV VULKAN_SDK
+# Find optional shader toolchain for regenerating checked-in shader binaries.
+# Builds still succeed without these tools by using the prebuilt shader assets
+# already present under res/shaders/.
+set(HAMMER_CAN_COMPILE_GPU_SHADERS TRUE)
+
+find_program(GLSLANG_VALIDATOR
+    NAMES glslangValidator glslang
+    HINTS ENV VULKAN_SDK
+    PATH_SUFFIXES bin
+)
+
+if(NOT GLSLANG_VALIDATOR)
+    set(HAMMER_CAN_COMPILE_GPU_SHADERS FALSE)
+    message(WARNING "glslangValidator not found - using checked-in GPU shader binaries")
+else()
+    message(STATUS "Found glslangValidator: ${GLSLANG_VALIDATOR}")
+endif()
+
+if((WIN32 OR APPLE) AND HAMMER_CAN_COMPILE_GPU_SHADERS)
+    find_program(SPIRV_CROSS
+        NAMES spirv-cross
+        HINTS ENV VULKAN_SDK /opt/homebrew/bin /usr/local/bin
         PATH_SUFFIXES bin
     )
 
-    if(NOT GLSLANG_VALIDATOR)
-        message(FATAL_ERROR "glslangValidator not found. Install glslang package or Vulkan SDK.")
-    endif()
-
-    message(STATUS "Found glslangValidator: ${GLSLANG_VALIDATOR}")
-
-    if(WIN32 OR APPLE)
-        find_program(SPIRV_CROSS
-            NAMES spirv-cross
-            HINTS ENV VULKAN_SDK /opt/homebrew/bin /usr/local/bin
-            PATH_SUFFIXES bin
-        )
-
-        if(NOT SPIRV_CROSS)
-            message(FATAL_ERROR "spirv-cross not found. It is required for ${HE_GPU_PREFERRED_DRIVER} shader generation.")
-        endif()
-
+    if(NOT SPIRV_CROSS)
+        set(HAMMER_CAN_COMPILE_GPU_SHADERS FALSE)
+        message(WARNING "spirv-cross not found - using checked-in GPU shader binaries")
+    else()
         message(STATUS "Found spirv-cross: ${SPIRV_CROSS}")
     endif()
+endif()
 
-    if(WIN32)
-        find_program(DXC_EXECUTABLE
-            NAMES dxc
-            HINTS ENV DXC_PATH ENV WindowsSdkDir
-            PATH_SUFFIXES bin bin/x64
-        )
-
-        if(NOT DXC_EXECUTABLE)
-            message(FATAL_ERROR "dxc not found. Install the DirectX Shader Compiler for Direct3D 12 shader generation.")
-        endif()
-
-        message(STATUS "Found dxc: ${DXC_EXECUTABLE}")
-    endif()
-
-    # Shader source files
-    set(SHADER_SOURCES
-        ${CMAKE_SOURCE_DIR}/res/shaders/sprite.vert.glsl
-        ${CMAKE_SOURCE_DIR}/res/shaders/sprite.frag.glsl
-        ${CMAKE_SOURCE_DIR}/res/shaders/text_alpha.frag.glsl
-        ${CMAKE_SOURCE_DIR}/res/shaders/text_sdf.frag.glsl
-        ${CMAKE_SOURCE_DIR}/res/shaders/color.vert.glsl
-        ${CMAKE_SOURCE_DIR}/res/shaders/color.frag.glsl
-        ${CMAKE_SOURCE_DIR}/res/shaders/composite.vert.glsl
-        ${CMAKE_SOURCE_DIR}/res/shaders/composite.frag.glsl
+if(WIN32 AND HAMMER_CAN_COMPILE_GPU_SHADERS)
+    find_program(DXC_EXECUTABLE
+        NAMES dxc
+        HINTS ENV DXC_PATH ENV WindowsSdkDir
+        PATH_SUFFIXES bin bin/x64
     )
 
-    set(GPU_SHADER_INTERMEDIATE_DIR "${CMAKE_BINARY_DIR}/generated_shaders")
-    file(MAKE_DIRECTORY ${GPU_SHADER_INTERMEDIATE_DIR})
+    if(NOT DXC_EXECUTABLE)
+        set(HAMMER_CAN_COMPILE_GPU_SHADERS FALSE)
+        message(WARNING "dxc not found - using checked-in GPU shader binaries")
+    else()
+        message(STATUS "Found dxc: ${DXC_EXECUTABLE}")
+    endif()
+endif()
 
+# Shader source files
+set(SHADER_SOURCES
+    ${CMAKE_SOURCE_DIR}/res/shaders/sprite.vert.glsl
+    ${CMAKE_SOURCE_DIR}/res/shaders/sprite.frag.glsl
+    ${CMAKE_SOURCE_DIR}/res/shaders/text_alpha.frag.glsl
+    ${CMAKE_SOURCE_DIR}/res/shaders/text_sdf.frag.glsl
+    ${CMAKE_SOURCE_DIR}/res/shaders/color.vert.glsl
+    ${CMAKE_SOURCE_DIR}/res/shaders/color.frag.glsl
+    ${CMAKE_SOURCE_DIR}/res/shaders/composite.vert.glsl
+    ${CMAKE_SOURCE_DIR}/res/shaders/composite.frag.glsl
+)
+
+set(GPU_SHADER_INTERMEDIATE_DIR "${CMAKE_BINARY_DIR}/generated_shaders")
+file(MAKE_DIRECTORY ${GPU_SHADER_INTERMEDIATE_DIR})
+
+if(HAMMER_CAN_COMPILE_GPU_SHADERS)
     # Compile each shader to the platform-native artifact.
     set(PLATFORM_SHADER_OUTPUTS "")
     foreach(SHADER_SOURCE ${SHADER_SOURCES})
@@ -328,84 +334,86 @@ if(USE_SDL3_GPU)
             set(SHADER_HLSL "${GPU_SHADER_INTERMEDIATE_DIR}/${SHADER_HLSL_NAME}")
             set(SHADER_FINAL_OUTPUT "${CMAKE_SOURCE_DIR}/res/shaders/${SHADER_DXIL_NAME}")
 
-            add_custom_command(
-                OUTPUT ${SHADER_SPV}
-                COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} -o ${SHADER_SPV}
-                DEPENDS ${SHADER_SOURCE}
-                COMMENT "Compiling shader: ${SHADER_NAME} -> ${SHADER_SPV_NAME}"
-                VERBATIM
-            )
+                add_custom_command(
+                    OUTPUT ${SHADER_SPV}
+                    COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} -o ${SHADER_SPV}
+                    DEPENDS ${SHADER_SOURCE}
+                    COMMENT "Compiling shader: ${SHADER_NAME} -> ${SHADER_SPV_NAME}"
+                    VERBATIM
+                )
 
-            add_custom_command(
-                OUTPUT ${SHADER_HLSL}
-                COMMAND ${SPIRV_CROSS} ${SHADER_SPV} --hlsl --shader-model 60 --output ${SHADER_HLSL}
-                DEPENDS ${SHADER_SPV}
-                COMMENT "Cross-compiling shader: ${SHADER_SPV_NAME} -> ${SHADER_HLSL_NAME}"
-                VERBATIM
-            )
+                add_custom_command(
+                    OUTPUT ${SHADER_HLSL}
+                    COMMAND ${SPIRV_CROSS} ${SHADER_SPV} --hlsl --shader-model 60 --output ${SHADER_HLSL}
+                    DEPENDS ${SHADER_SPV}
+                    COMMENT "Cross-compiling shader: ${SHADER_SPV_NAME} -> ${SHADER_HLSL_NAME}"
+                    VERBATIM
+                )
 
-            if(SHADER_NAME MATCHES "\\.vert\\.")
-                set(DXC_PROFILE "vs_6_0")
+                if(SHADER_NAME MATCHES "\\.vert\\.")
+                    set(DXC_PROFILE "vs_6_0")
+                else()
+                    set(DXC_PROFILE "ps_6_0")
+                endif()
+
+                add_custom_command(
+                    OUTPUT ${SHADER_FINAL_OUTPUT}
+                    COMMAND ${DXC_EXECUTABLE} -T ${DXC_PROFILE} -E main -Fo ${SHADER_FINAL_OUTPUT} ${SHADER_HLSL}
+                    DEPENDS ${SHADER_HLSL}
+                    COMMENT "Compiling shader: ${SHADER_HLSL_NAME} -> ${SHADER_DXIL_NAME}"
+                    VERBATIM
+                )
+
+                list(APPEND PLATFORM_SHADER_OUTPUTS ${SHADER_FINAL_OUTPUT})
+            elseif(APPLE)
+                set(SHADER_SPV "${GPU_SHADER_INTERMEDIATE_DIR}/${SHADER_SPV_NAME}")
+                set(SHADER_FINAL_OUTPUT "${CMAKE_SOURCE_DIR}/res/shaders/${SHADER_METAL_NAME}")
+
+                add_custom_command(
+                    OUTPUT ${SHADER_SPV}
+                    COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} -o ${SHADER_SPV}
+                    DEPENDS ${SHADER_SOURCE}
+                    COMMENT "Compiling shader: ${SHADER_NAME} -> ${SHADER_SPV_NAME}"
+                    VERBATIM
+                )
+
+                if(SHADER_NAME MATCHES "\\.vert\\.")
+                    set(METAL_ENTRY "vertexMain")
+                    set(METAL_STAGE "vert")
+                else()
+                    set(METAL_ENTRY "fragmentMain")
+                    set(METAL_STAGE "frag")
+                endif()
+
+                add_custom_command(
+                    OUTPUT ${SHADER_FINAL_OUTPUT}
+                    COMMAND ${SPIRV_CROSS} ${SHADER_SPV} --msl --output ${SHADER_FINAL_OUTPUT} --rename-entry-point main ${METAL_ENTRY} ${METAL_STAGE}
+                    DEPENDS ${SHADER_SPV}
+                    COMMENT "Cross-compiling shader: ${SHADER_SPV_NAME} -> ${SHADER_METAL_NAME}"
+                    VERBATIM
+                )
+
+                list(APPEND PLATFORM_SHADER_OUTPUTS ${SHADER_FINAL_OUTPUT})
             else()
-                set(DXC_PROFILE "ps_6_0")
+                set(SHADER_FINAL_OUTPUT "${CMAKE_SOURCE_DIR}/res/shaders/${SHADER_SPV_NAME}")
+
+                add_custom_command(
+                    OUTPUT ${SHADER_FINAL_OUTPUT}
+                    COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} -o ${SHADER_FINAL_OUTPUT}
+                    DEPENDS ${SHADER_SOURCE}
+                    COMMENT "Compiling shader: ${SHADER_NAME} -> ${SHADER_SPV_NAME}"
+                    VERBATIM
+                )
+
+                list(APPEND PLATFORM_SHADER_OUTPUTS ${SHADER_FINAL_OUTPUT})
             endif()
-
-            add_custom_command(
-                OUTPUT ${SHADER_FINAL_OUTPUT}
-                COMMAND ${DXC_EXECUTABLE} -T ${DXC_PROFILE} -E main -Fo ${SHADER_FINAL_OUTPUT} ${SHADER_HLSL}
-                DEPENDS ${SHADER_HLSL}
-                COMMENT "Compiling shader: ${SHADER_HLSL_NAME} -> ${SHADER_DXIL_NAME}"
-                VERBATIM
-            )
-
-            list(APPEND PLATFORM_SHADER_OUTPUTS ${SHADER_FINAL_OUTPUT})
-        elseif(APPLE)
-            set(SHADER_SPV "${GPU_SHADER_INTERMEDIATE_DIR}/${SHADER_SPV_NAME}")
-            set(SHADER_FINAL_OUTPUT "${CMAKE_SOURCE_DIR}/res/shaders/${SHADER_METAL_NAME}")
-
-            add_custom_command(
-                OUTPUT ${SHADER_SPV}
-                COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} -o ${SHADER_SPV}
-                DEPENDS ${SHADER_SOURCE}
-                COMMENT "Compiling shader: ${SHADER_NAME} -> ${SHADER_SPV_NAME}"
-                VERBATIM
-            )
-
-            if(SHADER_NAME MATCHES "\\.vert\\.")
-                set(METAL_ENTRY "vertexMain")
-                set(METAL_STAGE "vert")
-            else()
-                set(METAL_ENTRY "fragmentMain")
-                set(METAL_STAGE "frag")
-            endif()
-
-            add_custom_command(
-                OUTPUT ${SHADER_FINAL_OUTPUT}
-                COMMAND ${SPIRV_CROSS} ${SHADER_SPV} --msl --output ${SHADER_FINAL_OUTPUT} --rename-entry-point main ${METAL_ENTRY} ${METAL_STAGE}
-                DEPENDS ${SHADER_SPV}
-                COMMENT "Cross-compiling shader: ${SHADER_SPV_NAME} -> ${SHADER_METAL_NAME}"
-                VERBATIM
-            )
-
-            list(APPEND PLATFORM_SHADER_OUTPUTS ${SHADER_FINAL_OUTPUT})
-        else()
-            set(SHADER_FINAL_OUTPUT "${CMAKE_SOURCE_DIR}/res/shaders/${SHADER_SPV_NAME}")
-
-            add_custom_command(
-                OUTPUT ${SHADER_FINAL_OUTPUT}
-                COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} -o ${SHADER_FINAL_OUTPUT}
-                DEPENDS ${SHADER_SOURCE}
-                COMMENT "Compiling shader: ${SHADER_NAME} -> ${SHADER_SPV_NAME}"
-                VERBATIM
-            )
-
-            list(APPEND PLATFORM_SHADER_OUTPUTS ${SHADER_FINAL_OUTPUT})
-        endif()
     endforeach()
 
     # Create shader compilation target
     add_custom_target(compile_shaders ALL DEPENDS ${PLATFORM_SHADER_OUTPUTS})
     message(STATUS "SDL3_GPU enabled - platform-native shaders will be compiled for ${HE_GPU_PREFERRED_DRIVER} (${HE_GPU_SHADER_OUTPUT_LABEL})")
+else()
+    message(STATUS "SDL3_GPU enabled - using checked-in shader binaries for ${HE_GPU_PREFERRED_DRIVER} (${HE_GPU_SHADER_OUTPUT_LABEL})")
 endif()
 
 # Create object library for shared compilation (without main())
@@ -441,11 +449,9 @@ target_compile_definitions(HammerEngineObjects PRIVATE
     HAMMER_APP_NAME="${PROJECT_NAME}"
 )
 
-# SDL3_GPU compile definition
-if(USE_SDL3_GPU)
-    target_compile_definitions(HammerEngineObjects PUBLIC USE_SDL3_GPU)
-    target_compile_definitions(HammerEngineObjects PUBLIC ${HE_GPU_SHADER_FORMAT_DEFINE})
+target_compile_definitions(HammerEngineObjects PUBLIC ${HE_GPU_SHADER_FORMAT_DEFINE})
 
+if(TARGET compile_shaders)
     add_dependencies(HammerEngineObjects compile_shaders)
 endif()
 
@@ -666,7 +672,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
-# Propagate compile definitions (e.g., USE_SDL3_GPU)
+# Propagate compile definitions
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_COMPILE_DEFINITIONS>
 )

@@ -5,15 +5,12 @@
 
 #include "controllers/render/NPCRenderController.hpp"
 #include "entities/EntityHandle.hpp"
-#include "managers/EntityDataManager.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/EntityDataManager.hpp"
+#include "gpu/SpriteBatch.hpp"
+#include "utils/GPUSceneRecorder.hpp"
 #include <SDL3/SDL.h>
 #include <cmath>
-
-#ifdef USE_SDL3_GPU
-#include "gpu/SpriteBatch.hpp"
-#include "utils/GPUSceneRenderer.hpp"
-#endif
 
 void NPCRenderController::update(float deltaTime) {
     auto& edm = EntityDataManager::Instance();
@@ -45,46 +42,6 @@ void NPCRenderController::update(float deltaTime) {
     }
 }
 
-void NPCRenderController::renderNPCs(SDL_Renderer* renderer, float cameraX, float cameraY, float alpha) {
-    auto& edm = EntityDataManager::Instance();
-
-    // Only render Active tier NPCs (same as AIManager)
-    for (size_t idx : edm.getActiveIndices()) {
-        const auto& hot = edm.getHotDataByIndex(idx);
-        if (hot.kind != EntityKind::NPC) continue;
-
-        const auto& r = edm.getNPCRenderDataByTypeIndex(hot.typeLocalIndex);
-
-        // Interpolate position
-        float interpX = hot.transform.previousPosition.getX() +
-            (hot.transform.position.getX() - hot.transform.previousPosition.getX()) * alpha;
-        float interpY = hot.transform.previousPosition.getY() +
-            (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
-
-        // All render state set by update() - just read and draw
-        // Add atlas offset to source rect for atlas-based rendering
-        SDL_FRect srcRect = {
-            static_cast<float>(r.atlasX + r.currentFrame * r.frameWidth),
-            static_cast<float>(r.atlasY + r.currentRow * r.frameHeight),
-            static_cast<float>(r.frameWidth),
-            static_cast<float>(r.frameHeight)
-        };
-
-        float halfW = static_cast<float>(r.frameWidth) * 0.5f;
-        float halfH = static_cast<float>(r.frameHeight) * 0.5f;
-        // Sub-pixel rendering - unified with Player/Particles for smooth diagonal movement
-        SDL_FRect destRect = {
-            interpX - cameraX - halfW,
-            interpY - cameraY - halfH,
-            static_cast<float>(r.frameWidth),
-            static_cast<float>(r.frameHeight)
-        };
-
-        SDL_RenderTextureRotated(renderer, r.cachedTexture, &srcRect, &destRect,
-                                  0.0, nullptr, static_cast<SDL_FlipMode>(r.flipMode));
-    }
-}
-
 void NPCRenderController::clearSpawnedNPCs() {
     auto& edm = EntityDataManager::Instance();
     auto& aiMgr = AIManager::Instance();
@@ -102,7 +59,6 @@ void NPCRenderController::clearSpawnedNPCs() {
     }
 }
 
-#ifdef USE_SDL3_GPU
 void NPCRenderController::recordGPU(const HammerEngine::GPUSceneContext& ctx) {
     if (!ctx.spriteBatch) { return; }
 
@@ -144,4 +100,3 @@ void NPCRenderController::recordGPU(const HammerEngine::GPUSceneContext& ctx) {
         }
     }
 }
-#endif

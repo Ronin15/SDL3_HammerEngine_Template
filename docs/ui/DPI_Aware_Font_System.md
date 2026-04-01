@@ -61,7 +61,7 @@ FontManager loads fonts with professional quality settings:
 ```cpp
 // Automatic quality configuration
 TTF_SetFontHinting(font.get(), TTF_HINTING_NORMAL);  // Better outline quality
-TTF_SetFontKerning(font.get(), 1);                   // Proper character spacing
+TTF_SetFontKerning(font.get(), true);                 // Proper character spacing
 TTF_SetFontStyle(font.get(), TTF_STYLE_NORMAL);      // Consistent rendering
 ```
 

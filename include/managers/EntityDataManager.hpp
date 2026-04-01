@@ -48,6 +48,7 @@
 #include <cassert>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <random>
 #include <span>
@@ -94,7 +95,7 @@ static_assert(sizeof(TransformData) == 32, "TransformData should be 32 bytes");
  * - Statics to be in a compact spatial hash for O(1) queries
  * - Dynamic entities to be tier-filtered efficiently
  */
-struct EntityHotData {
+struct alignas(64) EntityHotData {
     TransformData transform;        // 32 bytes
     float halfWidth{16.0f};         // 4 bytes: Half-width for collision
     float halfHeight{16.0f};        // 4 bytes: Half-height for collision
@@ -166,6 +167,7 @@ struct EntityHotData {
 };
 
 static_assert(sizeof(EntityHotData) == 64, "EntityHotData should be 64 bytes (one cache line)");
+static_assert(alignof(EntityHotData) == 64, "EntityHotData should be 64-byte aligned");
 
 // ============================================================================
 // TYPE-SPECIFIC DATA BLOCKS
@@ -443,9 +445,6 @@ struct AreaEffectData {
     uint8_t effectType{0};      // Poison, Fire, Heal, Slow
 };
 
-// Forward declaration for SDL texture
-struct SDL_Texture;
-
 /**
  * @brief Render data for data-driven NPCs (velocity-based animation)
  *
@@ -454,8 +453,6 @@ struct SDL_Texture;
  * Indexed by typeLocalIndex (same as CharacterData for NPCs).
  */
 struct NPCRenderData {
-    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
-    SDL_Texture* cachedTexture{nullptr};
     uint16_t atlasX{0};                   // X offset in atlas (pixels)
     uint16_t atlasY{0};                   // Y offset in atlas (pixels)
     uint16_t frameWidth{32};              // Single frame width
@@ -472,7 +469,6 @@ struct NPCRenderData {
     float animationAccumulator{0.0f};     // Time accumulator for frame advancement
 
     void clear() noexcept {
-        cachedTexture = nullptr;
         atlasX = 0;
         atlasY = 0;
         frameWidth = 32;
@@ -679,8 +675,6 @@ struct AnimalRoleInfo {
  * Indexed by typeLocalIndex in EntityHotData.
  */
 struct ItemRenderData {
-    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
-    SDL_Texture* cachedTexture{nullptr};
     uint16_t atlasX{0};                   // X offset in atlas (pixels)
     uint16_t atlasY{0};                   // Y offset in atlas (pixels)
     uint16_t frameWidth{16};              // Single frame width
@@ -693,7 +687,6 @@ struct ItemRenderData {
     float bobAmplitude{3.0f};             // Vertical bob amplitude in pixels
 
     void clear() noexcept {
-        cachedTexture = nullptr;
         atlasX = 0;
         atlasY = 0;
         frameWidth = 16;
@@ -714,63 +707,27 @@ struct ItemRenderData {
  * Indexed by typeLocalIndex in EntityHotData.
  */
 struct ContainerRenderData {
-    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
-    SDL_Texture* closedTexture{nullptr};
-    SDL_Texture* openTexture{nullptr};
     uint16_t atlasX{0};                   // Atlas X offset (0 = unmapped, use default)
     uint16_t atlasY{0};                   // Atlas Y offset (0 = unmapped, use default)
     uint16_t openAtlasX{0};               // Atlas X offset for open state
     uint16_t openAtlasY{0};               // Atlas Y offset for open state
     uint16_t frameWidth{32};              // Sprite width
     uint16_t frameHeight{32};             // Sprite height
+    uint16_t openFrameWidth{32};          // Open-state sprite width
+    uint16_t openFrameHeight{32};         // Open-state sprite height
     uint8_t currentFrame{0};              // For animated open/close
     uint8_t numFrames{1};                 // Animation frames
     float animTimer{0.0f};                // Animation accumulator
 
     void clear() noexcept {
-        closedTexture = nullptr;
-        openTexture = nullptr;
         atlasX = 0;
         atlasY = 0;
         openAtlasX = 0;
         openAtlasY = 0;
         frameWidth = 32;
         frameHeight = 32;
-        currentFrame = 0;
-        numFrames = 1;
-        animTimer = 0.0f;
-    }
-};
-
-/**
- * @brief Render data for harvestable resources (trees, ore nodes)
- *
- * Supports normal/depleted states with different textures.
- * Indexed by typeLocalIndex in EntityHotData.
- */
-struct HarvestableRenderData {
-    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
-    SDL_Texture* normalTexture{nullptr};
-    SDL_Texture* depletedTexture{nullptr};
-    uint16_t atlasX{0};                     // Atlas X offset (0 = unmapped, use default)
-    uint16_t atlasY{0};                     // Atlas Y offset (0 = unmapped, use default)
-    uint16_t depletedAtlasX{0};             // Atlas X offset for depleted state
-    uint16_t depletedAtlasY{0};             // Atlas Y offset for depleted state
-    uint16_t frameWidth{32};                // Sprite width
-    uint16_t frameHeight{32};               // Sprite height
-    uint8_t currentFrame{0};                // Animation frame
-    uint8_t numFrames{1};                   // Animation frames (e.g., swaying tree)
-    float animTimer{0.0f};                  // Animation accumulator
-
-    void clear() noexcept {
-        normalTexture = nullptr;
-        depletedTexture = nullptr;
-        atlasX = 0;
-        atlasY = 0;
-        depletedAtlasX = 0;
-        depletedAtlasY = 0;
-        frameWidth = 32;
-        frameHeight = 32;
+        openFrameWidth = 32;
+        openFrameHeight = 32;
         currentFrame = 0;
         numFrames = 1;
         animTimer = 0.0f;
@@ -939,7 +896,7 @@ struct BehaviorData {
     union StateUnion {
         // Default constructor initializes raw bytes to zero
         StateUnion() : raw{} {}
-        struct { // WanderState (~64 bytes)
+        struct { // WanderState (~68 bytes)
             Vector2D currentDirection;
             Vector2D previousVelocity;
             Vector2D lastStallPosition;
@@ -949,6 +906,7 @@ struct BehaviorData {
             float stallTimer;
             float stallPositionVariance;
             float unstickTimer;
+            float movementUpdateTimer;  // Throttle heavy logic to run every ~5s
             bool movementStarted;
             uint8_t _pad[3];
         } wander;
@@ -982,6 +940,7 @@ struct BehaviorData {
             float escalationMultiplier{1.0f};  // Suspicion-based threshold multiplier (lower = faster)
             float cachedDetectionRange{0.0f};  // Cached detection range (recomputed on mode change)
             float hostileTimer{0.0f};          // Time spent at alert level HOSTILE (3) for ALARM escalation
+            float patrolThrottleTimer{0.0f};   // Throttle timer for PatrolBehavior update interval
             uint32_t currentPatrolIndex;
             uint8_t currentAlertLevel;  // 0=Calm, 1=Suspicious, 2=Alert, 3=Combat
             uint8_t currentMode;
@@ -1917,14 +1876,6 @@ public:
     [[nodiscard]] ContainerRenderData& getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex);
     [[nodiscard]] const ContainerRenderData& getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex) const;
 
-    /**
-     * @brief Get harvestable render data by type index
-     * @param typeLocalIndex Index from EntityHotData::typeLocalIndex
-     * @return Reference to harvestable render data
-     */
-    [[nodiscard]] HarvestableRenderData& getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex);
-    [[nodiscard]] const HarvestableRenderData& getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex) const;
-
     // ========================================================================
     // HANDLE VALIDATION
     // ========================================================================
@@ -2128,9 +2079,10 @@ public:
     void clearPathData(size_t index);
 
     /**
-     * @brief Get raw waypoint slot for direct write (zero-copy)
+     * @brief Get bounded waypoint slot view for direct write (zero-copy)
      */
-    [[nodiscard]] Vector2D* getWaypointSlot(size_t index) noexcept;
+    [[nodiscard]] std::span<Vector2D, FixedWaypointSlot::MAX_WAYPOINTS_PER_ENTITY>
+    getWaypointSlot(size_t index) noexcept;
 
     /**
      * @brief Finalize path after direct write
@@ -2478,7 +2430,6 @@ private:
     std::vector<NPCRenderData> m_npcRenderData;      // NPC render data (same index as CharacterData for NPCs)
     std::vector<ItemRenderData> m_itemRenderData;    // DroppedItem render data (same index as ItemData)
     std::vector<ContainerRenderData> m_containerRenderData;  // Container render data
-    std::vector<HarvestableRenderData> m_harvestableRenderData;  // Harvestable render data
 
     // Inventory data (indexed by inventory index from createInventory())
     std::vector<InventoryData> m_inventoryData;
@@ -2688,8 +2639,11 @@ inline const PathData& EntityDataManager::getPathData(size_t index) const {
 }
 
 // Per-entity waypoint slot accessors - O(1) access with no shared state
-inline Vector2D* EntityDataManager::getWaypointSlot(size_t index) noexcept {
-    return m_waypointSlots[index].waypoints;
+inline std::span<Vector2D, FixedWaypointSlot::MAX_WAYPOINTS_PER_ENTITY>
+EntityDataManager::getWaypointSlot(size_t index) noexcept {
+    assert(index < m_waypointSlots.size() && "Entity waypoint slot out of bounds");
+    return std::span<Vector2D, FixedWaypointSlot::MAX_WAYPOINTS_PER_ENTITY>(
+        m_waypointSlots[index].waypoints, FixedWaypointSlot::MAX_WAYPOINTS_PER_ENTITY);
 }
 
 inline Vector2D EntityDataManager::getWaypoint(size_t entityIdx, size_t waypointIdx) const {
@@ -2712,6 +2666,27 @@ inline const NPCMemoryData& EntityDataManager::getMemoryData(size_t index) const
 
 inline bool EntityDataManager::hasMemoryData(size_t index) const noexcept {
     return index < m_memoryData.size() && m_memoryData[index].isValid();
+}
+
+inline bool EntityDataManager::hasBehaviorData(size_t index) const noexcept {
+    return index < m_behaviorData.size() && m_behaviorData[index].isValid();
+}
+
+inline void EntityDataManager::updateEmotionalDecay(size_t index, float deltaTime, float decayRate) {
+    if (index >= m_memoryData.size()) {
+        return;
+    }
+    auto& data = m_memoryData[index];
+    if (!data.isValid()) {
+        return;
+    }
+    data.emotions.decay(decayRate, deltaTime);
+    data.lastDecayTime += deltaTime;
+    data.lastCombatTime += deltaTime;
+    constexpr float COMBAT_TIMEOUT = 5.0f;
+    if ((data.flags & NPCMemoryData::FLAG_IN_COMBAT) && data.lastCombatTime > COMBAT_TIMEOUT) {
+        data.flags &= ~NPCMemoryData::FLAG_IN_COMBAT;
+    }
 }
 
 inline MemoryOverflow* EntityDataManager::getMemoryOverflow(uint32_t overflowId) {
@@ -2782,16 +2757,6 @@ inline ContainerRenderData& EntityDataManager::getContainerRenderDataByTypeIndex
 inline const ContainerRenderData& EntityDataManager::getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
     assert(typeLocalIndex < m_containerRenderData.size() && "Container render data type index out of bounds");
     return m_containerRenderData[typeLocalIndex];
-}
-
-inline HarvestableRenderData& EntityDataManager::getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex) {
-    assert(typeLocalIndex < m_harvestableRenderData.size() && "Harvestable render data type index out of bounds");
-    return m_harvestableRenderData[typeLocalIndex];
-}
-
-inline const HarvestableRenderData& EntityDataManager::getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
-    assert(typeLocalIndex < m_harvestableRenderData.size() && "Harvestable render data type index out of bounds");
-    return m_harvestableRenderData[typeLocalIndex];
 }
 
 // Container/Harvestable data accessors by type index - O(1) access for batch processing

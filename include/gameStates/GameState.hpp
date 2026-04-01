@@ -6,25 +6,19 @@
 #ifndef GAME_STATE_HPP
 #define GAME_STATE_HPP
 
+#include <SDL3/SDL_gpu.h>
 #include <string>
 
-// Forward declarations
-struct SDL_Renderer;
 class GameStateManager;
-
-#ifdef USE_SDL3_GPU
-struct SDL_GPURenderPass;
 namespace HammerEngine {
 class GPURenderer;
 }
-#endif
 
 // pure virtual for inheritance
 class GameState {
  public:
   virtual bool enter() = 0;
   virtual void update(float deltaTime) = 0;
-  virtual void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) = 0;
   virtual void handleInput() = 0;
   virtual bool exit() = 0;
   virtual void pause() {}
@@ -32,7 +26,6 @@ class GameState {
   virtual std::string getName() const = 0;
   virtual ~GameState() = default;
 
-#ifdef USE_SDL3_GPU
   /**
    * Record vertices for GPU rendering (called before scene pass).
    * Override in states that support GPU rendering.
@@ -68,7 +61,6 @@ class GameState {
    * @return true if GPU render methods are implemented
    */
   virtual bool supportsGPURendering() const { return false; }
-#endif
 
   // State manager access - set by GameStateManager when state is registered
   void setStateManager(GameStateManager* manager) { mp_stateManager = manager; }

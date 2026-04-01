@@ -30,28 +30,18 @@ struct PathfindingGridFixture {
     }
     
     void setupSimpleWorld() {
-        // For testing purposes, we'll manually set up blocked areas
-        // In real usage, this would come from WorldManager
-        
-        // Create walls around the perimeter and some internal obstacles
+        // Build an explicit test layout directly in the grid so the tests
+        // validate concrete pathfinding behavior instead of interface-only
+        // outcomes.
         for (int y = 0; y < 20; ++y) {
             for (int x = 0; x < 20; ++x) {
-                // Perimeter walls
-                if (x == 0 || x == 19 || y == 0 || y == 19) {
-                    // isBlocked = true;
-                }
-                // Central wall
-                else if (x == 10 && y >= 5 && y <= 15) {
-                    // isBlocked = true;
-                }
-                // L-shaped obstacle
-                else if ((x >= 15 && x <= 17 && y >= 10 && y <= 12) || 
-                         (x >= 15 && x <= 17 && y >= 12 && y <= 14)) {
-                    // isBlocked = true;
-                }
-                
-                // We can't directly set blocked cells without world data,
-                // so we'll test with the assumption that rebuildFromWorld works
+                const bool isPerimeterWall = (x == 0 || x == 19 || y == 0 || y == 19);
+                const bool isCentralWall = (x == 10 && y >= 5 && y <= 15 && y != 10);
+                const bool isLShapedObstacle =
+                    ((x >= 15 && x <= 17 && y >= 10 && y <= 12) ||
+                     (x == 15 && y >= 12 && y <= 14));
+
+                grid.setBlocked(x, y, isPerimeterWall || isCentralWall || isLShapedObstacle);
             }
         }
     }
@@ -73,8 +63,10 @@ BOOST_FIXTURE_TEST_CASE(TestPathfindingConfiguration, PathfindingGridFixture)
     // Test iteration limits
     grid.setMaxIterations(5000);
     
-    // These should not crash and should be configurable
-    BOOST_CHECK(true); // Configuration methods should work without error
+    std::vector<Vector2D> path;
+    const auto result = grid.findPath(Vector2D(48.0f, 48.0f), Vector2D(304.0f, 304.0f), path);
+    BOOST_CHECK_EQUAL(result, PathfindingResult::SUCCESS);
+    BOOST_CHECK_GE(path.size(), 2);
 }
 
 BOOST_FIXTURE_TEST_CASE(TestWeightSystem, PathfindingGridFixture)
@@ -84,9 +76,13 @@ BOOST_FIXTURE_TEST_CASE(TestWeightSystem, PathfindingGridFixture)
     
     // Test adding weight circles
     grid.addWeightCircle(Vector2D(160.0f, 160.0f), 64.0f, 2.0f);
-    
-    // These should not crash
-    BOOST_CHECK(true); // Weight system methods should work without error
+
+    std::vector<Vector2D> path;
+    const PathfindingResult result =
+        grid.findPath(Vector2D(48.0f, 48.0f), Vector2D(304.0f, 304.0f), path);
+
+    BOOST_REQUIRE_EQUAL(result, PathfindingResult::SUCCESS);
+    BOOST_CHECK_GE(path.size(), 2);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -101,25 +97,19 @@ BOOST_FIXTURE_TEST_CASE(TestSimplePathfinding, PathfindingGridFixture)
     
     std::vector<Vector2D> path;
     PathfindingResult result = grid.findPath(start, goal, path);
-    
-    // Without world data, this might fail, but we test the interface
-    BOOST_CHECK(result == PathfindingResult::SUCCESS || 
-                result == PathfindingResult::NO_PATH_FOUND ||
-                result == PathfindingResult::TIMEOUT);
-    
-    if (result == PathfindingResult::SUCCESS) {
-        BOOST_CHECK_GE(path.size(), 2); // At least start and goal
-        
-        // First point should be near start
-        float startDistance = std::sqrt(std::pow(path[0].getX() - start.getX(), 2) + 
-                                       std::pow(path[0].getY() - start.getY(), 2));
-        BOOST_CHECK_LT(startDistance, 50.0f); // Unit test tolerance
-        
-        // Last point should be near goal
-        float goalDistance = std::sqrt(std::pow(path.back().getX() - goal.getX(), 2) + 
-                                      std::pow(path.back().getY() - goal.getY(), 2));
-        BOOST_CHECK_LT(goalDistance, 50.0f); // Unit test tolerance
-    }
+
+    BOOST_REQUIRE_EQUAL(result, PathfindingResult::SUCCESS);
+    BOOST_CHECK_GE(path.size(), 2); // At least start and goal
+
+    // First point should be near start
+    float startDistance = std::sqrt(std::pow(path[0].getX() - start.getX(), 2) +
+                                   std::pow(path[0].getY() - start.getY(), 2));
+    BOOST_CHECK_LT(startDistance, 50.0f); // Unit test tolerance
+
+    // Last point should be near goal
+    float goalDistance = std::sqrt(std::pow(path.back().getX() - goal.getX(), 2) +
+                                  std::pow(path.back().getY() - goal.getY(), 2));
+    BOOST_CHECK_LT(goalDistance, 50.0f); // Unit test tolerance
 }
 
 BOOST_FIXTURE_TEST_CASE(TestInvalidStartAndGoal, PathfindingGridFixture)
@@ -149,14 +139,9 @@ BOOST_FIXTURE_TEST_CASE(TestSameStartAndGoal, PathfindingGridFixture)
     std::vector<Vector2D> path;
     
     PathfindingResult result = grid.findPath(samePoint, samePoint, path);
-    
-    // Should either succeed with a single point or handle gracefully
-    BOOST_CHECK(result == PathfindingResult::SUCCESS || 
-                result == PathfindingResult::NO_PATH_FOUND);
-    
-    if (result == PathfindingResult::SUCCESS) {
-        BOOST_CHECK_GE(path.size(), 1);
-    }
+
+    BOOST_REQUIRE_EQUAL(result, PathfindingResult::SUCCESS);
+    BOOST_CHECK_GE(path.size(), 1);
 }
 
 BOOST_FIXTURE_TEST_CASE(TestDiagonalMovementToggle, PathfindingGridFixture)
@@ -174,26 +159,27 @@ BOOST_FIXTURE_TEST_CASE(TestDiagonalMovementToggle, PathfindingGridFixture)
     grid.setAllowDiagonal(false);
     PathfindingResult result2 = grid.findPath(start, goal, pathWithoutDiagonal);
     
-    // Both should work or fail consistently
-    if (result1 == PathfindingResult::SUCCESS && result2 == PathfindingResult::SUCCESS) {
-        // Without diagonal movement, path should typically be longer
-        BOOST_CHECK_GE(pathWithoutDiagonal.size(), pathWithDiagonal.size());
-    }
+    BOOST_REQUIRE_EQUAL(result1, PathfindingResult::SUCCESS);
+    BOOST_REQUIRE_EQUAL(result2, PathfindingResult::SUCCESS);
+    // Without diagonal movement, path should typically be longer
+    BOOST_CHECK_GE(pathWithoutDiagonal.size(), pathWithDiagonal.size());
 }
 
 BOOST_FIXTURE_TEST_CASE(TestHierarchicalLongDistance, PathfindingGridFixture)
 {
-    // Very long-distance path should be reasonable with hierarchical method
+    // The hierarchical API should handle a long-distance path successfully.
+    // This fixture only builds a 5x5 coarse grid, so the production
+    // edge-aware selector intentionally keeps border-adjacent requests on the
+    // direct path even when the hierarchical API itself succeeds.
     Vector2D start(48.0f, 48.0f);     // near (1,1)
     Vector2D farGoal(560.0f, 560.0f); // near (17,17)
 
     std::vector<Vector2D> path;
     PathfindingResult result = grid.findPathHierarchical(start, farGoal, path);
 
-    // Without world data this may not succeed; accept valid outcomes
-    BOOST_CHECK(result == PathfindingResult::SUCCESS ||
-                result == PathfindingResult::NO_PATH_FOUND ||
-                result == PathfindingResult::TIMEOUT);
+    BOOST_REQUIRE_EQUAL(result, PathfindingResult::SUCCESS);
+    BOOST_CHECK(!grid.shouldUseHierarchicalPathfinding(start, farGoal));
+    BOOST_CHECK_GE(path.size(), 2);
 }
 
 BOOST_FIXTURE_TEST_CASE(TestDirectShortDistance, PathfindingGridFixture)
@@ -205,10 +191,9 @@ BOOST_FIXTURE_TEST_CASE(TestDirectShortDistance, PathfindingGridFixture)
     std::vector<Vector2D> path;
     PathfindingResult result = grid.findPath(start, goal, path);
 
-    // Allow SUCCESS/NO_PATH_FOUND given synthetic grid without world data
-    BOOST_CHECK(result == PathfindingResult::SUCCESS ||
-                result == PathfindingResult::NO_PATH_FOUND ||
-                result == PathfindingResult::TIMEOUT);
+    BOOST_REQUIRE_EQUAL(result, PathfindingResult::SUCCESS);
+    BOOST_CHECK(!grid.shouldUseHierarchicalPathfinding(start, goal));
+    BOOST_CHECK_GE(path.size(), 2);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -219,23 +204,27 @@ BOOST_FIXTURE_TEST_CASE(TestWeightReset, PathfindingGridFixture)
 {
     grid.resetWeights(2.0f);
     grid.resetWeights(1.0f); // Reset back to default
-    
-    // This tests the interface - actual weight effects would need world data
-    BOOST_CHECK(true);
+
+    std::vector<Vector2D> path;
+    const auto result = grid.findPath(Vector2D(48.0f, 48.0f), Vector2D(304.0f, 304.0f), path);
+    BOOST_CHECK_EQUAL(result, PathfindingResult::SUCCESS);
+    BOOST_CHECK_GE(path.size(), 2);
 }
 
 BOOST_FIXTURE_TEST_CASE(TestWeightCircleApplication, PathfindingGridFixture)
 {
-    Vector2D center(160.0f, 160.0f);
-    float radius = 64.0f;
-    float weightMultiplier = 3.0f;
-    
-    grid.addWeightCircle(center, radius, weightMultiplier);
-    
-    // Test that the weight application doesn't crash
-    BOOST_CHECK(true);
-    
-    // In a full integration test, we would verify that paths avoid high-weight areas
+    std::vector<Vector2D> baselinePath;
+    const Vector2D start(48.0f, 48.0f);
+    const Vector2D goal(304.0f, 304.0f);
+
+    BOOST_REQUIRE_EQUAL(grid.findPath(start, goal, baselinePath), PathfindingResult::SUCCESS);
+
+    grid.resetWeights(1.0f);
+    grid.addWeightCircle(Vector2D(160.0f, 160.0f), 96.0f, 8.0f);
+
+    std::vector<Vector2D> weightedPath;
+    BOOST_REQUIRE_EQUAL(grid.findPath(start, goal, weightedPath), PathfindingResult::SUCCESS);
+    BOOST_CHECK_GE(weightedPath.size(), baselinePath.size());
 }
 
 BOOST_FIXTURE_TEST_CASE(TestMultipleWeightAreas, PathfindingGridFixture)
@@ -250,7 +239,11 @@ BOOST_FIXTURE_TEST_CASE(TestMultipleWeightAreas, PathfindingGridFixture)
     // Overlapping areas should take the maximum weight
     grid.addWeightCircle(Vector2D(110.0f, 110.0f), 32.0f, 1.5f); // Should not reduce existing weight
     
-    BOOST_CHECK(true); // Interface test
+    std::vector<Vector2D> path;
+    BOOST_REQUIRE_EQUAL(
+        grid.findPath(Vector2D(48.0f, 48.0f), Vector2D(304.0f, 304.0f), path),
+        PathfindingResult::SUCCESS);
+    BOOST_CHECK_GE(path.size(), 2);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -366,7 +359,10 @@ BOOST_FIXTURE_TEST_CASE(TestPathfindingMemoryUsage, PathfindingGridFixture)
     
     BOOST_TEST_MESSAGE("Memory usage test: " << STRESS_TEST_ITERATIONS 
                       << " pathfinding operations completed");
-    BOOST_CHECK(true); // If we get here without crashing, memory management is working
+    std::vector<Vector2D> verificationPath;
+    const auto result = grid.findPath(Vector2D(48.0f, 48.0f), Vector2D(304.0f, 304.0f), verificationPath);
+    BOOST_CHECK_EQUAL(result, PathfindingResult::SUCCESS);
+    BOOST_CHECK_GE(verificationPath.size(), 2);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -375,21 +371,17 @@ BOOST_AUTO_TEST_SUITE(PathfindingEdgeCaseTests)
 
 BOOST_FIXTURE_TEST_CASE(TestNearestOpenCellFinding, PathfindingGridFixture)
 {
-    // This tests the internal findNearestOpen functionality indirectly
-    // by using start/goal positions that might be blocked
-    
-    Vector2D potentiallyBlockedStart(32.0f, 32.0f);  // Edge of world
-    Vector2D potentiallyBlockedGoal(608.0f, 608.0f); // Other edge
-    
+    const Vector2D blockedCorner(16.0f, 16.0f);  // Inside a blocked perimeter cell
+    BOOST_CHECK(grid.isWorldBlocked(blockedCorner));
+
+    const Vector2D snapped = grid.snapToNearestOpenWorld(blockedCorner, 128.0f);
+    BOOST_CHECK(!grid.isWorldBlocked(snapped));
+
     std::vector<Vector2D> path;
-    PathfindingResult result = grid.findPath(potentiallyBlockedStart, potentiallyBlockedGoal, path);
-    
-    // Should either find a path by nudging to nearest open cell, or fail gracefully
-    BOOST_CHECK(result == PathfindingResult::SUCCESS || 
-                result == PathfindingResult::NO_PATH_FOUND ||
-                result == PathfindingResult::INVALID_START ||
-                result == PathfindingResult::INVALID_GOAL ||
-                result == PathfindingResult::TIMEOUT);
+    const PathfindingResult result =
+        grid.findPath(blockedCorner, Vector2D(304.0f, 304.0f), path);
+    BOOST_REQUIRE_EQUAL(result, PathfindingResult::SUCCESS);
+    BOOST_CHECK_GE(path.size(), 2);
 }
 
 BOOST_FIXTURE_TEST_CASE(TestPathfindingWithWeights, PathfindingGridFixture)
@@ -408,14 +400,10 @@ BOOST_FIXTURE_TEST_CASE(TestPathfindingWithWeights, PathfindingGridFixture)
     std::vector<Vector2D> weightedPath;
     PathfindingResult weightedResult = grid.findPath(start, goal, weightedPath);
     
-    // Both should succeed or fail consistently
-    BOOST_CHECK_EQUAL(normalResult, weightedResult);
-    
-    if (normalResult == PathfindingResult::SUCCESS && weightedResult == PathfindingResult::SUCCESS) {
-        // Weighted path might be different (avoiding high-cost areas)
-        // This is hard to test without exact world knowledge, so we just verify it completes
-        BOOST_CHECK_GE(weightedPath.size(), 2);
-    }
+    BOOST_REQUIRE_EQUAL(normalResult, PathfindingResult::SUCCESS);
+    BOOST_REQUIRE_EQUAL(weightedResult, PathfindingResult::SUCCESS);
+    BOOST_CHECK_GE(weightedPath.size(), 2);
+    BOOST_CHECK_GE(weightedPath.size(), normalPath.size());
 }
 
 BOOST_FIXTURE_TEST_CASE(TestExtremeDistances, PathfindingGridFixture)
@@ -464,17 +452,16 @@ BOOST_FIXTURE_TEST_CASE(TestLineOfSightDetection, PathfindingGridFixture)
     std::vector<Vector2D> path;
     PathfindingResult result = grid.findPath(start, goal, path);
 
-    if (result == PathfindingResult::SUCCESS) {
-        BOOST_CHECK_GE(path.size(), 2);
+    BOOST_REQUIRE_EQUAL(result, PathfindingResult::SUCCESS);
+    BOOST_CHECK_GE(path.size(), 2);
 
-        // The path should have been smoothed (fewer waypoints than grid steps)
-        float directDistance = std::sqrt(std::pow(goal.getX() - start.getX(), 2) +
-                                       std::pow(goal.getY() - start.getY(), 2));
-        float gridSteps = directDistance / CELL_SIZE;
+    // The path should have been smoothed (fewer waypoints than grid steps)
+    float directDistance = std::sqrt(std::pow(goal.getX() - start.getX(), 2) +
+                                   std::pow(goal.getY() - start.getY(), 2));
+    float gridSteps = directDistance / CELL_SIZE;
 
-        // Smoothed path should have significantly fewer waypoints than grid steps
-        BOOST_CHECK_LT(static_cast<float>(path.size()), gridSteps * 0.8f);
-    }
+    // Smoothed path should have significantly fewer waypoints than grid steps
+    BOOST_CHECK_LT(static_cast<float>(path.size()), gridSteps * 0.8f);
 }
 
 BOOST_FIXTURE_TEST_CASE(TestPathSmoothingWithObstacles, PathfindingGridFixture)
@@ -716,10 +703,10 @@ BOOST_FIXTURE_TEST_CASE(TestWorldBoundsHandling, PathfindingGridFixture)
 BOOST_FIXTURE_TEST_CASE(TestSnapToNearestOpen, PathfindingGridFixture)
 {
     Vector2D testPositions[] = {
-        {160.0f, 160.0f},  // Center position
-        {32.0f, 32.0f},    // Near corner
-        {320.0f, 160.0f},  // Side position
-        {500.0f, 500.0f}   // Far position
+        {160.0f, 160.0f},  // Open interior
+        {16.0f, 16.0f},    // Blocked corner
+        {320.0f, 160.0f},  // Central wall column
+        {500.0f, 500.0f}   // Far interior
     };
 
     for (const auto& pos : testPositions) {
@@ -728,6 +715,7 @@ BOOST_FIXTURE_TEST_CASE(TestSnapToNearestOpen, PathfindingGridFixture)
         // Snapped position should be valid
         BOOST_CHECK_GE(snapped.getX(), 0.0f);
         BOOST_CHECK_GE(snapped.getY(), 0.0f);
+        BOOST_CHECK(!grid.isWorldBlocked(snapped));
 
         // Should be within reasonable distance of original
         float distance = std::sqrt(std::pow(snapped.getX() - pos.getX(), 2) +
