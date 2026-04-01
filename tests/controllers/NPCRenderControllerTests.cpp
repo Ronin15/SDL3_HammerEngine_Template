@@ -22,12 +22,10 @@
 #include "core/ThreadSystem.hpp"
 #include "utils/GPUSceneRecorder.hpp"
 #include "entities/Entity.hpp"  // For AnimationConfig
+#include "gpu/SpriteBatch.hpp"
+#include "gpu/GPUDevice.hpp"
 #include <SDL3/SDL.h>
 #include <vector>
-
-#define private public
-#include "gpu/SpriteBatch.hpp"
-#undef private
 
 // Test tolerance for floating-point comparisons
 constexpr float EPSILON = 0.001f;
@@ -51,14 +49,12 @@ struct ThreadSystemTestLifetime {
 
 ThreadSystemTestLifetime g_threadSystemTestLifetime{};
 
-void beginSpriteBatchRecording(HammerEngine::SpriteBatch& batch,
-                               std::vector<HammerEngine::SpriteVertex>& vertices,
-                               float textureWidth,
-                               float textureHeight,
-                               float targetHeight) {
-    batch.m_initialized = true;
-    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr,
-                textureWidth, textureHeight, targetHeight);
+bool initSpriteBatchForRecording(HammerEngine::SpriteBatch& batch) {
+    SDL_GPUDevice* device = HammerEngine::GPUDevice::Instance().get();
+    if (!device) {
+        return false;
+    }
+    return batch.init(device, "TestBatch");
 }
 
 } // namespace
@@ -367,7 +363,11 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUUsesInterpolatedPositionAndAtlasFrame) {
 
     std::vector<HammerEngine::SpriteVertex> vertices(8);
     HammerEngine::SpriteBatch batch;
-    beginSpriteBatchRecording(batch, vertices, 1024.0f, 1024.0f, 512.0f);
+    if (!initSpriteBatchForRecording(batch)) {
+        BOOST_TEST_MESSAGE("Skipping GPU recording test: no GPU device available");
+        return;
+    }
+    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 1024.0f, 1024.0f, 512.0f);
 
     HammerEngine::GPUSceneContext ctx{};
     ctx.cameraX = 10.0f;
@@ -393,6 +393,7 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUUsesInterpolatedPositionAndAtlasFrame) {
     BOOST_CHECK_CLOSE(vertices[0].v, expectedSrcY, 0.001f);
     BOOST_CHECK_CLOSE(vertices[1].u, expectedSrcX2, 0.001f);
     BOOST_CHECK_CLOSE(vertices[2].v, expectedSrcY2, 0.001f);
+    batch.shutdown();
 }
 
 BOOST_AUTO_TEST_CASE(TestRecordGPUFlipsHorizontalSourceCoords) {
@@ -415,7 +416,11 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUFlipsHorizontalSourceCoords) {
 
     std::vector<HammerEngine::SpriteVertex> vertices(8);
     HammerEngine::SpriteBatch batch;
-    beginSpriteBatchRecording(batch, vertices, 1024.0f, 1024.0f, 512.0f);
+    if (!initSpriteBatchForRecording(batch)) {
+        BOOST_TEST_MESSAGE("Skipping GPU recording test: no GPU device available");
+        return;
+    }
+    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 1024.0f, 1024.0f, 512.0f);
 
     HammerEngine::GPUSceneContext ctx{};
     ctx.cameraX = 0.0f;
@@ -429,6 +434,7 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUFlipsHorizontalSourceCoords) {
     BOOST_CHECK_EQUAL(batch.end(), HammerEngine::SpriteBatch::VERTICES_PER_SPRITE);
     BOOST_CHECK_GT(vertices[0].u, vertices[1].u);
     BOOST_CHECK_CLOSE(vertices[0].v, vertices[1].v, 0.001f);
+    batch.shutdown();
 }
 
 BOOST_AUTO_TEST_SUITE_END()

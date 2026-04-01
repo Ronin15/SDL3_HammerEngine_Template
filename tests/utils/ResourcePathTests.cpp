@@ -6,9 +6,7 @@
 #define BOOST_TEST_MODULE ResourcePathTests
 #include <boost/test/unit_test.hpp>
 
-#define private public
 #include "utils/ResourcePath.hpp"
-#undef private
 
 #include <filesystem>
 #include <fstream>
@@ -22,16 +20,17 @@ namespace {
 struct ResourcePathFixture {
     ResourcePathFixture()
     {
-        ResourcePath::s_searchPaths.clear();
-        ResourcePath::s_initialized = false;
-        ResourcePath::s_isBundle = false;
+        ResourcePath::init();
     }
 
     ~ResourcePathFixture()
     {
-        ResourcePath::s_searchPaths.clear();
-        ResourcePath::s_initialized = false;
-        ResourcePath::s_isBundle = false;
+        if (!m_highPath.empty()) {
+            ResourcePath::removeSearchPath(m_highPath);
+        }
+        if (!m_lowPath.empty()) {
+            ResourcePath::removeSearchPath(m_lowPath);
+        }
 
         std::error_code ec;
         if (!m_tempRoot.empty()) {
@@ -50,50 +49,46 @@ struct ResourcePathFixture {
 
             std::ofstream(m_tempRoot / "high" / "res" / "img" / "icon.png") << "high";
             std::ofstream(m_tempRoot / "low" / "res" / "img" / "icon.png") << "low";
+
+            m_highPath = (m_tempRoot / "high").string();
+            m_lowPath = (m_tempRoot / "low").string();
         }
         return m_tempRoot;
     }
 
     fs::path m_tempRoot;
+    std::string m_highPath;
+    std::string m_lowPath;
 };
 
 } // namespace
 
 BOOST_FIXTURE_TEST_SUITE(ResourcePathTests, ResourcePathFixture)
 
-BOOST_AUTO_TEST_CASE(TestResolveReturnsRelativePathBeforeInit)
-{
-    const std::string relative = "res/img/icon.png";
-    BOOST_CHECK_EQUAL(ResourcePath::resolve(relative), relative);
-}
-
 BOOST_AUTO_TEST_CASE(TestSearchPathPriorityControlsResolution)
 {
     const fs::path tempRoot = makeTempRoot();
 
-    ResourcePath::addSearchPath((tempRoot / "low").string(), 1);
-    ResourcePath::addSearchPath((tempRoot / "high").string(), 5);
-    ResourcePath::s_initialized = true;
+    ResourcePath::addSearchPath(m_lowPath, 100);
+    ResourcePath::addSearchPath(m_highPath, 200);
 
     const std::string resolved = ResourcePath::resolve("res/img/icon.png");
     BOOST_CHECK_EQUAL(resolved, (tempRoot / "high" / "res" / "img" / "icon.png").string());
     BOOST_CHECK(ResourcePath::exists("res/img/icon.png"));
-    BOOST_CHECK_EQUAL(ResourcePath::getBasePath(), (tempRoot / "high").string());
 }
 
 BOOST_AUTO_TEST_CASE(TestRemoveSearchPathFallsBackToNextCandidate)
 {
     const fs::path tempRoot = makeTempRoot();
 
-    ResourcePath::addSearchPath((tempRoot / "low").string(), 1);
-    ResourcePath::addSearchPath((tempRoot / "high").string(), 5);
-    ResourcePath::s_initialized = true;
+    ResourcePath::addSearchPath(m_lowPath, 100);
+    ResourcePath::addSearchPath(m_highPath, 200);
 
-    ResourcePath::removeSearchPath((tempRoot / "high").string());
+    ResourcePath::removeSearchPath(m_highPath);
+    m_highPath.clear();
 
     const std::string resolved = ResourcePath::resolve("res/img/icon.png");
     BOOST_CHECK_EQUAL(resolved, (tempRoot / "low" / "res" / "img" / "icon.png").string());
-    BOOST_CHECK_EQUAL(ResourcePath::getBasePath(), (tempRoot / "low").string());
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -217,10 +217,11 @@ BOOST_AUTO_TEST_CASE(TestUpdateCycle) {
 
 BOOST_AUTO_TEST_CASE(TestNoInfiniteRetryLoop) {
     // Repeated failed requests should complete once each without internal requeueing.
-    
+
     PathfinderManager& manager = PathfinderManager::Instance();
     BOOST_REQUIRE(manager.init());
-    
+    manager.resetStats();
+
     Vector2D start(50.0f, 50.0f);
     Vector2D goal(100.0f, 100.0f);
     EntityID entityId = 99999;

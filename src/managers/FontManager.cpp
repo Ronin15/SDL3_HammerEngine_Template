@@ -391,6 +391,7 @@ void FontManager::clean() {
 
   // No need to manually close fonts as the unique_ptr will handle it
   m_fontMap.clear();
+  m_fontsLoaded.store(false, std::memory_order_release);
   destroyGPUTextObjects();
 
   // Clear display tracking
