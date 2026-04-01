@@ -331,14 +331,21 @@ bool GameEngine::init(std::string_view title) {
     committedVSync = vsyncRequested;
     GAMEENGINE_INFO(std::format("GPU rendering: present mode {}",
                                 committedVSync ? "VSYNC" : "MAILBOX"));
-  } else if (!vsyncRequested &&
-             SDL_SetGPUSwapchainParameters(gpuDev.get(), gpuDev.getWindow(),
-                                           SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
-                                           SDL_GPU_PRESENTMODE_VSYNC)) {
-    committedVSync = true;
-    GAMEENGINE_WARN(std::format(
-        "Failed to set GPU present mode to MAILBOX: {}. Falling back to VSYNC.",
-        SDL_GetError()));
+  } else if (!vsyncRequested) {
+    const std::string mailboxError = SDL_GetError();
+    if (SDL_SetGPUSwapchainParameters(gpuDev.get(), gpuDev.getWindow(),
+                                      SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
+                                      SDL_GPU_PRESENTMODE_VSYNC)) {
+      committedVSync = true;
+      GAMEENGINE_WARN(std::format(
+          "Failed to set GPU present mode to MAILBOX: {}. Falling back to VSYNC.",
+          mailboxError));
+    } else {
+      usingSoftwareFallback = true;
+      GAMEENGINE_WARN(std::format(
+          "Failed to configure GPU present mode: {}. Falling back to software frame limiting.",
+          SDL_GetError()));
+    }
   } else {
     usingSoftwareFallback = true;
     GAMEENGINE_WARN(std::format(
@@ -1241,18 +1248,23 @@ bool GameEngine::setVSyncEnabled(bool enable) {
           gpuDevice.get(), gpuDevice.getWindow(),
           SDL_GPU_SWAPCHAINCOMPOSITION_SDR, requestedMode)) {
     committedVSync = enable;
-  } else if (!enable &&
-             SDL_SetGPUSwapchainParameters(gpuDevice.get(), gpuDevice.getWindow(),
-                                           SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
-                                           SDL_GPU_PRESENTMODE_VSYNC)) {
-    committedVSync = true;
-    GAMEENGINE_WARN(std::format(
-        "Failed to disable VSync via MAILBOX: {}. Falling back to VSYNC.",
-        SDL_GetError()));
+  } else if (!enable) {
+    const std::string mailboxError = SDL_GetError();
+    if (SDL_SetGPUSwapchainParameters(gpuDevice.get(), gpuDevice.getWindow(),
+                                      SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
+                                      SDL_GPU_PRESENTMODE_VSYNC)) {
+      committedVSync = true;
+      GAMEENGINE_WARN(std::format(
+          "Failed to disable VSync via MAILBOX: {}. Falling back to VSYNC.",
+          mailboxError));
+    } else {
+      GAMEENGINE_ERROR(std::format(
+          "Failed to set GPU present mode: {}", SDL_GetError()));
+      usingSoftwareFallback = true;
+    }
   } else {
     GAMEENGINE_ERROR(std::format(
-        "Failed to {} VSync on GPU swapchain: {}",
-        enable ? "enable" : "disable", SDL_GetError()));
+        "Failed to enable VSync on GPU swapchain: {}", SDL_GetError()));
     usingSoftwareFallback = true;
   }
 
@@ -1261,20 +1273,25 @@ bool GameEngine::setVSyncEnabled(bool enable) {
     m_timestepManager->setSoftwareFrameLimiting(usingSoftwareFallback || !committedVSync);
   }
 
-  if (usingSoftwareFallback) {
-    GAMEENGINE_INFO("Falling back to software frame limiting");
-  }
+  const bool success = !usingSoftwareFallback && (committedVSync == enable);
 
-  GAMEENGINE_INFO(std::format(
-      "GPU frame pacing committed to {}",
-      usingSoftwareFallback ? "software fallback"
-                            : (committedVSync ? "VSYNC" : "MAILBOX")));
+  if (usingSoftwareFallback) {
+    GAMEENGINE_WARN("Falling back to software frame limiting");
+  } else if (!success) {
+    GAMEENGINE_WARN(std::format(
+        "Requested {} but committed to {} — driver does not support MAILBOX",
+        enable ? "VSYNC" : "MAILBOX",
+        committedVSync ? "VSYNC" : "MAILBOX"));
+  } else {
+    GAMEENGINE_INFO(std::format("GPU frame pacing committed to {}",
+                                committedVSync ? "VSYNC" : "MAILBOX"));
+  }
 
   auto &settings = HammerEngine::SettingsManager::Instance();
   settings.set("graphics", "vsync", committedVSync);
   settings.saveToFile(HammerEngine::ResourcePath::resolve("res/settings.json"));
 
-  return !usingSoftwareFallback;
+  return success;
 }
 
 void GameEngine::toggleFullscreen() {
