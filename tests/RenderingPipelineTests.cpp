@@ -94,6 +94,10 @@ BOOST_AUTO_TEST_CASE(TestOnlyGameEngineCallsEndFrame) {
 
     // Verify game states never end the frame directly
     std::vector<std::string> gameStateFiles = {
+        "src/gameStates/AIDemoState.cpp",
+        "src/gameStates/AdvancedAIDemoState.cpp",
+        "src/gameStates/OverlayDemoState.cpp",
+        "src/gameStates/LogoState.cpp",
         "src/gameStates/GameOverState.cpp",
         "src/gameStates/MainMenuState.cpp",
         "src/gameStates/GamePlayState.cpp",
@@ -126,6 +130,10 @@ BOOST_AUTO_TEST_CASE(TestOnlyGameEngineBeginsScenePass) {
 
     // Verify GameStates NEVER begin the pass directly
     std::vector<std::string> gameStateFiles = {
+        "src/gameStates/AIDemoState.cpp",
+        "src/gameStates/AdvancedAIDemoState.cpp",
+        "src/gameStates/OverlayDemoState.cpp",
+        "src/gameStates/LogoState.cpp",
         "src/gameStates/GameOverState.cpp",
         "src/gameStates/MainMenuState.cpp",
         "src/gameStates/GamePlayState.cpp",
@@ -264,9 +272,14 @@ BOOST_AUTO_TEST_CASE(TestCompleteRenderingFlow) {
 
     // Step 3: At least one GameState implements GPU rendering hooks
     std::vector<std::string> gameStateFiles = {
+        "src/gameStates/AIDemoState.cpp",
+        "src/gameStates/AdvancedAIDemoState.cpp",
         "src/gameStates/MainMenuState.cpp",
         "src/gameStates/GamePlayState.cpp",
-        "src/gameStates/LoadingState.cpp"
+        "src/gameStates/LoadingState.cpp",
+        "src/gameStates/OverlayDemoState.cpp",
+        "src/gameStates/EventDemoState.cpp",
+        "src/gameStates/LogoState.cpp"
     };
 
     bool foundStateRender = false;
@@ -404,11 +417,15 @@ BOOST_AUTO_TEST_SUITE(DeterministicRenderingTests)
 
 BOOST_AUTO_TEST_CASE(TestNoRandomInRenderMethods) {
     std::vector<std::string> gameStateFiles = {
+        "src/gameStates/AIDemoState.cpp",
+        "src/gameStates/AdvancedAIDemoState.cpp",
         "src/gameStates/GameOverState.cpp",
         "src/gameStates/MainMenuState.cpp",
         "src/gameStates/GamePlayState.cpp",
         "src/gameStates/PauseState.cpp",
-        "src/gameStates/SettingsMenuState.cpp"
+        "src/gameStates/SettingsMenuState.cpp",
+        "src/gameStates/OverlayDemoState.cpp",
+        "src/gameStates/LogoState.cpp"
     };
 
     for (const auto& file : gameStateFiles) {

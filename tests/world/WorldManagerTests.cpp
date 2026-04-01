@@ -6,7 +6,9 @@
 #define BOOST_TEST_MODULE WorldManagerTests
 #include <boost/test/unit_test.hpp>
 
+#define private public
 #include "managers/WorldManager.hpp"
+#undef private
 #include "managers/WorldResourceManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
@@ -349,10 +351,11 @@ BOOST_AUTO_TEST_CASE(TestRenderingState) {
 BOOST_AUTO_TEST_CASE(TestCameraSettings) {
     worldManager->setCamera(10, 20);
     worldManager->setCameraViewport(80, 25);
-    
-    // Cannot directly test camera position as it's private,
-    // but we can verify the methods don't crash
-    BOOST_CHECK(true);
+
+    BOOST_CHECK_EQUAL(worldManager->m_cameraX, 10);
+    BOOST_CHECK_EQUAL(worldManager->m_cameraY, 20);
+    BOOST_CHECK_EQUAL(worldManager->m_viewportWidth, 80);
+    BOOST_CHECK_EQUAL(worldManager->m_viewportHeight, 25);
 }
 
 BOOST_AUTO_TEST_CASE(TestUnloadWorld) {
@@ -507,12 +510,11 @@ BOOST_AUTO_TEST_CASE(TestClearChunkCache) {
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
     BOOST_CHECK(worldManager->hasActiveWorld());
 
-    // Clear chunk cache should not crash
     worldManager->clearChunkCache();
 
-    // Manager should still be functional
     BOOST_CHECK(worldManager->hasActiveWorld());
     BOOST_CHECK(worldManager->isInitialized());
+    BOOST_CHECK(worldManager->getTileCopyAt(5, 5).has_value());
 }
 
 BOOST_AUTO_TEST_CASE(TestInvalidateChunk) {
@@ -612,18 +614,17 @@ BOOST_AUTO_TEST_CASE(TestSetCurrentSeason) {
 
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
 
-    // Set different seasons - should not crash
     worldManager->setCurrentSeason(Season::Spring);
-    BOOST_CHECK(worldManager->hasActiveWorld());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Spring);
 
     worldManager->setCurrentSeason(Season::Summer);
-    BOOST_CHECK(worldManager->hasActiveWorld());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Summer);
 
     worldManager->setCurrentSeason(Season::Fall);
-    BOOST_CHECK(worldManager->hasActiveWorld());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Fall);
 
     worldManager->setCurrentSeason(Season::Winter);
-    BOOST_CHECK(worldManager->hasActiveWorld());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Winter);
 }
 
 BOOST_AUTO_TEST_CASE(TestSeasonChangeUpdatesCache) {
@@ -638,17 +639,15 @@ BOOST_AUTO_TEST_CASE(TestSeasonChangeUpdatesCache) {
 
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
 
-    // Set season to Spring
     worldManager->setCurrentSeason(Season::Spring);
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Spring);
 
-    // Change season to Winter
     worldManager->setCurrentSeason(Season::Winter);
 
-    // Manager should still be functional
     BOOST_CHECK(worldManager->hasActiveWorld());
     BOOST_CHECK(worldManager->isInitialized());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Winter);
 
-    // Tile access should still work
     const auto tile = worldManager->getTileCopyAt(5, 5);
     BOOST_CHECK(tile.has_value());
 }
@@ -682,9 +681,9 @@ BOOST_AUTO_TEST_CASE(TestSeasonalTextureIdConsistency) {
         worldManager->setCurrentSeason(Season::Winter);
     }
 
-    // Manager should still be functional after season cycling
     BOOST_CHECK(worldManager->hasActiveWorld());
     BOOST_CHECK(worldManager->isInitialized());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Winter);
 }
 
 BOOST_AUTO_TEST_CASE(TestSeasonChangeWithoutWorld) {
@@ -692,12 +691,12 @@ BOOST_AUTO_TEST_CASE(TestSeasonChangeWithoutWorld) {
     worldManager->unloadWorld();
     BOOST_CHECK(!worldManager->hasActiveWorld());
 
-    // Setting season without world should not crash
     worldManager->setCurrentSeason(Season::Summer);
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Summer);
     worldManager->setCurrentSeason(Season::Winter);
 
-    // Manager should still be functional
     BOOST_CHECK(worldManager->isInitialized());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Winter);
 }
 
 BOOST_AUTO_TEST_CASE(TestChunkCacheClearedOnSeasonChange) {
@@ -712,14 +711,13 @@ BOOST_AUTO_TEST_CASE(TestChunkCacheClearedOnSeasonChange) {
 
     BOOST_REQUIRE(worldManager->loadNewWorld(config));
 
-    // Set initial season
     worldManager->setCurrentSeason(Season::Spring);
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Spring);
 
-    // Change season - should trigger cache clear
     worldManager->setCurrentSeason(Season::Fall);
 
-    // Manager should be functional and tiles accessible
     BOOST_CHECK(worldManager->hasActiveWorld());
+    BOOST_CHECK(worldManager->getCurrentSeason() == Season::Fall);
 
     for (int y = 0; y < 5; ++y) {
         for (int x = 0; x < 5; ++x) {

@@ -9,15 +9,15 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
-#include "managers/WorldManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 #include "utils/Vector2D.hpp"
-#include "world/WorldData.hpp"
 #include <chrono>
 #include <thread>
 #include <atomic>
+#include <vector>
 
 using namespace HammerEngine;
 
@@ -50,6 +50,46 @@ BOOST_GLOBAL_FIXTURE(ContentionThreadFixture);
 
 BOOST_AUTO_TEST_SUITE(PathfinderAIContentionTestSuite)
 
+struct ContentionFixture {
+    ContentionFixture() {
+        EntityDataManager::Instance().init();
+        EventManager::Instance().init();
+        CollisionManager::Instance().init();
+        PathfinderManager::Instance().init();
+        PathfinderManager::Instance().resetStats();
+        BOOST_REQUIRE(AIManager::Instance().init());
+    }
+
+    ~ContentionFixture() {
+        for (const auto& handle : m_handles) {
+            if (EntityDataManager::Instance().isValidHandle(handle)) {
+                EntityDataManager::Instance().destroyEntity(handle);
+            }
+        }
+        EntityDataManager::Instance().processDestructionQueue();
+        AIManager::Instance().clean();
+        PathfinderManager::Instance().clean();
+        CollisionManager::Instance().clean();
+        EventManager::Instance().clean();
+        EntityDataManager::Instance().clean();
+    }
+
+    void createIdleNPCs(size_t count) {
+        auto& edm = EntityDataManager::Instance();
+        auto& ai = AIManager::Instance();
+        for (size_t i = 0; i < count; ++i) {
+            EntityHandle handle = edm.createNPCWithRaceClass(
+                Vector2D(64.0f + static_cast<float>(i) * 16.0f, 64.0f),
+                "Human",
+                "Guard");
+            ai.assignBehavior(handle, "Idle");
+            m_handles.push_back(handle);
+        }
+    }
+
+    std::vector<EntityHandle> m_handles;
+};
+
 BOOST_AUTO_TEST_CASE(TestWorkerBudgetAllocation) {
     auto& threadSystem = ThreadSystem::Instance();
     size_t availableWorkers = threadSystem.getThreadCount();
@@ -68,12 +108,9 @@ BOOST_AUTO_TEST_CASE(TestWorkerBudgetAllocation) {
     BOOST_CHECK_GT(budget.totalWorkers, 0);
 }
 
-BOOST_AUTO_TEST_CASE(TestSimultaneousAIAndPathfindingLoad) {
-    // Initialize managers (matching PathfinderManagerTests pattern)
-    PathfinderManager::Instance().init();
-    AIManager::Instance().init();
+BOOST_FIXTURE_TEST_CASE(TestSimultaneousAIAndPathfindingLoad, ContentionFixture) {
+    createIdleNPCs(32);
 
-    // Submit burst of pathfinding requests simultaneously
     const size_t pathRequests = 100;
     std::atomic<size_t> pathsCompleted{0};
 
@@ -92,9 +129,6 @@ BOOST_AUTO_TEST_CASE(TestSimultaneousAIAndPathfindingLoad) {
         );
     }
 
-    BOOST_TEST_MESSAGE("Submitted " << pathRequests << " path requests");
-
-    // Process both managers over multiple frames (matching PathfinderManagerTests pattern)
     const int numFrames = 10;
 
     for (int frame = 0; frame < numFrames; ++frame) {
@@ -103,25 +137,22 @@ BOOST_AUTO_TEST_CASE(TestSimultaneousAIAndPathfindingLoad) {
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
-    // Wait for async processing to complete (matching PathfinderManagerTests)
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    for (int i = 0; i < 40 && pathsCompleted.load() < pathRequests; ++i) {
+        AIManager::Instance().update(0.016f);
+        PathfinderManager::Instance().update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     BOOST_TEST_MESSAGE("Completed: " << pathsCompleted.load() << " / " << pathRequests);
 
-    // Verify pathfinding processed work (match PathfinderManagerTests: at least half)
-    BOOST_CHECK_GE(pathsCompleted.load(), pathRequests / 2);
-
-    // Clean up
-    PathfinderManager::Instance().clean();
-    AIManager::Instance().clean();
+    BOOST_CHECK_EQUAL(pathsCompleted.load(), pathRequests);
+    BOOST_CHECK(AIManager::Instance().isInitialized());
+    BOOST_CHECK(PathfinderManager::Instance().isInitialized());
 }
 
-BOOST_AUTO_TEST_CASE(TestNoWorkerStarvation) {
-    // Initialize managers
-    PathfinderManager::Instance().init();
-    AIManager::Instance().init();
+BOOST_FIXTURE_TEST_CASE(TestNoWorkerStarvation, ContentionFixture) {
+    createIdleNPCs(64);
 
-    // Submit many path requests to stress PathfinderManager
     const size_t burstRequests = 200;
     std::atomic<size_t> pathsCompleted{0};
 
@@ -140,9 +171,6 @@ BOOST_AUTO_TEST_CASE(TestNoWorkerStarvation) {
         );
     }
 
-    BOOST_TEST_MESSAGE("Stress test: " << burstRequests << " path requests");
-
-    // Process for extended period (matching PathfinderManagerTests pattern)
     const int stressFrames = 15;
 
     for (int frame = 0; frame < stressFrames; ++frame) {
@@ -151,25 +179,21 @@ BOOST_AUTO_TEST_CASE(TestNoWorkerStarvation) {
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
-    // Wait for async processing to complete
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    for (int i = 0; i < 60 && pathsCompleted.load() < burstRequests; ++i) {
+        AIManager::Instance().update(0.016f);
+        PathfinderManager::Instance().update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     BOOST_TEST_MESSAGE("Completed: " << pathsCompleted.load() << " / " << burstRequests);
 
-    // Verify both managers made progress (matching PathfinderManagerTests: at least half)
-    BOOST_CHECK_GE(pathsCompleted.load(), burstRequests / 2);
-
-    // Clean up
-    PathfinderManager::Instance().clean();
-    AIManager::Instance().clean();
+    BOOST_CHECK_EQUAL(pathsCompleted.load(), burstRequests);
+    BOOST_CHECK(AIManager::Instance().isInitialized());
 }
 
-BOOST_AUTO_TEST_CASE(TestQueuePressureCoordination) {
-    // Initialize managers
-    PathfinderManager::Instance().init();
-    AIManager::Instance().init();
+BOOST_FIXTURE_TEST_CASE(TestQueuePressureCoordination, ContentionFixture) {
+    createIdleNPCs(48);
 
-    // Submit pathfinding requests
     const size_t pathRequests = 150;
     std::atomic<size_t> pathsCompleted{0};
 
@@ -194,17 +218,17 @@ BOOST_AUTO_TEST_CASE(TestQueuePressureCoordination) {
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
-    // Wait for async processing to complete
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    for (int i = 0; i < 50 && pathsCompleted.load() < pathRequests; ++i) {
+        AIManager::Instance().update(0.016f);
+        PathfinderManager::Instance().update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     BOOST_TEST_MESSAGE("Completed: " << pathsCompleted.load() << " / " << pathRequests);
 
-    // Verify pathfinding processed work
-    BOOST_CHECK_GE(pathsCompleted.load(), pathRequests / 2);
-
-    // Clean up
-    PathfinderManager::Instance().clean();
-    AIManager::Instance().clean();
+    BOOST_CHECK_EQUAL(pathsCompleted.load(), pathRequests);
+    const auto stats = PathfinderManager::Instance().getStats();
+    BOOST_CHECK_EQUAL(stats.totalRequests, static_cast<uint64_t>(pathRequests));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

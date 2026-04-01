@@ -9,10 +9,13 @@
 #include <SDL3/SDL.h>
 #include "managers/InputManager.hpp"
 #include "utils/Vector2D.hpp"
+#include <cstdlib>
 
 // Global fixture for SDL and InputManager initialization
 struct InputManagerTestFixture {
     InputManagerTestFixture() {
+        // Tests only inject SDL events; they do not need a real display.
+        setenv("SDL_VIDEODRIVER", "offscreen", 1);
         // Initialize SDL Video subsystem (needed for event processing)
         if (!SDL_Init(SDL_INIT_VIDEO)) {
             throw std::runtime_error("Failed to initialize SDL: " + std::string(SDL_GetError()));

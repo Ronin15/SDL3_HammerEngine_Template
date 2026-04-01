@@ -103,6 +103,8 @@ BOOST_AUTO_TEST_CASE(TestLoadingStateReuse) {
     loadingState.configure("State2", config2);
     BOOST_CHECK(!loadingState.hasError());
     BOOST_CHECK_EQUAL(loadingState.getLastError(), ""); // Error cleared on reconfigure
+    BOOST_CHECK(!loadingState.hasError());
+    BOOST_CHECK_EQUAL(loadingState.getLastError(), "");
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -113,6 +115,12 @@ BOOST_AUTO_TEST_SUITE_END()
 // Tests that validate general async loading best practices
 
 BOOST_AUTO_TEST_SUITE(AsyncPatternBestPracticesTests)
+
+BOOST_AUTO_TEST_CASE(TestEnterFailsWhenUnconfigured) {
+    LoadingState loadingState;
+
+    BOOST_CHECK(!loadingState.enter());
+}
 
 // ----------------------------------------------------------------------------
 // Test: Atomic operations use proper memory ordering

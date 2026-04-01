@@ -18,6 +18,7 @@ RUN_DAYNIGHT=false
 RUN_HARVEST=false
 RUN_NPCRENDER=false
 RUN_ITEM=false
+RUN_COMBAT=false
 RUN_RESOURCERENDER=false
 RUN_SOCIAL=false
 
@@ -38,6 +39,7 @@ for arg in "$@"; do
       echo -e "  --harvest         Run only HarvestController tests"
       echo -e "  --npcrender       Run only NPCRenderController tests"
       echo -e "  --item            Run only ItemController tests"
+      echo -e "  --combat          Run only CombatController tests"
       echo -e "  --resourcerender  Run only ResourceRenderController tests"
       echo -e "  --social          Run only SocialController tests"
       echo -e "  --help            Show this help message"
@@ -71,6 +73,11 @@ for arg in "$@"; do
     --item)
       RUN_ALL=false
       RUN_ITEM=true
+      shift
+      ;;
+    --combat)
+      RUN_ALL=false
+      RUN_COMBAT=true
       shift
       ;;
     --resourcerender)
@@ -113,6 +120,10 @@ fi
 
 if [ "$RUN_ALL" = true ] || [ "$RUN_ITEM" = true ]; then
   EXECUTABLES+=("item_controller_tests")
+fi
+
+if [ "$RUN_ALL" = true ] || [ "$RUN_COMBAT" = true ]; then
+  EXECUTABLES+=("combat_controller_tests")
 fi
 
 if [ "$RUN_ALL" = true ] || [ "$RUN_RESOURCERENDER" = true ]; then

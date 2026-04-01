@@ -10,7 +10,9 @@
 
 #include "GPUTestFixture.hpp"
 #include "gpu/GPUDevice.hpp"
+#define private public
 #include "gpu/GPURenderer.hpp"
+#undef private
 #include "gpu/GPUShaderManager.hpp"
 
 using namespace HammerEngine;
@@ -202,9 +204,12 @@ BOOST_FIXTURE_TEST_CASE(EndFrameSubmitsCommandBuffer, RendererTestFixture) {
     renderer->beginSwapchainPass();
     renderer->endFrame();
 
-    // After endFrame, command buffer should be submitted
-    // (Can't easily verify this without checking frame was presented)
-    BOOST_CHECK(true);  // Frame completed without crash
+    BOOST_CHECK(renderer->getCommandBuffer() == nullptr);
+    BOOST_CHECK(renderer->getCopyPass() == nullptr);
+    BOOST_CHECK(renderer->m_currentPass == nullptr);
+    BOOST_CHECK(renderer->m_swapchainTexture == nullptr);
+    BOOST_CHECK(!renderer->m_frameActive);
+    BOOST_CHECK(!renderer->m_frameReadyForPresentation);
 
     GPUTestFixture::hideTestWindow();
 }
@@ -223,9 +228,16 @@ BOOST_FIXTURE_TEST_CASE(MultipleFrameCycles, RendererTestFixture) {
         renderer->beginScenePass();
         renderer->beginSwapchainPass();
         renderer->endFrame();
+
+        BOOST_CHECK(renderer->getCommandBuffer() == nullptr);
+        BOOST_CHECK(renderer->getCopyPass() == nullptr);
+        BOOST_CHECK(renderer->m_swapchainTexture == nullptr);
+        BOOST_CHECK(!renderer->m_frameActive);
+        BOOST_CHECK(!renderer->m_frameReadyForPresentation);
     }
 
-    BOOST_CHECK(true);  // Multiple frames completed
+    BOOST_CHECK(renderer->getSceneTexture() != nullptr);
+    BOOST_CHECK(renderer->getSceneTexture()->isValid());
 
     GPUTestFixture::hideTestWindow();
 }
@@ -406,18 +418,21 @@ BOOST_FIXTURE_TEST_CASE(SetCompositeParams, RendererTestFixture) {
     SKIP_IF_NO_GPU();
     BOOST_REQUIRE(rendererInitialized);
 
-    // Should not crash
     renderer->setCompositeParams(2.0f, 0.25f, 0.5f);
-    BOOST_CHECK(true);
+    BOOST_CHECK_EQUAL(renderer->m_compositeZoom, 2.0f);
+    BOOST_CHECK_EQUAL(renderer->m_compositeSubPixelX, 0.25f);
+    BOOST_CHECK_EQUAL(renderer->m_compositeSubPixelY, 0.5f);
 }
 
 BOOST_FIXTURE_TEST_CASE(SetDayNightParams, RendererTestFixture) {
     SKIP_IF_NO_GPU();
     BOOST_REQUIRE(rendererInitialized);
 
-    // Should not crash
     renderer->setDayNightParams(0.8f, 0.9f, 1.0f, 0.5f);
-    BOOST_CHECK(true);
+    BOOST_CHECK_EQUAL(renderer->m_dayNightR, 0.8f);
+    BOOST_CHECK_EQUAL(renderer->m_dayNightG, 0.9f);
+    BOOST_CHECK_EQUAL(renderer->m_dayNightB, 1.0f);
+    BOOST_CHECK_EQUAL(renderer->m_dayNightAlpha, 0.5f);
 }
 
 BOOST_FIXTURE_TEST_CASE(RenderCompositeInSwapchainPass, RendererTestFixture) {
@@ -437,7 +452,10 @@ BOOST_FIXTURE_TEST_CASE(RenderCompositeInSwapchainPass, RendererTestFixture) {
     }
 
     renderer->endFrame();
-    BOOST_CHECK(true);
+    BOOST_CHECK(renderer->getCommandBuffer() == nullptr);
+    BOOST_CHECK(renderer->m_swapchainTexture == nullptr);
+    BOOST_CHECK(!renderer->m_frameActive);
+    BOOST_CHECK(!renderer->m_frameReadyForPresentation);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

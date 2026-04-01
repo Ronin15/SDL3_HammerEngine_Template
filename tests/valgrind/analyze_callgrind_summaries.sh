@@ -418,7 +418,7 @@ main() {
     analyze_by_category "Resource Management" "(resource|inventory|json)"
     analyze_by_category "Event System" "(event|weather)"
     analyze_by_category "Threading & Concurrency" "(thread|threading|buffer_utilization)"
-    analyze_by_category "Performance & Scaling" "(particle_performance|scaling|ui_stress|save_manager)"
+    analyze_by_category "Performance & Scaling" "(particle_performance|scaling|ui_manager_functional|save_manager)"
     analyze_by_category "Core Particle System" "(particle_core|particle_weather)"
     
     # Generate comprehensive report
@@ -455,7 +455,7 @@ case "${1:-all}" in
         analyze_by_category "Threading & Concurrency" "(thread|threading|buffer_utilization)"
         ;;
     "performance"|"perf"|"scaling")
-        analyze_by_category "Performance & Scaling" "(particle_performance|scaling|ui_stress|save_manager)"
+        analyze_by_category "Performance & Scaling" "(particle_performance|scaling|ui_manager_functional|save_manager)"
         ;;
     "particles"|"particle_core")
         analyze_by_category "Core Particle System" "(particle_core|particle_weather)"

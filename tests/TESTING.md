@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 78 test executables covering AI systems, AI behaviors, behavior state transitions, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTimeManager simulation, controller systems, entity state management, entity data management, NPC memory system, background simulation, EDM integration tests, GPU rendering subsystem, GPU frame timing benchmarks, and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 74 source-controlled test executables covering AI systems, AI behaviors, behavior state transitions, crowd-query runtime behavior, UI functionality, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading-state helpers, manager runtime behavior, frame profiling, GameTimeManager simulation, controller systems, entity state management, entity data management, NPC memory system, background simulation, EDM integration tests, GPU rendering subsystem, GPU frame timing benchmarks, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -15,20 +15,20 @@ The Hammer Game Engine has the following test suites:
    - AI Benchmark Tests: Measure performance characteristics and scaling capabilities
    - Behavior Functionality Tests: Comprehensive validation of all 8 AI behaviors, modes, and behavior transitions
    - Behavior Transition Tests: Validate state preservation during behavior switches (e.g., Guard→Attack)
+   - Crowd Runtime Tests: Validate crowd cache reuse, stat accounting, invalidation, and thread-local buffer behavior
    - ThreadSystem Queue Load Tests: Defensive monitoring to prevent ThreadSystem overload
    - AIManager EDM Integration Tests: Validate AIManager's integration with EntityDataManager (sparse behavior vector, batch processing, state transitions)
 
 2. **UI System Tests**
-   - UI Stress Tests: Validate UI performance and scalability in headless mode
-   - UI Benchmark Tests: Measure UI component processing throughput and memory efficiency
    - UIManagerFunctionalTests: Comprehensive UI component creation, management, and interaction
 
 3. **Core Systems Tests**
    - Buffer Reuse Tests: Validate memory allocation patterns and buffer reuse across frames
    - Camera Tests: Validate camera world/screen coordinate transformations
+   - Frame Profiler Tests: Validate overlay toggling, suppression, hitch attribution, and GPU swapchain-wait exclusion
    - InputManager Tests: Validate input handling and coordinate conversion
-   - Loading State Tests: Test async loading and deferred state transitions
-   - Rendering Pipeline Tests: Validate frame pacing and render coordination
+   - Loading State Tests: Validate `LoadingState` configuration/reset helpers and non-blocking async-loading primitives
+   - Rendering Pipeline Tests: Source-structure validation for render-flow ownership and GPU pass boundaries
    - Save Manager Tests: Validate save/load functionality with directory creation and file operations
    - Thread System Tests: Verify multi-threading capabilities and priority scheduling
    - ThreadSystem Load Monitoring: Defensive tests ensuring AI doesn't overwhelm 4096 task limit
@@ -72,6 +72,12 @@ The Hammer Game Engine has the following test suites:
    - ControllerRegistry Tests: Type-safe controller registration, lifecycle management, batch operations
    - WeatherController Tests: Weather event coordination and state transitions
    - DayNightController Tests: Time period tracking and visual transitions
+   - HarvestController Tests: Resource harvest coordination and guard behavior
+   - ItemController Tests: Item interaction behavior and event wiring
+   - NPCRenderController Tests: Animation state, row/frame selection, and facing behavior
+   - CombatController Tests: Controller basics and null-player guard behavior
+   - ResourceRenderController Tests: Resource render-controller lifecycle and update behavior
+   - SocialController Tests: Social interaction controller lifecycle behavior
 
 10. **Entity State Machine Tests**
     - EntityStateManager Tests: State registration, transitions, lifecycle callbacks (enter/exit/update)
@@ -80,11 +86,15 @@ The Hammer Game Engine has the following test suites:
     - EntityDataManager Tests: Data-oriented entity storage, handle validation, tier management
     - BackgroundSimulationManager Tests: Background entity simulation, tier-based processing, pause/resume
 
-12. **EDM Integration Tests**
+12. **Utility Runtime Tests**
+    - Manager Runtime Tests: Direct runtime coverage for SoundManager, FontManager, and TextureManager
+    - ResourcePath Tests: Search-path priority, fallback behavior, and resolution rules
+
+13. **EDM Integration Tests**
     - AIManager EDM Integration Tests: Sparse behavior vector, batch processing with EDM indices, state transitions
     - CollisionManager EDM Integration Tests: Active tier filtering, dual index semantics, static/dynamic separation
 
-13. **NPC Memory System Tests**
+14. **NPC Memory System Tests**
     - Memory Structure Tests: MemoryEntry size validation, EmotionalState layout, NPCMemoryData alignment
     - Memory Initialization Tests: Memory data allocation, initialization, validity flags
     - Add Memory Tests: Adding memories, inline vs overflow storage, circular buffer behavior
@@ -94,7 +104,7 @@ The Hammer Game Engine has the following test suites:
     - Location History Tests: Location tracking, circular buffer, history limits
     - Cleanup Tests: Memory clearing, overflow cleanup, state transition handling
 
-14. **GPU System Tests**
+15. **GPU System Tests**
     - GPU Types Tests: Vertex struct layouts (SpriteVertex, ColorVertex), UBO alignment validation
     - GPU Pipeline Config Tests: Pipeline configuration factory methods, blend modes
     - GPU Device Tests: Device lifecycle, shader format queries, swapchain format
@@ -108,7 +118,7 @@ The Hammer Game Engine has the following test suites:
 - **Core Tests**: Fast functional validation (~4-8 minutes total)
 - **Benchmarks**: Performance and scalability testing (~8-20 minutes total)
 - **GPU Tests**: SDL3 GPU rendering validation
-- **Total Coverage**: 78 test executables with comprehensive automation scripts
+- **Total Coverage**: 74 source-controlled test executables with comprehensive automation scripts
 
 ## Running Tests
 
@@ -153,8 +163,6 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 ./tests/test_scripts/run_ai_benchmark.sh --realistic-only                  # Clean realistic performance tests
 ./tests/test_scripts/run_ai_benchmark.sh --stress-test                     # 100K entity stress test only
 ./tests/test_scripts/run_ai_benchmark.sh --threshold-test                  # Threading threshold validation (200 entities)
-
-# Individual UI stress test examples
 
 # Save manager test examples with BinarySerializer
 ./tests/test_scripts/run_save_tests.sh --save-test                         # Basic save/load operations
@@ -204,8 +212,6 @@ tests/test_scripts/run_pathfinder_benchmark.bat         # Pathfinder system perf
 # Run all tests
 tests/test_scripts/run_all_tests.bat                    # Run all test scripts sequentially
 
-# Individual UI stress test examples
-
 # Save manager test examples with BinarySerializer
 tests/test_scripts/run_save_tests.bat --save-test                          # Basic save/load operations
 tests/test_scripts/run_save_tests.bat --serialization-test                 # New BinarySerializer system tests
@@ -223,7 +229,7 @@ The `tests/test_scripts/run_all_tests.sh` script provides flexible execution con
 | Option | Description | Duration |
 |--------|-------------|----------|
 | `--core-only` | Run only core functionality tests | ~2-5 minutes |
-| `--benchmarks-only` | Run only performance benchmarks (AI, Event, UI, Collision, Pathfinder) | ~8-20 minutes |
+| `--benchmarks-only` | Run only performance benchmarks (AI, Event, Collision, Pathfinder, GPU, SIMD, integrated) | ~8-20 minutes |
 | `--no-benchmarks` | Run core tests but skip benchmarks | ~2-5 minutes |
 | *(default)* | Run all tests sequentially | ~10-25 minutes |
 
@@ -244,21 +250,18 @@ The `tests/test_scripts/run_all_tests.sh` script provides flexible execution con
 
 ### Common Command-Line Options
 
-Individual test scripts support these options:
+Many individual test scripts support these options, but support is script-specific and should be confirmed with `--help`:
 
 | Option | Description |
 |--------|-------------|
 | `--verbose` | Show detailed test output |
-| `--release` | Run tests in release mode (optimized) |
-| `--clean` | Clean test artifacts before building |
+| `--release` | Run tests in release mode when supported by that script |
+| `--clean` | Clean test artifacts before building when supported by that script |
 | `--help` | Show help message for the script |
 
-Special options:
+Special options in current source-controlled scripts:
 - `--extreme` for AI benchmark (runs extended benchmarks)
 - `--verbose` for scaling benchmarks (shows detailed performance metrics)
-- `--level LEVEL` for UI stress tests (light|medium|heavy|extreme)
-- `--duration SECONDS` for UI stress tests (custom test duration)
-- `--benchmark` for UI stress tests (runs benchmark suite instead of stress tests)
 
 **Test Execution Strategy:**
 The script executes tests in optimal order for efficient development workflow:
@@ -349,15 +352,11 @@ Located in `BehaviorFunctionalityTest.cpp` (BehaviorTransitionTests suite), thes
    - Single update between each transition
    - Validates no state corruption under rapid transitions
 
-4. **TestAssignBehaviorDirectStatePreserved**: Tests the `assignBehaviorDirect()` API path:
-   - Direct behavior instance assignment (used by combat system)
-   - Verifies same state preservation guarantees as `assignBehavior()`
-
 **What These Tests Catch:**
 - Init/clean order bugs: When `clean()` is called after `init()`, wiping new behavior state
 - BehaviorData initialization failures during transitions
 - State corruption from concurrent behavior assignment
-- Missing `initBehaviorData()` calls in assignment paths
+- Missing `initBehaviorData()` calls in behavior assignment paths
 
 **Running Transition Tests:**
 ```bash
@@ -399,55 +398,16 @@ Located in `AIScalingBenchmark.cpp`, these tests measure realistic performance c
 - 10K entities: Target performance achieved (~995K updates/sec, 5.85x improvement)
 - 100K entities: Stress test validation (2.2M+ updates/sec)
 
-### UI Stress Tests
+### UI Functional Tests
 
+The source-controlled UI test surface is currently the `ui_manager_functional_tests` executable and its wrapper script.
 
-1. **Processing Throughput**: Components processed per second (real UI workload capacity)
-2. **Memory Efficiency**: Memory usage per component and total consumption
-3. **Scalability**: Performance degradation as component count increases
-4. **Layout Performance**: Layout calculations per second for responsive UI
-5. **Input Responsiveness**: Collision detection rate for mouse/touch interaction
-6. **Iteration Performance**: Time to process all UI components once
+These tests focus on:
+1. **Component Lifecycle**: Creation, lookup, update, and removal
+2. **Layout and Positioning**: Alignment helpers and positioning modes
+3. **Interaction Behavior**: Visibility, enable/disable, and UI state handling
+4. **Rendering Safety**: Functional UI flows without relying on an external stress harness
 
-**Key Metrics Measured:**
-- **Processing Throughput**: ~100k-400k components/sec (indicates UI system capacity)
-- **Average Iteration Time**: ~0.25ms (UI overhead per frame, should be <1ms for 60fps)
-- **Memory Usage**: Tracks peak memory consumption and growth per component
-- **Performance Degradation**: How performance scales with component count (<2x ideal)
-- **Layout Calculations/sec**: Algorithm performance for responsive layouts
-- **Collision Checks/sec**: Input system responsiveness capacity
-
-**Test Modes:**
-- **Stress Test**: Creates components over time while measuring performance
-- **Benchmark Suite**: Runs multiple test scenarios and compares results
-- **Headless Operation**: No SDL video initialization - perfect for CI/automation
-
-**Real-World Application:**
-- Mobile games: Validate UI memory stays under 50MB
-- Desktop games: Ensure UI uses <1% of 60fps frame budget
-- Complex UIs: Test thousands of interactive elements
-- Performance regression: Detect UI optimization regressions
-
-**Meaningful Headless Metrics:**
-The UI stress tests run in headless mode and provide meaningful performance metrics instead of artificially high FPS numbers:
-- **Processing Throughput** replaces meaningless FPS - shows actual UI workload capacity
-- **Average Iteration Time** shows real UI system overhead per frame
-- **Memory per Component** tracks actual resource consumption
-- **Performance Degradation** measures scalability characteristics
-- **Layout/Collision rates** show algorithm performance for real UI operations
-
-This approach provides actionable insights for UI system optimization rather than misleading FPS metrics that don't reflect real rendering constraints.
-
-**Usage Examples:**
-```bash
-# Quick development validation
-
-# CI/CD pipeline validation
-
-# Performance profiling
-
-# Stress testing with custom parameters
-```
 
 ### Save Manager Tests
 
@@ -767,35 +727,31 @@ tests/test_scripts/run_collision_tests.bat [--verbose]
 
 ### Pathfinding System Tests
 
-Located in `tests/pathfinding/PathfindingSystemTests.cpp`, these tests validate the A* pathfinding implementation:
+Located in `tests/pathfinding/PathfindingSystemTests.cpp`, these tests validate the current grid-based pathfinding implementation:
 
 #### Test Coverage
 
 1. **PathfindingGrid Basic Tests** (`PathfindingGridBasicTests` suite):
-   - Grid coordinate conversion (world ↔ grid)
-   - Bounds checking for grid coordinates
    - Pathfinding system configuration (diagonal movement, costs, iteration limits)
+   - Explicit blocked-cell layout setup for deterministic path tests
+   - Weight-system setup on a concrete test grid
 
 2. **Algorithm Tests** (`PathfindingAlgorithmTests` suite):
-   - A* pathfinding correctness validation
+   - Deterministic pathfinding across a known obstacle layout
    - Invalid start/goal position handling
    - Same start/goal position edge cases
    - Diagonal vs orthogonal movement comparison
+   - Direct vs hierarchical path selection coverage
 
 3. **Weight System Tests** (`PathfindingWeightTests` suite):
-   - Dynamic weight area application
+   - Dynamic weight area application on successful paths
    - Weight circle placement and overlapping
-   - Path cost modification through weight systems
+   - Weighted-path regression coverage
 
 4. **Performance Tests** (`PathfindingPerformanceTests` suite):
-   - Pathfinding across various grid sizes (50x50 to 200x200)
-   - Iteration limit impact on performance
+   - Repeated pathfinding across the deterministic fixture grid
+   - Iteration limit impact on completion time
    - Memory usage validation through stress testing
-
-5. **Edge Cases** (`PathfindingEdgeCaseTests` suite):
-   - Nearest open cell finding for blocked positions
-   - Pathfinding with dynamic weight areas
-   - Extreme distance pathfinding
 
 #### Running Pathfinding Tests
 
@@ -863,7 +819,7 @@ tests/test_scripts/run_pathfinder_ai_contention_tests.bat [--verbose]
 
 ### Collision System Performance Benchmark
 
-Located in `tests/performance/CollisionBenchmark.cpp`, this dedicated benchmark suite measures collision system performance:
+Located in `tests/performance/CollisionScalingBenchmark.cpp`, this dedicated benchmark suite measures collision system performance:
 
 #### Collision Benchmark Coverage
 
@@ -1053,6 +1009,14 @@ Located in `tests/controllers/`, these tests validate the state-scoped controlle
    - Time period tracking (Morning/Day/Evening/Night)
    - Hour-to-period mapping and transitions
    - Visual state management and descriptions
+
+4. **Additional Controller Targets**:
+   - `HarvestControllerTests.cpp`
+   - `ItemControllerTests.cpp`
+   - `NPCRenderControllerTests.cpp`
+   - `CombatControllerTests.cpp`
+   - `ResourceRenderControllerTests.cpp`
+   - `SocialControllerTests.cpp`
 
 #### Common Test Infrastructure
 

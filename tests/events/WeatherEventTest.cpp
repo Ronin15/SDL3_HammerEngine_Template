@@ -12,6 +12,7 @@
 #include "EventManagerTestAccess.hpp"
 #include "world/WorldData.hpp"
 #include "managers/GameTimeManager.hpp"
+#include "events/TimeEvent.hpp"
 #include <memory>
 #include <string>
 #include <functional>
@@ -97,13 +98,13 @@ BOOST_FIXTURE_TEST_CASE(ConditionHandling, WeatherEventFixture) {
     falseEvent->addTimeCondition([]() { return false; });
     BOOST_CHECK(!falseEvent->checkConditions());
 
-    // Test multiple conditions (all must pass)
+    // addTimeCondition() intentionally replaces prior custom conditions.
     auto multiEvent = std::make_shared<WeatherEvent>("MultiCondition", WeatherType::Clear);
     multiEvent->addTimeCondition([]() { return true; });
     multiEvent->addTimeCondition([]() { return true; });
     BOOST_CHECK(multiEvent->checkConditions());
 
-    // If any condition fails, the check should fail
+    // The second condition replaces the first one, so only the final false condition matters.
     auto mixedEvent = std::make_shared<WeatherEvent>("MixedCondition", WeatherType::Clear);
     mixedEvent->addTimeCondition([]() { return true; });
     mixedEvent->addTimeCondition([]() { return false; });
@@ -113,17 +114,20 @@ BOOST_FIXTURE_TEST_CASE(ConditionHandling, WeatherEventFixture) {
 // Test time-based conditions
 BOOST_FIXTURE_TEST_CASE(TimeBasedConditions, WeatherEventFixture) {
     auto event = std::make_shared<WeatherEvent>("TimeTest", WeatherType::Clear);
+    auto& gameTime = GameTimeManager::Instance();
+    gameTime.init(10.0f, 1.0f);
 
-    // Set time of day condition (we can't test actual time here, just the API)
     event->setTimeOfDay(8.0f, 16.0f); // Day time only
+    BOOST_CHECK(event->checkConditions());
 
-    // Since we can't control the system time in tests, we can't directly test
-    // the result, but we can test that the API works
-    bool result = event->checkConditions();
-    std::cout << "Time condition result: " << (result ? "true" : "false") << std::endl;
+    gameTime.setGameHour(20.0f);
+    BOOST_CHECK(!event->checkConditions());
 
-    // This is a weak test, but it at least verifies the API works
-    // The actual result will depend on the current time
+    event->setTimeOfDay(22.0f, 6.0f); // Wraps midnight
+    BOOST_CHECK(!event->checkConditions());
+
+    gameTime.setGameHour(23.0f);
+    BOOST_CHECK(event->checkConditions());
 }
 
 // Test reset and clean
@@ -230,6 +234,7 @@ BOOST_FIXTURE_TEST_CASE(NoRegion_BoundsOnly, WeatherEventFixture) {
 struct GameTimeWeatherFixture {
     GameTimeWeatherFixture() {
         gameTime = &GameTimeManager::Instance();
+        EventManager::Instance().init();
         gameTime->init(12.0f, 1.0f);
     }
 
@@ -237,6 +242,7 @@ struct GameTimeWeatherFixture {
         gameTime->enableAutoWeather(false);
         gameTime->setGlobalPause(false);
         gameTime->init(12.0f, 1.0f);
+        EventManager::Instance().clean();
     }
 
 protected:
@@ -262,21 +268,38 @@ BOOST_FIXTURE_TEST_CASE(AutoWeatherToggle, GameTimeWeatherFixture) {
 }
 
 BOOST_FIXTURE_TEST_CASE(WeatherCheckInterval, GameTimeWeatherFixture) {
-    // Default interval should be 4.0f game hours
-    // Note: We test behavior through side effects since there's no getter
+    std::atomic<int> weatherChecks{0};
+    EventManager::Instance().registerHandler(EventTypeId::Time,
+        [&weatherChecks](const EventData& data) {
+            if (!data.event) {
+                return;
+            }
 
-    // Set a custom interval (valid value)
+            if (std::dynamic_pointer_cast<WeatherCheckEvent>(data.event)) {
+                weatherChecks.fetch_add(1, std::memory_order_relaxed);
+            }
+        });
+
+    gameTime->enableAutoWeather(true);
     gameTime->setWeatherCheckInterval(2.0f);
+    gameTime->update(3600.0f); // Advance 1 game hour
+    EventManager::Instance().update();
+    BOOST_CHECK_EQUAL(weatherChecks.load(std::memory_order_relaxed), 0);
 
-    // Set another valid interval
-    gameTime->setWeatherCheckInterval(8.0f);
+    gameTime->update(3600.0f); // Advance second game hour
+    EventManager::Instance().update();
+    BOOST_CHECK_EQUAL(weatherChecks.load(std::memory_order_relaxed), 1);
 
-    // Try to set invalid interval (should be ignored)
-    gameTime->setWeatherCheckInterval(0.0f);  // Zero is invalid
-    gameTime->setWeatherCheckInterval(-1.0f); // Negative is invalid
+    gameTime->setWeatherCheckInterval(0.0f);
+    gameTime->setWeatherCheckInterval(-1.0f);
 
-    // No crash means success - the invalid values should be ignored
-    BOOST_CHECK(true);
+    gameTime->update(3600.0f);
+    EventManager::Instance().update();
+    BOOST_CHECK_EQUAL(weatherChecks.load(std::memory_order_relaxed), 1);
+
+    gameTime->update(3600.0f);
+    EventManager::Instance().update();
+    BOOST_CHECK_EQUAL(weatherChecks.load(std::memory_order_relaxed), 2);
 }
 
 BOOST_FIXTURE_TEST_CASE(RollWeatherForCurrentSeason, GameTimeWeatherFixture) {

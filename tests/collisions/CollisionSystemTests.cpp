@@ -223,6 +223,58 @@ BOOST_AUTO_TEST_CASE(TestSpatialHashNoDuplicates)
     BOOST_CHECK_EQUAL(count, 1);
 }
 
+BOOST_AUTO_TEST_CASE(TestSpatialHashBatchOperationsAndStats)
+{
+    HierarchicalSpatialHash spatialHash;
+    spatialHash.reserve(8);
+    spatialHash.reserveRegions(4);
+
+    const std::vector<std::pair<size_t, AABB>> inserts{
+        {1, AABB(32.0f, 32.0f, 8.0f, 8.0f)},
+        {2, AABB(96.0f, 32.0f, 8.0f, 8.0f)},
+        {3, AABB(160.0f, 32.0f, 8.0f, 8.0f)}
+    };
+
+    spatialHash.insertBatch(inserts);
+
+    BOOST_CHECK_GT(spatialHash.getRegionCount(), 0U);
+    BOOST_CHECK_GE(spatialHash.getActiveRegionCount(), 0U);
+
+    const std::vector<std::tuple<size_t, AABB, AABB>> updates{
+        {1, AABB(32.0f, 32.0f, 8.0f, 8.0f), AABB(224.0f, 32.0f, 8.0f, 8.0f)},
+        {2, AABB(96.0f, 32.0f, 8.0f, 8.0f), AABB(96.0f, 96.0f, 8.0f, 8.0f)}
+    };
+    spatialHash.updateBatch(updates);
+
+    std::vector<size_t> movedResults;
+    spatialHash.queryRegion(AABB(224.0f, 32.0f, 16.0f, 16.0f), movedResults);
+    BOOST_CHECK(std::find(movedResults.begin(), movedResults.end(), 1) != movedResults.end());
+}
+
+BOOST_AUTO_TEST_CASE(TestSpatialHashThreadSafeBoundsQueryMatchesRegularQuery)
+{
+    HierarchicalSpatialHash spatialHash;
+    spatialHash.insert(7, AABB(64.0f, 64.0f, 12.0f, 12.0f));
+    spatialHash.insert(8, AABB(96.0f, 64.0f, 12.0f, 12.0f));
+    spatialHash.insert(9, AABB(224.0f, 224.0f, 12.0f, 12.0f));
+
+    std::vector<size_t> regularResults;
+    spatialHash.queryRegionBounds(32.0f, 32.0f, 128.0f, 128.0f, regularResults);
+
+    HierarchicalSpatialHash::QueryBuffers buffers;
+    buffers.reserve();
+    std::vector<size_t> threadSafeResults;
+    spatialHash.queryRegionBoundsThreadSafe(
+        32.0f, 32.0f, 128.0f, 128.0f, threadSafeResults, buffers);
+
+    std::sort(regularResults.begin(), regularResults.end());
+    std::sort(threadSafeResults.begin(), threadSafeResults.end());
+
+    BOOST_CHECK_EQUAL_COLLECTIONS(
+        regularResults.begin(), regularResults.end(),
+        threadSafeResults.begin(), threadSafeResults.end());
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(CollisionPerformanceTests)

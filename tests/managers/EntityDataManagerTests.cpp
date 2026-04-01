@@ -317,10 +317,10 @@ BOOST_AUTO_TEST_CASE(TestUnregisterEntity) {
 }
 
 BOOST_AUTO_TEST_CASE(TestUnregisterNonexistentEntity) {
-    // Should not crash
+    BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
     edm->unregisterEntity(99999999);
     edm->unregisterEntity(0);
-    BOOST_CHECK(true);
+    BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -370,10 +370,10 @@ BOOST_AUTO_TEST_CASE(TestDestroyMultipleEntities) {
 }
 
 BOOST_AUTO_TEST_CASE(TestDestroyInvalidHandle) {
-    // Should not crash
+    BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
     edm->destroyEntity(INVALID_ENTITY_HANDLE);
     edm->processDestructionQueue();
-    BOOST_CHECK(true);
+    BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
 }
 
 BOOST_AUTO_TEST_CASE(TestGenerationIncrementAfterDestruction) {
@@ -393,9 +393,9 @@ BOOST_AUTO_TEST_CASE(TestGenerationIncrementAfterDestruction) {
 }
 
 BOOST_AUTO_TEST_CASE(TestProcessEmptyQueue) {
-    // Should not crash
+    BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
     edm->processDestructionQueue();
-    BOOST_CHECK(true);
+    BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

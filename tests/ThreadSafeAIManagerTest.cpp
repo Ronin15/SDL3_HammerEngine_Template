@@ -267,6 +267,7 @@ BOOST_AUTO_TEST_CASE(MessageSending)
   EntityHandle handle = npc->getHandle();
 
   AIManager::Instance().assignBehavior(handle, "Idle");
+  const size_t initialUpdates = AIManager::Instance().getBehaviorUpdateCount();
 
   // Legacy string message API was removed - message system now uses BehaviorMessage queue
 
@@ -278,7 +279,7 @@ BOOST_AUTO_TEST_CASE(MessageSending)
   auto& edm = EntityDataManager::Instance();
   edm.destroyEntity(handle);
 
-  BOOST_CHECK(true);  // Test passes if no crash/hang
+  BOOST_CHECK_GT(AIManager::Instance().getBehaviorUpdateCount(), initialUpdates);
 }
 
 // Test rapid assignment/unassignment

@@ -20,8 +20,14 @@
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "core/ThreadSystem.hpp"
+#include "utils/GPUSceneRecorder.hpp"
 #include "entities/Entity.hpp"  // For AnimationConfig
 #include <SDL3/SDL.h>
+#include <vector>
+
+#define private public
+#include "gpu/SpriteBatch.hpp"
+#undef private
 
 // Test tolerance for floating-point comparisons
 constexpr float EPSILON = 0.001f;
@@ -44,6 +50,16 @@ struct ThreadSystemTestLifetime {
 };
 
 ThreadSystemTestLifetime g_threadSystemTestLifetime{};
+
+void beginSpriteBatchRecording(HammerEngine::SpriteBatch& batch,
+                               std::vector<HammerEngine::SpriteVertex>& vertices,
+                               float textureWidth,
+                               float textureHeight,
+                               float targetHeight) {
+    batch.m_initialized = true;
+    batch.begin(vertices.data(), vertices.size(), nullptr, nullptr,
+                textureWidth, textureHeight, targetHeight);
+}
 
 } // namespace
 
@@ -334,6 +350,87 @@ BOOST_AUTO_TEST_CASE(TestVerySmallDeltaTimeAccumulates) {
     BOOST_CHECK(approxEqual(rd.animationAccumulator - initialAccum, 0.01f, 0.005f));
 }
 
+BOOST_AUTO_TEST_CASE(TestRecordGPUUsesInterpolatedPositionAndAtlasFrame) {
+    EntityHandle npc = createTestNPC(Vector2D(100.0f, 120.0f));
+    BOOST_REQUIRE(npc.isValid());
+
+    EntityDataManager::Instance().updateSimulationTiers(Vector2D(100.0f, 120.0f), 1500.0f, 10000.0f);
+
+    auto& hot = EntityDataManager::Instance().getHotData(npc);
+    hot.transform.previousPosition = Vector2D(90.0f, 110.0f);
+    hot.transform.position = Vector2D(110.0f, 130.0f);
+
+    auto& rd = getRenderData(npc);
+    rd.currentFrame = 1;
+    rd.currentRow = 1;
+    rd.flipMode = static_cast<uint8_t>(SDL_FLIP_NONE);
+
+    std::vector<HammerEngine::SpriteVertex> vertices(8);
+    HammerEngine::SpriteBatch batch;
+    beginSpriteBatchRecording(batch, vertices, 1024.0f, 1024.0f, 512.0f);
+
+    HammerEngine::GPUSceneContext ctx{};
+    ctx.cameraX = 10.0f;
+    ctx.cameraY = 20.0f;
+    ctx.interpolationAlpha = 0.25f;
+    ctx.spriteBatch = &batch;
+    ctx.valid = true;
+
+    m_controller.recordGPU(ctx);
+
+    BOOST_CHECK_EQUAL(batch.end(), HammerEngine::SpriteBatch::VERTICES_PER_SPRITE);
+    BOOST_CHECK_CLOSE(vertices[0].x, 95.0f - ctx.cameraX - rd.frameWidth * 0.5f, 0.001f);
+    BOOST_CHECK_CLOSE(vertices[0].y, 512.0f - (115.0f - 20.0f - rd.frameHeight * 0.5f), 0.001f);
+    BOOST_CHECK_CLOSE(vertices[1].x, vertices[0].x + rd.frameWidth, 0.001f);
+    BOOST_CHECK_CLOSE(vertices[2].y, vertices[0].y - rd.frameHeight, 0.001f);
+
+    const float expectedSrcX = static_cast<float>(rd.atlasX + rd.currentFrame * rd.frameWidth) / 1024.0f;
+    const float expectedSrcY = static_cast<float>(rd.atlasY + rd.currentRow * rd.frameHeight) / 1024.0f;
+    const float expectedSrcX2 = static_cast<float>(rd.atlasX + (rd.currentFrame + 1) * rd.frameWidth) / 1024.0f;
+    const float expectedSrcY2 = static_cast<float>(rd.atlasY + (rd.currentRow + 1) * rd.frameHeight) / 1024.0f;
+
+    BOOST_CHECK_CLOSE(vertices[0].u, expectedSrcX, 0.001f);
+    BOOST_CHECK_CLOSE(vertices[0].v, expectedSrcY, 0.001f);
+    BOOST_CHECK_CLOSE(vertices[1].u, expectedSrcX2, 0.001f);
+    BOOST_CHECK_CLOSE(vertices[2].v, expectedSrcY2, 0.001f);
+}
+
+BOOST_AUTO_TEST_CASE(TestRecordGPUFlipsHorizontalSourceCoords) {
+    EntityHandle npc = createTestNPC(Vector2D(100.0f, 120.0f));
+    BOOST_REQUIRE(npc.isValid());
+
+    EntityDataManager::Instance().updateSimulationTiers(Vector2D(100.0f, 120.0f), 1500.0f, 10000.0f);
+
+    auto& hot = EntityDataManager::Instance().getHotData(npc);
+    hot.transform.previousPosition = Vector2D(100.0f, 120.0f);
+    hot.transform.position = Vector2D(100.0f, 120.0f);
+    hot.transform.velocity = Vector2D(-20.0f, 0.0f);
+
+    auto& rd = getRenderData(npc);
+    rd.currentFrame = 0;
+    rd.currentRow = 0;
+
+    m_controller.update(0.016f);
+    BOOST_CHECK_EQUAL(rd.flipMode, static_cast<uint8_t>(SDL_FLIP_HORIZONTAL));
+
+    std::vector<HammerEngine::SpriteVertex> vertices(8);
+    HammerEngine::SpriteBatch batch;
+    beginSpriteBatchRecording(batch, vertices, 1024.0f, 1024.0f, 512.0f);
+
+    HammerEngine::GPUSceneContext ctx{};
+    ctx.cameraX = 0.0f;
+    ctx.cameraY = 0.0f;
+    ctx.interpolationAlpha = 1.0f;
+    ctx.spriteBatch = &batch;
+    ctx.valid = true;
+
+    m_controller.recordGPU(ctx);
+
+    BOOST_CHECK_EQUAL(batch.end(), HammerEngine::SpriteBatch::VERTICES_PER_SPRITE);
+    BOOST_CHECK_GT(vertices[0].u, vertices[1].u);
+    BOOST_CHECK_CLOSE(vertices[0].v, vertices[1].v, 0.001f);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 // ============================================================================
@@ -387,8 +484,9 @@ BOOST_AUTO_TEST_CASE(TestClearDoesNotAffectOtherEntities) {
     // Create an NPC
     createTestNPC(Vector2D(100.0f, 100.0f));
 
-    // Create a player
-    EntityHandle player = EntityDataManager::Instance().registerPlayer(1, Vector2D(200.0f, 200.0f));
+    // Create a player with a distinct entity ID so the registration path
+    // exercises player persistence instead of failing an ID collision.
+    EntityHandle player = EntityDataManager::Instance().registerPlayer(9001, Vector2D(200.0f, 200.0f));
 
     BOOST_CHECK_EQUAL(EntityDataManager::Instance().getEntityCount(EntityKind::NPC), 1);
     BOOST_CHECK_EQUAL(EntityDataManager::Instance().getEntityCount(EntityKind::Player), 1);

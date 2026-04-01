@@ -39,12 +39,15 @@ set(SIMPLE_TESTS
     thread_system_tests
     game_state_manager_tests
     ai_optimization_tests
+    crowd_runtime_tests
     buffer_utilization_tests
     resource_template_manager_tests
     resource_factory_tests
     resource_template_manager_json_tests
     world_resource_manager_tests
     resource_change_event_tests
+    resource_path_tests
+    frame_profiler_tests
     resource_edge_case_tests
     json_reader_tests
     world_generator_tests
@@ -60,6 +63,7 @@ set(SIMPLE_TESTS
     buffer_reuse_tests
     rendering_pipeline_tests
     loading_state_tests
+    manager_runtime_tests
     ui_manager_functional_tests
     integrated_system_benchmark
     game_time_manager_tests
@@ -101,6 +105,7 @@ set(MOCK_TESTS
     npc_render_controller_tests
     harvest_controller_tests
     item_controller_tests
+    combat_controller_tests
     social_controller_tests
     resource_render_controller_tests
     ai_manager_edm_integration_tests
@@ -126,6 +131,8 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "GameStateManagerTests.cpp")
     elseif(${test_name} STREQUAL "ai_optimization_tests")
         set(test_source "AIOptimizationTest.cpp")
+    elseif(${test_name} STREQUAL "crowd_runtime_tests")
+        set(test_source "ai/CrowdRuntimeTests.cpp")
     elseif(${test_name} STREQUAL "buffer_utilization_tests")
         set(test_source "BufferUtilizationTest.cpp")
     elseif(${test_name} MATCHES "^resource_")
@@ -140,6 +147,8 @@ foreach(test_name ${SIMPLE_TESTS})
             set(test_source "resources/ResourceTemplateManagerJsonTests.cpp")
         elseif(${suffix} STREQUAL "changeevent")
             set(test_source "resources/ResourceChangeEventTests.cpp")
+        elseif(${suffix} STREQUAL "path")
+            set(test_source "utils/ResourcePathTests.cpp")
         elseif(${suffix} STREQUAL "edgecase")
             set(test_source "resources/ResourceEdgeCaseTests.cpp")
         endif()
@@ -147,6 +156,8 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "resources/WorldResourceManagerTests.cpp")
     elseif(${test_name} STREQUAL "json_reader_tests")
         set(test_source "utils/JsonReaderTest.cpp")
+    elseif(${test_name} STREQUAL "frame_profiler_tests")
+        set(test_source "utils/FrameProfilerTests.cpp")
     elseif(${test_name} STREQUAL "world_generator_tests")
         set(test_source "world/WorldGeneratorTests.cpp")
     elseif(${test_name} STREQUAL "world_manager_tests")
@@ -175,6 +186,8 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "RenderingPipelineTests.cpp")
     elseif(${test_name} STREQUAL "loading_state_tests")
         set(test_source "LoadingStateTests.cpp")
+    elseif(${test_name} STREQUAL "manager_runtime_tests")
+        set(test_source "managers/ManagerRuntimeTests.cpp")
     elseif(${test_name} STREQUAL "ui_manager_functional_tests")
         set(test_source "UIManagerFunctionalTests.cpp")
     elseif(${test_name} STREQUAL "integrated_system_benchmark")
@@ -263,6 +276,8 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "controllers/HarvestControllerTests.cpp")
     elseif(${test_name} STREQUAL "item_controller_tests")
         set(test_source "controllers/ItemControllerTests.cpp")
+    elseif(${test_name} STREQUAL "combat_controller_tests")
+        set(test_source "controllers/CombatControllerTests.cpp")
     elseif(${test_name} STREQUAL "social_controller_tests")
         set(test_source "controllers/SocialControllerTests.cpp")
     elseif(${test_name} STREQUAL "resource_render_controller_tests")

@@ -185,7 +185,8 @@ BOOST_FIXTURE_TEST_CASE(TestClearWeatherGeneration,
   // Since new particles might be generated while existing ones fade, we check
   // that the clearing mechanism is working rather than expecting a strict
   // reduction
-  BOOST_CHECK(true); // Test passes if clearWeatherGeneration doesn't crash
+  const size_t finalCount = manager->getActiveParticleCount();
+  BOOST_CHECK_LE(finalCount, initialCount * 6);
 }
 
 // Test immediate weather stop

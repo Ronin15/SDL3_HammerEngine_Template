@@ -129,14 +129,13 @@ BOOST_AUTO_TEST_CASE(TestBasicFunctionality) {
     auto requestId = manager.requestPath(entityId, start, goal, PathfinderManager::Priority::Low);
     BOOST_CHECK(requestId > 0);
     
-    // Process requests
+    // Direct-submission architecture: requestPath() queues onto ThreadSystem,
+    // not an internal PathfinderManager queue.
+    BOOST_CHECK_EQUAL(manager.getQueueSize(), 0U);
+    BOOST_CHECK(!manager.hasPendingWork());
+
     manager.update();
-    
-    // Check that we have pending work initially
-    BOOST_CHECK(manager.hasPendingWork() || manager.getQueueSize() == 0); // Either has work or processed quickly
-    
-    // These should not crash
-    
+
     manager.clean();
 }
 
@@ -217,8 +216,7 @@ BOOST_AUTO_TEST_CASE(TestUpdateCycle) {
 }
 
 BOOST_AUTO_TEST_CASE(TestNoInfiniteRetryLoop) {
-    // REGRESSION TEST: Ensure failed pathfinding requests don't cause infinite retry loops
-    // This test prevents the bug where same failed requests kept getting requeued endlessly
+    // Repeated failed requests should complete once each without internal requeueing.
     
     PathfinderManager& manager = PathfinderManager::Instance();
     BOOST_REQUIRE(manager.init());
@@ -229,44 +227,36 @@ BOOST_AUTO_TEST_CASE(TestNoInfiniteRetryLoop) {
     
     std::atomic<int> callbackCount{0};
     
-    // Make multiple identical requests rapidly (simulating the bug condition)
     auto callback = [&callbackCount](EntityID, const std::vector<Vector2D>&) {
         callbackCount.fetch_add(1, std::memory_order_relaxed);
     };
     
-    // Request the same path multiple times within the cache window (1000ms)
     manager.requestPath(entityId, start, goal, PathfinderManager::Priority::High, callback);
     manager.requestPath(entityId, start, goal, PathfinderManager::Priority::High, callback); 
     manager.requestPath(entityId, start, goal, PathfinderManager::Priority::High, callback);
     manager.requestPath(entityId, start, goal, PathfinderManager::Priority::High, callback);
     
-    // Process requests
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < 50 && callbackCount.load(std::memory_order_relaxed) < 4; ++i) {
         manager.update();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     
-    // Key assertions to prevent regression:
-    // 1. We should receive callbacks (not stuck in infinite loop)
-    BOOST_CHECK(callbackCount > 0);
-    
-    // 2. We shouldn't receive excessive callbacks (indicates retry loop)  
-    BOOST_CHECK(callbackCount <= 10); // Reasonable upper bound
-    
-    // 3. Stats should show reasonable request count (not thousands from retry loop)
-    auto stats = manager.getStats();
-    BOOST_CHECK(stats.totalRequests <= 20); // Should be close to our 4 requests, not thousands
+    BOOST_CHECK_EQUAL(callbackCount.load(std::memory_order_relaxed), 4);
 
-    // Ensure no runaway processing from repeated failed path requests
+    auto stats = manager.getStats();
+    BOOST_CHECK_EQUAL(stats.totalRequests, 4U);
+    BOOST_CHECK_EQUAL(stats.failedRequests, 4U);
+    BOOST_CHECK_EQUAL(stats.cacheSize, 0U);
 
     manager.clean();
 }
 
-BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
-    // REGRESSION TEST: Ensure failed requests are properly cached to prevent retry loops
+BOOST_AUTO_TEST_CASE(TestFailedRequestsDoNotPopulateCache) {
+    // Current production behavior only caches non-empty paths.
     
     PathfinderManager& manager = PathfinderManager::Instance();
     BOOST_REQUIRE(manager.init());
+    manager.resetStats();
     
     Vector2D start(10.0f, 10.0f);
     Vector2D goal(20.0f, 20.0f);  
@@ -275,35 +265,34 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
     std::atomic<int> firstCallbackCount{0};
     std::atomic<int> secondCallbackCount{0};
     
-    // First request
     manager.requestPath(entityId, start, goal, PathfinderManager::Priority::High,
         [&firstCallbackCount](EntityID, const std::vector<Vector2D>&) {
             firstCallbackCount.fetch_add(1, std::memory_order_relaxed);
         });
     
-    // Process first request
-    manager.update();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    manager.update();
+    for (int i = 0; i < 40 && firstCallbackCount.load(std::memory_order_relaxed) == 0; ++i) {
+        manager.update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
     
-    // Second identical request within cache window (should be rejected/cached)
     manager.requestPath(entityId, start, goal, PathfinderManager::Priority::High,
         [&secondCallbackCount](EntityID, const std::vector<Vector2D>&) {
             secondCallbackCount.fetch_add(1, std::memory_order_relaxed);
         });
     
-    // Process second request  
-    manager.update();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    manager.update();
+    for (int i = 0; i < 40 && secondCallbackCount.load(std::memory_order_relaxed) == 0; ++i) {
+        manager.update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
     
-    // Both should have received callbacks (first from processing, second from cache)
-    BOOST_CHECK(firstCallbackCount.load(std::memory_order_relaxed) > 0);
-    BOOST_CHECK(secondCallbackCount.load(std::memory_order_relaxed) > 0);
+    BOOST_CHECK_EQUAL(firstCallbackCount.load(std::memory_order_relaxed), 1);
+    BOOST_CHECK_EQUAL(secondCallbackCount.load(std::memory_order_relaxed), 1);
     
-    // But total requests processed should be minimal (cache working)
     auto stats = manager.getStats();
-    BOOST_CHECK(stats.totalRequests <= 20); // Ensure no runaway processing from repeated requests
+    BOOST_CHECK_EQUAL(stats.totalRequests, 2U);
+    BOOST_CHECK_EQUAL(stats.failedRequests, 2U);
+    BOOST_CHECK_EQUAL(stats.cacheHits, 0U);
+    BOOST_CHECK_EQUAL(stats.cacheSize, 0U);
 
     manager.clean();
 }
@@ -343,6 +332,7 @@ BOOST_FIXTURE_TEST_CASE(TestPathfinderEventSubscription, PathfinderEventFixture)
 {
     // Test that PathfinderManager properly subscribes to collision obstacle events
     // This tests the event subscription lifecycle
+    auto initialStats = PathfinderManager::Instance().getStats();
     
     // Manually trigger a collision obstacle changed event
     Vector2D obstaclePos(100.0f, 150.0f);
@@ -358,10 +348,12 @@ BOOST_FIXTURE_TEST_CASE(TestPathfinderEventSubscription, PathfinderEventFixture)
     
     // Brief wait to let the handler process (following established pattern)
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    
-    // The PathfinderManager should have incremented its collision version
-    // (This is internal state, but we can verify by checking if subsequent operations behave correctly)
-    BOOST_CHECK(true); // Subscription worked if no exceptions were thrown
+
+    auto stats = PathfinderManager::Instance().getStats();
+    BOOST_CHECK(PathfinderManager::Instance().isInitialized());
+    BOOST_CHECK_GE(stats.totalRequests, initialStats.totalRequests);
+    BOOST_CHECK_LE(stats.totalRequests, initialStats.totalRequests + 8U);
+    BOOST_CHECK_EQUAL(stats.cacheSize, 0U);
 }
 
 BOOST_FIXTURE_TEST_CASE(TestPathfinderCacheInvalidationOnCollisionChange, PathfinderEventFixture)
@@ -498,6 +490,7 @@ BOOST_FIXTURE_TEST_CASE(TestPathfinderEventPerformance, PathfinderEventFixture)
 BOOST_AUTO_TEST_CASE(TestBurstRequestHandling) {
     PathfinderManager& manager = PathfinderManager::Instance();
     BOOST_REQUIRE(manager.init());
+    manager.resetStats();
 
     const size_t burstSize = 150; // Test 150 simultaneous requests
     std::atomic<size_t> completedCount{0};
@@ -524,35 +517,27 @@ BOOST_AUTO_TEST_CASE(TestBurstRequestHandling) {
         );
     }
 
-    // Process requests over multiple frames (rate limiting should apply)
-    const int maxFrames = 10;
-    for (int frame = 0; frame < maxFrames; ++frame) {
+    const int maxFrames = 40;
+    for (int frame = 0; frame < maxFrames && completedCount.load() < burstSize; ++frame) {
         manager.update();
         std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60 FPS
     }
 
-    // Wait for async processing to complete
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
     BOOST_TEST_MESSAGE("Completed " << completedCount.load() << " / " << burstSize << " requests");
+    BOOST_CHECK_EQUAL(completedCount.load(), burstSize);
 
-    // Verify rate limiting worked (should spread across multiple frames)
-    // With 50 req/frame limit, 150 requests should take at least 3 frames
-    BOOST_CHECK_GE(completedCount.load(), burstSize / 2); // At least half completed
+    auto stats = manager.getStats();
+    BOOST_CHECK_EQUAL(stats.totalRequests, static_cast<uint64_t>(burstSize));
+    BOOST_CHECK_EQUAL(stats.failedRequests, static_cast<uint64_t>(burstSize));
 
     manager.clean();
 }
 
-BOOST_AUTO_TEST_CASE(TestQueuePressureGracefulDegradation) {
+BOOST_AUTO_TEST_CASE(TestDirectSubmissionHasNoInternalQueue) {
     PathfinderManager& manager = PathfinderManager::Instance();
     BOOST_REQUIRE(manager.init());
+    manager.resetStats();
 
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
-    const size_t queueCapacity = threadSystem.getQueueCapacity();
-
-    BOOST_TEST_MESSAGE("ThreadSystem queue capacity: " << queueCapacity);
-
-    // Submit enough requests to test queue pressure handling
     const size_t testRequests = 200;
     std::atomic<size_t> completed{0};
 
@@ -571,25 +556,18 @@ BOOST_AUTO_TEST_CASE(TestQueuePressureGracefulDegradation) {
         );
     }
 
-    // Process over multiple frames
-    for (int frame = 0; frame < 15; ++frame) {
+    BOOST_CHECK_EQUAL(manager.getQueueSize(), 0U);
+    BOOST_CHECK(!manager.hasPendingWork());
+
+    for (int frame = 0; frame < 50 && completed.load() < testRequests; ++frame) {
         manager.update();
-
-        // Check queue size doesn't exceed critical threshold
-        size_t queueSize = threadSystem.getQueueSize();
-        double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-
-        // Queue pressure should stay below critical (0.90)
-        BOOST_CHECK_LT(queuePressure, 0.95); // Allow small margin
-
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
-    // Wait for completion
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
-
     BOOST_TEST_MESSAGE("Completed " << completed.load() << " / " << testRequests << " requests");
-    BOOST_CHECK_GE(completed.load(), testRequests / 2);
+    BOOST_CHECK_EQUAL(completed.load(), testRequests);
+    BOOST_CHECK_EQUAL(manager.getQueueSize(), 0U);
+    BOOST_CHECK(!manager.hasPendingWork());
 
     manager.clean();
 }
@@ -597,6 +575,7 @@ BOOST_AUTO_TEST_CASE(TestQueuePressureGracefulDegradation) {
 BOOST_AUTO_TEST_CASE(TestWorkerBudgetCoordination) {
     PathfinderManager& manager = PathfinderManager::Instance();
     BOOST_REQUIRE(manager.init());
+    manager.resetStats();
 
     auto& threadSystem = HammerEngine::ThreadSystem::Instance();
     size_t availableWorkers = threadSystem.getThreadCount();
@@ -630,24 +609,25 @@ BOOST_AUTO_TEST_CASE(TestWorkerBudgetCoordination) {
         );
     }
 
-    // Process - should use batching
-    manager.update();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    for (int i = 0; i < 30 && completed.load() < batchWorkload; ++i) {
+        manager.update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     BOOST_TEST_MESSAGE("Completed " << completed.load() << " / " << batchWorkload << " batch requests");
+    BOOST_CHECK_EQUAL(completed.load(), batchWorkload);
 
     manager.clean();
 }
 
-BOOST_AUTO_TEST_CASE(TestRateLimiting) {
+BOOST_AUTO_TEST_CASE(TestRequestsRunWithoutFrameRateLimiting) {
     PathfinderManager& manager = PathfinderManager::Instance();
     BOOST_REQUIRE(manager.init());
+    manager.resetStats();
 
-    // MAX_REQUESTS_PER_FRAME = 50 in PathfinderManager
     const size_t requestsSubmitted = 100;
     std::atomic<size_t> completed{0};
 
-    // Submit 100 requests in single frame
     for (size_t i = 0; i < requestsSubmitted; ++i) {
         Vector2D start(50.0f, 50.0f + i);
         Vector2D goal(200.0f, 200.0f + i);
@@ -663,30 +643,17 @@ BOOST_AUTO_TEST_CASE(TestRateLimiting) {
         );
     }
 
-    // First update should process maximum 50 requests
-    manager.update();
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    const size_t completedBeforeUpdate = completed.load();
+    BOOST_CHECK_GT(completedBeforeUpdate, 0U);
 
-    size_t completedAfterFrame1 = completed.load();
-    BOOST_TEST_MESSAGE("After frame 1: " << completedAfterFrame1 << " completed");
-
-    // Second update should process remaining 50
-    manager.update();
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
-    size_t completedAfterFrame2 = completed.load();
-    BOOST_TEST_MESSAGE("After frame 2: " << completedAfterFrame2 << " completed");
-
-    // Wait for all to finish
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < 30 && completed.load() < requestsSubmitted; ++i) {
         manager.update();
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
 
     BOOST_TEST_MESSAGE("Final: " << completed.load() << " / " << requestsSubmitted << " completed");
-
-    // Verify rate limiting spread requests across frames
-    BOOST_CHECK_GE(completed.load(), requestsSubmitted / 2);
+    BOOST_CHECK_EQUAL(completed.load(), requestsSubmitted);
 
     manager.clean();
 }
@@ -694,6 +661,7 @@ BOOST_AUTO_TEST_CASE(TestRateLimiting) {
 BOOST_AUTO_TEST_CASE(TestPriorityStratification) {
     PathfinderManager& manager = PathfinderManager::Instance();
     BOOST_REQUIRE(manager.init());
+    manager.resetStats();
 
     // Test that default priority is now Normal (not High)
     std::atomic<size_t> completed{0};
@@ -723,85 +691,42 @@ BOOST_AUTO_TEST_CASE(TestPriorityStratification) {
     manager.clean();
 }
 
-// ========== Cache Bucketing Regression Test ==========
+// ========== Direct Submission Architecture Regression Test ==========
 
-BOOST_AUTO_TEST_CASE(TestCacheBucketingForNearbyCoordsRegressionFix) {
-    // REGRESSION TEST: Verify that nearby coordinates hit the same cache bucket
-    // This tests the fix for 0% cache hit rate where pre-warmed sector paths
-    // weren't being hit by NPC requests at nearby positions.
-    //
-    // Root cause was: cache key computed AFTER normalizeEndpoints() which includes
-    // snapToNearestOpenWorld() - making cache keys non-deterministic based on obstacles.
-    // Fix: compute cache key from RAW coords BEFORE normalization, with sector-based quantization.
+BOOST_AUTO_TEST_CASE(TestDirectSubmissionStatsRemainStableAcrossIdenticalFailedRequests) {
+    // Failed requests are recomputed and not cached, but stats should still remain bounded
+    // and queue inspection should report the current direct-submission architecture.
 
     PathfinderManager& manager = PathfinderManager::Instance();
     BOOST_REQUIRE(manager.init());
-
-    // Simulate sector-based coordinates (like pre-warming uses)
-    // For a 16000x16000 world with 8 sectors, sector size = 2000px
-    // Sector center would be at (1000, 1000), (3000, 1000), etc.
-    Vector2D sectorCenter(4000.0f, 4000.0f);
-    Vector2D sectorGoal(8000.0f, 8000.0f);
-
-    // Nearby NPC positions (within same sector, offset from center)
-    Vector2D npcPos1(4050.0f, 4020.0f);  // 50px offset
-    Vector2D npcPos2(4200.0f, 4150.0f);  // 250px offset
-    Vector2D npcGoal1(8020.0f, 7990.0f);
-    Vector2D npcGoal2(8150.0f, 8100.0f);
+    manager.resetStats();
 
     std::atomic<size_t> callbackCount{0};
     auto callback = [&callbackCount](EntityID, const std::vector<Vector2D>&) {
         callbackCount.fetch_add(1, std::memory_order_relaxed);
     };
 
-    // First request (simulates pre-warming at sector center)
-    manager.requestPath(1001, sectorCenter, sectorGoal, PathfinderManager::Priority::Normal, callback);
+    Vector2D start(4000.0f, 4000.0f);
+    Vector2D goal(8000.0f, 8000.0f);
 
-    // Process first request
-    manager.update();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    manager.update();
+    manager.requestPath(1001, start, goal, PathfinderManager::Priority::Normal, callback);
+    manager.requestPath(1002, start, goal, PathfinderManager::Priority::Normal, callback);
+    manager.requestPath(1003, start, goal, PathfinderManager::Priority::Normal, callback);
 
-    auto stats1 = manager.getStats();
-    size_t initialCacheSize = stats1.cacheSize;
-    BOOST_TEST_MESSAGE("After first request - Cache size: " << initialCacheSize);
+    BOOST_CHECK_EQUAL(manager.getQueueSize(), 0U);
+    BOOST_CHECK(!manager.hasPendingWork());
 
-    // Second request from nearby NPC position (should hit cache bucket)
-    manager.requestPath(1002, npcPos1, npcGoal1, PathfinderManager::Priority::Normal, callback);
+    for (int i = 0; i < 40 && callbackCount.load() < 3; ++i) {
+        manager.update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
-    manager.update();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    manager.update();
-
-    auto stats2 = manager.getStats();
-    BOOST_TEST_MESSAGE("After second request - Cache hits: " << stats2.cacheHits
-                      << ", Cache size: " << stats2.cacheSize);
-
-    // Third request from another nearby position
-    manager.requestPath(1003, npcPos2, npcGoal2, PathfinderManager::Priority::Normal, callback);
-
-    manager.update();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    manager.update();
-
-    auto stats3 = manager.getStats();
-    BOOST_TEST_MESSAGE("After third request - Cache hits: " << stats3.cacheHits
-                      << ", Cache size: " << stats3.cacheSize);
-
-    // With proper sector-based cache key quantization (1000px for 16K world),
-    // all three requests should map to the same bucket.
-    // Cache size should NOT grow by 3 (would indicate no cache sharing).
-    // Note: Without a real world/grid, paths may fail, but cache key bucketing
-    // should still work (failed paths are also cached to prevent retry loops).
-
-    // The key assertion: cache size should grow by less than 3
-    // (indicating at least some cache bucket sharing occurred)
-    size_t cacheGrowth = stats3.cacheSize - initialCacheSize;
-    BOOST_TEST_MESSAGE("Cache growth: " << cacheGrowth << " (expected < 3 with bucket sharing)");
-
-    // If cache bucketing is working, we should see some cache hits or limited growth
-    // Even if paths fail, the bucket-based coalescing should prevent duplicate processing
-    BOOST_CHECK_LE(cacheGrowth, 2); // At most 2 new entries (some should share bucket)
+    const auto stats = manager.getStats();
+    BOOST_CHECK_EQUAL(callbackCount.load(), 3U);
+    BOOST_CHECK_EQUAL(stats.totalRequests, 3U);
+    BOOST_CHECK_EQUAL(stats.failedRequests, 3U);
+    BOOST_CHECK_EQUAL(stats.cacheHits, 0U);
+    BOOST_CHECK_EQUAL(stats.cacheSize, 0U);
 
     manager.clean();
 }
