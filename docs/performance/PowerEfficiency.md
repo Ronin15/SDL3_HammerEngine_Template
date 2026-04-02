@@ -21,13 +21,17 @@ HammerEngine uses a **race-to-idle** strategy optimized for battery-powered devi
 
 | Scenario | CPU Active | Idle Residency | Power Avg | Battery Life |
 |----------|-----------|----------------|-----------|--------------|
-| Idle gameplay (GPU path) | 13.4% | **86.7%** | **0.69W** | **101 hours** |
-| Idle gameplay (SDL_Renderer) | 14.3% | 85.8% | 0.87W | 80 hours |
+| Scenario | CPU Active | Idle Residency | Power Avg | Battery Life |
+|----------|-----------|----------------|-----------|--------------|
+| Idle gameplay — software frame limit (vsync off) | ~10% | **~90%** | ~0.6W | ~116 hours |
+| Idle gameplay — vsync on (full NPC memory + deterministic AI) | 13.5% | **86.5%** | **0.68W** | **103 hours** |
 | Typical gameplay | 17-19% | 80%+ | 2.1-2.6W | 27-33 hours |
 | Sustained combat/action | ~20% | 80%+ | 11-13W | 5-6 hours |
 | Stress test (max entities) | All systems | 60-80% | 27-28W | 2.5 hours |
 
-**Key takeaway:** The GPU rendering path (`-DUSE_SDL3_GPU=ON`) achieves **21% lower power** and **27% better battery life** than SDL_Renderer for the same workload. During typical gameplay, the engine draws only **2-3W** with **80%+ idle residency**. GPU rendering is more efficient because draw calls complete faster, giving the CPU more time to idle.
+**Key takeaway:** The engine uses SDL3 GPU rendering exclusively. The primary efficiency lever is **synchronizing the render rate to the game update rate**. With vsync on, the renderer presents at the display refresh rate (e.g. 120Hz) while the game only updates at 60Hz — the GPU renders the same frame twice per game update, wasting energy on redundant work. The engine's software frame limiter enforces exactly one render per game update at 60 FPS, then idles, achieving up to **90% idle residency**. This is the critical advantage for battery-powered devices wanting to maximize play sessions. Vsync-on still achieves 86.5%, but pays a rendering tax for the mismatch. Both modes draw only **0.68–2W** during typical gameplay.
+
+> **Entity scaling:** Tested range of ~200 entities shows no measurable power difference across varying counts — WorkerBudget keeps all simulation work within the frame budget at these counts.
 
 ### Headless Benchmarks (AI/Collision/Pathfinding Only)
 
@@ -44,10 +48,11 @@ HammerEngine uses a **race-to-idle** strategy optimized for battery-powered devi
 | Metric | Target | Actual | Status |
 |--------|--------|--------|--------|
 | C-State Residency (headless) | >80% | 81%+ | ✅ EXCELLENT |
-| C-State Residency (gameplay) | >70% | **86.7%** (GPU) | ✅ EXCEPTIONAL |
-| Power Draw (idle, 0 entities) | <1W | **0.69W** (GPU) | ✅ EXCELLENT |
+| C-State Residency (gameplay, vsync on) | >70% | **86.5%** | ✅ EXCEPTIONAL |
+| C-State Residency (gameplay, software limit) | >70% | **~90%** | ✅ EXCEPTIONAL |
+| Power Draw (idle, 0 entities) | <1W | **0.68W** (GPU) | ✅ EXCELLENT |
 | Power Draw (typical gameplay) | <5W | 2.1-2.6W | ✅ EXCELLENT |
-| Battery (typical gameplay) | >20 hours | **101 hours** (GPU idle) | ✅ EXCEPTIONAL |
+| Battery (typical gameplay) | >20 hours | **103 hours** (GPU idle) | ✅ EXCEPTIONAL |
 | Power Draw (sustained action) | <15W | 11-13W | ✅ GOOD |
 | Battery drain (50K entity test) | <1% | 0.003% | ✅ EXCEPTIONAL |
 
@@ -62,18 +67,27 @@ Headless (AI only):
   └───────────────────────────────────────────────────────────┘
   Result: 95% idle residency
 
-Real App (with rendering):
-  ├─ Work: 4-6ms ─────────┤
-  │                       ├─ Idle: 10-12ms (vsync wait) ──────┤
+Real App — vsync on (display at 120Hz, game at 60Hz):
+  ├─ Update + Render ──┤ Render again (no new data) ──┤ sleep ─┤
   └───────────────────────────────────────────────────────────┘
-  Result: 80%+ idle residency (still excellent!)
+  Result: 86.5% idle residency (GPU renders same frame twice per update)
+
+Real App — software frame limit (render synced to game update, 60 FPS):
+  ├─ Update + Render: 4-6ms ──┤
+  │                           ├─ Deep sleep: 10-12ms ──────────┤
+  └───────────────────────────────────────────────────────────┘
+  Result: ~90% idle residency (one render per game update, then idle)
 ```
 
-Both modes maintain high C-state residency because:
+The core principle: **sync the render rate to the game update rate.** Vsync ties the renderer to the display refresh rate — if the display runs faster than the game updates, the GPU re-renders frames with no new game data, wasting energy. The software frame limiter matches render cadence to game logic cadence exactly, maximizing idle time per frame.
+
+This is the critical efficiency lever for battery-powered devices wanting to maximize play sessions.
+
+All modes maintain high C-state residency because:
 1. **Sequential manager execution** - Each manager gets ALL workers, completes quickly
 2. **Adaptive batch sizing** - WorkerBudget hill-climbing finds optimal throughput
 3. **No busy-waiting** - Threads sleep between frames
-4. **VSync alignment** - Rendering waits for display refresh
+4. **Software frame limiting** - Render rate locked to game update rate, CPU idles immediately after each frame
 
 ## Key Metrics Explained
 
@@ -139,7 +153,8 @@ Example (M3 Pro, 70Wh battery):
 3. **Don't busy-wait** - Use proper synchronization primitives
 4. **Batch operations** - Process multiple items per task
 5. **SIMD where applicable** - 4-wide processing with SIMDMath.hpp
-6. **GPU rendering** - Use `-DUSE_SDL3_GPU=ON` for 21% power reduction
+6. **GPU rendering** - SDL3 GPU API is the only rendering backend; draw calls complete quickly for maximum idle time
+7. **Sync render rate to game update rate** - Use the engine's software frame limiter rather than vsync. Vsync ties rendering to the display refresh rate; if the display runs at 120Hz and the game updates at 60Hz, the GPU renders every frame twice with no new data. The software limiter renders exactly once per game update then sleeps — the primary battery efficiency lever on portable devices
 
 ### Common Power Issues
 
@@ -165,18 +180,42 @@ Key changes:
 - WorkerBudget hill-climbing (optimal batch sizing)
 - Dual-path collision threading (efficient scaling)
 
-### January 2026: SDL3 GPU Rendering
+### January 2026: SDL3 GPU Rendering (SDL_Renderer Removed)
 
-| Metric | SDL_Renderer | SDL3 GPU | Improvement |
-|--------|--------------|----------|-------------|
+Migrated exclusively to the SDL3 GPU API, removing the SDL_Renderer path entirely.
+
+| Metric | SDL_Renderer (retired) | SDL3 GPU | Improvement |
+|--------|------------------------|----------|-------------|
 | Avg Power | 0.87W | 0.69W | **-21%** |
 | Idle Residency | 85.8% | 86.7% | +0.9% |
 | Battery Life | 80 hours | 101 hours | **+27%** |
 
 Key changes:
-- GPU-accelerated rendering via SDL3 GPU API
+- SDL_Renderer path removed; SDL3 GPU API is the only rendering backend
 - Draw calls complete faster, more CPU idle time
-- Best idle residency achieved (86.7%)
+- Best idle residency at the time: 86.7%
+
+### April 2026: Deterministic AI + Full NPC Memory
+
+| Addition | Avg Power Delta | Idle Residency Delta |
+|----------|----------------|---------------------|
+| Full NPC memory (emotions, combat history, threat tracking) | +0.10W total | +0.29% |
+| Deterministic AI manager | ~0W measured | — |
+| Deterministic attack system | ~0W measured | — |
+| **Net vs early DOD baseline** | **+0.10W** | **+0.29%** |
+
+Key changes:
+- Per-entity `NPCMemoryData`: emotional state, combat history, witnessed events, threat tracking
+- `lastCombatTime` delta semantics with per-frame emotional decay
+- Guard behavior: multi-tier alert system with calm-rate polling
+- Flee behavior: crowd analysis with threat re-evaluation
+- Emotional contagion pre-pass in `AIManager::update()`
+- Behavior message queues (deferred + immediate thread paths)
+- Fully deterministic AI manager and attack system
+
+**Entity scaling (measured):** No measurable power difference across tested entity counts (~200 range) — the WorkerBudget adaptive threshold keeps all simulation work within the frame budget, with the CPU returning to idle on schedule. Upper scaling limits have not yet been profiled.
+
+Std dev (1.14W) is the lowest recorded across all 19 profiling sessions — the tightest, most consistent frame behavior on record. All sessions are **debug builds**; release builds would improve efficiency further.
 
 ## See Also
 
