@@ -163,6 +163,7 @@ Example (M3 Pro, 70Wh battery):
 | Low idle residency (<40%) | Rendering loop too fast | Check vsync settings |
 | High idle power (>3W) | Background work | Audit update loops |
 | Spiky power draw | Uneven batching | Use WorkerBudget |
+| Render spiral on macOS (window occluded) | macOS disables vsync when window is occluded, removing frame pacing and letting the loop run uncapped | **Fixed.** Software limiter now remains active regardless of window visibility/occlusion state. Observed once (Dec 25 2025): 5.57W avg, 2617 MHz — all subsequent sessions unaffected. |
 
 ## Comparison: Architecture Evolution
 
