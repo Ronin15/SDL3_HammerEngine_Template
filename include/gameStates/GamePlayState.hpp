@@ -8,6 +8,7 @@
 
 #include "controllers/ControllerRegistry.hpp"
 #include "controllers/render/NPCRenderController.hpp"
+#include "controllers/render/ProjectileRenderController.hpp"
 #include "events/TimeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "gameStates/GameState.hpp"
@@ -74,6 +75,7 @@ private:
 
   // Data-driven NPC rendering (direct member like AdvancedAIDemoState)
   NPCRenderController m_npcRenderCtrl{};
+  ProjectileRenderController m_projectileRenderCtrl{};
 
   // --- Time UI display buffer ---
   std::string m_statusBuffer{};  // Reusable buffer for status text (zero allocation)

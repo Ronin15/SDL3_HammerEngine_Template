@@ -27,6 +27,7 @@ class ResourceTemplateManager;
 class WorldResourceManager;
 class WorldManager;
 class CollisionManager;
+class ProjectileManager;
 
 class GameEngine {
 public:
@@ -378,6 +379,7 @@ private:
   WorldResourceManager *mp_worldResourceManager{nullptr};
   WorldManager *mp_worldManager{nullptr};
   CollisionManager *mp_collisionManager{nullptr};
+  ProjectileManager *mp_projectileManager{nullptr};
 
   // DPI scaling
   float m_dpiScale{1.0f};

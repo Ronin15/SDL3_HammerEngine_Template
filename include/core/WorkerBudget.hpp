@@ -27,7 +27,8 @@ enum class SystemType : uint8_t {
     Event = 3,
     Collision = 4,
     BackgroundSim = 5,
-    COUNT = 6
+    ProjectileSim = 6,
+    COUNT = 7
 };
 
 /**

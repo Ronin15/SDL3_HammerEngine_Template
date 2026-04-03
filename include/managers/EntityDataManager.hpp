@@ -1998,6 +1998,8 @@ public:
 
     [[nodiscard]] ProjectileData& getProjectileData(EntityHandle handle);
     [[nodiscard]] const ProjectileData& getProjectileData(EntityHandle handle) const;
+    [[nodiscard]] ProjectileData& getProjectileData(uint32_t typeLocalIndex);
+    [[nodiscard]] const ProjectileData& getProjectileData(uint32_t typeLocalIndex) const;
 
     [[nodiscard]] ContainerData& getContainerData(EntityHandle handle);
     [[nodiscard]] const ContainerData& getContainerData(EntityHandle handle) const;
@@ -2757,6 +2759,17 @@ inline ContainerRenderData& EntityDataManager::getContainerRenderDataByTypeIndex
 inline const ContainerRenderData& EntityDataManager::getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
     assert(typeLocalIndex < m_containerRenderData.size() && "Container render data type index out of bounds");
     return m_containerRenderData[typeLocalIndex];
+}
+
+// Projectile data accessors by type index - O(1) access for batch processing
+inline ProjectileData& EntityDataManager::getProjectileData(uint32_t typeLocalIndex) {
+    assert(typeLocalIndex < m_projectileData.size() && "Projectile type index out of bounds");
+    return m_projectileData[typeLocalIndex];
+}
+
+inline const ProjectileData& EntityDataManager::getProjectileData(uint32_t typeLocalIndex) const {
+    assert(typeLocalIndex < m_projectileData.size() && "Projectile type index out of bounds");
+    return m_projectileData[typeLocalIndex];
 }
 
 // Container/Harvestable data accessors by type index - O(1) access for batch processing

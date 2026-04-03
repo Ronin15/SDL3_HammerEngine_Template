@@ -35,6 +35,7 @@ enum class ManagerPhase : uint8_t {
     Pathfinder,
     Collision,
     BackgroundSim,
+    Projectile,
     COUNT
 };
 

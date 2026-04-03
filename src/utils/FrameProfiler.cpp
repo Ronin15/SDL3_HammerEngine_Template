@@ -45,6 +45,7 @@ const char* FrameProfiler::getManagerName(ManagerPhase mgr)
     case ManagerPhase::Pathfinder: return "Pathfinder";
     case ManagerPhase::Collision: return "Collision";
     case ManagerPhase::BackgroundSim: return "BackgroundSim";
+    case ManagerPhase::Projectile: return "Projectile";
     default: return "Unknown";
     }
 }

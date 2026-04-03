@@ -33,6 +33,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"
+#include "managers/ProjectileManager.hpp"
 #include "core/WorkerBudget.hpp"
 #include "utils/Camera.hpp"
 #include "world/WorldData.hpp"
@@ -332,6 +333,7 @@ bool GamePlayState::exit() {
     unregisterEventHandlers();
 
     aiMgr.prepareForStateTransition();
+    ProjectileManager::Instance().prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
     worldMgr.prepareForStateTransition();
 
@@ -397,6 +399,7 @@ bool GamePlayState::exit() {
   unregisterEventHandlers();
 
   aiMgr.prepareForStateTransition();
+  ProjectileManager::Instance().prepareForStateTransition();
   bgSimMgr.prepareForStateTransition();
   worldMgr.prepareForStateTransition();
 
@@ -619,9 +622,26 @@ void GamePlayState::handleInput() {
     ui.setComponentVisible("gameplay_fps", m_fpsVisible);
   }
 
-  // Combat - F or spacebar to attack (F matches AdvancedAIDemoState)
-  if ((inputMgr.wasKeyPressed(SDL_SCANCODE_F) || inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) && mp_Player) {
+  // Combat - F for melee attack
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_F) && mp_Player) {
     m_controllers.get<CombatController>()->tryAttack();
+  }
+
+  // Projectile - Space to fire projectile (test hook)
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE) && mp_Player) {
+    auto& edm = EntityDataManager::Instance();
+    Vector2D playerPos = mp_Player->getPosition();
+    EntityHandle playerHandle = mp_Player->getHandle();
+
+    // Direction based on player facing
+    float dirX = (mp_Player->getFlip() == SDL_FLIP_HORIZONTAL) ? -1.0f : 1.0f;
+    constexpr float PROJECTILE_SPEED = 300.0f;
+    Vector2D velocity(dirX * PROJECTILE_SPEED, 0.0f);
+
+    // Offset spawn slightly in front of player
+    Vector2D spawnPos = playerPos + Vector2D(dirX * 20.0f, 0.0f);
+
+    edm.createProjectile(spawnPos, velocity, playerHandle, 10.0f, 3.0f);
   }
 
   // Interaction - E to trade/pickup/harvest
@@ -1074,6 +1094,9 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
 
   // Record NPCs after resources to preserve SDL render-order parity.
   m_npcRenderCtrl.recordGPU(ctx);
+
+  // Record projectiles after NPCs (rendered on top of NPCs)
+  m_projectileRenderCtrl.recordGPU(ctx);
 
   // End sprite batch recording before switching to entity batch
   m_gpuSceneRecorder->endSpriteBatch();

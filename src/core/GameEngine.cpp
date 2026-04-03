@@ -35,6 +35,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/ProjectileManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/SaveGameManager.hpp"
 #include "managers/SettingsManager.hpp"
@@ -752,6 +753,13 @@ bool GameEngine::init(std::string_view title) {
     GAMEENGINE_CRITICAL("Failed to initialize Background Simulation Manager");
     return false;
   }
+
+  // Initialize Projectile Manager (after CollisionManager and EventManager)
+  GAMEENGINE_INFO("Initializing Projectile Manager");
+  if (!ProjectileManager::Instance().init()) {
+    GAMEENGINE_CRITICAL("Failed to initialize Projectile Manager");
+    return false;
+  }
   // Configure tier radii based on logical screen size (dynamic for different
   // devices)
   BackgroundSimulationManager::Instance().configureForScreenSize(
@@ -819,6 +827,14 @@ bool GameEngine::init(std::string_view title) {
       return false;
     }
     mp_backgroundSimManager = &bgSimMgrTest;
+
+    // Validate Projectile Manager before caching
+    ProjectileManager &projectileMgrTest = ProjectileManager::Instance();
+    if (!projectileMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL("ProjectileManager not properly initialized before caching!");
+      return false;
+    }
+    mp_projectileManager = &projectileMgrTest;
 
     // Validate Resource Manager before caching
     ResourceTemplateManager &resourceMgrTest =
@@ -1027,6 +1043,12 @@ void GameEngine::update(float deltaTime) {
   { PROFILE_MANAGER(HammerEngine::ManagerPhase::AI);
     mp_aiManager->update(deltaTime); }
 
+  // 3.5 Projectile system - position integration + lifetime management
+  //     Uses WorkerBudget threading with SIMD 4-wide movement.
+  //     Collision damage handled via EventTypeId::Collision subscription.
+  { PROFILE_MANAGER(HammerEngine::ManagerPhase::Projectile);
+    mp_projectileManager->update(deltaTime); }
+
   // 4. Particle system - global weather and effect particles
   { PROFILE_MANAGER(HammerEngine::ManagerPhase::Particle);
     mp_particleManager->update(deltaTime); }
@@ -1165,6 +1187,9 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Cleaning up Collision Manager...");
   CollisionManager::Instance().clean();
 
+  GAMEENGINE_INFO("Cleaning up Projectile Manager...");
+  ProjectileManager::Instance().clean();
+
   GAMEENGINE_INFO("Cleaning up Background Simulation Manager...");
   BackgroundSimulationManager::Instance().clean();
 
@@ -1199,6 +1224,7 @@ void GameEngine::clean() {
   mp_particleManager = nullptr;
   mp_pathfinderManager = nullptr;
   mp_collisionManager = nullptr;
+  mp_projectileManager = nullptr;
   mp_resourceTemplateManager = nullptr;
   mp_worldResourceManager = nullptr;
   mp_worldManager = nullptr;
@@ -1388,6 +1414,7 @@ void GameEngine::setGlobalPause(bool paused) {
   mp_collisionManager->setGlobalPause(paused);
   mp_pathfinderManager->setGlobalPause(paused);
   mp_backgroundSimManager->setGlobalPause(paused);
+  mp_projectileManager->setGlobalPause(paused);
   GameTimeManager::Instance().setGlobalPause(paused);
   EventManager::Instance().setGlobalPause(paused);
 
