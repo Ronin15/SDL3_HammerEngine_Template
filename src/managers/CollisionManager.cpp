@@ -181,25 +181,15 @@ void CollisionManager::prepareForStateTransition() {
   // Reset trigger cooldown settings
   m_defaultTriggerCooldownSec = 0.0f;
 
-  // Unregister all event handlers before clearing tokens
-  auto &em = EventManager::Instance();
-  for (const auto &token : m_handlerTokens) {
-    em.removeHandler(token);
-  }
-  m_handlerTokens.clear();
-
-  // Re-subscribe to world events (WorldLoaded, WorldUnloaded, TileChanged)
-  // These are manager-level handlers that must persist across state transitions
-  subscribeWorldEvents();
-
-  // Clear all collision callbacks then re-register the manager-level
-  // EventManager forwarding callback (state-specific callbacks are not
-  // re-registered — new states add their own as needed)
-  m_callbacks.clear();
-  addCollisionCallback([](const HammerEngine::CollisionInfo &info) {
-    EventManager::Instance().triggerCollision(
-        info, EventManager::DispatchMode::Deferred);
-  });
+  // World event handlers and the collision→EventManager forwarding callback
+  // are persistent (registered in init()) and survive state transitions via
+  // EventManager::clearTransientHandlers(). No re-registration needed.
+  //
+  // Only clear handler tokens that were explicitly removed (e.g., by
+  // unsubscribeWorldEvents before a clean shutdown). Persistent handlers
+  // remain registered in EventManager; we keep the tokens for clean() removal.
+  //
+  // m_callbacks (collision forwarding) persist — no state registers its own.
 
   // Reset performance stats for clean slate
   m_perf = PerfStats{};
@@ -1056,7 +1046,7 @@ void CollisionManager::onTileChanged(int x, int y) {
 
 void CollisionManager::subscribeWorldEvents() {
   auto &em = EventManager::Instance();
-  auto token = em.registerHandlerWithToken(
+  auto token = em.registerPersistentHandlerWithToken(
       EventTypeId::World, [this](const EventData &data) {
         auto base = data.event;
         if (!base)

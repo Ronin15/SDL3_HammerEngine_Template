@@ -122,11 +122,6 @@ void ProjectileManager::prepareForStateTransition()
     m_activeProjectileIndices.clear();
     m_destroyQueue.clear();
 
-    // Unsubscribe collision handler — EventManager::prepareForStateTransition()
-    // will clear all handlers anyway, but we mark ourselves as unregistered so
-    // update() re-subscribes after the new state enters.
-    unsubscribeCollisionHandler();
-
     PROJ_INFO("State transition preparation complete");
 }
 
@@ -143,7 +138,7 @@ void ProjectileManager::subscribeCollisionHandler()
     }
 
     auto& eventMgr = EventManager::Instance();
-    m_collisionHandlerToken = eventMgr.registerHandlerWithToken(
+    m_collisionHandlerToken = eventMgr.registerPersistentHandlerWithToken(
         EventTypeId::Collision,
         [this](const EventData& data) { handleCollisionEvent(data); });
     m_collisionHandlerRegistered = true;
@@ -280,15 +275,6 @@ void ProjectileManager::update(float deltaTime)
         m_globallyPaused.load(std::memory_order_acquire))
     {
         return;
-    }
-
-    // Re-register collision handler if cleared by a state transition.
-    // ProjectileManager transitions before EventManager (which clears all
-    // handlers), so we lazily re-subscribe here on the first update of
-    // the new state — before CollisionManager runs in the same frame.
-    if (!m_collisionHandlerRegistered)
-    {
-        subscribeCollisionHandler();
     }
 
     auto& edm = EntityDataManager::Instance();

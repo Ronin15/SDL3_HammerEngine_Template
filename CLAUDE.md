@@ -112,11 +112,22 @@ Core → Managers → GameStates → Entities/Controllers
 
 ### State Transitions
 Cleanup order for AI-heavy states when all managers are initialized:
-AIManager → BackgroundSimulationManager → WorldResourceManager → EventManager → CollisionManager → PathfinderManager → EntityDataManager → WorkerBudgetManager → ParticleManager
+AIManager → ProjectileManager → BackgroundSimulationManager → WorldResourceManager → EventManager → CollisionManager → PathfinderManager → EntityDataManager → WorkerBudgetManager → ParticleManager
 
 Call `prepareForStateTransition()` on managers before cleanup. Pauses work, waits for pending batches, drains message queues.
 
 `ControllerRegistry::clear()` (not just `unsubscribeAll()`) must be called in `GamePlayState::exit()`.
+
+### Event Handler Persistence
+
+EventManager supports **persistent** and **transient** handlers. `prepareForStateTransition()` calls `clearTransientHandlers()` — persistent handlers survive, transient ones are removed. `clearAllHandlers()` (shutdown only) removes everything.
+
+- **`init()` → `registerPersistentHandler[WithToken]()`** — manager-level infrastructure (CollisionManager world events, ProjectileManager collision handler, PathfinderManager world/obstacle events, WorldManager season events). Registered once, never re-subscribed.
+- **`enter()` → `registerHandler[WithToken]()`** — state-level handlers (GamePlayState time/weather/harvest, controller subscriptions via ControllerRegistry). Cleared automatically on transition.
+
+CollisionManager's `m_callbacks` (collision→EventManager bridge) are also persistent — not cleared in `prepareForStateTransition()`. No state registers collision callbacks.
+
+**Rule**: Never manually unsubscribe/resubscribe manager handlers across transitions. Use persistent registration and let `clearTransientHandlers()` handle the rest.
 
 ## Standards
 

@@ -198,9 +198,8 @@ void PathfinderManager::prepareForStateTransition() {
         clearWeightFields();
     }
 
-    // Re-subscribe to events to ensure fresh event handlers for new state
-    unsubscribeFromEvents();
-    subscribeToEvents();
+    // Event handlers are persistent (registered via registerPersistentHandler
+    // in subscribeToEvents). No re-subscription needed across state transitions.
 
     PATHFIND_INFO("PathfinderManager state transition complete - cleared transient data, kept manager initialized");
 }
@@ -1513,8 +1512,8 @@ void PathfinderManager::subscribeToEvents() {
     try {
         auto& eventMgr = EventManager::Instance();
         
-        // Subscribe to collision obstacle changed events
-        auto token = eventMgr.registerHandlerWithToken(EventTypeId::CollisionObstacleChanged, 
+        // Subscribe to collision obstacle changed events (persistent — manager-level)
+        auto token = eventMgr.registerPersistentHandlerWithToken(EventTypeId::CollisionObstacleChanged,
             [this](const EventData& data) {
                 if (data.isActive() && data.event) {
                     auto obstacleEvent = std::dynamic_pointer_cast<CollisionObstacleChangedEvent>(data.event);
@@ -1532,7 +1531,7 @@ void PathfinderManager::subscribeToEvents() {
         // Subscribe to world events (StaticCollidersReady, WorldUnloaded, TileChanged)
         // NOTE: Grid rebuild waits for StaticCollidersReadyEvent (not WorldLoadedEvent)
         // to ensure collision data is available when pathfinding queries it
-        auto worldToken = eventMgr.registerHandlerWithToken(EventTypeId::World,
+        auto worldToken = eventMgr.registerPersistentHandlerWithToken(EventTypeId::World,
             [this](const EventData& data) {
                 auto baseEvent = data.event;
                 if (!baseEvent) return;

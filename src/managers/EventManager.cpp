@@ -29,7 +29,7 @@
 
 namespace {
 void registerBuiltInHandlers(EventManager& eventManager) {
-  eventManager.registerHandler(EventTypeId::NPCSpawn, [](const EventData &data) {
+  eventManager.registerPersistentHandler(EventTypeId::NPCSpawn, [](const EventData &data) {
     if (!data.isActive() || !data.event) return;
     auto npcEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(data.event);
     if (npcEvent) {
@@ -189,8 +189,9 @@ void EventManager::prepareForStateTransition() {
     }
   }
 
-  // Clear all handlers
-  clearAllHandlers();
+  // Clear transient handlers (state-level). Persistent handlers (manager-level,
+  // registered via registerPersistentHandler) survive across transitions.
+  clearTransientHandlers();
 
   // Clear any deferred work queued before the next state takes over.
   clearPendingDispatchQueues();
@@ -200,9 +201,6 @@ void EventManager::prepareForStateTransition() {
 
   // Reset performance stats
   resetPerformanceStats();
-
-  // Restore built-in dispatch handlers that states depend on across transitions.
-  registerBuiltInHandlers(*this);
 
   EVENT_INFO("EventManager prepared for state transition");
 }
@@ -271,13 +269,27 @@ void EventManager::registerHandler(EventTypeId typeId, FastEventHandler handler)
   (void)registerHandlerWithToken(typeId, std::move(handler));
 }
 
+void EventManager::registerPersistentHandler(EventTypeId typeId, FastEventHandler handler) {
+  (void)registerPersistentHandlerWithToken(typeId, std::move(handler));
+}
+
 EventManager::HandlerToken
 EventManager::registerHandlerWithToken(EventTypeId typeId, FastEventHandler handler) {
   std::unique_lock<std::shared_mutex> lock(m_handlersMutex);
   const size_t idx = static_cast<size_t>(typeId);
   uint64_t id = m_nextHandlerId.fetch_add(1, std::memory_order_relaxed);
 
-  m_handlersByType[idx].emplace_back(std::move(handler), id);
+  m_handlersByType[idx].emplace_back(std::move(handler), id, false);
+  return HandlerToken{typeId, id};
+}
+
+EventManager::HandlerToken
+EventManager::registerPersistentHandlerWithToken(EventTypeId typeId, FastEventHandler handler) {
+  std::unique_lock<std::shared_mutex> lock(m_handlersMutex);
+  const size_t idx = static_cast<size_t>(typeId);
+  uint64_t id = m_nextHandlerId.fetch_add(1, std::memory_order_relaxed);
+
+  m_handlersByType[idx].emplace_back(std::move(handler), id, true);
   return HandlerToken{typeId, id};
 }
 
@@ -308,6 +320,19 @@ void EventManager::clearAllHandlers() {
     m_handlersByType[i].clear();
   }
   EVENT_INFO("All event handlers cleared");
+}
+
+void EventManager::clearTransientHandlers() {
+  std::unique_lock<std::shared_mutex> lock(m_handlersMutex);
+  size_t removedCount = 0;
+  for (size_t i = 0; i < m_handlersByType.size(); ++i) {
+    auto& handlers = m_handlersByType[i];
+    size_t before = handlers.size();
+    std::erase_if(handlers, [](const HandlerEntry& e) { return !e.persistent; });
+    removedCount += before - handlers.size();
+  }
+  EVENT_INFO(std::format("Cleared {} transient handlers (persistent handlers retained)",
+                         removedCount));
 }
 
 size_t EventManager::getHandlerCount(EventTypeId typeId) const {

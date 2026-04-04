@@ -96,9 +96,7 @@ void WorldManager::prepareForStateTransition() {
     return;
   }
 
-  if (m_tileRenderer) {
-    m_tileRenderer->unsubscribeFromSeasonEvents();
-  }
+  // TileRenderer's season handler is persistent — no unsubscribe needed.
 }
 
 bool WorldManager::loadNewWorld(
@@ -1202,7 +1200,7 @@ void HammerEngine::TileRenderer::subscribeToSeasonEvents() {
   }
 
   auto &eventMgr = EventManager::Instance();
-  m_seasonToken = eventMgr.registerHandlerWithToken(
+  m_seasonToken = eventMgr.registerPersistentHandlerWithToken(
       EventTypeId::Time,
       [this](const EventData &data) { onSeasonChange(data); });
   m_subscribedToSeasons = true;
