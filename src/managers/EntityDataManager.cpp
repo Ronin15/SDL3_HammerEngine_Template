@@ -616,6 +616,8 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     charData.priority = classInfo.basePriority;
     charData.faction = (factionOverride != 0xFF) ? factionOverride : classInfo.defaultFaction;
     charData.emotionalResilience = classInfo.emotionalResilience;
+    charData.combatStyle = (classInfo.combatStyle == "ranged") ? 1 : 0;
+    charData.projectileSpeed = classInfo.projectileSpeed;
     charData.mass = raceInfo.sizeMultiplier * raceInfo.sizeMultiplier;  // Mass scales with area
 
     // Apply faction-based collision layers
@@ -3394,6 +3396,10 @@ void EntityDataManager::initializeClassRegistry() {
                 info.attackDamageMult = c.hasKey("attackDamageMult") ? static_cast<float>(c["attackDamageMult"].asNumber()) : 1.0f;
                 info.attackRangeMult = c.hasKey("attackRangeMult") ? static_cast<float>(c["attackRangeMult"].asNumber()) : 1.0f;
 
+                // Combat style
+                info.combatStyle = c.hasKey("combatStyle") ? c["combatStyle"].asString() : "melee";
+                info.projectileSpeed = c.hasKey("projectileSpeed") ? static_cast<float>(c["projectileSpeed"].asNumber()) : 0.0f;
+
                 // AI
                 info.suggestedBehavior = c.hasKey("suggestedBehavior") ? c["suggestedBehavior"].asString() : "Idle";
                 info.basePriority = c.hasKey("basePriority") ? static_cast<uint8_t>(c["basePriority"].asInt()) : 5;
@@ -3435,22 +3441,22 @@ void EntityDataManager::initializeClassRegistry() {
     ENTITY_WARN(std::format("Failed to load classes from {}, using defaults", jsonPath));
 
     // emotionalResilience: 0.7 for warriors, 0.8 for guards, 0.3 for merchants, etc.
-    m_classRegistry["Warrior"] = {"Warrior", 1.3f, 1.0f, 0.9f, 1.5f, 1.0f, "Chase", 7, 1, false, 0.7f, {}};
+    m_classRegistry["Warrior"] = {"Warrior", 1.3f, 1.0f, 0.9f, 1.5f, 1.0f, "melee", 0.0f, "Chase", 7, 1, false, 0.7f, {}};
     m_classNameToId["Warrior"] = 0; m_classIdToName.push_back("Warrior");
 
-    m_classRegistry["Guard"] = {"Guard", 1.2f, 1.1f, 0.8f, 1.2f, 1.0f, "Guard", 6, 0, false, 0.8f, {}};
+    m_classRegistry["Guard"] = {"Guard", 1.2f, 1.1f, 0.8f, 1.2f, 1.0f, "melee", 0.0f, "Guard", 6, 0, false, 0.8f, {}};
     m_classNameToId["Guard"] = 1; m_classIdToName.push_back("Guard");
 
-    m_classRegistry["GeneralMerchant"] = {"GeneralMerchant", 0.7f, 0.8f, 0.9f, 0.3f, 0.5f, "Idle", 2, 0, true, 0.3f, {}};
+    m_classRegistry["GeneralMerchant"] = {"GeneralMerchant", 0.7f, 0.8f, 0.9f, 0.3f, 0.5f, "melee", 0.0f, "Idle", 2, 0, true, 0.3f, {}};
     m_classNameToId["GeneralMerchant"] = 2; m_classIdToName.push_back("GeneralMerchant");
 
-    m_classRegistry["Rogue"] = {"Rogue", 0.8f, 1.3f, 1.3f, 1.2f, 0.8f, "Chase", 8, 1, false, 0.5f, {}};
+    m_classRegistry["Rogue"] = {"Rogue", 0.8f, 1.3f, 1.3f, 1.2f, 0.8f, "melee", 0.0f, "Chase", 8, 1, false, 0.5f, {}};
     m_classNameToId["Rogue"] = 3; m_classIdToName.push_back("Rogue");
 
-    m_classRegistry["Mage"] = {"Mage", 0.6f, 1.5f, 0.85f, 1.8f, 2.5f, "Attack", 7, 2, false, 0.4f, {}};
+    m_classRegistry["Mage"] = {"Mage", 0.6f, 1.5f, 0.85f, 1.8f, 3.0f, "ranged", 200.0f, "Attack", 7, 2, false, 0.4f, {}};
     m_classNameToId["Mage"] = 4; m_classIdToName.push_back("Mage");
 
-    m_classRegistry["Farmer"] = {"Farmer", 0.9f, 1.1f, 1.0f, 0.5f, 0.5f, "Wander", 3, 0, true, 0.4f, {}};
+    m_classRegistry["Farmer"] = {"Farmer", 0.9f, 1.1f, 1.0f, 0.5f, 0.5f, "melee", 0.0f, "Wander", 3, 0, true, 0.4f, {}};
     m_classNameToId["Farmer"] = 5; m_classIdToName.push_back("Farmer");
 
     ENTITY_INFO(std::format("Initialized class registry with {} classes (fallback)", m_classRegistry.size()));

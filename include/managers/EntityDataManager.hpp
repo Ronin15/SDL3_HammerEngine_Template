@@ -210,6 +210,7 @@ struct CharacterData {
     float attackRange{50.0f};
     float moveSpeed{100.0f};   // Base movement speed
     float mass{1.0f};          // Physical mass (affects knockback resistance)
+    float projectileSpeed{0.0f}; // Ranged projectile speed (px/s), 0 = melee
 
     // Identity (creature composition)
     CreatureCategory category{CreatureCategory::NPC};  // NPC, Monster, or Animal
@@ -222,6 +223,7 @@ struct CharacterData {
     uint8_t behaviorType{0};   // BehaviorType enum
     uint8_t priority{5};       // AI priority (0-9)
     uint8_t stateFlags{0};     // alive, stunned, invulnerable, etc.
+    uint8_t combatStyle{0};    // 0=melee, 1=ranged
 
     // Inventory (for merchants and NPCs that carry items)
     uint32_t inventoryIndex{INVALID_INVENTORY_INDEX};  // EDM inventory index
@@ -535,6 +537,10 @@ struct ClassInfo {
     float moveSpeedMult{1.0f};
     float attackDamageMult{1.0f};
     float attackRangeMult{1.0f};
+
+    // Combat style ("melee" or "ranged") — determines attack mode
+    std::string combatStyle{"melee"};
+    float projectileSpeed{0.0f};         // Ranged projectile speed (px/s), 0 = melee
 
     // AI hints (not auto-applied, for reference)
     std::string suggestedBehavior;

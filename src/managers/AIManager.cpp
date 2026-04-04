@@ -584,6 +584,25 @@ void AIManager::assignBehavior(EntityHandle handle,
   }
 
   auto config = Behaviors::getDefaultConfig(behaviorType);
+
+  // For Attack behavior, customize config from CharacterData combat style
+  const auto& hot = edm.getHotDataByIndex(edmIndex);
+  if (behaviorType == BehaviorType::Attack &&
+      (hot.kind == EntityKind::NPC || hot.kind == EntityKind::Player)) {
+    const auto& charData = edm.getCharacterDataByIndex(edmIndex);
+    if (charData.combatStyle == 1) {  // ranged
+      config = HammerEngine::BehaviorConfigData::makeAttack(
+          HammerEngine::AttackBehaviorConfig::createRangedConfig(charData.attackRange));
+      config.config.attack.projectileSpeed = charData.projectileSpeed > 0.0f
+          ? charData.projectileSpeed : 250.0f;
+      config.config.attack.attackDamage = charData.attackDamage;
+    } else {
+      config = HammerEngine::BehaviorConfigData::makeAttack(
+          HammerEngine::AttackBehaviorConfig::createMeleeConfig(charData.attackRange));
+      config.config.attack.attackDamage = charData.attackDamage;
+    }
+  }
+
   if (!edm.hasMemoryData(edmIndex)) {
     edm.initMemoryData(edmIndex);
   }
