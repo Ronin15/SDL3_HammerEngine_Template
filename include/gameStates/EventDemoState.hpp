@@ -13,6 +13,7 @@
 #include "managers/ParticleManager.hpp"
 
 #include "controllers/render/NPCRenderController.hpp"
+#include "controllers/render/ProjectileRenderController.hpp"
 #include "entities/EntityHandle.hpp"
 #include "entities/Player.hpp"
 #include "utils/Camera.hpp"
@@ -75,6 +76,7 @@ private:
 
   // Data-driven NPC rendering (velocity-based animation)
   NPCRenderController m_npcRenderCtrl{};
+  ProjectileRenderController m_projectileRenderCtrl{};
 
   // Player entity
   PlayerPtr m_player{};

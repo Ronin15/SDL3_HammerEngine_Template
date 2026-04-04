@@ -627,6 +627,19 @@ void GamePlayState::handleInput() {
     m_controllers.get<CombatController>()->tryAttack();
   }
 
+  // Debug: R to spawn a hostile ranged NPC near player (test hook)
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_R) && mp_Player) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+    Vector2D playerPos = mp_Player->getPosition();
+    Vector2D spawnPos = playerPos + Vector2D(150.0f, 0.0f);
+    EntityHandle npc = edm.createNPCWithRaceClass(spawnPos, "Human", "Warrior",
+                                                   Sex::Unknown, 1);  // faction 1 = Enemy
+    if (npc.isValid()) {
+      aiMgr.assignBehavior(npc, "RangedAttack");
+    }
+  }
+
   // Projectile - Space to fire projectile (test hook)
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE) && mp_Player) {
     auto& edm = EntityDataManager::Instance();

@@ -444,6 +444,8 @@ struct AttackBehaviorConfig
     float aoeRadius = 0.0f;                       // Area of effect radius (0 = disabled)
 
     // Mode-specific parameters
+    uint8_t attackMode = 0;                       // 0=Melee, 1=Ranged (matches AttackMode enum in AttackBehavior.cpp)
+    float projectileSpeed = 250.0f;               // Ranged projectile speed (px/s)
     float chargeDamageMultiplier = 1.5f;          // Damage multiplier for charge attacks
 
     /**
@@ -475,6 +477,8 @@ struct AttackBehaviorConfig
         config.attackSpeed = 0.8f;
         config.movementSpeed = 50.0f;
         config.attackDamage = 8.0f;
+        config.attackMode = 1;           // RANGED
+        config.projectileSpeed = 250.0f;
         return config;
     }
 

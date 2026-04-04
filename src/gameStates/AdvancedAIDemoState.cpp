@@ -754,8 +754,9 @@ void AdvancedAIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRender
   worldMgr.recordGPU(*ctx.spriteBatch, ctx.cameraX, ctx.cameraY,
                      ctx.viewWidth, ctx.viewHeight, ctx.zoom);
 
-  // Record NPCs to sprite batch (atlas-based)
+  // Record NPCs and projectiles to sprite batch (atlas-based)
   m_npcRenderCtrl.recordGPU(ctx);
+  m_projectileRenderCtrl.recordGPU(ctx);
 
   // End sprite batch recording (finalizes atlas-based sprites)
   m_gpuSceneRecorder->endSpriteBatch();

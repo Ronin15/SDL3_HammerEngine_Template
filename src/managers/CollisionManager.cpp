@@ -192,8 +192,14 @@ void CollisionManager::prepareForStateTransition() {
   // These are manager-level handlers that must persist across state transitions
   subscribeWorldEvents();
 
-  // Clear all collision callbacks (these should be re-registered by new states)
+  // Clear all collision callbacks then re-register the manager-level
+  // EventManager forwarding callback (state-specific callbacks are not
+  // re-registered — new states add their own as needed)
   m_callbacks.clear();
+  addCollisionCallback([](const HammerEngine::CollisionInfo &info) {
+    EventManager::Instance().triggerCollision(
+        info, EventManager::DispatchMode::Deferred);
+  });
 
   // Reset performance stats for clean slate
   m_perf = PerfStats{};

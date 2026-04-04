@@ -537,8 +537,10 @@ void AIManager::registerDefaultBehaviors() {
       HammerEngine::PatrolBehaviorConfig::createCirclePatrol());
   m_presetConfigs["EventTarget"] = HammerEngine::BehaviorConfigData::makeChase(
       HammerEngine::ChaseBehaviorConfig::createEventTarget());
+  m_presetConfigs["RangedAttack"] = HammerEngine::BehaviorConfigData::makeAttack(
+      HammerEngine::AttackBehaviorConfig::createRangedConfig());
 
-  AI_INFO("Behavior system ready (8 types + 6 presets)");
+  AI_INFO("Behavior system ready (8 types + 7 presets)");
 }
 
 bool AIManager::hasBehavior(const std::string &name) const {

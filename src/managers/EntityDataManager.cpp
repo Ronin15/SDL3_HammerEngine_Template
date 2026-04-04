@@ -1379,10 +1379,24 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Initialize collision data (Projectiles collide with enemies and environment)
+    // Initialize collision data — auto-detect mask from owner's entity kind
+    // Player projectiles hit enemies; NPC/Monster projectiles hit player
     hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Projectile;
-    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Enemy |
-                        HammerEngine::CollisionLayer::Layer_Environment;
+    size_t ownerIdx = getIndex(owner);
+    if (ownerIdx != SIZE_MAX)
+    {
+        EntityKind ownerKind = m_hotData[ownerIdx].kind;
+        hot.collisionMask = (ownerKind == EntityKind::Player)
+            ? (HammerEngine::CollisionLayer::Layer_Enemy |
+               HammerEngine::CollisionLayer::Layer_Environment)
+            : (HammerEngine::CollisionLayer::Layer_Player |
+               HammerEngine::CollisionLayer::Layer_Environment);
+    }
+    else
+    {
+        hot.collisionMask = HammerEngine::CollisionLayer::Layer_Enemy |
+                            HammerEngine::CollisionLayer::Layer_Environment;
+    }
     hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
     hot.triggerTag = 0;
 
