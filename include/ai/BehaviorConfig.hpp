@@ -604,7 +604,7 @@ struct BehaviorConfigData {
         FollowBehaviorConfig follow;
 
         uint8_t raw[384];  // Sized to accommodate largest config (AttackBehaviorConfig)
-    } config;
+    } params;
 
     BehaviorConfigData() = default;
 
@@ -623,56 +623,56 @@ struct BehaviorConfigData {
 inline BehaviorConfigData BehaviorConfigData::makeIdle(const IdleBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Idle;
-    data.config.idle = cfg;
+    data.params.idle = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeWander(const WanderBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Wander;
-    data.config.wander = cfg;
+    data.params.wander = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeChase(const ChaseBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Chase;
-    data.config.chase = cfg;
+    data.params.chase = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makePatrol(const PatrolBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Patrol;
-    data.config.patrol = cfg;
+    data.params.patrol = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeGuard(const GuardBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Guard;
-    data.config.guard = cfg;
+    data.params.guard = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeAttack(const AttackBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Attack;
-    data.config.attack = cfg;
+    data.params.attack = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeFlee(const FleeBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Flee;
-    data.config.flee = cfg;
+    data.params.flee = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeFollow(const FollowBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Follow;
-    data.config.follow = cfg;
+    data.params.follow = cfg;
     return data;
 }
 

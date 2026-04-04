@@ -593,13 +593,13 @@ void AIManager::assignBehavior(EntityHandle handle,
     if (charData.combatStyle == 1) {  // ranged
       config = HammerEngine::BehaviorConfigData::makeAttack(
           HammerEngine::AttackBehaviorConfig::createRangedConfig(charData.attackRange));
-      config.config.attack.projectileSpeed = charData.projectileSpeed > 0.0f
+      config.params.attack.projectileSpeed = charData.projectileSpeed > 0.0f
           ? charData.projectileSpeed : 250.0f;
-      config.config.attack.attackDamage = charData.attackDamage;
+      config.params.attack.attackDamage = charData.attackDamage;
     } else {
       config = HammerEngine::BehaviorConfigData::makeAttack(
           HammerEngine::AttackBehaviorConfig::createMeleeConfig(charData.attackRange));
-      config.config.attack.attackDamage = charData.attackDamage;
+      config.params.attack.attackDamage = charData.attackDamage;
     }
   }
 

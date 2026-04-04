@@ -21,28 +21,28 @@ namespace Behaviors {
 void execute(BehaviorContext& ctx, const HammerEngine::BehaviorConfigData& configData) {
     switch (configData.type) {
         case BehaviorType::Idle:
-            executeIdle(ctx, configData.config.idle);
+            executeIdle(ctx, configData.params.idle);
             break;
         case BehaviorType::Wander:
-            executeWander(ctx, configData.config.wander);
+            executeWander(ctx, configData.params.wander);
             break;
         case BehaviorType::Chase:
-            executeChase(ctx, configData.config.chase);
+            executeChase(ctx, configData.params.chase);
             break;
         case BehaviorType::Patrol:
-            executePatrol(ctx, configData.config.patrol);
+            executePatrol(ctx, configData.params.patrol);
             break;
         case BehaviorType::Guard:
-            executeGuard(ctx, configData.config.guard);
+            executeGuard(ctx, configData.params.guard);
             break;
         case BehaviorType::Attack:
-            executeAttack(ctx, configData.config.attack);
+            executeAttack(ctx, configData.params.attack);
             break;
         case BehaviorType::Flee:
-            executeFlee(ctx, configData.config.flee);
+            executeFlee(ctx, configData.params.flee);
             break;
         case BehaviorType::Follow:
-            executeFollow(ctx, configData.config.follow);
+            executeFollow(ctx, configData.params.follow);
             break;
         case BehaviorType::Custom:
         case BehaviorType::COUNT:
@@ -56,28 +56,28 @@ void execute(BehaviorContext& ctx, const HammerEngine::BehaviorConfigData& confi
 void init(size_t edmIndex, const HammerEngine::BehaviorConfigData& configData) {
     switch (configData.type) {
         case BehaviorType::Idle:
-            initIdle(edmIndex, configData.config.idle);
+            initIdle(edmIndex, configData.params.idle);
             break;
         case BehaviorType::Wander:
-            initWander(edmIndex, configData.config.wander);
+            initWander(edmIndex, configData.params.wander);
             break;
         case BehaviorType::Chase:
-            initChase(edmIndex, configData.config.chase);
+            initChase(edmIndex, configData.params.chase);
             break;
         case BehaviorType::Patrol:
-            initPatrol(edmIndex, configData.config.patrol);
+            initPatrol(edmIndex, configData.params.patrol);
             break;
         case BehaviorType::Guard:
-            initGuard(edmIndex, configData.config.guard);
+            initGuard(edmIndex, configData.params.guard);
             break;
         case BehaviorType::Attack:
-            initAttack(edmIndex, configData.config.attack);
+            initAttack(edmIndex, configData.params.attack);
             break;
         case BehaviorType::Flee:
-            initFlee(edmIndex, configData.config.flee);
+            initFlee(edmIndex, configData.params.flee);
             break;
         case BehaviorType::Follow:
-            initFollow(edmIndex, configData.config.follow);
+            initFollow(edmIndex, configData.params.follow);
             break;
         case BehaviorType::Custom:
         case BehaviorType::COUNT:
