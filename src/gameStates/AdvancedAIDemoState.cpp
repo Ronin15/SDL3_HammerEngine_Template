@@ -18,6 +18,7 @@
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/ProjectileManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "core/WorkerBudget.hpp"
@@ -341,6 +342,7 @@ bool AdvancedAIDemoState::exit() {
 
     unregisterEventHandlers();
     aiMgr.prepareForStateTransition();
+    ProjectileManager::Instance().prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
     worldMgr.prepareForStateTransition();
 
@@ -404,6 +406,7 @@ bool AdvancedAIDemoState::exit() {
 
   unregisterEventHandlers();
   aiMgr.prepareForStateTransition();
+  ProjectileManager::Instance().prepareForStateTransition();
   bgSimMgr.prepareForStateTransition();
   worldMgr.prepareForStateTransition();
 

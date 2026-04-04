@@ -144,6 +144,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
       gameEngine.present();
     }
 
+    // End-of-frame cleanup (entity destruction queue, deferred work)
+    // Runs after render/present while GPU finishes — uses idle CPU time
+    gameEngine.processBackgroundTasks();
+
     // End frame (VSync or software frame limiting)
     ts.endFrame();
 

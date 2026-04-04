@@ -247,10 +247,7 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
     damageData.setActive(true);
     damageData.event = damageEvent;
 
-    // Enqueue as single deferred event
-    std::vector<EventManager::DeferredEvent> batch;
-    batch.push_back({EventTypeId::Combat, std::move(damageData)});
-    eventMgr.enqueueBatch(std::move(batch));
+    eventMgr.enqueueBatch({{EventTypeId::Combat, std::move(damageData)}});
 
     // Destroy projectile (unless piercing)
     if (!(proj.flags & ProjectileData::FLAG_PIERCING))
@@ -463,10 +460,12 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
     // SIMD 4-wide movement batch (follows AIManager pattern)
     std::array<TransformData*, 4> batchTransforms{};
     std::array<const EntityHotData*, 4> batchHotData{};
+    std::array<size_t, 4> batchEdmIndices{};
     size_t batchCount = 0;
 
+    // Returns true if projectile hit world boundary (should be destroyed)
     auto updateMovementScalar = [&](TransformData& transform,
-                                    const EntityHotData& hotData)
+                                    const EntityHotData& hotData) -> bool
     {
         Vector2D pos = transform.position + (transform.velocity * deltaTime);
 
@@ -490,14 +489,18 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
                          std::clamp(pos.getY(), minY, maxY));
         transform.position = clamped;
 
+        bool hitBoundary = false;
         if (clamped.getX() != pos.getX())
         {
             transform.velocity.setX(0.0f);
+            hitBoundary = true;
         }
         if (clamped.getY() != pos.getY())
         {
             transform.velocity.setY(0.0f);
+            hitBoundary = true;
         }
+        return hitBoundary;
     };
 
     auto flushMovementBatch = [&]()
@@ -510,7 +513,11 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
         {
             for (size_t lane = 0; lane < batchCount; ++lane)
             {
-                updateMovementScalar(*batchTransforms[lane], *batchHotData[lane]);
+                if (updateMovementScalar(*batchTransforms[lane], *batchHotData[lane]))
+                {
+                    EntityHandle handle = edm.getHandle(batchEdmIndices[lane]);
+                    outDestroyQueue.push_back(handle);
+                }
             }
             batchCount = 0;
             return;
@@ -579,6 +586,7 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
         store4_aligned(posX, clampedXv);
         store4_aligned(posY, clampedYv);
 
+        const int boundaryMask = clampXMask | clampYMask;
         for (size_t lane = 0; lane < 4; ++lane)
         {
             TransformData* transform = batchTransforms[lane];
@@ -593,6 +601,13 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
             {
                 transform->velocity.setY(0.0f);
             }
+
+            // Destroy projectiles that hit world boundary
+            if ((boundaryMask >> lane) & 0x1)
+            {
+                EntityHandle handle = edm.getHandle(batchEdmIndices[lane]);
+                outDestroyQueue.push_back(handle);
+            }
         }
 
         batchCount = 0;
@@ -605,7 +620,6 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
         auto& hot = edm.getHotDataByIndex(edmIdx);
 
         if (!hot.isAlive()) continue;
-        if (hot.kind != EntityKind::Projectile) continue;
 
         auto& transform = hot.transform;
 
@@ -615,6 +629,7 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
         // Accumulate for SIMD batch movement
         batchTransforms[batchCount] = &transform;
         batchHotData[batchCount] = &hot;
+        batchEdmIndices[batchCount] = edmIdx;
         ++batchCount;
 
         if (batchCount == 4)

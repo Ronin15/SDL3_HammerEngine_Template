@@ -627,6 +627,7 @@ void GamePlayState::handleInput() {
     m_controllers.get<CombatController>()->tryAttack();
   }
 
+#ifndef NDEBUG
   // Debug: R to spawn a hostile ranged NPC near player (test hook)
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_R) && mp_Player) {
     auto& edm = EntityDataManager::Instance();
@@ -640,7 +641,7 @@ void GamePlayState::handleInput() {
     }
   }
 
-  // Projectile - Space to fire projectile (test hook)
+  // Debug: Space to fire projectile (test hook)
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE) && mp_Player) {
     auto& edm = EntityDataManager::Instance();
     Vector2D playerPos = mp_Player->getPosition();
@@ -656,6 +657,7 @@ void GamePlayState::handleInput() {
 
     edm.createProjectile(spawnPos, velocity, playerHandle, 10.0f, 3.0f);
   }
+#endif
 
   // Interaction - E to trade/pickup/harvest
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_E) && mp_Player) {

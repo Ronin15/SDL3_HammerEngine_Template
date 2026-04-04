@@ -15,6 +15,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/ProjectileManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/EventManager.hpp"
@@ -389,6 +390,7 @@ bool AIDemoState::exit() {
     }
 
     aiMgr.prepareForStateTransition();
+    ProjectileManager::Instance().prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
     worldMgr.prepareForStateTransition();
 
@@ -449,6 +451,7 @@ bool AIDemoState::exit() {
   }
 
   aiMgr.prepareForStateTransition();
+  ProjectileManager::Instance().prepareForStateTransition();
   bgSimMgr.prepareForStateTransition();
   worldMgr.prepareForStateTransition();
 

@@ -1121,19 +1121,17 @@ void GameEngine::present() {
 }
 
 void GameEngine::processBackgroundTasks() {
-  // Background task processing hook for truly-async, non-critical work.
+  // End-of-frame cleanup hook — runs once per frame after render/present,
+  // using otherwise-idle CPU time while GPU finishes the frame.
   //
-  // Background simulation moved to update() for power efficiency.
-  // This hook remains for future truly-async background work like:
-  //   - Asset pre-loading for upcoming game states
-  //   - Background save game serialization
-  //   - Analytics/telemetry data collection
-  //   - Periodic cache cleanup or memory defragmentation
-  //   - Network polling for non-latency-critical updates
-  //
-  // THREAD SAFETY:
-  //   Any work added here must be thread-safe and not require main-thread
-  //   resources (SDL rendering, UI state, etc.).
+  // All managers and rendering are complete at this point, so structural
+  // changes to entity storage (freeing slots, updating indices) are safe.
+
+  // Drain deferred entity destructions — returns slots to m_freeSlots,
+  // keeping the free list healthy for next frame's allocations.
+  // This is the ONLY place processDestructionQueue runs during gameplay.
+  // (prepareForStateTransition also calls it during state changes.)
+  EntityDataManager::Instance().processDestructionQueue();
 }
 
 bool GameEngine::isVSyncEnabled() const noexcept {
@@ -1187,14 +1185,14 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Cleaning up Collision Manager...");
   CollisionManager::Instance().clean();
 
-  GAMEENGINE_INFO("Cleaning up Projectile Manager...");
-  ProjectileManager::Instance().clean();
-
   GAMEENGINE_INFO("Cleaning up Background Simulation Manager...");
   BackgroundSimulationManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up AI Manager...");
   AIManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up Projectile Manager...");
+  ProjectileManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Entity Data Manager...");
   EntityDataManager::Instance().clean();
