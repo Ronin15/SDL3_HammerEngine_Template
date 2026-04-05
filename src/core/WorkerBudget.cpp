@@ -94,17 +94,17 @@ std::pair<size_t, size_t> WorkerBudgetManager::getBatchStrategy(
 ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, size_t workloadSize) {
     // ThreadSystem must exist for threading to be possible
     if (!ThreadSystem::Exists()) {
-        return {false, 0};
+        return {.shouldThread = false, .probePhase = 0};
     }
 
     // Single-core hardware: no parallelism possible, always single-threaded
     if (ThreadSystem::Instance().getThreadCount() <= 1) {
-        return {false, 0};
+        return {.shouldThread = false, .probePhase = 0};
     }
 
     // Always single-threaded for very small workloads
     if (workloadSize < SystemTuningState::MIN_WORKLOAD) {
-        return {false, 0};
+        return {.shouldThread = false, .probePhase = 0};
     }
 
     auto& state = m_systemState[static_cast<size_t>(system)];
@@ -116,7 +116,7 @@ ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, siz
     if (threshold == 0) {
         // LEARNING: No threshold learned yet - stay single-threaded
         // reportExecution() will detect when to set threshold (time >= 1.0ms)
-        return {false, 0};
+        return {.shouldThread = false, .probePhase = 0};
     }
 
     if (active) {
@@ -136,21 +136,21 @@ ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, siz
                 "{}: Re-learning (workload {} < hysteresis {})",
                 getSystemName(system), workloadSize, hysteresisLow));
 #endif
-            return {false, 0};  // Back to learning mode
+            return {.shouldThread = false, .probePhase = 0};  // Back to learning mode
         }
 
         // Still above hysteresis - continue multi-threaded
-        return {true, 0};
+        return {.shouldThread = true, .probePhase = 0};
     }
 
     // Threshold learned but not active (edge case: workload dropped then rose again)
     // Activate if workload exceeds threshold
     if (workloadSize >= threshold) {
         state.thresholdActive.store(true, std::memory_order_relaxed);
-        return {true, 0};
+        return {.shouldThread = true, .probePhase = 0};
     }
 
-    return {false, 0};
+    return {.shouldThread = false, .probePhase = 0};
 }
 
 void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize,

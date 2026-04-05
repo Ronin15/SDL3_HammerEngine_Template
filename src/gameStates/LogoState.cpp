@@ -142,13 +142,13 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
      float bottom = top - sh;
 
      // Top-left
-     v[0] = {sx, top, 0.0f, 0.0f, 255, 255, 255, 255};
+     v[0] = {.x=sx,      .y=top,    .u=0.0f, .v=0.0f, .r=255, .g=255, .b=255, .a=255};
      // Top-right
-     v[1] = {sx + sw, top, 1.0f, 0.0f, 255, 255, 255, 255};
+     v[1] = {.x=sx + sw, .y=top,    .u=1.0f, .v=0.0f, .r=255, .g=255, .b=255, .a=255};
      // Bottom-right
-     v[2] = {sx + sw, bottom, 1.0f, 1.0f, 255, 255, 255, 255};
+     v[2] = {.x=sx + sw, .y=bottom, .u=1.0f, .v=1.0f, .r=255, .g=255, .b=255, .a=255};
      // Bottom-left
-     v[3] = {sx, bottom, 0.0f, 1.0f, 255, 255, 255, 255};
+     v[3] = {.x=sx,      .y=bottom, .u=0.0f, .v=1.0f, .r=255, .g=255, .b=255, .a=255};
 
     // Record draw command
     GPUDrawCommand cmd;
@@ -205,9 +205,9 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
       }
 
       HammerEngine::SpriteVertex* v = uiBasePtr + uiVertexOffset;
-      SDL_Color drawColor = {200, 200, 200, 255};
+      SDL_Color drawColor = {.r=200, .g=200, .b=200, .a=255};
       if (seq->image_type == TTF_IMAGE_COLOR) {
-        drawColor = {255, 255, 255, 255};
+        drawColor = {.r=255, .g=255, .b=255, .a=255};
       }
       for (int i = 0; i < seq->num_indices; ++i) {
         int sourceIndex = seq->indices[i];
@@ -218,9 +218,9 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
         const SDL_FPoint& pos = seq->xy[sourceIndex];
         const SDL_FPoint& uv = seq->uv[sourceIndex];
         // SDL3_ttf GPU text already provides UVs in SDL_GPU convention.
-        v[i] = {dstX + pos.x, (viewportHeight - dstY) + pos.y,
-                uv.x, uv.y,
-                drawColor.r, drawColor.g, drawColor.b, drawColor.a};
+        v[i] = {.x=dstX + pos.x, .y=(viewportHeight - dstY) + pos.y,
+                .u=uv.x, .v=uv.y,
+                .r=drawColor.r, .g=drawColor.g, .b=drawColor.b, .a=drawColor.a};
       }
 
       GPUDrawCommand cmd;

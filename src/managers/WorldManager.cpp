@@ -1018,14 +1018,14 @@ void HammerEngine::TileRenderer::initAtlasCoords() {
   auto getCoords = [&regions](const std::string& id) -> AtlasCoords {
     auto it = regions.find(id);
     if (it == regions.end()) {
-      return {0, 0, 0, 0};
+      return {.x = 0, .y = 0, .w = 0, .h = 0};
     }
     const auto& r = it->second;
     return {
-      static_cast<float>(r["x"].asNumber()),
-      static_cast<float>(r["y"].asNumber()),
-      static_cast<float>(r["w"].asNumber()),
-      static_cast<float>(r["h"].asNumber())
+      .x = static_cast<float>(r["x"].asNumber()),
+      .y = static_cast<float>(r["y"].asNumber()),
+      .w = static_cast<float>(r["w"].asNumber()),
+      .h = static_cast<float>(r["h"].asNumber())
     };
   };
 
@@ -1113,12 +1113,12 @@ void HammerEngine::TileRenderer::initAtlasCoords() {
     // Decorations - special handling for seasonal availability
     auto loadDecoration = [&](AtlasCoords& target, const std::string& key) {
       if (!worldRoot.hasKey("decorations")) {
-        target = {0, 0, 0, 0};
+        target = {.x = 0, .y = 0, .w = 0, .h = 0};
         return;
       }
       const auto& decorations = worldRoot["decorations"];
       if (!decorations.hasKey(key)) {
-        target = {0, 0, 0, 0};
+        target = {.x = 0, .y = 0, .w = 0, .h = 0};
         return;
       }
       const auto& obj = decorations[key];
@@ -1138,7 +1138,7 @@ void HammerEngine::TileRenderer::initAtlasCoords() {
           }
         }
         if (!availableThisSeason) {
-          target = {0, 0, 0, 0};
+          target = {.x = 0, .y = 0, .w = 0, .h = 0};
           return;
         }
       }

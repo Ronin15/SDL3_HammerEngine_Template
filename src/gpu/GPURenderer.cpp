@@ -419,7 +419,7 @@ SDL_GPURenderPass* GPURenderer::beginSwapchainPass() {
     colorTarget.texture = m_swapchainTexture;
     colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
     colorTarget.store_op = SDL_GPU_STOREOP_STORE;
-    colorTarget.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+    colorTarget.clear_color = {.r=0.0f, .g=0.0f, .b=0.0f, .a=1.0f};
 
     auto& profiler = FrameProfiler::Instance();
     profiler.beginRender(RenderPhase::GPUSwapPass);

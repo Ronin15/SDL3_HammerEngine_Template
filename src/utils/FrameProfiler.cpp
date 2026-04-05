@@ -304,16 +304,16 @@ void FrameProfiler::createOverlayComponents()
     // Panel at bottom-right using UIManager helper
     ui.createPanelAtBottomRight("profiler_panel", W, H);
     UIStyle panelStyle;
-    panelStyle.backgroundColor = {0, 0, 0, 200};
-    panelStyle.borderColor = {80, 80, 80, 255};
+    panelStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=200};
+    panelStyle.borderColor = {.r=80, .g=80, .b=80, .a=255};
     panelStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
     ui.setStyle("profiler_panel", panelStyle);
     ui.setComponentZOrder("profiler_panel", UIConstants::PROFILER_ZORDER_PANEL);
 
     // Label style
     UIStyle labelStyle;
-    labelStyle.textColor = {200, 200, 200, 255};
-    labelStyle.backgroundColor = {0, 0, 0, 0};
+    labelStyle.textColor = {.r=200, .g=200, .b=200, .a=255};
+    labelStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=0};
     labelStyle.textAlign = UIAlignment::LEFT;
     labelStyle.fontID = std::string(UIConstants::FONT_UI);
 

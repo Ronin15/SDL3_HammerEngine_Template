@@ -43,7 +43,7 @@ Camera::Camera(const Config& config) : m_config(config) {
 }
 
 Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
-    : m_viewport{viewportWidth, viewportHeight} {
+    : m_viewport{.width = viewportWidth, .height = viewportHeight} {
     m_position.setX(x);
     m_position.setY(y);
     m_targetPosition.setX(x);
@@ -266,10 +266,10 @@ Camera::ViewRect Camera::getViewRect() const {
     // Use full floating-point precision for smooth sub-pixel camera movement
     // Callers snap to pixels at render time if tile-aligned rendering is needed
     return ViewRect{
-        m_position.getX() - (worldViewWidth * 0.5f),
-        m_position.getY() - (worldViewHeight * 0.5f),
-        worldViewWidth,
-        worldViewHeight
+        .x      = m_position.getX() - (worldViewWidth * 0.5f),
+        .y      = m_position.getY() - (worldViewHeight * 0.5f),
+        .width  = worldViewWidth,
+        .height = worldViewHeight
     };
 }
 

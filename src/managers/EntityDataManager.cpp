@@ -56,11 +56,11 @@ AtlasRegion lookupAtlasRegion(const std::string& regionId) {
 
     const auto& region = it->second;
     return {
-        static_cast<uint16_t>(region["x"].asInt()),
-        static_cast<uint16_t>(region["y"].asInt()),
-        static_cast<uint16_t>(region["w"].asInt()),
-        static_cast<uint16_t>(region["h"].asInt()),
-        true
+        .x     = static_cast<uint16_t>(region["x"].asInt()),
+        .y     = static_cast<uint16_t>(region["y"].asInt()),
+        .w     = static_cast<uint16_t>(region["w"].asInt()),
+        .h     = static_cast<uint16_t>(region["h"].asInt()),
+        .found = true
     };
 }
 
