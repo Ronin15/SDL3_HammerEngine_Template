@@ -38,6 +38,8 @@ namespace {
 // Test fixture for collision scaling benchmarks
 class CollisionScalingFixture {
 public:
+    static bool& initializedFlag() { return s_initialized; }
+
     CollisionScalingFixture() {
         // Initialize systems once per fixture
         if (!s_initialized) {
@@ -237,6 +239,23 @@ private:
 };
 
 bool CollisionScalingFixture::s_initialized = false;
+
+struct CollisionScalingModuleCleanup {
+    ~CollisionScalingModuleCleanup() {
+        if (!CollisionScalingFixture::initializedFlag()) {
+            return;
+        }
+
+        BackgroundSimulationManager::Instance().clean();
+        CollisionManager::Instance().clean();
+        EntityDataManager::Instance().clean();
+        HammerEngine::ThreadSystem::Instance().clean();
+
+        CollisionScalingFixture::initializedFlag() = false;
+    }
+};
+
+BOOST_GLOBAL_FIXTURE(CollisionScalingModuleCleanup);
 
 } // anonymous namespace
 
