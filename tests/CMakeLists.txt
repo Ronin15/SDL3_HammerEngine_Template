@@ -15,25 +15,9 @@ endif()
 
 message(STATUS "Building tests with Boost Test support")
 
-# --- Create TestMocks Library ---
-set(MOCK_SOURCES
-    mocks/MockPlayer.cpp
-    mocks/MockGameEngine.cpp
-    events/EventManagerTestAccess.cpp
-)
-
-add_library(TestMocks STATIC ${MOCK_SOURCES})
-target_include_directories(TestMocks PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
-    ${CMAKE_CURRENT_SOURCE_DIR}/events
-    ${PROJECT_SOURCE_DIR}/include
-)
-target_link_libraries(TestMocks PUBLIC HammerEngineLib)
-
 # --- Test Executables ---
 
-# Simple tests (no mocks needed)
-set(SIMPLE_TESTS
+set(ALL_TESTS
     save_manager_tests
     settings_manager_tests
     thread_system_tests
@@ -75,10 +59,8 @@ set(SIMPLE_TESTS
     background_simulation_manager_tests
     collision_manager_edm_integration_tests
     event_manager_tests
-)
-
-# Complex tests (need mocks)
-set(MOCK_TESTS
+    projectile_manager_tests
+    projectile_scaling_benchmark
     ai_scaling_benchmark
     event_manager_scaling_benchmark
     background_simulation_manager_benchmark
@@ -110,16 +92,12 @@ set(MOCK_TESTS
     resource_render_controller_tests
     ai_manager_edm_integration_tests
     pathfinder_manager_edm_integration_tests
-)
-
-# Tests that need special mock combinations
-set(INVENTORY_TESTS
     resource_integration_tests
     resource_architecture_tests
 )
 
-# Create simple test executables
-foreach(test_name ${SIMPLE_TESTS})
+# Create all test executables
+foreach(test_name ${ALL_TESTS})
     # Determine source file based on test name
     if(${test_name} STREQUAL "save_manager_tests")
         set(test_source "SaveManagerTests.cpp")
@@ -151,6 +129,12 @@ foreach(test_name ${SIMPLE_TESTS})
             set(test_source "utils/ResourcePathTests.cpp")
         elseif(${suffix} STREQUAL "edgecase")
             set(test_source "resources/ResourceEdgeCaseTests.cpp")
+        elseif(${suffix} STREQUAL "integration")
+            set(test_source "resources/ResourceIntegrationTests.cpp")
+        elseif(${suffix} STREQUAL "architecture")
+            set(test_source "resources/ResourceArchitectureTests.cpp")
+        elseif(${suffix} STREQUAL "rendercontroller")
+            set(test_source "controllers/ResourceRenderControllerTests.cpp")
         endif()
     elseif(${test_name} STREQUAL "world_resource_manager_tests")
         set(test_source "resources/WorldResourceManagerTests.cpp")
@@ -164,8 +148,6 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "world/WorldManagerTests.cpp")
     elseif(${test_name} STREQUAL "world_manager_event_integration_tests")
         set(test_source "world/WorldManagerEventIntegrationTests.cpp")
-    elseif(${test_name} STREQUAL "event_manager_behavior_tests")
-        set(test_source "events/EventManagerBehaviorTests.cpp")
     elseif(${test_name} STREQUAL "collision_system_tests")
         set(test_source "collisions/CollisionSystemTests.cpp")
     elseif(${test_name} STREQUAL "pathfinding_system_tests")
@@ -210,17 +192,11 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "collisions/CollisionManagerEDMIntegrationTests.cpp")
     elseif(${test_name} STREQUAL "event_manager_tests")
         set(test_source "events/EventManagerTest.cpp")
-    endif()
-
-    add_executable(${test_name} ${test_source})
-    target_link_libraries(${test_name} PRIVATE HammerEngineLib Boost::unit_test_framework)
-    target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
-endforeach()
-
-# Create mock test executables
-foreach(test_name ${MOCK_TESTS})
-    # Determine source file based on test name
-    if(${test_name} STREQUAL "ai_scaling_benchmark")
+    elseif(${test_name} STREQUAL "projectile_manager_tests")
+        set(test_source "managers/ProjectileManagerTests.cpp")
+    elseif(${test_name} STREQUAL "projectile_scaling_benchmark")
+        set(test_source "performance/ProjectileScalingBenchmark.cpp")
+    elseif(${test_name} STREQUAL "ai_scaling_benchmark")
         set(test_source "AIScalingBenchmark.cpp")
     elseif(${test_name} STREQUAL "event_manager_scaling_benchmark")
         set(test_source "EventManagerScalingBenchmark.cpp")
@@ -280,8 +256,6 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "controllers/CombatControllerTests.cpp")
     elseif(${test_name} STREQUAL "social_controller_tests")
         set(test_source "controllers/SocialControllerTests.cpp")
-    elseif(${test_name} STREQUAL "resource_render_controller_tests")
-        set(test_source "controllers/ResourceRenderControllerTests.cpp")
     elseif(${test_name} STREQUAL "ai_manager_edm_integration_tests")
         set(test_source "managers/AIManagerEDMIntegrationTests.cpp")
     elseif(${test_name} STREQUAL "pathfinder_manager_edm_integration_tests")
@@ -289,36 +263,41 @@ foreach(test_name ${MOCK_TESTS})
     endif()
 
     add_executable(${test_name} ${test_source})
-    target_link_libraries(${test_name} PRIVATE TestMocks Boost::unit_test_framework)
-    target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
-endforeach()
-
-# Create inventory tests (need specific mock combination)
-foreach(test_name ${INVENTORY_TESTS})
-    if(${test_name} STREQUAL "resource_integration_tests")
-        set(test_source "resources/ResourceIntegrationTests.cpp")
-    elseif(${test_name} STREQUAL "resource_architecture_tests")
-        set(test_source "resources/ResourceArchitectureTests.cpp")
-    endif()
-
-    add_executable(${test_name} ${test_source} mocks/MockPlayer.cpp)
     target_link_libraries(${test_name} PRIVATE HammerEngineLib Boost::unit_test_framework)
-    target_include_directories(${test_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
     target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
 endforeach()
 
-# Special configurations
+# --- Tests needing EventManagerTestAccess ---
+set(EVENT_ACCESS_TESTS
+    event_manager_tests
+    event_manager_behavior_tests
+    weather_event_tests
+    harvest_controller_tests
+    item_controller_tests
+    social_controller_tests
+    resource_render_controller_tests
+    weather_controller_tests
+    day_night_controller_tests
+)
+foreach(test_name ${EVENT_ACCESS_TESTS})
+    target_sources(${test_name} PRIVATE events/EventManagerTestAccess.cpp)
+    target_include_directories(${test_name} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/events
+        ${CMAKE_CURRENT_SOURCE_DIR}/controllers)
+endforeach()
+
+# --- Tests needing special defines ---
 target_compile_definitions(event_manager_tests PRIVATE RUNNING_TESTS)
-target_sources(event_manager_tests PRIVATE events/EventManagerTestAccess.cpp)
-target_include_directories(event_manager_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/events)
 target_compile_definitions(event_types_tests PRIVATE RUNNING_TESTS)
 
-# Add save_manager_tests special mock
+# --- Tests needing MockPlayer (serialization tests) ---
 target_sources(save_manager_tests PRIVATE mocks/MockPlayer.cpp)
 target_include_directories(save_manager_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
 
+# resource_factory_tests uses test access helper from tests/resources
+target_sources(resource_factory_tests PRIVATE resources/ResourceTestAccess.cpp)
+
 # --- CTest Registration ---
-set(ALL_TESTS ${SIMPLE_TESTS} ${MOCK_TESTS} ${INVENTORY_TESTS})
 foreach(test_name ${ALL_TESTS})
     # Benchmark tests need specific test filters to avoid running all (slow) tests
     if(${test_name} STREQUAL "ai_scaling_benchmark")
@@ -327,6 +306,9 @@ foreach(test_name ${ALL_TESTS})
     elseif(${test_name} STREQUAL "collision_scaling_benchmark")
         # Only run MM scaling test by default (fast representative test)
         add_test(NAME ${test_name} COMMAND ${test_name} --run_test=CollisionScalingTests/MMScaling)
+    elseif(${test_name} STREQUAL "projectile_scaling_benchmark")
+        # Only run primary scaling test by default
+        add_test(NAME ${test_name} COMMAND ${test_name} --run_test=ProjectileScalingTests/ProjectileScaling)
     elseif(${test_name} STREQUAL "integrated_system_benchmark")
         # Only run quick 60FPS test for ctest (full suite takes ~90s due to sustained perf test)
         add_test(NAME ${test_name} COMMAND ${test_name} --run_test=IntegratedSystemBenchmarkSuite/TestRealisticGameSimulation60FPS)
@@ -337,9 +319,6 @@ foreach(test_name ${ALL_TESTS})
     set_tests_properties(${test_name} PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endforeach()
-
-# resource_factory_tests uses test access helper from tests/resources
-target_sources(resource_factory_tests PRIVATE resources/ResourceTestAccess.cpp)
 
 # --- Power Profiling Tool (Standalone, no Boost.Test dependency) ---
 # This is a headless benchmark for measuring CPU power consumption via race-to-idle strategy

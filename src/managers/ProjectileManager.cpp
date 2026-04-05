@@ -236,9 +236,11 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
     auto& eventMgr = EventManager::Instance();
     auto damageEvent = eventMgr.acquireDamageEvent();
 
-    // Knockback in collision normal direction
-    constexpr float KNOCKBACK_FORCE = 50.0f;
-    Vector2D knockback = info.normal * KNOCKBACK_FORCE;
+    // Knockback scaled by projectile speed — faster projectiles hit harder
+    constexpr float KNOCKBACK_BASE = 30.0f;
+    constexpr float KNOCKBACK_SPEED_FACTOR = 0.1f;
+    const float knockbackForce = KNOCKBACK_BASE + proj.speed * KNOCKBACK_SPEED_FACTOR;
+    Vector2D knockback = info.normal * knockbackForce;
 
     damageEvent->configure(proj.owner, targetHandle, proj.damage, knockback);
 
@@ -336,6 +338,10 @@ void ProjectileManager::update(float deltaTime)
         if (m_batchDestroyQueues.size() < batchCount)
         {
             m_batchDestroyQueues.resize(batchCount);
+            for (size_t i = 0; i < batchCount; ++i)
+            {
+                m_batchDestroyQueues[i].reserve(32);
+            }
         }
         for (size_t i = 0; i < batchCount; ++i)
         {
