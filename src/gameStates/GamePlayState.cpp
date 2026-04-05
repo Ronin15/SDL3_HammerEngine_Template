@@ -179,7 +179,7 @@ bool GamePlayState::enter() {
     m_controllers.subscribeAll();
 
     // Initialize combat HUD (health/stamina bars, target frame)
-    UIManager::Instance().createCombatHUD();
+    ui.createCombatHUD();
 
     registerEventHandlers();
 
@@ -247,7 +247,7 @@ void GamePlayState::update(float deltaTime) {
 
     // Update combat HUD (health/stamina bars, target frame)
     auto& combatCtrl = *m_controllers.get<CombatController>();
-    UIManager::Instance().updateCombatHUD(
+    ui.updateCombatHUD(
         mp_Player->getHealth(),
         mp_Player->getStamina(),
         combatCtrl.hasActiveTarget(),

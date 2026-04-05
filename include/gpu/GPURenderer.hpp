@@ -132,12 +132,12 @@ public:
      * @param pass Active render pass
      * @param viewProjection 4x4 matrix data
      */
-    void pushViewProjection(SDL_GPURenderPass* pass, const float* viewProjection);
+    void pushViewProjection(const SDL_GPURenderPass* pass, const float* viewProjection);
 
     /**
      * Push composite uniforms.
      */
-    void pushCompositeUniforms(SDL_GPURenderPass* pass,
+    void pushCompositeUniforms(const SDL_GPURenderPass* pass,
                                 float subPixelX, float subPixelY, float zoom);
 
     /**

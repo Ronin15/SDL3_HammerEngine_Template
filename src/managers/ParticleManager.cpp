@@ -1039,7 +1039,7 @@ void ParticleManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
   }
 
   // Get particle vertex pool
-  auto& vertexPool = gpuRenderer.getParticleVertexPool();
+  const auto& vertexPool = gpuRenderer.getParticleVertexPool();
   size_t vertexCount = vertexPool.getPendingVertexCount();
 
   if (vertexCount == 0) return;
