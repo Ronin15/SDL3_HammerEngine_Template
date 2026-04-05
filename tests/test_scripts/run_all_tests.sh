@@ -137,6 +137,7 @@ BENCHMARK_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_integrated_benchmark.sh"
   "$SCRIPT_DIR/run_background_simulation_manager_benchmark.sh"
   "$SCRIPT_DIR/run_adaptive_threading_analysis.sh"
+  "$SCRIPT_DIR/run_projectile_benchmark.sh"
 )
 
 # Build the test scripts array based on user selection

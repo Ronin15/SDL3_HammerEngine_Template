@@ -160,6 +160,7 @@ for %%T in (
     run_integrated_benchmark.bat
     run_background_simulation_manager_benchmark.bat
     run_adaptive_threading_analysis.bat
+    run_projectile_benchmark.bat
 ) do (
     echo.
     echo Running benchmark: %%T

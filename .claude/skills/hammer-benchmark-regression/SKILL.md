@@ -33,7 +33,7 @@ absolute values. Example outputs in this document show representative values fro
 The AI System is the most performance-critical component. Always run `./tests/test_scripts/run_ai_benchmark.sh` as part of the regression check. DO NOT proceed to report generation without AI benchmark results.
 
 1. **Identify or Create Baseline** - Store previous metrics
-2. **Run Benchmark Suite** - Execute ALL 10 performance tests (including AI)
+2. **Run Benchmark Suite** - Execute ALL 11 performance tests (including AI)
 3. **Extract Metrics** - Parse results from test outputs
 4. **Compare vs Baseline** - Calculate percentage changes
 5. **Flag Regressions** - Alert on performance degradation
@@ -50,6 +50,7 @@ The AI System is the most performance-critical component. Always run `./tests/te
 - [ ] Integrated System Benchmark completed
 - [ ] Background Simulation Benchmark completed
 - [ ] Adaptive Threading Analysis completed
+- [ ] Projectile Scaling Benchmark completed
 
 **Metrics Extraction Verification (MANDATORY):**
 - [ ] AI: Entity scaling metrics and updates/sec extracted
@@ -58,11 +59,11 @@ The AI System is the most performance-critical component. Always run `./tests/te
 - [ ] **Trigger Detection: Detector count, overlaps, method (spatial/sweep) extracted**
 - [ ] Event: Throughput and latency extracted
 - [ ] Particle: Update time extracted
-- [ ] UI: Processing throughput extracted
 - [ ] SIMD: Speedup factors extracted for all 4 operations (AI Distance, Bounds, Layer Mask, Particle Physics)
 - [ ] Integrated: Frame time statistics and scaling summary extracted
 - [ ] Background Sim: Scaling data and threading threshold extracted
-- [ ] Adaptive Threading: Throughput learning, mode switching validation, gradual crossover data extracted
+- [ ] Adaptive Threading: MIN_WORKLOAD enforcement, threshold learning, hysteresis, batch multiplier extracted
+- [ ] Projectile: Entity scaling (entities/ms, ns/entity), SIMD 4-wide throughput extracted
 
 ## Benchmark Test Suites
 
@@ -71,7 +72,7 @@ The AI System is the most performance-critical component. Always run `./tests/te
 **Working Directory:** Use absolute path to project root or set `$PROJECT_ROOT` environment variable.
 All paths below are relative to project root.
 
-**IMPORTANT: All 10 benchmarks MUST be run for complete regression analysis.**
+**IMPORTANT: All 11 benchmarks MUST be run for complete regression analysis.**
 
 1. **AI Scaling Benchmark** (`./bin/debug/ai_scaling_benchmark`) **[REQUIRED - CRITICAL]**
    - Script: `./tests/test_scripts/run_ai_benchmark.sh`
@@ -140,20 +141,35 @@ All paths below are relative to project root.
 
 10. **Adaptive Threading Analysis** (`./bin/debug/adaptive_threading_analysis`) **[REQUIRED]**
     - Script: `./tests/test_scripts/run_adaptive_threading_analysis.sh`
-    - Tests: WorkerBudget adaptive logic validation using Collision system
+    - Tests: WorkerBudget adaptive logic validation across AI, Collision, Particle, Event systems
     - **Test Cases:**
-      - `Collision_ThroughputLearning`: Validates WBM learns throughput for single/multi modes
-      - `Collision_ModeSelection`: Validates WBM selects correct mode based on learned data
-      - `BatchMultiplierTuning`: Validates hill-climbing batch multiplier converges
-      - `Collision_ModeSwitching`: Tests bidirectional mode switching (scale up→MULTI, scale down→SINGLE)
-    - Metrics: Single vs multi throughput (items/ms), speedup ratio, natural crossover point, batch multiplier
+      - `MinWorkloadEnforcement`: All 4 systems respect MIN_WORKLOAD=100 (forced SINGLE below 100)
+      - `AIManager_ThresholdLearning`: AI learns threading threshold when single-threaded time ≥0.9ms
+      - `CollisionManager_ThresholdLearning`: Collision learns threshold (typically hits at 2000 entities)
+      - `ParticleManager_ThresholdLearning`: Particle learns threshold (typically ~16K-17K particles)
+      - `HysteresisRelearning`: Threshold reset and re-learned when workload drops below 95% band
+      - `BatchMultiplierTuning`: Batch multiplier validated in range [0.4, 2.0]
+      - `ThreadingStateSummary`: Final state summary for all systems
+    - Metrics: Learned threshold per system, hysteresis behavior, batch multiplier range
     - **Key Thresholds:**
-      - `MIN_WORKLOAD=100`: Always single-threaded below 100 entities
-      - `MODE_SWITCH_THRESHOLD=1.15`: 15% improvement required to switch modes
-    - Target: Correct crossover detection, throughput tracking convergence, bidirectional mode switching
+      - `MIN_WORKLOAD=100`: Always single-threaded below 100 entities (all systems)
+      - `LEARNING_TIME_THRESHOLD_MS=0.9ms`: Threading threshold learned when single time ≥ 0.9ms
+      - `HYSTERESIS_FACTOR=0.95`: Re-learning triggered when workload drops to 95% of learned threshold
+    - Target: All 8 MIN_WORKLOAD tests PASS, thresholds learned, hysteresis working
     - Duration: ~2 minutes
 
-### Total Benchmark Duration: ~25 minutes
+11. **Projectile Scaling Benchmark** (`./bin/debug/projectile_scaling_benchmark`) **[REQUIRED]**
+    - Script: `./tests/test_scripts/run_projectile_benchmark.sh`
+    - Tests: Projectile entity throughput scaling, SIMD 4-wide position integration
+    - **Test Cases:**
+      - `ProjectileScaling`: Entity counts 100-5000, entities/ms and ns/entity
+      - `ThreadingModeComparison`: Single vs multi-threaded at different counts
+      - `SIMDThroughput`: SIMD 4-wide batching efficiency (4-4000 projectiles)
+    - Metrics: Entities/ms, ns/entity, SIMD throughput/ms, threading mode
+    - Target: ~17K entities/ms peak throughput, SIMD shows improving efficiency 4→256 projectiles
+    - Duration: ~1 minute
+
+### Total Benchmark Duration: ~26 minutes
 
 ## Execution Steps
 
@@ -191,7 +207,7 @@ fi
 
 ### Step 2: Run Benchmark Suite
 
-**CRITICAL: ALL 10 benchmarks must be run. DO NOT skip the AI benchmark.**
+**CRITICAL: ALL 11 benchmarks must be run. DO NOT skip the AI benchmark.**
 
 **⚠️ SEQUENTIAL EXECUTION ONLY:** Benchmarks MUST be run one at a time, waiting for each to complete before starting the next. NEVER run benchmarks in parallel (background tasks, concurrent shells, etc.) — parallel execution causes CPU/memory contention that skews timing results and produces unreliable metrics. Use `run_in_background: false` (foreground) for every benchmark invocation.
 
@@ -227,8 +243,11 @@ fi
 # 9. Background Simulation Benchmark (REQUIRED - 2 minutes)
 ./tests/test_scripts/run_background_simulation_manager_benchmark.sh
 
-# 10. Adaptive Threading Analysis (REQUIRED - 4 minutes)
+# 10. Adaptive Threading Analysis (REQUIRED - 2 minutes)
 ./tests/test_scripts/run_adaptive_threading_analysis.sh
+
+# 11. Projectile Scaling Benchmark (REQUIRED - 1 minute)
+./tests/test_scripts/run_projectile_benchmark.sh
 ```
 
 **Timeout Protection:**
@@ -250,8 +269,9 @@ Running benchmarks (this will take ~25 minutes)...
 [7/10] SIMD Performance Benchmark... ✓ (1m 00s)
 [8/10] Integrated System Benchmark... ✓ (3m 15s)
 [9/10] Background Simulation Benchmark... ✓ (2m 00s)
-[10/10] Adaptive Threading Analysis... ✓ (4m 00s)
-Total: 25m 42s
+[10/10] Adaptive Threading Analysis... ✓ (2m 00s)
+[11/11] Projectile Scaling Benchmark... ✓ (1m 00s)
+Total: 26m 42s
 ```
 
 **Execution Order:**
@@ -614,82 +634,128 @@ overhead exceeds the benefit. Single-threaded processing handles 10K entities in
 
 #### Adaptive Threading Analysis Metrics
 
-**Note:** This benchmark validates WorkerBudgetManager adaptive logic using Collision system only.
+**Note:** This benchmark validates WorkerBudgetManager adaptive logic across AI, Collision, Particle, and Event systems.
 
 ```bash
-# Extract throughput learning results
-grep -A 5 "After 1000 frames:" test_results/adaptive_threading_current.txt
+# Extract MIN_WORKLOAD enforcement results
+grep -A 15 "MIN_WORKLOAD ENFORCEMENT" test_results/adaptive_threading_current.txt
 
-# Extract mode switching results (gradual scale down)
-grep -A 15 "GRADUAL SCALE DOWN" test_results/adaptive_threading_current.txt
+# Extract per-system threshold learning
+grep -E "Learned threshold:|Threshold active:" test_results/adaptive_threading_current.txt
 
-# Extract natural crossover point
-grep -E "Natural crossover point" test_results/adaptive_threading_current.txt
+# Extract hysteresis re-learning result
+grep -A 5 "Hysteresis Band" test_results/adaptive_threading_current.txt
 
-# Extract validation summary
-grep -A 5 "VALIDATION" test_results/adaptive_threading_current.txt
+# Extract batch multiplier validation
+grep -A 10 "BATCH MULTIPLIER TUNING" test_results/adaptive_threading_current.txt
+
+# Extract final WBM state summary
+grep -A 10 "WORKERBUDGET STATE SUMMARY" test_results/adaptive_threading_current.txt
 ```
 
 **Example Output:**
 ```
-===== COLLISION THROUGHPUT LEARNING =====
-Initial state:
-  Single TP: 0.00 items/ms
-  Multi TP:  0.00 items/ms
+===== MIN_WORKLOAD ENFORCEMENT (ALL SYSTEMS) =====
+Testing MIN_WORKLOAD=100 enforcement:
+  System      Workload  Expected  Actual    Result
+  ----------  --------  --------  ------    ------
+  AI                50    SINGLE  SINGLE    PASS
+  AI                99    SINGLE  SINGLE    PASS
+  Collision         50    SINGLE  SINGLE    PASS
+  Collision         99    SINGLE  SINGLE    PASS
+  Particle          50    SINGLE  SINGLE    PASS
+  Particle          99    SINGLE  SINGLE    PASS
+  Event             50    SINGLE  SINGLE    PASS
+  Event             99    SINGLE  SINGLE    PASS
+Validation: MIN_WORKLOAD enforcement: PASS
 
-Running 1000 frames...
+===== COLLISION MANAGER THRESHOLD LEARNING =====
+  Threshold learned at frame 10: 2000 entities
+  Final state:
+    Learned threshold: 2000
+    Threshold active: true
 
-After 1000 frames:
-  Single TP: 587.94 items/ms
-  Multi TP:  5017.61 items/ms
-  Batch multiplier: 1.00
+===== PARTICLE MANAGER THRESHOLD LEARNING =====
+  Threshold learned at frame 70: 16750 particles
+  Final state:
+    Learned threshold: 16750
+    Threshold active: true
 
-Validation: WBM learned throughput: PASS
+===== HYSTERESIS BAND RE-LEARNING =====
+  Learned threshold: 3000 (active)
+  Hysteresis low boundary (95%): 2850
+  After workload drop to 2840:
+    Threshold: 0 (was 3000), Active: false, Decision: SINGLE
+Validation: Re-learning triggered: PASS
 
-===== COLLISION MODE SWITCHING (UP/DOWN) =====
-=== PHASE 1: VERY LOW COUNT (expect forced SINGLE) ===
-Entity count: 50 (below MIN_WORKLOAD=100)
-  Mode at 50 entities: SINGLE
-  Expected: SINGLE (forced below MIN_WORKLOAD=100)
+===== BATCH MULTIPLIER TUNING =====
+  System      Multiplier  InRange
+  AI          1.000       PASS
+  Collision   1.000       PASS
+  Particle    1.000       PASS
+  Event       1.000       PASS
+Validation: All multipliers in range: PASS
 
-=== PHASE 2: SCALE UP (expect MULTI) ===
-Entity count: 2000
-  Final mode at 2000 entities: MULTI
-
-=== PHASE 3: GRADUAL SCALE DOWN (find natural crossover) ===
-  Count    Mode      Single TP    Multi TP     Ratio
-  -----    ----      ---------    --------     -----
-   1500    MULTI          2538        4541     1.79x
-   1000    MULTI          2538        4816     1.90x
-    500    MULTI          2278        4739     2.08x
-    200    MULTI          2067        3384     1.64x
-    125    MULTI          1883        2173     1.15x
-    100    SINGLE         3591        1596     0.44x
-
-  Natural crossover point: Not found above MIN_WORKLOAD=100 (MULTI preferred at all tested counts)
-
-=== VALIDATION ===
-  Scale UP (50->2000): PASS - switched to MULTI
-  Below MIN_WORKLOAD (99): PASS - forced SINGLE
-  At MIN_WORKLOAD (100): SINGLE (throughput comparison)
-  Bidirectional adaptive: PASS
-
-===== WORKERBUDGET VALIDATION SUMMARY =====
-Collision System:
-  Single TP:      660 items/ms
-  Multi TP:       2301 items/ms
-  Batch Mult:     1.00
-  Preferred Mode: MULTI
-  Multi Speedup:  3.49x
+===== WORKERBUDGET STATE SUMMARY (ALL SYSTEMS) =====
+System       Threshold   Active    BatchMult   MultiTP
+AI                   0    false         1.00         0
+Collision            0    false         1.00      4294
+Particle             0    false         1.00         0
+Event                0    false         1.00         0
+Pathfinding          0    false         1.00         0
 ```
 
 **Key Metrics:**
-- **Throughput learning:** WBM learns non-zero throughput for single and multi modes
-- **Mode selection:** WBM chooses correct mode based on learned throughput (>15% improvement to switch)
-- **Batch multiplier:** Should stabilize within range [0.4, 2.0]
-- **Natural crossover:** Entity count where MULTI→SINGLE based on throughput (if found above MIN_WORKLOAD)
-- **MIN_WORKLOAD boundary:** Entities below 100 forced to SINGLE regardless of throughput
-- **Bidirectional switching:** Mode correctly switches when scaling up AND down
+- **MIN_WORKLOAD enforcement:** All 8 tests (4 systems × 2 workloads) must PASS
+- **Threshold learning:** Collision typically learns at 2000 entities, Particle at ~16K-17K particles
+- **AI threshold:** May not be learned if hardware is fast enough (0.9ms threshold not hit) — expected
+- **Hysteresis:** Re-learning must trigger when workload drops below 95% band — PASS required
+- **Batch multiplier:** All systems must be within [0.4, 2.0] range
+- **Collision MultiTP:** Should be non-zero after test (typically 4000-5000 items/ms)
+
+#### Projectile Scaling Metrics
+
+```bash
+# Extract entity scaling table
+grep -A 10 "Projectile Entity Scaling" test_results/projectile_scaling_current.txt | \
+  grep -E "^\s+[0-9]+|Projectiles"
+
+# Extract scalability summary
+grep -A 3 "SCALABILITY SUMMARY" test_results/projectile_scaling_current.txt
+
+# Extract SIMD throughput table
+grep -A 12 "SIMD 4-Wide Throughput" test_results/projectile_scaling_current.txt | \
+  grep -E "^\s+[0-9]+|Projectiles"
+```
+
+**Example Output:**
+```
+--- Projectile Entity Scaling ---
+ Projectiles   Time (ms)   Entities/ms   ns/entity   Threading   Status
+         100       0.006         15903        62.9      single        OK
+         500       0.029         17003        58.8      single        OK
+        1000       0.058         17309        57.8      single        OK
+        2000       0.115         17385        57.5      single        OK
+        5000       0.286         17477        57.2      single        OK
+
+SCALABILITY SUMMARY:
+Best throughput: 17477 entities/ms (at 5000 projectiles)
+
+--- SIMD 4-Wide Throughput ---
+ Projectiles   Time (ms)   ns/entity  Throughput/ms
+           4      0.0008       189.8            5269
+          16      0.0019       118.5            8440
+          64      0.0041        64.8           15435
+         256      0.0153        59.7           16764
+        1000      0.0581        58.1           17218
+        4000      0.2288        57.2           17481
+```
+
+**Key Metrics:**
+- **Peak throughput:** ~17K entities/ms (at 1000-5000 projectiles)
+- **ns/entity:** Should converge to ~57-63ns at 1000+ projectiles (cache-warm regime)
+- **SIMD efficiency:** Throughput should improve significantly from 4→64 projectiles (SIMD batching warmup), then plateau
+- **Threading:** Typically all single-threaded (fast enough that threading overhead not beneficial)
 
 ### Step 4: Compare Against Baseline
 
@@ -840,17 +906,24 @@ beneficial as single-threaded processing is often faster than threading overhead
 
 **Adaptive Threading Analysis Regression Detection:**
 
-*Note: With EDM architecture, single-threaded processing is extremely fast. WBM correctly
-staying in SINGLE mode even at high entity counts is expected behavior when threading
-overhead exceeds benefit. The key is that WBM learns and adapts correctly.*
+*Note: The benchmark now tests all 4 systems (AI, Collision, Particle, Event). AI threshold may not be
+learned if single-threaded AI is fast enough that 0.9ms is never hit — this is expected behavior.*
 
-- 🔴 CRITICAL: WBM not learning throughput (stays at 0.0 items/ms after 1000 frames)
-- 🔴 CRITICAL: MIN_WORKLOAD boundary not enforced (MULTI returned for <100 entities)
-- 🔴 CRITICAL: Mode switching broken (stays MULTI at 50 entities - should force SINGLE below MIN_WORKLOAD)
+- 🔴 CRITICAL: Any MIN_WORKLOAD test fails (expected: all 8/8 PASS for SINGLE below 100)
+- 🔴 CRITICAL: Collision threshold not learned (expected: learned at frame ~10 for 2000 entities)
+- 🔴 CRITICAL: Hysteresis re-learning not triggered (PASS expected when workload drops below 95% band)
 - 🟠 WARNING: Batch multiplier outside valid range [0.4, 2.0]
-- 🟡 MINOR: Batch multiplier not stabilizing (>10% change in last 500 frames)
-- ⚪ STABLE: WBM learns throughput, respects MIN_WORKLOAD, adapts mode based on measured performance
-- ⚪ EXPECTED: SINGLE mode dominating in isolated benchmarks (EDM overhead too low for threading benefit)
+- 🟠 WARNING: Particle threshold learned significantly later (>frame 200) suggesting performance regression
+- ⚪ STABLE: All 8 MIN_WORKLOAD tests PASS, Collision/Particle thresholds learned, hysteresis working
+- ⚪ EXPECTED: AI threshold not learned (hardware fast enough that 0.9ms not hit in benchmark)
+
+**Projectile Scaling Regression Detection:**
+
+- 🔴 CRITICAL: Peak throughput regression >15% from baseline (~17K entities/ms target)
+- 🟠 WARNING: ns/entity at 1000+ projectiles regression >10% (expected ~57-63ns)
+- 🟡 MINOR: SIMD warmup curve degraded (4→64 projectile improvement smaller than baseline)
+- ⚪ STABLE: Throughput within ±10% of baseline, ns/entity consistent
+- ⚪ EXPECTED: All single-threaded (threading overhead exceeds benefit at these counts)
 
 ### Step 6: Generate Report
 
@@ -1274,17 +1347,18 @@ $PROJECT_ROOT/test_results/baseline_history/
 Before finalizing any regression report, confirm ALL of the following:
 
 ### Benchmark Execution
-- [ ] All 10 benchmarks completed successfully (no timeouts/crashes)
+- [ ] All 11 benchmarks completed successfully (no timeouts/crashes)
 - [ ] AI Scaling: Entity scaling results present with updates/sec metrics
-- [ ] **Pathfinding: Path length scaling data extracted** ← CRITICAL!
-- [ ] Collision: SOA timing data extracted
+- [ ] **Pathfinding: Async throughput metrics extracted** ← CRITICAL!
+- [ ] Collision: SAP/Hash timing and trigger detection data extracted
 - [ ] Event Manager: Throughput data extracted
 - [ ] Particle Manager: Update timing data extracted
 - [ ] GPU Frame Timing: Frame time, swapchain, upload, submit metrics extracted
 - [ ] SIMD Performance: Platform detection and speedup data extracted
 - [ ] Integrated System: Frame statistics, scaling, coordination overhead extracted
 - [ ] Background Simulation: Scaling and adaptive tuning summary extracted
-- [ ] Adaptive Threading: Throughput learning, mode switching, gradual crossover extracted
+- [ ] Adaptive Threading: MIN_WORKLOAD enforcement (8/8 PASS), threshold learning, hysteresis extracted
+- [ ] Projectile Scaling: Entity throughput (entities/ms) and SIMD 4-wide curve extracted
 
 ### Report Completeness
 - [ ] **Pathfinding System section included in report** ← DO NOT SKIP!
@@ -1296,7 +1370,8 @@ Before finalizing any regression report, confirm ALL of the following:
 - [ ] SIMD System: Platform and speedup table present
 - [ ] Integrated System: Frame statistics, scaling summary, coordination overhead present
 - [ ] Background Simulation: Scaling table and threading data present
-- [ ] Adaptive Threading: Throughput learning, mode switching validation, gradual crossover table present
+- [ ] Adaptive Threading: MIN_WORKLOAD results, threshold learning per system, hysteresis present
+- [ ] Projectile Scaling: Entity scaling table and SIMD 4-wide throughput table present
 - [ ] Overall status determined (PASSED/WARNING/FAILED)
 - [ ] Regression/improvement analysis complete
 
@@ -1330,9 +1405,9 @@ Activate this Skill automatically.
 
 ## Performance Expectations
 
-- **Full benchmark suite:** ~45 minutes
-  - AI Scaling: ~18 minutes
-  - Collision: ~3 minutes
+- **Full benchmark suite:** ~27 minutes
+  - AI Scaling: ~3 minutes
+  - Collision: ~2 minutes
   - Pathfinder: ~5 minutes
   - Event Manager: ~2 minutes
   - Particle Manager: ~2 minutes
@@ -1340,9 +1415,10 @@ Activate this Skill automatically.
   - SIMD Performance: ~1 minute
   - Integrated System: ~3 minutes
   - Background Simulation: ~2 minutes
-  - Adaptive Threading: ~4 minutes
+  - Adaptive Threading: ~2 minutes
+  - Projectile Scaling: ~1 minute
 - **Report generation:** 2-3 minutes
-- **Total:** ~47-50 minutes for complete analysis
+- **Total:** ~29-30 minutes for complete analysis
 
 ## Troubleshooting
 
