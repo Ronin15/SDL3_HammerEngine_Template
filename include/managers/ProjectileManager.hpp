@@ -87,21 +87,6 @@ public:
         size_t lastBatchCount{0};
         uint64_t totalUpdates{0};
         bool lastWasThreaded{false};
-
-        static constexpr double ALPHA = 0.05;
-
-        void updateAverage(double newMs)
-        {
-            if (totalUpdates == 0)
-            {
-                avgUpdateMs = newMs;
-            }
-            else
-            {
-                avgUpdateMs = ALPHA * newMs + (1.0 - ALPHA) * avgUpdateMs;
-            }
-            totalUpdates++;
-        }
     };
 
     [[nodiscard]] const PerfStats& getPerfStats() const { return m_perf; }
@@ -140,6 +125,7 @@ private:
     std::vector<size_t> m_activeProjectileIndices;
     std::vector<EntityHandle> m_destroyQueue;
     std::vector<std::future<void>> m_batchFutures;
+    std::vector<EventManager::DeferredEvent> m_pendingDamageEvents;
 
     // Per-batch destroy queues for multi-threaded processing
     std::vector<std::vector<EntityHandle>> m_batchDestroyQueues;

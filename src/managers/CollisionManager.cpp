@@ -114,9 +114,16 @@ void CollisionManager::clean() {
 
    size_t soaBodyCount = m_storage.size();
    COLLISION_INFO(std::format(
-       "STORAGE LIFECYCLE: prepareForStateTransition() "
+       "STORAGE LIFECYCLE: clean() "
        "clearing {} SOA bodies (dynamic + static)",
        soaBodyCount));
+
+   // Unsubscribe persistent world event handlers
+   auto &em = EventManager::Instance();
+   for (const auto &token : m_handlerTokens) {
+     em.removeHandler(token);
+   }
+   m_handlerTokens.clear();
 
    // Clear all collision bodies and spatial hashes
    m_storage.clear();

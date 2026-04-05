@@ -134,10 +134,10 @@ bool WorldManager::loadNewWorld(
     // Initialize world resources based on world data
     initializeWorldResources();
 
-    // State transitions clear EventManager handlers during the loading path.
-    // Refresh world season wiring here so the tile renderer tracks the
-    // active GameTime season for the newly loaded world.
-    if (EventManager::Instance().isInitialized()) {
+    // Season handler is persistent — survives state transitions.
+    // Only wire up on first world load (handler not yet registered).
+    if (m_tileRenderer && !m_tileRenderer->isSubscribedToSeasons() &&
+        EventManager::Instance().isInitialized()) {
       setupEventHandlers();
     }
 

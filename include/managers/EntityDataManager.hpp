@@ -223,7 +223,8 @@ struct CharacterData {
     uint8_t behaviorType{0};   // BehaviorType enum
     uint8_t priority{5};       // AI priority (0-9)
     uint8_t stateFlags{0};     // alive, stunned, invulnerable, etc.
-    uint8_t combatStyle{0};    // 0=melee, 1=ranged
+    enum CombatStyle : uint8_t { Melee = 0, Ranged = 1 };
+    uint8_t combatStyle{CombatStyle::Melee};
 
     // Inventory (for merchants and NPCs that carry items)
     uint32_t inventoryIndex{INVALID_INVENTORY_INDEX};  // EDM inventory index

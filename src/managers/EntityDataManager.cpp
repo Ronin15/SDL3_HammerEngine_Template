@@ -616,7 +616,9 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     charData.priority = classInfo.basePriority;
     charData.faction = (factionOverride != 0xFF) ? factionOverride : classInfo.defaultFaction;
     charData.emotionalResilience = classInfo.emotionalResilience;
-    charData.combatStyle = (classInfo.combatStyle == "ranged") ? 1 : 0;
+    charData.combatStyle = (classInfo.combatStyle == "ranged")
+        ? CharacterData::CombatStyle::Ranged
+        : CharacterData::CombatStyle::Melee;
     charData.projectileSpeed = classInfo.projectileSpeed;
     charData.mass = raceInfo.sizeMultiplier * raceInfo.sizeMultiplier;  // Mass scales with area
 

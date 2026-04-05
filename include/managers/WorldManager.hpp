@@ -98,6 +98,7 @@ public:
     // Season management
     void subscribeToSeasonEvents();
     void unsubscribeFromSeasonEvents();
+    [[nodiscard]] bool isSubscribedToSeasons() const { return m_subscribedToSeasons; }
     Season getCurrentSeason() const { return m_currentSeason; }
     void setCurrentSeason(Season season);
 

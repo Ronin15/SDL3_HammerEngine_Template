@@ -590,7 +590,7 @@ void AIManager::assignBehavior(EntityHandle handle,
   if (behaviorType == BehaviorType::Attack &&
       (hot.kind == EntityKind::NPC || hot.kind == EntityKind::Player)) {
     const auto& charData = edm.getCharacterDataByIndex(edmIndex);
-    if (charData.combatStyle == 1) {  // ranged
+    if (charData.combatStyle == CharacterData::CombatStyle::Ranged) {
       config = HammerEngine::BehaviorConfigData::makeAttack(
           HammerEngine::AttackBehaviorConfig::createRangedConfig(charData.attackRange));
       config.params.attack.projectileSpeed = charData.projectileSpeed > 0.0f

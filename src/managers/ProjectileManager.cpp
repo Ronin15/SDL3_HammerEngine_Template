@@ -121,6 +121,10 @@ void ProjectileManager::prepareForStateTransition()
     // Clear buffers (keep capacity)
     m_activeProjectileIndices.clear();
     m_destroyQueue.clear();
+    for (auto& queue : m_batchDestroyQueues)
+    {
+        queue.clear();
+    }
 
     PROJ_INFO("State transition preparation complete");
 }
@@ -169,7 +173,7 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
         return;
     }
 
-    auto collisionEvent = std::dynamic_pointer_cast<CollisionEvent>(eventData.event);
+    auto collisionEvent = std::static_pointer_cast<CollisionEvent>(eventData.event);
     if (!collisionEvent)
     {
         return;
@@ -249,7 +253,9 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
     damageData.setActive(true);
     damageData.event = damageEvent;
 
-    eventMgr.enqueueBatch({{EventTypeId::Combat, std::move(damageData)}});
+    m_pendingDamageEvents.clear();
+    m_pendingDamageEvents.push_back({EventTypeId::Combat, std::move(damageData)});
+    eventMgr.enqueueBatch(std::move(m_pendingDamageEvents));
 
     // Destroy projectile (unless piercing)
     if (!(proj.flags & ProjectileData::FLAG_PIERCING))
@@ -431,7 +437,18 @@ void ProjectileManager::update(float deltaTime)
     m_perf.lastUpdateMs = elapsedMs;
     m_perf.lastBatchCount = actualBatchCount;
     m_perf.lastWasThreaded = actualWasThreaded;
-    m_perf.updateAverage(elapsedMs);
+
+    // EMA update for rolling average
+    constexpr double PERF_ALPHA = 0.05;
+    if (m_perf.totalUpdates == 0)
+    {
+        m_perf.avgUpdateMs = elapsedMs;
+    }
+    else
+    {
+        m_perf.avgUpdateMs = PERF_ALPHA * elapsedMs + (1.0 - PERF_ALPHA) * m_perf.avgUpdateMs;
+    }
+    m_perf.totalUpdates++;
 
     // Report ONLY batch time for adaptive tuning
     budgetMgr.reportExecution(HammerEngine::SystemType::ProjectileSim,
@@ -496,12 +513,12 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
         transform.position = clamped;
 
         bool hitBoundary = false;
-        if (clamped.getX() != pos.getX())
+        if (pos.getX() < minX || pos.getX() > maxX)
         {
             transform.velocity.setX(0.0f);
             hitBoundary = true;
         }
-        if (clamped.getY() != pos.getY())
+        if (pos.getY() < minY || pos.getY() > maxY)
         {
             transform.velocity.setY(0.0f);
             hitBoundary = true;
@@ -627,6 +644,17 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
 
         if (!hot.isAlive()) continue;
 
+        // Decrement lifetime first — if expired, destroy without movement
+        auto& proj = edm.getProjectileData(hot.typeLocalIndex);
+        proj.lifetime -= deltaTime;
+
+        if (proj.lifetime <= 0.0f)
+        {
+            EntityHandle handle = edm.getHandle(edmIdx);
+            outDestroyQueue.push_back(handle);
+            continue;
+        }
+
         auto& transform = hot.transform;
 
         // Store previous position for render interpolation
@@ -641,16 +669,6 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
         if (batchCount == 4)
         {
             flushMovementBatch();
-        }
-
-        // Decrement lifetime
-        auto& proj = edm.getProjectileData(hot.typeLocalIndex);
-        proj.lifetime -= deltaTime;
-
-        if (proj.lifetime <= 0.0f)
-        {
-            EntityHandle handle = edm.getHandle(edmIdx);
-            outDestroyQueue.push_back(handle);
         }
     }
 
