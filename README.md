@@ -1,4 +1,4 @@
-# SDL3 HammerEngine Template
+# VoidLight-Framework
 
 A modern, production-ready C++20 SDL3 game engine template for 2D games. Built for rapid prototyping and scalable game development, it features Data-Oriented Design with EntityDataManager as the central data authority, robust multi-threading, high-performance AI supporting 10K+ entities, a professional UI system, and comprehensive resource, world, and event systems. Designed for cross-platform deployment (Windows, macOS, Linux) with a focus on performance, safety, and extensibility.
 
