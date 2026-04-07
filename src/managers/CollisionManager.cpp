@@ -561,9 +561,6 @@ void CollisionManager::queryArea(const AABB &area,
   m_staticSpatialHash.queryRegionBoundsThreadSafe(minX, minY, maxX, maxY,
                                                   staticIndices, queryBuffers);
 
-  // Sort by storage index for sequential hotData access (L1 cache locality)
-  std::sort(staticIndices.begin(), staticIndices.end());
-
   out.reserve(staticIndices.size());
 
   for (size_t idx : staticIndices) {
@@ -605,9 +602,6 @@ bool CollisionManager::queryAreaHasStaticOverlap(const AABB &area) const {
 
   m_staticSpatialHash.queryRegionBoundsThreadSafe(minX, minY, maxX, maxY,
                                                   staticIndices, queryBuffers);
-
-  // Sort by storage index for sequential hotData access (L1 cache locality)
-  std::sort(staticIndices.begin(), staticIndices.end());
 
   return std::any_of(staticIndices.begin(), staticIndices.end(),
                      [this, &area](size_t idx) {
