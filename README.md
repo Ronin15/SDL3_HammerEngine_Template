@@ -101,8 +101,8 @@ See the [documentation hub](docs/README.md) and subsystem docs for current setup
 ### Build
 
 ```bash
-git clone https://github.com/yourname/SDL3_VoidLight-Framework_Template.git
-cd SDL3_VoidLight-Framework_Template
+git clone https://github.com/yourname/VoidLight-Framework.git
+cd VoidLight-Framework
 
 # Debug build (recommended for development)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
