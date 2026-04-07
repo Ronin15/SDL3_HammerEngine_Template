@@ -111,8 +111,8 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
 
 # Run the engine
-./bin/debug/SDL3_Template   # Debug build
-./bin/release/SDL3_Template # Release build
+./bin/debug/VoidLight_Template   # Debug build
+./bin/release/VoidLight_Template # Release build
 ```
 
 > Platform shader tools (see Prerequisites) must be installed for the build to compile shaders.

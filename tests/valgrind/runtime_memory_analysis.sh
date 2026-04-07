@@ -79,7 +79,7 @@ BIN_DIR="${PROJECT_ROOT}/bin/${BUILD_TYPE}"
 RESULTS_DIR="${PROJECT_ROOT}/test_results/valgrind/runtime"
 SUPPRESSIONS_FILE="${PROJECT_ROOT}/tests/valgrind/valgrind_suppressions.supp"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-EXECUTABLE="${BIN_DIR}/SDL3_Template"
+EXECUTABLE="${BIN_DIR}/VoidLight_Template"
 
 # Create results directory
 mkdir -p "${RESULTS_DIR}"

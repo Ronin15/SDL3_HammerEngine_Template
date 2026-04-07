@@ -464,7 +464,7 @@ gameStateManager->pushState("LoadingState");
 ### Manual Testing
 ```bash
 # Run application and test loading flow
-./bin/debug/SDL3_Template
+./bin/debug/VoidLight_Template
 
 # Test scenarios:
 # 1. New game from main menu

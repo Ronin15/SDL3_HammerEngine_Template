@@ -131,7 +131,7 @@ Example:
 | Problem | Solution |
 |---------|----------|
 | Permission denied | Use `sudo` |
-| Game won't launch | Run `ninja -C build SDL3_Template` first |
+| Game won't launch | Run `ninja -C build VoidLight_Template` first |
 | No output files | Check sudo access and disk space |
 | Results look wrong | Verify game ran entire duration |
 | High power (>30W) | Check for particle effects or rendering issues |

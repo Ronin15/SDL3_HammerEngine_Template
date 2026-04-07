@@ -95,7 +95,7 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF && ninja -C build
 
 # Run application
-./bin/debug/SDL3_Template
+./bin/debug/VoidLight_Template
 ```
 
 ## Code Standards

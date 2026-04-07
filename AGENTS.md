@@ -1,6 +1,6 @@
-# AGENTS.md
+# AGENTS.md — VoidLight-Framework
 
-Codex CLI instructions for `SDL3_VoidLight-Framework_Template`.
+Codex CLI instructions for the VoidLight-Framework project.
 
 ## Mission
 
@@ -69,7 +69,7 @@ rm build/CMakeCache.txt && cmake -B build/ ...
 Run:
 
 ```bash
-./bin/debug/SDL3_Template
+./bin/debug/VoidLight_Template
 ```
 
 Tests:

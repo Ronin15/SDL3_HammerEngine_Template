@@ -1,4 +1,4 @@
-# CLAUDE.md
+# CLAUDE.md — VoidLight-Framework
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -12,8 +12,8 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
 
 # Run the engine
-./bin/debug/SDL3_Template
-./bin/release/SDL3_Template
+./bin/debug/VoidLight_Template
+./bin/release/VoidLight_Template
 
 # Reconfigure (required when switching sanitizers or build options)
 rm build/CMakeCache.txt && cmake -B build/ ...
@@ -59,7 +59,7 @@ Prefer direct test executables over wrapper scripts for speed.
 
 ## Architecture
 
-**C++20 game engine** using SDL3, built with CMake/Ninja. Data-oriented design supporting 10K+ entities at 60+ FPS.
+**VoidLight-Framework** — C++20 game engine using SDL3, built with CMake/Ninja. Data-oriented design supporting 10K+ entities at 60+ FPS.
 
 ### Dependency Direction
 ```

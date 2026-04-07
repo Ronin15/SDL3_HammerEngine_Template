@@ -49,9 +49,9 @@ This directory contains VS Code configurations optimized for Windows development
 - **MinGW Release** - MinGW-w64 release builds
 
 ## Debug Configurations:
-- **Debug SDL3_Template** - Main executable with auto-build
-- **Debug SDL3_Template (No Build)** - Quick debug without rebuilding  
-- **Release SDL3_Template** - Release mode debugging
+- **Debug VoidLight_Template** - Main executable with auto-build
+- **Debug VoidLight_Template (No Build)** - Quick debug without rebuilding  
+- **Release VoidLight_Template** - Release mode debugging
 - **Debug Current Test File** - Debug individual test executables
 
 All configurations are pre-configured to work with your existing CMake setup!

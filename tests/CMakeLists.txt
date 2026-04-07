@@ -1,4 +1,4 @@
-# Tests for the SDL3_Template project
+# Tests for the VoidLight_Template project
 
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 20) # Match the main project's C++ standard

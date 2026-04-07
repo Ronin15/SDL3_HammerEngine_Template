@@ -536,7 +536,7 @@ bool GameEngine::init(std::string_view title) {
 
   // Initialize save game manager in a separate thread - #5
   // Use SDL_GetPrefPath for a writable save location (works with bundles)
-  const char* prefPath = SDL_GetPrefPath("HammerForged", "SDL3_Template");
+  const char* prefPath = SDL_GetPrefPath("HammerForged", "VoidLight_Template");
   std::string saveDir;
   if (prefPath) {
     saveDir = prefPath;

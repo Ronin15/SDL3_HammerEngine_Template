@@ -482,7 +482,7 @@ ninja -C build
 ```bash
 # Run with TSAN suppression file
 export TSAN_OPTIONS="suppressions=$(pwd)/tests/tsan_suppressions.txt"
-./bin/debug/SDL3_Template
+./bin/debug/VoidLight_Template
 ```
 
 ThreadSystem has documented benign race patterns (lock-free statistics, performance counters) suppressed via `tests/tsan_suppressions.txt`.

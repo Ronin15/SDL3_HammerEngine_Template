@@ -1,6 +1,6 @@
 # Real Application Power Profiling
 
-You can now measure the actual SDL3_Template game's power consumption with all systems running, not just the headless AI benchmark.
+You can now measure the actual VoidLight_Template game's power consumption with all systems running, not just the headless AI benchmark.
 
 ## Overview
 
@@ -12,7 +12,7 @@ You can now measure the actual SDL3_Template game's power consumption with all s
    - Fast iteration for tuning threading
    - ~30 minutes for full test suite
 
-2. **Real App Mode (new)** - Full `SDL3_Template` game
+2. **Real App Mode (new)** - Full `VoidLight_Template` game
    - All systems active: rendering, collision, pathfinding, events, UI
    - Includes GPU power draw
    - Realistic battery impact on actual devices
@@ -178,7 +178,7 @@ Output shows:
 ```bash
 # Build game first
 cd build
-ninja SDL3_Template
+ninja VoidLight_Template
 cd ..
 sudo tests/power_profiling/run_power_test.sh --real-app
 ```

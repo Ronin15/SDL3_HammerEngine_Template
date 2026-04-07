@@ -2,7 +2,7 @@
 
 ## Overview
 
-Added `--real-app` flag to measure actual SDL3_Template game power consumption with all systems running (rendering, collision, pathfinding, events, UI) instead of just headless AI benchmarking.
+Added `--real-app` flag to measure actual VoidLight_Template game power consumption with all systems running (rendering, collision, pathfinding, events, UI) instead of just headless AI benchmarking.
 
 ## Files Modified
 
@@ -12,7 +12,7 @@ Added `--real-app` flag to measure actual SDL3_Template game power consumption w
 - Added command-line argument parsing for `--real-app` and `--duration` flags
 - Split `run_scenario()` into two functions:
   - `run_headless_scenario()` - for PowerProfile executable (AI only)
-  - `run_real_app_scenario()` - for full SDL3_Template game
+  - `run_real_app_scenario()` - for full VoidLight_Template game
 - Updated main test logic to branch based on `USE_REAL_APP` flag
 - Mode-aware report generation (different templates for each mode)
 - Mode-aware final summary messages
@@ -42,7 +42,7 @@ done
 # New real app scenario function (lines 145-195)
 run_real_app_scenario() {
     # Starts powermetrics
-    # Launches SDL3_Template game
+    # Launches VoidLight_Template game
     # Auto-closes after duration
     # Waits for powermetrics to finish
 }
@@ -81,7 +81,7 @@ sudo tests/power_profiling/run_power_test.sh --real-app
 # or
 sudo tests/power_profiling/run_power_test.sh --real-app --duration 60
 ```
-- Launches actual SDL3_Template game
+- Launches actual VoidLight_Template game
 - 30-second default duration (configurable)
 - Generates: `power_realapp_gameplay_*.plist`
 
@@ -110,7 +110,7 @@ The `run_real_app_scenario()` function:
    ```bash
    if [[ ! -f "$GAME_BIN" ]]; then
        # Build if missing
-       ninja SDL3_Template
+       ninja VoidLight_Template
    fi
    ```
 
@@ -177,7 +177,7 @@ test_results/power_profiling/
 
 ## What Gets Measured in Real App Mode
 
-The full SDL3_Template game includes:
+The full VoidLight_Template game includes:
 
 - **Rendering** - SDL3 2D graphics pipeline
 - **Collision Detection** - Spatial hash queries, AABB tests

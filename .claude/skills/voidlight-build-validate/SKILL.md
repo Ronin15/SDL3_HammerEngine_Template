@@ -43,7 +43,7 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 
 **Command:**
 ```bash
-timeout 60s ./bin/debug/SDL3_Template > /tmp/app_log.txt 2>&1
+timeout 60s ./bin/debug/VoidLight_Template > /tmp/app_log.txt 2>&1
 ```
 
 **Working Directory:** `$PROJECT_ROOT/`

@@ -2,10 +2,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug SDL3_Template (Windows)",
+            "name": "Debug VoidLight_Template (Windows)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/bin/debug/SDL3_Template.exe",
+            "program": "${workspaceFolder}/bin/debug/VoidLight_Template.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
@@ -24,10 +24,10 @@
             }
         },
         {
-            "name": "Debug SDL3_Template (No Build - Windows)",
+            "name": "Debug VoidLight_Template (No Build - Windows)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/bin/debug/SDL3_Template.exe",
+            "program": "${workspaceFolder}/bin/debug/VoidLight_Template.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
@@ -45,10 +45,10 @@
             }
         },
         {
-            "name": "Debug SDL3_Template (MinGW)",
+            "name": "Debug VoidLight_Template (MinGW)",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/bin/debug/SDL3_Template.exe",
+            "program": "${workspaceFolder}/bin/debug/VoidLight_Template.exe",
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
@@ -63,10 +63,10 @@
             }
         },
         {
-            "name": "Release SDL3_Template (Windows)",
+            "name": "Release VoidLight_Template (Windows)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/bin/release/SDL3_Template.exe",
+            "program": "${workspaceFolder}/bin/release/VoidLight_Template.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

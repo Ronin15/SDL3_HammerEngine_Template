@@ -514,7 +514,7 @@ cmake -DCMAKE_CXX_FLAGS="-fsanitize=address"
 ./run_all_tests.sh  # PASSED
 
 # Valgrind clean
-valgrind --leak-check=full ./bin/debug/SDL3_Template
+valgrind --leak-check=full ./bin/debug/VoidLight_Template
 # Result: "All heap blocks were freed -- no leaks are possible"
 ```
 
