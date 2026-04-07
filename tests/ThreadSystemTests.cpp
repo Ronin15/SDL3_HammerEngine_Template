@@ -19,7 +19,9 @@
 // Global fixture for test setup and cleanup
 struct ThreadTestFixture {
     ThreadTestFixture() {
-        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init(4096));
+        if (!VoidLight::ThreadSystem::Instance().init(4096)) {
+            throw std::runtime_error("ThreadSystem::init() failed");
+        }
     }
 
     ~ThreadTestFixture() {

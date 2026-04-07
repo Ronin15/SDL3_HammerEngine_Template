@@ -34,20 +34,19 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
     return std::abs(a - b) < epsilon;
 }
 
-namespace {
-
-struct ThreadSystemTestLifetime {
-    ThreadSystemTestLifetime() {
-        BOOST_REQUIRE_MESSAGE(VoidLight::ThreadSystem::Instance().init(),
-                              "Failed to initialize ThreadSystem for NPCRenderController tests");
+struct ThreadSystemFixture {
+    ThreadSystemFixture() {
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            throw std::runtime_error("Failed to initialize ThreadSystem for NPCRenderController tests");
+        }
     }
-
-    ~ThreadSystemTestLifetime() {
+    ~ThreadSystemFixture() {
         VoidLight::ThreadSystem::Instance().clean();
     }
 };
+BOOST_GLOBAL_FIXTURE(ThreadSystemFixture);
 
-ThreadSystemTestLifetime g_threadSystemTestLifetime{};
+namespace {
 
 bool initSpriteBatchForRecording(VoidLight::SpriteBatch& batch) {
     SDL_GPUDevice* device = VoidLight::GPUDevice::Instance().get();

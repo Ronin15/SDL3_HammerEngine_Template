@@ -43,8 +43,12 @@ private:
 struct AITestFixture {
     AITestFixture() {
         // Initialize dependencies required by the real AIManager
-        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
-        BOOST_REQUIRE(EntityDataManager::Instance().init());
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            throw std::runtime_error("ThreadSystem::init() failed");
+        }
+        if (!EntityDataManager::Instance().init()) {
+            throw std::runtime_error("EntityDataManager::init() failed");
+        }
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         AIManager::Instance().init();

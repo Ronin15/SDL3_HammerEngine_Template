@@ -247,7 +247,9 @@ struct GlobalFixture {
         VOIDLIGHT_ENABLE_BENCHMARK_MODE();
 
         // Initialize ThreadSystem for EventManager threading
-        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            throw std::runtime_error("ThreadSystem::init() failed");
+        }
         EventManager::Instance().init();
     }
 

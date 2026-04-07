@@ -28,13 +28,29 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
 }
 
 // ============================================================================
-// Test Fixture
+// Global Fixture — ThreadSystem lives for the entire test module
+// ============================================================================
+
+struct ThreadSystemFixture {
+    ThreadSystemFixture() {
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            throw std::runtime_error("ThreadSystem::init() failed");
+        }
+    }
+    ~ThreadSystemFixture() {
+        VoidLight::ThreadSystem::Instance().clean();
+    }
+};
+
+BOOST_GLOBAL_FIXTURE(ThreadSystemFixture);
+
+// ============================================================================
+// Per-Test Fixture — managers reset between tests
 // ============================================================================
 
 class EntityDataManagerTestFixture {
 public:
     EntityDataManagerTestFixture() {
-        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
         ResourceTemplateManager::Instance().init();
         edm = &EntityDataManager::Instance();
         BOOST_REQUIRE(edm->init());
@@ -51,7 +67,6 @@ public:
         EventManager::Instance().clean();
         edm->clean();
         ResourceTemplateManager::Instance().clean();
-        VoidLight::ThreadSystem::Instance().clean();
     }
 
 protected:

@@ -16,23 +16,19 @@
 
 using namespace VoidLight;
 
-namespace {
-
-struct ThreadSystemTestLifetime
-{
-    ThreadSystemTestLifetime()
-    {
-        BOOST_REQUIRE_MESSAGE(ThreadSystem::Instance().init(),
-                              "Failed to initialize ThreadSystem for Crowd tests");
+struct ThreadSystemFixture {
+    ThreadSystemFixture() {
+        if (!ThreadSystem::Instance().init()) {
+            throw std::runtime_error("Failed to initialize ThreadSystem for Crowd tests");
+        }
     }
-
-    ~ThreadSystemTestLifetime()
-    {
+    ~ThreadSystemFixture() {
         ThreadSystem::Instance().clean();
     }
 };
+BOOST_GLOBAL_FIXTURE(ThreadSystemFixture);
 
-ThreadSystemTestLifetime g_threadSystemTestLifetime{};
+namespace {
 
 struct CrowdRuntimeFixture
 {

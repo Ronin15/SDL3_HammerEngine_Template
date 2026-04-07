@@ -37,22 +37,17 @@
 #include <thread>
 #include <vector>
 
-namespace {
-
-struct ThreadSystemTestLifetime {
-    ThreadSystemTestLifetime() {
-        BOOST_REQUIRE_MESSAGE(VoidLight::ThreadSystem::Instance().init(),
-                              "Failed to initialize ThreadSystem for AIManager EDM tests");
+struct ThreadSystemFixture {
+    ThreadSystemFixture() {
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            throw std::runtime_error("Failed to initialize ThreadSystem for AIManager EDM tests");
+        }
     }
-
-    ~ThreadSystemTestLifetime() {
+    ~ThreadSystemFixture() {
         VoidLight::ThreadSystem::Instance().clean();
     }
 };
-
-ThreadSystemTestLifetime g_threadSystemTestLifetime{};
-
-} // namespace
+BOOST_GLOBAL_FIXTURE(ThreadSystemFixture);
 
 // Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
 class AITestNPC {

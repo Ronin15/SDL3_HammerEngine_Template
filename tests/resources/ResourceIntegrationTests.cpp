@@ -3,37 +3,8 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#include <cstdio>
-__attribute__((constructor)) static void print_startup() {
-  printf("[PRINT] ResourceIntegrationTests binary startup!\n");
-  fflush(stdout);
-}
 #define BOOST_TEST_MODULE ResourceIntegrationTests
-#include "core/Logger.hpp"
-#include "managers/ResourceTemplateManager.hpp"
 #include <boost/test/unit_test.hpp>
-
-// Force ResourceTemplateManager reset for test isolation
-struct ResourceTemplateManagerResetter {
-  ResourceTemplateManagerResetter() {
-    RESOURCE_INFO("ResourceTemplateManagerResetter: before clean");
-    if (ResourceTemplateManager::Instance().isInitialized()) {
-      ResourceTemplateManager::Instance().clean();
-    }
-    RESOURCE_INFO("ResourceTemplateManagerResetter: after clean, before init");
-    ResourceTemplateManager::Instance().init();
-    RESOURCE_INFO("ResourceTemplateManagerResetter: after init");
-  }
-
-  ~ResourceTemplateManagerResetter() {
-    RESOURCE_INFO("ResourceTemplateManagerResetter: destructor - before clean");
-    if (ResourceTemplateManager::Instance().isInitialized()) {
-      ResourceTemplateManager::Instance().clean();
-    }
-    RESOURCE_INFO("ResourceTemplateManagerResetter: destructor - after clean");
-  }
-};
-static ResourceTemplateManagerResetter resourceTemplateManagerResetterInstance;
 
 #include <chrono>
 #include <future>
@@ -46,32 +17,30 @@ static ResourceTemplateManagerResetter resourceTemplateManagerResetterInstance;
 #include "managers/EntityDataManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 
+struct GlobalFixture {
+    GlobalFixture() {
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            throw std::runtime_error("Failed to initialize ThreadSystem for resource integration tests");
+        }
+        ResourceTemplateManager::Instance().init();
+        if (!EntityDataManager::Instance().init()) {
+            throw std::runtime_error("EntityDataManager::init() failed");
+        }
+    }
+    ~GlobalFixture() {
+        EntityDataManager::Instance().clean();
+        ResourceTemplateManager::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
+    }
+};
+BOOST_GLOBAL_FIXTURE(GlobalFixture);
+
 class ResourceIntegrationTestFixture {
 public:
   ResourceIntegrationTestFixture() {
-    // Initialize ThreadSystem first for threading tests
     threadSystem = &VoidLight::ThreadSystem::Instance();
-    if (threadSystem->isShutdown() || threadSystem->getThreadCount() == 0) {
-      bool initSuccess = threadSystem->init();
-      if (!initSuccess && threadSystem->getThreadCount() == 0) {
-        throw std::runtime_error(
-            "Failed to initialize ThreadSystem for threading tests");
-      }
-    }
-
-    // Initialize ResourceTemplateManager
     resourceManager = &ResourceTemplateManager::Instance();
-
-    // Ensure ResourceTemplateManager is initialized with default resources
-    if (!resourceManager->isInitialized()) {
-      resourceManager->init();
-    }
-
-    // Initialize EntityDataManager
     entityDataManager = &EntityDataManager::Instance();
-    if (!entityDataManager->isInitialized()) {
-      BOOST_REQUIRE(entityDataManager->init());
-    }
 
     // Create EDM inventories to simulate player and NPC
     playerInvIndex = entityDataManager->createInventory(50, true);  // Player with 50 slots

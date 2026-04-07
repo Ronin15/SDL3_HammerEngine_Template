@@ -24,21 +24,17 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
     return std::abs(a - b) < epsilon;
 }
 
-namespace {
-
-struct ThreadSystemTestLifetime {
-    ThreadSystemTestLifetime() {
-        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
+struct ThreadSystemFixture {
+    ThreadSystemFixture() {
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            throw std::runtime_error("ThreadSystem::init() failed");
+        }
     }
-
-    ~ThreadSystemTestLifetime() {
+    ~ThreadSystemFixture() {
         VoidLight::ThreadSystem::Instance().clean();
     }
 };
-
-ThreadSystemTestLifetime g_threadSystemTestLifetime{};
-
-} // namespace
+BOOST_GLOBAL_FIXTURE(ThreadSystemFixture);
 
 // ============================================================================
 // Test Fixture

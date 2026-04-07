@@ -117,10 +117,9 @@ private:
 class Logger {
 private:
   static std::atomic<bool> s_benchmarkMode;
+  static std::mutex s_logMutex;
 
 public:
-  static std::mutex s_logMutex; // Public for legacy compatibility
-
   static void SetBenchmarkMode(bool enabled) {
     s_benchmarkMode.store(enabled, std::memory_order_relaxed);
   }

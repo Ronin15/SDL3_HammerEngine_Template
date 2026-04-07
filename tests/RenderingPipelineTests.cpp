@@ -469,7 +469,7 @@ BOOST_AUTO_TEST_CASE(TestNoRandomInRenderMethods) {
 
 BOOST_AUTO_TEST_CASE(TestTimestepManagerPattern) {
     const std::string gameEngineHpp = "include/core/GameEngine.hpp";
-    const std::string hammerMainCpp = "src/core/HammerMain.cpp";
+    const std::string hammerMainCpp = "src/core/VoidLightMain.cpp";
 
     // GameEngine must have TimestepManager
     BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineHpp, "TimestepManager"),

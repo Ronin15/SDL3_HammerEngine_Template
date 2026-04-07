@@ -37,7 +37,9 @@ using namespace VoidLight;
 // Global ThreadSystem fixture (matching PathfinderManagerTests pattern)
 struct ContentionThreadFixture {
     ContentionThreadFixture() {
-        BOOST_REQUIRE(ThreadSystem::Instance().init(4096));
+        if (!ThreadSystem::Instance().init(4096)) {
+            throw std::runtime_error("ThreadSystem::init() failed");
+        }
     }
     ~ContentionThreadFixture() {
         if (!ThreadSystem::Instance().isShutdown()) {

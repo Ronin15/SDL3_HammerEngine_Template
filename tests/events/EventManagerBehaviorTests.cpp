@@ -16,19 +16,19 @@
 #include "events/WeatherEvent.hpp"
 #include "managers/EventManager.hpp"
 
-namespace {
-
-struct ThreadSystemTestLifetime {
-  ThreadSystemTestLifetime() {
-    BOOST_REQUIRE_MESSAGE(VoidLight::ThreadSystem::Instance().init(),
-                          "Failed to initialize ThreadSystem for EventManagerBehaviorTests");
+struct ThreadSystemFixture {
+  ThreadSystemFixture() {
+    if (!VoidLight::ThreadSystem::Instance().init()) {
+      throw std::runtime_error("Failed to initialize ThreadSystem for EventManagerBehaviorTests");
+    }
   }
-  ~ThreadSystemTestLifetime() {
+  ~ThreadSystemFixture() {
     VoidLight::ThreadSystem::Instance().clean();
   }
 };
+BOOST_GLOBAL_FIXTURE(ThreadSystemFixture);
 
-ThreadSystemTestLifetime g_threadSystemTestLifetime{};
+namespace {
 
 class TestEvent : public Event {
 public:
