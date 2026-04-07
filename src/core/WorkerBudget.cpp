@@ -32,7 +32,7 @@ const WorkerBudget& WorkerBudgetManager::getBudget() {
     return m_cachedBudget;
 }
 
-size_t WorkerBudgetManager::getOptimalWorkers([[maybe_unused]] SystemType system,
+size_t WorkerBudgetManager::getOptimalWorkers(SystemType,
                                                size_t workloadSize) {
     // No work = no workers needed
     if (workloadSize == 0) {

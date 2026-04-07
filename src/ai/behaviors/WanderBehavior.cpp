@@ -143,7 +143,7 @@ void handlePathfinding(const BehaviorContext& ctx, const Vector2D& dest,
     }
 }
 
-void chooseNewDirection(BehaviorContext& ctx, const VoidLight::WanderBehaviorConfig& config) {
+void chooseNewDirection(BehaviorContext& ctx, const VoidLight::WanderBehaviorConfig&) {
     auto& data = ctx.behaviorData;
     auto& wander = data.state.wander;
     float angle = s_angleDistribution(s_rng);
@@ -151,7 +151,6 @@ void chooseNewDirection(BehaviorContext& ctx, const VoidLight::WanderBehaviorCon
     if (wander.movementStarted) {
         ctx.transform.velocity = wander.currentDirection * data.moveSpeed;
     }
-    (void)config;  // Config no longer used for speed
 }
 
 void handleMovement(BehaviorContext& ctx, const VoidLight::WanderBehaviorConfig& config) {
@@ -267,9 +266,8 @@ void handleMovement(BehaviorContext& ctx, const VoidLight::WanderBehaviorConfig&
 
 namespace Behaviors {
 
-void initWander(size_t edmIndex, const VoidLight::WanderBehaviorConfig& config) {
+void initWander(size_t edmIndex, const VoidLight::WanderBehaviorConfig&) {
     // Config used in executeWander(), not needed for state initialization
-    (void)config;
 
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Wander);

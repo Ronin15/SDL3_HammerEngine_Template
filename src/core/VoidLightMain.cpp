@@ -18,7 +18,7 @@ constexpr std::string_view GAME_NAME{"Game Template"};
 
 // maybe_unused is just a hint to the compiler that the variable is not used.
 // with -Wall -Wextra flags
-int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
+int main(int, char*[]) {
   GAMEENGINE_INFO(std::format("Initializing {}", GAME_NAME));
   THREADSYSTEM_INFO("Initializing Thread System");
 

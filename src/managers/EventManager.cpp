@@ -266,11 +266,11 @@ bool EventManager::isGloballyPaused() const {
 // ==================== Handler Registration ====================
 
 void EventManager::registerHandler(EventTypeId typeId, FastEventHandler handler) {
-  (void)registerHandlerWithToken(typeId, std::move(handler));
+  registerHandlerWithToken(typeId, std::move(handler));
 }
 
 void EventManager::registerPersistentHandler(EventTypeId typeId, FastEventHandler handler) {
-  (void)registerPersistentHandlerWithToken(typeId, std::move(handler));
+  registerPersistentHandlerWithToken(typeId, std::move(handler));
 }
 
 EventManager::HandlerToken

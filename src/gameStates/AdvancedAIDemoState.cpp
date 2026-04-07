@@ -455,11 +455,9 @@ bool AdvancedAIDemoState::exit() {
 }
 
 void AdvancedAIDemoState::registerEventHandlers() {
-  (void)EventManager::Instance();
 }
 
 void AdvancedAIDemoState::unregisterEventHandlers() {
-  (void)EventManager::Instance();
 }
 
 void AdvancedAIDemoState::update(float deltaTime) {
@@ -799,7 +797,7 @@ void AdvancedAIDemoState::recordGPUVertices(VoidLight::GPURenderer &gpuRenderer,
 
 void AdvancedAIDemoState::renderGPUScene(VoidLight::GPURenderer &gpuRenderer,
                                          SDL_GPURenderPass *scenePass,
-                                         [[maybe_unused]] float interpolationAlpha) {
+                                         float) {
   if (!m_camera || !m_gpuSceneRecorder) { return; }
 
   // Render previously recorded scene data into the engine-owned scene pass

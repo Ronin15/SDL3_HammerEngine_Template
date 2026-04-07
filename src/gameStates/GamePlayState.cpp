@@ -1150,7 +1150,7 @@ void GamePlayState::recordGPUVertices(VoidLight::GPURenderer &gpuRenderer,
 
 void GamePlayState::renderGPUScene(VoidLight::GPURenderer &gpuRenderer,
                                    SDL_GPURenderPass *scenePass,
-                                   [[maybe_unused]] float interpolationAlpha) {
+                                   float) {
   if (!m_camera || !m_gpuSceneRecorder) {
     return;
   }

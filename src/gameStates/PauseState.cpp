@@ -56,7 +56,7 @@ bool PauseState::enter() {
   return true;
 }
 
-void PauseState::update([[maybe_unused]] float deltaTime) {
+void PauseState::update(float) {
     // Process UI input (click detection, hover states, callbacks)
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
@@ -97,7 +97,7 @@ void PauseState::handleInput() {
 }
 
 void PauseState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
-                                    [[maybe_unused]] float interpolationAlpha) {
+                                    float) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
         ui.recordGPUVertices(gpuRenderer);

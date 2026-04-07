@@ -112,17 +112,13 @@ void updateTimers(BehaviorData& data, float deltaTime) {
 }
 
 // Process pending messages for Attack behavior
-void processAttackMessages(BehaviorData& data, const VoidLight::AttackBehaviorConfig& config) {
+void processAttackMessages(BehaviorData& data, const VoidLight::AttackBehaviorConfig&) {
     auto& attack = data.state.attack;
 
     for (uint8_t i = 0; i < data.pendingMessageCount; ++i) {
         uint8_t msgId = data.pendingMessages[i].messageId;
-        uint8_t param = data.pendingMessages[i].param;
-
         switch (msgId) {
             case BehaviorMessage::ATTACK_TARGET:
-                // param could encode target info if needed
-                (void)param;
                 break;
 
             case BehaviorMessage::RETREAT:
@@ -144,7 +140,6 @@ void processAttackMessages(BehaviorData& data, const VoidLight::AttackBehaviorCo
         }
     }
     data.pendingMessageCount = 0;
-    (void)config;
 }
 
 void changeState(BehaviorData& data, AttackState newState) {
@@ -475,11 +470,8 @@ bool applyHitAndRunPositioning(BehaviorContext& ctx, const Vector2D& entityPos, 
 /**
  * @brief Apply berserker mode modifiers (no retreat, fast attacks)
  */
-void applyBerserkerModifiers(BehaviorData& data, float& effectiveRetreatThreshold,
+void applyBerserkerModifiers(BehaviorData&, float& effectiveRetreatThreshold,
                              float& effectiveCooldown) {
-    auto& attack = data.state.attack;
-    (void)attack;  // Used for potential future state checks
-
     // Berserkers almost never retreat
     effectiveRetreatThreshold = 0.1f;
 
@@ -541,7 +533,6 @@ void initAttack(size_t edmIndex, const VoidLight::AttackBehaviorConfig& config) 
     attack.explicitTarget = EntityHandle{};
 
     data.setInitialized(true);
-    (void)config;
 }
 
 void executeAttack(BehaviorContext& ctx, const VoidLight::AttackBehaviorConfig& config) {

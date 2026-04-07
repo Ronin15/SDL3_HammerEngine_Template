@@ -169,14 +169,11 @@ bool WorldManager::loadNewWorld(
   }
 }
 
-bool WorldManager::loadWorld(const std::string &worldId) {
+bool WorldManager::loadWorld(const std::string& /*worldId*/) {
   if (!m_initialized.load(std::memory_order_acquire)) {
     WORLD_MANAGER_ERROR("WorldManager not initialized");
     return false;
   }
-
-  // Suppress unused parameter warning since this is not implemented yet
-  (void)worldId;
 
   WORLD_MANAGER_WARN(
       "WorldManager::loadWorld - Loading saved worlds not yet implemented");
@@ -280,10 +277,6 @@ bool WorldManager::handleHarvestResource(int entityId, int targetX,
     return false;
   }
 
-  // Suppress unused parameter warning since this is for future resource
-  // tracking
-  (void)entityId;
-
   std::lock_guard<std::shared_mutex> lock(m_worldMutex);
 
   if (!isValidPosition(targetX, targetY)) {
@@ -300,10 +293,6 @@ bool WorldManager::handleHarvestResource(int entityId, int targetX,
         "No tile obstacle at position: ({}, {}) - EDM harvestable only", targetX, targetY));
     return false;
   }
-
-  // Store the original obstacle type for resource tracking
-  const VoidLight::ObstacleType harvestedType = tile.obstacleType;
-  (void)harvestedType; // Suppress unused warning
 
   VoidLight::Tile updatedTile = tile;
   updatedTile.obstacleType = VoidLight::ObstacleType::NONE;
@@ -445,7 +434,7 @@ void WorldManager::fireTileChangedEvent(int x, int y,
 
     // Trigger world tile changed through EventManager (no registration)
     const EventManager &eventMgr = EventManager::Instance();
-    (void)eventMgr.triggerTileChanged(x, y, changeType,
+    eventMgr.triggerTileChanged(x, y, changeType,
                                       EventManager::DispatchMode::Deferred);
 
     WORLD_MANAGER_DEBUG(
@@ -471,7 +460,7 @@ void WorldManager::fireWorldLoadedEvent(const std::string &worldId) {
 
     // Trigger a world loaded event via EventManager (no registration)
     const EventManager &eventMgr = EventManager::Instance();
-    (void)eventMgr.triggerWorldLoaded(worldId, width, height,
+    eventMgr.triggerWorldLoaded(worldId, width, height,
                                       EventManager::DispatchMode::Deferred);
 
     WORLD_MANAGER_INFO(std::format(
@@ -487,7 +476,7 @@ void WorldManager::fireWorldUnloadedEvent(const std::string &worldId) {
   try {
     // Trigger world unloaded via EventManager (no registration)
     const EventManager &eventMgr = EventManager::Instance();
-    (void)eventMgr.triggerWorldUnloaded(worldId,
+    eventMgr.triggerWorldUnloaded(worldId,
                                         EventManager::DispatchMode::Deferred);
 
     WORLD_MANAGER_INFO(
@@ -966,8 +955,7 @@ void VoidLight::TileRenderer::setCurrentSeason(Season season) {
   }
 }
 
-void VoidLight::TileRenderer::invalidateChunk([[maybe_unused]] int chunkX,
-                                                 [[maybe_unused]] int chunkY) {
+void VoidLight::TileRenderer::invalidateChunk(int, int) {
 }
 
 void VoidLight::TileRenderer::clearChunkCache() {

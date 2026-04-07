@@ -18,8 +18,7 @@ void PlayerIdleState::enter() {
     m_player.get().setAcceleration(Vector2D(0, 0));
 }
 
-void PlayerIdleState::update(float deltaTime) {
-    (void)deltaTime; // Mark as unused
+void PlayerIdleState::update(float) {
 
     // Check for input to transition to running
     if (hasInputDetected()) {

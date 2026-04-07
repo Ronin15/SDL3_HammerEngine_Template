@@ -675,7 +675,7 @@ void AIDemoState::recordGPUVertices(VoidLight::GPURenderer &gpuRenderer,
 
 void AIDemoState::renderGPUScene(VoidLight::GPURenderer &gpuRenderer,
                                  SDL_GPURenderPass *scenePass,
-                                 [[maybe_unused]] float interpolationAlpha) {
+                                 float) {
   if (!m_camera || !m_gpuSceneRecorder) { return; }
 
   // Render previously recorded scene data into the engine-owned scene pass

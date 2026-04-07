@@ -139,7 +139,11 @@ CollisionManager's `m_callbacks` (collision→EventManager bridge) are also pers
 
 **Params**: `const T&` for read-only, `T&` for mutation, value only for primitives. `const std::string&` for map lookups (never string_view→string conversion).
 
-**Logging**: Use `std::format()`, never `+` concatenation. Use `AI_INFO_IF(cond, msg)` macros when condition only gates logging.
+**Logging**: Use `std::format()`, never `+` concatenation. Use `AI_INFO_IF(cond, msg)` macros when condition only gates logging. For debug-only code blocks (variables, metrics, logging), use `VOIDLIGHT_DEBUG_ONLY(...)` — never raw `#ifdef DEBUG`. The macro compiles out entirely in release. Defined in `Logger.hpp`.
+
+**Unused parameters**: Remove the name, keep the type: `void foo(float)` not `void foo(float /*deltaTime*/)`. Never use `(void)param;` or `[[maybe_unused]]` to suppress warnings — fix the root cause instead. `[[maybe_unused]]` is only permitted on virtual base class empty default implementations (e.g., `GameState.hpp`).
+
+**`[[nodiscard]]`**: Applied to critical bool-returning functions (`init()`, `load()`, `create()`). Callers must check the return value — use `BOOST_REQUIRE()` in tests, `if (!init())` error handling in production.
 
 **Copyright**: `/* Copyright (c) 2025 Hammer Forged Games ... MIT License */`
 

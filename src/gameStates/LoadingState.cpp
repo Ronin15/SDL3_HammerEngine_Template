@@ -60,7 +60,7 @@ bool LoadingState::enter() {
   return true;
 }
 
-void LoadingState::update([[maybe_unused]] float deltaTime) {
+void LoadingState::update(float) {
   // Update UI state (progress bar and status text)
   auto &ui = UIManager::Instance();
   float currentProgress = m_progress.load(std::memory_order_acquire);
@@ -285,8 +285,7 @@ void LoadingState::cleanupUI() {
 }
 
 void LoadingState::recordGPUVertices(VoidLight::GPURenderer &gpuRenderer,
-                                     float interpolationAlpha) {
-  (void)interpolationAlpha; // Loading UI doesn't need interpolation
+                                     float) {
 
   // Record UI vertices for GPU rendering
   auto &ui = UIManager::Instance();

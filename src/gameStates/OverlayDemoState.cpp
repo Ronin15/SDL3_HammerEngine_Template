@@ -393,7 +393,7 @@ void OverlayDemoState::handleBackButton() {
 }
 
 void OverlayDemoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
-                                          [[maybe_unused]] float interpolationAlpha) {
+                                          float) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
         ui.recordGPUVertices(gpuRenderer);

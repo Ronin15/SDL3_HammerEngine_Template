@@ -37,7 +37,7 @@ void applyPathCooldown(BehaviorData& data, float cooldownSeconds) {
 
 namespace Behaviors {
 
-void initChase(size_t edmIndex, const VoidLight::ChaseBehaviorConfig& config) {
+void initChase(size_t edmIndex, const VoidLight::ChaseBehaviorConfig&) {
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Chase);
     auto& data = edm.getBehaviorData(edmIndex);
@@ -67,7 +67,6 @@ void initChase(size_t edmIndex, const VoidLight::ChaseBehaviorConfig& config) {
     chase.explicitTarget = EntityHandle{};
 
     data.setInitialized(true);
-    (void)config;
 }
 
 void executeChase(BehaviorContext& ctx, const VoidLight::ChaseBehaviorConfig& config) {

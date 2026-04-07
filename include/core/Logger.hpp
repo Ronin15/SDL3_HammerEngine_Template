@@ -151,6 +151,12 @@ public:
 #define VOIDLIGHT_DEBUG_IF(cond, system, msg) ((void)0)
 #endif
 
+// Debug-only code block — compiles out entirely in release
+#ifdef DEBUG
+#define VOIDLIGHT_DEBUG_ONLY(...) __VA_ARGS__
+#else
+#define VOIDLIGHT_DEBUG_ONLY(...)
+#endif
 
 // Convenience macros for each manager and core system
 

@@ -384,12 +384,11 @@ void FontManager::clean() {
     return;
   }
 
-  // Track the number of fonts cleaned up
-  [[maybe_unused]] int fontsFreed = m_fontMap.size();
   // Mark the manager as shutting down before freeing resources
   m_isShutdown = true;
 
   // No need to manually close fonts as the unique_ptr will handle it
+  FONT_INFO(std::format("{} fonts freed", m_fontMap.size()));
   m_fontMap.clear();
   m_fontsLoaded.store(false, std::memory_order_release);
   destroyGPUTextObjects();
@@ -398,8 +397,6 @@ void FontManager::clean() {
   m_lastWindowWidth = 0;
   m_lastWindowHeight = 0;
   m_lastFontPath.clear();
-
-  FONT_INFO(std::format("{} fonts freed", fontsFreed));
   FONT_INFO("FontManager resources cleaned - TTF will be cleaned by SDL_Quit()");
 }
 

@@ -301,7 +301,7 @@ void UIDemoState::updateEventLogDemo(float deltaTime) {
 }
 
 void UIDemoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
-                                        [[maybe_unused]] float interpolationAlpha) {
+                                        float) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
         ui.recordGPUVertices(gpuRenderer);

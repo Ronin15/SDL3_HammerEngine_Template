@@ -306,60 +306,52 @@ EventPtr EventFactory::createParticleEffectEvent(const std::string& name,
     return std::static_pointer_cast<Event>(event);
 }
 
-EventPtr EventFactory::createWorldLoadedEvent(const std::string& name, const std::string& worldId,
+EventPtr EventFactory::createWorldLoadedEvent(const std::string&, const std::string& worldId,
                                     int width, int height) {
-    (void)name; // World events don't use name parameter
     auto event = std::make_shared<WorldLoadedEvent>(worldId, width, height);
     return std::static_pointer_cast<Event>(event);
 }
 
-EventPtr EventFactory::createWorldUnloadedEvent(const std::string& name, const std::string& worldId) {
-    (void)name; // World events don't use name parameter
+EventPtr EventFactory::createWorldUnloadedEvent(const std::string&, const std::string& worldId) {
     auto event = std::make_shared<WorldUnloadedEvent>(worldId);
     return std::static_pointer_cast<Event>(event);
 }
 
-EventPtr EventFactory::createTileChangedEvent(const std::string& name, int x, int y, const std::string& changeType) {
-    (void)name; // Tile events don't use name parameter
+EventPtr EventFactory::createTileChangedEvent(const std::string&, int x, int y, const std::string& changeType) {
     auto event = std::make_shared<TileChangedEvent>(x, y, changeType);
     return std::static_pointer_cast<Event>(event);
 }
 
-EventPtr EventFactory::createWorldGeneratedEvent(const std::string& name, const std::string& worldId,
+EventPtr EventFactory::createWorldGeneratedEvent(const std::string&, const std::string& worldId,
                                        int width, int height, float generationTime) {
-    (void)name; // World events don't use name parameter
     auto event = std::make_shared<WorldGeneratedEvent>(worldId, width, height, generationTime);
     return std::static_pointer_cast<Event>(event);
 }
 
-EventPtr EventFactory::createCameraMovedEvent(const std::string& name,
+EventPtr EventFactory::createCameraMovedEvent(const std::string&,
                                     float newX, float newY, float oldX, float oldY) {
-    (void)name; // Camera events are typed; keep name unused
     auto event = std::make_shared<CameraMovedEvent>(Vector2D(newX, newY), Vector2D(oldX, oldY));
     return std::static_pointer_cast<Event>(event);
 }
 
-EventPtr EventFactory::createCameraModeChangedEvent(const std::string& name, int newMode, int oldMode) {
-    (void)name;
+EventPtr EventFactory::createCameraModeChangedEvent(const std::string&, int newMode, int oldMode) {
     auto event = std::make_shared<CameraModeChangedEvent>(
         static_cast<CameraModeChangedEvent::Mode>(newMode),
         static_cast<CameraModeChangedEvent::Mode>(oldMode));
     return std::static_pointer_cast<Event>(event);
 }
 
-EventPtr EventFactory::createCameraShakeEvent(const std::string& name, float duration, float intensity) {
-    (void)name;
+EventPtr EventFactory::createCameraShakeEvent(const std::string&, float duration, float intensity) {
     auto event = std::make_shared<CameraShakeStartedEvent>(duration, intensity);
     return std::static_pointer_cast<Event>(event);
 }
 
-EventPtr EventFactory::createResourceChangeEvent(const std::string& name,
+EventPtr EventFactory::createResourceChangeEvent(const std::string&,
                                        uint32_t resourceId,
                                        uint16_t resourceGen,
                                        int oldQuantity,
                                        int newQuantity,
                                        const std::string& reason) {
-    (void)name; // Resource events don't use name parameter
     VoidLight::ResourceHandle handle(resourceId, resourceGen);
     // Owner is unknown at factory-level, use invalid handle
     auto event = std::make_shared<ResourceChangeEvent>(EntityHandle{}, handle, oldQuantity, newQuantity, reason);
@@ -373,8 +365,7 @@ void EventFactory::registerCustomEventCreator(const std::string& eventType,
 
 std::vector<EventPtr> EventFactory::createEventSequence(const std::string& name,
                                                      const std::vector<EventDefinition>& events,
-                                                     bool sequential) {
-    (void)sequential;
+                                                     bool) {
     std::vector<EventPtr> createdEvents;
     createdEvents.reserve(events.size());
 

@@ -149,7 +149,6 @@ struct SpatialIndex {
         int32_t maxCellY = toCell(center.getY() + radius);
 
         // Note: radiusSq check done by caller with EDM positions for precision
-        (void)radius;  // Used for cell range calculation above
 
         for (int32_t cy = minCellY; cy <= maxCellY; ++cy) {
             for (int32_t cx = minCellX; cx <= maxCellX; ++cx) {

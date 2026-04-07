@@ -98,7 +98,7 @@ bool MainMenuState::enter() {
   return true;
 }
 
-void MainMenuState::update([[maybe_unused]] float deltaTime) {
+void MainMenuState::update(float) {
   // Process UI input (click detection, hover states, callbacks)
   auto& ui = UIManager::Instance();
   if (!ui.isShutdown()) {
@@ -157,7 +157,7 @@ std::string MainMenuState::getName() const {
 }
 
 void MainMenuState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
-                                       [[maybe_unused]] float interpolationAlpha) {
+                                       float) {
   // MainMenuState uses UIManager for all rendering
   // UIManager records its vertices (buttons, panels, text)
   auto& ui = UIManager::Instance();

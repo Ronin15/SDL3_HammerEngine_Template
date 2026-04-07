@@ -70,8 +70,8 @@ void ResourceRenderController::updateDroppedItemAnimations(float deltaTime, cons
     }
 }
 
-void ResourceRenderController::updateContainerStates([[maybe_unused]] float deltaTime,
-                                                      [[maybe_unused]] const VoidLight::Camera& camera) {
+void ResourceRenderController::updateContainerStates(float,
+                                                      const VoidLight::Camera&) {
     // Container open/close animations will be implemented when containers are added
     // For now, containers are static (just open or closed state)
 }

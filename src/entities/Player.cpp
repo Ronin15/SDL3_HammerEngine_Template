@@ -405,7 +405,6 @@ void Player::initializeInventory() {
 
 void Player::onResourceChanged(VoidLight::ResourceHandle resourceHandle,
                                int oldQuantity, int newQuantity) {
-  [[maybe_unused]] const std::string resourceId = resourceHandle.toString();
   // Use EventManager hub to trigger a ResourceChange (no registration needed)
   EventManager::Instance().triggerResourceChange(
       getHandle(), resourceHandle, oldQuantity, newQuantity, "player_action",
@@ -413,7 +412,7 @@ void Player::onResourceChanged(VoidLight::ResourceHandle resourceHandle,
 
   PLAYER_DEBUG(std::format(
       "Resource changed: {} from {} to {} - event dispatched to EventManager",
-      resourceId, oldQuantity, newQuantity));
+      resourceHandle.toString(), oldQuantity, newQuantity));
 }
 
 // Resource management - delegates to EntityDataManager
@@ -586,16 +585,14 @@ Player::getEquippedItem(const std::string &slotName) const {
 }
 
 // Crafting and consumption
-bool Player::canCraft(const std::string &recipeId) const {
+bool Player::canCraft(const std::string &) const {
   // Simplified crafting check - in a real game you'd have a proper recipe
   // system
-  (void)recipeId; // Suppress unused parameter warning
   return false;   // Not implemented yet
 }
 
-bool Player::craftItem(const std::string &recipeId) {
+bool Player::craftItem(const std::string &) {
   // Simplified crafting - in a real game you'd have a proper recipe system
-  (void)recipeId; // Suppress unused parameter warning
   return false;   // Not implemented yet
 }
 

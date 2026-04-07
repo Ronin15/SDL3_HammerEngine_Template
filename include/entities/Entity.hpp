@@ -234,7 +234,7 @@ class Entity : public std::enable_shared_from_this<Entity> {
   virtual void setAnimationAccumulator(float acc) { m_animationAccumulator = acc; }
 
   // Used for rendering flipping - to be implemented by derived classes
-  virtual void setFlip(SDL_FlipMode flip) { (void)flip; /* Unused in base class */ }
+  virtual void setFlip(SDL_FlipMode) {}
   virtual SDL_FlipMode getFlip() const { return SDL_FLIP_NONE; }
 
   /**

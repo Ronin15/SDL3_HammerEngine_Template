@@ -98,7 +98,7 @@ std::string LogoState::getName() const {
 }
 
 void LogoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
-                                  [[maybe_unused]] float interpolationAlpha) {
+                                  float) {
   // Check if window dimensions changed
   GameEngine& gameEngine = GameEngine::Instance();
   int currentWidth = gameEngine.getLogicalWidth();
@@ -247,7 +247,7 @@ void LogoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
 
 void LogoState::renderGPUScene(VoidLight::GPURenderer& gpuRenderer,
                                 SDL_GPURenderPass* scenePass,
-                                [[maybe_unused]] float interpolationAlpha) {
+                                float) {
   if (m_drawCommands.empty()) {
     return;
   }

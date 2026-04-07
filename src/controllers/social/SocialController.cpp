@@ -34,7 +34,7 @@ void SocialController::subscribe() {
     SOCIAL_INFO("SocialController subscribed");
 }
 
-void SocialController::update([[maybe_unused]] float deltaTime) {
+void SocialController::update(float) {
     if (!m_isTrading) {
         return;
     }
@@ -537,8 +537,8 @@ void SocialController::reportTheft(EntityHandle thief,
     alertNearbyGuards(theftLocation, thief);
 }
 
-void SocialController::alertNearbyGuards(const Vector2D& location, EntityHandle criminal) {
-    (void)criminal;  // Guards detect threats autonomously after alert
+void SocialController::alertNearbyGuards(const Vector2D& location, EntityHandle) {
+    // Guards detect threats autonomously after alert
     auto& edm = EntityDataManager::Instance();
 
     // Scan guard index for nearby guards — O(G) not O(N)

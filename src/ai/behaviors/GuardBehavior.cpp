@@ -80,7 +80,7 @@ float getAttackEngageRange(const CharacterData* charData) {
 }
 
 // Process pending messages for Guard behavior
-void processGuardMessages(BehaviorData& data, const VoidLight::GuardBehaviorConfig& config) {
+void processGuardMessages(BehaviorData& data, const VoidLight::GuardBehaviorConfig&) {
     auto& guard = data.state.guard;
 
     for (uint8_t i = 0; i < data.pendingMessageCount; ++i) {
@@ -126,7 +126,6 @@ void processGuardMessages(BehaviorData& data, const VoidLight::GuardBehaviorConf
         }
     }
     data.pendingMessageCount = 0;
-    (void)config;
 }
 
 float normalizeAngle(float angle) {
@@ -384,7 +383,7 @@ namespace Behaviors {
 // PUBLIC API
 // ============================================================================
 
-void initGuard(size_t edmIndex, const VoidLight::GuardBehaviorConfig& config) {
+void initGuard(size_t edmIndex, const VoidLight::GuardBehaviorConfig&) {
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Guard);
     auto& data = edm.getBehaviorData(edmIndex);
@@ -422,7 +421,6 @@ void initGuard(size_t edmIndex, const VoidLight::GuardBehaviorConfig& config) {
     guard.hostileTimer = 0.0f;
 
     data.setInitialized(true);
-    (void)config;
 }
 
 void executeGuard(BehaviorContext& ctx, const VoidLight::GuardBehaviorConfig& config) {

@@ -296,8 +296,7 @@ bool GameEngine::init(std::string_view title) {
     m_isWayland = (sessionType == "wayland") || hasWaylandDisplay;
   }
 
-#ifdef DEBUG
-  // Log detected platform
+  VOIDLIGHT_DEBUG_ONLY(
   if (m_isWayland) {
     GAMEENGINE_INFO("Platform detected: Wayland");
   } else {
@@ -305,7 +304,7 @@ bool GameEngine::init(std::string_view title) {
         "Platform detected: {}",
         videoDriver.empty() ? "Unknown" : std::string(videoDriver)));
   }
-#endif
+  )
 
   // Load VSync preference from SettingsManager (defaults to enabled)
   auto &settings = VoidLight::SettingsManager::Instance();
@@ -1416,13 +1415,13 @@ void GameEngine::setGlobalPause(bool paused) {
   GameTimeManager::Instance().setGlobalPause(paused);
   EventManager::Instance().setGlobalPause(paused);
 
-#ifdef DEBUG
+  VOIDLIGHT_DEBUG_ONLY(
   if (paused) {
     GAMEENGINE_INFO("Game globally paused - all managers idle");
   } else {
     GAMEENGINE_INFO("Game globally resumed");
   }
-#endif
+  )
 }
 
 bool GameEngine::isGloballyPaused() const { return m_globallyPaused; }

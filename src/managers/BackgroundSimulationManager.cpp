@@ -378,7 +378,7 @@ void BackgroundSimulationManager::simulateNPC(float deltaTime, size_t index) {
     }
 }
 
-void BackgroundSimulationManager::simulateItem(float deltaTime, size_t index) {
+void BackgroundSimulationManager::simulateItem(float, size_t index) {
     auto& edm = EntityDataManager::Instance();
 
     // Items in background tier:
@@ -396,5 +396,4 @@ void BackgroundSimulationManager::simulateItem(float deltaTime, size_t index) {
 
     // Note: Actual despawn logic would use ItemData from EntityDataManager
     // For now, items in background tier are just preserved
-    (void)deltaTime;  // Unused for now
 }

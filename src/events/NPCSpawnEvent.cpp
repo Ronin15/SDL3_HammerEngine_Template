@@ -152,9 +152,6 @@ void NPCSpawnEvent::onMessage(const std::string &message) {
   EVENT_INFO(std::format("NPCSpawnEvent received message: {}", message));
   EVENT_INFO("  - Event demonstrates messaging system coordination");
   EVENT_INFO("  - Actual entity management handled by GameStates");
-
-  // Suppress unused parameter warning in release builds
-  (void)message;
 }
 
 void NPCSpawnEvent::addSpawnPoint(float x, float y) {
@@ -547,10 +544,9 @@ Vector2D NPCSpawnEvent::getPlayerPosition() const {
   return ::getPlayerPosition();
 }
 
-EntityPtr NPCSpawnEvent::spawnSingleNPC(const Vector2D &position) {
+EntityPtr NPCSpawnEvent::spawnSingleNPC(const Vector2D &) {
   // Base implementation returns nullptr - override in test mocks for actual
   // spawning
-  (void)position; // Suppress unused parameter warning
   return nullptr;
 }
 

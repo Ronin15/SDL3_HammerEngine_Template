@@ -33,8 +33,8 @@ void PlayerRunningState::exit() {
     // Nothing needed on exit
 }
 
-void PlayerRunningState::handleMovementInput(float deltaTime) {
-    (void)deltaTime; // Movement uses direct velocity setting, not acceleration
+void PlayerRunningState::handleMovementInput(float) {
+    // Movement uses direct velocity setting, not acceleration
     
     const float speed = m_player.get().getMovementSpeed();
     const InputManager& input = InputManager::Instance();

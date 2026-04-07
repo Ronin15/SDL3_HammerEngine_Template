@@ -485,7 +485,7 @@ void SettingsMenuState::updateTabVisibility() {
 }
 
 void SettingsMenuState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
-                                           [[maybe_unused]] float interpolationAlpha) {
+                                           float) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
         ui.recordGPUVertices(gpuRenderer);

@@ -60,7 +60,7 @@ bool GameOverState::enter() {
   return true;
 }
 
-void GameOverState::update([[maybe_unused]] float deltaTime) {
+void GameOverState::update(float) {
   auto& ui = UIManager::Instance();
   if (!ui.isShutdown()) {
     ui.update(0.0f);
@@ -89,7 +89,7 @@ std::string GameOverState::getName() const { return "GameOverState"; }
 
 void GameOverState::recordGPUVertices(
     VoidLight::GPURenderer& gpuRenderer,
-    [[maybe_unused]] float interpolationAlpha) {
+    float) {
   auto& ui = UIManager::Instance();
   if (!ui.isShutdown()) {
     ui.recordGPUVertices(gpuRenderer);

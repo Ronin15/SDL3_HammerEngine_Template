@@ -380,28 +380,11 @@ void WeatherEvent::setBoundingArea(float x1, float y1, float x2, float y2) {
   m_boundY2 = y2;
 }
 
-void WeatherEvent::forceWeatherChange(WeatherType type, float transitionTime) {
-  // Static method that would interact with a central weather system
-  EVENT_INFO(std::format("Forcing weather change to: {} with transition time: {:.1f}s",
-                         static_cast<int>(type), transitionTime));
-
-  // Suppress unused parameter warnings in release builds
-  (void)type;
-  (void)transitionTime;
-
+void WeatherEvent::forceWeatherChange(WeatherType, float) {
   // This would typically call into a game system that manages weather
 }
 
-void WeatherEvent::forceWeatherChange(const std::string &customType,
-                                      float transitionTime) {
-  // Static method that would interact with a central weather system
-  EVENT_INFO(std::format("Forcing weather change to custom type: {} with transition time: {:.1f}s",
-                         customType, transitionTime));
-
-  // Suppress unused parameter warnings in release builds
-  (void)customType;
-  (void)transitionTime;
-
+void WeatherEvent::forceWeatherChange(const std::string &, float) {
   // This would typically call into a game system that manages weather
 }
 

@@ -806,9 +806,8 @@ void WorldResourceManager::clearSpatialDataForWorld(const WorldId& worldId) {
     auto itemIt = m_itemSpatialIndices.find(worldId);
     if (itemIt != m_itemSpatialIndices.end()) {
         // Remove reverse lookups for items in this world
-        for (const auto& [edmIdx, cellKey] : itemIt->second.entityToCell) {
-            (void)cellKey;  // Unused
-            m_itemToWorld.erase(edmIdx);
+        for (const auto& entry : itemIt->second.entityToCell) {
+            m_itemToWorld.erase(entry.first);
         }
         itemIt->second.clear();
     }
@@ -817,9 +816,8 @@ void WorldResourceManager::clearSpatialDataForWorld(const WorldId& worldId) {
     auto harvIt = m_harvestableSpatialIndices.find(worldId);
     if (harvIt != m_harvestableSpatialIndices.end()) {
         // Remove reverse lookups
-        for (const auto& [edmIdx, cellKey] : harvIt->second.entityToCell) {
-            (void)cellKey;  // Unused
-            m_harvestableSpatialToWorld.erase(edmIdx);
+        for (const auto& entry : harvIt->second.entityToCell) {
+            m_harvestableSpatialToWorld.erase(entry.first);
         }
         harvIt->second.clear();
     }

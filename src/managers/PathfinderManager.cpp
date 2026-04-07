@@ -1545,8 +1545,7 @@ void PathfinderManager::subscribeToEvents() {
                 }
 
                 // Handle WorldUnloadedEvent
-                if (auto unloadedEvent = std::dynamic_pointer_cast<WorldUnloadedEvent>(baseEvent)) {
-                    (void)unloadedEvent; // Acknowledge event
+                if (std::dynamic_pointer_cast<WorldUnloadedEvent>(baseEvent)) {
                     onWorldUnloaded();
                     return;
                 }

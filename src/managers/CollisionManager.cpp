@@ -1058,8 +1058,7 @@ void CollisionManager::subscribeWorldEvents() {
         auto base = data.event;
         if (!base)
           return;
-        if (auto loaded = std::dynamic_pointer_cast<WorldLoadedEvent>(base)) {
-          (void)loaded;
+        if (std::dynamic_pointer_cast<WorldLoadedEvent>(base)) {
           const auto &worldManager = WorldManager::Instance();
           float minX, minY, maxX, maxY;
           if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
@@ -1069,9 +1068,7 @@ void CollisionManager::subscribeWorldEvents() {
           this->rebuildStaticFromWorld();
           return;
         }
-        if (auto generated =
-                std::dynamic_pointer_cast<WorldGeneratedEvent>(base)) {
-          (void)generated;
+        if (std::dynamic_pointer_cast<WorldGeneratedEvent>(base)) {
           const auto &worldManager = WorldManager::Instance();
           float minX, minY, maxX, maxY;
           if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
@@ -1081,9 +1078,7 @@ void CollisionManager::subscribeWorldEvents() {
           this->rebuildStaticFromWorld();
           return;
         }
-        if (auto unloaded =
-                std::dynamic_pointer_cast<WorldUnloadedEvent>(base)) {
-          (void)unloaded;
+        if (std::dynamic_pointer_cast<WorldUnloadedEvent>(base)) {
           COLLISION_INFO("Responding to WorldUnloadedEvent");
 
           // Static bodies already cleared by prepareForStateTransition()
@@ -2164,18 +2159,14 @@ void CollisionManager::narrowphaseSingleThreaded(
 
 // ========== MAIN UPDATE METHOD ==========
 
-void CollisionManager::update(float dt) {
-  (void)dt;
-
+void CollisionManager::update(float) {
   // Early exit checks
   if (!m_initialized || m_isShutdown ||
       m_globallyPaused.load(std::memory_order_acquire))
     return;
 
   using clock = std::chrono::steady_clock; // Needed for WorkerBudget timing
-#ifdef DEBUG
-  auto t0 = clock::now();
-#endif
+  VOIDLIGHT_DEBUG_ONLY(auto t0 = clock::now();)
 
   // Check storage state at start of update (statics only now)
   size_t staticBodyCount = m_storage.size();
@@ -2250,15 +2241,15 @@ void CollisionManager::update(float dt) {
 
   // BROADPHASE: Generate collision pairs using spatial hash
   // Pairs stored in pools.movableMovablePairs and pools.movableStaticPairs
-  auto t1 = clock::now();
+  VOIDLIGHT_DEBUG_ONLY(auto t1 = clock::now();)
   broadphase();
-  auto t2 = clock::now();
+  VOIDLIGHT_DEBUG_ONLY(auto t2 = clock::now();)
 
   // NARROWPHASE: Detailed collision detection and response calculation
   const size_t pairCount = m_collisionPool.movableMovablePairs.size() +
                            m_collisionPool.movableStaticPairs.size();
   narrowphase(m_collisionPool.collisionBuffer);
-  auto t3 = clock::now();
+  VOIDLIGHT_DEBUG_ONLY(auto t3 = clock::now();)
 
   // RESOLUTION: Apply collision responses and update positions
   // Batch resolution: Process 4 collisions at a time for cache efficiency
@@ -2284,28 +2275,21 @@ void CollisionManager::update(float dt) {
       cb(collision);
     }
   }
-#ifdef DEBUG
-  auto t4 = clock::now();
-#endif
-
-#ifdef DEBUG
-  auto t5 = clock::now();
-#endif
+  VOIDLIGHT_DEBUG_ONLY(auto t4 = clock::now();)
+  VOIDLIGHT_DEBUG_ONLY(auto t5 = clock::now();)
 
   // TRIGGER PROCESSING: Handle trigger enter/exit events
   // PHASE 3.2: Detect EventOnly triggers (bypassed broadphase)
   detectEventOnlyTriggers();
   processTriggerEvents();
 
-#ifdef DEBUG
+  VOIDLIGHT_DEBUG_ONLY(
   auto t6 = clock::now();
-
-  // Track detailed performance metrics (debug only - zero overhead in release)
   updatePerformanceMetrics(
       t0, t1, t2, t3, t4, t5, t6, bodyCount, activeMovableBodies, pairCount,
       m_collisionPool.collisionBuffer.size(), activeBodies, dynamicBodiesCulled,
       staticBodiesCulled, cullingMs, totalStaticBodies, totalMovableBodies);
-#endif
+  )
 }
 
 // ========== SOA UPDATE HELPER METHODS ==========
@@ -2870,13 +2854,13 @@ void CollisionManager::updatePerformanceMetrics(
   m_perf.bodyCount = bodyCount;
   m_perf.frames += 1;
 
-#ifdef DEBUG
+  VOIDLIGHT_DEBUG_ONLY(
   // TRIGGER DETECTION METRICS: Debug/benchmark only
   m_perf.lastTriggerDetectors =
       EntityDataManager::Instance().getTriggerDetectionIndices().size();
   m_perf.lastTriggerOverlaps = m_collisionPool.eventOnlyOverlaps.size();
 
-  // Detailed timing metrics and logging - zero overhead in release builds
+  // Detailed timing metrics and logging
   auto d12 =
       std::chrono::duration<double, std::milli>(t2 - t1).count(); // Broadphase
   auto d23 =
@@ -2936,7 +2920,7 @@ void CollisionManager::updatePerformanceMetrics(
         "resolve:{:.2f}ms | triggerDetect:{} overlaps:{}",
         d01, d12, d23, d34, triggerDetectionEntities, eventOnlyOverlaps));
   }
-#endif // DEBUG
+  ) // VOIDLIGHT_DEBUG_ONLY
 }
 
 // Helper: Apply a single kinematic update to EDM and cached AABB

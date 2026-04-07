@@ -9,7 +9,7 @@
 
 namespace Behaviors {
 
-void initFollow(size_t edmIndex, const VoidLight::FollowBehaviorConfig& config) {
+void initFollow(size_t edmIndex, const VoidLight::FollowBehaviorConfig&) {
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Follow);
     auto& data = edm.getBehaviorData(edmIndex);
@@ -35,7 +35,6 @@ void initFollow(size_t edmIndex, const VoidLight::FollowBehaviorConfig& config) 
     follow.isStopped = true;
 
     data.setInitialized(true);
-    (void)config;
 }
 
 void executeFollow(BehaviorContext& ctx, const VoidLight::FollowBehaviorConfig& config) {
