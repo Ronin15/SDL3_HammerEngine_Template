@@ -125,19 +125,24 @@ void LogoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
   constexpr float sceneScale = 1.0f;  // Render at screen coordinates
   uint32_t vertexOffset = 0;
 
-  // Helper to add a logo sprite
+  // Helper to add a logo sprite — preserves aspect ratio, fits within size x size
   auto addLogo = [&](const char* textureName, int x, int y, int size) {
     auto texData = texMgr.getGPUTextureData(textureName);
     if (!texData || !texData->texture) {
       return;
     }
 
+    // Scale to fit within size while preserving aspect ratio
+    float aspect = (texData->height > 0)
+        ? static_cast<float>(texData->width) / static_cast<float>(texData->height)
+        : 1.0f;
+    float sw = static_cast<float>(size) * sceneScale;
+    float sh = sw / aspect;
+
     // Write 4 vertices for this quad
     VoidLight::SpriteVertex* v = basePtr + vertexOffset;
      float sx = static_cast<float>(x) * sceneScale;
      float sy = static_cast<float>(y) * sceneScale;
-     float sw = static_cast<float>(size) * sceneScale;
-     float sh = static_cast<float>(size) * sceneScale;
      float top = sceneHeight - sy;
      float bottom = top - sh;
 
@@ -160,8 +165,8 @@ void LogoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
   };
 
   // Add all logos
-  addLogo("HammerForgeBanner", m_bannerX, m_bannerY, m_bannerSize);
-  addLogo("VoidLight", m_engineX, m_engineY, m_engineSize);
+  addLogo("HammerForgedBanner", m_bannerX, m_bannerY, m_bannerSize);
+  addLogo("VoidLightEngine", m_engineX, m_engineY, m_engineSize);
   addLogo("cpp", m_cppX, m_cppY, m_cppSize);
   addLogo("sdl_logo", m_sdlX, m_sdlY, m_sdlSize);
 
