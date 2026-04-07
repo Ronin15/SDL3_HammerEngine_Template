@@ -410,7 +410,7 @@ public:
      * @return Sum of quantities across all registered inventories
      */
     [[nodiscard]] Quantity queryInventoryTotal(const WorldId& worldId,
-                                               HammerEngine::ResourceHandle handle) const;
+                                               VoidLight::ResourceHandle handle) const;
 
     /**
      * @brief Query total harvestable yield potential in a world
@@ -419,7 +419,7 @@ public:
      * @return Sum of (yieldMax) for non-depleted harvestables
      */
     [[nodiscard]] Quantity queryHarvestableTotal(const WorldId& worldId,
-                                                 HammerEngine::ResourceHandle handle) const;
+                                                 VoidLight::ResourceHandle handle) const;
 
     /**
      * @brief Query total world resources (inventories + harvestables)
@@ -428,20 +428,20 @@ public:
      * @return Combined total from inventories and harvestables
      */
     [[nodiscard]] Quantity queryWorldTotal(const WorldId& worldId,
-                                           HammerEngine::ResourceHandle handle) const;
+                                           VoidLight::ResourceHandle handle) const;
 
     /**
      * @brief Check if a world has at least the specified quantity
      */
     [[nodiscard]] bool hasResource(const WorldId& worldId,
-                                   HammerEngine::ResourceHandle handle,
+                                   VoidLight::ResourceHandle handle,
                                    Quantity minimumQuantity = 1) const;
 
     /**
      * @brief Get all resource totals for a world
      * @return Map of resource handle -> total quantity
      */
-    [[nodiscard]] std::unordered_map<HammerEngine::ResourceHandle, Quantity>
+    [[nodiscard]] std::unordered_map<VoidLight::ResourceHandle, Quantity>
     getWorldResources(const WorldId& worldId) const;
 
     // ========================================================================

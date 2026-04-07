@@ -22,7 +22,7 @@ enum class BehaviorType : uint8_t {
     None = 0xFF  // Invalid/uninitialized
 };
 
-namespace HammerEngine
+namespace VoidLight
 {
 
 /**
@@ -676,6 +676,6 @@ inline BehaviorConfigData BehaviorConfigData::makeFollow(const FollowBehaviorCon
     return data;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // BEHAVIOR_CONFIG_HPP

@@ -263,7 +263,7 @@ foreach(test_name ${ALL_TESTS})
     endif()
 
     add_executable(${test_name} ${test_source})
-    target_link_libraries(${test_name} PRIVATE HammerEngineLib Boost::unit_test_framework)
+    target_link_libraries(${test_name} PRIVATE VoidLightLib Boost::unit_test_framework)
     target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
 endforeach()
 
@@ -323,7 +323,7 @@ endforeach()
 # --- Power Profiling Tool (Standalone, no Boost.Test dependency) ---
 # This is a headless benchmark for measuring CPU power consumption via race-to-idle strategy
 add_executable(PowerProfile power_profile.cpp)
-target_link_libraries(PowerProfile PRIVATE HammerEngineLib)
+target_link_libraries(PowerProfile PRIVATE VoidLightLib)
 target_include_directories(PowerProfile PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
 # PowerProfile is not a test - it's a utility executable for power measurements
@@ -354,7 +354,7 @@ set(GPU_UNIT_TESTS
     )
 
     add_executable(gpu_frame_timing_benchmark gpu/GPUFrameTimingBenchmark.cpp)
-    target_link_libraries(gpu_frame_timing_benchmark PRIVATE HammerEngineLib)
+    target_link_libraries(gpu_frame_timing_benchmark PRIVATE VoidLightLib)
     target_include_directories(gpu_frame_timing_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gpu)
     set_target_properties(gpu_frame_timing_benchmark PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
@@ -369,7 +369,7 @@ set(GPU_UNIT_TESTS
         endif()
 
         add_executable(${test_name} ${test_source})
-        target_link_libraries(${test_name} PRIVATE HammerEngineLib Boost::unit_test_framework)
+        target_link_libraries(${test_name} PRIVATE VoidLightLib Boost::unit_test_framework)
         target_include_directories(${test_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gpu)
         target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
         add_test(NAME ${test_name} COMMAND ${test_name})
@@ -393,7 +393,7 @@ set(GPU_UNIT_TESTS
         endif()
 
         add_executable(${test_name} ${test_source})
-        target_link_libraries(${test_name} PRIVATE HammerEngineLib Boost::unit_test_framework)
+        target_link_libraries(${test_name} PRIVATE VoidLightLib Boost::unit_test_framework)
         target_include_directories(${test_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gpu)
         target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
         add_test(NAME ${test_name} COMMAND ${test_name})
@@ -409,7 +409,7 @@ set(GPU_UNIT_TESTS
         endif()
 
         add_executable(${test_name} ${test_source})
-        target_link_libraries(${test_name} PRIVATE HammerEngineLib Boost::unit_test_framework)
+        target_link_libraries(${test_name} PRIVATE VoidLightLib Boost::unit_test_framework)
         target_include_directories(${test_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gpu)
         target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
         add_test(NAME ${test_name} COMMAND ${test_name})

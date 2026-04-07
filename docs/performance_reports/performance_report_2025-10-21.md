@@ -1,4 +1,4 @@
-# SDL3 HammerEngine Performance Report
+# SDL3 VoidLight-Framework Performance Report
 
 **Generated:** 2025-10-21 10:36:00
 **Git Commit:** `2e74480` - quality check and update for all commits on this branch so far
@@ -13,7 +13,7 @@
 
 ### Overall Performance: ✓ EXCELLENT
 
-SDL3 HammerEngine demonstrates **excellent** performance across all critical systems. The engine successfully handles high-entity counts, maintains sub-millisecond processing times for most operations, and shows exceptional scaling characteristics.
+SDL3 VoidLight-Framework demonstrates **excellent** performance across all critical systems. The engine successfully handles high-entity counts, maintains sub-millisecond processing times for most operations, and shows exceptional scaling characteristics.
 
 ### Key Performance Highlights
 
@@ -481,7 +481,7 @@ SDL3 HammerEngine demonstrates **excellent** performance across all critical sys
 
 ### Frame Budget Analysis (60 FPS = 16.67ms budget)
 
-**Note:** HammerEngine uses separate update and render threads, so frame budgets are analyzed independently.
+**Note:** VoidLight-Framework uses separate update and render threads, so frame budgets are analyzed independently.
 
 #### Update Thread Budget
 
@@ -679,7 +679,7 @@ SDL3 HammerEngine demonstrates **excellent** performance across all critical sys
 
 ### Performance vs Industry Standards
 
-| Metric | HammerEngine | Industry Avg (2D) | Status |
+| Metric | VoidLight-Framework | Industry Avg (2D) | Status |
 |--------|--------------|-------------------|--------|
 | Collision Bodies @ <1ms | 10,300 | 5,000-8,000 | ✓ Above Avg |
 | Pathfinding (<10ms) | 100% success | 85-95% | ✓ Above Avg |
@@ -687,7 +687,7 @@ SDL3 HammerEngine demonstrates **excellent** performance across all critical sys
 | Serialization | 37μs/op | 100-500μs/op | ✓✓ Well Above |
 | Thread Safety | Validated | Often not tested | ✓✓ Excellent |
 
-**Overall:** HammerEngine significantly outperforms industry averages for 2D game engines.
+**Overall:** VoidLight-Framework significantly outperforms industry averages for 2D game engines.
 
 ### Performance vs Project Goals
 
@@ -705,7 +705,7 @@ SDL3 HammerEngine demonstrates **excellent** performance across all critical sys
 
 ### Overall Assessment
 
-SDL3 HammerEngine demonstrates **exceptional performance** across all measured systems. The engine successfully handles high entity counts, maintains sub-millisecond processing times for most critical paths, and shows excellent scaling characteristics.
+SDL3 VoidLight-Framework demonstrates **exceptional performance** across all measured systems. The engine successfully handles high entity counts, maintains sub-millisecond processing times for most critical paths, and shows excellent scaling characteristics.
 
 ### Strengths
 

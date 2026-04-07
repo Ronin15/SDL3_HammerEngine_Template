@@ -25,7 +25,7 @@ class FontManager;
 class InputManager;
 struct SDL_GPURenderPass;
 
-namespace HammerEngine {
+namespace VoidLight {
 class GPURenderer;
 class GPUTexture;
 }
@@ -34,7 +34,7 @@ class GPUTexture;
 struct UIGPUDrawCommand {
     enum class Type { Rect, Text, Image };
     Type type{Type::Rect};
-    std::shared_ptr<HammerEngine::GPUTexture> textureOwner{};
+    std::shared_ptr<VoidLight::GPUTexture> textureOwner{};
     SDL_GPUTexture* texture{nullptr};  // For text/image
     TTF_ImageType imageType{TTF_IMAGE_INVALID};
     uint32_t vertexOffset{0};
@@ -288,8 +288,8 @@ public:
   bool isShutdown() const { return m_isShutdown; }
 
   // GPU rendering methods
-  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer);
-  void renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass);
+  void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer);
+  void renderGPU(VoidLight::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass);
 
   // Window resize notification (called by InputManager on SDL_EVENT_WINDOW_RESIZED)
   void onWindowResize(int newLogicalWidth, int newLogicalHeight);

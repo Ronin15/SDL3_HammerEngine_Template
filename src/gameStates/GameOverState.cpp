@@ -88,7 +88,7 @@ bool GameOverState::exit() {
 std::string GameOverState::getName() const { return "GameOverState"; }
 
 void GameOverState::recordGPUVertices(
-    HammerEngine::GPURenderer& gpuRenderer,
+    VoidLight::GPURenderer& gpuRenderer,
     [[maybe_unused]] float interpolationAlpha) {
   auto& ui = UIManager::Instance();
   if (!ui.isShutdown()) {
@@ -96,7 +96,7 @@ void GameOverState::recordGPUVertices(
   }
 }
 
-void GameOverState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void GameOverState::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                                 SDL_GPURenderPass* swapchainPass) {
   auto& ui = UIManager::Instance();
   if (!ui.isShutdown()) {

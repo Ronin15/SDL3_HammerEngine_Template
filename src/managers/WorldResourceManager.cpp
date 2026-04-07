@@ -325,7 +325,7 @@ void WorldResourceManager::unregisterHarvestable(size_t edmIndex) {
 
 WorldResourceManager::Quantity WorldResourceManager::queryInventoryTotal(
     const WorldId& worldId,
-    HammerEngine::ResourceHandle handle) const {
+    VoidLight::ResourceHandle handle) const {
 
     m_stats.queryCount.fetch_add(1, std::memory_order_relaxed);
 
@@ -350,7 +350,7 @@ WorldResourceManager::Quantity WorldResourceManager::queryInventoryTotal(
 
 WorldResourceManager::Quantity WorldResourceManager::queryHarvestableTotal(
     const WorldId& worldId,
-    HammerEngine::ResourceHandle handle) const {
+    VoidLight::ResourceHandle handle) const {
 
     m_stats.queryCount.fetch_add(1, std::memory_order_relaxed);
 
@@ -385,25 +385,25 @@ WorldResourceManager::Quantity WorldResourceManager::queryHarvestableTotal(
 
 WorldResourceManager::Quantity WorldResourceManager::queryWorldTotal(
     const WorldId& worldId,
-    HammerEngine::ResourceHandle handle) const {
+    VoidLight::ResourceHandle handle) const {
 
     return queryInventoryTotal(worldId, handle) + queryHarvestableTotal(worldId, handle);
 }
 
 bool WorldResourceManager::hasResource(
     const WorldId& worldId,
-    HammerEngine::ResourceHandle handle,
+    VoidLight::ResourceHandle handle,
     Quantity minimumQuantity) const {
 
     return queryWorldTotal(worldId, handle) >= minimumQuantity;
 }
 
-std::unordered_map<HammerEngine::ResourceHandle, WorldResourceManager::Quantity>
+std::unordered_map<VoidLight::ResourceHandle, WorldResourceManager::Quantity>
 WorldResourceManager::getWorldResources(const WorldId& worldId) const {
 
     m_stats.queryCount.fetch_add(1, std::memory_order_relaxed);
 
-    std::unordered_map<HammerEngine::ResourceHandle, Quantity> totals;
+    std::unordered_map<VoidLight::ResourceHandle, Quantity> totals;
 
     std::shared_lock lock(m_registryMutex);
     auto& edm = EntityDataManager::Instance();

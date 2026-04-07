@@ -50,7 +50,7 @@ class ResourceIntegrationTestFixture {
 public:
   ResourceIntegrationTestFixture() {
     // Initialize ThreadSystem first for threading tests
-    threadSystem = &HammerEngine::ThreadSystem::Instance();
+    threadSystem = &VoidLight::ThreadSystem::Instance();
     if (threadSystem->isShutdown() || threadSystem->getThreadCount() == 0) {
       bool initSuccess = threadSystem->init();
       if (!initSuccess && threadSystem->getThreadCount() == 0) {
@@ -120,7 +120,7 @@ public:
 protected:
   ResourceTemplateManager *resourceManager;
   EntityDataManager *entityDataManager;
-  HammerEngine::ThreadSystem *threadSystem;
+  VoidLight::ThreadSystem *threadSystem;
   uint32_t playerInvIndex;
   uint32_t npcInvIndex;
   std::shared_ptr<Resource> healthPotion;
@@ -129,44 +129,44 @@ protected:
   std::shared_ptr<Resource> gold;
 
   // Resource handles for easy access
-  HammerEngine::ResourceHandle healthPotionHandle;
-  HammerEngine::ResourceHandle ironSwordHandle;
-  HammerEngine::ResourceHandle ironOreHandle;
-  HammerEngine::ResourceHandle goldHandle;
+  VoidLight::ResourceHandle healthPotionHandle;
+  VoidLight::ResourceHandle ironSwordHandle;
+  VoidLight::ResourceHandle ironOreHandle;
+  VoidLight::ResourceHandle goldHandle;
 
   // Helper to check if inventory has resource
-  bool playerHasResource(HammerEngine::ResourceHandle handle, int qty = 1) {
+  bool playerHasResource(VoidLight::ResourceHandle handle, int qty = 1) {
     return entityDataManager->hasInInventory(playerInvIndex, handle, qty);
   }
 
-  bool npcHasResource(HammerEngine::ResourceHandle handle, int qty = 1) {
+  bool npcHasResource(VoidLight::ResourceHandle handle, int qty = 1) {
     return entityDataManager->hasInInventory(npcInvIndex, handle, qty);
   }
 
   // Helper to get inventory quantity
-  int playerGetQty(HammerEngine::ResourceHandle handle) {
+  int playerGetQty(VoidLight::ResourceHandle handle) {
     return entityDataManager->getInventoryQuantity(playerInvIndex, handle);
   }
 
-  int npcGetQty(HammerEngine::ResourceHandle handle) {
+  int npcGetQty(VoidLight::ResourceHandle handle) {
     return entityDataManager->getInventoryQuantity(npcInvIndex, handle);
   }
 
   // Helper to add to inventory
-  bool playerAdd(HammerEngine::ResourceHandle handle, int qty) {
+  bool playerAdd(VoidLight::ResourceHandle handle, int qty) {
     return entityDataManager->addToInventory(playerInvIndex, handle, qty);
   }
 
-  bool npcAdd(HammerEngine::ResourceHandle handle, int qty) {
+  bool npcAdd(VoidLight::ResourceHandle handle, int qty) {
     return entityDataManager->addToInventory(npcInvIndex, handle, qty);
   }
 
   // Helper to remove from inventory
-  bool playerRemove(HammerEngine::ResourceHandle handle, int qty) {
+  bool playerRemove(VoidLight::ResourceHandle handle, int qty) {
     return entityDataManager->removeFromInventory(playerInvIndex, handle, qty);
   }
 
-  bool npcRemove(HammerEngine::ResourceHandle handle, int qty) {
+  bool npcRemove(VoidLight::ResourceHandle handle, int qty) {
     return entityDataManager->removeFromInventory(npcInvIndex, handle, qty);
   }
 };
@@ -466,7 +466,7 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
             std::this_thread::sleep_for(std::chrono::microseconds(1));
           }
         },
-        HammerEngine::TaskPriority::Normal, "ResourceIntegrationTask");
+        VoidLight::TaskPriority::Normal, "ResourceIntegrationTask");
 
     futures.push_back(std::move(future));
   }

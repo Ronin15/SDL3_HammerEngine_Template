@@ -162,7 +162,7 @@ void DayNightController::update(float deltaTime)
 
 void DayNightController::updateGPULighting()
 {
-    auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
+    auto& gpuRenderer = VoidLight::GPURenderer::Instance();
     // Convert from 0-255 range to 0-1 range for shader
     gpuRenderer.setDayNightParams(
         m_currentR / 255.0f,

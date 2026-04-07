@@ -13,7 +13,7 @@
 #include <SDL3/SDL_gpu.h>
 #include <cmath>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 GPUSceneRecorder::GPUSceneRecorder() = default;
 GPUSceneRecorder::~GPUSceneRecorder() = default;
@@ -164,4 +164,4 @@ void GPUSceneRecorder::renderRecordedScene(GPURenderer& gpuRenderer,
                        vertexPool.getGPUBuffer());
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

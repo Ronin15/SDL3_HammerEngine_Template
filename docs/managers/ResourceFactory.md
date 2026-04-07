@@ -23,7 +23,7 @@ The `ResourceFactory` is a static class that provides a centralized mechanism fo
 #include "MyCustomResource.hpp"
 
 // Register a creator function for your custom resource type
-HammerEngine::ResourceFactory::registerCreator("MyCustomType", [](const JsonValue& json) -> ResourcePtr {
+VoidLight-Framework::ResourceFactory::registerCreator("MyCustomType", [](const JsonValue& json) -> ResourcePtr {
     // Your custom creation logic here
     auto resource = std::make_shared<MyCustomResource>();
     // ... populate resource from json ...
@@ -38,7 +38,7 @@ HammerEngine::ResourceFactory::registerCreator("MyCustomType", [](const JsonValu
 JsonValue resourceJson = ...;
 
 // Create the resource using the factory
-ResourcePtr resource = HammerEngine::ResourceFactory::createFromJson(resourceJson);
+ResourcePtr resource = VoidLight-Framework::ResourceFactory::createFromJson(resourceJson);
 
 if (resource) {
     // Use the created resource
@@ -75,7 +75,7 @@ Create a class that inherits from the `Resource` base class:
 #pragma once
 #include "resources/Resource.hpp"
 
-namespace HammerEngine {
+namespace VoidLight-Framework {
 
 class MyCustomResource : public Resource {
 public:
@@ -96,7 +96,7 @@ private:
     int m_durability{100};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight-Framework
 ```
 
 ### Step 2: Implement JSON Parsing
@@ -136,7 +136,7 @@ Register your creator function during game initialization:
 ```cpp
 // In Game::init() or similar initialization function
 void registerCustomResources() {
-    HammerEngine::ResourceFactory::registerCreator(
+    VoidLight-Framework::ResourceFactory::registerCreator(
         "custom_type",
         createCustomResourceFromJson
     );

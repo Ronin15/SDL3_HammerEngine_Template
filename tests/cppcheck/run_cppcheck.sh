@@ -1,5 +1,5 @@
 #!/bin/bash
-# Cppcheck Analysis Script for SDL3_HammerEngine_Template
+# Cppcheck Analysis Script for SDL3_VoidLight-Framework_Template
 # This script runs cppcheck with optimized settings to focus on real issues
 
 set -e  # Exit on any error
@@ -22,7 +22,7 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 # Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
 
-echo -e "${BLUE}=== SDL3 HammerEngine Template - Cppcheck Analysis ===${NC}"
+echo -e "${BLUE}=== SDL3 VoidLight-Framework - Cppcheck Analysis ===${NC}"
 echo -e "${BLUE}Project Root: $PROJECT_ROOT${NC}"
 echo -e "${BLUE}Timestamp: $TIMESTAMP${NC}"
 echo ""
@@ -173,7 +173,7 @@ final_summary="${OUTPUT_DIR}/cppcheck_final_summary_${TIMESTAMP}.txt"
 {
     echo "=== FINAL CPPCHECK SUMMARY ==="
     echo "Generated: $(date)"
-    echo "Project: SDL3_HammerEngine_Template"
+    echo "Project: SDL3_VoidLight-Framework_Template"
     echo ""
     echo "Analysis Results:"
     echo "  Critical Issues: $critical_issues"

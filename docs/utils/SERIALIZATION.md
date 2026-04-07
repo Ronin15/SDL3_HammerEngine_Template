@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Hammer Engine Template includes a fast, cross-platform, header-only binary serialization system that replaces Boost serialization. This system uses smart pointers internally for memory management and is designed for high-performance game save/load operations.
+The VoidLight-Framework includes a fast, cross-platform, header-only binary serialization system that replaces Boost serialization. This system uses smart pointers internally for memory management and is designed for high-performance game save/load operations.
 
 See also:
 - [SaveGameManager](../managers/SaveGameManager.md) — integration and usage in saves/loads
@@ -413,7 +413,7 @@ std::thread loadThread([&]() {
 
 ## SaveGameManager Integration
 
-The Hammer Engine's SaveGameManager has been fully updated to use the BinarySerializer system, replacing the previous Boost serialization dependency.
+The VoidLight-Framework's SaveGameManager has been fully updated to use the BinarySerializer system, replacing the previous Boost serialization dependency.
 
 For full SaveGameManager documentation, see [SaveGameManager](../managers/SaveGameManager.md).
 

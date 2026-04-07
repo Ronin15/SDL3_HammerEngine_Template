@@ -22,9 +22,9 @@ public:
     std::string getName() const override { return "UIDemoState"; }
 
     // GPU rendering support
-    void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+    void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                            float interpolationAlpha) override;
-    void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+    void renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                      SDL_GPURenderPass* swapchainPass) override;
     bool supportsGPURendering() const override { return true; }
 

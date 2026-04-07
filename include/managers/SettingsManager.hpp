@@ -14,7 +14,7 @@
 #include <variant>
 #include <vector>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * @brief Thread-safe settings management system with category organization
@@ -268,6 +268,6 @@ bool SettingsManager::set(const std::string& category, const std::string& key, c
     return true;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // SETTINGS_MANAGER_HPP

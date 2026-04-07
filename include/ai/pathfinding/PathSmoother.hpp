@@ -10,7 +10,7 @@
 #include <cmath>
 #include "utils/Vector2D.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 
 struct PathSmoother {
     // Removes collinear points; simple post-process
@@ -35,7 +35,7 @@ struct PathSmoother {
     }
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // PATH_SMOOTHER_HPP
 

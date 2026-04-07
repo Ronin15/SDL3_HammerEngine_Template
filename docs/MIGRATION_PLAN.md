@@ -178,7 +178,7 @@ All EDM creation methods MUST validate input and return invalid handles on failu
 ### createDroppedItem() Validation
 ```cpp
 EntityHandle createDroppedItem(const Vector2D& position,
-                               HammerEngine::ResourceHandle resourceHandle,
+                               VoidLight-Framework::ResourceHandle resourceHandle,
                                int quantity) {
     // Guard 1: Invalid resource handle
     if (!resourceHandle.isValid()) {
@@ -236,7 +236,7 @@ uint32_t createInventory(uint16_t maxSlots, bool worldTracked) {
 ### addToInventory() Validation
 ```cpp
 bool addToInventory(uint32_t inventoryIndex,
-                    HammerEngine::ResourceHandle handle,
+                    VoidLight-Framework::ResourceHandle handle,
                     int quantity) {
     // Guard 1: Valid inventory index
     if (inventoryIndex >= m_inventoryData.size()) {
@@ -300,7 +300,7 @@ EntityHandle createContainer(const Vector2D& position,
 ### createHarvestable() Validation
 ```cpp
 EntityHandle createHarvestable(const Vector2D& position,
-                               HammerEngine::ResourceHandle yieldResource,
+                               VoidLight-Framework::ResourceHandle yieldResource,
                                int yieldMin, int yieldMax,
                                float respawnTime) {
     // Guard 1: Valid yield resource

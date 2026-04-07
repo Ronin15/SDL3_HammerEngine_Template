@@ -21,7 +21,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * @brief Configuration for a specific harvest type
@@ -89,6 +89,6 @@ struct DepositConfig {
  */
 [[nodiscard]] HarvestType getHarvestTypeForResource(std::string_view resourceId);
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // HARVEST_CONFIG_HPP

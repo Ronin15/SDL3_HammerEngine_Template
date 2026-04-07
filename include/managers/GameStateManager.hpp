@@ -13,7 +13,7 @@
 #include <SDL3/SDL_gpu.h>
 #include "gameStates/GameState.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 class GPURenderer;
 }
 
@@ -33,13 +33,13 @@ class GameStateManager {
    * Record vertices for GPU rendering (called before scene pass).
    * Delegates to active state's recordGPUVertices().
    */
-  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer, float interpolationAlpha);
+  void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer, float interpolationAlpha);
 
   /**
    * Issue GPU draw calls during scene pass.
    * Delegates to active state's renderGPUScene().
    */
-  void renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+  void renderGPUScene(VoidLight::GPURenderer& gpuRenderer,
                        SDL_GPURenderPass* scenePass,
                        float interpolationAlpha);
 
@@ -47,7 +47,7 @@ class GameStateManager {
    * Render UI/overlays during swapchain pass.
    * Delegates to active state's renderGPUUI().
    */
-  void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+  void renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                     SDL_GPURenderPass* swapchainPass);
 
   bool hasState(const std::string& stateName) const;

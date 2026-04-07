@@ -15,8 +15,8 @@
 #include <array>
 #include <vector>
 
-using namespace HammerEngine;
-using namespace HammerEngine::Test;
+using namespace VoidLight;
+using namespace VoidLight::Test;
 
 // Global fixture for SDL cleanup
 BOOST_GLOBAL_FIXTURE(GPUGlobalFixture);

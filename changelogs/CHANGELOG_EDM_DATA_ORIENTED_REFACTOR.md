@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-This major architectural refactor introduces the **EntityDataManager (EDM)** as the single source of truth for all entity data in SDL3 HammerEngine. The refactor transitions from scattered, manager-owned data to a centralized, cache-optimized Data-Oriented Design (DOD) architecture.
+This major architectural refactor introduces the **EntityDataManager (EDM)** as the single source of truth for all entity data in SDL3 VoidLight-Framework. The refactor transitions from scattered, manager-owned data to a centralized, cache-optimized Data-Oriented Design (DOD) architecture.
 
 The core innovation is the replacement of object-oriented entity storage (where each manager owned its own entity data copies) with a Structure-of-Arrays (SoA) layout where all entity data lives in contiguous memory managed by EntityDataManager. This eliminates 4x position duplication, reduces memory footprint from ~30MB scattered to ~5MB contiguous, and supports 100K+ entities with tiered simulation.
 

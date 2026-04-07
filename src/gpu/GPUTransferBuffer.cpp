@@ -5,7 +5,7 @@
 #include "core/Logger.hpp"
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 GPUTransferBuffer::GPUTransferBuffer(SDL_GPUDevice* device,
                                      SDL_GPUTransferBufferUsage usage,
@@ -123,4 +123,4 @@ SDL_GPUTransferBufferLocation GPUTransferBuffer::asLocation(uint32_t offset) con
     return location;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

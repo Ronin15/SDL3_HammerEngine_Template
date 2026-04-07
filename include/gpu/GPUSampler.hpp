@@ -6,7 +6,7 @@
 
 #include <SDL3/SDL_gpu.h>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * RAII wrapper for SDL_GPUSampler.
@@ -64,6 +64,6 @@ private:
     SDL_GPUDevice* m_device{nullptr};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_SAMPLER_HPP

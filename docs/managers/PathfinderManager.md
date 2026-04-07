@@ -2,7 +2,7 @@
 
 ## Overview
 
-The PathfinderManager is a high-performance, centralized pathfinding service designed for the Hammer Engine. It provides thread-safe pathfinding capabilities that scale to support 10,000+ AI entities while maintaining 60+ FPS performance. The system features intelligent caching, dynamic obstacle integration, and seamless ThreadSystem integration.
+The PathfinderManager is a high-performance, centralized pathfinding service designed for the VoidLight-Framework. It provides thread-safe pathfinding capabilities that scale to support 10,000+ AI entities while maintaining 60+ FPS performance. The system features intelligent caching, dynamic obstacle integration, and seamless ThreadSystem integration.
 
 ## Architecture
 

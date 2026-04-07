@@ -14,7 +14,7 @@
 #include <vector>
 #include <cstdint>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 class JsonValue;
 
@@ -203,6 +203,6 @@ private:
   void setError(const std::string &message);
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // JSONREADER_HPP

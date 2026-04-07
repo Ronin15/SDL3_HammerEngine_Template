@@ -26,7 +26,7 @@
 #include <memory>
 #include <vector>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 // ============================================================================
 // Test Fixture
@@ -63,7 +63,7 @@ public:
     Camera& getCamera() { return m_camera; }
     const std::string& getWorldId() const { return m_worldId; }
 
-    HammerEngine::ResourceHandle getTestResourceHandle() const {
+    VoidLight::ResourceHandle getTestResourceHandle() const {
         return ResourceTemplateManager::Instance().getHandleByName("Super Health Potion");
     }
 
@@ -86,8 +86,8 @@ private:
 
 namespace {
 
-bool initSpriteBatchForRecording(HammerEngine::SpriteBatch& batch) {
-    SDL_GPUDevice* device = HammerEngine::GPUDevice::Instance().get();
+bool initSpriteBatchForRecording(VoidLight::SpriteBatch& batch) {
+    SDL_GPUDevice* device = VoidLight::GPUDevice::Instance().get();
     if (!device) {
         return false;
     }
@@ -262,15 +262,15 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUDroppedItemsUsesCameraCenterAndInterpolatedPos
     renderData.bobPhase = 0.0f;
     renderData.bobAmplitude = 0.0f;
 
-    std::vector<HammerEngine::SpriteVertex> vertices(8);
-    HammerEngine::SpriteBatch batch;
+    std::vector<VoidLight::SpriteVertex> vertices(8);
+    VoidLight::SpriteBatch batch;
     if (!initSpriteBatchForRecording(batch)) {
         BOOST_TEST_MESSAGE("Skipping GPU recording test: no GPU device available");
         return;
     }
     batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 1024.0f, 1024.0f, 512.0f);
 
-    HammerEngine::GPUSceneContext ctx{};
+    VoidLight::GPUSceneContext ctx{};
     ctx.cameraX = 10.0f;
     ctx.cameraY = 20.0f;
     ctx.interpolationAlpha = 0.25f;
@@ -282,7 +282,7 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUDroppedItemsUsesCameraCenterAndInterpolatedPos
     Camera farAwayCamera(1000.0f, 1000.0f, 200.0f, 200.0f);
     controller.recordGPUDroppedItems(ctx, farAwayCamera);
 
-    BOOST_CHECK_EQUAL(batch.end(), HammerEngine::SpriteBatch::VERTICES_PER_SPRITE);
+    BOOST_CHECK_EQUAL(batch.end(), VoidLight::SpriteBatch::VERTICES_PER_SPRITE);
 
     const float interpX = 90.0f + (110.0f - 90.0f) * 0.25f;
     const float interpY = 110.0f + (130.0f - 110.0f) * 0.25f;
@@ -309,15 +309,15 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUContainersUsesOpenAndClosedVariants) {
     ResourceRenderController controller;
     Camera renderCamera(1000.0f, 1000.0f, 200.0f, 200.0f);
 
-    std::vector<HammerEngine::SpriteVertex> closedVertices(8);
-    HammerEngine::SpriteBatch closedBatch;
+    std::vector<VoidLight::SpriteVertex> closedVertices(8);
+    VoidLight::SpriteBatch closedBatch;
     if (!initSpriteBatchForRecording(closedBatch)) {
         BOOST_TEST_MESSAGE("Skipping GPU recording test: no GPU device available");
         return;
     }
     closedBatch.begin(closedVertices.data(), closedVertices.size(), nullptr, nullptr, 1024.0f, 1024.0f, 512.0f);
 
-    HammerEngine::GPUSceneContext closedCtx{};
+    VoidLight::GPUSceneContext closedCtx{};
     closedCtx.cameraX = 0.0f;
     closedCtx.cameraY = 0.0f;
     closedCtx.interpolationAlpha = 1.0f;
@@ -326,7 +326,7 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUContainersUsesOpenAndClosedVariants) {
     closedCtx.valid = true;
 
     controller.recordGPUContainers(closedCtx, renderCamera);
-    BOOST_CHECK_EQUAL(closedBatch.end(), HammerEngine::SpriteBatch::VERTICES_PER_SPRITE);
+    BOOST_CHECK_EQUAL(closedBatch.end(), VoidLight::SpriteBatch::VERTICES_PER_SPRITE);
 
     const float closedSrcX = static_cast<float>(renderData.atlasX);
     const float closedSrcY = static_cast<float>(renderData.atlasY);
@@ -340,19 +340,19 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUContainersUsesOpenAndClosedVariants) {
 
     containerData.setOpen(true);
 
-    std::vector<HammerEngine::SpriteVertex> openVertices(8);
-    HammerEngine::SpriteBatch openBatch;
+    std::vector<VoidLight::SpriteVertex> openVertices(8);
+    VoidLight::SpriteBatch openBatch;
     if (!initSpriteBatchForRecording(openBatch)) {
         BOOST_TEST_MESSAGE("Skipping GPU recording test: no GPU device available");
         return;
     }
     openBatch.begin(openVertices.data(), openVertices.size(), nullptr, nullptr, 1024.0f, 1024.0f, 512.0f);
 
-    HammerEngine::GPUSceneContext openCtx = closedCtx;
+    VoidLight::GPUSceneContext openCtx = closedCtx;
     openCtx.spriteBatch = &openBatch;
 
     controller.recordGPUContainers(openCtx, renderCamera);
-    BOOST_CHECK_EQUAL(openBatch.end(), HammerEngine::SpriteBatch::VERTICES_PER_SPRITE);
+    BOOST_CHECK_EQUAL(openBatch.end(), VoidLight::SpriteBatch::VERTICES_PER_SPRITE);
 
     const float openSrcX = static_cast<float>(renderData.openAtlasX);
     const float openSrcY = static_cast<float>(renderData.openAtlasY);

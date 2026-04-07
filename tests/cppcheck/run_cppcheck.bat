@@ -16,7 +16,7 @@ set TIMESTAMP=%datetime:~0,8%_%datetime:~8,6%
 REM Create output directory if it doesn't exist
 if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
 
-echo === SDL3 HammerEngine Template - Cppcheck Analysis ===
+echo === SDL3 VoidLight-Framework - Cppcheck Analysis ===
 echo Project Root: %PROJECT_ROOT%
 echo Timestamp: %TIMESTAMP%
 echo.

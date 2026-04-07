@@ -76,8 +76,8 @@ private:
 struct GlobalEventTestFixture {
   GlobalEventTestFixture() {
     // Initialize ThreadSystem once for all tests
-    if (!HammerEngine::ThreadSystem::Exists()) {
-      HammerEngine::ThreadSystem::Instance().init();
+    if (!VoidLight::ThreadSystem::Exists()) {
+      VoidLight::ThreadSystem::Instance().init();
     }
     // Initialize EntityDataManager (required for Player entity creation in DOD)
     EntityDataManager::Instance().init();
@@ -89,8 +89,8 @@ struct GlobalEventTestFixture {
     // Clean up EntityDataManager
     EntityDataManager::Instance().clean();
     // Clean up ThreadSystem at the very end
-    if (HammerEngine::ThreadSystem::Exists()) {
-      HammerEngine::ThreadSystem::Instance().clean();
+    if (VoidLight::ThreadSystem::Exists()) {
+      VoidLight::ThreadSystem::Instance().clean();
     }
   }
 };
@@ -263,7 +263,7 @@ BOOST_FIXTURE_TEST_CASE(TriggerResourceChange_DispatchesToHandlers, EventManager
         if (data.event) resourceHandlerCalled.store(true);
       });
 
-  HammerEngine::ResourceHandle testResource(1, 1);
+  VoidLight::ResourceHandle testResource(1, 1);
   bool ok = EventManager::Instance().triggerResourceChange(
       TEST_PLAYER_HANDLE, testResource, 5, 10, "test",
       EventManager::DispatchMode::Immediate);
@@ -280,7 +280,7 @@ BOOST_FIXTURE_TEST_CASE(TriggerCollision_DispatchesToHandlers, EventManagerFixtu
         if (data.event) collisionHandlerCalled.store(true);
       });
 
-  HammerEngine::CollisionInfo info{};
+  VoidLight::CollisionInfo info{};
   bool ok = EventManager::Instance().triggerCollision(info,
                                                        EventManager::DispatchMode::Immediate);
   BOOST_CHECK(ok);
@@ -437,7 +437,7 @@ BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_CollisionEvents, EventManagerFixture)
         else secondColl = data.event;
       });
 
-  HammerEngine::CollisionInfo info{};
+  VoidLight::CollisionInfo info{};
   EventManager::Instance().triggerCollision(info, EventManager::DispatchMode::Immediate);
   EventManager::Instance().triggerCollision(info, EventManager::DispatchMode::Immediate);
 
@@ -473,7 +473,7 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety_ConcurrentTriggers, EventManagerFixture) {
       EventTypeId::ResourceChange,
       [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
 
-  HammerEngine::ResourceHandle testResource(1, 1);
+  VoidLight::ResourceHandle testResource(1, 1);
 
   // Trigger multiple resource change events concurrently with immediate dispatch
   std::vector<std::thread> threads;
@@ -843,7 +843,7 @@ BOOST_FIXTURE_TEST_CASE(TriggerWorldTrigger_DispatchesToHandlers, EventManagerFi
         if (data.event) triggerHandlerCalled.store(true);
       });
 
-  WorldTriggerEvent event(1, 2, HammerEngine::TriggerTag::Portal, Vector2D(100.0f, 200.0f), TriggerPhase::Enter);
+  WorldTriggerEvent event(1, 2, VoidLight::TriggerTag::Portal, Vector2D(100.0f, 200.0f), TriggerPhase::Enter);
   bool ok = EventManager::Instance().triggerWorldTrigger(event,
                                                           EventManager::DispatchMode::Immediate);
   BOOST_CHECK(ok);
@@ -863,7 +863,7 @@ BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_ResourceChangeEvents, EventManagerFix
         else secondResource = data.event;
       });
 
-  HammerEngine::ResourceHandle testResource(1, 1);
+  VoidLight::ResourceHandle testResource(1, 1);
   EventManager::Instance().triggerResourceChange(TEST_PLAYER_HANDLE, testResource, 0, 10, "test",
                                                   EventManager::DispatchMode::Immediate);
   EventManager::Instance().triggerResourceChange(TEST_PLAYER_HANDLE, testResource, 10, 20, "test",
@@ -1198,7 +1198,7 @@ BOOST_FIXTURE_TEST_CASE(DeferredDispatch_FollowsFIFOEnqueueOrder, EventManagerFi
 
   // Deferred processing should preserve enqueue order even across event types.
   EventManager::Instance().changeWeather("Test", 1.0f);
-  HammerEngine::CollisionInfo info{};
+  VoidLight::CollisionInfo info{};
   EventManager::Instance().triggerCollision(info);
 
   EventManager::Instance().update();

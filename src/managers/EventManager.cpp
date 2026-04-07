@@ -97,12 +97,12 @@ bool EventManager::init() {
   });
   m_resourceChangePool.setCreator([]() {
     return std::make_shared<ResourceChangeEvent>(
-        EntityHandle{}, HammerEngine::ResourceHandle{}, 0, 0, "");
+        EntityHandle{}, VoidLight::ResourceHandle{}, 0, 0, "");
   });
 
   // Hot-path event pools
   m_collisionPool.setCreator([]() {
-    HammerEngine::CollisionInfo emptyInfo{};
+    VoidLight::CollisionInfo emptyInfo{};
     return std::make_shared<CollisionEvent>(emptyInfo);
   });
   m_particleEffectPool.setCreator([]() {
@@ -440,7 +440,7 @@ bool EventManager::triggerParticleEffect(const std::string &effectName,
 }
 
 bool EventManager::triggerResourceChange(
-    EntityHandle ownerHandle, HammerEngine::ResourceHandle resourceHandle,
+    EntityHandle ownerHandle, VoidLight::ResourceHandle resourceHandle,
     int oldQuantity, int newQuantity, const std::string &changeReason,
     DispatchMode mode) const {
   auto resourceEvent = m_resourceChangePool.acquire();
@@ -461,7 +461,7 @@ bool EventManager::triggerResourceChange(
                        "triggerResourceChange");
 }
 
-bool EventManager::triggerCollision(const HammerEngine::CollisionInfo &info,
+bool EventManager::triggerCollision(const VoidLight::CollisionInfo &info,
                                     DispatchMode mode) const {
   auto collisionEvent = m_collisionPool.acquire();
   if (collisionEvent) {
@@ -989,13 +989,13 @@ void EventManager::drainDispatchQueueWithBudget() {
       (eventCount > 0 && m_localNonCombatBuffer.empty());
 
   const float cachedGameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
-  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
   const size_t combatEventCount = m_localCombatDispatchBuffer.size();
   bool useThreading = false;
 
   if (combatEventCount > 0) {
     auto decision = budgetMgr.shouldUseThreading(
-        HammerEngine::SystemType::Event, combatEventCount);
+        VoidLight::SystemType::Event, combatEventCount);
     useThreading = decision.shouldThread;
 #ifndef NDEBUG
     if (!m_threadingEnabled.load(std::memory_order_acquire)) {
@@ -1016,11 +1016,11 @@ void EventManager::drainDispatchQueueWithBudget() {
   if (combatEventCount > 0) {
     if (useThreading) {
       // Compute batch strategy (not timed — only actual work is timed)
-      auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+      auto& threadSystem = VoidLight::ThreadSystem::Instance();
       size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-          HammerEngine::SystemType::Event, combatEventCount);
+          VoidLight::SystemType::Event, combatEventCount);
       auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-          HammerEngine::SystemType::Event, combatEventCount, optimalWorkerCount);
+          VoidLight::SystemType::Event, combatEventCount, optimalWorkerCount);
 
       if (batchCount > 1) {
         actualWasThreaded = true;
@@ -1049,7 +1049,7 @@ void EventManager::drainDispatchQueueWithBudget() {
                   EVENT_ERROR("Unknown exception in combat prep batch");
                 }
               },
-              HammerEngine::TaskPriority::High, "Event_CombatPrep"));
+              VoidLight::TaskPriority::High, "Event_CombatPrep"));
         }
 
         for (auto& future : m_combatPrepFutures) {
@@ -1122,7 +1122,7 @@ void EventManager::drainDispatchQueueWithBudget() {
       combatPrepEnd - combatPrepStart).count();
 
   if (combatEventCount > 0 && combatPrepMs > 0.0) {
-    budgetMgr.reportExecution(HammerEngine::SystemType::Event, combatEventCount,
+    budgetMgr.reportExecution(VoidLight::SystemType::Event, combatEventCount,
                               actualWasThreaded, actualBatchCount,
                               combatPrepMs);
   }

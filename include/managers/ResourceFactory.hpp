@@ -13,7 +13,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * @brief Factory for creating Resource instances from JSON data
@@ -82,23 +82,23 @@ private:
     return s_creators;
   }
   // Helper methods for creating specific resource types
-  static ResourcePtr createEquipment(HammerEngine::ResourceHandle handle,
+  static ResourcePtr createEquipment(VoidLight::ResourceHandle handle,
                                      const JsonValue &json);
-  static ResourcePtr createConsumable(HammerEngine::ResourceHandle handle,
+  static ResourcePtr createConsumable(VoidLight::ResourceHandle handle,
                                       const JsonValue &json);
-  static ResourcePtr createQuestItem(HammerEngine::ResourceHandle handle,
+  static ResourcePtr createQuestItem(VoidLight::ResourceHandle handle,
                                      const JsonValue &json);
-  static ResourcePtr createMaterial(HammerEngine::ResourceHandle handle,
+  static ResourcePtr createMaterial(VoidLight::ResourceHandle handle,
                                     const JsonValue &json);
-  static ResourcePtr createCurrency(HammerEngine::ResourceHandle handle,
+  static ResourcePtr createCurrency(VoidLight::ResourceHandle handle,
                                     const JsonValue &json);
-  static ResourcePtr createGameResource(HammerEngine::ResourceHandle handle,
+  static ResourcePtr createGameResource(VoidLight::ResourceHandle handle,
                                         const JsonValue &json);
 
   // Helper method to extract common resource properties from JSON
   static void setCommonProperties(const ResourcePtr& resource, const JsonValue &json);
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // RESOURCE_FACTORY_HPP

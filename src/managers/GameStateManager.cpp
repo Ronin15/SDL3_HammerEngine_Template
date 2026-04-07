@@ -24,7 +24,7 @@ void GameStateManager::addState(std::unique_ptr<GameState> state) {
   const std::string name = state->getName();
   if (hasState(name)) {
     GAMESTATE_ERROR(std::format("State with name {} already exists", name));
-    throw std::runtime_error(std::format("Hammer Game Engine - State with name {} already exists", name));
+    throw std::runtime_error(std::format("VoidLight Engine - State with name {} already exists", name));
   }
   // Set state manager reference so state can access transitions and frame data
   state->setStateManager(this);
@@ -36,7 +36,7 @@ void GameStateManager::pushState(const std::string &stateName) {
   auto it = m_registeredStates.find(stateName);
   if (it != m_registeredStates.end()) {
     // Suppress profiler hitch detection during state transition
-    HammerEngine::FrameProfiler::Instance().suppressFrames(5);
+    VoidLight::FrameProfiler::Instance().suppressFrames(5);
 
     // Pause the current top state if it exists
     if (!m_activeStates.empty()) {
@@ -61,7 +61,7 @@ void GameStateManager::pushState(const std::string &stateName) {
 void GameStateManager::popState() {
   if (!m_activeStates.empty()) {
     // Suppress profiler hitch detection during state transition
-    HammerEngine::FrameProfiler::Instance().suppressFrames(5);
+    VoidLight::FrameProfiler::Instance().suppressFrames(5);
 
     // CRITICAL: Wait for exit to complete BEFORE removing from stack
     auto currentState = m_activeStates.back();
@@ -97,14 +97,14 @@ void GameStateManager::update(float deltaTime) {
   }
 }
 
-void GameStateManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+void GameStateManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                                           float interpolationAlpha) {
   if (!m_activeStates.empty()) {
     m_activeStates.back()->recordGPUVertices(gpuRenderer, interpolationAlpha);
   }
 }
 
-void GameStateManager::renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+void GameStateManager::renderGPUScene(VoidLight::GPURenderer& gpuRenderer,
                                         SDL_GPURenderPass* scenePass,
                                         float interpolationAlpha) {
   if (!m_activeStates.empty()) {
@@ -112,7 +112,7 @@ void GameStateManager::renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
   }
 }
 
-void GameStateManager::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void GameStateManager::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                                      SDL_GPURenderPass* swapchainPass) {
   if (!m_activeStates.empty()) {
     m_activeStates.back()->renderGPUUI(gpuRenderer, swapchainPass);

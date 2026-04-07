@@ -8,7 +8,7 @@
 
 /**
  * @file SIMDMath.hpp
- * @brief Cross-platform SIMD abstraction layer for HammerEngine
+ * @brief Cross-platform SIMD abstraction layer for VoidLight
  *
  * Provides unified SIMD operations that work across:
  * - x86-64: SSE2, AVX2 (Linux, Windows)
@@ -54,7 +54,7 @@
 // SIMD Type Definitions
 // ============================================================================
 
-namespace HammerEngine {
+namespace VoidLight {
 namespace SIMD {
 
 /**
@@ -829,6 +829,6 @@ inline float length2D(Float4 v) {
 }
 
 } // namespace SIMD
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // SIMD_MATH_HPP

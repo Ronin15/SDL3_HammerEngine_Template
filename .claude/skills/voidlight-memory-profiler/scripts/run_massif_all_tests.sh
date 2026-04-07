@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# HammerEngine Memory Profiler - Run Massif on All Tests
-# Part of hammer-memory-profiler skill
+# VoidLight-Framework Memory Profiler - Run Massif on All Tests
+# Part of voidlight-memory-profiler skill
 
 set -e
 
@@ -21,7 +21,7 @@ if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     cat << EOF
 Usage: $0 [OPTIONS]
 
-Run valgrind massif on all HammerEngine test executables.
+Run valgrind massif on all VoidLight-Framework test executables.
 
 OPTIONS:
     -h, --help          Show this help message
@@ -94,7 +94,7 @@ FAILED=0
 START_TIME=$(date +%s)
 
 echo "=========================================="
-echo "HammerEngine Memory Profiler"
+echo "VoidLight-Framework Memory Profiler"
 echo "=========================================="
 echo "Test directory: $TEST_DIR"
 echo "Output directory: $OUTPUT_DIR"

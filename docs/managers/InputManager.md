@@ -6,7 +6,7 @@
 
 ## Overview
 
-The InputManager provides centralized input handling for the Hammer Game Engine, including keyboard, mouse, and gamepad input. It features automatic coordinate conversion for cross-platform compatibility, event-driven input detection, and seamless integration with the UI system.
+The InputManager provides centralized input handling for the VoidLight Engine, including keyboard, mouse, and gamepad input. It features automatic coordinate conversion for cross-platform compatibility, event-driven input detection, and seamless integration with the UI system.
 
 ## Key Features
 

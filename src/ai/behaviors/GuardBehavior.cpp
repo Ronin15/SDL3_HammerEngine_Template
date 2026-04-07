@@ -46,7 +46,7 @@ constexpr float GUARD_PURSUIT_SPEED_MULT = 1.5f; // Pursuing hostile threat (ale
  * @brief Get mode-specific speed based on guard mode
  * @param baseSpeed Entity's base movement speed (from CharacterData)
  */
-float getModeSpeed(uint8_t currentMode, float baseSpeed, const HammerEngine::GuardBehaviorConfig& config) {
+float getModeSpeed(uint8_t currentMode, float baseSpeed, const VoidLight::GuardBehaviorConfig& config) {
     switch (currentMode) {
         case 0: return baseSpeed * config.staticSpeedMultiplier;   // STATIC_GUARD
         case 1: return baseSpeed * config.patrolSpeedMultiplier;   // PATROL_GUARD
@@ -60,7 +60,7 @@ float getModeSpeed(uint8_t currentMode, float baseSpeed, const HammerEngine::Gua
 /**
  * @brief Get mode-specific detection range multiplier
  */
-float getModeAlertRadius(uint8_t currentMode, const HammerEngine::GuardBehaviorConfig& config) {
+float getModeAlertRadius(uint8_t currentMode, const VoidLight::GuardBehaviorConfig& config) {
     switch (currentMode) {
         case 0: return config.staticAlertRadiusMultiplier;
         case 1: return config.patrolAlertRadiusMultiplier;
@@ -80,7 +80,7 @@ float getAttackEngageRange(const CharacterData* charData) {
 }
 
 // Process pending messages for Guard behavior
-void processGuardMessages(BehaviorData& data, const HammerEngine::GuardBehaviorConfig& config) {
+void processGuardMessages(BehaviorData& data, const VoidLight::GuardBehaviorConfig& config) {
     auto& guard = data.state.guard;
 
     for (uint8_t i = 0; i < data.pendingMessageCount; ++i) {
@@ -384,7 +384,7 @@ namespace Behaviors {
 // PUBLIC API
 // ============================================================================
 
-void initGuard(size_t edmIndex, const HammerEngine::GuardBehaviorConfig& config) {
+void initGuard(size_t edmIndex, const VoidLight::GuardBehaviorConfig& config) {
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Guard);
     auto& data = edm.getBehaviorData(edmIndex);
@@ -425,7 +425,7 @@ void initGuard(size_t edmIndex, const HammerEngine::GuardBehaviorConfig& config)
     (void)config;
 }
 
-void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig& config) {
+void executeGuard(BehaviorContext& ctx, const VoidLight::GuardBehaviorConfig& config) {
     if (!ctx.behaviorData.isValid()) return;
 
     auto& data = ctx.behaviorData;

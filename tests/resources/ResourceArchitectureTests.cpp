@@ -52,7 +52,7 @@ public:
 protected:
   EntityDataManager *entityDataManager;
   ResourceTemplateManager *resourceManager;
-  HammerEngine::ResourceHandle testResourceHandle;
+  VoidLight::ResourceHandle testResourceHandle;
   std::shared_ptr<Resource> testResource;
 };
 
@@ -150,7 +150,7 @@ BOOST_AUTO_TEST_CASE(TestEDMDroppedItemUsesResourceTemplate) {
 BOOST_AUTO_TEST_CASE(TestDroppedItemInvalidResourceHandle) {
   // Test that creating dropped item with invalid handle fails
   Vector2D testPosition(0.0f, 0.0f);
-  HammerEngine::ResourceHandle invalidHandle;
+  VoidLight::ResourceHandle invalidHandle;
 
   EntityHandle droppedHandle = entityDataManager->createDroppedItem(
       testPosition, invalidHandle, 5);

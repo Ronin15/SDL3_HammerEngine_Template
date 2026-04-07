@@ -262,7 +262,7 @@ namespace {
             HAMMER_ENABLE_BENCHMARK_MODE();
 
             // Initialize in dependency order (matching GameEngine::init pattern)
-            HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
+            VoidLight::ThreadSystem::Instance().init(); // Auto-detect system threads
 
             // EntityDataManager must be early - entities need it for registration
             EntityDataManager::Instance().init();
@@ -297,7 +297,7 @@ namespace {
             PathfinderManager::Instance().clean();
             EventManager::Instance().clean();
             EntityDataManager::Instance().clean();
-            HammerEngine::ThreadSystem::Instance().clean();
+            VoidLight::ThreadSystem::Instance().clean();
         }
 
         void cleanupScenario() {

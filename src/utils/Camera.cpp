@@ -17,7 +17,7 @@
 
 #include "gpu/GPURenderer.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 
 Camera::Camera() {
     // Initialize zoom from default config
@@ -622,7 +622,7 @@ bool Camera::setZoomLevel(int levelIndex) {
 }
 
 void Camera::syncViewportWithEngine() {
-    const auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
+    const auto& gpuRenderer = VoidLight::GPURenderer::Instance();
     float const viewportWidth = static_cast<float>(gpuRenderer.getViewportWidth());
     float const viewportHeight = static_cast<float>(gpuRenderer.getViewportHeight());
 
@@ -633,4 +633,4 @@ void Camera::syncViewportWithEngine() {
     }
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

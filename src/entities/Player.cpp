@@ -224,7 +224,7 @@ void Player::update(float deltaTime) {
   }
 }
 
-void Player::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+void Player::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                                float cameraX, float cameraY,
                                float interpolationAlpha) {
   // Get GPU texture for player
@@ -237,7 +237,7 @@ void Player::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
   auto& entityBatch = gpuRenderer.getEntityBatch();
   auto& vertexPool = gpuRenderer.getEntityVertexPool();
 
-  auto* writePtr = static_cast<HammerEngine::SpriteVertex*>(vertexPool.getMappedPtr());
+  auto* writePtr = static_cast<VoidLight::SpriteVertex*>(vertexPool.getMappedPtr());
   if (!writePtr) {
     return;
   }
@@ -284,7 +284,7 @@ void Player::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
   entityBatch.end();
 }
 
-void Player::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
+void Player::renderGPU(VoidLight::GPURenderer& gpuRenderer,
                        SDL_GPURenderPass* scenePass) {
   auto& entityBatch = gpuRenderer.getEntityBatch();
   auto& vertexPool = gpuRenderer.getEntityVertexPool();
@@ -301,7 +301,7 @@ void Player::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
 
   // Create orthographic projection
   float orthoMatrix[16];
-  HammerEngine::GPURenderer::createOrthoMatrix(
+  VoidLight::GPURenderer::createOrthoMatrix(
       0.0f, static_cast<float>(sceneTexture->getWidth()),
       0.0f, static_cast<float>(sceneTexture->getHeight()),
       orthoMatrix);
@@ -350,7 +350,7 @@ void Player::ensurePhysicsBodyRegistered() {
 
   // Player collides with everything except pets (pets pass through player)
   // Layer_Player is already set in registerPlayer(), just set mask
-  hot.collisionMask = 0xFFFF & ~HammerEngine::CollisionLayer::Layer_Pet;
+  hot.collisionMask = 0xFFFF & ~VoidLight::CollisionLayer::Layer_Pet;
   hot.setCollisionEnabled(true);
 }
 
@@ -377,14 +377,14 @@ void Player::initializeInventory() {
   }
 
   // Initialize equipment slots with invalid handles
-  m_equippedItems["weapon"] = HammerEngine::ResourceHandle{};
-  m_equippedItems["helmet"] = HammerEngine::ResourceHandle{};
-  m_equippedItems["chest"] = HammerEngine::ResourceHandle{};
-  m_equippedItems["legs"] = HammerEngine::ResourceHandle{};
-  m_equippedItems["boots"] = HammerEngine::ResourceHandle{};
-  m_equippedItems["gloves"] = HammerEngine::ResourceHandle{};
-  m_equippedItems["ring"] = HammerEngine::ResourceHandle{};
-  m_equippedItems["necklace"] = HammerEngine::ResourceHandle{};
+  m_equippedItems["weapon"] = VoidLight::ResourceHandle{};
+  m_equippedItems["helmet"] = VoidLight::ResourceHandle{};
+  m_equippedItems["chest"] = VoidLight::ResourceHandle{};
+  m_equippedItems["legs"] = VoidLight::ResourceHandle{};
+  m_equippedItems["boots"] = VoidLight::ResourceHandle{};
+  m_equippedItems["gloves"] = VoidLight::ResourceHandle{};
+  m_equippedItems["ring"] = VoidLight::ResourceHandle{};
+  m_equippedItems["necklace"] = VoidLight::ResourceHandle{};
 
   // Give player some starting resources using ResourceTemplateManager
   const auto &templateManager = ResourceTemplateManager::Instance();
@@ -403,7 +403,7 @@ void Player::initializeInventory() {
   PLAYER_DEBUG(std::format("Player EDM inventory initialized with index {}", m_inventoryIndex));
 }
 
-void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
+void Player::onResourceChanged(VoidLight::ResourceHandle resourceHandle,
                                int oldQuantity, int newQuantity) {
   [[maybe_unused]] const std::string resourceId = resourceHandle.toString();
   // Use EventManager hub to trigger a ResourceChange (no registration needed)
@@ -417,7 +417,7 @@ void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
 }
 
 // Resource management - delegates to EntityDataManager
-bool Player::addToInventory(HammerEngine::ResourceHandle handle, int quantity) {
+bool Player::addToInventory(VoidLight::ResourceHandle handle, int quantity) {
   if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
     PLAYER_WARN("Player::addToInventory - Inventory not initialized");
     return false;
@@ -431,7 +431,7 @@ bool Player::addToInventory(HammerEngine::ResourceHandle handle, int quantity) {
   return result;
 }
 
-bool Player::removeFromInventory(HammerEngine::ResourceHandle handle, int quantity) {
+bool Player::removeFromInventory(VoidLight::ResourceHandle handle, int quantity) {
   if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
     PLAYER_WARN("Player::removeFromInventory - Inventory not initialized");
     return false;
@@ -445,14 +445,14 @@ bool Player::removeFromInventory(HammerEngine::ResourceHandle handle, int quanti
   return result;
 }
 
-int Player::getInventoryQuantity(HammerEngine::ResourceHandle handle) const {
+int Player::getInventoryQuantity(VoidLight::ResourceHandle handle) const {
   if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
     return 0;
   }
   return EntityDataManager::Instance().getInventoryQuantity(m_inventoryIndex, handle);
 }
 
-bool Player::hasInInventory(HammerEngine::ResourceHandle handle, int quantity) const {
+bool Player::hasInInventory(VoidLight::ResourceHandle handle, int quantity) const {
   if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
     return false;
   }
@@ -494,7 +494,7 @@ bool Player::hasGold(int amount) const {
 }
 
 // Equipment management
-bool Player::equipItem(HammerEngine::ResourceHandle itemHandle) {
+bool Player::equipItem(VoidLight::ResourceHandle itemHandle) {
   if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
     PLAYER_WARN("Player::equipItem - Inventory not initialized");
     return false;
@@ -558,12 +558,12 @@ bool Player::unequipItem(const std::string &slotName) {
     return false; // Nothing equipped in this slot
   }
 
-  HammerEngine::ResourceHandle itemHandle = it->second;
+  VoidLight::ResourceHandle itemHandle = it->second;
 
   // Try to add back to inventory
   auto &edm = EntityDataManager::Instance();
   if (edm.addToInventory(m_inventoryIndex, itemHandle, 1)) {
-    it->second = HammerEngine::ResourceHandle{}; // Set to invalid handle
+    it->second = VoidLight::ResourceHandle{}; // Set to invalid handle
     PLAYER_DEBUG(std::format("Unequipped item (handle: {}) from slot: {}",
                              itemHandle.toString(), slotName));
     return true;
@@ -573,16 +573,16 @@ bool Player::unequipItem(const std::string &slotName) {
   return false;
 }
 
-HammerEngine::ResourceHandle
+VoidLight::ResourceHandle
 Player::getEquippedItem(const std::string &slotName) const {
   if (slotName.empty()) {
     PLAYER_ERROR("Player::getEquippedItem - Slot name cannot be empty");
-    return HammerEngine::ResourceHandle{};
+    return VoidLight::ResourceHandle{};
   }
 
   auto it = m_equippedItems.find(slotName);
   return (it != m_equippedItems.end()) ? it->second
-                                       : HammerEngine::ResourceHandle{};
+                                       : VoidLight::ResourceHandle{};
 }
 
 // Crafting and consumption
@@ -599,7 +599,7 @@ bool Player::craftItem(const std::string &recipeId) {
   return false;   // Not implemented yet
 }
 
-bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
+bool Player::consumeItem(VoidLight::ResourceHandle itemHandle) {
   if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
     PLAYER_WARN("Player::consumeItem - Inventory not initialized");
     return false;

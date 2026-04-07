@@ -10,7 +10,7 @@
 #include <filesystem>
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 namespace fs = std::filesystem;
 
@@ -187,4 +187,4 @@ bool ResourcePath::isRunningFromBundle() {
     return s_isBundle;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

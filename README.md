@@ -68,7 +68,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
     
     Full guides, API references, best practices, and troubleshooting for all major systems.
 
-### Why Choose HammerEngine Template?
+### Why Choose VoidLight-Framework?
 
 - **Performance**: Engineered for cache efficiency, lock-free concurrency, and minimal CPU overhead—even with thousands of entities.
 - **Safety**: Smart pointers, RAII, strong typing, and robust error handling throughout.
@@ -101,8 +101,8 @@ See the [documentation hub](docs/README.md) and subsystem docs for current setup
 ### Build
 
 ```bash
-git clone https://github.com/yourname/SDL3_HammerEngine_Template.git
-cd SDL3_HammerEngine_Template
+git clone https://github.com/yourname/SDL3_VoidLight-Framework_Template.git
+cd SDL3_VoidLight-Framework_Template
 
 # Debug build (recommended for development)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build

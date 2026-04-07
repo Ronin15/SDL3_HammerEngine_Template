@@ -12,7 +12,7 @@
 #include <functional>
 #include "world/WorldData.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // Progress callback type: void callback(float percentComplete, const std::string& statusMessage)
 using WorldGenerationProgressCallback = std::function<void(float, const std::string&)>;

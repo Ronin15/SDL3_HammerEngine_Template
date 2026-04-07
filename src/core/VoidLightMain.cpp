@@ -24,7 +24,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
   // Initialize the thread system with default capacity
   // Cache ThreadSystem reference for better performance
-  HammerEngine::ThreadSystem& threadSystem = HammerEngine::ThreadSystem::Instance();
+  VoidLight::ThreadSystem& threadSystem = VoidLight::ThreadSystem::Instance();
 
   // Initialize thread system first
   try {
@@ -64,7 +64,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   gameEngine.getGameStateManager()->pushState("LogoState");
 
   // Suppress hitch detection for first few frames while engine stabilizes
-  HammerEngine::FrameProfiler::Instance().suppressFrames(10);
+  VoidLight::FrameProfiler::Instance().suppressFrames(10);
 
   GAMEENGINE_INFO("Starting Main Loop");
 
@@ -90,7 +90,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
     // Process SDL events (must be on main thread)
     {
-      PROFILE_PHASE(HammerEngine::FramePhase::Events);
+      PROFILE_PHASE(VoidLight::FramePhase::Events);
       gameEngine.handleEvents();
     }
 
@@ -101,7 +101,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 #endif
 
     {
-      PROFILE_PHASE(HammerEngine::FramePhase::Update);
+      PROFILE_PHASE(VoidLight::FramePhase::Update);
       while (ts.shouldUpdate()) {
         gameEngine.update(ts.getUpdateDeltaTime());
 #ifndef NDEBUG
@@ -134,13 +134,13 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
     // Render with interpolation alpha (calculated from remaining accumulator)
     {
-      PROFILE_PHASE(HammerEngine::FramePhase::Render);
+      PROFILE_PHASE(VoidLight::FramePhase::Render);
       gameEngine.render();
     }
 
     // Present (vsync wait) - separate from render for accurate profiling
     {
-      PROFILE_PHASE(HammerEngine::FramePhase::Present);
+      PROFILE_PHASE(VoidLight::FramePhase::Present);
       gameEngine.present();
     }
 

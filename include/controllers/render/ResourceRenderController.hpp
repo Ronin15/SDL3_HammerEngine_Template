@@ -23,7 +23,7 @@
 #include "controllers/ControllerBase.hpp"
 #include <vector>
 
-namespace HammerEngine {
+namespace VoidLight {
 class Camera;
 struct GPUSceneContext;
 }
@@ -48,23 +48,23 @@ public:
      * @param deltaTime Frame delta time
      * @param camera Camera for viewport-based culling (only animate visible + buffer)
      */
-    void update(float deltaTime, const HammerEngine::Camera& camera);
+    void update(float deltaTime, const VoidLight::Camera& camera);
 
     /**
      * @brief Record dropped items to GPU sprite batch
      * @param ctx Scene context with sprite batch and camera params
      * @param camera Camera for spatial queries
      */
-    void recordGPUDroppedItems(const HammerEngine::GPUSceneContext& ctx,
-                               const HammerEngine::Camera& camera);
+    void recordGPUDroppedItems(const VoidLight::GPUSceneContext& ctx,
+                               const VoidLight::Camera& camera);
 
     /**
      * @brief Record containers to GPU sprite batch
      * @param ctx Scene context with sprite batch and camera params
      * @param camera Camera for spatial queries
      */
-    void recordGPUContainers(const HammerEngine::GPUSceneContext& ctx,
-                             const HammerEngine::Camera& camera);
+    void recordGPUContainers(const VoidLight::GPUSceneContext& ctx,
+                             const VoidLight::Camera& camera);
 
     /**
      * @brief Clear all spawned resources (cleanup for state transitions)
@@ -74,8 +74,8 @@ public:
 
 private:
     // Update helpers - use camera-based queries for efficiency
-    void updateDroppedItemAnimations(float deltaTime, const HammerEngine::Camera& camera);
-    void updateContainerStates(float deltaTime, const HammerEngine::Camera& camera);
+    void updateDroppedItemAnimations(float deltaTime, const VoidLight::Camera& camera);
+    void updateContainerStates(float deltaTime, const VoidLight::Camera& camera);
     // Reusable buffers for spatial queries (avoid per-frame allocations)
     std::vector<size_t> m_visibleItemIndices;
     std::vector<size_t> m_visibleContainerIndices;

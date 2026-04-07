@@ -360,7 +360,7 @@ EventPtr EventFactory::createResourceChangeEvent(const std::string& name,
                                        int newQuantity,
                                        const std::string& reason) {
     (void)name; // Resource events don't use name parameter
-    HammerEngine::ResourceHandle handle(resourceId, resourceGen);
+    VoidLight::ResourceHandle handle(resourceId, resourceGen);
     // Owner is unknown at factory-level, use invalid handle
     auto event = std::make_shared<ResourceChangeEvent>(EntityHandle{}, handle, oldQuantity, newQuantity, reason);
     return std::static_pointer_cast<Event>(event);

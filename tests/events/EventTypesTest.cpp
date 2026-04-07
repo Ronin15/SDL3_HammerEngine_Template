@@ -787,7 +787,7 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventBasics, EventTypesFixture) {
     player->initializeInventory(); // Important for the test
 
     // Create a resource handle
-    HammerEngine::ResourceHandle woodHandle(1, 1);
+    VoidLight::ResourceHandle woodHandle(1, 1);
 
     // Get player's EntityHandle
     EntityHandle playerHandle = player->getHandle();
@@ -892,7 +892,7 @@ BOOST_FIXTURE_TEST_CASE(HarvestResourceEventBasics, EventTypesFixture) {
 
 // Test CollisionEvent
 BOOST_FIXTURE_TEST_CASE(CollisionEventBasics, EventTypesFixture) {
-    HammerEngine::CollisionInfo info;
+    VoidLight::CollisionInfo info;
     info.a = 1;
     info.b = 2;
 
@@ -912,14 +912,14 @@ BOOST_FIXTURE_TEST_CASE(CollisionEventBasics, EventTypesFixture) {
 
 // Test WorldTriggerEvent
 BOOST_FIXTURE_TEST_CASE(WorldTriggerEventBasics, EventTypesFixture) {
-    WorldTriggerEvent event(42, 1, HammerEngine::TriggerTag::Water, Vector2D(5, 10), TriggerPhase::Enter);
+    WorldTriggerEvent event(42, 1, VoidLight::TriggerTag::Water, Vector2D(5, 10), TriggerPhase::Enter);
 
     BOOST_CHECK_EQUAL(event.getName(), "WorldTriggerEvent");
     BOOST_CHECK_EQUAL(event.getType(), "WorldTriggerEvent");
     BOOST_CHECK(event.getTypeId() == EventTypeId::WorldTrigger);
     BOOST_CHECK_EQUAL(event.getPlayerId(), 42);
     BOOST_CHECK_EQUAL(event.getTriggerId(), 1);
-    BOOST_CHECK(event.getTag() == HammerEngine::TriggerTag::Water);
+    BOOST_CHECK(event.getTag() == VoidLight::TriggerTag::Water);
     BOOST_CHECK_EQUAL(event.getPosition().getX(), 5);
     BOOST_CHECK_EQUAL(event.getPosition().getY(), 10);
     BOOST_CHECK(event.getPhase() == TriggerPhase::Enter);
@@ -959,7 +959,7 @@ BOOST_FIXTURE_TEST_CASE(AllEventTypesReturnCorrectTypeId, EventTypesFixture) {
 
   // ResourceChange
   auto player = std::make_shared<Player>();
-  HammerEngine::ResourceHandle goldHandle(2, 1);
+  VoidLight::ResourceHandle goldHandle(2, 1);
   ResourceChangeEvent resourceEvent(player->getHandle(), goldHandle, 0, 10, "looted");
   BOOST_CHECK(resourceEvent.getTypeId() == EventTypeId::ResourceChange);
 
@@ -976,14 +976,14 @@ BOOST_FIXTURE_TEST_CASE(AllEventTypesReturnCorrectTypeId, EventTypesFixture) {
   BOOST_CHECK(harvestEvent.getTypeId() == EventTypeId::Harvest);
 
   // Collision
-  HammerEngine::CollisionInfo info;
+  VoidLight::CollisionInfo info;
   info.a = 1;
   info.b = 2;
   CollisionEvent collisionEvent(info);
   BOOST_CHECK(collisionEvent.getTypeId() == EventTypeId::Collision);
 
   // WorldTrigger
-  WorldTriggerEvent triggerEvent(1, 2, HammerEngine::TriggerTag::None, Vector2D(0,0), TriggerPhase::Enter);
+  WorldTriggerEvent triggerEvent(1, 2, VoidLight::TriggerTag::None, Vector2D(0,0), TriggerPhase::Enter);
   BOOST_CHECK(triggerEvent.getTypeId() == EventTypeId::WorldTrigger);
 
   // CollisionObstacleChanged

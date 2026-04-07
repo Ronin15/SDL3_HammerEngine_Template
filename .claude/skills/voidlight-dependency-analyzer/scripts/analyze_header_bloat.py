@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Analyze header bloat and forward declaration opportunities in HammerEngine
+Analyze header bloat and forward declaration opportunities in VoidLight-Framework
 """
 
 import os

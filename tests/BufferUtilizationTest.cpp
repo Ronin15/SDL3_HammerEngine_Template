@@ -20,10 +20,10 @@
 struct GlobalThreadSystemFixture {
     GlobalThreadSystemFixture() {
         // Initialize ThreadSystem with default worker count (hardware_concurrency - 1)
-        HammerEngine::ThreadSystem::Instance().init();
+        VoidLight::ThreadSystem::Instance().init();
     }
     ~GlobalThreadSystemFixture() {
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
     }
 };
 
@@ -35,7 +35,7 @@ BOOST_AUTO_TEST_SUITE(WorkerBudgetManagerTests)
 BOOST_AUTO_TEST_CASE(TestBudgetAllocation) {
     std::cout << "\n=== Testing WorkerBudgetManager Budget Allocation ===\n";
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     const auto& budget = budgetMgr.getBudget();
 
     std::cout << "System: " << budget.totalWorkers << " workers total\n";
@@ -49,17 +49,17 @@ BOOST_AUTO_TEST_CASE(TestBudgetAllocation) {
 BOOST_AUTO_TEST_CASE(TestOptimalWorkersAllWorkloads) {
     std::cout << "\n=== Testing Optimal Workers - Sequential Execution Model ===\n";
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     const auto& budget = budgetMgr.getBudget();
 
     // Any workload should get all workers (sequential execution model)
     size_t lowWorkload = 500;
     size_t optimalLow = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::AI, lowWorkload);
+        VoidLight::SystemType::AI, lowWorkload);
 
     size_t highWorkload = 5000;
     size_t optimalHigh = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::AI, highWorkload);
+        VoidLight::SystemType::AI, highWorkload);
 
     std::cout << "Low workload (" << lowWorkload << " entities): "
               << optimalLow << " workers\n";
@@ -75,10 +75,10 @@ BOOST_AUTO_TEST_CASE(TestOptimalWorkersAllWorkloads) {
 BOOST_AUTO_TEST_CASE(TestZeroWorkloadReturnsZero) {
     std::cout << "\n=== Testing Zero Workload Returns Zero Workers ===\n";
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
     size_t optimalWorkers = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::AI, 0);
+        VoidLight::SystemType::AI, 0);
 
     std::cout << "Zero workload: " << optimalWorkers << " workers\n";
 
@@ -89,14 +89,14 @@ BOOST_AUTO_TEST_CASE(TestZeroWorkloadReturnsZero) {
 BOOST_AUTO_TEST_CASE(TestBatchStrategy) {
     std::cout << "\n=== Testing Batch Strategy ===\n";
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
     size_t workload = 1000;
     size_t optimalWorkers = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::AI, workload);
+        VoidLight::SystemType::AI, workload);
 
     auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::AI, workload, optimalWorkers);
+        VoidLight::SystemType::AI, workload, optimalWorkers);
 
     std::cout << "Workload: " << workload << ", Workers: " << optimalWorkers << "\n";
     std::cout << "Batch strategy: " << batchCount << " batches of size " << batchSize << "\n";
@@ -111,26 +111,26 @@ BOOST_AUTO_TEST_CASE(TestBatchStrategy) {
 BOOST_AUTO_TEST_CASE(TestExecutionReporting) {
     std::cout << "\n=== Testing Execution Reporting ===\n";
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
     // Report some executions (workload, wasThreaded, batchCount, timeMs)
     size_t workload = 1000;
-    budgetMgr.reportExecution(HammerEngine::SystemType::AI, workload, true, 4, 0.5);  // 0.5ms total
-    budgetMgr.reportExecution(HammerEngine::SystemType::AI, workload, true, 4, 0.5);
+    budgetMgr.reportExecution(VoidLight::SystemType::AI, workload, true, 4, 0.5);  // 0.5ms total
+    budgetMgr.reportExecution(VoidLight::SystemType::AI, workload, true, 4, 0.5);
 
     // Get batch strategy after reporting
     size_t workers = 4;
     auto [batchCount1, batchSize1] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::AI, workload, workers);
+        VoidLight::SystemType::AI, workload, workers);
 
     std::cout << "After fast execution (0.5ms total): " << batchCount1 << " batches\n";
 
     // Report slow execution
-    budgetMgr.reportExecution(HammerEngine::SystemType::AI, workload, true, 2, 10.0);  // 10ms total
-    budgetMgr.reportExecution(HammerEngine::SystemType::AI, workload, true, 2, 10.0);
+    budgetMgr.reportExecution(VoidLight::SystemType::AI, workload, true, 2, 10.0);  // 10ms total
+    budgetMgr.reportExecution(VoidLight::SystemType::AI, workload, true, 2, 10.0);
 
     auto [batchCount2, batchSize2] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::AI, workload, workers);
+        VoidLight::SystemType::AI, workload, workers);
 
     std::cout << "After slow execution (10ms total): " << batchCount2 << " batches\n";
 
@@ -142,17 +142,17 @@ BOOST_AUTO_TEST_CASE(TestExecutionReporting) {
 BOOST_AUTO_TEST_CASE(TestAllSystemTypes) {
     std::cout << "\n=== Testing All System Types ===\n";
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     const auto& budget = budgetMgr.getBudget();
 
     size_t workload = 2000;
 
     // Test each system type - all should get same allocation (sequential execution)
-    std::vector<std::pair<HammerEngine::SystemType, const char*>> systems = {
-        {HammerEngine::SystemType::AI, "AI"},
-        {HammerEngine::SystemType::Particle, "Particle"},
-        {HammerEngine::SystemType::Pathfinding, "Pathfinding"},
-        {HammerEngine::SystemType::Event, "Event"}
+    std::vector<std::pair<VoidLight::SystemType, const char*>> systems = {
+        {VoidLight::SystemType::AI, "AI"},
+        {VoidLight::SystemType::Particle, "Particle"},
+        {VoidLight::SystemType::Pathfinding, "Pathfinding"},
+        {VoidLight::SystemType::Event, "Event"}
     };
 
     for (const auto& [type, name] : systems) {
@@ -174,7 +174,7 @@ BOOST_AUTO_TEST_CASE(TestAllSystemTypes) {
 BOOST_AUTO_TEST_CASE(TestCacheInvalidation) {
     std::cout << "\n=== Testing Cache Invalidation ===\n";
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
     // Get initial budget
     const auto& budget1 = budgetMgr.getBudget();
@@ -195,7 +195,7 @@ BOOST_AUTO_TEST_CASE(TestThreadingThresholds) {
     std::cout << "\n=== Testing Threading Thresholds ===\n";
     std::cout << "Finding optimal workload sizes for threading...\n\n";
 
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    auto& threadSystem = VoidLight::ThreadSystem::Instance();
     const size_t workers = threadSystem.getThreadCount();
 
     std::cout << "Workers: " << workers << "\n\n";
@@ -311,11 +311,11 @@ BOOST_AUTO_TEST_CASE(TestThreadingThresholds) {
 BOOST_AUTO_TEST_CASE(TestBatchTuningStability) {
     std::cout << "\n=== Testing Batch Tuning Stability (Simulation) ===\n";
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     const auto& budget = budgetMgr.getBudget();
 
     // Use Particle system to avoid interference with AI state from other tests
-    const auto systemType = HammerEngine::SystemType::Particle;
+    const auto systemType = VoidLight::SystemType::Particle;
     const size_t workload = 14000;  // Simulate 14K entities like real game
     const size_t numFrames = 200;   // Simulate 200 frames (~3.3 seconds at 60fps)
 

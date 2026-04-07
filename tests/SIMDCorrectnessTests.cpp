@@ -14,7 +14,7 @@
 #include "utils/SIMDMath.hpp"
 #include "utils/Vector2D.hpp"
 
-using namespace HammerEngine::SIMD;
+using namespace VoidLight::SIMD;
 
 // Test tolerance for floating-point comparisons
 // SIMD can have slight precision differences from scalar due to FMA instructions

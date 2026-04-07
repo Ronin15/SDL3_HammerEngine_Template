@@ -93,8 +93,8 @@ bool HarvestController::startHarvest() {
     }
 
     // Get harvest type and configuration
-    m_currentType = static_cast<HammerEngine::HarvestType>(harvestData.harvestType);
-    const auto& config = HammerEngine::getHarvestTypeConfig(m_currentType);
+    m_currentType = static_cast<VoidLight::HarvestType>(harvestData.harvestType);
+    const auto& config = VoidLight::getHarvestTypeConfig(m_currentType);
 
     // Start harvesting
     m_isHarvesting = true;
@@ -121,7 +121,7 @@ void HarvestController::cancelHarvest() {
     m_harvestDuration = 0.0f;
     m_currentTarget = EntityHandle{};
     m_targetStaticIndex = 0;
-    m_currentType = HammerEngine::HarvestType::Gathering;
+    m_currentType = VoidLight::HarvestType::Gathering;
 
     HARVEST_DEBUG("Harvest cancelled");
 }
@@ -134,7 +134,7 @@ float HarvestController::getProgress() const {
 }
 
 std::string_view HarvestController::getActionVerb() const {
-    return HammerEngine::harvestTypeToActionVerb(m_currentType);
+    return VoidLight::harvestTypeToActionVerb(m_currentType);
 }
 
 bool HarvestController::findNearestHarvestable(EntityHandle& outHandle, size_t& outStaticIndex) {
@@ -263,11 +263,11 @@ void HarvestController::completeHarvest() {
         edm.createDroppedItem(spawnPos, harvestData.yieldResource, yield, worldId);
 
         HARVEST_INFO(std::format("Completed {} - {} x{} (dropped)",
-                                 HammerEngine::harvestTypeToString(m_currentType),
+                                 VoidLight::harvestTypeToString(m_currentType),
                                  harvestData.yieldResource.toString(), yield));
     } else {
         HARVEST_INFO(std::format("Completed {} - {} x{} (added to inventory)",
-                                 HammerEngine::harvestTypeToString(m_currentType),
+                                 VoidLight::harvestTypeToString(m_currentType),
                                  harvestData.yieldResource.toString(), yield));
     }
 
@@ -279,8 +279,8 @@ void HarvestController::completeHarvest() {
     // Note: Only fires for EDM harvestables. The WorldManager handler will
     // check if the tile actually has an obstacle before modifying it.
     // This allows tile-based and EDM-based harvestables to coexist.
-    int tileX = static_cast<int>(m_targetPosition.getX() / HammerEngine::TILE_SIZE);
-    int tileY = static_cast<int>(m_targetPosition.getY() / HammerEngine::TILE_SIZE);
+    int tileX = static_cast<int>(m_targetPosition.getX() / VoidLight::TILE_SIZE);
+    int tileY = static_cast<int>(m_targetPosition.getY() / VoidLight::TILE_SIZE);
 
     auto harvestEvent = std::make_shared<HarvestResourceEvent>(
         static_cast<int>(m_currentTarget.getId()),
@@ -298,5 +298,5 @@ void HarvestController::completeHarvest() {
     m_harvestDuration = 0.0f;
     m_currentTarget = EntityHandle{};
     m_targetStaticIndex = 0;
-    m_currentType = HammerEngine::HarvestType::Gathering;
+    m_currentType = VoidLight::HarvestType::Gathering;
 }

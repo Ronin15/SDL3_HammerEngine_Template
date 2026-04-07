@@ -1,7 +1,7 @@
-# HammerEngine Resource Update Branch Changelog
+# VoidLight-Framework Resource Update Branch Changelog
 
 ## Overview
-This changelog documents the extensive updates made in the `resource_update` branch, representing a major overhaul of the HammerEngine with focus on resource management, performance optimizations, and system stability.
+This changelog documents the extensive updates made in the `resource_update` branch, representing a major overhaul of the VoidLight-Framework with focus on resource management, performance optimizations, and system stability.
 
 ## 🎯 Major Features Added
 
@@ -131,6 +131,6 @@ This changelog documents the extensive updates made in the `resource_update` bra
 ---
 
 ## Summary
-The `resource_update` branch represents a major evolution of HammerEngine, introducing a robust resource management system, significant performance improvements, and enhanced stability across all platforms. This update establishes a solid foundation for future game development with the engine.
+The `resource_update` branch represents a major evolution of VoidLight-Framework, introducing a robust resource management system, significant performance improvements, and enhanced stability across all platforms. This update establishes a solid foundation for future game development with the engine.
 
 **Total Impact**: 137 files modified, major systems rewritten, comprehensive testing added, and significant performance improvements achieved.

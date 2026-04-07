@@ -19,11 +19,11 @@
 // Global fixture for test setup and cleanup
 struct ThreadTestFixture {
     ThreadTestFixture() {
-        HammerEngine::ThreadSystem::Instance().init(4096);
+        VoidLight::ThreadSystem::Instance().init(4096);
     }
 
     ~ThreadTestFixture() {
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
     }
 };
 
@@ -31,17 +31,17 @@ BOOST_GLOBAL_FIXTURE(ThreadTestFixture);
 
 BOOST_AUTO_TEST_CASE(TestThreadPoolInitialization) {
     // Check that the thread system is initialized
-    BOOST_CHECK(!HammerEngine::ThreadSystem::Instance().isShutdown());
+    BOOST_CHECK(!VoidLight::ThreadSystem::Instance().isShutdown());
 
     // Check that the thread count is reasonable (at least 1)
-    unsigned int threadCount = HammerEngine::ThreadSystem::Instance().getThreadCount();
+    unsigned int threadCount = VoidLight::ThreadSystem::Instance().getThreadCount();
     BOOST_CHECK_GT(threadCount, 0);
 
     // Output the thread count for information
     std::cout << "Thread system initialized with " << threadCount << " threads." << std::endl;
 
     // Check that the queue capacity is set to the test value (4096)
-    BOOST_CHECK_EQUAL(HammerEngine::ThreadSystem::Instance().getQueueCapacity(), 4096);
+    BOOST_CHECK_EQUAL(VoidLight::ThreadSystem::Instance().getQueueCapacity(), 4096);
 }
 
 BOOST_AUTO_TEST_CASE(TestSimpleTaskExecution) {
@@ -49,7 +49,7 @@ BOOST_AUTO_TEST_CASE(TestSimpleTaskExecution) {
     std::atomic<bool> taskExecuted{false};
 
     // Submit a simple task that sets the flag
-    HammerEngine::ThreadSystem::Instance().enqueueTask([&taskExecuted]() {
+    VoidLight::ThreadSystem::Instance().enqueueTask([&taskExecuted]() {
         taskExecuted = true;
     });
 
@@ -62,7 +62,7 @@ BOOST_AUTO_TEST_CASE(TestSimpleTaskExecution) {
 
 BOOST_AUTO_TEST_CASE(TestTaskWithResult) {
     // Submit a task that returns a value
-    auto future = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([]() -> int {
+    auto future = VoidLight::ThreadSystem::Instance().enqueueTaskWithResult([]() -> int {
         return 42;
     });
 
@@ -96,27 +96,27 @@ BOOST_AUTO_TEST_CASE(TestTaskPriorities) {
     };
 
     // Submit tasks with different priorities
-    HammerEngine::ThreadSystem::Instance().enqueueTask(
+    VoidLight::ThreadSystem::Instance().enqueueTask(
         lowPriorityTask,
-        HammerEngine::TaskPriority::Low,
+        VoidLight::TaskPriority::Low,
         "Low priority task"
     );
 
-    HammerEngine::ThreadSystem::Instance().enqueueTask(
+    VoidLight::ThreadSystem::Instance().enqueueTask(
         normalPriorityTask,
-        HammerEngine::TaskPriority::Normal,
+        VoidLight::TaskPriority::Normal,
         "Normal priority task"
     );
 
-    HammerEngine::ThreadSystem::Instance().enqueueTask(
+    VoidLight::ThreadSystem::Instance().enqueueTask(
         highPriorityTask,
-        HammerEngine::TaskPriority::High,
+        VoidLight::TaskPriority::High,
         "High priority task"
     );
 
-    HammerEngine::ThreadSystem::Instance().enqueueTask(
+    VoidLight::ThreadSystem::Instance().enqueueTask(
         criticalPriorityTask,
-        HammerEngine::TaskPriority::Critical,
+        VoidLight::TaskPriority::Critical,
         "Critical priority task"
     );
 
@@ -135,13 +135,13 @@ BOOST_AUTO_TEST_CASE(TestMultipleTasks) {
 
     // Submit multiple tasks
     for (int i = 0; i < numTasks; ++i) {
-        HammerEngine::ThreadSystem::Instance().enqueueTask(
+        VoidLight::ThreadSystem::Instance().enqueueTask(
             [&counter]() {
                 // Simulate some work with reduced sleep time
                 std::this_thread::sleep_for(std::chrono::microseconds(100));
                 counter++;
             },
-            HammerEngine::TaskPriority::Normal,
+            VoidLight::TaskPriority::Normal,
             "Counter increment task"
         );
     }
@@ -163,13 +163,13 @@ BOOST_AUTO_TEST_CASE(TestConcurrentTaskResults) {
 
     // Submit tasks that each return their index
     for (int i = 0; i < numTasks; ++i) {
-        futures.push_back(HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+        futures.push_back(VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
             [i]() -> int {
                 // Simulate varying work times
                 std::this_thread::sleep_for(std::chrono::milliseconds(i % 10));
                 return i;
             },
-            HammerEngine::TaskPriority::Normal,
+            VoidLight::TaskPriority::Normal,
             "Return index task " + std::to_string(i)
         ));
     }
@@ -189,12 +189,12 @@ BOOST_AUTO_TEST_CASE(TestConcurrentTaskResults) {
 
 BOOST_AUTO_TEST_CASE(TestTasksWithExceptions) {
     // Submit a task that throws an exception
-    auto future = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+    auto future = VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
         []() -> int {
             throw std::runtime_error("Test exception");
             return 0; // Never reached
         },
-        HammerEngine::TaskPriority::Normal,
+        VoidLight::TaskPriority::Normal,
         "Exception-throwing task"
     );
 
@@ -212,13 +212,13 @@ BOOST_AUTO_TEST_CASE(TestConcurrencyIsolation) {
     std::vector<std::future<void>> futures;
 
     for (int i = 0; i < numTasks; ++i) {
-        futures.push_back(HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+        futures.push_back(VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
             [&sharedValue, &mutex]() -> void {
                 // Properly lock the shared resource
                 std::lock_guard<std::mutex> lock(mutex);
                 sharedValue++;
             },
-            HammerEngine::TaskPriority::Normal,
+            VoidLight::TaskPriority::Normal,
             "Synchronized increment task"
         ));
     }
@@ -234,26 +234,26 @@ BOOST_AUTO_TEST_CASE(TestConcurrencyIsolation) {
 
 BOOST_AUTO_TEST_CASE(TestBusyFlag) {
     // Check initial busy state - should typically be false before we add work
-    bool initialBusy = HammerEngine::ThreadSystem::Instance().isBusy();
+    bool initialBusy = VoidLight::ThreadSystem::Instance().isBusy();
     BOOST_CHECK(!initialBusy);
 
     // Submit a long-running task
-    HammerEngine::ThreadSystem::Instance().enqueueTask(
+    VoidLight::ThreadSystem::Instance().enqueueTask(
         []() {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         },
-        HammerEngine::TaskPriority::Normal,
+        VoidLight::TaskPriority::Normal,
         "Long-running task"
     );
 
     // Check if system reports as busy
-    bool busyDuringTask = HammerEngine::ThreadSystem::Instance().isBusy();
+    bool busyDuringTask = VoidLight::ThreadSystem::Instance().isBusy();
 
     // Wait for task to complete with a longer timeout
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     // Check if system reports as not busy after task completion
-    bool busyAfterTask = HammerEngine::ThreadSystem::Instance().isBusy();
+    bool busyAfterTask = VoidLight::ThreadSystem::Instance().isBusy();
 
     // Check that the busy flag was set correctly
     // Note: These checks might be flaky due to timing, but should generally work
@@ -266,20 +266,20 @@ BOOST_AUTO_TEST_CASE(TestNestedTasks) {
     std::atomic<int> counter{0};
 
     // Submit a task that itself submits another task
-    HammerEngine::ThreadSystem::Instance().enqueueTask(
+    VoidLight::ThreadSystem::Instance().enqueueTask(
         [&counter]() {
             counter++;
 
             // Submit a nested task
-            HammerEngine::ThreadSystem::Instance().enqueueTask(
+            VoidLight::ThreadSystem::Instance().enqueueTask(
                 [&counter]() {
                     counter++;
                 },
-                HammerEngine::TaskPriority::High,
+                VoidLight::TaskPriority::High,
                 "Nested task"
             );
         },
-        HammerEngine::TaskPriority::Normal,
+        VoidLight::TaskPriority::Normal,
         "Parent task"
     );
 
@@ -301,7 +301,7 @@ BOOST_AUTO_TEST_CASE(TestLoadBalancing) {
     // Submit tasks that record their thread ID
     std::vector<std::future<void>> futures;
     for (int i = 0; i < numTasks; ++i) {
-        futures.push_back(HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+        futures.push_back(VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
             [i, &threadIds, &idMutex]() -> void {
                 // Get the current thread ID
                 unsigned long threadId = std::hash<std::thread::id>{}(std::this_thread::get_id());
@@ -315,7 +315,7 @@ BOOST_AUTO_TEST_CASE(TestLoadBalancing) {
                 // Small amount of work
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             },
-            HammerEngine::TaskPriority::Normal,
+            VoidLight::TaskPriority::Normal,
             "Thread ID recording task " + std::to_string(i)
         ));
     }
@@ -332,7 +332,7 @@ BOOST_AUTO_TEST_CASE(TestLoadBalancing) {
     }
 
     // Ensure that multiple threads were used (should use at least 2 threads)
-    unsigned int threadCount = HammerEngine::ThreadSystem::Instance().getThreadCount();
+    unsigned int threadCount = VoidLight::ThreadSystem::Instance().getThreadCount();
     // In case of single-threaded system, test is still valid
     unsigned int minExpectedThreads = (threadCount > 1) ? 2 : 1;
 
@@ -342,17 +342,17 @@ BOOST_AUTO_TEST_CASE(TestLoadBalancing) {
 
 BOOST_AUTO_TEST_CASE(TestQueueCapacityReservation) {
     // Test that we can reserve capacity in the queue
-    size_t initialCapacity = HammerEngine::ThreadSystem::Instance().getQueueCapacity();
+    size_t initialCapacity = VoidLight::ThreadSystem::Instance().getQueueCapacity();
     size_t newCapacity = initialCapacity * 2;
 
     // Reserve more capacity
-    bool success = HammerEngine::ThreadSystem::Instance().reserveQueueCapacity(newCapacity);
+    bool success = VoidLight::ThreadSystem::Instance().reserveQueueCapacity(newCapacity);
 
     // Check that reservation succeeded
     BOOST_CHECK(success);
 
     // Check that capacity was increased
-    BOOST_CHECK_GE(HammerEngine::ThreadSystem::Instance().getQueueCapacity(), newCapacity);
+    BOOST_CHECK_GE(VoidLight::ThreadSystem::Instance().getQueueCapacity(), newCapacity);
 }
 
 BOOST_AUTO_TEST_CASE(TestTaskStats) {
@@ -361,16 +361,16 @@ BOOST_AUTO_TEST_CASE(TestTaskStats) {
     std::vector<std::future<void>> futures;
 
     // Get initial task stats
-    size_t initialEnqueued = HammerEngine::ThreadSystem::Instance().getTotalTasksEnqueued();
-    size_t initialProcessed = HammerEngine::ThreadSystem::Instance().getTotalTasksProcessed();
+    size_t initialEnqueued = VoidLight::ThreadSystem::Instance().getTotalTasksEnqueued();
+    size_t initialProcessed = VoidLight::ThreadSystem::Instance().getTotalTasksProcessed();
 
     // Submit tasks
     for (int i = 0; i < numTasks; ++i) {
-        futures.push_back(HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+        futures.push_back(VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
             []() -> void {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             },
-            HammerEngine::TaskPriority::Normal,
+            VoidLight::TaskPriority::Normal,
             "Stats test task"
         ));
     }
@@ -381,13 +381,13 @@ BOOST_AUTO_TEST_CASE(TestTaskStats) {
     }
 
     // Ensure worker threads have updated processed counters before sampling
-    for (int i = 0; i < 20 && HammerEngine::ThreadSystem::Instance().isBusy(); ++i) {
+    for (int i = 0; i < 20 && VoidLight::ThreadSystem::Instance().isBusy(); ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     // Check that task statistics were updated
-    size_t finalEnqueued = HammerEngine::ThreadSystem::Instance().getTotalTasksEnqueued();
-    size_t finalProcessed = HammerEngine::ThreadSystem::Instance().getTotalTasksProcessed();
+    size_t finalEnqueued = VoidLight::ThreadSystem::Instance().getTotalTasksEnqueued();
+    size_t finalProcessed = VoidLight::ThreadSystem::Instance().getTotalTasksProcessed();
 
     BOOST_CHECK_GE(finalEnqueued, initialEnqueued + numTasks);
     BOOST_CHECK_GE(finalProcessed, initialProcessed + numTasks);
@@ -402,7 +402,7 @@ BOOST_AUTO_TEST_CASE(TestQueueOverflowProtection) {
 
     // Submit many tasks quickly to test queue limits
     for (size_t i = 0; i < testTaskCount; ++i) {
-        futures.push_back(HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+        futures.push_back(VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
             []() -> void {
                 // Small work to simulate AI batch processing
                 volatile float temp = 0.0f;
@@ -410,13 +410,13 @@ BOOST_AUTO_TEST_CASE(TestQueueOverflowProtection) {
                     temp += std::sqrt(static_cast<float>(j + 1));
                 }
             },
-            HammerEngine::TaskPriority::Normal,
+            VoidLight::TaskPriority::Normal,
             "Load test task"
         ));
 
         // Check queue size periodically
         if (i % 500 == 0) {
-            size_t currentQueueSize = HammerEngine::ThreadSystem::Instance().getQueueSize();
+            size_t currentQueueSize = VoidLight::ThreadSystem::Instance().getQueueSize();
             std::cout << "Queue size at " << i << " tasks: " << currentQueueSize << std::endl;
 
             // Verify we're not approaching dangerous levels
@@ -430,7 +430,7 @@ BOOST_AUTO_TEST_CASE(TestQueueOverflowProtection) {
     }
 
     // Final queue size should be manageable
-    size_t finalQueueSize = HammerEngine::ThreadSystem::Instance().getQueueSize();
+    size_t finalQueueSize = VoidLight::ThreadSystem::Instance().getQueueSize();
     std::cout << "Final queue size: " << finalQueueSize << std::endl;
     BOOST_CHECK_LT(finalQueueSize, 100); // Should drain quickly
 }
@@ -445,22 +445,22 @@ BOOST_AUTO_TEST_CASE(TestBurstTaskSubmission) {
     const int burstCount = 10;
 
     for (int burst = 0; burst < burstCount; ++burst) {
-        size_t queueBefore = HammerEngine::ThreadSystem::Instance().getQueueSize();
+        size_t queueBefore = VoidLight::ThreadSystem::Instance().getQueueSize();
 
         // Submit a burst of tasks quickly (simulating AI batch submission)
         std::vector<std::future<void>> burstTasks;
         for (int i = 0; i < burstSize; ++i) {
-            burstTasks.push_back(HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+            burstTasks.push_back(VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
                 []() -> void {
                     // Simulate AI processing work
                     std::this_thread::sleep_for(std::chrono::microseconds(100));
                 },
-                HammerEngine::TaskPriority::Normal,
+                VoidLight::TaskPriority::Normal,
                 "Burst task"
             ));
         }
 
-        size_t queueAfter = HammerEngine::ThreadSystem::Instance().getQueueSize();
+        size_t queueAfter = VoidLight::ThreadSystem::Instance().getQueueSize();
         size_t queueGrowth = queueAfter - queueBefore;
 
         std::cout << "Burst " << burst << ": Added " << queueGrowth << " tasks, queue size: " << queueAfter << std::endl;
@@ -482,21 +482,21 @@ BOOST_AUTO_TEST_CASE(TestBurstTaskSubmission) {
 
 BOOST_AUTO_TEST_CASE(TestThreadSystemReinitialization) {
     // Clean up the current thread system
-    HammerEngine::ThreadSystem::Instance().clean();
+    VoidLight::ThreadSystem::Instance().clean();
 
     // Verify it's shut down
-    BOOST_CHECK(HammerEngine::ThreadSystem::Instance().isShutdown());
+    BOOST_CHECK(VoidLight::ThreadSystem::Instance().isShutdown());
 
     // Try to re-initialize with custom settings
     unsigned int customThreads = 2;
     size_t customCapacity = 1024;
 
     // This should fail because the system was already shut down
-    bool initSuccess = HammerEngine::ThreadSystem::Instance().init(customCapacity, customThreads);
+    bool initSuccess = VoidLight::ThreadSystem::Instance().init(customCapacity, customThreads);
 
     // The init should fail since we already cleaned up
     BOOST_CHECK(!initSuccess);
 
     // Thread system should still be in shutdown state
-    BOOST_CHECK(HammerEngine::ThreadSystem::Instance().isShutdown());
+    BOOST_CHECK(VoidLight::ThreadSystem::Instance().isShutdown());
 }

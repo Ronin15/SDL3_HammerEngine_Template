@@ -49,7 +49,7 @@ Migrate resource entities and inventory into `EntityDataManager` following the `
  * Matches InventorySlot from InventoryComponent.hpp but POD-friendly
  */
 struct InventorySlotData {
-    HammerEngine::ResourceHandle resourceHandle;  // 4 bytes (32-bit handle)
+    VoidLight-Framework::ResourceHandle resourceHandle;  // 4 bytes (32-bit handle)
     int16_t quantity{0};                          // 2 bytes
     int16_t _pad{0};                              // 2 bytes alignment
 
@@ -57,7 +57,7 @@ struct InventorySlotData {
         return !resourceHandle.isValid() || quantity <= 0;
     }
     void clear() noexcept {
-        resourceHandle = HammerEngine::INVALID_RESOURCE_HANDLE;
+        resourceHandle = VoidLight-Framework::INVALID_RESOURCE_HANDLE;
         quantity = 0;
     }
 };
@@ -157,23 +157,23 @@ struct InventoryOverflow {
      * @brief Add resource to inventory (handles stacking)
      * @return true if all quantity was added, false if partial or failed
      */
-    bool addToInventory(uint32_t inventoryIndex, HammerEngine::ResourceHandle handle, int quantity);
+    bool addToInventory(uint32_t inventoryIndex, VoidLight-Framework::ResourceHandle handle, int quantity);
 
     /**
      * @brief Remove resource from inventory
      * @return true if quantity was removed, false if insufficient
      */
-    bool removeFromInventory(uint32_t inventoryIndex, HammerEngine::ResourceHandle handle, int quantity);
+    bool removeFromInventory(uint32_t inventoryIndex, VoidLight-Framework::ResourceHandle handle, int quantity);
 
     /**
      * @brief Get total quantity of resource in inventory
      */
-    [[nodiscard]] int getInventoryQuantity(uint32_t inventoryIndex, HammerEngine::ResourceHandle handle) const;
+    [[nodiscard]] int getInventoryQuantity(uint32_t inventoryIndex, VoidLight-Framework::ResourceHandle handle) const;
 
     /**
      * @brief Check if inventory has at least minQty of resource
      */
-    [[nodiscard]] bool hasInInventory(uint32_t inventoryIndex, HammerEngine::ResourceHandle handle, int minQty = 1) const;
+    [[nodiscard]] bool hasInInventory(uint32_t inventoryIndex, VoidLight-Framework::ResourceHandle handle, int minQty = 1) const;
 
     /**
      * @brief Set world tracking for an inventory
@@ -247,7 +247,7 @@ const InventoryData& EntityDataManager::getInventoryData(uint32_t inventoryIndex
     return m_inventoryData[inventoryIndex];
 }
 
-bool EntityDataManager::addToInventory(uint32_t inventoryIndex, HammerEngine::ResourceHandle handle, int quantity) {
+bool EntityDataManager::addToInventory(uint32_t inventoryIndex, VoidLight-Framework::ResourceHandle handle, int quantity) {
     if (inventoryIndex >= m_inventoryData.size() || quantity <= 0) {
         return false;
     }
@@ -301,7 +301,7 @@ bool EntityDataManager::addToInventory(uint32_t inventoryIndex, HammerEngine::Re
     return remaining == 0;  // True if all added
 }
 
-bool EntityDataManager::removeFromInventory(uint32_t inventoryIndex, HammerEngine::ResourceHandle handle, int quantity) {
+bool EntityDataManager::removeFromInventory(uint32_t inventoryIndex, VoidLight-Framework::ResourceHandle handle, int quantity) {
     if (inventoryIndex >= m_inventoryData.size() || quantity <= 0) {
         return false;
     }
@@ -346,7 +346,7 @@ bool EntityDataManager::removeFromInventory(uint32_t inventoryIndex, HammerEngin
     return remaining == 0;
 }
 
-int EntityDataManager::getInventoryQuantity(uint32_t inventoryIndex, HammerEngine::ResourceHandle handle) const {
+int EntityDataManager::getInventoryQuantity(uint32_t inventoryIndex, VoidLight-Framework::ResourceHandle handle) const {
     if (inventoryIndex >= m_inventoryData.size()) {
         return 0;
     }
@@ -376,7 +376,7 @@ int EntityDataManager::getInventoryQuantity(uint32_t inventoryIndex, HammerEngin
     return total;
 }
 
-bool EntityDataManager::hasInInventory(uint32_t inventoryIndex, HammerEngine::ResourceHandle handle, int minQty) const {
+bool EntityDataManager::hasInInventory(uint32_t inventoryIndex, VoidLight-Framework::ResourceHandle handle, int minQty) const {
     return getInventoryQuantity(inventoryIndex, handle) >= minQty;
 }
 
@@ -938,7 +938,7 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
                                                   uint16_t maxSlots,
                                                   uint8_t lockLevel) {
     size_t index = allocateSlot();
-    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    EntityHandle::IDType id = VoidLight-Framework::UniqueID::generate();
     uint8_t generation = nextGeneration(index);
 
     // Initialize hot data
@@ -955,8 +955,8 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
     hot.generation = generation;
 
     // Collision (interact trigger, not physical)
-    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Default;
-    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player;
+    hot.collisionLayers = VoidLight-Framework::CollisionLayer::Layer_Default;
+    hot.collisionMask = VoidLight-Framework::CollisionLayer::Layer_Player;
     hot.collisionFlags = EntityHotData::IS_TRIGGER;
 
     // Allocate container data
@@ -1154,7 +1154,7 @@ struct HarvestableRenderData {
     struct HarvestableTypeInfo {
         std::string normalTextureID;
         std::string depletedTextureID;
-        HammerEngine::ResourceHandle yieldResource;
+        VoidLight-Framework::ResourceHandle yieldResource;
         int yieldMin;
         int yieldMax;
         float respawnTime;
@@ -1191,9 +1191,9 @@ Similar pattern to Container - implement createHarvestable() and HarvestableRend
 ```cpp
     // EDM integration methods
     int64_t getResourceQuantityFromEDM(const WorldId& worldId,
-                                        HammerEngine::ResourceHandle handle) const;
+                                        VoidLight-Framework::ResourceHandle handle) const;
 
-    std::unordered_map<HammerEngine::ResourceHandle, int64_t>
+    std::unordered_map<VoidLight-Framework::ResourceHandle, int64_t>
     calculateWorldTotalsFromEDM(const WorldId& worldId) const;
 
     void registerEDMInventory(uint32_t inventoryIndex, const WorldId& worldId);
@@ -1210,7 +1210,7 @@ private:
 ```cpp
 int64_t WorldResourceManager::getResourceQuantityFromEDM(
     const WorldId& worldId,
-    HammerEngine::ResourceHandle handle) const {
+    VoidLight-Framework::ResourceHandle handle) const {
 
     auto it = m_edmInventoriesByWorld.find(worldId);
     if (it == m_edmInventoriesByWorld.end()) {

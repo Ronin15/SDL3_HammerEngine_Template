@@ -18,7 +18,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 
 // Helper function to find resource handle by name
-HammerEngine::ResourceHandle
+VoidLight::ResourceHandle
 findResourceByName(ResourceTemplateManager *manager, const std::string &name) {
   // Use a more efficient approach - iterate through resource handles we know
   // exist rather than testing every possible handle ID
@@ -31,7 +31,7 @@ findResourceByName(ResourceTemplateManager *manager, const std::string &name) {
       }
     }
   }
-  return HammerEngine::ResourceHandle(); // Invalid handle
+  return VoidLight::ResourceHandle(); // Invalid handle
 }
 
 class ResourceTemplateManagerJsonTestFixture {

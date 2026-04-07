@@ -17,7 +17,7 @@
 #include <memory>
 #include <vector>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * Main GPU renderer singleton.
@@ -260,6 +260,6 @@ private:
     bool m_initialized{false};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_RENDERER_HPP

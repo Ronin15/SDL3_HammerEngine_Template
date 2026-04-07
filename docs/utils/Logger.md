@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Hammer Game Engine logging system provides efficient, configurable logging with zero overhead in release builds. The system is designed for high-performance game development with separate debug and release configurations.
+The VoidLight Engine logging system provides efficient, configurable logging with zero overhead in release builds. The system is designed for high-performance game development with separate debug and release configurations.
 
 ## Table of Contents
 
@@ -51,7 +51,7 @@ SOUND_WARN("Audio device not found, using software mixing");
 ### Class Structure
 
 ```cpp
-namespace HammerEngine {
+namespace VoidLight-Framework {
     enum class LogLevel : uint8_t {
         CRITICAL = 0,  // Always logged (even in release)
         ERROR = 1,     // Debug only
@@ -104,7 +104,7 @@ namespace HammerEngine {
     // Full Logger class with printf-based output
     // All log levels functional
     // Immediate flushing for real-time feedback
-    #define HAMMER_INFO(system, msg) HammerEngine::Logger::Log(HammerEngine::LogLevel::INFO, system, std::string(msg))
+    #define HAMMER_INFO(system, msg) VoidLight-Framework::Logger::Log(VoidLight-Framework::LogLevel::INFO, system, std::string(msg))
 #endif
 ```
 
@@ -113,7 +113,7 @@ namespace HammerEngine {
 #else
     // Ultra-minimal overhead
     #define HAMMER_CRITICAL(system, msg) do { \
-        printf("Hammer Game Engine - [%s] CRITICAL: %s\n", system, std::string(msg).c_str()); \
+        printf("VoidLight Engine - [%s] CRITICAL: %s\n", system, std::string(msg).c_str()); \
     } while(0)
 
     // All other levels become no-ops
@@ -339,15 +339,15 @@ The logging system includes a benchmark mode that disables all logging output fo
 // Enable benchmark mode (disables all logging)
 HAMMER_ENABLE_BENCHMARK_MODE();
 // or
-HammerEngine::Logger::SetBenchmarkMode(true);
+VoidLight-Framework::Logger::SetBenchmarkMode(true);
 
 // Disable benchmark mode (re-enables logging)
 HAMMER_DISABLE_BENCHMARK_MODE();
 // or
-HammerEngine::Logger::SetBenchmarkMode(false);
+VoidLight-Framework::Logger::SetBenchmarkMode(false);
 
 // Check current benchmark mode status
-if (HammerEngine::Logger::IsBenchmarkMode()) {
+if (VoidLight-Framework::Logger::IsBenchmarkMode()) {
     // Logging is currently disabled
 }
 ```
@@ -412,7 +412,7 @@ void runPerformanceTest() {
 ### Basic System Initialization
 ```cpp
 bool GameEngine::init(std::string_view title, int width, int height, bool fullscreen) {
-    GAMEENGINE_INFO("Initializing Hammer Game Engine");
+    GAMEENGINE_INFO("Initializing VoidLight Engine");
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
         GAMEENGINE_CRITICAL("Failed to initialize SDL: " + std::string(SDL_GetError()));
@@ -608,4 +608,4 @@ AI_DEBUG("AI update completed in " + std::to_string(duration.count()) + " micros
 
 ---
 
-The Logger system provides the foundation for debugging and monitoring the Hammer Game Engine. Use it liberally in debug builds for comprehensive insight into system behavior, while maintaining zero overhead in release builds for optimal performance.
+The Logger system provides the foundation for debugging and monitoring the VoidLight Engine. Use it liberally in debug builds for comprehensive insight into system behavior, while maintaining zero overhead in release builds for optimal performance.

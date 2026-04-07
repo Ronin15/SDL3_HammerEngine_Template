@@ -13,7 +13,7 @@
 #include "entities/Entity.hpp"
 #include "ai/pathfinding/PathfindingGrid.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 
 enum class RequestPriority : uint8_t { LOW, NORMAL, HIGH, CRITICAL };
 enum class RequestStatus : uint8_t { PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED };
@@ -29,7 +29,7 @@ struct PathfindingRequest {
     std::function<void(const PathfindingRequest&)> onComplete; // optional
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // PATHFINDING_REQUEST_HPP
 

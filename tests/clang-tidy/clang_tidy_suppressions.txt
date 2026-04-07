@@ -1,4 +1,4 @@
-# clang-tidy suppressions for SDL3_HammerEngine
+# clang-tidy suppressions for SDL3 VoidLight-Framework
 # Format: file_pattern:check_name:reason
 #
 # These are false positives or intentional patterns that should be suppressed

@@ -13,7 +13,7 @@
 #include "events/ResourceChangeEvent.hpp"
 #include "utils/ResourceHandle.hpp"
 
-using HammerEngine::ResourceHandle;
+using VoidLight::ResourceHandle;
 
 // Test handles - ResourceChangeEvent just stores handles, doesn't need real entities
 static const EntityHandle TEST_PLAYER_HANDLE{1, EntityKind::Player, 1};

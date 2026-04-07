@@ -23,7 +23,7 @@
 #include "controllers/ControllerBase.hpp"
 #include "controllers/IUpdatable.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 struct GPUSceneContext;
 }
 
@@ -52,7 +52,7 @@ public:
      * Called during vertex recording phase. Uses ctx.spriteBatch->draw()
      * for atlas-based rendering. Batch lifecycle managed by GPUSceneRecorder.
      */
-    void recordGPU(const HammerEngine::GPUSceneContext& ctx);
+    void recordGPU(const VoidLight::GPUSceneContext& ctx);
 
     /**
      * @brief Clear all spawned NPCs (cleanup for state transitions)

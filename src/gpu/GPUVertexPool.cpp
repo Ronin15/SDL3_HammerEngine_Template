@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 bool GPUVertexPool::init(SDL_GPUDevice* device, uint32_t vertexSize, size_t maxVertices) {
     if (!device) {
@@ -177,4 +177,4 @@ bool GPUVertexPool::upload(SDL_GPUCopyPass* copyPass) {
     return true;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

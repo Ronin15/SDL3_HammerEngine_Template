@@ -115,56 +115,56 @@ namespace Behaviors {
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Idle behavior configuration
  */
-void executeIdle(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& config);
+void executeIdle(BehaviorContext& ctx, const VoidLight::IdleBehaviorConfig& config);
 
 /**
  * @brief Execute Wander behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Wander behavior configuration
  */
-void executeWander(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfig& config);
+void executeWander(BehaviorContext& ctx, const VoidLight::WanderBehaviorConfig& config);
 
 /**
  * @brief Execute Chase behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Chase behavior configuration
  */
-void executeChase(BehaviorContext& ctx, const HammerEngine::ChaseBehaviorConfig& config);
+void executeChase(BehaviorContext& ctx, const VoidLight::ChaseBehaviorConfig& config);
 
 /**
  * @brief Execute Patrol behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Patrol behavior configuration
  */
-void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfig& config);
+void executePatrol(BehaviorContext& ctx, const VoidLight::PatrolBehaviorConfig& config);
 
 /**
  * @brief Execute Guard behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Guard behavior configuration
  */
-void executeGuard(BehaviorContext& ctx, const HammerEngine::GuardBehaviorConfig& config);
+void executeGuard(BehaviorContext& ctx, const VoidLight::GuardBehaviorConfig& config);
 
 /**
  * @brief Execute Attack behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Attack behavior configuration
  */
-void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfig& config);
+void executeAttack(BehaviorContext& ctx, const VoidLight::AttackBehaviorConfig& config);
 
 /**
  * @brief Execute Flee behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Flee behavior configuration
  */
-void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& config);
+void executeFlee(BehaviorContext& ctx, const VoidLight::FleeBehaviorConfig& config);
 
 /**
  * @brief Execute Follow behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Follow behavior configuration
  */
-void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfig& config);
+void executeFollow(BehaviorContext& ctx, const VoidLight::FollowBehaviorConfig& config);
 
 // ============================================================================
 // INITIALIZATION FUNCTIONS (called when behavior assigned)
@@ -175,56 +175,56 @@ void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfi
  * @param edmIndex Entity's index in EDM
  * @param config Idle behavior configuration
  */
-void initIdle(size_t edmIndex, const HammerEngine::IdleBehaviorConfig& config);
+void initIdle(size_t edmIndex, const VoidLight::IdleBehaviorConfig& config);
 
 /**
  * @brief Initialize Wander behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Wander behavior configuration
  */
-void initWander(size_t edmIndex, const HammerEngine::WanderBehaviorConfig& config);
+void initWander(size_t edmIndex, const VoidLight::WanderBehaviorConfig& config);
 
 /**
  * @brief Initialize Chase behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Chase behavior configuration
  */
-void initChase(size_t edmIndex, const HammerEngine::ChaseBehaviorConfig& config);
+void initChase(size_t edmIndex, const VoidLight::ChaseBehaviorConfig& config);
 
 /**
  * @brief Initialize Patrol behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Patrol behavior configuration
  */
-void initPatrol(size_t edmIndex, const HammerEngine::PatrolBehaviorConfig& config);
+void initPatrol(size_t edmIndex, const VoidLight::PatrolBehaviorConfig& config);
 
 /**
  * @brief Initialize Guard behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Guard behavior configuration
  */
-void initGuard(size_t edmIndex, const HammerEngine::GuardBehaviorConfig& config);
+void initGuard(size_t edmIndex, const VoidLight::GuardBehaviorConfig& config);
 
 /**
  * @brief Initialize Attack behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Attack behavior configuration
  */
-void initAttack(size_t edmIndex, const HammerEngine::AttackBehaviorConfig& config);
+void initAttack(size_t edmIndex, const VoidLight::AttackBehaviorConfig& config);
 
 /**
  * @brief Initialize Flee behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Flee behavior configuration
  */
-void initFlee(size_t edmIndex, const HammerEngine::FleeBehaviorConfig& config);
+void initFlee(size_t edmIndex, const VoidLight::FleeBehaviorConfig& config);
 
 /**
  * @brief Initialize Follow behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Follow behavior configuration
  */
-void initFollow(size_t edmIndex, const HammerEngine::FollowBehaviorConfig& config);
+void initFollow(size_t edmIndex, const VoidLight::FollowBehaviorConfig& config);
 
 // ============================================================================
 // MAIN DISPATCHER
@@ -238,7 +238,7 @@ void initFollow(size_t edmIndex, const HammerEngine::FollowBehaviorConfig& confi
  * This is the main entry point for behavior execution. It dispatches to
  * the appropriate execute function based on the behavior type.
  */
-void execute(BehaviorContext& ctx, const HammerEngine::BehaviorConfigData& configData);
+void execute(BehaviorContext& ctx, const VoidLight::BehaviorConfigData& configData);
 
 /**
  * @brief Initialize behavior state based on config type (switch dispatch)
@@ -248,7 +248,7 @@ void execute(BehaviorContext& ctx, const HammerEngine::BehaviorConfigData& confi
  * This is the main entry point for behavior initialization. It dispatches to
  * the appropriate init function based on the behavior type.
  */
-void init(size_t edmIndex, const HammerEngine::BehaviorConfigData& configData);
+void init(size_t edmIndex, const VoidLight::BehaviorConfigData& configData);
 
 // ============================================================================
 // BEHAVIOR SWITCHING (called from within behaviors)
@@ -271,7 +271,7 @@ void switchBehavior(size_t edmIndex, BehaviorType newType);
  *
  * Queues a behavior transition command for main-thread commit by AIManager.
  */
-void switchBehavior(size_t edmIndex, const HammerEngine::BehaviorConfigData& config);
+void switchBehavior(size_t edmIndex, const VoidLight::BehaviorConfigData& config);
 
 // ============================================================================
 // UTILITY FUNCTIONS (shared across behaviors)
@@ -348,7 +348,7 @@ float calculateAngleToTarget(const Vector2D& from, const Vector2D& to);
  * @param type Behavior type
  * @return Default BehaviorConfigData for that type
  */
-HammerEngine::BehaviorConfigData getDefaultConfig(BehaviorType type);
+VoidLight::BehaviorConfigData getDefaultConfig(BehaviorType type);
 
 // ============================================================================
 // COMBAT EVENT PROCESSING (AI-layer wrappers for EDM data + emotion logic)

@@ -359,16 +359,16 @@ NPCSpawnEvent::spawnNPCs(const SpawnParameters &params, float x, float y) {
       // Adjust to navigable position
       if (params.useAreaRect) {
         spawnPos = PathfinderManager::Instance().adjustSpawnToNavigableInRect(
-            spawnPos, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f,
+            spawnPos, VoidLight::TILE_SIZE, VoidLight::TILE_SIZE, 150.0f,
             params.areaMinX, params.areaMinY, params.areaMaxX, params.areaMaxY);
       } else if (params.useAreaCircle) {
         spawnPos = PathfinderManager::Instance().adjustSpawnToNavigableInCircle(
-            spawnPos, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f,
+            spawnPos, VoidLight::TILE_SIZE, VoidLight::TILE_SIZE, 150.0f,
             Vector2D(params.areaCenterX, params.areaCenterY),
             params.areaRadius);
       } else {
         spawnPos = PathfinderManager::Instance().adjustSpawnToNavigable(
-            spawnPos, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f);
+            spawnPos, VoidLight::TILE_SIZE, VoidLight::TILE_SIZE, 150.0f);
       }
 
       // Determine race and class for this NPC

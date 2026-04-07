@@ -42,7 +42,7 @@ public:
      * @param worldConfig World generation configuration
      */
     void configure(const std::string& targetStateName,
-                   const HammerEngine::WorldGenerationConfig& worldConfig);
+                   const VoidLight::WorldGenerationConfig& worldConfig);
 
     bool enter() override;
     void update(float deltaTime) override;
@@ -51,9 +51,9 @@ public:
     std::string getName() const override;
 
     // GPU rendering support
-    void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+    void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                            float interpolationAlpha) override;
-    void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+    void renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                      SDL_GPURenderPass* swapchainPass) override;
     bool supportsGPURendering() const override { return true; }
 
@@ -74,7 +74,7 @@ private:
     std::string m_targetStateName;
 
     // World generation configuration
-    HammerEngine::WorldGenerationConfig m_worldConfig{};
+    VoidLight::WorldGenerationConfig m_worldConfig{};
 
     // Async loading state (thread-safe atomics)
     std::atomic<float> m_progress{0.0f};

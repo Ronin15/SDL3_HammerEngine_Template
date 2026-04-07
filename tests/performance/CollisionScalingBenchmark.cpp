@@ -43,7 +43,7 @@ public:
     CollisionScalingFixture() {
         // Initialize systems once per fixture
         if (!s_initialized) {
-            HammerEngine::ThreadSystem::Instance().init();
+            VoidLight::ThreadSystem::Instance().init();
             EntityDataManager::Instance().init();
             CollisionManager::Instance().init();
             BackgroundSimulationManager::Instance().init();
@@ -60,7 +60,7 @@ public:
     void prepareForTest() {
         CollisionManager::Instance().prepareForStateTransition();
         EntityDataManager::Instance().prepareForStateTransition();
-        HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+        VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
     }
 
     // Create movable entities in EDM
@@ -139,8 +139,8 @@ public:
             // Create EventOnly trigger (water, area markers, etc.)
             EntityID id = cm.createTriggerAreaAt(
                 pos.getX(), pos.getY(), 32.0f, 32.0f,
-                HammerEngine::TriggerTag::Water,
-                HammerEngine::TriggerType::EventOnly,
+                VoidLight::TriggerTag::Water,
+                VoidLight::TriggerType::EventOnly,
                 CollisionLayer::Layer_Environment,
                 CollisionLayer::Layer_Player | CollisionLayer::Layer_Enemy
             );
@@ -249,7 +249,7 @@ struct CollisionScalingModuleCleanup {
         BackgroundSimulationManager::Instance().clean();
         CollisionManager::Instance().clean();
         EntityDataManager::Instance().clean();
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
 
         CollisionScalingFixture::initializedFlag() = false;
     }
@@ -268,7 +268,7 @@ BOOST_FIXTURE_TEST_SUITE(CollisionScalingTests, CollisionScalingFixture)
 // Print header with system info
 BOOST_AUTO_TEST_CASE(PrintHeader)
 {
-    const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+    const auto& budget = VoidLight::WorkerBudgetManager::Instance().getBudget();
 
     std::cout << "\n=== Collision Scaling Benchmark ===\n";
     std::cout << "Date: " << __DATE__ << " " << __TIME__ << "\n";

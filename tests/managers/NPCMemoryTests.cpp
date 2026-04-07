@@ -28,11 +28,11 @@ namespace {
 
 struct ThreadSystemTestLifetime {
     ThreadSystemTestLifetime() {
-        HammerEngine::ThreadSystem::Instance().init();
+        VoidLight::ThreadSystem::Instance().init();
     }
 
     ~ThreadSystemTestLifetime() {
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
     }
 };
 

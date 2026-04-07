@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Extract include dependencies from HammerEngine headers
+Extract include dependencies from VoidLight-Framework headers
 """
 
 import os

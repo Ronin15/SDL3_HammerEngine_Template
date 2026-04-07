@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Atlas Tool for HammerEngine
+Atlas Tool for VoidLight-Framework
 
 Coherent workflow for managing sprite atlases:
 
@@ -841,7 +841,7 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Atlas Mapper - HammerEngine</title>
+    <title>Atlas Mapper - VoidLight-Framework</title>
     <style>
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
         body {{ font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; height: 100vh; overflow: hidden; }}
@@ -1603,7 +1603,7 @@ def cmd_list(paths: dict):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Atlas Tool for HammerEngine',
+        description='Atlas Tool for VoidLight-Framework',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Workflow:

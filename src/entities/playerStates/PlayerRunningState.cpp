@@ -87,7 +87,7 @@ void PlayerRunningState::handleMovementInput(float deltaTime) {
 
         // Don't move player when clicking on UI elements (inventory, buttons, etc.)
         if (!UIManager::Instance().isClickOnUI(mouseScreenPos)) {
-            const HammerEngine::Camera* camera = m_player.get().getCamera();
+            const VoidLight::Camera* camera = m_player.get().getCamera();
             if (camera) {
                 // Convert mouse screen position to world coordinates
                 Vector2D mouseWorldPos = camera->screenToWorld(mouseScreenPos);

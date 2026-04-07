@@ -67,9 +67,9 @@ if(APPLE)
     set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -flto")
 
     # Store aggressive flags for our project targets only
-    set(HAMMER_AGGRESSIVE_C_FLAGS
+    set(VOIDLIGHT_AGGRESSIVE_C_FLAGS
         "-ffunction-sections -fdata-sections -ffast-math -ftree-vectorize -funroll-loops")
-    set(HAMMER_AGGRESSIVE_CXX_FLAGS
+    set(VOIDLIGHT_AGGRESSIVE_CXX_FLAGS
         "-ffunction-sections -fdata-sections -ffast-math -ftree-vectorize -funroll-loops")
 else()
     # x86-64 specific flags (safe for all targets)
@@ -83,10 +83,10 @@ else()
     set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -flto -fuse-linker-plugin")
 
     # Store aggressive flags for our project targets only
-    set(HAMMER_AGGRESSIVE_C_FLAGS
+    set(VOIDLIGHT_AGGRESSIVE_C_FLAGS
         "-ffunction-sections -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
         -funroll-loops -march=x86-64-v3 -mtune=generic -msse4.2 -mavx -mavx2 -mfma")
-    set(HAMMER_AGGRESSIVE_CXX_FLAGS
+    set(VOIDLIGHT_AGGRESSIVE_CXX_FLAGS
         "-ffunction-sections -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
         -funroll-loops -march=x86-64-v3 -mtune=generic -msse4.2 -mavx -mavx2 -mfma")
 endif()
@@ -97,15 +97,15 @@ endif()
 if(APPLE)
     set(CMAKE_C_FLAGS_PROFILE "-O2 -g -fno-strict-aliasing -DNDEBUG")
     set(CMAKE_CXX_FLAGS_PROFILE "-O2 -g -fno-strict-aliasing -DNDEBUG")
-    set(HAMMER_PROFILE_C_FLAGS "-ffunction-sections -fdata-sections -ftree-vectorize")
-    set(HAMMER_PROFILE_CXX_FLAGS "-ffunction-sections -fdata-sections -ftree-vectorize")
+    set(VOIDLIGHT_PROFILE_C_FLAGS "-ffunction-sections -fdata-sections -ftree-vectorize")
+    set(VOIDLIGHT_PROFILE_CXX_FLAGS "-ffunction-sections -fdata-sections -ftree-vectorize")
 else()
     # x86-64 Profile flags - SSE4.2 max (no AVX) for Valgrind compatibility
     set(CMAKE_C_FLAGS_PROFILE "-O2 -g -fno-strict-aliasing -DNDEBUG")
     set(CMAKE_CXX_FLAGS_PROFILE "-O2 -g -fno-strict-aliasing -DNDEBUG")
-    set(HAMMER_PROFILE_C_FLAGS
+    set(VOIDLIGHT_PROFILE_C_FLAGS
         "-ffunction-sections -fdata-sections -ftree-vectorize -march=x86-64-v2 -mtune=generic -msse4.2")
-    set(HAMMER_PROFILE_CXX_FLAGS
+    set(VOIDLIGHT_PROFILE_CXX_FLAGS
         "-ffunction-sections -fdata-sections -ftree-vectorize -march=x86-64-v2 -mtune=generic -msse4.2")
 endif()
 
@@ -234,8 +234,8 @@ file(GLOB_RECURSE SOURCES
     "src/controllers/**/*.cpp"
 )
 
-# Exclude HammerMain.cpp from library sources (contains main() which conflicts with test frameworks)
-list(FILTER SOURCES EXCLUDE REGEX ".*HammerMain\\.cpp$")
+# Exclude VoidLightMain.cpp from library sources (contains main() which conflicts with test frameworks)
+list(FILTER SOURCES EXCLUDE REGEX ".*VoidLightMain\\.cpp$")
 
 # SDL3_GPU support is mandatory for this project.
 # Add GPU module sources
@@ -259,7 +259,7 @@ endif()
 # Find optional shader toolchain for regenerating checked-in shader binaries.
 # Builds still succeed without these tools by using the prebuilt shader assets
 # already present under res/shaders/.
-set(HAMMER_CAN_COMPILE_GPU_SHADERS TRUE)
+set(VOIDLIGHT_CAN_COMPILE_GPU_SHADERS TRUE)
 
 find_program(GLSLANG_VALIDATOR
     NAMES glslangValidator glslang
@@ -268,13 +268,13 @@ find_program(GLSLANG_VALIDATOR
 )
 
 if(NOT GLSLANG_VALIDATOR)
-    set(HAMMER_CAN_COMPILE_GPU_SHADERS FALSE)
+    set(VOIDLIGHT_CAN_COMPILE_GPU_SHADERS FALSE)
     message(WARNING "glslangValidator not found - using checked-in GPU shader binaries")
 else()
     message(STATUS "Found glslangValidator: ${GLSLANG_VALIDATOR}")
 endif()
 
-if((WIN32 OR APPLE) AND HAMMER_CAN_COMPILE_GPU_SHADERS)
+if((WIN32 OR APPLE) AND VOIDLIGHT_CAN_COMPILE_GPU_SHADERS)
     find_program(SPIRV_CROSS
         NAMES spirv-cross
         HINTS ENV VULKAN_SDK /opt/homebrew/bin /usr/local/bin
@@ -282,14 +282,14 @@ if((WIN32 OR APPLE) AND HAMMER_CAN_COMPILE_GPU_SHADERS)
     )
 
     if(NOT SPIRV_CROSS)
-        set(HAMMER_CAN_COMPILE_GPU_SHADERS FALSE)
+        set(VOIDLIGHT_CAN_COMPILE_GPU_SHADERS FALSE)
         message(WARNING "spirv-cross not found - using checked-in GPU shader binaries")
     else()
         message(STATUS "Found spirv-cross: ${SPIRV_CROSS}")
     endif()
 endif()
 
-if(WIN32 AND HAMMER_CAN_COMPILE_GPU_SHADERS)
+if(WIN32 AND VOIDLIGHT_CAN_COMPILE_GPU_SHADERS)
     find_program(DXC_EXECUTABLE
         NAMES dxc
         HINTS ENV DXC_PATH ENV WindowsSdkDir
@@ -297,7 +297,7 @@ if(WIN32 AND HAMMER_CAN_COMPILE_GPU_SHADERS)
     )
 
     if(NOT DXC_EXECUTABLE)
-        set(HAMMER_CAN_COMPILE_GPU_SHADERS FALSE)
+        set(VOIDLIGHT_CAN_COMPILE_GPU_SHADERS FALSE)
         message(WARNING "dxc not found - using checked-in GPU shader binaries")
     else()
         message(STATUS "Found dxc: ${DXC_EXECUTABLE}")
@@ -319,7 +319,7 @@ set(SHADER_SOURCES
 set(GPU_SHADER_INTERMEDIATE_DIR "${CMAKE_BINARY_DIR}/generated_shaders")
 file(MAKE_DIRECTORY ${GPU_SHADER_INTERMEDIATE_DIR})
 
-if(HAMMER_CAN_COMPILE_GPU_SHADERS)
+if(VOIDLIGHT_CAN_COMPILE_GPU_SHADERS)
     # Compile each shader to the platform-native artifact.
     set(PLATFORM_SHADER_OUTPUTS "")
     foreach(SHADER_SOURCE ${SHADER_SOURCES})
@@ -417,8 +417,8 @@ else()
 endif()
 
 # Create object library for shared compilation (without main())
-add_library(HammerEngineObjects OBJECT ${SOURCES})
-target_include_directories(HammerEngineObjects PUBLIC
+add_library(VoidLightObjects OBJECT ${SOURCES})
+target_include_directories(VoidLightObjects PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include/core
     ${CMAKE_CURRENT_SOURCE_DIR}/include/managers
@@ -435,47 +435,47 @@ target_include_directories(HammerEngineObjects PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include/collisions
     ${CMAKE_CURRENT_SOURCE_DIR}/include/gpu
 )
-target_include_directories(HammerEngineObjects PRIVATE
+target_include_directories(VoidLightObjects PRIVATE
     ${INTERNAL_SRC_INCLUDE}
 )
-target_link_libraries(HammerEngineObjects PUBLIC
+target_link_libraries(VoidLightObjects PUBLIC
     SDL3::SDL3
     SDL3_ttf::SDL3_ttf
     SDL3_mixer::SDL3_mixer
 )
 
 # Pass project name to code for file logging paths
-target_compile_definitions(HammerEngineObjects PRIVATE
-    HAMMER_APP_NAME="${PROJECT_NAME}"
+target_compile_definitions(VoidLightObjects PRIVATE
+    VOIDLIGHT_APP_NAME="${PROJECT_NAME}"
 )
 
-target_compile_definitions(HammerEngineObjects PUBLIC ${HE_GPU_SHADER_FORMAT_DEFINE})
+target_compile_definitions(VoidLightObjects PUBLIC ${HE_GPU_SHADER_FORMAT_DEFINE})
 
 if(TARGET compile_shaders)
-    add_dependencies(HammerEngineObjects compile_shaders)
+    add_dependencies(VoidLightObjects compile_shaders)
 endif()
 
 # Apply aggressive optimization flags to our project targets only (not SDL3)
 # These flags like -ffast-math conflict with SDL3's audio code
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    separate_arguments(HAMMER_AGGRESSIVE_CXX_FLAGS_LIST NATIVE_COMMAND "${HAMMER_AGGRESSIVE_CXX_FLAGS}")
-    target_compile_options(HammerEngineObjects PRIVATE ${HAMMER_AGGRESSIVE_CXX_FLAGS_LIST})
+    separate_arguments(VOIDLIGHT_AGGRESSIVE_CXX_FLAGS_LIST NATIVE_COMMAND "${VOIDLIGHT_AGGRESSIVE_CXX_FLAGS}")
+    target_compile_options(VoidLightObjects PRIVATE ${VOIDLIGHT_AGGRESSIVE_CXX_FLAGS_LIST})
 elseif(CMAKE_BUILD_TYPE STREQUAL "Profile")
     # Profile build: Valgrind-compatible optimization (no AVX, SSE4.2 max)
-    separate_arguments(HAMMER_PROFILE_CXX_FLAGS_LIST NATIVE_COMMAND "${HAMMER_PROFILE_CXX_FLAGS}")
-    target_compile_options(HammerEngineObjects PRIVATE ${HAMMER_PROFILE_CXX_FLAGS_LIST})
+    separate_arguments(VOIDLIGHT_PROFILE_CXX_FLAGS_LIST NATIVE_COMMAND "${VOIDLIGHT_PROFILE_CXX_FLAGS}")
+    target_compile_options(VoidLightObjects PRIVATE ${VOIDLIGHT_PROFILE_CXX_FLAGS_LIST})
 endif()
 
 # Create shared library for tests
-add_library(HammerEngineLib STATIC $<TARGET_OBJECTS:HammerEngineObjects>)
-target_include_directories(HammerEngineLib PUBLIC
-    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_INCLUDE_DIRECTORIES>
+add_library(VoidLightLib STATIC $<TARGET_OBJECTS:VoidLightObjects>)
+target_include_directories(VoidLightLib PUBLIC
+    $<TARGET_PROPERTY:VoidLightObjects,INTERFACE_INCLUDE_DIRECTORIES>
 )
-target_link_libraries(HammerEngineLib PUBLIC
-    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_LINK_LIBRARIES>
+target_link_libraries(VoidLightLib PUBLIC
+    $<TARGET_PROPERTY:VoidLightObjects,INTERFACE_LINK_LIBRARIES>
 )
-target_compile_definitions(HammerEngineLib PUBLIC
-    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_COMPILE_DEFINITIONS>
+target_compile_definitions(VoidLightLib PUBLIC
+    $<TARGET_PROPERTY:VoidLightObjects,INTERFACE_COMPILE_DEFINITIONS>
 )
 
 # Create executable for your project with proper extensions
@@ -488,10 +488,10 @@ else()
 endif()
 
 # Set the output name with proper extension
-# Include HammerMain.cpp (contains main()) only in the executable, not the library
+# Include VoidLightMain.cpp (contains main()) only in the executable, not the library
 add_executable(${PROJECT_NAME}
-    $<TARGET_OBJECTS:HammerEngineObjects>
-    src/core/HammerMain.cpp
+    $<TARGET_OBJECTS:VoidLightObjects>
+    src/core/VoidLightMain.cpp
 )
 set_target_properties(${PROJECT_NAME} PROPERTIES
     OUTPUT_NAME "${PROJECT_NAME}${EXE_EXTENSION}"
@@ -614,7 +614,7 @@ if(APPLE)
         # For release builds, create a proper macOS application bundle
         # Set bundle metadata
         set(MACOSX_BUNDLE_BUNDLE_NAME "${PROJECT_NAME}")
-        set(MACOSX_BUNDLE_GUI_IDENTIFIER "com.hammerforged.${PROJECT_NAME}")
+        set(MACOSX_BUNDLE_GUI_IDENTIFIER "com.voidlight.${PROJECT_NAME}")
         set(MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
         set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
 
@@ -664,17 +664,17 @@ endif()
 
 # Link against SDL3 libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_LINK_LIBRARIES>
+    $<TARGET_PROPERTY:VoidLightObjects,INTERFACE_LINK_LIBRARIES>
 )
 
 # Specify include directories
 target_include_directories(${PROJECT_NAME} PRIVATE
-    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:VoidLightObjects,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
 # Propagate compile definitions
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_COMPILE_DEFINITIONS>
+    $<TARGET_PROPERTY:VoidLightObjects,INTERFACE_COMPILE_DEFINITIONS>
 )
 
 # Copy SDL3 runtime libraries to build directory (Windows-specific)

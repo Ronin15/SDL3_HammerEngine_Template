@@ -29,7 +29,7 @@ public:
         m_lastDeltaTime = deltaTime;
     }
     
-    void recordGPUVertices([[maybe_unused]] HammerEngine::GPURenderer& gpuRenderer,
+    void recordGPUVertices([[maybe_unused]] VoidLight::GPURenderer& gpuRenderer,
                            [[maybe_unused]] float interpolationAlpha = 1.0f) override {
         m_renderCalled = true;
     }
@@ -234,7 +234,7 @@ BOOST_AUTO_TEST_CASE(TestRender) {
     state2Ptr->resetFlags();
     
     // GPU vertex recording should only call the top (current) active state
-    auto* gpuRenderer = reinterpret_cast<HammerEngine::GPURenderer*>(0x1);
+    auto* gpuRenderer = reinterpret_cast<VoidLight::GPURenderer*>(0x1);
     manager.recordGPUVertices(*gpuRenderer, 1.0f);
     
     BOOST_CHECK(!state1Ptr->wasRenderCalled()); // State1 is paused, should not render
@@ -243,7 +243,7 @@ BOOST_AUTO_TEST_CASE(TestRender) {
 
 BOOST_AUTO_TEST_CASE(TestRenderEmptyStack) {
     // GPU vertex recording with no active states should not crash
-    auto* gpuRenderer = reinterpret_cast<HammerEngine::GPURenderer*>(0x1);
+    auto* gpuRenderer = reinterpret_cast<VoidLight::GPURenderer*>(0x1);
     BOOST_CHECK_NO_THROW(manager.recordGPUVertices(*gpuRenderer, 1.0f));
 }
 
@@ -412,7 +412,7 @@ BOOST_AUTO_TEST_CASE(TestStateStackBehavior) {
     state2Ptr->resetFlags();
     state3Ptr->resetFlags();
     
-    auto* gpuRenderer = reinterpret_cast<HammerEngine::GPURenderer*>(0x1);
+    auto* gpuRenderer = reinterpret_cast<VoidLight::GPURenderer*>(0x1);
     manager.recordGPUVertices(*gpuRenderer, 1.0f);
 
     BOOST_CHECK(!state1Ptr->wasRenderCalled()); // State1 is paused, should not render

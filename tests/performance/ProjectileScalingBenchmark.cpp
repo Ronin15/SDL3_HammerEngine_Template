@@ -44,7 +44,7 @@ public:
     ProjectileScalingFixture() {
         if (!s_initialized) {
             HAMMER_ENABLE_BENCHMARK_MODE();
-            HammerEngine::ThreadSystem::Instance().init();
+            VoidLight::ThreadSystem::Instance().init();
             EntityDataManager::Instance().init();
             PathfinderManager::Instance().init();
             CollisionManager::Instance().init();
@@ -62,7 +62,7 @@ public:
         EventManager::Instance().prepareForStateTransition();
         CollisionManager::Instance().prepareForStateTransition();
         EntityDataManager::Instance().prepareForStateTransition();
-        HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+        VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
     }
 
     void createProjectiles(size_t count, float worldSize) {
@@ -140,7 +140,7 @@ struct ProjectileScalingModuleCleanup {
         CollisionManager::Instance().clean();
         PathfinderManager::Instance().clean();
         EntityDataManager::Instance().clean();
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
 
         ProjectileScalingFixture::initializedFlag() = false;
     }
@@ -159,7 +159,7 @@ BOOST_FIXTURE_TEST_SUITE(ProjectileScalingTests, ProjectileScalingFixture)
 
 BOOST_AUTO_TEST_CASE(PrintHeader)
 {
-    const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+    const auto& budget = VoidLight::WorkerBudgetManager::Instance().getBudget();
 
     std::cout << "\n=== Projectile Scaling Benchmark ===\n";
     std::cout << "Date: " << __DATE__ << " " << __TIME__ << "\n";
@@ -183,7 +183,7 @@ BOOST_AUTO_TEST_CASE(ProjectileScaling)
               << std::setw(10) << "Status\n";
 
     std::vector<size_t> entityCounts = {100, 500, 1000, 2000, 5000};
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
     size_t bestCount = 0;
     double bestThroughput = 0.0;
@@ -210,7 +210,7 @@ BOOST_AUTO_TEST_CASE(ProjectileScaling)
             : 0.0;
 
         auto decision = budgetMgr.shouldUseThreading(
-            HammerEngine::SystemType::ProjectileSim, count);
+            VoidLight::SystemType::ProjectileSim, count);
         const char* threading = decision.shouldThread ? "multi" : "single";
         const char* status = (activeCount > 0 && medianMs > 0.0) ? "OK" : "FAIL";
 

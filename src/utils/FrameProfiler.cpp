@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // Convenience logging macros for profiler
 #define PROFILER_WARN(msg) HAMMER_WARN("Profiler", msg)
@@ -440,6 +440,6 @@ void FrameProfiler::updateOverlayText()
     }
 }
 
-}  // namespace HammerEngine
+}  // namespace VoidLight
 
 #endif  // NDEBUG

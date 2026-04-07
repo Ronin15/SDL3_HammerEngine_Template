@@ -22,17 +22,17 @@
 #include <set>
 #include <vector>
 
-using HammerEngine::ResourceHandle;
+using VoidLight::ResourceHandle;
 
 struct ResourceEdgeCaseFixture {
   ResourceTemplateManager *templateManager;
   EntityDataManager *entityDataManager;
   WorldResourceManager *worldManager;
-  HammerEngine::ThreadSystem *threadSystem;
+  VoidLight::ThreadSystem *threadSystem;
 
   ResourceEdgeCaseFixture() {
     // Initialize ThreadSystem first for threading tests
-    threadSystem = &HammerEngine::ThreadSystem::Instance();
+    threadSystem = &VoidLight::ThreadSystem::Instance();
     if (threadSystem->isShutdown() || threadSystem->getThreadCount() == 0) {
       bool initSuccess = threadSystem->init();
       if (!initSuccess && threadSystem->getThreadCount() == 0) {
@@ -170,7 +170,7 @@ BOOST_AUTO_TEST_CASE(TestConcurrentHandleGeneration) {
           }
           return threadHandles;
         },
-        HammerEngine::TaskPriority::Normal, "HandleGenerationTask");
+        VoidLight::TaskPriority::Normal, "HandleGenerationTask");
 
     futures.push_back(std::move(future));
   }
@@ -250,7 +250,7 @@ BOOST_AUTO_TEST_CASE(TestConcurrentInventoryOperations) {
             std::this_thread::sleep_for(std::chrono::microseconds(1));
           }
         },
-        HammerEngine::TaskPriority::Normal, "ConcurrentInventoryOpsTask");
+        VoidLight::TaskPriority::Normal, "ConcurrentInventoryOpsTask");
 
     futures.push_back(std::move(future));
   }

@@ -288,7 +288,7 @@ public:
      * @param location World position where theft occurred
      */
     TheftEvent(EntityHandle thief, EntityHandle victim,
-               HammerEngine::ResourceHandle stolenItem, int quantity,
+               VoidLight::ResourceHandle stolenItem, int quantity,
                const Vector2D& location)
         : m_name("TheftEvent")
         , m_thief(thief)
@@ -314,7 +314,7 @@ public:
 
     [[nodiscard]] EntityHandle getThief() const { return m_thief; }
     [[nodiscard]] EntityHandle getVictim() const { return m_victim; }
-    [[nodiscard]] HammerEngine::ResourceHandle getStolenItem() const { return m_stolenItem; }
+    [[nodiscard]] VoidLight::ResourceHandle getStolenItem() const { return m_stolenItem; }
     [[nodiscard]] int getQuantity() const { return m_quantity; }
     [[nodiscard]] const Vector2D& getLocation() const { return m_location; }
 
@@ -322,7 +322,7 @@ private:
     std::string m_name;
     EntityHandle m_thief;
     EntityHandle m_victim;
-    HammerEngine::ResourceHandle m_stolenItem;
+    VoidLight::ResourceHandle m_stolenItem;
     int m_quantity;
     Vector2D m_location;
 };

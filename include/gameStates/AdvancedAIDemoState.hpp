@@ -22,7 +22,7 @@
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
-namespace HammerEngine {
+namespace VoidLight {
 class GPUSceneRecorder;
 }
 
@@ -40,12 +40,12 @@ public:
     std::string getName() const override { return "AdvancedAIDemoState"; }
 
     // GPU rendering support
-    void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+    void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                            float interpolationAlpha) override;
-    void renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+    void renderGPUScene(VoidLight::GPURenderer& gpuRenderer,
                         SDL_GPURenderPass* scenePass,
                         float interpolationAlpha) override;
-    void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+    void renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                      SDL_GPURenderPass* swapchainPass) override;
     bool supportsGPURendering() const override { return true; }
 
@@ -66,10 +66,10 @@ private:
 
     // Player entity
     PlayerPtr m_player{};
-    std::unique_ptr<HammerEngine::Camera> m_camera;
+    std::unique_ptr<VoidLight::Camera> m_camera;
 
     // GPU scene recorder for coordinated scene-data recording
-    std::unique_ptr<HammerEngine::GPUSceneRecorder> m_gpuSceneRecorder{nullptr};
+    std::unique_ptr<VoidLight::GPUSceneRecorder> m_gpuSceneRecorder{nullptr};
 
     float m_worldWidth{800.0f};
     float m_worldHeight{600.0f};

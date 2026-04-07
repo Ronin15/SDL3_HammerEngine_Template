@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Analyze coupling metrics for HammerEngine
+Analyze coupling metrics for VoidLight-Framework
 """
 
 import sys

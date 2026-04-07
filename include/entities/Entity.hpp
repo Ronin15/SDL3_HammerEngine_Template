@@ -20,7 +20,7 @@ class EntityDataManager;
 // Forward declarations
 class Entity; // Forward declare for smart pointers
 class InputHandler;
-namespace HammerEngine {
+namespace VoidLight {
     class Camera;
 }
 
@@ -29,7 +29,7 @@ using EntityPtr = std::shared_ptr<Entity>;
 using EntityWeakPtr = std::weak_ptr<Entity>;
 
 // Type alias for entity ID
-using EntityID = HammerEngine::UniqueID::IDType;
+using EntityID = VoidLight::UniqueID::IDType;
 
 // Note: EntityKind enum is now defined in EntityHandle.hpp
 // This provides the expanded entity type list (Player, NPC, DroppedItem, Container,
@@ -66,7 +66,7 @@ class Entity : public std::enable_shared_from_this<Entity> {
   /**
    * @brief Construct a new Entity object and assign it a unique ID.
    */
-  Entity() : m_id(HammerEngine::UniqueID::generate()) {}
+  Entity() : m_id(VoidLight::UniqueID::generate()) {}
 
   /**
    * @brief Virtual destructor

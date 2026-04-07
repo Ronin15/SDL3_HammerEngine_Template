@@ -52,7 +52,7 @@ aiMgr.assignBehavior(handle, "Guard");
 Assign by full config:
 
 ```cpp
-HammerEngine::BehaviorConfigData cfg{};
+VoidLight-Framework::BehaviorConfigData cfg{};
 cfg.type = BehaviorType::Attack;
 aiMgr.assignBehavior(handle, cfg);
 ```

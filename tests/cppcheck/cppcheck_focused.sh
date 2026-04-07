@@ -1,5 +1,5 @@
 #!/bin/bash
-# Simple focused cppcheck analysis for SDL3_HammerEngine_Template
+# Simple focused cppcheck analysis for SDL3_VoidLight-Framework_Template
 # This script runs cppcheck with optimized settings to show only real issues
 
 set -e
@@ -13,7 +13,7 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}=== SDL3 HammerEngine - Focused Cppcheck Analysis ===${NC}"
+echo -e "${BLUE}=== SDL3 VoidLight-Framework - Focused Cppcheck Analysis ===${NC}"
 echo ""
 
 # Check if cppcheck is available

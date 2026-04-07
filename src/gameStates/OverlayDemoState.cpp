@@ -392,7 +392,7 @@ void OverlayDemoState::handleBackButton() {
     mp_stateManager->changeState("MainMenuState");
 }
 
-void OverlayDemoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+void OverlayDemoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                                           [[maybe_unused]] float interpolationAlpha) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
@@ -400,7 +400,7 @@ void OverlayDemoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
     }
 }
 
-void OverlayDemoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void OverlayDemoState::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                                     SDL_GPURenderPass* swapchainPass) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {

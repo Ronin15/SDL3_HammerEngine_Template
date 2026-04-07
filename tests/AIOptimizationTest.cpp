@@ -43,7 +43,7 @@ private:
 struct AITestFixture {
     AITestFixture() {
         // Initialize dependencies required by the real AIManager
-        HammerEngine::ThreadSystem::Instance().init();
+        VoidLight::ThreadSystem::Instance().init();
         EntityDataManager::Instance().init();
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
@@ -58,7 +58,7 @@ struct AITestFixture {
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
         EntityDataManager::Instance().clean();
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
     }
 };
 

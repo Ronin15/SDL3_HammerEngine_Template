@@ -469,15 +469,15 @@ bool WeatherEvent::isInRegion() const {
   }
 
   // Map biome to canonical uppercase string
-  auto biomeToString = [](HammerEngine::Biome b) -> std::string {
+  auto biomeToString = [](VoidLight::Biome b) -> std::string {
     switch (b) {
-    case HammerEngine::Biome::DESERT: return "DESERT";
-    case HammerEngine::Biome::FOREST: return "FOREST";
-    case HammerEngine::Biome::MOUNTAIN: return "MOUNTAIN";
-    case HammerEngine::Biome::SWAMP: return "SWAMP";
-    case HammerEngine::Biome::HAUNTED: return "HAUNTED";
-    case HammerEngine::Biome::CELESTIAL: return "CELESTIAL";
-    case HammerEngine::Biome::OCEAN: return "OCEAN";
+    case VoidLight::Biome::DESERT: return "DESERT";
+    case VoidLight::Biome::FOREST: return "FOREST";
+    case VoidLight::Biome::MOUNTAIN: return "MOUNTAIN";
+    case VoidLight::Biome::SWAMP: return "SWAMP";
+    case VoidLight::Biome::HAUNTED: return "HAUNTED";
+    case VoidLight::Biome::CELESTIAL: return "CELESTIAL";
+    case VoidLight::Biome::OCEAN: return "OCEAN";
     default: return "";
     }
   };

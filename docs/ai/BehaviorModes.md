@@ -24,9 +24,9 @@ This page catalogs the current behavior families and the configuration style use
 ## Assignment Pattern
 
 ```cpp
-HammerEngine::BehaviorConfigData config{};
+VoidLight-Framework::BehaviorConfigData config{};
 config.type = BehaviorType::Idle;
-config.idle = HammerEngine::IdleBehaviorConfig::createSubtleSway();
+config.idle = VoidLight-Framework::IdleBehaviorConfig::createSubtleSway();
 
 AIManager::Instance().assignBehavior(handle, config);
 ```

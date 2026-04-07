@@ -30,7 +30,7 @@ BOOST_AUTO_TEST_CASE(TestAtomicProgressTracking) {
     LoadingState loadingState;
 
     // Verify LoadingState starts with zero progress
-    HammerEngine::WorldGenerationConfig config;
+    VoidLight::WorldGenerationConfig config;
     config.width = 800;
     config.height = 600;
 
@@ -87,7 +87,7 @@ BOOST_AUTO_TEST_CASE(TestThreadSafeErrorHandling) {
 BOOST_AUTO_TEST_CASE(TestLoadingStateReuse) {
     LoadingState loadingState;
 
-    HammerEngine::WorldGenerationConfig config1;
+    VoidLight::WorldGenerationConfig config1;
     config1.width = 400;
     config1.height = 300;
 
@@ -96,7 +96,7 @@ BOOST_AUTO_TEST_CASE(TestLoadingStateReuse) {
     BOOST_CHECK(!loadingState.hasError());
 
     // Second configuration (reuse)
-    HammerEngine::WorldGenerationConfig config2;
+    VoidLight::WorldGenerationConfig config2;
     config2.width = 800;
     config2.height = 600;
 

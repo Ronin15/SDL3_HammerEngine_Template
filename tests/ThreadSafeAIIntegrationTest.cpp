@@ -59,7 +59,7 @@ private:
 // Global test fixture for setting up and tearing down the system once for all tests
 struct GlobalTestFixture {
     GlobalTestFixture() {
-        HammerEngine::ThreadSystem::Instance().init();
+        VoidLight::ThreadSystem::Instance().init();
         EntityDataManager::Instance().init();
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
@@ -74,7 +74,7 @@ struct GlobalTestFixture {
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
         EntityDataManager::Instance().clean();
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
     }
 };
 

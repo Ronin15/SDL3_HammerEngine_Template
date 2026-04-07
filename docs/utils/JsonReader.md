@@ -2,7 +2,7 @@
 
 ## Overview
 
-The JsonReader is a custom, dependency-free JSON parser designed specifically for the Hammer Game Engine. It provides strict RFC 8259 compliance, robust error handling, and type-safe data access without requiring external libraries.
+The JsonReader is a custom, dependency-free JSON parser designed specifically for the VoidLight Engine. It provides strict RFC 8259 compliance, robust error handling, and type-safe data access without requiring external libraries.
 
 ## Table of Contents
 

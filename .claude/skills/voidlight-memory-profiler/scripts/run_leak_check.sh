@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# HammerEngine Memory Profiler - Quick Leak Check
-# Part of hammer-memory-profiler skill
+# VoidLight-Framework Memory Profiler - Quick Leak Check
+# Part of voidlight-memory-profiler skill
 
 set -e
 
@@ -60,7 +60,7 @@ LEAKS_FOUND=0
 ERRORS_FOUND=0
 
 echo "=========================================="
-echo "HammerEngine Quick Leak Check"
+echo "VoidLight-Framework Quick Leak Check"
 echo "=========================================="
 echo "Pattern: $TEST_PATTERN"
 echo "Tests found: $TOTAL_TESTS"

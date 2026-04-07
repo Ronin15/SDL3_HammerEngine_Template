@@ -9,7 +9,7 @@
 #include <array>
 #include <cstdint>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * Triple-buffered vertex pool for zero-allocation per-frame rendering.
@@ -114,6 +114,6 @@ private:
     void* m_mappedPtr{nullptr};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_VERTEX_POOL_HPP

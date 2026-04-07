@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * Batched sprite renderer for GPU rendering.
@@ -177,6 +177,6 @@ private:
     bool m_initialized{false};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // SPRITE_BATCH_HPP

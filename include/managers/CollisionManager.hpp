@@ -24,14 +24,14 @@
 #include "managers/EventManager.hpp"
 
 // Forward declarations
-namespace HammerEngine {
+namespace VoidLight {
     class Camera;
 }
 
-using HammerEngine::AABB;
-using HammerEngine::BodyType;
-using HammerEngine::CollisionInfo;
-using HammerEngine::CollisionLayer;
+using VoidLight::AABB;
+using VoidLight::BodyType;
+using VoidLight::CollisionInfo;
+using VoidLight::CollisionLayer;
 
 class CollisionManager {
 private:
@@ -131,20 +131,20 @@ public:
     // Convenience methods for triggers
     // Routes through EDM::createTrigger() for single source of truth
     EntityID createTriggerArea(const AABB& aabb,
-                               HammerEngine::TriggerTag tag,
-                               HammerEngine::TriggerType type,
+                               VoidLight::TriggerTag tag,
+                               VoidLight::TriggerType type,
                                uint32_t layerMask = CollisionLayer::Layer_Environment,
                                uint32_t collideMask = 0xFFFFFFFFu);
     EntityID createTriggerAreaAt(float cx, float cy, float halfW, float halfH,
-                                 HammerEngine::TriggerTag tag,
-                                 HammerEngine::TriggerType type,
+                                 VoidLight::TriggerTag tag,
+                                 VoidLight::TriggerType type,
                                  uint32_t layerMask = CollisionLayer::Layer_Environment,
                                  uint32_t collideMask = 0xFFFFFFFFu);
     void setTriggerCooldown(EntityID triggerId, float seconds);
     void setDefaultTriggerCooldown(float seconds) { m_defaultTriggerCooldownSec = seconds; }
 
     // World helpers: build collision bodies and triggers from world data
-    size_t createTriggersForWaterTiles(HammerEngine::TriggerTag tag = HammerEngine::TriggerTag::Water);
+    size_t createTriggersForWaterTiles(VoidLight::TriggerTag tag = VoidLight::TriggerTag::Water);
     size_t createTriggersForObstacles(); // Create triggers for ROCK, TREE with movement penalties
     size_t createStaticObstacleBodies();
 
@@ -460,8 +460,8 @@ private:
      * 4. Narrowphase filters pairs and computes collision details
      * 5. EventOnly detection queries m_eventOnlySpatialHash separately
      * ===================================================== */
-    HammerEngine::HierarchicalSpatialHash m_staticSpatialHash;     // Static world geometry
-    HammerEngine::HierarchicalSpatialHash m_eventOnlySpatialHash;  // EventOnly triggers (water, etc.)
+    VoidLight::HierarchicalSpatialHash m_staticSpatialHash;     // Static world geometry
+    VoidLight::HierarchicalSpatialHash m_eventOnlySpatialHash;  // EventOnly triggers (water, etc.)
 
     // Current culling area for spatial queries
     mutable CullingArea m_currentCullingArea{0.0f, 0.0f, 0.0f, 0.0f};

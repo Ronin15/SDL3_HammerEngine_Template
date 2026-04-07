@@ -16,7 +16,7 @@
 #include "utils/SIMDMath.hpp"
 #include "utils/Vector2D.hpp"
 
-using namespace HammerEngine::SIMD;
+using namespace VoidLight::SIMD;
 
 // ============================================================================
 // BENCHMARK CONFIGURATION

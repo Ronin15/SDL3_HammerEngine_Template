@@ -10,7 +10,7 @@
 #include <fstream>
 #include <thread>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 // Test fixture for setup/cleanup
 struct SettingsTestFixture {

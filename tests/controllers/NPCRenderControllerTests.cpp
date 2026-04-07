@@ -38,19 +38,19 @@ namespace {
 
 struct ThreadSystemTestLifetime {
     ThreadSystemTestLifetime() {
-        BOOST_REQUIRE_MESSAGE(HammerEngine::ThreadSystem::Instance().init(),
+        BOOST_REQUIRE_MESSAGE(VoidLight::ThreadSystem::Instance().init(),
                               "Failed to initialize ThreadSystem for NPCRenderController tests");
     }
 
     ~ThreadSystemTestLifetime() {
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
     }
 };
 
 ThreadSystemTestLifetime g_threadSystemTestLifetime{};
 
-bool initSpriteBatchForRecording(HammerEngine::SpriteBatch& batch) {
-    SDL_GPUDevice* device = HammerEngine::GPUDevice::Instance().get();
+bool initSpriteBatchForRecording(VoidLight::SpriteBatch& batch) {
+    SDL_GPUDevice* device = VoidLight::GPUDevice::Instance().get();
     if (!device) {
         return false;
     }
@@ -361,15 +361,15 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUUsesInterpolatedPositionAndAtlasFrame) {
     rd.currentRow = 1;
     rd.flipMode = static_cast<uint8_t>(SDL_FLIP_NONE);
 
-    std::vector<HammerEngine::SpriteVertex> vertices(8);
-    HammerEngine::SpriteBatch batch;
+    std::vector<VoidLight::SpriteVertex> vertices(8);
+    VoidLight::SpriteBatch batch;
     if (!initSpriteBatchForRecording(batch)) {
         BOOST_TEST_MESSAGE("Skipping GPU recording test: no GPU device available");
         return;
     }
     batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 1024.0f, 1024.0f, 512.0f);
 
-    HammerEngine::GPUSceneContext ctx{};
+    VoidLight::GPUSceneContext ctx{};
     ctx.cameraX = 10.0f;
     ctx.cameraY = 20.0f;
     ctx.interpolationAlpha = 0.25f;
@@ -378,7 +378,7 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUUsesInterpolatedPositionAndAtlasFrame) {
 
     m_controller.recordGPU(ctx);
 
-    BOOST_CHECK_EQUAL(batch.end(), HammerEngine::SpriteBatch::VERTICES_PER_SPRITE);
+    BOOST_CHECK_EQUAL(batch.end(), VoidLight::SpriteBatch::VERTICES_PER_SPRITE);
     BOOST_CHECK_CLOSE(vertices[0].x, 95.0f - ctx.cameraX - rd.frameWidth * 0.5f, 0.001f);
     BOOST_CHECK_CLOSE(vertices[0].y, 512.0f - (115.0f - 20.0f - rd.frameHeight * 0.5f), 0.001f);
     BOOST_CHECK_CLOSE(vertices[1].x, vertices[0].x + rd.frameWidth, 0.001f);
@@ -414,15 +414,15 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUFlipsHorizontalSourceCoords) {
     m_controller.update(0.016f);
     BOOST_CHECK_EQUAL(rd.flipMode, static_cast<uint8_t>(SDL_FLIP_HORIZONTAL));
 
-    std::vector<HammerEngine::SpriteVertex> vertices(8);
-    HammerEngine::SpriteBatch batch;
+    std::vector<VoidLight::SpriteVertex> vertices(8);
+    VoidLight::SpriteBatch batch;
     if (!initSpriteBatchForRecording(batch)) {
         BOOST_TEST_MESSAGE("Skipping GPU recording test: no GPU device available");
         return;
     }
     batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 1024.0f, 1024.0f, 512.0f);
 
-    HammerEngine::GPUSceneContext ctx{};
+    VoidLight::GPUSceneContext ctx{};
     ctx.cameraX = 0.0f;
     ctx.cameraY = 0.0f;
     ctx.interpolationAlpha = 1.0f;
@@ -431,7 +431,7 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUFlipsHorizontalSourceCoords) {
 
     m_controller.recordGPU(ctx);
 
-    BOOST_CHECK_EQUAL(batch.end(), HammerEngine::SpriteBatch::VERTICES_PER_SPRITE);
+    BOOST_CHECK_EQUAL(batch.end(), VoidLight::SpriteBatch::VERTICES_PER_SPRITE);
     BOOST_CHECK_GT(vertices[0].u, vertices[1].u);
     BOOST_CHECK_CLOSE(vertices[0].v, vertices[1].v, 0.001f);
     batch.shutdown();

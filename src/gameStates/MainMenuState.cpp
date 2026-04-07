@@ -36,7 +36,7 @@ bool MainMenuState::enter() {
   }
 
   // Create title using auto-positioning
-  ui.createTitleAtTop("mainmenu_title", "Hammer Game Engine - Main Menu", 60);
+  ui.createTitleAtTop("mainmenu_title", "VoidLight Engine - Main Menu", 60);
 
   // Create menu buttons with centered positioning
   int buttonWidth = 300;
@@ -156,7 +156,7 @@ std::string MainMenuState::getName() const {
   return "MainMenuState";
 }
 
-void MainMenuState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+void MainMenuState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                                        [[maybe_unused]] float interpolationAlpha) {
   // MainMenuState uses UIManager for all rendering
   // UIManager records its vertices (buttons, panels, text)
@@ -166,7 +166,7 @@ void MainMenuState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
   }
 }
 
-void MainMenuState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void MainMenuState::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                                  SDL_GPURenderPass* swapchainPass) {
   // Render UIManager components to swapchain
   auto& ui = UIManager::Instance();

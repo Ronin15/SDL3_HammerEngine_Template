@@ -38,11 +38,11 @@ namespace {
 struct ThreadSystemTestLifetime {
     ThreadSystemTestLifetime() {
         HAMMER_ENABLE_BENCHMARK_MODE();
-        BOOST_REQUIRE_MESSAGE(HammerEngine::ThreadSystem::Instance().init(),
+        BOOST_REQUIRE_MESSAGE(VoidLight::ThreadSystem::Instance().init(),
                               "Failed to initialize ThreadSystem");
     }
     ~ThreadSystemTestLifetime() {
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
     }
 };
 
@@ -130,7 +130,7 @@ BOOST_AUTO_TEST_CASE(ProjectileCreation)
     BOOST_CHECK_CLOSE(hot.transform.velocity.getY(), 0.0f, 0.01f);
 
     // Collision layers
-    BOOST_CHECK(hot.collisionLayers & HammerEngine::CollisionLayer::Layer_Projectile);
+    BOOST_CHECK(hot.collisionLayers & VoidLight::CollisionLayer::Layer_Projectile);
 
     // ProjectileData
     const auto& projData = edm.getProjectileData(proj);
@@ -153,9 +153,9 @@ BOOST_AUTO_TEST_CASE(OwnerCollisionMask)
     size_t playerProjIdx = edm.getIndex(playerProj);
     BOOST_REQUIRE_NE(playerProjIdx, SIZE_MAX);
     const auto& playerProjHot = edm.getHotDataByIndex(playerProjIdx);
-    BOOST_CHECK(playerProjHot.collisionMask & HammerEngine::CollisionLayer::Layer_Enemy);
-    BOOST_CHECK(playerProjHot.collisionMask & HammerEngine::CollisionLayer::Layer_Environment);
-    BOOST_CHECK(!(playerProjHot.collisionMask & HammerEngine::CollisionLayer::Layer_Player));
+    BOOST_CHECK(playerProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Enemy);
+    BOOST_CHECK(playerProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Environment);
+    BOOST_CHECK(!(playerProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Player));
 
     // NPC-owned projectile should hit player
     EntityHandle npc = createNPCTarget(Vector2D(200.0f, 200.0f));
@@ -164,9 +164,9 @@ BOOST_AUTO_TEST_CASE(OwnerCollisionMask)
     size_t npcProjIdx = edm.getIndex(npcProj);
     BOOST_REQUIRE_NE(npcProjIdx, SIZE_MAX);
     const auto& npcProjHot = edm.getHotDataByIndex(npcProjIdx);
-    BOOST_CHECK(npcProjHot.collisionMask & HammerEngine::CollisionLayer::Layer_Player);
-    BOOST_CHECK(npcProjHot.collisionMask & HammerEngine::CollisionLayer::Layer_Environment);
-    BOOST_CHECK(!(npcProjHot.collisionMask & HammerEngine::CollisionLayer::Layer_Enemy));
+    BOOST_CHECK(npcProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Player);
+    BOOST_CHECK(npcProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Environment);
+    BOOST_CHECK(!(npcProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Enemy));
 }
 
 BOOST_AUTO_TEST_CASE(StateTransitionCleanup)
@@ -327,7 +327,7 @@ BOOST_AUTO_TEST_CASE(CollisionDamage)
         });
 
     // Construct and dispatch a collision event between projectile and target
-    HammerEngine::CollisionInfo info{};
+    VoidLight::CollisionInfo info{};
     info.indexA = projIdx;
     info.indexB = targetIdx;
     info.normal = Vector2D(1.0f, 0.0f);
@@ -382,7 +382,7 @@ BOOST_AUTO_TEST_CASE(PiercingFlag)
     size_t projIdx = edm.getIndex(proj);
     size_t targetIdx = edm.getIndex(target);
 
-    HammerEngine::CollisionInfo info{};
+    VoidLight::CollisionInfo info{};
     info.indexA = projIdx;
     info.indexB = targetIdx;
     info.normal = Vector2D(1.0f, 0.0f);

@@ -6,7 +6,7 @@
 
 #include <SDL3/SDL_gpu.h>
 
-namespace HammerEngine::GPUPlatformConfig {
+namespace VoidLight::GPUPlatformConfig {
 
 enum class ShaderBinaryKind {
     SPIRV,
@@ -66,6 +66,6 @@ inline constexpr const char* getShaderBinaryExtension() {
     return "";
 }
 
-} // namespace HammerEngine::GPUPlatformConfig
+} // namespace VoidLight::GPUPlatformConfig
 
 #endif // GPU_PLATFORM_CONFIG_HPP

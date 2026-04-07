@@ -100,7 +100,7 @@ bool GamePlayState::enter() {
     initializeCamera();
 
     // Create GPU scene recorder for coordinated GPU rendering
-    m_gpuSceneRecorder = std::make_unique<HammerEngine::GPUSceneRecorder>();
+    m_gpuSceneRecorder = std::make_unique<VoidLight::GPUSceneRecorder>();
 
     // Register controllers with the registry
     m_controllers.add<WeatherController>();
@@ -209,7 +209,7 @@ void GamePlayState::update(float deltaTime) {
     GAMEPLAY_INFO("Transitioning to LoadingState for world generation");
 
     // Create world configuration for gameplay
-    HammerEngine::WorldGenerationConfig config;
+    VoidLight::WorldGenerationConfig config;
     config.width = 200; // Standard gameplay world
     config.height = 200;
     config.seed = static_cast<int>(std::time(nullptr));
@@ -352,7 +352,7 @@ bool GamePlayState::exit() {
     }
 
     edm.prepareForStateTransition();
-    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+    VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
 
     if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
       particleMgr.prepareForStateTransition();
@@ -418,7 +418,7 @@ bool GamePlayState::exit() {
   }
 
   edm.prepareForStateTransition();
-  HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+  VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
 
   // Simple particle cleanup
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
@@ -733,9 +733,9 @@ void GamePlayState::handleInput() {
     if (!ui.isClickOnUI(mousePos)) {
       Vector2D worldPos = m_camera->screenToWorld(mousePos);
       int const tileX =
-          static_cast<int>(worldPos.getX() / HammerEngine::TILE_SIZE);
+          static_cast<int>(worldPos.getX() / VoidLight::TILE_SIZE);
       int const tileY =
-          static_cast<int>(worldPos.getY() / HammerEngine::TILE_SIZE);
+          static_cast<int>(worldPos.getY() / VoidLight::TILE_SIZE);
 
       auto &worldMgr = WorldManager::Instance();
       if (worldMgr.isValidPosition(tileX, tileY)) {
@@ -896,7 +896,7 @@ void GamePlayState::initializeCamera() {
       mp_Player ? mp_Player->getPosition() : Vector2D(0, 0);
 
   // Create camera with position, then sync viewport from the active GPU renderer.
-  m_camera = std::make_unique<HammerEngine::Camera>();
+  m_camera = std::make_unique<VoidLight::Camera>();
   m_camera->setPosition(playerPosition);
   m_camera->syncViewportWithEngine();
 
@@ -910,11 +910,11 @@ void GamePlayState::initializeCamera() {
     std::weak_ptr<Entity> playerAsEntity =
         std::static_pointer_cast<Entity>(mp_Player);
     m_camera->setTarget(playerAsEntity);
-    m_camera->setMode(HammerEngine::Camera::Mode::Follow);
+    m_camera->setMode(VoidLight::Camera::Mode::Follow);
 
     // Set up camera configuration for smooth following
     // Using exponential smoothing for smooth, responsive follow
-    HammerEngine::Camera::Config config;
+    VoidLight::Camera::Config config;
     config.followSpeed = 5.0f;      // Speed of camera interpolation
     config.deadZoneRadius = 0.0f;   // No dead zone - always follow
     config.smoothingFactor = 0.85f; // Smoothing factor (0-1, higher = smoother)
@@ -1083,7 +1083,7 @@ void GamePlayState::onWeatherChanged(const EventData &data) {
   GAMEPLAY_DEBUG(weatherEvent->getWeatherTypeString());
 }
 
-void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
+void GamePlayState::recordGPUVertices(VoidLight::GPURenderer &gpuRenderer,
                                       float interpolationAlpha) {
   // Skip if world not active or GPU scene recorder not initialized
   if (!m_camera || !m_gpuSceneRecorder) {
@@ -1148,7 +1148,7 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   ui.recordGPUVertices(gpuRenderer);
 }
 
-void GamePlayState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
+void GamePlayState::renderGPUScene(VoidLight::GPURenderer &gpuRenderer,
                                    SDL_GPURenderPass *scenePass,
                                    [[maybe_unused]] float interpolationAlpha) {
   if (!m_camera || !m_gpuSceneRecorder) {
@@ -1170,7 +1170,7 @@ void GamePlayState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
   }
 }
 
-void GamePlayState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
+void GamePlayState::renderGPUUI(VoidLight::GPURenderer &gpuRenderer,
                                 SDL_GPURenderPass *swapchainPass) {
   // Day/night lighting is handled by the composite shader (DayNightController updates GPURenderer)
 

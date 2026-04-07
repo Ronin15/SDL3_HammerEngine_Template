@@ -12,7 +12,7 @@
 #include <memory>
 #include <string_view>
 
-namespace HammerEngine {
+namespace VoidLight {
 class GPURenderer;
 }
 

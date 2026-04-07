@@ -99,7 +99,7 @@ private:
 struct BehaviorTestFixture {
     BehaviorTestFixture() {
         // Initialize ThreadSystem first (required for PathfinderManager async tasks)
-        HammerEngine::ThreadSystem::Instance().init();
+        VoidLight::ThreadSystem::Instance().init();
 
         // Initialize managers in proper order (matches CollisionPathfindingIntegrationTests)
         GameTimeManager::Instance().init();  // Required for combat timing in behaviors
@@ -113,7 +113,7 @@ struct BehaviorTestFixture {
 
         // Load a simple test world for pathfinding
         // Note: World must be >= 26x26 to satisfy VILLAGE_RADIUS constraints in WorldGenerator
-        HammerEngine::WorldGenerationConfig cfg{};
+        VoidLight::WorldGenerationConfig cfg{};
         cfg.width = 30; cfg.height = 30; cfg.seed = 12345;
         cfg.elevationFrequency = 0.05f; cfg.humidityFrequency = 0.05f;
         cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;

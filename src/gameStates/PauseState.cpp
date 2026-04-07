@@ -96,7 +96,7 @@ void PauseState::handleInput() {
   }
 }
 
-void PauseState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+void PauseState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                                     [[maybe_unused]] float interpolationAlpha) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
@@ -104,7 +104,7 @@ void PauseState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
     }
 }
 
-void PauseState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void PauseState::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                               SDL_GPURenderPass* swapchainPass) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {

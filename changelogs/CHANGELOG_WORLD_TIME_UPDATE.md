@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-The World Time Update introduces a comprehensive game time and calendar system to HammerEngine, along with significant performance optimizations and rendering improvements. This update adds seasonal texture support, day/night cycles with visual transitions, weather integration, and a new Controller architecture pattern for state-scoped game logic.
+The World Time Update introduces a comprehensive game time and calendar system to VoidLight-Framework, along with significant performance optimizations and rendering improvements. This update adds seasonal texture support, day/night cycles with visual transitions, weather integration, and a new Controller architecture pattern for state-scoped game logic.
 
 The update represents a major feature addition with 114 commits across 237 files. Key engineering achievements include lock-free entity/camera interpolation using 16-byte aligned atomics, zero per-frame allocations in hot render paths through buffer reuse patterns, and adoption of `std::format()` throughout the codebase for efficient string formatting.
 
@@ -55,7 +55,7 @@ Thread safety has been thoroughly addressed with conversion of static RNG to `th
 ### 1. GameTime System
 
 **Problem:**
-HammerEngine lacked a game time system for day/night cycles, calendars, seasons, and time-based events.
+VoidLight-Framework lacked a game time system for day/night cycles, calendars, seasons, and time-based events.
 
 **Solution:**
 Implemented a comprehensive `GameTime` singleton with:

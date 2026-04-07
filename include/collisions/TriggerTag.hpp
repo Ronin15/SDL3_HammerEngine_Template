@@ -8,7 +8,7 @@
 
 #include <cstdint>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // Trigger behavior type - determines collision processing path
 enum class TriggerType : uint8_t {
@@ -32,6 +32,6 @@ enum class TriggerTag : uint8_t {
   Custom2
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // TRIGGER_TAG_HPP

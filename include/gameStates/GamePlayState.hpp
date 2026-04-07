@@ -18,7 +18,7 @@
 
 // Forward declarations (full includes in .cpp)
 class Player;
-namespace HammerEngine {
+namespace VoidLight {
 class Camera;
 class GPUSceneRecorder;
 }
@@ -36,12 +36,12 @@ public:
   std::string getName() const override;
 
   // GPU rendering support
-  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+  void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                          float interpolationAlpha) override;
-  void renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+  void renderGPUScene(VoidLight::GPURenderer& gpuRenderer,
                       SDL_GPURenderPass* scenePass,
                       float interpolationAlpha) override;
-  void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+  void renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                    SDL_GPURenderPass* swapchainPass) override;
   bool supportsGPURendering() const override { return true; }
 
@@ -54,10 +54,10 @@ private:
   bool m_initialized{false}; // Flag to track if state is already initialized (for pause/resume)
 
   // Camera for world navigation and player following
-  std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
+  std::unique_ptr<VoidLight::Camera> m_camera{nullptr};
 
   // GPU scene recorder for coordinated scene-data recording
-  std::unique_ptr<HammerEngine::GPUSceneRecorder> m_gpuSceneRecorder{nullptr};
+  std::unique_ptr<VoidLight::GPUSceneRecorder> m_gpuSceneRecorder{nullptr};
 
   // Track whether world has been loaded (prevents re-entering LoadingState)
   bool m_worldLoaded{false};

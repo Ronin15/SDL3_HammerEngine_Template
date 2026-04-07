@@ -32,7 +32,7 @@
 #include <memory>
 #include <vector>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 namespace {
 

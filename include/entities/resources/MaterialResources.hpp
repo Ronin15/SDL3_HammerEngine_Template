@@ -14,7 +14,7 @@
  */
 class Material : public Resource {
 public:
-  Material(HammerEngine::ResourceHandle handle, const std::string &id,
+  Material(VoidLight::ResourceHandle handle, const std::string &id,
            const std::string &name, ResourceType type);
   ~Material() override = default;
 
@@ -46,7 +46,7 @@ public:
     COUNT = 7
   };
 
-  CraftingComponent(HammerEngine::ResourceHandle handle, const std::string &id,
+  CraftingComponent(VoidLight::ResourceHandle handle, const std::string &id,
                     const std::string &name, ComponentType componentType);
   ~CraftingComponent() override = default;
 
@@ -80,7 +80,7 @@ public:
     COUNT = 6
   };
 
-  RawResource(HammerEngine::ResourceHandle handle, const std::string &id,
+  RawResource(VoidLight::ResourceHandle handle, const std::string &id,
               const std::string &name, ResourceOrigin origin);
   ~RawResource() override = default;
 

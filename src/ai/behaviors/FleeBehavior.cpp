@@ -25,7 +25,7 @@ constexpr size_t MAX_SAFE_ZONES = 4;  // Matches FleeState array size
 constexpr float CROWD_ANALYSIS_INTERVAL = 0.25f;  // Refresh cached nearby count every 0.25s
 
 // Process pending messages for Flee behavior
-void processFleeMessages(BehaviorData& data, const HammerEngine::FleeBehaviorConfig& config) {
+void processFleeMessages(BehaviorData& data, const VoidLight::FleeBehaviorConfig& config) {
     auto& flee = data.state.flee;
 
     for (uint8_t i = 0; i < data.pendingMessageCount; ++i) {
@@ -124,7 +124,7 @@ Vector2D calculateFleeDirection(const Vector2D& entityPos, const Vector2D& threa
     return normalizeVector(fleeDir);
 }
 
-float calculateFleeSpeedModifier(const BehaviorData& data, const HammerEngine::FleeBehaviorConfig& config) {
+float calculateFleeSpeedModifier(const BehaviorData& data, const VoidLight::FleeBehaviorConfig& config) {
     const auto& flee = data.state.flee;
     float modifier = 1.0f;
 
@@ -140,7 +140,7 @@ float calculateFleeSpeedModifier(const BehaviorData& data, const HammerEngine::F
 }
 
 void updateStamina(BehaviorData& data, float deltaTime, bool fleeing,
-                   const HammerEngine::FleeBehaviorConfig& config) {
+                   const VoidLight::FleeBehaviorConfig& config) {
     auto& flee = data.state.flee;
     if (fleeing) {
         flee.currentStamina -= config.staminaDrain * deltaTime;
@@ -152,7 +152,7 @@ void updateStamina(BehaviorData& data, float deltaTime, bool fleeing,
 }
 
 bool tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& goal, float speed,
-                         const HammerEngine::FleeBehaviorConfig& config) {
+                         const VoidLight::FleeBehaviorConfig& config) {
     if (!ctx.pathData) return false;
 
     const auto& flee = ctx.behaviorData.state.flee;
@@ -215,7 +215,7 @@ bool tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& goal, float speed
 }
 
 void updatePanicFlee(BehaviorContext& ctx, const Vector2D& threatPos,
-                     const HammerEngine::FleeBehaviorConfig& config) {
+                     const VoidLight::FleeBehaviorConfig& config) {
     auto& data = ctx.behaviorData;
     auto& flee = data.state.flee;
     Vector2D currentPos = ctx.transform.position;
@@ -237,7 +237,7 @@ void updatePanicFlee(BehaviorContext& ctx, const Vector2D& threatPos,
 }
 
 void updateStrategicRetreat(BehaviorContext& ctx, const Vector2D& threatPos,
-                            const HammerEngine::FleeBehaviorConfig& config) {
+                            const VoidLight::FleeBehaviorConfig& config) {
     auto& data = ctx.behaviorData;
     auto& flee = data.state.flee;
     Vector2D currentPos = ctx.transform.position;
@@ -272,7 +272,7 @@ void updateStrategicRetreat(BehaviorContext& ctx, const Vector2D& threatPos,
 }
 
 void updateEvasiveManeuver(BehaviorContext& ctx, const Vector2D& threatPos,
-                           const HammerEngine::FleeBehaviorConfig& config) {
+                           const VoidLight::FleeBehaviorConfig& config) {
     auto& data = ctx.behaviorData;
     auto& flee = data.state.flee;
     Vector2D currentPos = ctx.transform.position;
@@ -299,7 +299,7 @@ void updateEvasiveManeuver(BehaviorContext& ctx, const Vector2D& threatPos,
 }
 
 void updateSeekCover(BehaviorContext& ctx, const Vector2D& threatPos,
-                     const HammerEngine::FleeBehaviorConfig& config) {
+                     const VoidLight::FleeBehaviorConfig& config) {
     auto& data = ctx.behaviorData;
     auto& flee = data.state.flee;
     Vector2D currentPos = ctx.transform.position;
@@ -339,7 +339,7 @@ void updateSeekCover(BehaviorContext& ctx, const Vector2D& threatPos,
 
 namespace Behaviors {
 
-void initFlee(size_t edmIndex, const HammerEngine::FleeBehaviorConfig& config) {
+void initFlee(size_t edmIndex, const VoidLight::FleeBehaviorConfig& config) {
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Flee);
     auto& data = edm.getBehaviorData(edmIndex);
@@ -370,7 +370,7 @@ void initFlee(size_t edmIndex, const HammerEngine::FleeBehaviorConfig& config) {
     data.setInitialized(true);
 }
 
-void executeFlee(BehaviorContext& ctx, const HammerEngine::FleeBehaviorConfig& config) {
+void executeFlee(BehaviorContext& ctx, const VoidLight::FleeBehaviorConfig& config) {
     if (!ctx.behaviorData.isValid() || !ctx.pathData) return;
 
     auto& data = ctx.behaviorData;

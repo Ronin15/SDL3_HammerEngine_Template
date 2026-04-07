@@ -206,7 +206,7 @@ bool AdvancedAIDemoState::enter() {
     initializeCamera();
 
     // Create GPU scene renderer for coordinated GPU rendering
-    m_gpuSceneRecorder = std::make_unique<HammerEngine::GPUSceneRecorder>();
+    m_gpuSceneRecorder = std::make_unique<VoidLight::GPUSceneRecorder>();
 
     // Initialize PathfinderManager for Follow behavior pathfinding
     PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
@@ -357,7 +357,7 @@ bool AdvancedAIDemoState::exit() {
     }
 
     edm.prepareForStateTransition();
-    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+    VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
 
     WorldManager::Instance().setActiveCamera(nullptr);
     if (m_player) {
@@ -422,7 +422,7 @@ bool AdvancedAIDemoState::exit() {
   }
 
   edm.prepareForStateTransition();
-  HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+  VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
 
   WorldManager::Instance().setActiveCamera(nullptr);
 
@@ -472,7 +472,7 @@ void AdvancedAIDemoState::update(float deltaTime) {
       GAMESTATE_INFO("Transitioning to LoadingState for world generation");
 
       // Create world configuration for advanced AI demo
-      HammerEngine::WorldGenerationConfig config;
+      VoidLight::WorldGenerationConfig config;
       config.width = 350; // Medium-sized world for advanced AI showcase
       config.height = 350;
       config.seed = static_cast<int>(std::time(nullptr));
@@ -699,7 +699,7 @@ void AdvancedAIDemoState::initializeCamera() {
   Vector2D playerPosition = m_player ? m_player->getPosition() : Vector2D(0, 0);
 
   // Create camera starting at player position
-  m_camera = std::make_unique<HammerEngine::Camera>(
+  m_camera = std::make_unique<VoidLight::Camera>(
       playerPosition.getX(), playerPosition.getY(), // Start at player position
       static_cast<float>(gameEngine.getLogicalWidth()),
       static_cast<float>(gameEngine.getLogicalHeight()));
@@ -713,11 +713,11 @@ void AdvancedAIDemoState::initializeCamera() {
     std::weak_ptr<Entity> playerAsEntity =
         std::static_pointer_cast<Entity>(m_player);
     m_camera->setTarget(playerAsEntity);
-    m_camera->setMode(HammerEngine::Camera::Mode::Follow);
+    m_camera->setMode(VoidLight::Camera::Mode::Follow);
 
     // Set up camera configuration for fast, smooth following
     // Using exponential smoothing for smooth, responsive follow
-    HammerEngine::Camera::Config config;
+    VoidLight::Camera::Config config;
     config.followSpeed = 5.0f;      // Speed of camera interpolation
     config.deadZoneRadius = 0.0f;   // No dead zone - always follow
     config.smoothingFactor = 0.85f; // Smoothing factor (0-1, higher = smoother)
@@ -744,7 +744,7 @@ void AdvancedAIDemoState::updateCamera(float deltaTime) {
   }
 }
 
-void AdvancedAIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
+void AdvancedAIDemoState::recordGPUVertices(VoidLight::GPURenderer &gpuRenderer,
                                             float interpolationAlpha) {
   if (!m_camera || !m_gpuSceneRecorder) { return; }
 
@@ -797,7 +797,7 @@ void AdvancedAIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRender
   m_gpuSceneRecorder->endRecording();
 }
 
-void AdvancedAIDemoState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
+void AdvancedAIDemoState::renderGPUScene(VoidLight::GPURenderer &gpuRenderer,
                                          SDL_GPURenderPass *scenePass,
                                          [[maybe_unused]] float interpolationAlpha) {
   if (!m_camera || !m_gpuSceneRecorder) { return; }
@@ -811,7 +811,7 @@ void AdvancedAIDemoState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
   }
 }
 
-void AdvancedAIDemoState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
+void AdvancedAIDemoState::renderGPUUI(VoidLight::GPURenderer &gpuRenderer,
                                       SDL_GPURenderPass *swapchainPass) {
   UIManager::Instance().renderGPU(gpuRenderer, swapchainPass);
 }

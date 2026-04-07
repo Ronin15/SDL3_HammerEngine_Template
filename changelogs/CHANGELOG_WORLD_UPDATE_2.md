@@ -11,7 +11,7 @@
 
 ## Executive Summary
 
-World Update #2 represents the largest single update to HammerEngine since its inception, delivering **2 entirely new systems** (SettingsManager, LoadingState), **3 major features** (Fullscreen, Camera Zoom, UI Auto-Positioning), and comprehensive performance optimizations across all engine subsystems. This update fundamentally expands the engine's capabilities while maintaining 60 FPS performance at 10,000+ entities.
+World Update #2 represents the largest single update to VoidLight-Framework since its inception, delivering **2 entirely new systems** (SettingsManager, LoadingState), **3 major features** (Fullscreen, Camera Zoom, UI Auto-Positioning), and comprehensive performance optimizations across all engine subsystems. This update fundamentally expands the engine's capabilities while maintaining 60 FPS performance at 10,000+ entities.
 
 ### Impact Highlights
 

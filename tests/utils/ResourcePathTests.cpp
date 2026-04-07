@@ -11,7 +11,7 @@
 #include <filesystem>
 #include <fstream>
 
-using HammerEngine::ResourcePath;
+using VoidLight::ResourcePath;
 
 namespace fs = std::filesystem;
 

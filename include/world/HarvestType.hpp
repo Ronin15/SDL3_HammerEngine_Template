@@ -10,7 +10,7 @@
 #include <string_view>
 #include <iostream>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * @brief Type of harvesting action required for a resource
@@ -63,6 +63,6 @@ inline std::ostream& operator<<(std::ostream& os, HarvestType type) {
     return os << harvestTypeToString(type);
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // HARVEST_TYPE_HPP

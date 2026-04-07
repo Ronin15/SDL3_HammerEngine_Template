@@ -1,4 +1,4 @@
-// Project tasks configuration for SDL3 HammerEngine
+// Project tasks configuration for SDL3 VoidLight-Framework
 // Build tasks using Ninja and CMake
 [
   {

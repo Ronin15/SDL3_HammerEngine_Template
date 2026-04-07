@@ -140,7 +140,7 @@ int CountNearbyEntities(EntityID excludeId, const Vector2D &center,
 #endif
   if (!cacheHit) {
     // Cache miss - perform actual collision query
-    HammerEngine::AABB area(center.getX() - radius, center.getY() - radius,
+    VoidLight::AABB area(center.getX() - radius, center.getY() - radius,
                             radius * 2.0f, radius * 2.0f);
     cm.queryArea(area, queryResults);
 
@@ -182,7 +182,7 @@ int GetNearbyEntitiesWithPositions(EntityID excludeId, const Vector2D &center,
 #endif
   if (!cacheHit) {
     // Cache miss - perform actual collision query
-    HammerEngine::AABB area(center.getX() - radius, center.getY() - radius,
+    VoidLight::AABB area(center.getX() - radius, center.getY() - radius,
                             radius * 2.0f, radius * 2.0f);
     cm.queryArea(area, queryResults);
 

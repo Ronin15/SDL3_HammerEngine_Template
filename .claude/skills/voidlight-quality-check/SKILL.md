@@ -1,12 +1,12 @@
 ---
-name: hammer-quality-check
-description: Runs comprehensive code quality checks for SDL3 HammerEngine including compilation warnings, static analysis (cppcheck, clang-tidy), coding standards validation, threading safety verification, and architecture compliance. Use before commits, pull requests, or when the user wants to verify code meets project quality standards.
+name: voidlight-quality-check
+description: Runs comprehensive code quality checks for SDL3 VoidLight-Framework including compilation warnings, static analysis (cppcheck, clang-tidy), coding standards validation, threading safety verification, and architecture compliance. Use before commits, pull requests, or when the user wants to verify code meets project quality standards.
 allowed-tools: [Bash, Read, Grep]
 ---
 
-# HammerEngine Code Quality Gate
+# VoidLight-Framework Code Quality Gate
 
-This Skill enforces SDL3 HammerEngine's quality standards as defined in `CLAUDE.md`. It performs comprehensive checks to catch issues before they reach version control.
+This Skill enforces SDL3 VoidLight-Framework's quality standards as defined in `CLAUDE.md`. It performs comprehensive checks to catch issues before they reach version control.
 
 ## Quality Gate Categories
 
@@ -231,7 +231,7 @@ grep -rn "static [^v].*=" src/ --include="*.cpp" | grep -v "static_cast" | grep 
 > **NEVER static vars in threaded code** (use instance vars, thread_local, or atomics)
 
 **Why This is Critical:**
-- HammerEngine uses separate update/render threads
+- VoidLight-Framework uses separate update/render threads
 - Static variables cause data races
 - Non-deterministic behavior and crashes
 
@@ -622,7 +622,7 @@ ui.createButton("broken_btn", rect, "Broken");
 #### 5.8 Rendering Rules (CRITICAL)
 
 **Background:**
-HammerEngine uses double-buffered rendering with one Present() per frame.
+VoidLight-Framework uses double-buffered rendering with one Present() per frame.
 
 **Check Commands:**
 ```bash

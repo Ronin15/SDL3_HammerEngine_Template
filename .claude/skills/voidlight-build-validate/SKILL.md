@@ -1,12 +1,12 @@
 ---
-name: hammer-build-validate
-description: Runs complete build validation pipeline for SDL3 HammerEngine including Debug build, smoke test execution, core test suite, and summary report generation. Use when the user wants to quickly validate their changes, check if the codebase is in a good state, or run the standard daily validation workflow.
+name: voidlight-build-validate
+description: Runs complete build validation pipeline for SDL3 VoidLight-Framework including Debug build, smoke test execution, core test suite, and summary report generation. Use when the user wants to quickly validate their changes, check if the codebase is in a good state, or run the standard daily validation workflow.
 allowed-tools: [Bash, Read, Write]
 ---
 
-# HammerEngine Build Validation Pipeline
+# VoidLight-Framework Build Validation Pipeline
 
-This Skill automates the standard build validation workflow for SDL3 HammerEngine. It performs a complete validation cycle that developers typically run 5-10 times daily.
+This Skill automates the standard build validation workflow for SDL3 VoidLight-Framework. It performs a complete validation cycle that developers typically run 5-10 times daily.
 
 ## Workflow Overview
 
@@ -122,7 +122,7 @@ timeout 60s ./bin/debug/SDL3_Template > /tmp/app_log.txt 2>&1
 # Build Validation Report
 **Date:** YYYY-MM-DD HH:MM:SS
 **Branch:** <current-branch>
-**Project:** SDL3 HammerEngine
+**Project:** SDL3 VoidLight-Framework
 
 ## Results Summary
 
@@ -151,7 +151,7 @@ timeout 60s ./bin/debug/SDL3_Template > /tmp/app_log.txt 2>&1
 
 **Console Output:**
 ```
-=== HammerEngine Build Validation ===
+=== VoidLight-Framework Build Validation ===
 
 ✓ Build: Success (3 warnings)
 ✓ Smoke Test: Clean (60s timeout)

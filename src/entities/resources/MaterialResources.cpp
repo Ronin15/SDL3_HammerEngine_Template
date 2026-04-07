@@ -7,7 +7,7 @@
 #include <unordered_map>
 
 // Material base class implementation
-Material::Material(HammerEngine::ResourceHandle handle, const std::string &id,
+Material::Material(VoidLight::ResourceHandle handle, const std::string &id,
                    const std::string &name, ResourceType type)
     : Resource(handle, id, name, ResourceCategory::Material, type) {
   // Materials are generally stackable
@@ -18,7 +18,7 @@ Material::Material(HammerEngine::ResourceHandle handle, const std::string &id,
 void Material::setTier(int tier) { m_tier = std::max(1, std::min(tier, 10)); }
 
 // CraftingComponent implementation
-CraftingComponent::CraftingComponent(HammerEngine::ResourceHandle handle,
+CraftingComponent::CraftingComponent(VoidLight::ResourceHandle handle,
                                      const std::string &id,
                                      const std::string &name,
                                      ComponentType componentType)
@@ -71,7 +71,7 @@ std::string CraftingComponent::componentTypeToString(ComponentType type) {
 }
 
 // RawResource implementation
-RawResource::RawResource(HammerEngine::ResourceHandle handle,
+RawResource::RawResource(VoidLight::ResourceHandle handle,
                          const std::string &id, const std::string &name,
                          ResourceOrigin origin)
     : Material(handle, id, name, ResourceType::RawResource), m_origin(origin) {

@@ -16,9 +16,9 @@ class GameOverState : public GameState {
   bool exit() override;
   std::string getName() const override;
 
-  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+  void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                          float interpolationAlpha) override;
-  void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+  void renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                    SDL_GPURenderPass* swapchainPass) override;
   bool supportsGPURendering() const override { return true; }
 };

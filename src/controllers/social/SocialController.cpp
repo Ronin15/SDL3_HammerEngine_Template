@@ -247,7 +247,7 @@ float SocialController::getCurrentTradePriceModifier() const {
 // ============================================================================
 
 TradeResult SocialController::tryBuy(EntityHandle npcHandle,
-                                     HammerEngine::ResourceHandle itemHandle,
+                                     VoidLight::ResourceHandle itemHandle,
                                      int quantity) {
     auto player = mp_player.lock();
     if (!player) {
@@ -317,7 +317,7 @@ TradeResult SocialController::tryBuy(EntityHandle npcHandle,
 }
 
 TradeResult SocialController::trySell(EntityHandle npcHandle,
-                                      HammerEngine::ResourceHandle itemHandle,
+                                      VoidLight::ResourceHandle itemHandle,
                                       int quantity) {
     auto player = mp_player.lock();
     if (!player) {
@@ -388,7 +388,7 @@ TradeResult SocialController::trySell(EntityHandle npcHandle,
 }
 
 float SocialController::calculateBuyPrice(EntityHandle npcHandle,
-                                          HammerEngine::ResourceHandle itemHandle,
+                                          VoidLight::ResourceHandle itemHandle,
                                           int quantity) const {
     float baseValue = getItemBaseValue(itemHandle);
     float modifier = getPriceModifier(npcHandle);
@@ -397,7 +397,7 @@ float SocialController::calculateBuyPrice(EntityHandle npcHandle,
 }
 
 float SocialController::calculateSellPrice(EntityHandle npcHandle,
-                                           HammerEngine::ResourceHandle itemHandle,
+                                           VoidLight::ResourceHandle itemHandle,
                                            int quantity) const {
     float baseValue = getItemBaseValue(itemHandle);
     float modifier = getPriceModifier(npcHandle);
@@ -413,7 +413,7 @@ float SocialController::calculateSellPrice(EntityHandle npcHandle,
 // ============================================================================
 
 bool SocialController::tryGift(EntityHandle npcHandle,
-                               HammerEngine::ResourceHandle itemHandle,
+                               VoidLight::ResourceHandle itemHandle,
                                int quantity) {
     auto player = mp_player.lock();
     if (!player) {
@@ -505,7 +505,7 @@ void SocialController::recordInteraction(EntityHandle npcHandle,
 
 void SocialController::reportTheft(EntityHandle thief,
                                    EntityHandle victim,
-                                   HammerEngine::ResourceHandle stolenItem,
+                                   VoidLight::ResourceHandle stolenItem,
                                    int quantity) {
     if (!victim.isValid()) {
         SOCIAL_DEBUG("reportTheft: Invalid victim handle");
@@ -675,7 +675,7 @@ void SocialController::updateEmotions(EntityHandle npcHandle,
     edm.modifyEmotions(idx, aggression, fear, curiosity, suspicion);
 }
 
-float SocialController::getItemBaseValue(HammerEngine::ResourceHandle itemHandle) const {
+float SocialController::getItemBaseValue(VoidLight::ResourceHandle itemHandle) const {
     if (!itemHandle.isValid()) {
         return 0.0f;
     }

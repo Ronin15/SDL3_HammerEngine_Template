@@ -18,7 +18,7 @@
 #include <fstream>
 #include <string>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 namespace {
 

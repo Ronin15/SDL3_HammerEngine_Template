@@ -17,7 +17,7 @@
 #include <vector>
 
 struct GPUTextureData {
-    std::shared_ptr<HammerEngine::GPUTexture> texture;
+    std::shared_ptr<VoidLight::GPUTexture> texture;
     float width{0.0f};
     float height{0.0f};
 };

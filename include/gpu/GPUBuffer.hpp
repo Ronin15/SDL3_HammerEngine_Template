@@ -7,7 +7,7 @@
 #include <SDL3/SDL_gpu.h>
 #include <cstdint>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * RAII wrapper for SDL_GPUBuffer.
@@ -62,6 +62,6 @@ private:
     SDL_GPUBufferUsageFlags m_usage{0};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_BUFFER_HPP

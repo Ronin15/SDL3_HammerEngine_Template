@@ -109,7 +109,7 @@ struct AICollisionGlobalFixture {
         std::cout << "=== AICollisionIntegrationTests Global Setup ===" << std::endl;
 
         // Initialize core systems in dependency order
-        if (!HammerEngine::ThreadSystem::Instance().init()) {
+        if (!VoidLight::ThreadSystem::Instance().init()) {
             throw std::runtime_error("ThreadSystem initialization failed");
         }
 
@@ -164,7 +164,7 @@ struct AICollisionGlobalFixture {
         CollisionManager::Instance().clean();
         EntityDataManager::Instance().clean();
         EventManager::Instance().clean();
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
 
         std::cout << "=== Global Teardown Complete ===" << std::endl;
     }
@@ -218,7 +218,7 @@ struct AICollisionTestFixture {
         size_t idx = edm.getIndex(handle);
         if (idx != SIZE_MAX) {
             auto& hot = edm.getHotDataByIndex(idx);
-            hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Default;
+            hot.collisionLayers = VoidLight::CollisionLayer::Layer_Default;
             hot.collisionMask = 0xFFFF;
             hot.setCollisionEnabled(true);
         }
@@ -237,7 +237,7 @@ struct AICollisionTestFixture {
             edmId,
             pos,
             Vector2D(halfW, halfH),
-            HammerEngine::CollisionLayer::Layer_Environment,
+            VoidLight::CollisionLayer::Layer_Environment,
             0xFFFFFFFFu,
             false,
             0,
@@ -334,7 +334,7 @@ BOOST_AUTO_TEST_CASE(TestAINavigatesObstacleField) {
     CollisionManager::Instance().rebuildStaticFromWorld();
 
     // Set up a minimal world for pathfinding grid
-    HammerEngine::WorldGenerationConfig worldConfig{};
+    VoidLight::WorldGenerationConfig worldConfig{};
     worldConfig.width = 50;
     worldConfig.height = 50;
     worldConfig.seed = 12345;

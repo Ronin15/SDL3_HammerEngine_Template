@@ -62,12 +62,12 @@ enum class ResourceType : uint8_t {
  */
 class Resource {
 public:
-  Resource(HammerEngine::ResourceHandle handle, const std::string &id,
+  Resource(VoidLight::ResourceHandle handle, const std::string &id,
            const std::string &name, ResourceCategory category,
            ResourceType type);
   virtual ~Resource() = default;
   // Resource properties (immutable)
-  HammerEngine::ResourceHandle getHandle() const { return m_handle; }
+  VoidLight::ResourceHandle getHandle() const { return m_handle; }
   const std::string &getId() const { return m_id; }
   const std::string &getName() const { return m_name; }
   const std::string &getDescription() const { return m_description; }
@@ -136,7 +136,7 @@ public:
   static ResourceType stringToType(const std::string &typeStr);
 
 protected:
-  HammerEngine::ResourceHandle m_handle; // Unique handle identifier
+  VoidLight::ResourceHandle m_handle; // Unique handle identifier
   std::string m_id;                      // JSON identifier (e.g., "gold")
   std::string m_name;                    // Display name (e.g., "Gold")
   std::string m_description{""};         // Description text

@@ -340,7 +340,7 @@ bool AIDemoState::enter() {
     initializeCamera();
 
     // Create GPU scene renderer for coordinated GPU rendering
-    m_gpuSceneRecorder = std::make_unique<HammerEngine::GPUSceneRecorder>();
+    m_gpuSceneRecorder = std::make_unique<VoidLight::GPUSceneRecorder>();
 
     // Pre-allocate status buffer to avoid per-frame allocations
     m_statusBuffer.reserve(64);
@@ -405,7 +405,7 @@ bool AIDemoState::exit() {
     }
 
     edm.prepareForStateTransition();
-    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+    VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
 
     WorldManager::Instance().setActiveCamera(nullptr);
     if (m_player) {
@@ -467,7 +467,7 @@ bool AIDemoState::exit() {
   }
 
   edm.prepareForStateTransition();
-  HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+  VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
 
   WorldManager::Instance().setActiveCamera(nullptr);
 
@@ -507,7 +507,7 @@ void AIDemoState::update(float deltaTime) {
       GAMESTATE_INFO("Transitioning to LoadingState for world generation");
 
       // Create world configuration for AI demo
-      HammerEngine::WorldGenerationConfig config;
+      VoidLight::WorldGenerationConfig config;
       config.width = 500; // Massive world matching EventDemoState
       config.height = 500;
       config.seed = static_cast<int>(std::time(nullptr));
@@ -575,7 +575,7 @@ void AIDemoState::initializeCamera() {
   Vector2D playerPosition = m_player ? m_player->getPosition() : Vector2D(0, 0);
 
   // Create camera starting at player position
-  m_camera = std::make_unique<HammerEngine::Camera>(
+  m_camera = std::make_unique<VoidLight::Camera>(
       playerPosition.getX(), playerPosition.getY(), // Start at player position
       static_cast<float>(gameEngine.getLogicalWidth()),
       static_cast<float>(gameEngine.getLogicalHeight()));
@@ -589,11 +589,11 @@ void AIDemoState::initializeCamera() {
     std::weak_ptr<Entity> playerAsEntity =
         std::static_pointer_cast<Entity>(m_player);
     m_camera->setTarget(playerAsEntity);
-    m_camera->setMode(HammerEngine::Camera::Mode::Follow);
+    m_camera->setMode(VoidLight::Camera::Mode::Follow);
 
     // Set up camera configuration for fast, smooth following
     // Using exponential smoothing for smooth, responsive follow
-    HammerEngine::Camera::Config config;
+    VoidLight::Camera::Config config;
     config.followSpeed = 5.0f;      // Speed of camera interpolation
     config.deadZoneRadius = 0.0f;   // No dead zone - always follow
     config.smoothingFactor = 0.85f; // Smoothing factor (0-1, higher = smoother)
@@ -620,7 +620,7 @@ void AIDemoState::updateCamera(float deltaTime) {
   }
 }
 
-void AIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
+void AIDemoState::recordGPUVertices(VoidLight::GPURenderer &gpuRenderer,
                                     float interpolationAlpha) {
   if (!m_camera || !m_gpuSceneRecorder) { return; }
 
@@ -673,7 +673,7 @@ void AIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   m_gpuSceneRecorder->endRecording();
 }
 
-void AIDemoState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
+void AIDemoState::renderGPUScene(VoidLight::GPURenderer &gpuRenderer,
                                  SDL_GPURenderPass *scenePass,
                                  [[maybe_unused]] float interpolationAlpha) {
   if (!m_camera || !m_gpuSceneRecorder) { return; }
@@ -687,7 +687,7 @@ void AIDemoState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
   }
 }
 
-void AIDemoState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
+void AIDemoState::renderGPUUI(VoidLight::GPURenderer &gpuRenderer,
                               SDL_GPURenderPass *swapchainPass) {
   UIManager::Instance().renderGPU(gpuRenderer, swapchainPass);
 }

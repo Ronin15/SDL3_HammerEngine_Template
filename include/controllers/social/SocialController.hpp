@@ -66,7 +66,7 @@ enum class InteractionType {
  * @brief Item display info for trade UI lists
  */
 struct TradeItemInfo {
-    HammerEngine::ResourceHandle handle;
+    VoidLight::ResourceHandle handle;
     std::string name;
     int quantity{0};
     float unitPrice{0.0f};
@@ -129,19 +129,19 @@ public:
     // ========================================================================
 
     TradeResult tryBuy(EntityHandle npcHandle,
-                       HammerEngine::ResourceHandle itemHandle,
+                       VoidLight::ResourceHandle itemHandle,
                        int quantity = 1);
 
     TradeResult trySell(EntityHandle npcHandle,
-                        HammerEngine::ResourceHandle itemHandle,
+                        VoidLight::ResourceHandle itemHandle,
                         int quantity = 1);
 
     [[nodiscard]] float calculateBuyPrice(EntityHandle npcHandle,
-                                          HammerEngine::ResourceHandle itemHandle,
+                                          VoidLight::ResourceHandle itemHandle,
                                           int quantity = 1) const;
 
     [[nodiscard]] float calculateSellPrice(EntityHandle npcHandle,
-                                           HammerEngine::ResourceHandle itemHandle,
+                                           VoidLight::ResourceHandle itemHandle,
                                            int quantity = 1) const;
 
     // ========================================================================
@@ -155,7 +155,7 @@ public:
      * NPCs remember gifts and become more friendly.
      */
     bool tryGift(EntityHandle npcHandle,
-                 HammerEngine::ResourceHandle itemHandle,
+                 VoidLight::ResourceHandle itemHandle,
                  int quantity = 1);
 
     /**
@@ -175,7 +175,7 @@ public:
      */
     void reportTheft(EntityHandle thief,
                      EntityHandle victim,
-                     HammerEngine::ResourceHandle stolenItem,
+                     VoidLight::ResourceHandle stolenItem,
                      int quantity = 1);
 
     /**
@@ -243,7 +243,7 @@ private:
     void updateEmotions(EntityHandle npcHandle, InteractionType type, float value);
 
     // --- Utility ---
-    [[nodiscard]] float getItemBaseValue(HammerEngine::ResourceHandle itemHandle) const;
+    [[nodiscard]] float getItemBaseValue(VoidLight::ResourceHandle itemHandle) const;
 
     // Player reference
     std::weak_ptr<Player> mp_player;

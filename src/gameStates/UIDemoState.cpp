@@ -300,7 +300,7 @@ void UIDemoState::updateEventLogDemo(float deltaTime) {
     }
 }
 
-void UIDemoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+void UIDemoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                                         [[maybe_unused]] float interpolationAlpha) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
@@ -308,7 +308,7 @@ void UIDemoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
     }
 }
 
-void UIDemoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void UIDemoState::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                                   SDL_GPURenderPass* swapchainPass) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {

@@ -8,7 +8,7 @@
 const std::string ResourceChangeEvent::EVENT_TYPE = "ResourceChangeEvent";
 
 ResourceChangeEvent::ResourceChangeEvent(
-    EntityHandle ownerHandle, HammerEngine::ResourceHandle resourceHandle,
+    EntityHandle ownerHandle, VoidLight::ResourceHandle resourceHandle,
     int oldQuantity, int newQuantity, const std::string &changeReason)
     : m_ownerHandle(ownerHandle),
       m_resourceHandle(resourceHandle),

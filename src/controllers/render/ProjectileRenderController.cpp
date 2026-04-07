@@ -9,7 +9,7 @@
 #include "gpu/SpriteBatch.hpp"
 #include "utils/GPUSceneRecorder.hpp"
 
-void ProjectileRenderController::recordGPU(const HammerEngine::GPUSceneContext& ctx)
+void ProjectileRenderController::recordGPU(const VoidLight::GPUSceneContext& ctx)
 {
     if (!ctx.spriteBatch)
     {

@@ -15,8 +15,8 @@
 #include "gpu/GPUShaderManager.hpp"
 #include "utils/ResourcePath.hpp"
 
-using namespace HammerEngine;
-using namespace HammerEngine::Test;
+using namespace VoidLight;
+using namespace VoidLight::Test;
 
 // Global fixture for SDL cleanup
 BOOST_GLOBAL_FIXTURE(GPUGlobalFixture);
@@ -295,9 +295,9 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_AUTO_TEST_SUITE(ShaderPathTests)
 
 BOOST_AUTO_TEST_CASE(PlatformShaderFilesExist) {
-    HammerEngine::ResourcePath::init();
+    VoidLight::ResourcePath::init();
 
-    const std::string ext = HammerEngine::GPUPlatformConfig::getShaderBinaryExtension();
+    const std::string ext = VoidLight::GPUPlatformConfig::getShaderBinaryExtension();
     std::vector<std::string> shaderFiles = {
         "res/shaders/sprite.vert" + ext,
         "res/shaders/sprite.frag" + ext,
@@ -310,8 +310,8 @@ BOOST_AUTO_TEST_CASE(PlatformShaderFilesExist) {
     };
 
     for (const auto& path : shaderFiles) {
-        const std::string resolvedPath = HammerEngine::ResourcePath::resolve(path);
-        const bool exists = HammerEngine::ResourcePath::exists(path);
+        const std::string resolvedPath = VoidLight::ResourcePath::resolve(path);
+        const bool exists = VoidLight::ResourcePath::exists(path);
 
         BOOST_TEST_MESSAGE("Checking platform shader: " << resolvedPath);
         BOOST_CHECK_MESSAGE(exists, "Missing platform shader: " << resolvedPath);

@@ -5,7 +5,7 @@
 #include "core/Logger.hpp"
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 GPUPipeline::~GPUPipeline() {
     release();
@@ -265,4 +265,4 @@ PipelineConfig GPUPipeline::createCompositeConfig(SDL_GPUShader* vertShader,
     return config;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

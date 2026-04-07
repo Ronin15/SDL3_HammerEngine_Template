@@ -1,4 +1,4 @@
-# HammerEngine Dependency Analysis Report
+# VoidLight-Framework Dependency Analysis Report
 
 **Generated:** 2026-01-23 21:51:31
 **Branch:** resource_update

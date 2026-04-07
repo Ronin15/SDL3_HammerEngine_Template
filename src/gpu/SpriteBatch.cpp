@@ -8,7 +8,7 @@
 #include <format>
 #include <cstring>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 bool SpriteBatch::init(SDL_GPUDevice* device, const char* name) {
     if (!device) {
@@ -297,4 +297,4 @@ void SpriteBatch::render(SDL_GPURenderPass* pass,
     SDL_DrawGPUIndexedPrimitives(pass, indexCount, 1, 0, 0, 0);
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

@@ -67,7 +67,7 @@
 #include <shared_mutex>
 
 // Forward declarations
-namespace HammerEngine {
+namespace VoidLight {
     class PathfindingGrid;
     enum class PathfindingResult : uint8_t;
 }
@@ -370,17 +370,17 @@ private:
     // Core components - Clean Architecture
     // Mutex-protected shared_ptr with snapshot semantics for thread-safe grid access
     // Note: std::atomic<std::shared_ptr<T>> requires C++20 library support not available on all platforms
-    std::shared_ptr<HammerEngine::PathfindingGrid> m_grid;
+    std::shared_ptr<VoidLight::PathfindingGrid> m_grid;
     mutable std::shared_mutex m_gridMutex;  // Read-write lock for concurrent read access
     // Direct ThreadSystem processing - no queue needed
 
     // Thread-safe grid access helpers
-    std::shared_ptr<HammerEngine::PathfindingGrid> getGridSnapshot() const {
+    std::shared_ptr<VoidLight::PathfindingGrid> getGridSnapshot() const {
         std::shared_lock<std::shared_mutex> lock(m_gridMutex);
         return m_grid;  // Copy increments refcount, safe to use after lock release
     }
 
-    void setGrid(std::shared_ptr<HammerEngine::PathfindingGrid> newGrid) {
+    void setGrid(std::shared_ptr<VoidLight::PathfindingGrid> newGrid) {
         std::unique_lock<std::shared_mutex> lock(m_gridMutex);
         m_grid = std::move(newGrid);
     }
@@ -388,13 +388,13 @@ private:
     // Helpers - grid-passing overloads to avoid repeated getGridSnapshot() calls in hot path
     void normalizeEndpoints(Vector2D& start, Vector2D& goal) const;
     void normalizeEndpoints(Vector2D& start, Vector2D& goal,
-                           const std::shared_ptr<HammerEngine::PathfindingGrid>& grid) const;
+                           const std::shared_ptr<VoidLight::PathfindingGrid>& grid) const;
     Vector2D clampToWorldBounds(const Vector2D& position, float margin,
-                                const std::shared_ptr<HammerEngine::PathfindingGrid>& grid) const;
+                                const std::shared_ptr<VoidLight::PathfindingGrid>& grid) const;
 
     // INTERNAL ONLY: Synchronous pathfinding computation (used by async system)
     // DO NOT use directly - use requestPath() instead
-    HammerEngine::PathfindingResult findPathImmediate(
+    VoidLight::PathfindingResult findPathImmediate(
         const Vector2D& start,
         const Vector2D& goal,
         std::vector<Vector2D>& outPath,
@@ -402,11 +402,11 @@ private:
     );
 
     // Grid-passing overload for hot path optimization
-    HammerEngine::PathfindingResult findPathImmediate(
+    VoidLight::PathfindingResult findPathImmediate(
         const Vector2D& start,
         const Vector2D& goal,
         std::vector<Vector2D>& outPath,
-        const std::shared_ptr<HammerEngine::PathfindingGrid>& grid,
+        const std::shared_ptr<VoidLight::PathfindingGrid>& grid,
         bool skipNormalization = false
     );
 

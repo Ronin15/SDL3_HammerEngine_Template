@@ -1,12 +1,12 @@
 ---
-name: hammer-changelog-generator
-description: Generates comprehensive, professionally-formatted changelogs for SDL3 HammerEngine from git history. Analyzes code changes, runs tests, includes architect review, and produces detailed documentation as an ongoing engineering log. Use when documenting updates, preparing releases, or creating detailed change reports.
+name: voidlight-changelog-generator
+description: Generates comprehensive, professionally-formatted changelogs for SDL3 VoidLight-Framework from git history. Analyzes code changes, runs tests, includes architect review, and produces detailed documentation as an ongoing engineering log. Use when documenting updates, preparing releases, or creating detailed change reports.
 allowed-tools: [Bash, Read, Write, Grep, Glob, AskUserQuestion]
 ---
 
-# Changelog Generator for SDL3 HammerEngine
+# Changelog Generator for SDL3 VoidLight-Framework
 
-You are generating a comprehensive, professionally-formatted changelog for SDL3 HammerEngine. This is an engineering log — it documents what changed, why, and what the impact is. It is not a bug report or issue tracker. Entries describe code changes and refactors directly and factually, without framing work as "problems" that needed "solutions."
+You are generating a comprehensive, professionally-formatted changelog for SDL3 VoidLight-Framework. This is an engineering log — it documents what changed, why, and what the impact is. It is not a bug report or issue tracker. Entries describe code changes and refactors directly and factually, without framing work as "problems" that needed "solutions."
 
 ## Your Task
 

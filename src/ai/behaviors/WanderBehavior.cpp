@@ -45,7 +45,7 @@ bool handleStartDelay(BehaviorContext& ctx) {
 }
 
 float calculateMoveDistance(BehaviorData& data, const Vector2D& position,
-                           float baseDistance, const HammerEngine::WanderBehaviorConfig& config) {
+                           float baseDistance, const VoidLight::WanderBehaviorConfig& config) {
     int nearbyCount = data.cachedNearbyCount;
     auto& wander = data.state.wander;
     float moveDistance = baseDistance;
@@ -71,7 +71,7 @@ float calculateMoveDistance(BehaviorData& data, const Vector2D& position,
 }
 
 void applyBoundaryAvoidance(BehaviorData& data, const Vector2D& position,
-                            const HammerEngine::WanderBehaviorConfig& config,
+                            const VoidLight::WanderBehaviorConfig& config,
                             const BehaviorContext& ctx) {
     if (!ctx.worldBoundsValid) {
         return;
@@ -108,7 +108,7 @@ void applyBoundaryAvoidance(BehaviorData& data, const Vector2D& position,
 }
 
 void handlePathfinding(const BehaviorContext& ctx, const Vector2D& dest,
-                       const HammerEngine::WanderBehaviorConfig& config) {
+                       const VoidLight::WanderBehaviorConfig& config) {
     Vector2D position = ctx.transform.position;
     float distanceToGoalSq = (dest - position).lengthSquared();
     if (distanceToGoalSq < 64.0f * 64.0f || !ctx.pathData) return;
@@ -143,7 +143,7 @@ void handlePathfinding(const BehaviorContext& ctx, const Vector2D& dest,
     }
 }
 
-void chooseNewDirection(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfig& config) {
+void chooseNewDirection(BehaviorContext& ctx, const VoidLight::WanderBehaviorConfig& config) {
     auto& data = ctx.behaviorData;
     auto& wander = data.state.wander;
     float angle = s_angleDistribution(s_rng);
@@ -154,7 +154,7 @@ void chooseNewDirection(BehaviorContext& ctx, const HammerEngine::WanderBehavior
     (void)config;  // Config no longer used for speed
 }
 
-void handleMovement(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfig& config) {
+void handleMovement(BehaviorContext& ctx, const VoidLight::WanderBehaviorConfig& config) {
     auto& data = ctx.behaviorData;
     auto& wander = data.state.wander;
     float baseDistance = config.baseGoalDistance;
@@ -267,7 +267,7 @@ void handleMovement(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConf
 
 namespace Behaviors {
 
-void initWander(size_t edmIndex, const HammerEngine::WanderBehaviorConfig& config) {
+void initWander(size_t edmIndex, const VoidLight::WanderBehaviorConfig& config) {
     // Config used in executeWander(), not needed for state initialization
     (void)config;
 
@@ -297,7 +297,7 @@ void initWander(size_t edmIndex, const HammerEngine::WanderBehaviorConfig& confi
     data.setInitialized(true);
 }
 
-void executeWander(BehaviorContext& ctx, const HammerEngine::WanderBehaviorConfig& config) {
+void executeWander(BehaviorContext& ctx, const VoidLight::WanderBehaviorConfig& config) {
     auto& data = ctx.behaviorData;
     if (!data.isValid()) return;
 

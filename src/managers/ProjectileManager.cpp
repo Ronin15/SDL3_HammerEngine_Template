@@ -16,7 +16,7 @@
 #include <chrono>
 #include <format>
 
-using namespace HammerEngine::SIMD;
+using namespace VoidLight::SIMD;
 
 
 // ============================================================================
@@ -316,9 +316,9 @@ void ProjectileManager::update(float deltaTime)
     }
 
     // WorkerBudget threading decision (follows AIManager pattern)
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     auto decision = budgetMgr.shouldUseThreading(
-        HammerEngine::SystemType::ProjectileSim, entityCount);
+        VoidLight::SystemType::ProjectileSim, entityCount);
     bool useThreading = decision.shouldThread;
 
     size_t actualBatchCount = 1;
@@ -330,9 +330,9 @@ void ProjectileManager::update(float deltaTime)
     if (useThreading)
     {
         size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-            HammerEngine::SystemType::ProjectileSim, entityCount);
+            VoidLight::SystemType::ProjectileSim, entityCount);
         auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-            HammerEngine::SystemType::ProjectileSim, entityCount, optimalWorkerCount);
+            VoidLight::SystemType::ProjectileSim, entityCount, optimalWorkerCount);
 
         actualWasThreaded = true;
         actualBatchCount = batchCount;
@@ -357,7 +357,7 @@ void ProjectileManager::update(float deltaTime)
         m_batchFutures.clear();
         m_batchFutures.reserve(batchCount);
 
-        auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+        auto& threadSystem = VoidLight::ThreadSystem::Instance();
 
         startTime = std::chrono::steady_clock::now();
 
@@ -379,7 +379,7 @@ void ProjectileManager::update(float deltaTime)
                                      deltaTime, worldWidth, worldHeight,
                                      m_batchDestroyQueues[i]);
                     },
-                    HammerEngine::TaskPriority::Normal, "Proj_Batch"));
+                    VoidLight::TaskPriority::Normal, "Proj_Batch"));
         }
 
         // Wait for all batches
@@ -451,7 +451,7 @@ void ProjectileManager::update(float deltaTime)
     m_perf.totalUpdates++;
 
     // Report ONLY batch time for adaptive tuning
-    budgetMgr.reportExecution(HammerEngine::SystemType::ProjectileSim,
+    budgetMgr.reportExecution(VoidLight::SystemType::ProjectileSim,
                               entityCount, actualWasThreaded,
                               actualBatchCount, batchMs);
 

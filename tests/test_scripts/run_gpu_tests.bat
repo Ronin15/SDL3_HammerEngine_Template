@@ -1,5 +1,5 @@
 @echo off
-REM GPU Test Runner for SDL3 HammerEngine (Windows)
+REM GPU Test Runner for SDL3 VoidLight-Framework (Windows)
 REM Runs GPU rendering subsystem tests with configurable options
 
 setlocal EnableDelayedExpansion
@@ -116,7 +116,7 @@ if %errorlevel%==0 (
 exit /b 0
 
 :show_help
-echo GPU Test Runner for SDL3 HammerEngine
+echo GPU Test Runner for SDL3 VoidLight-Framework
 echo.
 echo Usage: %~nx0 [options]
 echo.

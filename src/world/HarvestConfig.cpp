@@ -6,7 +6,7 @@
 #include "world/HarvestConfig.hpp"
 #include <array>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // ============================================================================
 // HARVEST TYPE CONFIGURATIONS
@@ -163,4 +163,4 @@ HarvestType getHarvestTypeForResource(std::string_view resourceId) {
     return HarvestType::Gathering;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

@@ -21,7 +21,7 @@
 struct ParticleManagerThreadingFixture {
   ParticleManagerThreadingFixture() {
     // Initialize ThreadSystem first
-    threadSystem = &HammerEngine::ThreadSystem::Instance();
+    threadSystem = &VoidLight::ThreadSystem::Instance();
 
     // Always try to initialize the ThreadSystem for threading tests
     if (threadSystem->isShutdown() || threadSystem->getThreadCount() == 0) {
@@ -64,7 +64,7 @@ struct ParticleManagerThreadingFixture {
   }
 
   ParticleManager *manager;
-  HammerEngine::ThreadSystem *threadSystem;
+  VoidLight::ThreadSystem *threadSystem;
 };
 
 // Test concurrent particle creation
@@ -95,7 +95,7 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentParticleCreation,
             std::this_thread::sleep_for(std::chrono::microseconds(100));
           }
         },
-        HammerEngine::TaskPriority::Normal, "ParticleCreationTask");
+        VoidLight::TaskPriority::Normal, "ParticleCreationTask");
 
     futures.push_back(std::move(future));
   }
@@ -208,7 +208,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeEffectManagement,
                                     localEffectIds.end());
           }
         },
-        HammerEngine::TaskPriority::Normal, "EffectManagementTask");
+        VoidLight::TaskPriority::Normal, "EffectManagementTask");
 
     futures.push_back(std::move(future));
   }
@@ -258,7 +258,7 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentWeatherChanges,
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
           }
         },
-        HammerEngine::TaskPriority::Normal, "WeatherChangeTask");
+        VoidLight::TaskPriority::Normal, "WeatherChangeTask");
 
     futures.push_back(std::move(future));
   }
@@ -320,7 +320,7 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentStatsAccess,
             std::this_thread::sleep_for(std::chrono::microseconds(100));
           }
         },
-        HammerEngine::TaskPriority::Normal, "StatsAccessTask");
+        VoidLight::TaskPriority::Normal, "StatsAccessTask");
 
     futures.push_back(std::move(future));
   }
@@ -381,7 +381,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCleanup,
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
           }
         },
-        HammerEngine::TaskPriority::Normal, "ContinuousOperationTask");
+        VoidLight::TaskPriority::Normal, "ContinuousOperationTask");
 
     futures.push_back(std::move(future));
   }
@@ -478,7 +478,7 @@ BOOST_FIXTURE_TEST_CASE(TestMixedConcurrentOperations,
             std::this_thread::sleep_for(std::chrono::microseconds(200));
           }
         },
-        HammerEngine::TaskPriority::Normal, "MixedOperationTask");
+        VoidLight::TaskPriority::Normal, "MixedOperationTask");
 
     futures.push_back(std::move(future));
   }
@@ -492,7 +492,7 @@ BOOST_FIXTURE_TEST_CASE(TestMixedConcurrentOperations,
           std::this_thread::sleep_for(std::chrono::milliseconds(16));
         }
       },
-      HammerEngine::TaskPriority::Normal, "UpdateTask");
+      VoidLight::TaskPriority::Normal, "UpdateTask");
 
   // Wait for all mixed operations to complete
   for (auto &future : futures) {

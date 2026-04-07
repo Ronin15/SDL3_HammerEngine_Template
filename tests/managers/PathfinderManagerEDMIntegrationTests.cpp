@@ -33,7 +33,7 @@
 #include <thread>
 #include <vector>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 namespace {
 

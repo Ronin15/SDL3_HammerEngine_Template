@@ -7,7 +7,7 @@
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_video.h>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * Singleton wrapper for SDL_GPUDevice.
@@ -71,6 +71,6 @@ private:
     SDL_Window* m_window{nullptr};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_DEVICE_HPP

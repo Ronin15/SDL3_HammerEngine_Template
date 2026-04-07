@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // Static singleton instance
 WorkerBudgetManager& WorkerBudgetManager::Instance() {
@@ -359,4 +359,4 @@ WorkerBudget WorkerBudgetManager::calculateBudget() const {
     return budget;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

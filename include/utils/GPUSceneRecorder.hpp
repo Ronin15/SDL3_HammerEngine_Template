@@ -9,7 +9,7 @@
 // Forward declaration of SDL GPU types (must be outside namespace)
 struct SDL_GPURenderPass;
 
-namespace HammerEngine {
+namespace VoidLight {
 
 class Camera;
 class GPURenderer;
@@ -147,6 +147,6 @@ private:
     float m_zoom{1.0f};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_SCENE_RECORDER_HPP

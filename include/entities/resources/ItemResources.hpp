@@ -14,7 +14,7 @@
  */
 class Item : public Resource {
 public:
-  Item(HammerEngine::ResourceHandle handle, const std::string &id,
+  Item(VoidLight::ResourceHandle handle, const std::string &id,
        const std::string &name, ResourceType type);
   ~Item() override = default;
 
@@ -49,7 +49,7 @@ public:
     COUNT = 8
   };
 
-  Equipment(HammerEngine::ResourceHandle handle, const std::string &id,
+  Equipment(VoidLight::ResourceHandle handle, const std::string &id,
             const std::string &name, EquipmentSlot slot);
   ~Equipment() override = default;
 
@@ -90,7 +90,7 @@ public:
     COUNT = 6
   };
 
-  Consumable(HammerEngine::ResourceHandle handle, const std::string &id,
+  Consumable(VoidLight::ResourceHandle handle, const std::string &id,
              const std::string &name);
   ~Consumable() override = default;
 
@@ -119,7 +119,7 @@ private:
  */
 class QuestItem : public Item {
 public:
-  QuestItem(HammerEngine::ResourceHandle handle, const std::string &id,
+  QuestItem(VoidLight::ResourceHandle handle, const std::string &id,
             const std::string &name, const std::string &questId = "");
   ~QuestItem() override = default;
 

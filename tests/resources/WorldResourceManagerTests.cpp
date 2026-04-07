@@ -20,7 +20,7 @@
 #include "managers/WorldResourceManager.hpp"
 
 // Helper function to find resource handle by name
-HammerEngine::ResourceHandle
+VoidLight::ResourceHandle
 findResourceByName(ResourceTemplateManager *manager, const std::string &name) {
   for (int cat = 0; cat < static_cast<int>(ResourceCategory::COUNT); ++cat) {
     auto resources =
@@ -31,11 +31,11 @@ findResourceByName(ResourceTemplateManager *manager, const std::string &name) {
       }
     }
   }
-  return HammerEngine::ResourceHandle(); // Invalid handle
+  return VoidLight::ResourceHandle(); // Invalid handle
 }
 
 // Helper function to get or load resource by name
-HammerEngine::ResourceHandle
+VoidLight::ResourceHandle
 getOrLoadResourceByName(ResourceTemplateManager *manager,
                         const std::string &name) {
   auto handle = findResourceByName(manager, name);
@@ -53,7 +53,7 @@ class WorldResourceManagerTestFixture {
 public:
   WorldResourceManagerTestFixture() {
     // Initialize ThreadSystem first for threading tests
-    threadSystem = &HammerEngine::ThreadSystem::Instance();
+    threadSystem = &VoidLight::ThreadSystem::Instance();
     if (threadSystem->isShutdown() || threadSystem->getThreadCount() == 0) {
       bool initSuccess = threadSystem->init();
       if (!initSuccess && threadSystem->getThreadCount() == 0) {
@@ -96,13 +96,13 @@ protected:
   ResourceTemplateManager *templateManager;
   EntityDataManager *entityDataManager;
   WorldResourceManager *worldManager;
-  HammerEngine::ThreadSystem *threadSystem;
+  VoidLight::ThreadSystem *threadSystem;
 
   // Common resource handles
-  HammerEngine::ResourceHandle goldHandle;
-  HammerEngine::ResourceHandle potionHandle;
-  HammerEngine::ResourceHandle oreHandle;
-  HammerEngine::ResourceHandle swordHandle;
+  VoidLight::ResourceHandle goldHandle;
+  VoidLight::ResourceHandle potionHandle;
+  VoidLight::ResourceHandle oreHandle;
+  VoidLight::ResourceHandle swordHandle;
 };
 
 BOOST_FIXTURE_TEST_SUITE(WorldResourceManagerTestSuite,
@@ -337,7 +337,7 @@ BOOST_AUTO_TEST_CASE(TestQueryNonexistentWorld) {
 
 BOOST_AUTO_TEST_CASE(TestQueryInvalidResourceHandle) {
   const std::string worldId = "default";
-  HammerEngine::ResourceHandle invalidHandle;
+  VoidLight::ResourceHandle invalidHandle;
 
   auto total = worldManager->queryInventoryTotal(worldId, invalidHandle);
   BOOST_CHECK_EQUAL(total, 0);
@@ -527,7 +527,7 @@ BOOST_AUTO_TEST_CASE(TestConcurrentInventoryOperations) {
             std::this_thread::sleep_for(std::chrono::microseconds(1));
           }
         },
-        HammerEngine::TaskPriority::Normal, "ConcurrentInventoryTask");
+        VoidLight::TaskPriority::Normal, "ConcurrentInventoryTask");
 
     futures.push_back(std::move(future));
   }
@@ -578,7 +578,7 @@ BOOST_AUTO_TEST_CASE(TestConcurrentWorldOperations) {
             std::this_thread::sleep_for(std::chrono::microseconds(1));
           }
         },
-        HammerEngine::TaskPriority::Normal, "ConcurrentWorldTask");
+        VoidLight::TaskPriority::Normal, "ConcurrentWorldTask");
 
     futures.push_back(std::move(future));
   }

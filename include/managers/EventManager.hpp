@@ -39,7 +39,7 @@
 
 // Forward declarations
 class Event;
-namespace HammerEngine { struct CollisionInfo; }
+namespace VoidLight { struct CollisionInfo; }
 class WeatherEvent;
 class NPCSpawnEvent;
 class ResourceChangeEvent;
@@ -386,7 +386,7 @@ public:
    * @brief Triggers a resource change event
    */
   bool triggerResourceChange(EntityHandle ownerHandle,
-                             HammerEngine::ResourceHandle resourceHandle,
+                             VoidLight::ResourceHandle resourceHandle,
                              int oldQuantity, int newQuantity,
                              const std::string &changeReason = "",
                              DispatchMode mode = DispatchMode::Deferred) const;
@@ -394,7 +394,7 @@ public:
   /**
    * @brief Triggers a collision event
    */
-  bool triggerCollision(const HammerEngine::CollisionInfo &info,
+  bool triggerCollision(const VoidLight::CollisionInfo &info,
                         DispatchMode mode = DispatchMode::Deferred) const;
 
   /**

@@ -1,6 +1,6 @@
 # Utility Systems
 
-This directory contains documentation for core utility classes and helper systems used throughout the Hammer Game Engine.
+This directory contains documentation for core utility classes and helper systems used throughout the VoidLight Engine.
 
 ## Available Utilities
 

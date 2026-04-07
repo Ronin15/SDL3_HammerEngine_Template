@@ -11,7 +11,7 @@
 #include <cassert>
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // ========== HierarchicalSpatialHash Implementation ==========
 
@@ -569,4 +569,4 @@ void HierarchicalSpatialHash::unsubdivideRegion(Region& region) {
     region.hasFineSplit = false;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

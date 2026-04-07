@@ -1,8 +1,8 @@
-# Minimap Implementation Plan for HammerEngine UI Manager
+# Minimap Implementation Plan for VoidLight-Framework UI Manager
 
 ## Overview
 
-This document outlines the design and implementation steps for integrating a basic minimap into the HammerEngine UI system. The minimap will display the current area of the world and indicate which regions have been discovered by the player. The design follows the engine's architecture, rendering flow, and code style guidelines.
+This document outlines the design and implementation steps for integrating a basic minimap into the VoidLight-Framework UI system. The minimap will display the current area of the world and indicate which regions have been discovered by the player. The design follows the engine's architecture, rendering flow, and code style guidelines.
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The SettingsManager is a thread-safe settings management system designed for the Hammer Engine. It provides type-safe access to game settings with JSON persistence, category organization, and change notification callbacks. The manager uses a singleton pattern and supports concurrent reads with exclusive writes for optimal performance.
+The SettingsManager is a thread-safe settings management system designed for the VoidLight-Framework. It provides type-safe access to game settings with JSON persistence, category organization, and change notification callbacks. The manager uses a singleton pattern and supports concurrent reads with exclusive writes for optimal performance.
 
 ## Architecture
 

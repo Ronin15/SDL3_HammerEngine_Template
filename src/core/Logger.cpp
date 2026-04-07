@@ -20,7 +20,7 @@
 #include <sstream>
 #include <vector>
 
-namespace HammerEngine {
+namespace VoidLight {
 namespace {
 
 // Internal file logger implementation for release builds
@@ -189,6 +189,6 @@ void Logger::Log(const char* level, const char* system, const char* message) {
     FileLogger::Instance().write(level, system, message);
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // ifndef DEBUG

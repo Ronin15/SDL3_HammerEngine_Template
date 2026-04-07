@@ -12,7 +12,7 @@
 #include "gpu/GPUTypes.hpp"
 #include <cstddef>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 // ============================================================================
 // SPRITE VERTEX TESTS

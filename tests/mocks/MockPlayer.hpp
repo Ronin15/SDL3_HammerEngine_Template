@@ -14,7 +14,7 @@
 #include <string>
 
 // Forward declaration
-namespace HammerEngine {
+namespace VoidLight {
     class Camera;
 }
 

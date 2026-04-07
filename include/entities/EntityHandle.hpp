@@ -149,7 +149,7 @@ constexpr const char* tierToString(SimulationTier tier) noexcept {
  */
 struct EntityHandle {
     // Type aliases matching existing codebase patterns
-    using IDType = HammerEngine::UniqueID::IDType;  // uint64_t
+    using IDType = VoidLight::UniqueID::IDType;  // uint64_t
     using Generation = uint8_t;
 
     // Special values

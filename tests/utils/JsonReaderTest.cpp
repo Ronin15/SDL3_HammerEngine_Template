@@ -3,7 +3,7 @@
 #include <boost/test/unit_test.hpp>
 #include <fstream>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 BOOST_AUTO_TEST_SUITE(JsonValueTests)
 

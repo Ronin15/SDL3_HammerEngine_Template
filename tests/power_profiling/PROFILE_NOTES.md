@@ -63,7 +63,7 @@ handle similar behavior on any OS that exhibits this pattern.
 
 ### Valid Baseline (Post-Fix)
 
-For SDL3 HammerEngine on M3 Pro MacBook Pro:
+For SDL3 VoidLight-Framework on M3 Pro MacBook Pro:
 - **Idle/Menu**: ~0.05W (high C-state residency)
 - **Normal Gameplay** (~200 entities): 0.7-1.0W average
 - **Peak Gameplay** (heavy AI/pathfinding): 5-8W

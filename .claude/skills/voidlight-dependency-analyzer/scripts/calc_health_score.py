@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Calculate Architecture Health Score for HammerEngine
+Calculate Architecture Health Score for VoidLight-Framework
 """
 
 import os

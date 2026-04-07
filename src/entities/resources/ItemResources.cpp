@@ -7,7 +7,7 @@
 #include <unordered_map>
 
 // Item base class implementation
-Item::Item(HammerEngine::ResourceHandle handle, const std::string &id,
+Item::Item(VoidLight::ResourceHandle handle, const std::string &id,
            const std::string &name, ResourceType type)
     : Resource(handle, id, name, ResourceCategory::Item, type) {
   // Items are moderately stackable
@@ -21,7 +21,7 @@ void Item::setDurability(int durability, int maxDurability) {
 }
 
 // Equipment implementation
-Equipment::Equipment(HammerEngine::ResourceHandle handle, const std::string &id,
+Equipment::Equipment(VoidLight::ResourceHandle handle, const std::string &id,
                      const std::string &name, EquipmentSlot slot)
     : Item(handle, id, name, ResourceType::Equipment), m_equipmentSlot(slot) {
   // Equipment is not stackable
@@ -41,7 +41,7 @@ std::string Equipment::equipmentSlotToString(EquipmentSlot slot) {
 }
 
 // Consumable implementation
-Consumable::Consumable(HammerEngine::ResourceHandle handle,
+Consumable::Consumable(VoidLight::ResourceHandle handle,
                        const std::string &id, const std::string &name)
     : Item(handle, id, name, ResourceType::Consumable) {
   // Consumables are highly stackable
@@ -63,7 +63,7 @@ std::string Consumable::consumableEffectToString(ConsumableEffect effect) {
 }
 
 // QuestItem implementation
-QuestItem::QuestItem(HammerEngine::ResourceHandle handle, const std::string &id,
+QuestItem::QuestItem(VoidLight::ResourceHandle handle, const std::string &id,
                      const std::string &name, const std::string &questId)
     : Item(handle, id, name, ResourceType::QuestItem), m_questId(questId) {
   // Quest items are not stackable and not consumable

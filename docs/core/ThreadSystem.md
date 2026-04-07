@@ -2,11 +2,11 @@
 
 **Code:** `include/core/ThreadSystem.hpp`, `include/core/WorkerBudget.hpp`, `src/core/WorkerBudget.cpp`
 
-**Singleton Access:** Use `HammerEngine::ThreadSystem::Instance()` to access the thread system.
+**Singleton Access:** Use `VoidLight-Framework::ThreadSystem::Instance()` to access the thread system.
 
 ## Overview
 
-The Hammer Engine ThreadSystem is a robust, production-ready thread pool implementation designed for high-performance game development. It provides efficient task-based concurrency with priority-based scheduling, WorkerBudget batch optimization, and comprehensive performance monitoring.
+The VoidLight-Framework ThreadSystem is a robust, production-ready thread pool implementation designed for high-performance game development. It provides efficient task-based concurrency with priority-based scheduling, WorkerBudget batch optimization, and comprehensive performance monitoring.
 
 ## Architecture Overview
 
@@ -142,12 +142,12 @@ void AIManager::update(float deltaTime) {
     if (entityCount == 0) return;
 
     // Get optimal batch configuration from WorkerBudget
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight-Framework::WorkerBudgetManager::Instance();
     size_t optimalWorkers = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::AI, entityCount);
+        VoidLight-Framework::SystemType::AI, entityCount);
 
     auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::AI,
+        VoidLight-Framework::SystemType::AI,
         entityCount,
         optimalWorkers);
 
@@ -168,7 +168,7 @@ void AIManager::update(float deltaTime) {
 
     auto elapsed = std::chrono::steady_clock::now() - startTime;
     budgetMgr.reportExecution(
-        HammerEngine::SystemType::AI,
+        VoidLight-Framework::SystemType::AI,
         entityCount,
         true,
         batchCount,
@@ -210,7 +210,7 @@ enum class TaskPriority : uint8_t {
 
 ```cpp
 #include "core/ThreadSystem.hpp"
-using namespace HammerEngine;
+using namespace VoidLight-Framework;
 
 // Initialize with default settings (recommended)
 if (!ThreadSystem::Instance().init()) {
@@ -244,12 +244,12 @@ int result = future.get();
 
 ```cpp
 void processEntitiesWithBudget(std::vector<Entity*>& entities, float deltaTime) {
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight-Framework::WorkerBudgetManager::Instance();
 
     auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::AI,
+        VoidLight-Framework::SystemType::AI,
         entities.size(),
-        budgetMgr.getOptimalWorkers(HammerEngine::SystemType::AI, entities.size()));
+        budgetMgr.getOptimalWorkers(VoidLight-Framework::SystemType::AI, entities.size()));
 
     for (size_t i = 0; i < batchCount; ++i) {
         size_t start = i * batchSize;
@@ -339,12 +339,12 @@ void Manager::update(float deltaTime) {
     if (workloadSize == 0) return;
 
     // 1. Get optimal configuration from WorkerBudget
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight-Framework::WorkerBudgetManager::Instance();
     size_t optimalWorkers = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::MyType, workloadSize);
+        VoidLight-Framework::SystemType::MyType, workloadSize);
 
     auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::MyType,
+        VoidLight-Framework::SystemType::MyType,
         workloadSize,
         optimalWorkers);
 
@@ -362,7 +362,7 @@ void Manager::update(float deltaTime) {
     // 4. Report metrics for adaptive tuning
     auto elapsed = std::chrono::steady_clock::now() - startTime;
     budgetMgr.reportExecution(
-        HammerEngine::SystemType::MyType,
+        VoidLight-Framework::SystemType::MyType,
         workloadSize,
         true,
         batchCount,

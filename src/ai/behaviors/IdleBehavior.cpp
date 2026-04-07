@@ -35,7 +35,7 @@ float getRandomTurnInterval(float turnFrequency) {
     return baseInterval * s_frequencyVariation(s_rng);
 }
 
-void initializeIdleState(const Vector2D& position, BehaviorData& data, const HammerEngine::IdleBehaviorConfig& config) {
+void initializeIdleState(const Vector2D& position, BehaviorData& data, const VoidLight::IdleBehaviorConfig& config) {
     auto& idle = data.state.idle;
     idle.originalPosition = position;
     idle.currentOffset = Vector2D(0, 0);
@@ -51,7 +51,7 @@ void updateStationary(BehaviorContext& ctx) {
     ctx.transform.velocity = Vector2D(0, 0);
 }
 
-void updateSubtleSway(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& config) {
+void updateSubtleSway(BehaviorContext& ctx, const VoidLight::IdleBehaviorConfig& config) {
     auto& data = ctx.behaviorData;
     auto& idle = data.state.idle;
     idle.movementTimer += ctx.deltaTime;
@@ -65,7 +65,7 @@ void updateSubtleSway(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConf
     }
 }
 
-void updateOccasionalTurn(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& config) {
+void updateOccasionalTurn(BehaviorContext& ctx, const VoidLight::IdleBehaviorConfig& config) {
     auto& data = ctx.behaviorData;
     auto& idle = data.state.idle;
     idle.turnTimer += ctx.deltaTime;
@@ -79,7 +79,7 @@ void updateOccasionalTurn(BehaviorContext& ctx, const HammerEngine::IdleBehavior
     ctx.transform.velocity = Vector2D(0, 0);
 }
 
-void updateLightFidget(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& config) {
+void updateLightFidget(BehaviorContext& ctx, const VoidLight::IdleBehaviorConfig& config) {
     auto& data = ctx.behaviorData;
     auto& idle = data.state.idle;
     idle.movementTimer += ctx.deltaTime;
@@ -104,7 +104,7 @@ void updateLightFidget(BehaviorContext& ctx, const HammerEngine::IdleBehaviorCon
 
 namespace Behaviors {
 
-void initIdle(size_t edmIndex, const HammerEngine::IdleBehaviorConfig& config) {
+void initIdle(size_t edmIndex, const VoidLight::IdleBehaviorConfig& config) {
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Idle);
     auto& data = edm.getBehaviorData(edmIndex);
@@ -117,7 +117,7 @@ void initIdle(size_t edmIndex, const HammerEngine::IdleBehaviorConfig& config) {
     data.setInitialized(true);
 }
 
-void executeIdle(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& config) {
+void executeIdle(BehaviorContext& ctx, const VoidLight::IdleBehaviorConfig& config) {
     auto& data = ctx.behaviorData;
     if (!data.isValid()) return;
 
@@ -167,17 +167,17 @@ void executeIdle(BehaviorContext& ctx, const HammerEngine::IdleBehaviorConfig& c
     }
 
     // Execute behavior based on current mode
-    switch (static_cast<HammerEngine::IdleBehaviorConfig::IdleMode>(config.mode)) {
-    case HammerEngine::IdleBehaviorConfig::IdleMode::STATIONARY:
+    switch (static_cast<VoidLight::IdleBehaviorConfig::IdleMode>(config.mode)) {
+    case VoidLight::IdleBehaviorConfig::IdleMode::STATIONARY:
         updateStationary(ctx);
         break;
-    case HammerEngine::IdleBehaviorConfig::IdleMode::SUBTLE_SWAY:
+    case VoidLight::IdleBehaviorConfig::IdleMode::SUBTLE_SWAY:
         updateSubtleSway(ctx, config);
         break;
-    case HammerEngine::IdleBehaviorConfig::IdleMode::OCCASIONAL_TURN:
+    case VoidLight::IdleBehaviorConfig::IdleMode::OCCASIONAL_TURN:
         updateOccasionalTurn(ctx, config);
         break;
-    case HammerEngine::IdleBehaviorConfig::IdleMode::LIGHT_FIDGET:
+    case VoidLight::IdleBehaviorConfig::IdleMode::LIGHT_FIDGET:
         updateLightFidget(ctx, config);
         break;
     }

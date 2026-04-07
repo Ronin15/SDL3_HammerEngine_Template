@@ -48,7 +48,7 @@ public:
         // Initialize systems once per fixture
         if (!s_initialized) {
             HAMMER_ENABLE_BENCHMARK_MODE();
-            HammerEngine::ThreadSystem::Instance().init();
+            VoidLight::ThreadSystem::Instance().init();
             EntityDataManager::Instance().init();
             PathfinderManager::Instance().init();
             PathfinderManager::Instance().rebuildGrid();
@@ -73,7 +73,7 @@ public:
         CollisionManager::Instance().prepareForStateTransition();
         PathfinderManager::Instance().prepareForStateTransition();
         EntityDataManager::Instance().prepareForStateTransition();
-        HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+        VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
     }
 
     // Create AI entities via EntityDataManager
@@ -221,7 +221,7 @@ struct AIScalingModuleCleanup {
         CollisionManager::Instance().clean();
         PathfinderManager::Instance().clean();
         EntityDataManager::Instance().clean();
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
 
         AIScalingFixture::initializedFlag() = false;
     }
@@ -240,9 +240,9 @@ BOOST_FIXTURE_TEST_SUITE(AIScalingTests, AIScalingFixture)
 // Print header with system info
 BOOST_AUTO_TEST_CASE(PrintHeader)
 {
-    const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
+    const auto& budget = VoidLight::WorkerBudgetManager::Instance().getBudget();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
+    double multiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::AI, true);
 
     std::cout << "\n=== AI Scaling Benchmark ===\n";
     std::cout << "Date: " << __DATE__ << " " << __TIME__ << "\n";
@@ -265,7 +265,7 @@ BOOST_AUTO_TEST_CASE(AIEntityScaling)
               << std::setw(10) << "Status\n";
 
     std::vector<size_t> entityCounts = {100, 500, 1000, 2000, 5000, 10000};
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
     // Track best performance for summary
     size_t bestCount = 0;
@@ -299,7 +299,7 @@ BOOST_AUTO_TEST_CASE(AIEntityScaling)
             : 0.0;
 
         // Check threading decision from WorkerBudget
-        auto decision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::AI, count);
+        auto decision = budgetMgr.shouldUseThreading(VoidLight::SystemType::AI, count);
         const char* threading = decision.shouldThread ? "multi" : "single";
         const char* status = (activeCount == count && medianMs > 0.0) ? "OK" : "FAIL";
 
@@ -323,7 +323,7 @@ BOOST_AUTO_TEST_CASE(AIEntityScaling)
     std::cout << "Measurement: median of " << NUM_MEASUREMENT_RUNS << " runs per entity count\n";
     std::cout << "Entity updates per second: " << std::fixed << std::setprecision(0)
               << bestUpdatesPerSec << " (at " << bestCount << " entities)\n";
-    auto finalDecision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::AI, bestCount);
+    auto finalDecision = budgetMgr.shouldUseThreading(VoidLight::SystemType::AI, bestCount);
     std::cout << "Threading mode: " << (finalDecision.shouldThread ? "WorkerBudget Multi-threaded" : "Single-threaded") << "\n";
     std::cout << std::endl;
 }
@@ -497,7 +497,7 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
     std::cout << "--- WorkerBudget Adaptive Tuning (AI) ---\n";
     std::cout << "Tests both batch sizing hill-climb and threading threshold adaptation\n\n";
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     auto& aim = AIManager::Instance();
 
     // =========================================================================
@@ -563,7 +563,7 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
     std::cout << "\nPART 2: Throughput Tracking\n";
     std::cout << "(Tracks multi throughput for batch tuning)\n\n";
 
-    double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
+    double initialMultiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::AI, true);
     std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms\n\n";
 
     constexpr size_t TRACKING_ENTITY_COUNT = 300;
@@ -593,8 +593,8 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
         double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
         double avgMs = totalMs / FRAMES_PER_PHASE;
 
-        double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
-        float batchMultNow = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
+        double multiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::AI, true);
+        float batchMultNow = budgetMgr.getBatchMultiplier(VoidLight::SystemType::AI);
 
         std::cout << std::setw(8) << (phase + 1)
                   << std::setw(12) << ((phase + 1) * FRAMES_PER_PHASE)
@@ -603,8 +603,8 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
                   << std::setw(12) << std::fixed << std::setprecision(2) << batchMultNow << "\n";
     }
 
-    double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
-    float finalBatchMultTP = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
+    double finalMultiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::AI, true);
+    float finalBatchMultTP = budgetMgr.getBatchMultiplier(VoidLight::SystemType::AI);
 
     std::cout << "\nFinal multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms\n";
     std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMultTP << "\n";
@@ -641,9 +641,9 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
 // ---------------------------------------------------------------------------
 BOOST_AUTO_TEST_CASE(PrintSummary)
 {
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
-    float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
+    double multiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::AI, true);
+    float batchMult = budgetMgr.getBatchMultiplier(VoidLight::SystemType::AI);
 
     std::cout << "SUMMARY:\n";
     std::cout << "  AI batch processing: O(n) scaling with WorkerBudget\n";

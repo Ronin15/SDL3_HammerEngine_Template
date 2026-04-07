@@ -97,7 +97,7 @@ std::string LogoState::getName() const {
   return "LogoState";
 }
 
-void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+void LogoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                                   [[maybe_unused]] float interpolationAlpha) {
   // Check if window dimensions changed
   GameEngine& gameEngine = GameEngine::Instance();
@@ -111,7 +111,7 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
   TextureManager& texMgr = TextureManager::Instance();
 
   auto& vertexPool = gpuRenderer.getSpriteVertexPool();
-  auto* basePtr = static_cast<HammerEngine::SpriteVertex*>(vertexPool.getMappedPtr());
+  auto* basePtr = static_cast<VoidLight::SpriteVertex*>(vertexPool.getMappedPtr());
   if (!basePtr) {
     return;
   }
@@ -133,7 +133,7 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
     }
 
     // Write 4 vertices for this quad
-    HammerEngine::SpriteVertex* v = basePtr + vertexOffset;
+    VoidLight::SpriteVertex* v = basePtr + vertexOffset;
      float sx = static_cast<float>(x) * sceneScale;
      float sy = static_cast<float>(y) * sceneScale;
      float sw = static_cast<float>(size) * sceneScale;
@@ -161,7 +161,7 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
 
   // Add all logos
   addLogo("HammerForgeBanner", m_bannerX, m_bannerY, m_bannerSize);
-  addLogo("HammerEngine", m_engineX, m_engineY, m_engineSize);
+  addLogo("VoidLight", m_engineX, m_engineY, m_engineSize);
   addLogo("cpp", m_cppX, m_cppY, m_cppSize);
   addLogo("sdl_logo", m_sdlX, m_sdlY, m_sdlSize);
 
@@ -173,7 +173,7 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
   FontManager& fontMgr = FontManager::Instance();
 
   auto& uiPool = gpuRenderer.getUIVertexPool();
-  auto* uiBasePtr = static_cast<HammerEngine::SpriteVertex*>(uiPool.getMappedPtr());
+  auto* uiBasePtr = static_cast<VoidLight::SpriteVertex*>(uiPool.getMappedPtr());
   if (!uiBasePtr) {
     return;
   }
@@ -204,7 +204,7 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
         continue;
       }
 
-      HammerEngine::SpriteVertex* v = uiBasePtr + uiVertexOffset;
+      VoidLight::SpriteVertex* v = uiBasePtr + uiVertexOffset;
       SDL_Color drawColor = {.r=200, .g=200, .b=200, .a=255};
       if (seq->image_type == TTF_IMAGE_COLOR) {
         drawColor = {.r=255, .g=255, .b=255, .a=255};
@@ -233,14 +233,14 @@ void LogoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
     }
   };
 
-  addText("logo:title", "<]==={ }* Hammer Game Engine *{ }===]>", centerX, m_titleY);
+  addText("logo:title", "<]==={ }* VoidLight Engine *{ }===]>", centerX, m_titleY);
   addText("logo:subtitle", "Powered by SDL3", centerX, m_subtitleY);
   addText("logo:version", "v0.9.0", centerX, m_versionY);
 
   uiPool.setWrittenVertexCount(uiVertexOffset);
 }
 
-void LogoState::renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+void LogoState::renderGPUScene(VoidLight::GPURenderer& gpuRenderer,
                                 SDL_GPURenderPass* scenePass,
                                 [[maybe_unused]] float interpolationAlpha) {
   if (m_drawCommands.empty()) {
@@ -254,7 +254,7 @@ void LogoState::renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
 
   // Create orthographic projection for scene texture (3x viewport size)
   float orthoMatrix[16];
-  HammerEngine::GPURenderer::createOrthoMatrix(
+  VoidLight::GPURenderer::createOrthoMatrix(
       0.0f, static_cast<float>(sceneTexture->getWidth()),
       0.0f, static_cast<float>(sceneTexture->getHeight()),
       orthoMatrix);
@@ -293,7 +293,7 @@ void LogoState::renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
   }
 }
 
-void LogoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void LogoState::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                             SDL_GPURenderPass* swapchainPass) {
   if (!swapchainPass || m_textDrawCommands.empty()) {
     return;
@@ -301,7 +301,7 @@ void LogoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
 
   // Create orthographic projection for screen-space rendering
   float orthoMatrix[16];
-  HammerEngine::GPURenderer::createOrthoMatrix(
+  VoidLight::GPURenderer::createOrthoMatrix(
       0.0f, static_cast<float>(gpuRenderer.getViewportWidth()),
       0.0f, static_cast<float>(gpuRenderer.getViewportHeight()),
       orthoMatrix);

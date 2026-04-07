@@ -13,7 +13,7 @@
 #include "utils/Camera.hpp"
 #include "utils/Vector2D.hpp"
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 // Test tolerance for floating-point comparisons
 constexpr float EPSILON = 0.001f;

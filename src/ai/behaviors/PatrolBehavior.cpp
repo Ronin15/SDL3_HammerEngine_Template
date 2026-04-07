@@ -28,7 +28,7 @@ Vector2D generateRandomWaypoint(const Vector2D& currentPos, float boundaryPaddin
         return currentPos + Vector2D(std::cos(angle), std::sin(angle)) * 200.0f;
     }
 
-    constexpr float TILE = HammerEngine::TILE_SIZE;
+    constexpr float TILE = VoidLight::TILE_SIZE;
     float worldMinX = minX * TILE + boundaryPadding;
     float worldMinY = minY * TILE + boundaryPadding;
     float worldMaxX = maxX * TILE - boundaryPadding;
@@ -56,7 +56,7 @@ bool isAtWaypoint(const Vector2D& position, const Vector2D& waypoint, float radi
 
 namespace Behaviors {
 
-void initPatrol(size_t edmIndex, const HammerEngine::PatrolBehaviorConfig& config) {
+void initPatrol(size_t edmIndex, const VoidLight::PatrolBehaviorConfig& config) {
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Patrol);
     auto& data = edm.getBehaviorData(edmIndex);
@@ -81,7 +81,7 @@ void initPatrol(size_t edmIndex, const HammerEngine::PatrolBehaviorConfig& confi
     data.setInitialized(true);
 }
 
-void executePatrol(BehaviorContext& ctx, const HammerEngine::PatrolBehaviorConfig& config) {
+void executePatrol(BehaviorContext& ctx, const VoidLight::PatrolBehaviorConfig& config) {
     if (!ctx.behaviorData.isValid()) return;
 
     auto& data = ctx.behaviorData;

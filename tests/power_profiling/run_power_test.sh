@@ -319,7 +319,7 @@ Power Profiling Analysis Report - Headless Benchmarks
 ======================================================
 
 This report compares CPU power consumption and energy efficiency across
-different threading configurations on the SDL3 HammerEngine.
+different threading configurations on the SDL3 VoidLight-Framework.
 
 Mode: Headless PowerProfile (AI system isolation)
 Files Generated:

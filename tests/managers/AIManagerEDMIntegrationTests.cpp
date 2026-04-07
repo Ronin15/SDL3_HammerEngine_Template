@@ -41,12 +41,12 @@ namespace {
 
 struct ThreadSystemTestLifetime {
     ThreadSystemTestLifetime() {
-        BOOST_REQUIRE_MESSAGE(HammerEngine::ThreadSystem::Instance().init(),
+        BOOST_REQUIRE_MESSAGE(VoidLight::ThreadSystem::Instance().init(),
                               "Failed to initialize ThreadSystem for AIManager EDM tests");
     }
 
     ~ThreadSystemTestLifetime() {
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
     }
 };
 
@@ -777,9 +777,9 @@ BOOST_AUTO_TEST_CASE(StaleHigherSequenceTransitionDoesNotSuppressValidTransition
     // command with newer sequence is enqueued after it.
     Behaviors::switchBehavior(reusedIndex, BehaviorType::Attack);
 
-    HammerEngine::BehaviorConfigData staleConfig{};
+    VoidLight::BehaviorConfigData staleConfig{};
     staleConfig.type = BehaviorType::Flee;
-    HammerEngine::AICommandBus::Instance().enqueueBehaviorTransition(
+    VoidLight::AICommandBus::Instance().enqueueBehaviorTransition(
         staleHandle, reusedIndex, staleConfig);
 
     aiMgr.update(0.016f);
@@ -824,9 +824,9 @@ BOOST_AUTO_TEST_CASE(StaleTransitionSuppressionStressLoop) {
 
         Behaviors::switchBehavior(reusedIndex, BehaviorType::Attack);
 
-        HammerEngine::BehaviorConfigData staleConfig{};
+        VoidLight::BehaviorConfigData staleConfig{};
         staleConfig.type = BehaviorType::Flee;
-        HammerEngine::AICommandBus::Instance().enqueueBehaviorTransition(
+        VoidLight::AICommandBus::Instance().enqueueBehaviorTransition(
             staleHandle, reusedIndex, staleConfig);
 
         aiMgr.update(0.016f);

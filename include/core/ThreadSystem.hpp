@@ -31,7 +31,7 @@
 #include <pthread.h>
 #endif
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // Task priority levels
 enum class TaskPriority : uint8_t {
@@ -1124,6 +1124,6 @@ private:
   ThreadSystem() = default;
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // THREAD_SYSTEM_HPP

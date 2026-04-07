@@ -14,7 +14,7 @@
 #include "managers/EventManager.hpp"
 #include "utils/Vector2D.hpp"
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 namespace {
 

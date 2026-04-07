@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Codex CLI instructions for `SDL3_HammerEngine_Template`.
+Codex CLI instructions for `SDL3_VoidLight-Framework_Template`.
 
 ## Mission
 

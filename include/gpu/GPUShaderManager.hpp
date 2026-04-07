@@ -10,7 +10,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * Shader resource information for creation.
@@ -139,6 +139,6 @@ private:
     };
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_SHADER_MANAGER_HPP

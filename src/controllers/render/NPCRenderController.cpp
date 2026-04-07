@@ -59,7 +59,7 @@ void NPCRenderController::clearSpawnedNPCs() {
     }
 }
 
-void NPCRenderController::recordGPU(const HammerEngine::GPUSceneContext& ctx) {
+void NPCRenderController::recordGPU(const VoidLight::GPUSceneContext& ctx) {
     if (!ctx.spriteBatch) { return; }
 
     auto& edm = EntityDataManager::Instance();

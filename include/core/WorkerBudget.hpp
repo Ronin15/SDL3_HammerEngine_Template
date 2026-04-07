@@ -12,7 +12,7 @@
 #include <mutex>
 #include <utility>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // Forward declaration
 class ThreadSystem;
@@ -309,6 +309,6 @@ private:
     WorkerBudget calculateBudget() const;
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // WORKER_BUDGET_HPP

@@ -169,7 +169,7 @@
     - `res/sfx/logo.aiff` (new)
 
 ### Graphics
-- **HammerEngine.png**: Fixed alpha channel (sRGB → sRGBA)
+- **VoidLight.png**: Fixed alpha channel (sRGB → sRGBA)
   - Resolved rendering issues on certain platforms
   - File size: 17751 → 19305 bytes
 
@@ -349,7 +349,7 @@ When merging to `main`:
 
 ## 🎉 Conclusion
 
-The Threading_fixes branch represents a comprehensive modernization of the SDL3 HammerEngine's core systems. Key achievements include:
+The Threading_fixes branch represents a comprehensive modernization of the SDL3 VoidLight-Framework's core systems. Key achievements include:
 
 - **Scalability**: Engine now handles large entity counts with improved performance
 - **Stability**: Eliminated race conditions and memory safety issues

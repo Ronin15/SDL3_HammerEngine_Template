@@ -23,7 +23,7 @@
 #include <unordered_map>
 
 // Use SIMD abstraction layer
-using namespace HammerEngine::SIMD;
+using namespace VoidLight::SIMD;
 
 namespace {
 
@@ -135,7 +135,7 @@ void AIManager::clean() {
 
   // Stop accepting new tasks
   m_globallyPaused.store(true, std::memory_order_release);
-  HammerEngine::AICommandBus::Instance().clearAll();
+  VoidLight::AICommandBus::Instance().clearAll();
   m_pendingFactionChanges.clear();
   m_pendingBehaviorTransitions.clear();
   m_pendingBehaviorMessages.clear();
@@ -171,7 +171,7 @@ void AIManager::prepareForStateTransition() {
 
   // Pause AI processing to prevent new tasks
   m_globallyPaused.store(true, std::memory_order_release);
-  HammerEngine::AICommandBus::Instance().clearAll();
+  VoidLight::AICommandBus::Instance().clearAll();
   m_pendingFactionChanges.clear();
   m_pendingBehaviorTransitions.clear();
   m_pendingBehaviorMessages.clear();
@@ -312,9 +312,9 @@ void AIManager::update(float deltaTime) {
 
     // Determine threading strategy using adaptive threshold from WorkerBudget
     // WorkerBudget is the AUTHORITATIVE source for production decisions
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     auto decision = budgetMgr.shouldUseThreading(
-        HammerEngine::SystemType::AI, entityCount);
+        VoidLight::SystemType::AI, entityCount);
     bool useThreading = decision.shouldThread;
 
 #ifndef NDEBUG
@@ -341,17 +341,17 @@ void AIManager::update(float deltaTime) {
     std::chrono::steady_clock::time_point endTime;
 
     if (useThreading) {
-      auto &threadSystem = HammerEngine::ThreadSystem::Instance();
+      auto &threadSystem = VoidLight::ThreadSystem::Instance();
 
       // Get optimal worker count - WorkerBudget handles queue pressure internally
       // (returns 1 worker under critical pressure, triggering single-batch path)
       size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-          HammerEngine::SystemType::AI, entityCount);
+          VoidLight::SystemType::AI, entityCount);
 
       // Get adaptive batch strategy (maximizes parallelism, fine-tunes based
       // on timing). WorkerBudget determines everything dynamically.
       auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-          HammerEngine::SystemType::AI, entityCount, optimalWorkerCount);
+          VoidLight::SystemType::AI, entityCount, optimalWorkerCount);
 
 #ifndef NDEBUG
         // Track for interval logging at end of function
@@ -411,7 +411,7 @@ void AIManager::update(float deltaTime) {
                                cachedPlayerValid, cachedGameTime,
                                m_batchEventBuffers[i]);
                 },
-                HammerEngine::TaskPriority::High, "AI_Batch"));
+                VoidLight::TaskPriority::High, "AI_Batch"));
           }
 
           // Wait for all batches and collect deferred events
@@ -455,7 +455,7 @@ void AIManager::update(float deltaTime) {
 
     // Report results for unified adaptive tuning - report what actually happened
     if (entityCount > 0) {
-      budgetMgr.reportExecution(HammerEngine::SystemType::AI,
+      budgetMgr.reportExecution(VoidLight::SystemType::AI,
                                 entityCount, actualWasThreaded, actualBatchCount,
                                 totalUpdateTime);
     }
@@ -525,20 +525,20 @@ void AIManager::registerDefaultBehaviors() {
   };
 
   // Register named preset configs (variants of base behaviors)
-  m_presetConfigs["SmallWander"] = HammerEngine::BehaviorConfigData::makeWander(
-      HammerEngine::WanderBehaviorConfig::createSmallWander());
-  m_presetConfigs["LargeWander"] = HammerEngine::BehaviorConfigData::makeWander(
-      HammerEngine::WanderBehaviorConfig::createLargeWander());
-  m_presetConfigs["EventWander"] = HammerEngine::BehaviorConfigData::makeWander(
-      HammerEngine::WanderBehaviorConfig::createEventWander());
-  m_presetConfigs["RandomPatrol"] = HammerEngine::BehaviorConfigData::makePatrol(
-      HammerEngine::PatrolBehaviorConfig::createRandomPatrol());
-  m_presetConfigs["CirclePatrol"] = HammerEngine::BehaviorConfigData::makePatrol(
-      HammerEngine::PatrolBehaviorConfig::createCirclePatrol());
-  m_presetConfigs["EventTarget"] = HammerEngine::BehaviorConfigData::makeChase(
-      HammerEngine::ChaseBehaviorConfig::createEventTarget());
-  m_presetConfigs["RangedAttack"] = HammerEngine::BehaviorConfigData::makeAttack(
-      HammerEngine::AttackBehaviorConfig::createRangedConfig());
+  m_presetConfigs["SmallWander"] = VoidLight::BehaviorConfigData::makeWander(
+      VoidLight::WanderBehaviorConfig::createSmallWander());
+  m_presetConfigs["LargeWander"] = VoidLight::BehaviorConfigData::makeWander(
+      VoidLight::WanderBehaviorConfig::createLargeWander());
+  m_presetConfigs["EventWander"] = VoidLight::BehaviorConfigData::makeWander(
+      VoidLight::WanderBehaviorConfig::createEventWander());
+  m_presetConfigs["RandomPatrol"] = VoidLight::BehaviorConfigData::makePatrol(
+      VoidLight::PatrolBehaviorConfig::createRandomPatrol());
+  m_presetConfigs["CirclePatrol"] = VoidLight::BehaviorConfigData::makePatrol(
+      VoidLight::PatrolBehaviorConfig::createCirclePatrol());
+  m_presetConfigs["EventTarget"] = VoidLight::BehaviorConfigData::makeChase(
+      VoidLight::ChaseBehaviorConfig::createEventTarget());
+  m_presetConfigs["RangedAttack"] = VoidLight::BehaviorConfigData::makeAttack(
+      VoidLight::AttackBehaviorConfig::createRangedConfig());
 
   AI_INFO("Behavior system ready (8 types + 7 presets)");
 }
@@ -591,14 +591,14 @@ void AIManager::assignBehavior(EntityHandle handle,
       (hot.kind == EntityKind::NPC || hot.kind == EntityKind::Player)) {
     const auto& charData = edm.getCharacterDataByIndex(edmIndex);
     if (charData.combatStyle == CharacterData::CombatStyle::Ranged) {
-      config = HammerEngine::BehaviorConfigData::makeAttack(
-          HammerEngine::AttackBehaviorConfig::createRangedConfig(charData.attackRange));
+      config = VoidLight::BehaviorConfigData::makeAttack(
+          VoidLight::AttackBehaviorConfig::createRangedConfig(charData.attackRange));
       config.params.attack.projectileSpeed = charData.projectileSpeed > 0.0f
           ? charData.projectileSpeed : 250.0f;
       config.params.attack.attackDamage = charData.attackDamage;
     } else {
-      config = HammerEngine::BehaviorConfigData::makeAttack(
-          HammerEngine::AttackBehaviorConfig::createMeleeConfig(charData.attackRange));
+      config = VoidLight::BehaviorConfigData::makeAttack(
+          VoidLight::AttackBehaviorConfig::createMeleeConfig(charData.attackRange));
       config.params.attack.attackDamage = charData.attackDamage;
     }
   }
@@ -669,7 +669,7 @@ void AIManager::assignBehavior(EntityHandle handle,
 }
 
 void AIManager::assignBehavior(EntityHandle handle,
-                               const HammerEngine::BehaviorConfigData& config) {
+                               const VoidLight::BehaviorConfigData& config) {
   if (!handle.isValid()) {
     AI_ERROR("Cannot assign behavior to invalid handle");
     return;
@@ -767,7 +767,7 @@ void AIManager::unassignBehavior(EntityHandle handle) {
         auto& edm = EntityDataManager::Instance();
         BehaviorType oldType = edm.getBehaviorConfig(edmIndex).type;
         removeFromIndices(edmIndex, oldType);
-        edm.setBehaviorConfig(edmIndex, HammerEngine::BehaviorConfigData{});
+        edm.setBehaviorConfig(edmIndex, VoidLight::BehaviorConfigData{});
 
         if (edmIndex < m_edmToStorageIndex.size()) {
           m_edmToStorageIndex[edmIndex] = SIZE_MAX;
@@ -842,7 +842,7 @@ void AIManager::unregisterEntity(EntityHandle handle) {
       auto& edm = EntityDataManager::Instance();
       BehaviorType oldType = edm.getBehaviorConfig(edmIndex).type;
       removeFromIndices(edmIndex, oldType);
-      edm.setBehaviorConfig(edmIndex, HammerEngine::BehaviorConfigData{});
+      edm.setBehaviorConfig(edmIndex, VoidLight::BehaviorConfigData{});
 
       if (edmIndex < m_edmToStorageIndex.size()) {
         m_edmToStorageIndex[edmIndex] = SIZE_MAX;
@@ -856,7 +856,7 @@ void AIManager::onEntityFactionChanged(size_t edmIndex, uint8_t oldFaction, uint
     return;
   }
   auto& edm = EntityDataManager::Instance();
-  HammerEngine::AICommandBus::Instance().enqueueFactionChange(
+  VoidLight::AICommandBus::Instance().enqueueFactionChange(
       edm.getHandle(edmIndex), edmIndex, oldFaction, newFaction);
 }
 
@@ -992,7 +992,7 @@ void AIManager::removeFromIndices(size_t edmIndex, BehaviorType oldBehaviorType)
 }
 
 void AIManager::commitQueuedFactionChanges() {
-  HammerEngine::AICommandBus::Instance().drainFactionChanges(m_pendingFactionChanges);
+  VoidLight::AICommandBus::Instance().drainFactionChanges(m_pendingFactionChanges);
   if (m_pendingFactionChanges.empty()) {
     return;
   }
@@ -1034,7 +1034,7 @@ void AIManager::commitQueuedFactionChanges() {
 }
 
 void AIManager::commitQueuedBehaviorMessages() {
-  HammerEngine::AICommandBus::Instance().drainBehaviorMessages(m_pendingBehaviorMessages);
+  VoidLight::AICommandBus::Instance().drainBehaviorMessages(m_pendingBehaviorMessages);
   if (m_pendingBehaviorMessages.empty()) {
     return;
   }
@@ -1126,7 +1126,7 @@ void AIManager::commitQueuedBehaviorMessages() {
 }
 
 void AIManager::commitQueuedBehaviorTransitions() {
-  HammerEngine::AICommandBus::Instance().drainBehaviorTransitions(m_pendingBehaviorTransitions);
+  VoidLight::AICommandBus::Instance().drainBehaviorTransitions(m_pendingBehaviorTransitions);
   if (m_pendingBehaviorTransitions.empty()) {
     return;
   }

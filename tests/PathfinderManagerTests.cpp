@@ -15,16 +15,16 @@
 #include <chrono>
 #include <thread>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 // Initialize ThreadSystem for async pathfinding in this test module
 struct PFThreadFixture {
     PFThreadFixture() {
-        HammerEngine::ThreadSystem::Instance().init(4096);
+        VoidLight::ThreadSystem::Instance().init(4096);
     }
     ~PFThreadFixture() {
-        if (!HammerEngine::ThreadSystem::Instance().isShutdown()) {
-            HammerEngine::ThreadSystem::Instance().clean();
+        if (!VoidLight::ThreadSystem::Instance().isShutdown()) {
+            VoidLight::ThreadSystem::Instance().clean();
         }
     }
 };
@@ -578,13 +578,13 @@ BOOST_AUTO_TEST_CASE(TestWorkerBudgetCoordination) {
     BOOST_REQUIRE(manager.init());
     manager.resetStats();
 
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    auto& threadSystem = VoidLight::ThreadSystem::Instance();
     size_t availableWorkers = threadSystem.getThreadCount();
 
     BOOST_TEST_MESSAGE("Available workers: " << availableWorkers);
 
     // Get WorkerBudget from manager
-    const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+    const auto& budget = VoidLight::WorkerBudgetManager::Instance().getBudget();
 
     BOOST_TEST_MESSAGE("Total workers available: " << budget.totalWorkers);
     BOOST_CHECK_GT(budget.totalWorkers, 0); // Should have at least 1 worker available

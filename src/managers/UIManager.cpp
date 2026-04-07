@@ -2666,7 +2666,7 @@ void UIManager::setComponentPositioning(const std::string &id,
   }
 }
 
-void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
+void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
   if (m_components.empty()) {
     return;
   }
@@ -2677,8 +2677,8 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
   auto& primPool = gpuRenderer.getPrimitiveVertexPool();
   auto& uiPool = gpuRenderer.getUIVertexPool();
 
-  auto* primBase = static_cast<HammerEngine::ColorVertex*>(primPool.getMappedPtr());
-  auto* uiBase = static_cast<HammerEngine::SpriteVertex*>(uiPool.getMappedPtr());
+  auto* primBase = static_cast<VoidLight::ColorVertex*>(primPool.getMappedPtr());
+  auto* uiBase = static_cast<VoidLight::SpriteVertex*>(uiPool.getMappedPtr());
 
   if (!primBase || !uiBase) {
     return;
@@ -2699,7 +2699,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
     float top = viewportHeight - y;
     float bottom = top - h;
 
-    HammerEngine::ColorVertex* v = primBase + primOffset;
+    VoidLight::ColorVertex* v = primBase + primOffset;
     // Triangle 1
     v[0] = {.x=x,     .y=top,    .r=color.r, .g=color.g, .b=color.b, .a=color.a};
     v[1] = {.x=x + w, .y=top,    .r=color.r, .g=color.g, .b=color.b, .a=color.a};
@@ -2800,7 +2800,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
       return;
     }
 
-    HammerEngine::SpriteVertex* v = uiBase + uiOffset;
+    VoidLight::SpriteVertex* v = uiBase + uiOffset;
     for (TTF_GPUAtlasDrawSequence* seq = drawSequence; seq != nullptr; seq = seq->next) {
       if (!seq->atlas_texture || !seq->xy || !seq->uv || !seq->indices ||
           seq->num_indices <= 0 || seq->num_vertices <= 0) {
@@ -3249,12 +3249,12 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
   uiPool.setWrittenVertexCount(uiOffset);
 }
 
-void UIManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass) {
+void UIManager::renderGPU(VoidLight::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass) {
   if (!pass) return;
 
   // Create orthographic projection for screen-space rendering
   float orthoMatrix[16];
-  HammerEngine::GPURenderer::createOrthoMatrix(
+  VoidLight::GPURenderer::createOrthoMatrix(
       0.0f, static_cast<float>(gpuRenderer.getViewportWidth()),
       0.0f, static_cast<float>(gpuRenderer.getViewportHeight()),
       orthoMatrix);

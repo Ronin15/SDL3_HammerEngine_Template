@@ -3,7 +3,7 @@ import os
 import re
 import glob
 
-BASE_DIR = "/var/home/roninxv/Projects/cpp_projects/SDL3_HammerEngine_Template/test_results/memory_profiles"
+BASE_DIR = "/var/home/roninxv/Projects/cpp_projects/SDL3_VoidLight-Framework_Template/test_results/memory_profiles"
 
 def parse_massif_report(report_path):
     """Extract peak memory data from massif report"""
@@ -53,7 +53,7 @@ def main():
     # Generate summary
     total_peak = sum(r[1]['total_bytes'] for r in results)
 
-    print(f"\n=== HammerEngine Comprehensive Memory Profile ===")
+    print(f"\n=== VoidLight-Framework Comprehensive Memory Profile ===")
     print(f"Tests Analyzed: {len(results)}/43")
     print(f"Total Peak Memory: {total_peak / 1024 / 1024:.1f} MB\n")
 

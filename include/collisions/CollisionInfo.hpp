@@ -8,7 +8,7 @@
 
 #include "entities/Entity.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 
 struct CollisionInfo {
     EntityID a{0};
@@ -25,6 +25,6 @@ struct CollisionInfo {
     bool isMovableMovable{true};  // false = movable-static collision
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // COLLISION_INFO_HPP

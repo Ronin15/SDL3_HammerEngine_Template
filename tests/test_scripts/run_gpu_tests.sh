@@ -1,5 +1,5 @@
 #!/bin/bash
-# GPU Test Runner for SDL3 HammerEngine
+# GPU Test Runner for SDL3 VoidLight-Framework
 # Runs GPU rendering subsystem tests with configurable options
 
 set -e
@@ -56,7 +56,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help|-h)
-            echo "GPU Test Runner for SDL3 HammerEngine"
+            echo "GPU Test Runner for SDL3 VoidLight-Framework"
             echo ""
             echo "Usage: $0 [options]"
             echo ""

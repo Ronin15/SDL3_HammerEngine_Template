@@ -105,7 +105,7 @@ std::string SettingsMenuState::getName() const {
 }
 
 void SettingsMenuState::loadCurrentSettings() {
-    using namespace HammerEngine;
+    using namespace VoidLight;
     auto& settings = SettingsManager::Instance();
 
     // Graphics
@@ -129,7 +129,7 @@ void SettingsMenuState::loadCurrentSettings() {
 }
 
 void SettingsMenuState::applySettings() {
-    using namespace HammerEngine;
+    using namespace VoidLight;
     auto& settings = SettingsManager::Instance();
     auto& gameEngine = GameEngine::Instance();
 
@@ -164,7 +164,7 @@ void SettingsMenuState::applySettings() {
     settings.set("gameplay", "autosave_interval", m_tempSettings.autosaveInterval);
 
     // Save to disk
-    settings.saveToFile(HammerEngine::ResourcePath::resolve("res/settings.json"));
+    settings.saveToFile(VoidLight::ResourcePath::resolve("res/settings.json"));
 
     GAMESTATE_INFO("Settings saved successfully");
 }
@@ -484,7 +484,7 @@ void SettingsMenuState::updateTabVisibility() {
     }
 }
 
-void SettingsMenuState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+void SettingsMenuState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                                            [[maybe_unused]] float interpolationAlpha) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
@@ -492,7 +492,7 @@ void SettingsMenuState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer
     }
 }
 
-void SettingsMenuState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void SettingsMenuState::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                                      SDL_GPURenderPass* swapchainPass) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {

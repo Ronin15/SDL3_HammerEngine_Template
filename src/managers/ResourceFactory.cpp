@@ -11,7 +11,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 ResourcePtr ResourceFactory::createFromJson(const JsonValue &json) {
   if (!json.isObject()) {
@@ -177,7 +177,7 @@ void ResourceFactory::clear() {
 
 
 ResourcePtr
-ResourceFactory::createEquipment(HammerEngine::ResourceHandle handle,
+ResourceFactory::createEquipment(VoidLight::ResourceHandle handle,
                                  const JsonValue &json) {
   std::string id = json["id"].asString();
   std::string name = json["name"].asString();
@@ -226,7 +226,7 @@ ResourceFactory::createEquipment(HammerEngine::ResourceHandle handle,
 }
 
 ResourcePtr
-ResourceFactory::createConsumable(HammerEngine::ResourceHandle handle,
+ResourceFactory::createConsumable(VoidLight::ResourceHandle handle,
                                   const JsonValue &json) {
   std::string id = json["id"].asString();
   std::string name = json["name"].asString();
@@ -267,7 +267,7 @@ ResourceFactory::createConsumable(HammerEngine::ResourceHandle handle,
 }
 
 ResourcePtr
-ResourceFactory::createQuestItem(HammerEngine::ResourceHandle handle,
+ResourceFactory::createQuestItem(VoidLight::ResourceHandle handle,
                                  const JsonValue &json) {
   std::string id = json["id"].asString();
   std::string name = json["name"].asString();
@@ -284,7 +284,7 @@ ResourceFactory::createQuestItem(HammerEngine::ResourceHandle handle,
   return questItem;
 }
 
-ResourcePtr ResourceFactory::createMaterial(HammerEngine::ResourceHandle handle,
+ResourcePtr ResourceFactory::createMaterial(VoidLight::ResourceHandle handle,
                                             const JsonValue &json) {
   std::string id = json["id"].asString();
   std::string name = json["name"].asString();
@@ -374,7 +374,7 @@ ResourcePtr ResourceFactory::createMaterial(HammerEngine::ResourceHandle handle,
 
   return material;
 }
-ResourcePtr ResourceFactory::createCurrency(HammerEngine::ResourceHandle handle,
+ResourcePtr ResourceFactory::createCurrency(VoidLight::ResourceHandle handle,
                                             const JsonValue &json) {
   std::string id = json["id"].asString();
   std::string name = json["name"].asString();
@@ -458,7 +458,7 @@ ResourcePtr ResourceFactory::createCurrency(HammerEngine::ResourceHandle handle,
   return currency;
 }
 ResourcePtr
-ResourceFactory::createGameResource(HammerEngine::ResourceHandle handle,
+ResourceFactory::createGameResource(VoidLight::ResourceHandle handle,
                                     const JsonValue &json) {
   std::string id = json["id"].asString();
   std::string name = json["name"].asString();
@@ -639,4 +639,4 @@ void ResourceFactory::setCommonProperties(const ResourcePtr& resource,
   // resource JSON files. This allows a single source of truth for sprite coords.
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

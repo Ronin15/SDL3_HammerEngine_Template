@@ -18,7 +18,7 @@
 #include <mutex> // IWYU pragma: keep - Required for thread-safe logging
 #include <string> // IWYU pragma: keep - Required for std::string() conversions in macros
 
-namespace HammerEngine {
+namespace VoidLight {
 enum class LogLevel : uint8_t {
   CRITICAL = 0,     // Always logs (even in release for crashes)
   ERROR_LEVEL = 1,  // Debug only (renamed to avoid macro conflicts)
@@ -51,7 +51,7 @@ public:
 
     // Thread-safe logging with mutex protection
     std::lock_guard<std::mutex> lock(s_logMutex);
-    printf("Hammer Game Engine - [%s] %s: %s\n", system, getLevelString(level),
+    printf("VoidLight Engine - [%s] %s: %s\n", system, getLevelString(level),
            message.c_str());
     if (level == LogLevel::ERROR_LEVEL || level == LogLevel::CRITICAL) {
       fflush(stdout);
@@ -64,7 +64,7 @@ public:
 
     // Thread-safe logging with mutex protection
     std::lock_guard<std::mutex> lock(s_logMutex);
-    printf("Hammer Game Engine - [%s] %s: %s\n", system, getLevelString(level),
+    printf("VoidLight Engine - [%s] %s: %s\n", system, getLevelString(level),
            message);
     if (level == LogLevel::ERROR_LEVEL || level == LogLevel::CRITICAL) {
       fflush(stdout);
@@ -92,15 +92,15 @@ private:
 
 // Debug build macros - full functionality
 #define HAMMER_CRITICAL(system, msg)                                           \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::CRITICAL, system, msg)
+  VoidLight::Logger::Log(VoidLight::LogLevel::CRITICAL, system, msg)
 #define HAMMER_ERROR(system, msg)                                              \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::ERROR_LEVEL, system, msg)
+  VoidLight::Logger::Log(VoidLight::LogLevel::ERROR_LEVEL, system, msg)
 #define HAMMER_WARN(system, msg)                                               \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::WARNING, system, msg)
+  VoidLight::Logger::Log(VoidLight::LogLevel::WARNING, system, msg)
 #define HAMMER_INFO(system, msg)                                               \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::INFO, system, msg)
+  VoidLight::Logger::Log(VoidLight::LogLevel::INFO, system, msg)
 #define HAMMER_DEBUG(system, msg)                                              \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::DEBUG_LEVEL, system, msg)
+  VoidLight::Logger::Log(VoidLight::LogLevel::DEBUG_LEVEL, system, msg)
 
 // Conditional logging macros - use when logging is the ONLY content in an if-block
 // These eliminate condition evaluation overhead in release builds
@@ -136,10 +136,10 @@ public:
 };
 
 #define HAMMER_CRITICAL(system, msg)                                           \
-  HammerEngine::Logger::Log("CRITICAL", system, msg)
+  VoidLight::Logger::Log("CRITICAL", system, msg)
 
 #define HAMMER_ERROR(system, msg)                                              \
-  HammerEngine::Logger::Log("ERROR", system, msg)
+  VoidLight::Logger::Log("ERROR", system, msg)
 
 #define HAMMER_WARN(system, msg) ((void)0)  // Zero overhead
 #define HAMMER_INFO(system, msg) ((void)0)  // Zero overhead
@@ -454,10 +454,10 @@ inline std::mutex Logger::s_logMutex{};
 
 // Benchmark mode convenience macros
 #define HAMMER_ENABLE_BENCHMARK_MODE()                                         \
-  HammerEngine::Logger::SetBenchmarkMode(true)
+  VoidLight::Logger::SetBenchmarkMode(true)
 #define HAMMER_DISABLE_BENCHMARK_MODE()                                        \
-  HammerEngine::Logger::SetBenchmarkMode(false)
+  VoidLight::Logger::SetBenchmarkMode(false)
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // LOGGER_HPP

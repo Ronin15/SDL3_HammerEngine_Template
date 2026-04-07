@@ -18,7 +18,7 @@ namespace Behaviors {
 // MAIN DISPATCHER
 // ============================================================================
 
-void execute(BehaviorContext& ctx, const HammerEngine::BehaviorConfigData& configData) {
+void execute(BehaviorContext& ctx, const VoidLight::BehaviorConfigData& configData) {
     switch (configData.type) {
         case BehaviorType::Idle:
             executeIdle(ctx, configData.params.idle);
@@ -53,7 +53,7 @@ void execute(BehaviorContext& ctx, const HammerEngine::BehaviorConfigData& confi
     }
 }
 
-void init(size_t edmIndex, const HammerEngine::BehaviorConfigData& configData) {
+void init(size_t edmIndex, const VoidLight::BehaviorConfigData& configData) {
     switch (configData.type) {
         case BehaviorType::Idle:
             initIdle(edmIndex, configData.params.idle);
@@ -97,9 +97,9 @@ void switchBehavior(size_t edmIndex, BehaviorType newType) {
     switchBehavior(edmIndex, config);
 }
 
-void switchBehavior(size_t edmIndex, const HammerEngine::BehaviorConfigData& config) {
+void switchBehavior(size_t edmIndex, const VoidLight::BehaviorConfigData& config) {
     auto& edm = EntityDataManager::Instance();
-    HammerEngine::AICommandBus::Instance().enqueueBehaviorTransition(
+    VoidLight::AICommandBus::Instance().enqueueBehaviorTransition(
         edm.getHandle(edmIndex), edmIndex, config);
 }
 
@@ -107,8 +107,8 @@ void switchBehavior(size_t edmIndex, const HammerEngine::BehaviorConfigData& con
 // DEFAULT CONFIGS
 // ============================================================================
 
-HammerEngine::BehaviorConfigData getDefaultConfig(BehaviorType type) {
-    using namespace HammerEngine;
+VoidLight::BehaviorConfigData getDefaultConfig(BehaviorType type) {
+    using namespace VoidLight;
 
     switch (type) {
         case BehaviorType::Idle:
@@ -257,13 +257,13 @@ float calculateAngleToTarget(const Vector2D& from, const Vector2D& to) {
 
 void queueBehaviorMessage(size_t edmIndex, uint8_t messageId, uint8_t param) {
     auto& edm = EntityDataManager::Instance();
-    HammerEngine::AICommandBus::Instance().enqueueBehaviorMessage(
+    VoidLight::AICommandBus::Instance().enqueueBehaviorMessage(
         edm.getHandle(edmIndex), edmIndex, messageId, param);
 }
 
 void clearPendingMessages(size_t edmIndex) {
     auto& edm = EntityDataManager::Instance();
-    HammerEngine::AICommandBus::Instance().clearBehaviorMessages(
+    VoidLight::AICommandBus::Instance().clearBehaviorMessages(
         edm.getHandle(edmIndex), edmIndex);
     auto& data = edm.getBehaviorData(edmIndex);
     data.pendingMessageCount = 0;
@@ -312,7 +312,7 @@ bool getCachedWorldBounds(float& minX, float& minY, float& maxX, float& maxY) {
 
 void deferBehaviorMessage(size_t targetEdmIndex, uint8_t messageId, uint8_t param) {
     auto& edm = EntityDataManager::Instance();
-    HammerEngine::AICommandBus::Instance().enqueueBehaviorMessage(
+    VoidLight::AICommandBus::Instance().enqueueBehaviorMessage(
         edm.getHandle(targetEdmIndex), targetEdmIndex, messageId, param);
 }
 

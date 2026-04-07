@@ -1,12 +1,12 @@
 ---
-name: hammer-benchmark-report
-description: Generates professional performance analysis reports from SDL3 HammerEngine benchmark results including statistical analysis, comparison tables, visualizations, and recommendations. Use when preparing performance documentation, analyzing optimization efforts, or generating milestone/release reports.
+name: voidlight-benchmark-report
+description: Generates professional performance analysis reports from SDL3 VoidLight-Framework benchmark results including statistical analysis, comparison tables, visualizations, and recommendations. Use when preparing performance documentation, analyzing optimization efforts, or generating milestone/release reports.
 allowed-tools: [Bash, Read, Write, Grep]
 ---
 
-# HammerEngine Benchmark Report Generator
+# VoidLight-Framework Benchmark Report Generator
 
-This Skill creates comprehensive, professional-quality performance reports from SDL3 HammerEngine benchmark results. Perfect for documentation, stakeholder updates, or performance tracking over time.
+This Skill creates comprehensive, professional-quality performance reports from SDL3 VoidLight-Framework benchmark results. Perfect for documentation, stakeholder updates, or performance tracking over time.
 
 ## Report Capabilities
 
@@ -243,7 +243,7 @@ For each metric:
 #### Section 1: Executive Summary
 
 ```markdown
-# SDL3 HammerEngine Performance Report
+# SDL3 VoidLight-Framework Performance Report
 
 **Generated:** YYYY-MM-DD HH:MM:SS
 **Benchmark Suite Version:** <git-commit-hash>
@@ -257,7 +257,7 @@ For each metric:
 
 ### Overall Performance: ✓ EXCELLENT / ✓ GOOD / ⚠ FAIR / ❌ NEEDS IMPROVEMENT
 
-SDL3 HammerEngine demonstrates <strong/adequate/weak> performance across all critical systems:
+SDL3 VoidLight-Framework demonstrates <strong/adequate/weak> performance across all critical systems:
 
 - **AI System:** Handles 10,000+ entities at 62 FPS with 5.8% CPU (Target: 60+ FPS, <6% CPU) ✓
 - **Collision System:** 125,000 collision checks/sec, 0.08ms query time ✓
@@ -579,14 +579,14 @@ Total Engine:      130 MB
 
 ### Performance vs Industry Standards
 
-| System | HammerEngine | Industry Avg | Status |
+| System | VoidLight-Framework | Industry Avg | Status |
 |--------|--------------|--------------|--------|
 | Entity Count @ 60 FPS | 10,000 | 5,000-8,000 | ✓ Above Avg |
 | Collision Checks/sec | 125,000 | 80,000-100,000 | ✓ Above Avg |
 | Event Throughput | 8,500/sec | 5,000-10,000 | ✓ Average |
 | Memory/Entity | 13 KB | 10-20 KB | ✓ Average |
 
-**Overall:** HammerEngine performs above industry averages for 2D game engines.
+**Overall:** VoidLight-Framework performs above industry averages for 2D game engines.
 
 ### Performance vs Project Goals
 
@@ -713,7 +713,7 @@ docs/performance_reports/performance_report_YYYY-MM-DD.md
 pandoc performance_report.md -o performance_report.html \
   --standalone \
   --css=report_style.css \
-  --metadata title="HammerEngine Performance Report"
+  --metadata title="VoidLight-Framework Performance Report"
 ```
 
 **Advantages:**
@@ -730,7 +730,7 @@ pandoc performance_report.md -o performance_report.pdf \
   --pdf-engine=xelatex \
   --variable geometry:margin=1in \
   --variable fontsize=11pt \
-  --metadata title="HammerEngine Performance Report"
+  --metadata title="VoidLight-Framework Performance Report"
 ```
 
 **Advantages:**
@@ -743,7 +743,7 @@ pandoc performance_report.md -o performance_report.pdf \
 **Console Output:**
 
 ```
-=== HammerEngine Benchmark Report Generated ===
+=== VoidLight-Framework Benchmark Report Generated ===
 
 Report Date: 2025-01-15 14:30:22
 Benchmarks Analyzed: 6 systems

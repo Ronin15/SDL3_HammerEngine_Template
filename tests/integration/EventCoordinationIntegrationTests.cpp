@@ -32,7 +32,7 @@
 
 #include <iostream>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 // Test logging helper
 #define TEST_LOG(msg) do { \
@@ -176,7 +176,7 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
             size_t idx = edm.getIndex(entity->getHandle());
             if (idx != SIZE_MAX) {
                 auto& hot = edm.getHotDataByIndex(idx);
-                hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
+                hot.collisionLayers = VoidLight::CollisionLayer::Layer_Enemy;
                 hot.collisionMask = 0xFFFF;
                 hot.setCollisionEnabled(true);
             }
@@ -334,7 +334,7 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
             size_t idx = edm.getIndex(entity->getHandle());
             if (idx != SIZE_MAX) {
                 auto& hot = edm.getHotDataByIndex(idx);
-                hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
+                hot.collisionLayers = VoidLight::CollisionLayer::Layer_Enemy;
                 hot.collisionMask = 0xFFFF;
                 hot.setCollisionEnabled(true);
             }

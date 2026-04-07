@@ -28,12 +28,12 @@ namespace {
 
 } // namespace
 
-void ResourceRenderController::update(float deltaTime, const HammerEngine::Camera& camera) {
+void ResourceRenderController::update(float deltaTime, const VoidLight::Camera& camera) {
     updateDroppedItemAnimations(deltaTime, camera);
     updateContainerStates(deltaTime, camera);
 }
 
-void ResourceRenderController::updateDroppedItemAnimations(float deltaTime, const HammerEngine::Camera& camera) {
+void ResourceRenderController::updateDroppedItemAnimations(float deltaTime, const VoidLight::Camera& camera) {
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
@@ -71,7 +71,7 @@ void ResourceRenderController::updateDroppedItemAnimations(float deltaTime, cons
 }
 
 void ResourceRenderController::updateContainerStates([[maybe_unused]] float deltaTime,
-                                                      [[maybe_unused]] const HammerEngine::Camera& camera) {
+                                                      [[maybe_unused]] const VoidLight::Camera& camera) {
     // Container open/close animations will be implemented when containers are added
     // For now, containers are static (just open or closed state)
 }
@@ -103,8 +103,8 @@ void ResourceRenderController::clearAll() {
     }
 }
 
-void ResourceRenderController::recordGPUDroppedItems(const HammerEngine::GPUSceneContext& ctx,
-                                                      const HammerEngine::Camera& camera) {
+void ResourceRenderController::recordGPUDroppedItems(const VoidLight::GPUSceneContext& ctx,
+                                                      const VoidLight::Camera& camera) {
     RESOURCE_RENDER_WARN_IF(!ctx.spriteBatch, "recordGPUDroppedItems: ctx.spriteBatch is null");
     if (!ctx.spriteBatch) { return; }
 
@@ -157,8 +157,8 @@ void ResourceRenderController::recordGPUDroppedItems(const HammerEngine::GPUScen
     }
 }
 
-void ResourceRenderController::recordGPUContainers(const HammerEngine::GPUSceneContext& ctx,
-                                                    const HammerEngine::Camera& camera) {
+void ResourceRenderController::recordGPUContainers(const VoidLight::GPUSceneContext& ctx,
+                                                    const VoidLight::Camera& camera) {
     RESOURCE_RENDER_WARN_IF(!ctx.spriteBatch, "recordGPUContainers: ctx.spriteBatch is null");
     if (!ctx.spriteBatch) { return; }
 

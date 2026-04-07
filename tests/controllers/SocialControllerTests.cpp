@@ -139,7 +139,7 @@ BOOST_AUTO_TEST_CASE(TestTryBuyWithInvalidNPC) {
     SocialController controller(nullptr);
 
     EntityHandle invalidHandle;
-    HammerEngine::ResourceHandle itemHandle(1, 1);
+    VoidLight::ResourceHandle itemHandle(1, 1);
 
     TradeResult result = controller.tryBuy(invalidHandle, itemHandle, 1);
     BOOST_CHECK(result == TradeResult::InvalidNPC);
@@ -149,7 +149,7 @@ BOOST_AUTO_TEST_CASE(TestTrySellWithInvalidNPC) {
     SocialController controller(nullptr);
 
     EntityHandle invalidHandle;
-    HammerEngine::ResourceHandle itemHandle(1, 1);
+    VoidLight::ResourceHandle itemHandle(1, 1);
 
     TradeResult result = controller.trySell(invalidHandle, itemHandle, 1);
     BOOST_CHECK(result == TradeResult::InvalidNPC);
@@ -159,7 +159,7 @@ BOOST_AUTO_TEST_CASE(TestTryGiftWithInvalidNPC) {
     SocialController controller(nullptr);
 
     EntityHandle invalidHandle;
-    HammerEngine::ResourceHandle itemHandle(1, 1);
+    VoidLight::ResourceHandle itemHandle(1, 1);
 
     bool result = controller.tryGift(invalidHandle, itemHandle, 1);
     BOOST_CHECK(!result);
@@ -169,7 +169,7 @@ BOOST_AUTO_TEST_CASE(TestCalculateBuyPriceWithInvalidItem) {
     SocialController controller(nullptr);
 
     EntityHandle npcHandle;
-    HammerEngine::ResourceHandle invalidItem;
+    VoidLight::ResourceHandle invalidItem;
 
     float price = controller.calculateBuyPrice(npcHandle, invalidItem, 1);
     BOOST_CHECK_EQUAL(price, 0.0f);
@@ -179,7 +179,7 @@ BOOST_AUTO_TEST_CASE(TestCalculateSellPriceWithInvalidItem) {
     SocialController controller(nullptr);
 
     EntityHandle npcHandle;
-    HammerEngine::ResourceHandle invalidItem;
+    VoidLight::ResourceHandle invalidItem;
 
     float price = controller.calculateSellPrice(npcHandle, invalidItem, 1);
     BOOST_CHECK_EQUAL(price, 0.0f);
@@ -279,7 +279,7 @@ BOOST_AUTO_TEST_CASE(TestReportTheftWithInvalidVictim) {
 
     EntityHandle thief;
     EntityHandle victim;  // Invalid
-    HammerEngine::ResourceHandle stolenItem(1, 1);
+    VoidLight::ResourceHandle stolenItem(1, 1);
     std::atomic<int> theftEvents{0};
 
     EventManager::Instance().registerHandler(EventTypeId::Entity,
@@ -315,7 +315,7 @@ BOOST_AUTO_TEST_CASE(TestDefaultValues) {
 
 BOOST_AUTO_TEST_CASE(TestSetValues) {
     TradeItemInfo info;
-    info.handle = HammerEngine::ResourceHandle(1, 1);
+    info.handle = VoidLight::ResourceHandle(1, 1);
     info.name = "Test Item";
     info.quantity = 10;
     info.unitPrice = 5.0f;

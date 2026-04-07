@@ -6,7 +6,7 @@
 
 ## Overview
 
-EntityDataManager is the **central data authority** for all entity data in HammerEngine. It implements a Data-Oriented Design (DoD) using Structure-of-Arrays (SoA) storage for cache-optimal performance.
+EntityDataManager is the **central data authority** for all entity data in VoidLight-Framework. It implements a Data-Oriented Design (DoD) using Structure-of-Arrays (SoA) storage for cache-optimal performance.
 
 ### Key Features
 

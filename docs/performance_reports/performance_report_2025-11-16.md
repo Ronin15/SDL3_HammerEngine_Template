@@ -1,4 +1,4 @@
-# SDL3 HammerEngine Performance Report
+# SDL3 VoidLight-Framework Performance Report
 
 **Generated:** 2025-11-16
 **Build Type:** Debug
@@ -13,7 +13,7 @@
 
 ### Overall Performance: ✓ EXCELLENT
 
-SDL3 HammerEngine demonstrates **strong performance** across all critical systems with notable improvements in pathfinding throughput following recent WorkerBudget optimizations.
+SDL3 VoidLight-Framework demonstrates **strong performance** across all critical systems with notable improvements in pathfinding throughput following recent WorkerBudget optimizations.
 
 **System Overview:**
 
@@ -249,7 +249,7 @@ SDL3 HammerEngine demonstrates **strong performance** across all critical system
 
 ### Performance Status: **READY FOR PRODUCTION**
 
-SDL3 HammerEngine demonstrates **excellent performance** across all critical systems:
+SDL3 VoidLight-Framework demonstrates **excellent performance** across all critical systems:
 
 ✅ **All targets met or exceeded**
 ✅ **Major pathfinding breakthrough** (+20x throughput)

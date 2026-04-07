@@ -69,7 +69,7 @@ enum class AttackMode : uint8_t {
 };
 
 float getEffectiveAttackRange(const CharacterData& charData, AttackMode attackMode,
-                              const HammerEngine::AttackBehaviorConfig& config) {
+                              const VoidLight::AttackBehaviorConfig& config) {
     const bool usesMeleeReach =
         attackMode == AttackMode::MELEE ||
         attackMode == AttackMode::AMBUSH ||
@@ -112,7 +112,7 @@ void updateTimers(BehaviorData& data, float deltaTime) {
 }
 
 // Process pending messages for Attack behavior
-void processAttackMessages(BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
+void processAttackMessages(BehaviorData& data, const VoidLight::AttackBehaviorConfig& config) {
     auto& attack = data.state.attack;
 
     for (uint8_t i = 0; i < data.pendingMessageCount; ++i) {
@@ -172,7 +172,7 @@ void changeState(BehaviorData& data, AttackState newState) {
     }
 }
 
-float calculateDamage(const BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
+float calculateDamage(const BehaviorData& data, const VoidLight::AttackBehaviorConfig& config) {
     const auto& attack = data.state.attack;
     float baseDamage = config.attackDamage;
 
@@ -269,7 +269,7 @@ bool isAttackTargetCandidate(size_t selfIdx, size_t candidateIdx, const Characte
 }
 
 bool tryAcquireTarget(BehaviorContext& ctx, BehaviorData& data,
-                      const HammerEngine::AttackBehaviorConfig& config,
+                      const VoidLight::AttackBehaviorConfig& config,
                       Vector2D& targetPos) {
     auto& edm = EntityDataManager::Instance();
     auto& attack = data.state.attack;
@@ -332,7 +332,7 @@ bool shouldRetreat(const BehaviorContext& ctx, float retreatThreshold, float agg
 }
 
 void executeAttackAction(BehaviorContext& ctx, const Vector2D& targetPos,
-                         const HammerEngine::AttackBehaviorConfig& config) {
+                         const VoidLight::AttackBehaviorConfig& config) {
     auto& edm = EntityDataManager::Instance();
     auto& data = ctx.behaviorData;
     auto& attack = data.state.attack;
@@ -405,7 +405,7 @@ void executeAttackAction(BehaviorContext& ctx, const Vector2D& targetPos,
  * @return true if we should skip normal positioning, false to continue
  */
 bool applyRangedPositioning(BehaviorContext& ctx, const Vector2D& entityPos, const Vector2D& targetPos,
-                            BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
+                            BehaviorData& data, const VoidLight::AttackBehaviorConfig& config) {
     auto& attack = data.state.attack;
     float optimalRange = config.attackRange * config.optimalRangeMultiplier;
     float minimumRange = config.attackRange * config.minimumRangeMultiplier;
@@ -431,7 +431,7 @@ bool applyRangedPositioning(BehaviorContext& ctx, const Vector2D& entityPos, con
  * @brief Apply charge attack positioning (rush attacks)
  */
 bool applyChargePositioning(BehaviorContext& ctx, const Vector2D& entityPos, const Vector2D& targetPos,
-                            BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
+                            BehaviorData& data, const VoidLight::AttackBehaviorConfig& config) {
     auto& attack = data.state.attack;
     float chargeDistance = config.attackRange * CHARGE_DISTANCE_THRESHOLD_MULT;
 
@@ -454,7 +454,7 @@ bool applyChargePositioning(BehaviorContext& ctx, const Vector2D& entityPos, con
  * @brief Apply hit-and-run positioning (frequent retreats)
  */
 bool applyHitAndRunPositioning(BehaviorContext& ctx, const Vector2D& entityPos, const Vector2D& targetPos,
-                               BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
+                               BehaviorData& data, const VoidLight::AttackBehaviorConfig& config) {
     auto& attack = data.state.attack;
 
     // After recovering, force retreat - scale speed by optimal range preference
@@ -495,7 +495,7 @@ namespace Behaviors {
 // PUBLIC API
 // ============================================================================
 
-void initAttack(size_t edmIndex, const HammerEngine::AttackBehaviorConfig& config) {
+void initAttack(size_t edmIndex, const VoidLight::AttackBehaviorConfig& config) {
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Attack);
     auto& data = edm.getBehaviorData(edmIndex);
@@ -544,7 +544,7 @@ void initAttack(size_t edmIndex, const HammerEngine::AttackBehaviorConfig& confi
     (void)config;
 }
 
-void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfig& config) {
+void executeAttack(BehaviorContext& ctx, const VoidLight::AttackBehaviorConfig& config) {
     if (!ctx.behaviorData.isValid()) return;
 
     auto& data = ctx.behaviorData;

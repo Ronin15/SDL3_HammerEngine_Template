@@ -13,7 +13,7 @@
 
 class CollisionEvent : public Event {
 public:
-  explicit CollisionEvent(const HammerEngine::CollisionInfo &info)
+  explicit CollisionEvent(const VoidLight::CollisionInfo &info)
       : m_info(info) {}
 
   // Minimal behavior: events are passive containers
@@ -24,7 +24,7 @@ public:
   void reset() override {
     Event::resetCooldown();
     m_consumed = false;
-    m_info = HammerEngine::CollisionInfo{};  // Clear stale collision data
+    m_info = VoidLight::CollisionInfo{};  // Clear stale collision data
   }
 
   std::string getName() const override { return "CollisionEvent"; }
@@ -32,13 +32,13 @@ public:
   std::string getTypeName() const override { return "CollisionEvent"; }
   EventTypeId getTypeId() const override { return EventTypeId::Collision; }
 
-  const HammerEngine::CollisionInfo &getInfo() const { return m_info; }
-  void setInfo(const HammerEngine::CollisionInfo &info) { m_info = info; }
+  const VoidLight::CollisionInfo &getInfo() const { return m_info; }
+  void setInfo(const VoidLight::CollisionInfo &info) { m_info = info; }
   bool isConsumed() const { return m_consumed; }
   void setConsumed(bool c) { m_consumed = c; }
 
 private:
-  HammerEngine::CollisionInfo m_info{};
+  VoidLight::CollisionInfo m_info{};
   bool m_consumed{false};
 };
 

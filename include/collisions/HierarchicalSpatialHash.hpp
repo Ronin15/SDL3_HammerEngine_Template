@@ -12,7 +12,7 @@
 #include <cstdint>
 #include "collisions/AABB.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * @brief Two-tier hierarchical spatial hash for high-performance collision broadphase
@@ -192,6 +192,6 @@ inline bool operator==(const HierarchicalSpatialHash::CoarseCoord& a,
     return a.x == b.x && a.y == b.y;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // HIERARCHICAL_SPATIAL_HASH_HPP

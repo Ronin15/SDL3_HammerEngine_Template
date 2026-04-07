@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Hammer Engine pathfinding system provides high-performance A* pathfinding with advanced optimizations including hierarchical pathfinding, dynamic weight fields, and object pooling. The system is designed to scale efficiently from small tactical movements to large-scale navigation across entire game worlds.
+The VoidLight-Framework pathfinding system provides high-performance A* pathfinding with advanced optimizations including hierarchical pathfinding, dynamic weight fields, and object pooling. The system is designed to scale efficiently from small tactical movements to large-scale navigation across entire game worlds.
 
 ## Architecture
 

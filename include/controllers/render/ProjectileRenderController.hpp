@@ -20,7 +20,7 @@
 
 #include "controllers/ControllerBase.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 struct GPUSceneContext;
 }
 
@@ -43,7 +43,7 @@ public:
      * @brief Record projectile sprites to the GPU sprite batch
      * @param ctx Scene context with sprite batch and camera params
      */
-    void recordGPU(const HammerEngine::GPUSceneContext& ctx);
+    void recordGPU(const VoidLight::GPUSceneContext& ctx);
 
 private:
     static constexpr float PROJECTILE_WIDTH = 16.0f;

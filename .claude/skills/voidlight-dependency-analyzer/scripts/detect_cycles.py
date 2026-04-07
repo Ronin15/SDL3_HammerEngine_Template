@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Detect circular dependencies in HammerEngine using DFS
+Detect circular dependencies in VoidLight-Framework using DFS
 """
 
 import sys

@@ -9,7 +9,7 @@
 #include <cstring>
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 GPURenderer& GPURenderer::Instance() {
     static GPURenderer instance;
@@ -861,4 +861,4 @@ void GPURenderer::resetFrameState() {
     m_frameReadyForPresentation = false;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

@@ -2,7 +2,7 @@
 
 ## Overview
 
-SettingsMenuState is a tab-based settings UI implementation for the Hammer Engine that provides Apply/Cancel functionality for modifying game settings. Changes are stored in temporary local state and only written to SettingsManager when the user clicks "Apply", allowing users to preview settings without commitment.
+SettingsMenuState is a tab-based settings UI implementation for the VoidLight-Framework that provides Apply/Cancel functionality for modifying game settings. Changes are stored in temporary local state and only written to SettingsManager when the user clicks "Apply", allowing users to preview settings without commitment.
 
 ## Architecture
 

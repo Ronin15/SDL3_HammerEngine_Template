@@ -19,7 +19,7 @@
 
 void LoadingState::configure(
     const std::string &targetStateName,
-    const HammerEngine::WorldGenerationConfig &worldConfig) {
+    const VoidLight::WorldGenerationConfig &worldConfig) {
   m_targetStateName = targetStateName;
   m_worldConfig = worldConfig;
 
@@ -155,7 +155,7 @@ bool LoadingState::exit() {
 std::string LoadingState::getName() const { return "LoadingState"; }
 
 void LoadingState::startAsyncWorldLoad() {
-  auto &threadSystem = HammerEngine::ThreadSystem::Instance();
+  auto &threadSystem = VoidLight::ThreadSystem::Instance();
   auto &worldManager = WorldManager::Instance();
 
   // Capture necessary data by value for thread safety
@@ -199,7 +199,7 @@ void LoadingState::startAsyncWorldLoad() {
 
   // Enqueue task with high priority and get future
   m_loadTask = threadSystem.enqueueTaskWithResult(
-      loadTask, HammerEngine::TaskPriority::High,
+      loadTask, VoidLight::TaskPriority::High,
       "LoadingState_WorldGeneration");
 }
 
@@ -284,7 +284,7 @@ void LoadingState::cleanupUI() {
   GAMESTATE_INFO("Loading screen UI cleaned up");
 }
 
-void LoadingState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
+void LoadingState::recordGPUVertices(VoidLight::GPURenderer &gpuRenderer,
                                      float interpolationAlpha) {
   (void)interpolationAlpha; // Loading UI doesn't need interpolation
 
@@ -293,7 +293,7 @@ void LoadingState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   ui.recordGPUVertices(gpuRenderer);
 }
 
-void LoadingState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
+void LoadingState::renderGPUUI(VoidLight::GPURenderer &gpuRenderer,
                                SDL_GPURenderPass *swapchainPass) {
   // Render UI to swapchain
   auto &ui = UIManager::Instance();

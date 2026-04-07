@@ -8,7 +8,7 @@
 #include <array>
 #include <cstdint>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * Pipeline type identifiers for render sorting.
@@ -132,6 +132,6 @@ private:
     SDL_GPUDevice* m_device{nullptr};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_PIPELINE_HPP

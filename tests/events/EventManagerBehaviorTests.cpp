@@ -20,11 +20,11 @@ namespace {
 
 struct ThreadSystemTestLifetime {
   ThreadSystemTestLifetime() {
-    BOOST_REQUIRE_MESSAGE(HammerEngine::ThreadSystem::Instance().init(),
+    BOOST_REQUIRE_MESSAGE(VoidLight::ThreadSystem::Instance().init(),
                           "Failed to initialize ThreadSystem for EventManagerBehaviorTests");
   }
   ~ThreadSystemTestLifetime() {
-    HammerEngine::ThreadSystem::Instance().clean();
+    VoidLight::ThreadSystem::Instance().clean();
   }
 };
 
@@ -242,7 +242,7 @@ BOOST_AUTO_TEST_CASE(DeferredDispatch_PreservesFIFOOrderAcrossTypes) {
       std::make_shared<TestEvent>("First"), EventManager::DispatchMode::Deferred);
   EventManager::Instance().changeWeather(
       "Rainy", 1.0f, EventManager::DispatchMode::Deferred);
-  HammerEngine::CollisionInfo info{};
+  VoidLight::CollisionInfo info{};
   EventManager::Instance().triggerCollision(
       info, EventManager::DispatchMode::Deferred);
 

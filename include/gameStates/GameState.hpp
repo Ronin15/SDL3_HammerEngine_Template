@@ -10,7 +10,7 @@
 #include <string>
 
 class GameStateManager;
-namespace HammerEngine {
+namespace VoidLight {
 class GPURenderer;
 }
 
@@ -32,7 +32,7 @@ class GameState {
    * @param gpuRenderer Reference to GPURenderer for accessing vertex pools/batches
    * @param interpolationAlpha Interpolation factor for smooth rendering
    */
-  virtual void recordGPUVertices([[maybe_unused]] HammerEngine::GPURenderer& gpuRenderer,
+  virtual void recordGPUVertices([[maybe_unused]] VoidLight::GPURenderer& gpuRenderer,
                                   [[maybe_unused]] float interpolationAlpha) {}
 
   /**
@@ -42,7 +42,7 @@ class GameState {
    * @param scenePass Active scene render pass
    * @param interpolationAlpha Interpolation factor
    */
-  virtual void renderGPUScene([[maybe_unused]] HammerEngine::GPURenderer& gpuRenderer,
+  virtual void renderGPUScene([[maybe_unused]] VoidLight::GPURenderer& gpuRenderer,
                                [[maybe_unused]] SDL_GPURenderPass* scenePass,
                                [[maybe_unused]] float interpolationAlpha) {}
 
@@ -53,7 +53,7 @@ class GameState {
    * @param gpuRenderer Reference to GPURenderer
    * @param swapchainPass Active swapchain render pass
    */
-  virtual void renderGPUUI([[maybe_unused]] HammerEngine::GPURenderer& gpuRenderer,
+  virtual void renderGPUUI([[maybe_unused]] VoidLight::GPURenderer& gpuRenderer,
                             [[maybe_unused]] SDL_GPURenderPass* swapchainPass) {}
 
   /**

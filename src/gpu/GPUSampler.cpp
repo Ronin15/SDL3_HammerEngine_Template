@@ -5,7 +5,7 @@
 #include "core/Logger.hpp"
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 GPUSampler::GPUSampler(SDL_GPUDevice* device, SDL_GPUFilter minMagFilter,
                        SDL_GPUSamplerAddressMode addressMode)
@@ -119,4 +119,4 @@ GPUSampler GPUSampler::createLinearMipmapped(SDL_GPUDevice* device) {
     return GPUSampler(device, createInfo);
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

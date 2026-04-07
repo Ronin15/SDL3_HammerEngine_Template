@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Detect architectural layer violations in HammerEngine
+Detect architectural layer violations in VoidLight-Framework
 """
 
 import os

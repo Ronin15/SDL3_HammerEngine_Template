@@ -32,13 +32,13 @@ PathfinderManager::~PathfinderManager() {
 
 // Internal priority mapping helpers (implementation-only)
 namespace {
-    inline HammerEngine::TaskPriority mapEnumToTaskPriority(PathfinderManager::Priority p) {
+    inline VoidLight::TaskPriority mapEnumToTaskPriority(PathfinderManager::Priority p) {
         switch (p) {
-            case PathfinderManager::Priority::Critical: return HammerEngine::TaskPriority::Critical;
-            case PathfinderManager::Priority::High:     return HammerEngine::TaskPriority::High;
-            case PathfinderManager::Priority::Normal:   return HammerEngine::TaskPriority::Normal;
-            case PathfinderManager::Priority::Low:      return HammerEngine::TaskPriority::Low;
-            default:                                    return HammerEngine::TaskPriority::Normal;
+            case PathfinderManager::Priority::Critical: return VoidLight::TaskPriority::Critical;
+            case PathfinderManager::Priority::High:     return VoidLight::TaskPriority::High;
+            case PathfinderManager::Priority::Normal:   return VoidLight::TaskPriority::Normal;
+            case PathfinderManager::Priority::Low:      return VoidLight::TaskPriority::Low;
+            default:                                    return VoidLight::TaskPriority::Normal;
         }
     }
 }
@@ -291,7 +291,7 @@ uint64_t PathfinderManager::requestPath(
 
     // LOCK-FREE: Submit directly to ThreadSystem
     // Callback is captured and called when task completes
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    auto& threadSystem = VoidLight::ThreadSystem::Instance();
 
     // Capture callback by move for async execution (avoids copy)
     auto work = [this, entityId, nStart, nGoal, cacheKey, callback = std::move(callback)]() {
@@ -394,7 +394,7 @@ uint64_t PathfinderManager::requestPathToEDM(
     }
 
     // ASYNC: Enqueue to ThreadSystem and return immediately (non-blocking)
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    auto& threadSystem = VoidLight::ThreadSystem::Instance();
 
     auto work = [this, requestHandle, edmIndex, requestToken, nStart, nGoal, cacheKey, gridSnapshot]() {
         // CRITICAL: Check shutdown before accessing any member data
@@ -514,14 +514,14 @@ uint64_t PathfinderManager::requestPathToEDM(
     return requestId;  // Returns immediately - path computed asynchronously
 }
 
-HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
+VoidLight::PathfindingResult PathfinderManager::findPathImmediate(
     const Vector2D& start,
     const Vector2D& goal,
     std::vector<Vector2D>& outPath,
     bool skipNormalization
 ) {
     if (!m_initialized.load() || m_isShutdown.load(std::memory_order_acquire)) {
-        return HammerEngine::PathfindingResult::NO_PATH_FOUND;
+        return VoidLight::PathfindingResult::NO_PATH_FOUND;
     }
 
     // Start timing for performance statistics
@@ -533,7 +533,7 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
         auto endTime = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
         m_totalProcessingTimeMs.fetch_add(duration.count() / 1000.0, std::memory_order_relaxed);
-        return HammerEngine::PathfindingResult::NO_PATH_FOUND;
+        return VoidLight::PathfindingResult::NO_PATH_FOUND;
     }
 
     // Take a snapshot of the grid to avoid races with background rebuilds
@@ -543,7 +543,7 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
         auto endTime = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
         m_totalProcessingTimeMs.fetch_add(duration.count() / 1000.0, std::memory_order_relaxed);
-        return HammerEngine::PathfindingResult::NO_PATH_FOUND;
+        return VoidLight::PathfindingResult::NO_PATH_FOUND;
     }
 
     // Normalize endpoints AFTER grid exists (needs grid for bounds/snapping)
@@ -555,17 +555,17 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     }
 
     // Determine which pathfinding algorithm to use based on sophisticated heuristics
-    HammerEngine::PathfindingResult result;
+    VoidLight::PathfindingResult result;
     
     if (gridSnapshot->shouldUseHierarchicalPathfinding(nStart, nGoal)) {
         // Use hierarchical pathfinding - try hierarchical first
         result = gridSnapshot->findPathHierarchical(nStart, nGoal, outPath);
         
         // Fallback to direct if hierarchical fails
-        if (result != HammerEngine::PathfindingResult::SUCCESS || outPath.empty()) {
+        if (result != VoidLight::PathfindingResult::SUCCESS || outPath.empty()) {
             std::vector<Vector2D> directPath;
             auto directResult = gridSnapshot->findPath(nStart, nGoal, directPath);
-            if (directResult == HammerEngine::PathfindingResult::SUCCESS && !directPath.empty()) {
+            if (directResult == VoidLight::PathfindingResult::SUCCESS && !directPath.empty()) {
                 outPath = std::move(directPath);
                 result = directResult;
             }
@@ -584,15 +584,15 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
 }
 
 // Grid-passing overload - avoids repeated getGridSnapshot() calls in hot path
-HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
+VoidLight::PathfindingResult PathfinderManager::findPathImmediate(
     const Vector2D& start,
     const Vector2D& goal,
     std::vector<Vector2D>& outPath,
-    const std::shared_ptr<HammerEngine::PathfindingGrid>& grid,
+    const std::shared_ptr<VoidLight::PathfindingGrid>& grid,
     bool skipNormalization
 ) {
     if (!m_initialized.load() || m_isShutdown.load(std::memory_order_acquire) || !grid) {
-        return HammerEngine::PathfindingResult::NO_PATH_FOUND;
+        return VoidLight::PathfindingResult::NO_PATH_FOUND;
     }
 
     // Normalize endpoints if needed (pass grid to avoid re-fetching)
@@ -603,15 +603,15 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     }
 
     // Determine which pathfinding algorithm to use
-    HammerEngine::PathfindingResult result;
+    VoidLight::PathfindingResult result;
 
     if (grid->shouldUseHierarchicalPathfinding(nStart, nGoal)) {
         result = grid->findPathHierarchical(nStart, nGoal, outPath);
 
-        if (result != HammerEngine::PathfindingResult::SUCCESS || outPath.empty()) {
+        if (result != VoidLight::PathfindingResult::SUCCESS || outPath.empty()) {
             std::vector<Vector2D> directPath;
             auto directResult = grid->findPath(nStart, nGoal, directPath);
-            if (directResult == HammerEngine::PathfindingResult::SUCCESS && !directPath.empty()) {
+            if (directResult == VoidLight::PathfindingResult::SUCCESS && !directPath.empty()) {
                 outPath = std::move(directPath);
                 result = directResult;
             }
@@ -653,7 +653,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                           dirtyPercent, DIRTY_THRESHOLD_PERCENT * 100.0f));
 
             // Submit incremental rebuild to ThreadSystem (non-blocking)
-            auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+            auto& threadSystem = VoidLight::ThreadSystem::Instance();
             auto rebuildFuture = threadSystem.enqueueTaskWithResult(
                 [this]() {
                     if (auto grid = getGridSnapshot()) {
@@ -661,7 +661,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                         PATHFIND_INFO("Incremental grid rebuild complete");
                     }
                 },
-                HammerEngine::TaskPriority::Low,
+                VoidLight::TaskPriority::Low,
                 "PathfindingGridRebuild_Incremental"
             );
 
@@ -682,8 +682,8 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
         return;
     }
 
-    float const worldPixelWidth = worldWidth * HammerEngine::TILE_SIZE;
-    float const worldPixelHeight = worldHeight * HammerEngine::TILE_SIZE;
+    float const worldPixelWidth = worldWidth * VoidLight::TILE_SIZE;
+    float const worldPixelHeight = worldHeight * VoidLight::TILE_SIZE;
     int const gridWidth = static_cast<int>(worldPixelWidth / m_cellSize);
     int gridHeight = static_cast<int>(worldPixelHeight / m_cellSize);
     if (gridWidth <= 0 || gridHeight <= 0) {
@@ -697,20 +697,20 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
     int maxIterations = m_maxIterations;
 
     // Get ThreadSystem reference
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    auto& threadSystem = VoidLight::ThreadSystem::Instance();
 
     // Use centralized WorkerBudgetManager for smart worker allocation
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
     // Calculate optimal worker count for grid rebuild (considers queue pressure internally)
     size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::Pathfinding,
+        VoidLight::SystemType::Pathfinding,
         static_cast<size_t>(gridHeight)  // Workload = number of rows
     );
 
     // Get batch strategy from WorkerBudget
     auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::Pathfinding,
+        VoidLight::SystemType::Pathfinding,
         static_cast<size_t>(gridHeight),
         optimalWorkerCount
     );
@@ -724,7 +724,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
             [gridWidth, gridHeight, cellSize, allowDiagonal, maxIterations, this]() {
                 PATHFIND_DEBUG("Sequential grid rebuild starting");
                 try {
-                    auto newGrid = std::make_shared<HammerEngine::PathfindingGrid>(
+                    auto newGrid = std::make_shared<VoidLight::PathfindingGrid>(
                         gridWidth, gridHeight, cellSize, Vector2D(0, 0)
                     );
                     newGrid->setAllowDiagonal(allowDiagonal);
@@ -744,7 +744,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                     PATHFIND_ERROR(std::format("Sequential grid rebuild failed: {}", e.what()));
                 }
             },
-            HammerEngine::TaskPriority::Low,
+            VoidLight::TaskPriority::Low,
             "PathfindingGridRebuild_Sequential"
         );
 
@@ -764,7 +764,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
             PATHFIND_DEBUG("Parallel grid rebuild starting");
             try {
                 // Create grid on coordinator thread
-                auto newGrid = std::make_shared<HammerEngine::PathfindingGrid>(
+                auto newGrid = std::make_shared<VoidLight::PathfindingGrid>(
                     gridWidth, gridHeight, cellSize, Vector2D(0, 0)
                 );
                 newGrid->setAllowDiagonal(allowDiagonal);
@@ -783,11 +783,11 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                     int rowStart = static_cast<int>(i * batchSize);
                     int rowEnd = std::min(rowStart + static_cast<int>(batchSize), gridHeight);
 
-                    auto batchFuture = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+                    auto batchFuture = VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
                         [newGrid, rowStart, rowEnd]() {
                             newGrid->rebuildFromWorld(rowStart, rowEnd);
                         },
-                        HammerEngine::TaskPriority::Low,
+                        VoidLight::TaskPriority::Low,
                         std::format("PathfindingGridBatch_{}", i)
                     );
                     batchFutures.push_back(std::move(batchFuture));
@@ -816,7 +816,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                 PATHFIND_ERROR(std::format("Parallel grid rebuild failed: {}", e.what()));
             }
         },
-        HammerEngine::TaskPriority::Low,
+        VoidLight::TaskPriority::Low,
         "PathfindingGridRebuild_Parallel"
     );
 
@@ -1011,7 +1011,7 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
 
 // Grid-passing overload - avoids getGridSnapshot() in hot path
 Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float margin,
-                                               const std::shared_ptr<HammerEngine::PathfindingGrid>& grid) const {
+                                               const std::shared_ptr<VoidLight::PathfindingGrid>& grid) const {
     if (grid) {
         const float gridCellSize = 64.0f;
         const float worldWidth = grid->getWidth() * gridCellSize;
@@ -1201,7 +1201,7 @@ void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal) cons
 
 // Grid-passing overload - avoids getGridSnapshot() calls in hot path
 void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal,
-                                           const std::shared_ptr<HammerEngine::PathfindingGrid>& grid) const {
+                                           const std::shared_ptr<VoidLight::PathfindingGrid>& grid) const {
     constexpr float EDGE_MARGIN = 96.0f;
     start = clampToWorldBounds(start, EDGE_MARGIN, grid);
     goal = clampToWorldBounds(goal, EDGE_MARGIN, grid);
@@ -1643,7 +1643,7 @@ void PathfinderManager::onStaticCollidersReady() {
     int worldWidth = 0;
     int worldHeight = 0;
 
-    worldManager.withWorldDataRead([&](const HammerEngine::WorldData* worldData) {
+    worldManager.withWorldDataRead([&](const VoidLight::WorldData* worldData) {
         if (!worldData) {
             PATHFIND_WARN("StaticCollidersReady received but no world data available");
             return;
@@ -1674,12 +1674,12 @@ void PathfinderManager::onWorldUnloaded() {
 
 void PathfinderManager::onTileChanged(int x, int y) {
     // Convert tile coordinates to world position using global tile size constant
-    Vector2D const tileWorldPos(x * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
-                          y * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
+    Vector2D const tileWorldPos(x * VoidLight::TILE_SIZE + VoidLight::TILE_SIZE * 0.5f,
+                          y * VoidLight::TILE_SIZE + VoidLight::TILE_SIZE * 0.5f);
 
     // Invalidate paths that pass through or near the changed tile
     // Use slightly larger radius than tile size to catch paths that pass nearby
-    constexpr float INVALIDATION_RADIUS = HammerEngine::TILE_SIZE * 1.5f;
+    constexpr float INVALIDATION_RADIUS = VoidLight::TILE_SIZE * 1.5f;
 
     std::unique_lock<std::shared_mutex> cacheLock(m_cacheMutex);
     size_t removedCount = 0;
@@ -1713,8 +1713,8 @@ void PathfinderManager::onTileChanged(int x, int y) {
     if (tileGrid) {
         // Convert tile coordinates to grid cell coordinates
         // Tile coordinates are in world tiles, grid cells may be different size
-        int gridX = static_cast<int>((x * HammerEngine::TILE_SIZE) / m_cellSize);
-        int gridY = static_cast<int>((y * HammerEngine::TILE_SIZE) / m_cellSize);
+        int gridX = static_cast<int>((x * VoidLight::TILE_SIZE) / m_cellSize);
+        int gridY = static_cast<int>((y * VoidLight::TILE_SIZE) / m_cellSize);
 
         // Mark single cell dirty (tile changes typically affect one cell)
         tileGrid->markDirtyRegion(gridX, gridY, 1, 1);

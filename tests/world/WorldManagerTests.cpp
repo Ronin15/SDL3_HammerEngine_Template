@@ -19,7 +19,7 @@
 #include <vector>
 #include <atomic>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 class WorldManagerTestFixture {
 public:
@@ -89,7 +89,7 @@ BOOST_AUTO_TEST_CASE(TestLoadNewWorld) {
     BOOST_CHECK(worldManager->hasActiveWorld());
     BOOST_CHECK(!worldManager->getCurrentWorldId().empty());
     
-    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* worldData) {
+    worldManager->withWorldDataRead([&](const VoidLight::WorldData* worldData) {
         BOOST_REQUIRE(worldData != nullptr);
         BOOST_CHECK_EQUAL(worldData->grid.size(), 20);
         BOOST_CHECK_EQUAL(worldData->grid[0].size(), 20);
@@ -111,7 +111,7 @@ BOOST_AUTO_TEST_CASE(TestHarvestablesUseConfiguredHarvestTypes) {
     std::vector<size_t> nearbyHarvestables;
 
     bool foundTree = false;
-    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* worldData) {
+    worldManager->withWorldDataRead([&](const VoidLight::WorldData* worldData) {
         BOOST_REQUIRE(worldData != nullptr);
         for (size_t y = 0; y < worldData->grid.size() && !foundTree; ++y) {
             for (size_t x = 0; x < worldData->grid[y].size() && !foundTree; ++x) {
@@ -135,7 +135,7 @@ BOOST_AUTO_TEST_CASE(TestHarvestablesUseConfiguredHarvestTypes) {
     BOOST_REQUIRE_MESSAGE(foundTree, "Expected at least one tree obstacle in generated world");
 
     bool foundIronDeposit = false;
-    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* worldData) {
+    worldManager->withWorldDataRead([&](const VoidLight::WorldData* worldData) {
         BOOST_REQUIRE(worldData != nullptr);
         for (size_t y = 0; y < worldData->grid.size() && !foundIronDeposit; ++y) {
             for (size_t x = 0; x < worldData->grid[y].size() && !foundIronDeposit; ++x) {
@@ -402,7 +402,7 @@ BOOST_AUTO_TEST_CASE(TestMultipleWorldLoads) {
     BOOST_REQUIRE(worldManager->loadNewWorld(config1));
     std::string firstWorldId = worldManager->getCurrentWorldId();
     
-    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* firstWorldData) {
+    worldManager->withWorldDataRead([&](const VoidLight::WorldData* firstWorldData) {
         BOOST_REQUIRE(firstWorldData != nullptr);
         BOOST_CHECK_EQUAL(firstWorldData->grid.size(), 10);
     });
@@ -411,7 +411,7 @@ BOOST_AUTO_TEST_CASE(TestMultipleWorldLoads) {
     BOOST_REQUIRE(worldManager->loadNewWorld(config2));
     std::string secondWorldId = worldManager->getCurrentWorldId();
     
-    worldManager->withWorldDataRead([&](const HammerEngine::WorldData* secondWorldData) {
+    worldManager->withWorldDataRead([&](const VoidLight::WorldData* secondWorldData) {
         BOOST_REQUIRE(secondWorldData != nullptr);
         BOOST_CHECK_EQUAL(secondWorldData->grid.size(), 15);
     });
