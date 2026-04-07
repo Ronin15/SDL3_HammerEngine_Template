@@ -56,7 +56,7 @@ public:
      * @param device GPU device
      * @return true on success
      */
-    bool init(SDL_GPUDevice* device, const char* name = "SpriteBatch");
+    [[nodiscard]] bool init(SDL_GPUDevice* device, const char* name = "SpriteBatch");
 
     /**
      * Shutdown and release resources.

@@ -425,10 +425,12 @@ BOOST_AUTO_TEST_CASE(TestBasicLayerMaskAND) {
     Int4 simdMaskA = broadcast_int(static_cast<int32_t>(maskA));
     Int4 simdMaskB = broadcast_int(static_cast<int32_t>(maskB));
     Int4 simdResult = bitwise_and(simdMaskA, simdMaskB);
-    (void)simdResult; // Suppress unused warning - SIMD correctness validated by scalar check
 
     // Verify: Result should be 0b00000011 (only layers 0-1 set in both)
     BOOST_CHECK_EQUAL(scalarResult, 0b00000011);
+    // Verify SIMD result matches scalar across all lanes
+    Int4 expected = broadcast_int(static_cast<int32_t>(scalarResult));
+    BOOST_CHECK_EQUAL(movemask_int(cmpeq_int(simdResult, expected)), 0xF);
 }
 
 BOOST_AUTO_TEST_CASE(TestLayerMaskNoCollision) {

@@ -29,12 +29,12 @@ struct CollisionPathfindingFixture {
     CollisionPathfindingFixture() {
         // Initialize ThreadSystem first (required for PathfinderManager async tasks)
         // Always call init() - it has guards against double-initialization
-        VoidLight::ThreadSystem::Instance().init(); // Auto-detect system threads
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init()); // Auto-detect system threads
 
         // Initialize managers in proper order
         EventManager::Instance().init();
         WorldManager::Instance().init();
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
 

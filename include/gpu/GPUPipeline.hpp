@@ -84,7 +84,7 @@ public:
      * @param config Pipeline configuration
      * @return true on success
      */
-    bool create(SDL_GPUDevice* device, const PipelineConfig& config);
+    [[nodiscard]] bool create(SDL_GPUDevice* device, const PipelineConfig& config);
 
     /**
      * Release the pipeline.

@@ -35,7 +35,7 @@ struct SpriteBatchTestFixture : public GPUTestFixture {
 
         SDL_Window* window = getTestWindow();
         if (window) {
-            device->init(window);
+            BOOST_REQUIRE(device->init(window));
         }
     }
 
@@ -122,7 +122,7 @@ BOOST_FIXTURE_TEST_CASE(ShutdownClearsState, SpriteBatchTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     SpriteBatch batch;
-    batch.init(device->get());
+    BOOST_REQUIRE(batch.init(device->get()));
 
     batch.shutdown();
 
@@ -142,7 +142,7 @@ BOOST_FIXTURE_TEST_CASE(BeginSetsState, SpriteBatchTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     SpriteBatch batch;
-    batch.init(device->get());
+    BOOST_REQUIRE(batch.init(device->get()));
 
     // Create a vertex buffer to write to
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
@@ -163,7 +163,7 @@ BOOST_FIXTURE_TEST_CASE(DrawIncrementsSpriteCount, SpriteBatchTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     SpriteBatch batch;
-    batch.init(device->get());
+    BOOST_REQUIRE(batch.init(device->get()));
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
     batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
@@ -183,7 +183,7 @@ BOOST_FIXTURE_TEST_CASE(DrawMultipleSprites, SpriteBatchTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     SpriteBatch batch;
-    batch.init(device->get());
+    BOOST_REQUIRE(batch.init(device->get()));
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
     batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
@@ -205,7 +205,7 @@ BOOST_FIXTURE_TEST_CASE(DrawUVMethod, SpriteBatchTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     SpriteBatch batch;
-    batch.init(device->get());
+    BOOST_REQUIRE(batch.init(device->get()));
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
     batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
@@ -224,7 +224,7 @@ BOOST_FIXTURE_TEST_CASE(EndReturnsVertexCount, SpriteBatchTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     SpriteBatch batch;
-    batch.init(device->get());
+    BOOST_REQUIRE(batch.init(device->get()));
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
     batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
@@ -245,7 +245,7 @@ BOOST_FIXTURE_TEST_CASE(DrawWithColorTint, SpriteBatchTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     SpriteBatch batch;
-    batch.init(device->get());
+    BOOST_REQUIRE(batch.init(device->get()));
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
     batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
@@ -278,7 +278,7 @@ BOOST_FIXTURE_TEST_CASE(HasSpritesFlag, SpriteBatchTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     SpriteBatch batch;
-    batch.init(device->get());
+    BOOST_REQUIRE(batch.init(device->get()));
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
     batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
@@ -298,7 +298,7 @@ BOOST_FIXTURE_TEST_CASE(LargeSpriteBatch, SpriteBatchTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     SpriteBatch batch;
-    batch.init(device->get());
+    BOOST_REQUIRE(batch.init(device->get()));
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
     batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 1024.0f, 1024.0f, 1024.0f);
@@ -333,7 +333,7 @@ BOOST_FIXTURE_TEST_CASE(VertexPositionsCorrect, SpriteBatchTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     SpriteBatch batch;
-    batch.init(device->get());
+    BOOST_REQUIRE(batch.init(device->get()));
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
     batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 256.0f, 256.0f, 256.0f);
@@ -368,7 +368,7 @@ BOOST_FIXTURE_TEST_CASE(VertexUVsNormalized, SpriteBatchTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     SpriteBatch batch;
-    batch.init(device->get());
+    BOOST_REQUIRE(batch.init(device->get()));
 
     std::vector<SpriteVertex> vertices(SpriteBatch::MAX_VERTICES);
     const float texWidth = 256.0f;
@@ -408,7 +408,7 @@ BOOST_FIXTURE_TEST_CASE(MoveConstruction, SpriteBatchTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     SpriteBatch batch1;
-    batch1.init(device->get());
+    BOOST_REQUIRE(batch1.init(device->get()));
 
     SDL_GPUBuffer* indexBuffer = batch1.getIndexBuffer();
 
@@ -444,7 +444,7 @@ BOOST_FIXTURE_TEST_CASE(MoveAssignment, SpriteBatchTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     SpriteBatch batch1;
-    batch1.init(device->get());
+    BOOST_REQUIRE(batch1.init(device->get()));
 
     SDL_GPUBuffer* indexBuffer = batch1.getIndexBuffer();
 

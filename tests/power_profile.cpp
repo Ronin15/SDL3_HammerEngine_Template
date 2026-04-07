@@ -117,7 +117,10 @@ int main(int argc, char* argv[]) {
         if (config.verbose) {
             std::cout << "[INIT] Initializing ThreadSystem...\n";
         }
-        VoidLight::ThreadSystem::Instance().init();
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            std::cerr << "[ERROR] ThreadSystem init failed\n";
+            return 1;
+        }
 
         if (config.verbose) {
             std::cout << "[INIT] Initializing PathfinderManager...\n";
@@ -128,7 +131,10 @@ int main(int argc, char* argv[]) {
         if (config.verbose) {
             std::cout << "[INIT] Initializing EntityDataManager...\n";
         }
-        EntityDataManager::Instance().init();
+        if (!EntityDataManager::Instance().init()) {
+            std::cerr << "[ERROR] EntityDataManager init failed\n";
+            return 1;
+        }
 
         if (config.verbose) {
             std::cout << "[INIT] Initializing CollisionManager...\n";

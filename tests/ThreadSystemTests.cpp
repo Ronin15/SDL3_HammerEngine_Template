@@ -19,7 +19,7 @@
 // Global fixture for test setup and cleanup
 struct ThreadTestFixture {
     ThreadTestFixture() {
-        VoidLight::ThreadSystem::Instance().init(4096);
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init(4096));
     }
 
     ~ThreadTestFixture() {

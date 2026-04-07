@@ -43,8 +43,8 @@ private:
 struct AITestFixture {
     AITestFixture() {
         // Initialize dependencies required by the real AIManager
-        VoidLight::ThreadSystem::Instance().init();
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         AIManager::Instance().init();

@@ -41,7 +41,7 @@ public:
         EventManager::Instance().init();
 
         // Initialize EntityDataManager
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
 
         // Initialize WorldResourceManager
         WorldResourceManager::Instance().init();

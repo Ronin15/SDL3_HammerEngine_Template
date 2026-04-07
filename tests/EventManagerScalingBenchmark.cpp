@@ -247,7 +247,7 @@ struct GlobalFixture {
         VOIDLIGHT_ENABLE_BENCHMARK_MODE();
 
         // Initialize ThreadSystem for EventManager threading
-        VoidLight::ThreadSystem::Instance().init();
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
         EventManager::Instance().init();
     }
 
@@ -1156,7 +1156,7 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
         EventManager::Instance().clean();
         EntityDataManager::Instance().clean();
 
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         EventManager::Instance().init();
     };
 

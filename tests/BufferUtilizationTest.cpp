@@ -20,7 +20,7 @@
 struct GlobalThreadSystemFixture {
     GlobalThreadSystemFixture() {
         // Initialize ThreadSystem with default worker count (hardware_concurrency - 1)
-        VoidLight::ThreadSystem::Instance().init();
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
     }
     ~GlobalThreadSystemFixture() {
         VoidLight::ThreadSystem::Instance().clean();

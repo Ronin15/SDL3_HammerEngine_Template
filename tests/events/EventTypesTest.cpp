@@ -23,7 +23,7 @@
 struct EventTypesFixture {
   EventTypesFixture() {
     // Initialize EntityDataManager (required for Player entity creation in DOD)
-    EntityDataManager::Instance().init();
+    BOOST_REQUIRE(EntityDataManager::Instance().init());
 
     // Make sure we start fresh with each test
     EventFactory::Instance().clean();

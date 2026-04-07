@@ -44,8 +44,8 @@ public:
     ProjectileScalingFixture() {
         if (!s_initialized) {
             VOIDLIGHT_ENABLE_BENCHMARK_MODE();
-            VoidLight::ThreadSystem::Instance().init();
-            EntityDataManager::Instance().init();
+            BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
+            BOOST_REQUIRE(EntityDataManager::Instance().init());
             PathfinderManager::Instance().init();
             CollisionManager::Instance().init();
             EventManager::Instance().init();

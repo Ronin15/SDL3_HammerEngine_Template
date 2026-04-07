@@ -128,7 +128,7 @@ private:
 // Test fixture
 struct PathfinderEDMFixture {
     PathfinderEDMFixture() {
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         WorldResourceManager::Instance().init();
         ResourceTemplateManager::Instance().init();
         WorldManager::Instance().init();

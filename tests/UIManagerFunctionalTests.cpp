@@ -317,8 +317,7 @@ BOOST_AUTO_TEST_CASE(TestOnTextChangedCallback) {
     // Set up callback to track text changes
     std::atomic<bool> textChanged{false};
 
-    ui.setOnTextChanged("input", [&textChanged](const std::string& newText) {
-        (void)newText; // Use parameter
+    ui.setOnTextChanged("input", [&textChanged](const std::string&) {
         textChanged.store(true, std::memory_order_release);
     });
 

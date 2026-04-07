@@ -23,7 +23,7 @@ using namespace VoidLight;
 // This ensures worker threads are available for all tests that need async task execution
 struct GlobalThreadSystemFixture {
     GlobalThreadSystemFixture() {
-        VoidLight::ThreadSystem::Instance().init(); // Auto-detect system threads
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init()); // Auto-detect system threads
     }
     ~GlobalThreadSystemFixture() {
         VoidLight::ThreadSystem::Instance().clean();

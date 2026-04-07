@@ -46,7 +46,7 @@ class PathfinderBenchmarkFixture {
 public:
     PathfinderBenchmarkFixture() {
         // Initialize core systems required for pathfinding (order matters!)
-        VoidLight::ThreadSystem::Instance().init(); // Auto-detect system threads
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init()); // Auto-detect system threads
 
         // Log WorkerBudget allocations for production-matching verification
         const auto& budget = VoidLight::WorkerBudgetManager::Instance().getBudget();
@@ -61,7 +61,7 @@ public:
         EventManager::Instance().init();
 
         // Initialize EntityDataManager before collision manager (EDM owns static body data)
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
 
         // Initialize world and collision managers
         WorldManager::Instance().init();

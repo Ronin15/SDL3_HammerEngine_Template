@@ -505,7 +505,7 @@ BOOST_AUTO_TEST_CASE(TestStaticMovableSeparation)
 {
     // Initialize managers
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -550,7 +550,7 @@ BOOST_AUTO_TEST_CASE(TestBroadphasePerformanceWithDualHashes)
 {
     // Test that broadphase performance is improved with separate static/movable storage
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -639,7 +639,7 @@ BOOST_AUTO_TEST_CASE(TestMovableBatchUpdateWithEDM)
 {
     // Test that batch movable updates work correctly with EDM-centric system
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -717,7 +717,7 @@ BOOST_AUTO_TEST_CASE(TestStaticBodyCacheInvalidation)
 {
     // Test that static body cache is properly invalidated when static bodies change
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -845,7 +845,7 @@ BOOST_AUTO_TEST_CASE(TestBodyLayerFiltering)
 {
     // Test collision layer filtering functionality via EDM
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     // Create movable entities with different layers via EDM
@@ -898,7 +898,7 @@ BOOST_AUTO_TEST_CASE(TestBodyEnableDisable)
 {
     // Test body enable/disable functionality via EDM
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     EntityID bodyId = 6000;
@@ -933,7 +933,7 @@ BOOST_AUTO_TEST_CASE(TestBodyResize)
 {
     // Test body resize functionality via EDM
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     Vector2D originalPos(200.0f, 200.0f);
@@ -972,7 +972,7 @@ BOOST_AUTO_TEST_CASE(TestVelocityManagement)
 {
     // Test velocity setting via EDM
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     EntityID bodyId = 8000;
@@ -1026,7 +1026,7 @@ BOOST_AUTO_TEST_CASE(TestCollisionInfoIndicesIntegrity)
     // EDM-CENTRIC: Movables must be registered in EDM to participate in collision
 
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     // Create two overlapping NPC entities in EDM (Active tier = participates in collision)
@@ -1121,7 +1121,7 @@ struct CollisionIntegrationFixture {
     CollisionIntegrationFixture() {
         // Initialize ThreadSystem first (following established pattern)
         if (!VoidLight::ThreadSystem::Exists()) {
-            VoidLight::ThreadSystem::Instance().init(); // Auto-detect system threads
+            BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init()); // Auto-detect system threads
         }
         
         // Initialize EventManager for event testing
@@ -1169,7 +1169,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrat
     
     // Test 1: Adding a static body should trigger an event
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
 
     Vector2D staticPos(100.0f, 200.0f);
     AABB staticAABB(staticPos.getX(), staticPos.getY(), 32.0f, 32.0f);
@@ -1240,7 +1240,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventRadiusCalculation, CollisionIntegratio
     
     // Test different sized obstacles produce appropriate radii
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
 
     // Small obstacle: 10x10
     AABB smallAABB(0.0f, 0.0f, 5.0f, 5.0f);
@@ -1293,7 +1293,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventPerformanceImpact, CollisionIntegratio
     std::vector<EntityID> bodies;
 
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
 
     // Measure time to add many static bodies (which trigger events)
     auto start = std::chrono::high_resolution_clock::now();
@@ -1383,7 +1383,7 @@ BOOST_AUTO_TEST_CASE(TestWorldBounds)
 {
     // Test world bounds functionality
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     // Set world bounds
@@ -1416,7 +1416,7 @@ BOOST_AUTO_TEST_CASE(TestLayerCollisionFiltering)
 {
     // Test that collision detection respects layer filtering via EDM
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     // Create two movable bodies that should NOT collide due to layer filtering
@@ -1461,7 +1461,7 @@ BOOST_AUTO_TEST_CASE(TestMixedBodyTypeInteractions)
 {
     // Test interactions between different body types
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     EntityID movableId = 11001;
@@ -1526,11 +1526,11 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     // Test spatial partitioning edge cases for static bodies in CollisionManager
     // Note: Movables are now in EDM, so these tests focus on static body spatial hashing
     if (!VoidLight::ThreadSystem::Exists()) {
-        VoidLight::ThreadSystem::Instance().init();
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
     }
 
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     // Test 1: Static bodies exactly at grid boundaries
@@ -1662,7 +1662,7 @@ BOOST_AUTO_TEST_CASE(TestEDMBatchPositionUpdate)
 {
     // EDM-CENTRIC: Test batch position updates via EntityDataManager
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     const int NUM_ENTITIES = 50;
@@ -1717,7 +1717,7 @@ BOOST_AUTO_TEST_CASE(TestEDMMultiBatchUpdates)
 {
     // EDM-CENTRIC: Test multiple batch updates (like AIManager does per-thread)
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     const int NUM_BATCHES = 4;
@@ -1782,7 +1782,7 @@ BOOST_AUTO_TEST_CASE(TestEDMBatchUpdatePerformance)
 {
     // EDM-CENTRIC: Measure performance of batch position updates via EDM
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     const int NUM_ENTITIES = 500;
@@ -1843,7 +1843,7 @@ BOOST_AUTO_TEST_CASE(TestTriggerDetectionFlag)
 {
     // Test that NEEDS_TRIGGER_DETECTION flag is properly set and queried
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -1908,7 +1908,7 @@ BOOST_AUTO_TEST_CASE(TestEventOnlyTriggerDetection)
 {
     // Test that EventOnly triggers are detected via spatial queries
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -1970,7 +1970,7 @@ BOOST_AUTO_TEST_CASE(TestNPCTriggerDetection)
 {
     // Test that NPCs with NEEDS_TRIGGER_DETECTION flag can fire trigger events
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -2045,7 +2045,7 @@ BOOST_AUTO_TEST_CASE(TestSweepAndPruneTriggerDetection)
 {
     // Test that sweep-and-prune path works correctly for large entity counts
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();

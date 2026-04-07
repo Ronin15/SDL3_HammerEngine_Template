@@ -34,10 +34,10 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
 class EntityDataManagerTestFixture {
 public:
     EntityDataManagerTestFixture() {
-        VoidLight::ThreadSystem::Instance().init();
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
         ResourceTemplateManager::Instance().init();
         edm = &EntityDataManager::Instance();
-        edm->init();
+        BOOST_REQUIRE(edm->init());
         EventManager::Instance().init();
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();

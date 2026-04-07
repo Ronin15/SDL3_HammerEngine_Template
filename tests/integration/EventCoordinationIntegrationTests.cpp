@@ -58,7 +58,7 @@ public:
         return std::make_shared<TestEntity>(pos);
     }
 
-    void update(float deltaTime) override { (void)deltaTime; }
+    void update(float) override {}
     void clean() override {}
     [[nodiscard]] EntityKind getKind() const override { return EntityKind::Player; }
 };

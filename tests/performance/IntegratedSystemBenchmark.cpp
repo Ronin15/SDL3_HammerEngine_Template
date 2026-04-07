@@ -262,10 +262,10 @@ namespace {
             VOIDLIGHT_ENABLE_BENCHMARK_MODE();
 
             // Initialize in dependency order (matching GameEngine::init pattern)
-            VoidLight::ThreadSystem::Instance().init(); // Auto-detect system threads
+            BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init()); // Auto-detect system threads
 
             // EntityDataManager must be early - entities need it for registration
-            EntityDataManager::Instance().init();
+            BOOST_REQUIRE(EntityDataManager::Instance().init());
 
             EventManager::Instance().init();
             PathfinderManager::Instance().init();

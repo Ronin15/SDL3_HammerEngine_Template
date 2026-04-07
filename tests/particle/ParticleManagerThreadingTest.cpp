@@ -306,16 +306,11 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentStatsAccess,
         [=, this, &statsReads]() -> void {
           for (int i = 0; i < STATS_READS_PER_THREAD; ++i) {
             // Read various stats (thread-safe getters)
-            size_t activeCount = manager->getActiveParticleCount();
-            size_t maxCapacity = manager->getMaxParticleCapacity();
-            ParticlePerformanceStats stats = manager->getPerformanceStats();
+            manager->getActiveParticleCount();
+            manager->getMaxParticleCapacity();
+            manager->getPerformanceStats();
 
             statsReads.fetch_add(1, std::memory_order_relaxed);
-
-            // Use the stats to prevent optimization away
-            (void)activeCount;
-            (void)maxCapacity;
-            (void)stats;
 
             std::this_thread::sleep_for(std::chrono::microseconds(100));
           }
@@ -374,8 +369,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCleanup,
           while (!cleanupStarted.load(std::memory_order_acquire) &&
                  operations < 50) {
             // Continue reading particle stats (thread-safe)
-            size_t count = manager->getActiveParticleCount();
-            (void)count; // Use the value
+            manager->getActiveParticleCount();
 
             operations++;
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -442,15 +436,12 @@ BOOST_FIXTURE_TEST_CASE(TestMixedConcurrentOperations,
             switch (i % 4) { // Changed from 5 to 4 cases (removed update)
             case 0: {
               // Create effect (thread-safe with mutex)
-              uint32_t effectId =
-                  manager->playEffect(ParticleEffectType::Rain, position, 0.6f);
-              (void)effectId;
+              manager->playEffect(ParticleEffectType::Rain, position, 0.6f);
               break;
             }
             case 1: {
               // Check stats (thread-safe getters)
-              size_t count = manager->getActiveParticleCount();
-              (void)count;
+              manager->getActiveParticleCount();
               break;
             }
             case 2: {

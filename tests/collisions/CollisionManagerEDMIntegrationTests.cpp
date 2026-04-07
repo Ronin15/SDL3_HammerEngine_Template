@@ -55,7 +55,7 @@ ThreadSystemTestLifetime g_threadSystemTestLifetime{};
 struct CollisionEDMFixture {
     CollisionEDMFixture() {
         EventManager::Instance().init();
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         BackgroundSimulationManager::Instance().init();
         CollisionManager::Instance().init();
 

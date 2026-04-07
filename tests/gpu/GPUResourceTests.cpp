@@ -37,7 +37,7 @@ struct ResourceTestFixture : public GPUTestFixture {
 
         SDL_Window* window = getTestWindow();
         if (window) {
-            device->init(window);
+            BOOST_REQUIRE(device->init(window));
         }
     }
 

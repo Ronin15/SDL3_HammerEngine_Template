@@ -43,8 +43,8 @@ public:
     CollisionScalingFixture() {
         // Initialize systems once per fixture
         if (!s_initialized) {
-            VoidLight::ThreadSystem::Instance().init();
-            EntityDataManager::Instance().init();
+            BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
+            BOOST_REQUIRE(EntityDataManager::Instance().init());
             CollisionManager::Instance().init();
             BackgroundSimulationManager::Instance().init();
             // Enable benchmark mode to suppress verbose logging during benchmarks

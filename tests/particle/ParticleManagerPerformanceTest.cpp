@@ -22,7 +22,7 @@ struct ParticleManagerPerformanceFixture {
   ParticleManagerPerformanceFixture() {
     // Initialize ThreadSystem first (required for batch submissions)
     if (!VoidLight::ThreadSystem::Instance().isShutdown()) {
-      VoidLight::ThreadSystem::Instance().init();
+      BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
       // Log WorkerBudget allocations for production-matching verification
       const auto& budget = VoidLight::WorkerBudgetManager::Instance().getBudget();
       std::cout << "System: " << std::thread::hardware_concurrency() << " hardware threads\n";

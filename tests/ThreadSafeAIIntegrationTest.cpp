@@ -59,8 +59,8 @@ private:
 // Global test fixture for setting up and tearing down the system once for all tests
 struct GlobalTestFixture {
     GlobalTestFixture() {
-        VoidLight::ThreadSystem::Instance().init();
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         AIManager::Instance().init();

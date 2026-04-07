@@ -99,13 +99,13 @@ private:
 struct BehaviorTestFixture {
     BehaviorTestFixture() {
         // Initialize ThreadSystem first (required for PathfinderManager async tasks)
-        VoidLight::ThreadSystem::Instance().init();
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
 
         // Initialize managers in proper order (matches CollisionPathfindingIntegrationTests)
         GameTimeManager::Instance().init();  // Required for combat timing in behaviors
         EventManager::Instance().init();
         WorldManager::Instance().init();
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         AIManager::Instance().init();

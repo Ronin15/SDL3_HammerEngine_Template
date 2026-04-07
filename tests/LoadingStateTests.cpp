@@ -61,8 +61,8 @@ BOOST_AUTO_TEST_CASE(TestThreadSafeErrorHandling) {
 
     auto checkErrors = [&loadingState, &checksCompleted]() {
         for (int i = 0; i < 100; ++i) {
-            (void)loadingState.hasError();
-            (void)loadingState.getLastError();
+            loadingState.hasError();
+            loadingState.getLastError();
         }
         checksCompleted.fetch_add(1, std::memory_order_relaxed);
     };

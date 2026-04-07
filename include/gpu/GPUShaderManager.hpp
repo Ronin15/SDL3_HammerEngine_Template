@@ -56,7 +56,7 @@ public:
      * @param device GPU device
      * @return true on success
      */
-    bool init(SDL_GPUDevice* device);
+    [[nodiscard]] bool init(SDL_GPUDevice* device);
 
     /**
      * Shutdown and release all shaders.

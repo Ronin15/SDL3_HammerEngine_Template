@@ -82,7 +82,7 @@ public:
    * Note: Initialization uses ThreadSystem futures to parallelize where possible
    * while respecting the dependency constraints above.
    */
-  bool init(std::string_view title);
+  [[nodiscard]] bool init(std::string_view title);
 
   /**
    * @brief Handles SDL events and input processing

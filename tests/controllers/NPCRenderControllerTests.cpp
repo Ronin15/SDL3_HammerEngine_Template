@@ -72,7 +72,7 @@ bool initSpriteBatchForRecording(VoidLight::SpriteBatch& batch) {
 class NPCRenderControllerFixture {
 public:
     NPCRenderControllerFixture() {
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         AIManager::Instance().init();

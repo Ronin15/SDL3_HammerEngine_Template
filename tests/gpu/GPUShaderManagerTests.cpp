@@ -35,12 +35,12 @@ struct ShaderTestFixture : public GPUTestFixture {
 
         SDL_Window* window = getTestWindow();
         if (window) {
-            device->init(window);
+            BOOST_REQUIRE(device->init(window));
         }
 
         shaderMgr = &GPUShaderManager::Instance();
         if (device->isInitialized()) {
-            shaderMgr->init(device->get());
+            BOOST_REQUIRE(shaderMgr->init(device->get()));
         }
     }
 
@@ -259,7 +259,7 @@ BOOST_FIXTURE_TEST_CASE(ShutdownClearsCachedShaders, ShaderTestFixture) {
     BOOST_CHECK(!shaderMgr->hasShader(shaderPath, SDL_GPU_SHADERSTAGE_VERTEX, info));
 
     // Re-init for fixture cleanup
-    shaderMgr->init(device->get());
+    BOOST_REQUIRE(shaderMgr->init(device->get()));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -343,7 +343,7 @@ BOOST_FIXTURE_TEST_CASE(InitWithNullDevice, ShaderTestFixture) {
 
     // Re-init with valid device for fixture cleanup
     if (device && device->isInitialized()) {
-        mgr.init(device->get());
+        BOOST_REQUIRE(mgr.init(device->get()));
     }
 }
 
@@ -356,7 +356,7 @@ BOOST_FIXTURE_TEST_CASE(ShutdownWithoutInit, ShaderTestFixture) {
 
     // Re-init for fixture cleanup
     if (device && device->isInitialized()) {
-        mgr.init(device->get());
+        BOOST_REQUIRE(mgr.init(device->get()));
     }
 }
 

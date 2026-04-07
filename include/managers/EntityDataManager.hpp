@@ -1420,7 +1420,7 @@ public:
      * @brief Initialize the entity data manager
      * @return true if initialization successful
      */
-    bool init();
+    [[nodiscard]] bool init();
 
     /**
      * @brief Check if manager is initialized
@@ -1749,7 +1749,7 @@ public:
      * The inventory index is stored in CharacterData.inventoryIndex.
      * Use this to enable trading with the NPC via SocialController.
      */
-    bool initNPCAsMerchant(EntityHandle handle, uint16_t maxSlots = 20);
+    [[nodiscard]] bool initNPCAsMerchant(EntityHandle handle, uint16_t maxSlots = 20);
 
     /**
      * @brief Check if an NPC is a merchant

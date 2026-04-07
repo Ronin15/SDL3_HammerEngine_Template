@@ -15,7 +15,7 @@
 // Global fixture for test setup and cleanup
 struct TestFixture {
     TestFixture() {
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
     }
 
     ~TestFixture() {

@@ -28,7 +28,7 @@ namespace {
 
 struct ThreadSystemTestLifetime {
     ThreadSystemTestLifetime() {
-        VoidLight::ThreadSystem::Instance().init();
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
     }
 
     ~ThreadSystemTestLifetime() {
@@ -48,7 +48,7 @@ class NPCMemoryTestFixture {
 public:
     NPCMemoryTestFixture() {
         edm = &EntityDataManager::Instance();
-        edm->init();
+        BOOST_REQUIRE(edm->init());
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         AIManager::Instance().init();
@@ -144,10 +144,11 @@ BOOST_AUTO_TEST_CASE(TestMemoryDataPreallocated) {
 
     // Memory data should exist for the entity (pre-allocated with entity)
     BOOST_CHECK(index < 1000000);  // Valid index
+    BOOST_CHECK(edm->hasMemoryData(index));
 
-    // Get memory data - should not crash
-    auto& memData = edm->getMemoryData(index);
-    (void)memData;  // Suppress unused warning
+    // Verify default emotional state on a freshly created NPC
+    const auto& memData = edm->getMemoryData(index);
+    BOOST_CHECK_EQUAL(memData.emotions.fear, 0.0f);
 }
 
 BOOST_AUTO_TEST_CASE(TestInitMemoryData) {

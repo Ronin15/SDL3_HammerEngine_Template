@@ -47,8 +47,8 @@ public:
         // Initialize systems once per fixture
         if (!s_initialized) {
             VOIDLIGHT_ENABLE_BENCHMARK_MODE();
-            VoidLight::ThreadSystem::Instance().init();
-            EntityDataManager::Instance().init();
+            BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
+            BOOST_REQUIRE(EntityDataManager::Instance().init());
             PathfinderManager::Instance().init();
             PathfinderManager::Instance().rebuildGrid();
             CollisionManager::Instance().init();

@@ -127,7 +127,7 @@ BOOST_FIXTURE_TEST_CASE(DoubleShutdownSafety, GPUTestFixture) {
     SDL_Window* window = getTestWindow();
     BOOST_REQUIRE(window != nullptr);
 
-    device.init(window);
+    BOOST_REQUIRE(device.init(window));
     BOOST_REQUIRE(device.isInitialized());
 
     // First shutdown
@@ -335,7 +335,7 @@ BOOST_FIXTURE_TEST_CASE(IsInitializedAccuracy, GPUTestFixture) {
     SDL_Window* window = getTestWindow();
     BOOST_REQUIRE(window != nullptr);
 
-    device.init(window);
+    BOOST_REQUIRE(device.init(window));
     BOOST_CHECK(device.isInitialized());
 
     device.shutdown();

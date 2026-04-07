@@ -20,7 +20,7 @@ using namespace VoidLight;
 // Initialize ThreadSystem for async pathfinding in this test module
 struct PFThreadFixture {
     PFThreadFixture() {
-        VoidLight::ThreadSystem::Instance().init(4096);
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init(4096));
     }
     ~PFThreadFixture() {
         if (!VoidLight::ThreadSystem::Instance().isShutdown()) {

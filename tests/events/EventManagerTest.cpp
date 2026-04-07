@@ -77,10 +77,10 @@ struct GlobalEventTestFixture {
   GlobalEventTestFixture() {
     // Initialize ThreadSystem once for all tests
     if (!VoidLight::ThreadSystem::Exists()) {
-      VoidLight::ThreadSystem::Instance().init();
+      BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
     }
     // Initialize EntityDataManager (required for Player entity creation in DOD)
-    EntityDataManager::Instance().init();
+    BOOST_REQUIRE(EntityDataManager::Instance().init());
     // Ensure benchmark mode is disabled for regular tests
     VOIDLIGHT_DISABLE_BENCHMARK_MODE();
   }

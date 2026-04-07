@@ -34,7 +34,7 @@ public:
         EventManager::Instance().init();
 
         // Initialize managers
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         GameTimeManager::Instance().init();
         UIManager::Instance().init();
     }

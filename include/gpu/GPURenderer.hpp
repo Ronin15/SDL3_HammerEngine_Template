@@ -37,7 +37,7 @@ public:
      * Must be called after GPUDevice::init().
      * @return true on success
      */
-    bool init();
+    [[nodiscard]] bool init();
 
     /**
      * Shutdown and release all resources.
@@ -185,9 +185,9 @@ private:
     GPURenderer(const GPURenderer&) = delete;
     GPURenderer& operator=(const GPURenderer&) = delete;
 
-    bool loadShaders();
-    bool createPipelines();
-    bool createSceneTexture();
+    [[nodiscard]] bool loadShaders();
+    [[nodiscard]] bool createPipelines();
+    [[nodiscard]] bool createSceneTexture();
     void cleanupPartialInit();  // Clean up resources on init failure
     void resetFrameState();
 

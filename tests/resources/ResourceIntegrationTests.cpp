@@ -70,7 +70,7 @@ public:
     // Initialize EntityDataManager
     entityDataManager = &EntityDataManager::Instance();
     if (!entityDataManager->isInitialized()) {
-      entityDataManager->init();
+      BOOST_REQUIRE(entityDataManager->init());
     }
 
     // Create EDM inventories to simulate player and NPC

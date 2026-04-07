@@ -33,7 +33,7 @@ class FontManager {
    * @brief Initializes the TTF font system
    * @return true if initialization successful, false otherwise
    */
-  bool init();
+  [[nodiscard]] bool init();
 
   /**
    * @brief Loads a font with specified size from file or directory
@@ -42,7 +42,7 @@ class FontManager {
    * @param fontSize Size of the font in points
    * @return true if at least one font was loaded successfully, false otherwise
    */
-  bool loadFont(const std::string& fontFile, const std::string& fontID, int fontSize);
+  [[nodiscard]] bool loadFont(const std::string& fontFile, const std::string& fontID, int fontSize);
 
   /**
    * @brief Loads default fonts with sizes calculated based on display characteristics
@@ -52,7 +52,7 @@ class FontManager {
    * @param dpiScale DPI scale factor for high-DPI displays (e.g., 2.0 for Retina)
    * @return true if fonts were loaded successfully, false otherwise
    */
-  bool loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight, float dpiScale = 1.0f);
+  [[nodiscard]] bool loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight, float dpiScale = 1.0f);
 
   /**
    * @brief Checks if a font is loaded in memory
@@ -75,7 +75,7 @@ class FontManager {
    * @param dpiScale DPI scale factor for high-DPI displays (e.g., 2.0 for Retina)
    * @return true if fonts were successfully reloaded, false otherwise
    */
-  bool reloadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight, float dpiScale = 1.0f);
+  [[nodiscard]] bool reloadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight, float dpiScale = 1.0f);
 
   /**
    * @brief Cleans up all font resources and shuts down TTF system

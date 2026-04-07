@@ -832,7 +832,7 @@ public:
    * @param enableProfiling Enable detailed task profiling (default: false)
    * @return true if initialization succeeded, false otherwise
    */
-  bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY,
+  [[nodiscard]] bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY,
             unsigned int customThreadCount = 0, bool enableProfiling = false) {
     // If already shutdown, don't allow re-initialization
     if (m_isShutdown.load(std::memory_order_acquire)) {

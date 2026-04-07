@@ -52,7 +52,7 @@ ThreadSystemTestLifetime g_threadSystemTestLifetime{};
 
 struct ProjectileTestFixture {
     ProjectileTestFixture() {
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         PathfinderManager::Instance().init();
         CollisionManager::Instance().init();
         EventManager::Instance().init();

@@ -26,7 +26,7 @@ public:
   ResourceArchitectureTestFixture() {
     // Initialize EntityDataManager FIRST (required for DroppedItem creation via EDM)
     entityDataManager = &EntityDataManager::Instance();
-    entityDataManager->init();
+    BOOST_REQUIRE(entityDataManager->init());
 
     // Initialize ResourceTemplateManager
     resourceManager = &ResourceTemplateManager::Instance();

@@ -42,7 +42,7 @@ public:
      * @param maxVertices Maximum number of vertices to support
      * @return true on success
      */
-    bool init(SDL_GPUDevice* device, uint32_t vertexSize,
+    [[nodiscard]] bool init(SDL_GPUDevice* device, uint32_t vertexSize,
               size_t maxVertices = DEFAULT_VERTEX_CAPACITY);
 
     /**

@@ -24,7 +24,7 @@ public:
      * @param window SDL window to claim for GPU rendering
      * @return true on success, false on failure
      */
-    bool init(SDL_Window* window);
+    [[nodiscard]] bool init(SDL_Window* window);
 
     /**
      * Shutdown GPU device and release window claim.
