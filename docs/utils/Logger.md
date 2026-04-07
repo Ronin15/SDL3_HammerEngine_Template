@@ -123,6 +123,26 @@ namespace VoidLight-Framework {
 #endif
 ```
 
+### Release Log File
+
+In release builds, **CRITICAL and ERROR** messages are written to a timestamped log file. WARN, INFO, and DEBUG are compiled out entirely (zero overhead). The file is created via `SDL_GetPrefPath` under the OS user data directory:
+
+| Platform | Path |
+|----------|------|
+| macOS    | `~/Library/Application Support/HammerForgedGames/VoidLight_Template/logs/` |
+| Windows  | `%APPDATA%\HammerForgedGames\VoidLight_Template\logs\` |
+| Linux    | `~/.local/share/HammerForgedGames/VoidLight_Template/logs/` |
+
+**Filename format:** `voidlight_YYYYMMDD_HHMMSS.log`
+
+The logger automatically keeps the **5 most recent** log files and deletes older ones on startup. Each file opens with a header:
+
+```
+=== VoidLight_Template Log ===
+Started: YYYY-MM-DD HH:MM:SS
+==========================================
+```
+
 ## Available Macros
 
 ### Core Logging Macros

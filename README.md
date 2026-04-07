@@ -44,6 +44,10 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
     Built-in frame profiler (F3 toggle) with live timing overlay and automatic hitch detection. Zero overhead in Release builds.
 
+- **Release Logging**
+
+    In Release builds, CRITICAL and ERROR messages are written to a timestamped log file. All other levels are compiled out entirely. under the OS user data directory (`~/Library/Application Support/HammerForgedGames/VoidLight_Template/logs/` on macOS, `%APPDATA%\HammerForgedGames\VoidLight_Template\logs\` on Windows, `~/.local/share/HammerForgedGames/VoidLight_Template/logs/` on Linux). Files are named `voidlight_YYYYMMDD_HHMMSS.log` and the 5 most recent are kept automatically. See [Logger](docs/utils/Logger.md) for details.
+
 - **Cross-Platform Optimizations**
 
     Unified codebase with platform-specific enhancements: SIMD acceleration (x86-64: SSE2/AVX2, ARM64: NEON), macOS Retina support, Wayland detection, VSync-aware frame pacing, and native DPI scaling.
