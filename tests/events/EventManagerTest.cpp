@@ -82,7 +82,7 @@ struct GlobalEventTestFixture {
     // Initialize EntityDataManager (required for Player entity creation in DOD)
     EntityDataManager::Instance().init();
     // Ensure benchmark mode is disabled for regular tests
-    HAMMER_DISABLE_BENCHMARK_MODE();
+    VOIDLIGHT_DISABLE_BENCHMARK_MODE();
   }
 
   ~GlobalEventTestFixture() {

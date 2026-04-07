@@ -406,7 +406,7 @@ BOOST_AUTO_TEST_CASE(TestRapidOperationSequences) {
   const int RAPID_OPERATIONS = 10000;
 
   // Enable benchmark mode to disable debug logging during performance test
-  HAMMER_ENABLE_BENCHMARK_MODE();
+  VOIDLIGHT_ENABLE_BENCHMARK_MODE();
 
   auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -422,7 +422,7 @@ BOOST_AUTO_TEST_CASE(TestRapidOperationSequences) {
   auto endTime = std::chrono::high_resolution_clock::now();
 
   // Re-enable logging for test output
-  HAMMER_DISABLE_BENCHMARK_MODE();
+  VOIDLIGHT_DISABLE_BENCHMARK_MODE();
 
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
       endTime - startTime);

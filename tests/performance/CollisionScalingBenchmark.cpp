@@ -48,7 +48,7 @@ public:
             CollisionManager::Instance().init();
             BackgroundSimulationManager::Instance().init();
             // Enable benchmark mode to suppress verbose logging during benchmarks
-            HAMMER_ENABLE_BENCHMARK_MODE();
+            VOIDLIGHT_ENABLE_BENCHMARK_MODE();
             s_initialized = true;
         }
         m_rng.seed(42); // Fixed seed for reproducibility

@@ -52,7 +52,7 @@
 #include <string_view>
 #include <vector>
 
-#define HAMMER_GRAY 31, 32, 34, 255
+#define VOIDLIGHT_GRAY 31, 32, 34, 255
 
 bool GameEngine::init(std::string_view title) {
   GAMEENGINE_INFO("Initializing SDL Video and Gamepad");
@@ -536,7 +536,7 @@ bool GameEngine::init(std::string_view title) {
 
   // Initialize save game manager in a separate thread - #5
   // Use SDL_GetPrefPath for a writable save location (works with bundles)
-  const char* prefPath = SDL_GetPrefPath("HammerForgedGames", "VoidLight_Template");
+  const char* prefPath = SDL_GetPrefPath("HammerForgedGames", VOIDLIGHT_APP_NAME);
   std::string saveDir;
   if (prefPath) {
     saveDir = prefPath;

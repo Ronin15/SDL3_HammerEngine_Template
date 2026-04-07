@@ -37,7 +37,7 @@ namespace {
 
 struct ThreadSystemTestLifetime {
     ThreadSystemTestLifetime() {
-        HAMMER_ENABLE_BENCHMARK_MODE();
+        VOIDLIGHT_ENABLE_BENCHMARK_MODE();
         BOOST_REQUIRE_MESSAGE(VoidLight::ThreadSystem::Instance().init(),
                               "Failed to initialize ThreadSystem");
     }

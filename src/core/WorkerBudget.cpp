@@ -132,7 +132,7 @@ ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, siz
             state.singleSampleCount.store(0, std::memory_order_relaxed);     // Reset warmup for re-learning
 
 #ifndef NDEBUG
-            HAMMER_DEBUG("WorkerBudget", std::format(
+            VOIDLIGHT_DEBUG("WorkerBudget", std::format(
                 "{}: Re-learning (workload {} < hysteresis {})",
                 getSystemName(system), workloadSize, hysteresisLow));
 #endif
@@ -191,7 +191,7 @@ void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize
             state.thresholdActive.store(true, std::memory_order_relaxed);
 
 #ifndef NDEBUG
-            HAMMER_DEBUG("WorkerBudget", std::format(
+            VOIDLIGHT_DEBUG("WorkerBudget", std::format(
                 "{}: Learned threshold={} (smoothed={:.2f}ms >= {:.1f}ms, instant={:.2f}ms)",
                 getSystemName(system), workloadSize, newSmoothed,
                 SystemTuningState::LEARNING_TIME_THRESHOLD_MS, totalTimeMs));

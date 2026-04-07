@@ -26,22 +26,22 @@ SIMDMath is a cross-platform SIMD (Single Instruction, Multiple Data) abstractio
 ### Compile-Time Detection
 ```cpp
 // SSE2 (x86-64 baseline)
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     // SSE2 code path
 #endif
 
 // SSE4.1 (x86-64 enhanced)
-#if defined(HAMMER_SIMD_SSE4)
+#if defined(VOIDLIGHT_SIMD_SSE4)
     // SSE4 code path
 #endif
 
 // AVX2 (x86-64 advanced)
-#if defined(HAMMER_SIMD_AVX2)
+#if defined(VOIDLIGHT_SIMD_AVX2)
     // AVX2 code path
 #endif
 
 // ARM NEON (Apple Silicon)
-#if defined(HAMMER_SIMD_NEON)
+#if defined(VOIDLIGHT_SIMD_NEON)
     // NEON code path
 #endif
 ```
@@ -51,7 +51,7 @@ SIMDMath is a cross-platform SIMD (Single Instruction, Multiple Data) abstractio
 #include "utils/SIMDMath.hpp"
 
 void processData(float* data, size_t count) {
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+#if defined(VOIDLIGHT_SIMD_SSE2) || defined(VOIDLIGHT_SIMD_NEON)
     // Unified SIMD path (works on both x86 and ARM)
     using namespace VoidLight-Framework::SIMD;
 
@@ -605,11 +605,11 @@ printFloat4("v", v); // Prints: v: [5.00, 5.00, 5.00, 5.00]
 
 ### Verify SIMD Path Selection
 ```cpp
-#if defined(HAMMER_SIMD_AVX2)
+#if defined(VOIDLIGHT_SIMD_AVX2)
     LOGGER_INFO("Using AVX2 SIMD path");
-#elif defined(HAMMER_SIMD_SSE2)
+#elif defined(VOIDLIGHT_SIMD_SSE2)
     LOGGER_INFO("Using SSE2 SIMD path");
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     LOGGER_INFO("Using NEON SIMD path");
 #else
     LOGGER_INFO("Using scalar fallback path");

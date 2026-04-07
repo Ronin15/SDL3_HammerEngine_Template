@@ -32,11 +32,11 @@ constexpr float MIN_SPEEDUP_THRESHOLD = 1.0f;    // Minimum acceptable SIMD spee
 // ============================================================================
 
 std::string getDetectedSIMDPlatform() {
-#if defined(HAMMER_SIMD_AVX2)
+#if defined(VOIDLIGHT_SIMD_AVX2)
     return "AVX2 (x86-64)";
-#elif defined(HAMMER_SIMD_SSE2)
+#elif defined(VOIDLIGHT_SIMD_SSE2)
     return "SSE2 (x86-64)";
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return "NEON (ARM64)";
 #else
     return "Scalar (no SIMD)";
@@ -52,7 +52,7 @@ std::string getBuildConfiguration() {
 }
 
 bool isSIMDAvailable() {
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+#if defined(VOIDLIGHT_SIMD_SSE2) || defined(VOIDLIGHT_SIMD_NEON)
     return true;
 #else
     return false;
@@ -763,7 +763,7 @@ BOOST_AUTO_TEST_CASE(BenchmarkCollisionBoundsExpansion) {
         }
 
         // ARM64 specific check (CLAUDE.md claims 2-3x on Apple Silicon)
-#if defined(HAMMER_SIMD_NEON)
+#if defined(VOIDLIGHT_SIMD_NEON)
         std::cout << "\nCLAUDE.md claim: 2-3x speedup on ARM64 in Release builds" << std::endl;
         std::cout << "Measured: " << result.speedup << "x" << std::endl;
 #endif

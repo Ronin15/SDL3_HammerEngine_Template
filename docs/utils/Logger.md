@@ -24,9 +24,9 @@ The VoidLight Engine logging system provides efficient, configurable logging wit
 #include "core/Logger.hpp"
 
 // Basic logging with system identification
-HAMMER_INFO("MySystem", "Application started successfully");
-HAMMER_ERROR("Network", "Failed to connect to server");
-HAMMER_CRITICAL("Memory", "Out of memory condition detected");
+VOIDLIGHT_INFO("MySystem", "Application started successfully");
+VOIDLIGHT_ERROR("Network", "Failed to connect to server");
+VOIDLIGHT_CRITICAL("Memory", "Out of memory condition detected");
 ```
 
 ### System-Specific Macros
@@ -104,7 +104,7 @@ namespace VoidLight-Framework {
     // Full Logger class with printf-based output
     // All log levels functional
     // Immediate flushing for real-time feedback
-    #define HAMMER_INFO(system, msg) VoidLight-Framework::Logger::Log(VoidLight-Framework::LogLevel::INFO, system, std::string(msg))
+    #define VOIDLIGHT_INFO(system, msg) VoidLight-Framework::Logger::Log(VoidLight-Framework::LogLevel::INFO, system, std::string(msg))
 #endif
 ```
 
@@ -112,13 +112,13 @@ namespace VoidLight-Framework {
 ```cpp
 #else
     // Ultra-minimal overhead
-    #define HAMMER_CRITICAL(system, msg) do { \
+    #define VOIDLIGHT_CRITICAL(system, msg) do { \
         printf("VoidLight Engine - [%s] CRITICAL: %s\n", system, std::string(msg).c_str()); \
     } while(0)
 
     // All other levels become no-ops
-    #define HAMMER_ERROR(system, msg) ((void)0)
-    #define HAMMER_WARN(system, msg) ((void)0)
+    #define VOIDLIGHT_ERROR(system, msg) ((void)0)
+    #define VOIDLIGHT_WARN(system, msg) ((void)0)
     // ... etc
 #endif
 ```
@@ -149,11 +149,11 @@ Started: YYYY-MM-DD HH:MM:SS
 
 | Macro | Parameters | Description |
 |-------|------------|-------------|
-| `HAMMER_CRITICAL(system, msg)` | system: const char*, msg: any type | Critical error logging |
-| `HAMMER_ERROR(system, msg)` | system: const char*, msg: any type | Error logging |
-| `HAMMER_WARN(system, msg)` | system: const char*, msg: any type | Warning logging |
-| `HAMMER_INFO(system, msg)` | system: const char*, msg: any type | Information logging |
-| `HAMMER_DEBUG(system, msg)` | system: const char*, msg: any type | Debug logging |
+| `VOIDLIGHT_CRITICAL(system, msg)` | system: const char*, msg: any type | Critical error logging |
+| `VOIDLIGHT_ERROR(system, msg)` | system: const char*, msg: any type | Error logging |
+| `VOIDLIGHT_WARN(system, msg)` | system: const char*, msg: any type | Warning logging |
+| `VOIDLIGHT_INFO(system, msg)` | system: const char*, msg: any type | Information logging |
+| `VOIDLIGHT_DEBUG(system, msg)` | system: const char*, msg: any type | Debug logging |
 
 ### Message Parameter Types
 The `msg` parameter accepts:
@@ -337,7 +337,7 @@ TEXTURE_ERROR("Load failed");
 SOUND_INFO("Audio subsystem initialized with OpenAL");
 
 // Less ideal: Generic macro requires system parameter
-HAMMER_INFO("SoundManager", "Audio subsystem initialized with OpenAL");
+VOIDLIGHT_INFO("SoundManager", "Audio subsystem initialized with OpenAL");
 ```
 
 ### 4. Format Complex Data
@@ -357,12 +357,12 @@ The logging system includes a benchmark mode that disables all logging output fo
 ### Benchmark Mode Control
 ```cpp
 // Enable benchmark mode (disables all logging)
-HAMMER_ENABLE_BENCHMARK_MODE();
+VOIDLIGHT_ENABLE_BENCHMARK_MODE();
 // or
 VoidLight-Framework::Logger::SetBenchmarkMode(true);
 
 // Disable benchmark mode (re-enables logging)
-HAMMER_DISABLE_BENCHMARK_MODE();
+VOIDLIGHT_DISABLE_BENCHMARK_MODE();
 // or
 VoidLight-Framework::Logger::SetBenchmarkMode(false);
 
@@ -384,7 +384,7 @@ void runPerformanceTest() {
     GAMELOOP_INFO("Starting performance test");
 
     // Enable benchmark mode for clean performance measurement
-    HAMMER_ENABLE_BENCHMARK_MODE();
+    VOIDLIGHT_ENABLE_BENCHMARK_MODE();
 
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -397,7 +397,7 @@ void runPerformanceTest() {
     auto end = std::chrono::high_resolution_clock::now();
 
     // Re-enable logging for results
-    HAMMER_DISABLE_BENCHMARK_MODE();
+    VOIDLIGHT_DISABLE_BENCHMARK_MODE();
 
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
     GAMELOOP_INFO("Performance test completed in " + std::to_string(duration.count()) + " microseconds");

@@ -538,13 +538,6 @@ private:
       m_performanceStats;
   mutable std::mutex m_perfMutex;
 
-  // Performance tracking for DEBUG logging
-  static constexpr size_t PERF_SAMPLE_SIZE = 60;
-  mutable std::array<double, PERF_SAMPLE_SIZE> m_updateTimeSamples{};
-  mutable size_t m_currentSampleIndex{0};
-  mutable double m_avgUpdateTimeMs{0.0};
-  mutable uint64_t m_totalHandlerCalls{0};
-
   // Timing
   std::atomic<uint64_t> m_lastUpdateTime{0};
 

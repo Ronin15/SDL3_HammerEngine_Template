@@ -47,7 +47,7 @@ public:
 
     AnalysisFixture() {
         if (!s_initialized) {
-            HAMMER_ENABLE_BENCHMARK_MODE();
+            VOIDLIGHT_ENABLE_BENCHMARK_MODE();
             VoidLight::ThreadSystem::Instance().init();
             EntityDataManager::Instance().init();
             PathfinderManager::Instance().init();

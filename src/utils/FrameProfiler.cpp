@@ -16,7 +16,7 @@
 namespace VoidLight {
 
 // Convenience logging macros for profiler
-#define PROFILER_WARN(msg) HAMMER_WARN("Profiler", msg)
+#define PROFILER_WARN(msg) VOIDLIGHT_WARN("Profiler", msg)
 
 FrameProfiler& FrameProfiler::Instance()
 {

@@ -3,10 +3,18 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-// Only compile this file for release builds - debug builds use inline definitions
-#ifndef DEBUG
-
 #include "core/Logger.hpp"
+
+namespace VoidLight {
+
+// Static member definitions - always compiled in both debug and release builds
+std::atomic<bool> Logger::s_benchmarkMode{false};
+std::mutex Logger::s_logMutex{};
+
+} // namespace VoidLight
+
+#ifndef DEBUG
+// Release builds only - file-based logging implementation
 
 #include <SDL3/SDL.h>
 

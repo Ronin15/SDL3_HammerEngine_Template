@@ -28,25 +28,25 @@
 #if defined(__SSE2__) || \
     (defined(_MSC_VER) && \
      (defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)))
-#define HAMMER_SIMD_SSE2 1
+#define VOIDLIGHT_SIMD_SSE2 1
 #include <emmintrin.h>
 #endif
 
 // SSE4.1 detection (x86-64)
 #if defined(__SSE4_1__) || (defined(_MSC_VER) && defined(__AVX__))
-#define HAMMER_SIMD_SSE4 1
+#define VOIDLIGHT_SIMD_SSE4 1
 #include <smmintrin.h>
 #endif
 
 // AVX2 detection (x86-64)
 #if defined(__AVX2__) || (defined(_MSC_VER) && defined(__AVX2__))
-#define HAMMER_SIMD_AVX2 1
+#define VOIDLIGHT_SIMD_AVX2 1
 #include <immintrin.h>
 #endif
 
 // ARM NEON detection (Apple Silicon)
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)
-#define HAMMER_SIMD_NEON 1
+#define VOIDLIGHT_SIMD_NEON 1
 #include <arm_neon.h>
 #endif
 
@@ -61,9 +61,9 @@ namespace SIMD {
  * @brief 4-wide float vector (cross-platform)
  * Maps to __m128 on x86 or float32x4_t on ARM
  */
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     using Float4 = __m128;
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     using Float4 = float32x4_t;
 #else
     // Scalar fallback
@@ -76,9 +76,9 @@ namespace SIMD {
  * @brief 4-wide integer vector (cross-platform)
  * Maps to __m128i on x86 or uint32x4_t on ARM
  */
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     using Int4 = __m128i;
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     using Int4 = uint32x4_t;
 #else
     // Scalar fallback
@@ -91,9 +91,9 @@ namespace SIMD {
  * @brief 16-byte vector for byte-level operations
  * Maps to __m128i on x86 or uint8x16_t on ARM
  */
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     using Byte16 = __m128i;
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     using Byte16 = uint8x16_t;
 #else
     // Scalar fallback
@@ -112,9 +112,9 @@ namespace SIMD {
  * @return SIMD vector containing the 4 floats
  */
 inline Float4 load4(const float* ptr) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_loadu_ps(ptr);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vld1q_f32(ptr);
 #else
     Float4 result;
@@ -132,9 +132,9 @@ inline Float4 load4(const float* ptr) {
  * @return SIMD vector containing the 4 floats
  */
 inline Float4 load4_aligned(const float* ptr) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_load_ps(ptr);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vld1q_f32(ptr);
 #else
     return load4(ptr);
@@ -147,9 +147,9 @@ inline Float4 load4_aligned(const float* ptr) {
  * @param v SIMD vector to store
  */
 inline void store4(float* ptr, Float4 v) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     _mm_storeu_ps(ptr, v);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     vst1q_f32(ptr, v);
 #else
     ptr[0] = v.data[0];
@@ -165,9 +165,9 @@ inline void store4(float* ptr, Float4 v) {
  * @param v SIMD vector to store
  */
 inline void store4_aligned(float* ptr, Float4 v) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     _mm_store_ps(ptr, v);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     vst1q_f32(ptr, v);
 #else
     store4(ptr, v);
@@ -180,9 +180,9 @@ inline void store4_aligned(float* ptr, Float4 v) {
  * @return SIMD vector with all 4 lanes set to value
  */
 inline Float4 broadcast(float value) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_set1_ps(value);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vdupq_n_f32(value);
 #else
     Float4 result;
@@ -197,9 +197,9 @@ inline Float4 broadcast(float value) {
  * @return SIMD vector [x, y, z, w]
  */
 inline Float4 set(float x, float y, float z, float w) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_set_ps(w, z, y, x); // Note: SSE uses reverse order
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     const float data[4] = {x, y, z, w};
     return vld1q_f32(data);
 #else
@@ -220,9 +220,9 @@ inline Float4 set(float x, float y, float z, float w) {
  * @brief Add two SIMD vectors
  */
 inline Float4 add(Float4 a, Float4 b) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_add_ps(a, b);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vaddq_f32(a, b);
 #else
     Float4 result;
@@ -238,9 +238,9 @@ inline Float4 add(Float4 a, Float4 b) {
  * @brief Subtract two SIMD vectors
  */
 inline Float4 sub(Float4 a, Float4 b) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_sub_ps(a, b);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vsubq_f32(a, b);
 #else
     Float4 result;
@@ -256,9 +256,9 @@ inline Float4 sub(Float4 a, Float4 b) {
  * @brief Multiply two SIMD vectors (component-wise)
  */
 inline Float4 mul(Float4 a, Float4 b) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_mul_ps(a, b);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vmulq_f32(a, b);
 #else
     Float4 result;
@@ -275,11 +275,11 @@ inline Float4 mul(Float4 a, Float4 b) {
  * More efficient than separate mul + add on modern CPUs
  */
 inline Float4 madd(Float4 a, Float4 b, Float4 c) {
-#if defined(HAMMER_SIMD_AVX2)
+#if defined(VOIDLIGHT_SIMD_AVX2)
     return _mm_fmadd_ps(a, b, c);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vmlaq_f32(c, a, b);
-#elif defined(HAMMER_SIMD_SSE2)
+#elif defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_add_ps(_mm_mul_ps(a, b), c);
 #else
     Float4 result;
@@ -299,9 +299,9 @@ inline Float4 madd(Float4 a, Float4 b, Float4 c) {
  * @brief Less-than comparison (returns mask)
  */
 inline Float4 cmplt(Float4 a, Float4 b) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_cmplt_ps(a, b);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vreinterpretq_f32_u32(vcltq_f32(a, b));
 #else
     Float4 result;
@@ -316,9 +316,9 @@ inline Float4 cmplt(Float4 a, Float4 b) {
  * @brief Bitwise OR
  */
 inline Float4 bitwise_or(Float4 a, Float4 b) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_or_ps(a, b);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vreinterpretq_f32_u32(vorrq_u32(vreinterpretq_u32_f32(a), vreinterpretq_u32_f32(b)));
 #else
     // Use std::bit_cast for portable type-punning (C++20)
@@ -337,9 +337,9 @@ inline Float4 bitwise_or(Float4 a, Float4 b) {
  * @return Bitmask where bit i = sign bit of lane i
  */
 inline int movemask(Float4 v) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_movemask_ps(v);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     // ARM NEON doesn't have direct movemask - use comparison trick
     uint32x4_t const mask = vreinterpretq_u32_f32(v);
     uint32x4_t const shifted = vshrq_n_u32(mask, 31); // Extract sign bits
@@ -369,9 +369,9 @@ inline int movemask(Float4 v) {
  * @brief Component-wise minimum
  */
 inline Float4 min(Float4 a, Float4 b) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_min_ps(a, b);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vminq_f32(a, b);
 #else
     Float4 result;
@@ -387,9 +387,9 @@ inline Float4 min(Float4 a, Float4 b) {
  * @brief Component-wise maximum
  */
 inline Float4 max(Float4 a, Float4 b) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_max_ps(a, b);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vmaxq_f32(a, b);
 #else
     Float4 result;
@@ -416,9 +416,9 @@ inline Float4 clamp(Float4 v, Float4 minVal, Float4 maxVal) {
  * @brief Broadcast integer to all lanes
  */
 inline Int4 broadcast_int(int32_t value) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_set1_epi32(value);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vdupq_n_u32(static_cast<uint32_t>(value));
 #else
     Int4 result;
@@ -431,9 +431,9 @@ inline Int4 broadcast_int(int32_t value) {
  * @brief Bitwise AND (integer)
  */
 inline Int4 bitwise_and(Int4 a, Int4 b) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_and_si128(a, b);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vandq_u32(a, b);
 #else
     Int4 result;
@@ -449,9 +449,9 @@ inline Int4 bitwise_and(Int4 a, Int4 b) {
  * @brief Compare integers for equality (returns mask)
  */
 inline Int4 cmpeq_int(Int4 a, Int4 b) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_cmpeq_epi32(a, b);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vceqq_u32(a, b);
 #else
     Int4 result;
@@ -466,9 +466,9 @@ inline Int4 cmpeq_int(Int4 a, Int4 b) {
  * @brief Extract movemask from integer vector
  */
 inline int movemask_int(Int4 v) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_movemask_epi8(v);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     // Similar to float movemask
     uint32x4_t const shifted = vshrq_n_u32(v, 31);
     uint32_t const result = vgetq_lane_u32(shifted, 0) |
@@ -491,9 +491,9 @@ inline int movemask_int(Int4 v) {
  * @brief Create Int4 from 4 individual integers
  */
 inline Int4 set_int4(int32_t x, int32_t y, int32_t z, int32_t w) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_set_epi32(w, z, y, x); // Note: SSE uses reverse order
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     const uint32_t data[4] = {static_cast<uint32_t>(x), static_cast<uint32_t>(y),
                               static_cast<uint32_t>(z), static_cast<uint32_t>(w)};
     return vld1q_u32(data);
@@ -511,9 +511,9 @@ inline Int4 set_int4(int32_t x, int32_t y, int32_t z, int32_t w) {
  * @brief Load 4 integers from memory
  */
 inline Int4 load_int4(const uint32_t* ptr) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr));
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vld1q_u32(ptr);
 #else
     Int4 result;
@@ -529,9 +529,9 @@ inline Int4 load_int4(const uint32_t* ptr) {
  * @brief Create zero integer vector
  */
 inline Int4 setzero_int() {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_setzero_si128();
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vdupq_n_u32(0);
 #else
     Int4 result;
@@ -544,9 +544,9 @@ inline Int4 setzero_int() {
  * @brief Bitwise OR (integer)
  */
 inline Int4 bitwise_or_int(Int4 a, Int4 b) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_or_si128(a, b);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vorrq_u32(a, b);
 #else
     Int4 result;
@@ -563,9 +563,9 @@ inline Int4 bitwise_or_int(Int4 a, Int4 b) {
  */
 template<int N>
 inline Int4 shift_right_int(Int4 v) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_srli_epi32(v, N);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vshrq_n_u32(v, N);
 #else
     Int4 result;
@@ -584,9 +584,9 @@ inline Int4 shift_right_int(Int4 v) {
  * @brief Load 16 bytes from memory
  */
 inline Byte16 load_byte16(const uint8_t* ptr) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr));
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vld1q_u8(ptr);
 #else
     Byte16 result;
@@ -601,9 +601,9 @@ inline Byte16 load_byte16(const uint8_t* ptr) {
  * @brief Broadcast byte to all 16 lanes
  */
 inline Byte16 broadcast_byte(uint8_t value) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_set1_epi8(static_cast<char>(value));
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vdupq_n_u8(value);
 #else
     Byte16 result;
@@ -618,9 +618,9 @@ inline Byte16 broadcast_byte(uint8_t value) {
  * @brief Bitwise AND (byte-level)
  */
 inline Byte16 bitwise_and_byte(Byte16 a, Byte16 b) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_and_si128(a, b);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vandq_u8(a, b);
 #else
     Byte16 result;
@@ -638,14 +638,14 @@ inline Byte16 bitwise_and_byte(Byte16 a, Byte16 b) {
  * Used by ParticleManager for unsigned lifetime values.
  */
 inline Byte16 cmpgt_byte(Byte16 a, Byte16 b) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     // SSE only has signed byte comparison (_mm_cmpgt_epi8).
     // To emulate unsigned comparison, XOR both operands with 0x80
     // which flips the sign bit, converting unsigned [0,255] range
     // to signed [-128,127] range while preserving comparison order.
     __m128i sign_flip = _mm_set1_epi8(static_cast<char>(0x80));
     return _mm_cmpgt_epi8(_mm_xor_si128(a, sign_flip), _mm_xor_si128(b, sign_flip));
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vcgtq_u8(a, b);
 #else
     Byte16 result;
@@ -661,9 +661,9 @@ inline Byte16 cmpgt_byte(Byte16 a, Byte16 b) {
  * Each bit represents the sign bit of corresponding byte
  */
 inline int movemask_byte(Byte16 v) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_movemask_epi8(v);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     // Correct NEON implementation for movemask_byte.
     // NEON lacks a direct equivalent to SSE's _mm_movemask_epi8,
     // so we use a sequence of shifts and horizontal adds (packed add).
@@ -709,9 +709,9 @@ inline int movemask_byte(Byte16 v) {
  * @brief Create zero byte vector
  */
 inline Byte16 setzero_byte() {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_setzero_si128();
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vdupq_n_u8(0);
 #else
     Byte16 result;
@@ -732,9 +732,9 @@ inline Byte16 setzero_byte() {
  */
 template<int i0, int i1, int i2, int i3>
 inline Float4 shuffle(Float4 a, Float4 b) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_shuffle_ps(a, b, _MM_SHUFFLE(i3, i2, i1, i0));
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     // NEON doesn't have direct shuffle, implement common cases
     // This is a simplified version - full implementation would be complex
     alignas(16) float dataA[4], dataB[4], result[4];
@@ -760,9 +760,9 @@ inline Float4 shuffle(Float4 a, Float4 b) {
  */
 template<int lane>
 inline float extract_lane(Float4 v) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     return _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(lane, lane, lane, lane)));
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     return vgetq_lane_f32(v, lane);
 #else
     return v.data[lane];
@@ -773,13 +773,13 @@ inline float extract_lane(Float4 v) {
  * @brief Horizontal add - sum all 4 lanes (returns scalar)
  */
 inline float horizontal_add(Float4 v) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     Float4 shuf = _mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 3, 0, 1));
     Float4 sums = _mm_add_ps(v, shuf);
     shuf = _mm_shuffle_ps(sums, sums, _MM_SHUFFLE(1, 0, 3, 2));
     Float4 result = _mm_add_ps(sums, shuf);
     return _mm_cvtss_f32(result);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     float32x2_t const low = vget_low_f32(v);
     float32x2_t const high = vget_high_f32(v);
     float32x2_t const sum = vpadd_f32(low, high);
@@ -799,12 +799,12 @@ inline float horizontal_add(Float4 v) {
  * Used for: velocity damping, projection
  */
 inline float dot2D(Float4 a, Float4 b) {
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     Float4 prod = _mm_mul_ps(a, b);
     Float4 shuf = _mm_shuffle_ps(prod, prod, _MM_SHUFFLE(2, 3, 0, 1));
     Float4 sum = _mm_add_ps(prod, shuf);
     return _mm_cvtss_f32(sum);
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     Float4 const prod = vmulq_f32(a, b);
     float32x2_t const sum = vpadd_f32(vget_low_f32(prod), vget_high_f32(prod));
     return vget_lane_f32(sum, 0);

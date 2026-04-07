@@ -244,7 +244,7 @@ struct GlobalFixture {
         g_shutdownInProgress.store(false);
 
         // Enable benchmark mode to silence manager logging during tests
-        HAMMER_ENABLE_BENCHMARK_MODE();
+        VOIDLIGHT_ENABLE_BENCHMARK_MODE();
 
         // Initialize ThreadSystem for EventManager threading
         VoidLight::ThreadSystem::Instance().init();
@@ -264,7 +264,7 @@ struct GlobalFixture {
         }
 
         // Disable benchmark mode after cleanup
-        HAMMER_DISABLE_BENCHMARK_MODE();
+        VOIDLIGHT_DISABLE_BENCHMARK_MODE();
 
         std::cout << "\n===== EventManager Scaling Benchmark Completed =====" << std::endl;
     }
