@@ -238,7 +238,7 @@ void LogoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
     }
   };
 
-  addText("logo:title", "<]==={ }* VoidLight Engine *{ }===]>", centerX, m_titleY);
+  addText("logo:title", "*.:[ VoidLight Engine ]:.*", centerX, m_titleY);
   addText("logo:subtitle", "Powered by SDL3", centerX, m_subtitleY);
   addText("logo:version", "v0.9.0", centerX, m_versionY);
 
