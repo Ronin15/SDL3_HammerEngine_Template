@@ -457,8 +457,7 @@ void filterLayerMasksSIMD(
 
         // Extract individual results
         for (size_t j = 0; j < 4; ++j) {
-            int laneFailBits = (failMask >> (j * 4)) & 0xF;
-            outPassed[i + j] = (laneFailBits != 0xF);
+            outPassed[i + j] = ((failMask >> j) & 1) == 0;
         }
     }
 

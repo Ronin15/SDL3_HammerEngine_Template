@@ -467,7 +467,7 @@ inline Int4 cmpeq_int(Int4 a, Int4 b) {
  */
 inline int movemask_int(Int4 v) {
 #if defined(VOIDLIGHT_SIMD_SSE2)
-    return _mm_movemask_epi8(v);
+    return _mm_movemask_ps(_mm_castsi128_ps(v));
 #elif defined(VOIDLIGHT_SIMD_NEON)
     // Similar to float movemask
     uint32x4_t const shifted = vshrq_n_u32(v, 31);

@@ -669,10 +669,8 @@ BOOST_AUTO_TEST_CASE(TestMovemaskInt) {
     Int4 a = set_int4(-1, 0, -1, 0);  // negative=sign bit set, 0=sign bit clear
     int mask = movemask_int(a);
 
-    // Note: movemask_int behavior may differ by platform
-    // Just verify it's not all zeros or all ones for mixed input
-    BOOST_CHECK(mask != 0);
-    BOOST_CHECK(mask != 0xFFFF);
+    // 4-bit mask: lanes 0,2 have sign bit set → bits 0,2 → 0b0101 = 0x5
+    BOOST_CHECK_EQUAL(mask, 0x5);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

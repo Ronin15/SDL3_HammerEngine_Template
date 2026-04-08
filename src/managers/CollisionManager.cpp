@@ -1696,7 +1696,7 @@ void CollisionManager::broadphaseSingleThreaded() {
           // Process lanes that passed both tests
           for (size_t k = 0; k < 4; ++k) {
             if (((noOverlapMask >> k) & 1) == 0 &&
-                ((layerFailMask >> (k * 4)) & 0xF) == 0) {
+                ((layerFailMask >> k) & 1) == 0) {
               pools.movableMovablePairs.emplace_back(poolIdxA, sorted[j + k]);
             }
           }
