@@ -92,13 +92,13 @@ void PathfinderManager::update() {
 
     // Requests are submitted directly to ThreadSystem in requestPath() - no processing needed here
 
-#ifndef NDEBUG
-    // Interval stats logging - zero overhead in release (entire block compiles out)
-    if (++m_statsFrameCounter >= 600) {
-        m_statsFrameCounter = 0;
-        reportStatistics();
-    }
-#endif
+    VOIDLIGHT_DEBUG_ONLY(
+        // Interval stats logging - zero overhead in release (entire block compiles out)
+        if (++m_statsFrameCounter >= 600) {
+            m_statsFrameCounter = 0;
+            reportStatistics();
+        }
+    )
 }
 
 void PathfinderManager::setGlobalPause(bool paused) {

@@ -46,7 +46,7 @@ public:
         return instance;
     }
 
-    bool init();
+    [[nodiscard]] bool init();
     void clean();
     void prepareForStateTransition();
 
@@ -125,7 +125,6 @@ private:
     std::vector<size_t> m_activeProjectileIndices;
     std::vector<EntityHandle> m_destroyQueue;
     std::vector<std::future<void>> m_batchFutures;
-    std::vector<EventManager::DeferredEvent> m_pendingDamageEvents;
 
     // Per-batch destroy queues for multi-threaded processing
     std::vector<std::vector<EntityHandle>> m_batchDestroyQueues;

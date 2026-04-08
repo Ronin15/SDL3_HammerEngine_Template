@@ -262,9 +262,7 @@ void AIManager::update(float deltaTime) {
     // Invalidate spatial query cache for new frame
     // This ensures thread-local caches are fresh and don't use stale collision data
     AIInternal::InvalidateSpatialCache(currentFrame);
-#ifndef NDEBUG
-    AIInternal::ResetCrowdStats();
-#endif
+    VOIDLIGHT_DEBUG_ONLY(AIInternal::ResetCrowdStats();)
 
     // Query world bounds ONCE per frame (not per batch)
     float worldWidth = 32000.0f;
@@ -317,23 +315,23 @@ void AIManager::update(float deltaTime) {
         VoidLight::SystemType::AI, entityCount);
     bool useThreading = decision.shouldThread;
 
-#ifndef NDEBUG
-    // Debug override: enableThreading(false) forces single-threaded for benchmarks
-    if (!m_useThreading.load(std::memory_order_acquire)) {
-      useThreading = false;
-    }
-#endif
+    VOIDLIGHT_DEBUG_ONLY(
+        // Debug override: enableThreading(false) forces single-threaded for benchmarks
+        if (!m_useThreading.load(std::memory_order_acquire)) {
+          useThreading = false;
+        }
+    )
 
     // Track what actually happened (not just what was planned)
     bool actualWasThreaded = false;
     size_t actualBatchCount = 1;
 
-#ifndef NDEBUG
-    // Track threading decision for interval logging (local vars, no storage
-    // overhead) - only needed for debug logging
-    size_t logBatchCount = 1;
-    bool logWasThreaded = false;
-#endif
+    VOIDLIGHT_DEBUG_ONLY(
+        // Track threading decision for interval logging (local vars, no storage
+        // overhead) - only needed for debug logging
+        size_t logBatchCount = 1;
+        bool logWasThreaded = false;
+    )
 
     // startTime/endTime set per code path — timing captures ONLY actual processing work.
     // Single-threaded timing feeds threshold learning; batch timing feeds hill-climbing.
@@ -353,11 +351,11 @@ void AIManager::update(float deltaTime) {
       auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
           VoidLight::SystemType::AI, entityCount, optimalWorkerCount);
 
-#ifndef NDEBUG
-        // Track for interval logging at end of function
-        logBatchCount = batchCount;
-        logWasThreaded = (batchCount > 1);
-#endif
+        VOIDLIGHT_DEBUG_ONLY(
+            // Track for interval logging at end of function
+            logBatchCount = batchCount;
+            logWasThreaded = (batchCount > 1);
+        )
 
         // Single batch optimization: avoid thread overhead
         if (batchCount <= 1) {
@@ -466,44 +464,44 @@ void AIManager::update(float deltaTime) {
 
     m_frameCounter.fetch_add(1, std::memory_order_relaxed);
 
-#ifndef NDEBUG
-    // Interval stats logging - zero overhead in release (entire block compiles out)
-    static thread_local uint64_t logFrameCounter = 0;
-    if (++logFrameCounter % 1800 == 0 && entityCount > 0) {  // ~30 seconds at 60fps
-      // Only calculate expensive stats when actually logging
-      double entitiesPerSecond =
-          totalUpdateTime > 0 ? (entityCount * 1000.0 / totalUpdateTime) : 0.0;
-      const auto crowdStats = AIInternal::GetCrowdStats();
-      double crowdHitRate =
-          crowdStats.queryCount > 0
-              ? (100.0 * static_cast<double>(crowdStats.cacheHits) /
-                 static_cast<double>(crowdStats.queryCount))
-              : 0.0;
-      PathfinderManager::PathfinderStats pathStats{};
-      if (mp_pathfinderManager) {
-        pathStats = mp_pathfinderManager->getStats();
-      }
-      double pathHitRate = pathStats.cacheHitRate * 100.0;
-      if (logWasThreaded) {
-        AI_DEBUG(std::format(
-            "AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
-            "[Threaded: {} batches, {}/batch] Crowd[q:{} hit:{:.0f}% res:{}] "
-            "Path[rps:{:.1f} hit:{:.0f}% cache:{}]",
-            entityCount, totalUpdateTime, entitiesPerSecond, logBatchCount,
-            entityCount / logBatchCount, crowdStats.queryCount, crowdHitRate,
-            crowdStats.resultsCount, pathStats.requestsPerSecond, pathHitRate,
-            pathStats.cacheSize));
-      } else {
-        AI_DEBUG(std::format(
-            "AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
-            "[Single-threaded] Crowd[q:{} hit:{:.0f}% res:{}] "
-            "Path[rps:{:.1f} hit:{:.0f}% cache:{}]",
-            entityCount, totalUpdateTime, entitiesPerSecond,
-            crowdStats.queryCount, crowdHitRate, crowdStats.resultsCount,
-            pathStats.requestsPerSecond, pathHitRate, pathStats.cacheSize));
-      }
-    }
-#endif
+    VOIDLIGHT_DEBUG_ONLY(
+        // Interval stats logging - zero overhead in release (entire block compiles out)
+        static thread_local uint64_t logFrameCounter = 0;
+        if (++logFrameCounter % 1800 == 0 && entityCount > 0) {  // ~30 seconds at 60fps
+          // Only calculate expensive stats when actually logging
+          double entitiesPerSecond =
+              totalUpdateTime > 0 ? (entityCount * 1000.0 / totalUpdateTime) : 0.0;
+          const auto crowdStats = AIInternal::GetCrowdStats();
+          double crowdHitRate =
+              crowdStats.queryCount > 0
+                  ? (100.0 * static_cast<double>(crowdStats.cacheHits) /
+                     static_cast<double>(crowdStats.queryCount))
+                  : 0.0;
+          PathfinderManager::PathfinderStats pathStats{};
+          if (mp_pathfinderManager) {
+            pathStats = mp_pathfinderManager->getStats();
+          }
+          double pathHitRate = pathStats.cacheHitRate * 100.0;
+          if (logWasThreaded) {
+            AI_DEBUG(std::format(
+                "AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
+                "[Threaded: {} batches, {}/batch] Crowd[q:{} hit:{:.0f}% res:{}] "
+                "Path[rps:{:.1f} hit:{:.0f}% cache:{}]",
+                entityCount, totalUpdateTime, entitiesPerSecond, logBatchCount,
+                entityCount / logBatchCount, crowdStats.queryCount, crowdHitRate,
+                crowdStats.resultsCount, pathStats.requestsPerSecond, pathHitRate,
+                pathStats.cacheSize));
+          } else {
+            AI_DEBUG(std::format(
+                "AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
+                "[Single-threaded] Crowd[q:{} hit:{:.0f}% res:{}] "
+                "Path[rps:{:.1f} hit:{:.0f}% cache:{}]",
+                entityCount, totalUpdateTime, entitiesPerSecond,
+                crowdStats.queryCount, crowdHitRate, crowdStats.resultsCount,
+                pathStats.requestsPerSecond, pathHitRate, pathStats.cacheSize));
+          }
+        }
+    )
 
   } catch (const std::exception &e) {
     AI_ERROR(std::format("Exception in AIManager::update: {}", e.what()));

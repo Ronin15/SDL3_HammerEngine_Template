@@ -997,11 +997,11 @@ void EventManager::drainDispatchQueueWithBudget() {
     auto decision = budgetMgr.shouldUseThreading(
         VoidLight::SystemType::Event, combatEventCount);
     useThreading = decision.shouldThread;
-#ifndef NDEBUG
-    if (!m_threadingEnabled.load(std::memory_order_acquire)) {
-      useThreading = false;
-    }
-#endif
+    VOIDLIGHT_DEBUG_ONLY(
+        if (!m_threadingEnabled.load(std::memory_order_acquire)) {
+          useThreading = false;
+        }
+    )
   }
 
   m_preparedCombatBuffer.clear();
@@ -1127,16 +1127,16 @@ void EventManager::drainDispatchQueueWithBudget() {
                               combatPrepMs);
   }
 
-#ifndef NDEBUG
-  // Periodic debug logging (~35 seconds at 60fps)
-  static thread_local uint64_t logFrameCounter = 0;
-  if (++logFrameCounter % 2100 == 0 && eventCount > 0) {
-    EVENT_DEBUG(std::format("Dispatch: {} events ({} combat) [{}, {:.2f}ms prep]",
-                            eventCount, combatEventCount,
-                            actualWasThreaded ? std::format("{} batches", actualBatchCount) : "single",
-                            combatPrepMs));
-  }
-#endif
+  VOIDLIGHT_DEBUG_ONLY(
+      // Periodic debug logging (~35 seconds at 60fps)
+      static thread_local uint64_t logFrameCounter = 0;
+      if (++logFrameCounter % 2100 == 0 && eventCount > 0) {
+        EVENT_DEBUG(std::format("Dispatch: {} events ({} combat) [{}, {:.2f}ms prep]",
+                                eventCount, combatEventCount,
+                                actualWasThreaded ? std::format("{} batches", actualBatchCount) : "single",
+                                combatPrepMs));
+      }
+  )
 
   // Release pooled events back to pools (after all processing complete)
   if (allCombatEvents) {

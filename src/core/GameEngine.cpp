@@ -1175,6 +1175,15 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Cleaning up UI Manager...");
   UIManager::Instance().clean();
 
+  GAMEENGINE_INFO("Cleaning up AI Manager...");
+  AIManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up Projectile Manager...");
+  ProjectileManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up Background Simulation Manager...");
+  BackgroundSimulationManager::Instance().clean();
+
   GAMEENGINE_INFO("Cleaning up Event Manager...");
   EventManager::Instance().clean();
 
@@ -1183,15 +1192,6 @@ void GameEngine::clean() {
 
   GAMEENGINE_INFO("Cleaning up Collision Manager...");
   CollisionManager::Instance().clean();
-
-  GAMEENGINE_INFO("Cleaning up Background Simulation Manager...");
-  BackgroundSimulationManager::Instance().clean();
-
-  GAMEENGINE_INFO("Cleaning up AI Manager...");
-  AIManager::Instance().clean();
-
-  GAMEENGINE_INFO("Cleaning up Projectile Manager...");
-  ProjectileManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Entity Data Manager...");
   EntityDataManager::Instance().clean();

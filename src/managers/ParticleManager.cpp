@@ -904,28 +904,28 @@ void ParticleManager::update(float deltaTime) {
                         .count() /
                     1000.0;
 
-#ifndef NDEBUG
-    // Interval stats logging - zero overhead in release (entire block compiles out)
-    static thread_local uint64_t logFrameCounter = 0;
-    if (++logFrameCounter % 2400 == 0) {  // ~40 seconds at 60fps (staggered: AI@30s, Collision@35s)
-      size_t currentActiveCount = countActiveParticles();
-      recordPerformance(false, timeMs, currentActiveCount);
+    VOIDLIGHT_DEBUG_ONLY(
+        // Interval stats logging - zero overhead in release (entire block compiles out)
+        static thread_local uint64_t logFrameCounter = 0;
+        if (++logFrameCounter % 2400 == 0) {  // ~40 seconds at 60fps (staggered: AI@30s, Collision@35s)
+          size_t currentActiveCount = countActiveParticles();
+          recordPerformance(false, timeMs, currentActiveCount);
 
-      if (currentActiveCount > 0) {
-        if (threadingInfo.wasThreaded) {
-          PARTICLE_DEBUG(std::format(
-              "Particle Summary - Count: {}, Update: {:.2f}ms, Effects: {} "
-              "[Threaded: {} batches, {}/batch]",
-              activeCount, timeMs, m_effectInstances.size(),
-              threadingInfo.batchCount, activeCount / threadingInfo.batchCount));
-        } else {
-          PARTICLE_DEBUG(std::format(
-              "Particle Summary - Count: {}, Update: {:.2f}ms, Effects: {} [Single-threaded]",
-              activeCount, timeMs, m_effectInstances.size()));
+          if (currentActiveCount > 0) {
+            if (threadingInfo.wasThreaded) {
+              PARTICLE_DEBUG(std::format(
+                  "Particle Summary - Count: {}, Update: {:.2f}ms, Effects: {} "
+                  "[Threaded: {} batches, {}/batch]",
+                  activeCount, timeMs, m_effectInstances.size(),
+                  threadingInfo.batchCount, activeCount / threadingInfo.batchCount));
+            } else {
+              PARTICLE_DEBUG(std::format(
+                  "Particle Summary - Count: {}, Update: {:.2f}ms, Effects: {} [Single-threaded]",
+                  activeCount, timeMs, m_effectInstances.size()));
+            }
+          }
         }
-      }
-    }
-#endif
+    )
 
     // Report tight per-path timing for adaptive tuning (not preprocessing/postprocessing)
     budgetMgr.reportExecution(VoidLight::SystemType::Particle,

@@ -194,15 +194,15 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
                               entityCount, useThreading,
                               actualBatchCount, batchMs);
 
-#ifndef NDEBUG
-    // Rolling log every 60 seconds (600 updates at 10Hz)
-    if (m_perf.totalUpdates % 600 == 0) {
-        BGSIM_DEBUG(std::format(
-            "Entities: {}, Avg: {:.2f}ms [{}]",
-            entityCount, m_perf.avgUpdateMs,
-            useThreading ? std::format("{} batches", actualBatchCount) : "single"));
-    }
-#endif
+    VOIDLIGHT_DEBUG_ONLY(
+        // Rolling log every 60 seconds (600 updates at 10Hz)
+        if (m_perf.totalUpdates % 600 == 0) {
+            BGSIM_DEBUG(std::format(
+                "Entities: {}, Avg: {:.2f}ms [{}]",
+                entityCount, m_perf.avgUpdateMs,
+                useThreading ? std::format("{} batches", actualBatchCount) : "single"));
+        }
+    )
 }
 
 void BackgroundSimulationManager::waitForAsyncCompletion() {

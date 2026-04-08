@@ -285,6 +285,7 @@ const char* WorkerBudgetManager::getSystemName(SystemType system) {
         case SystemType::Event: return "Event";
         case SystemType::Collision: return "Collision";
         case SystemType::BackgroundSim: return "BackgroundSim";
+        case SystemType::ProjectileSim: return "ProjectileSim";
         default: return "Unknown";
     }
 }

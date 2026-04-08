@@ -3036,35 +3036,35 @@ void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
     if (m_tierIndicesDirty) {
         rebuildTierIndicesFromHotData();
 
-#ifndef NDEBUG
-        // Rolling log every 60 seconds using time-based check
-        thread_local auto lastLogTime = std::chrono::steady_clock::now();
-        auto now = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<std::chrono::seconds>(now - lastLogTime).count() >= 60) {
-            lastLogTime = now;
-            size_t tierTotal = m_activeIndices.size() + m_backgroundIndices.size() + m_hibernatedIndices.size();
-            size_t dynamicCount = m_hotData.size();  // Only dynamic entities (statics in separate vector)
+        VOIDLIGHT_DEBUG_ONLY(
+            // Rolling log every 60 seconds using time-based check
+            thread_local auto lastLogTime = std::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
+            if (std::chrono::duration_cast<std::chrono::seconds>(now - lastLogTime).count() >= 60) {
+                lastLogTime = now;
+                size_t tierTotal = m_activeIndices.size() + m_backgroundIndices.size() + m_hibernatedIndices.size();
+                size_t dynamicCount = m_hotData.size();  // Only dynamic entities (statics in separate vector)
 
-            // Count static entities by kind
-            size_t resourceCount = 0, itemCount = 0, containerCount = 0, obstacleCount = 0;
-            for (const auto& hot : m_staticHotData) {
-                if (!hot.isAlive()) continue;
-                switch (hot.kind) {
-                    case EntityKind::Harvestable: ++resourceCount; break;
-                    case EntityKind::DroppedItem: ++itemCount; break;
-                    case EntityKind::Container: ++containerCount; break;
-                    case EntityKind::StaticObstacle: ++obstacleCount; break;
-                    default: break;
+                // Count static entities by kind
+                size_t resourceCount = 0, itemCount = 0, containerCount = 0, obstacleCount = 0;
+                for (const auto& hot : m_staticHotData) {
+                    if (!hot.isAlive()) continue;
+                    switch (hot.kind) {
+                        case EntityKind::Harvestable: ++resourceCount; break;
+                        case EntityKind::DroppedItem: ++itemCount; break;
+                        case EntityKind::Container: ++containerCount; break;
+                        case EntityKind::StaticObstacle: ++obstacleCount; break;
+                        default: break;
+                    }
                 }
-            }
 
-            ENTITY_DEBUG(std::format(
-                "Tiers: Active={}, Background={}, Hibernated={} (Total={}, Dynamic={}, Statics={} [Res={}, Items={}, Cont={}, Obst={}])",
-                m_activeIndices.size(), m_backgroundIndices.size(), m_hibernatedIndices.size(),
-                tierTotal, dynamicCount, m_staticHotData.size(),
-                resourceCount, itemCount, containerCount, obstacleCount));
-        }
-#endif
+                ENTITY_DEBUG(std::format(
+                    "Tiers: Active={}, Background={}, Hibernated={} (Total={}, Dynamic={}, Statics={} [Res={}, Items={}, Cont={}, Obst={}])",
+                    m_activeIndices.size(), m_backgroundIndices.size(), m_hibernatedIndices.size(),
+                    tierTotal, dynamicCount, m_staticHotData.size(),
+                    resourceCount, itemCount, containerCount, obstacleCount));
+            }
+        )
     }
 }
 

@@ -253,9 +253,10 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
     damageData.setActive(true);
     damageData.event = damageEvent;
 
-    m_pendingDamageEvents.clear();
-    m_pendingDamageEvents.push_back({EventTypeId::Combat, std::move(damageData)});
-    eventMgr.enqueueBatch(std::move(m_pendingDamageEvents));
+    std::vector<EventManager::DeferredEvent> batch;
+    batch.reserve(1);
+    batch.push_back({EventTypeId::Combat, std::move(damageData)});
+    eventMgr.enqueueBatch(std::move(batch));
 
     // Destroy projectile (unless piercing)
     if (!(proj.flags & ProjectileData::FLAG_PIERCING))
@@ -455,16 +456,16 @@ void ProjectileManager::update(float deltaTime)
                               entityCount, actualWasThreaded,
                               actualBatchCount, batchMs);
 
-#ifndef NDEBUG
-    // Rolling log every 60 seconds (3600 updates at 60Hz)
-    if (m_perf.totalUpdates % 3600 == 0 && entityCount > 0)
-    {
-        PROJ_DEBUG(std::format(
-            "Entities: {}, Avg: {:.2f}ms [{}]",
-            entityCount, m_perf.avgUpdateMs,
-            actualWasThreaded ? std::format("{} batches", actualBatchCount) : "single"));
-    }
-#endif
+    VOIDLIGHT_DEBUG_ONLY(
+        // Rolling log every 60 seconds (3600 updates at 60Hz)
+        if (m_perf.totalUpdates % 3600 == 0 && entityCount > 0)
+        {
+            PROJ_DEBUG(std::format(
+                "Entities: {}, Avg: {:.2f}ms [{}]",
+                entityCount, m_perf.avgUpdateMs,
+                actualWasThreaded ? std::format("{} batches", actualBatchCount) : "single"));
+        }
+    )
 }
 
 
