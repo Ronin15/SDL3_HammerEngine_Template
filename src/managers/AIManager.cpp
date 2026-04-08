@@ -464,44 +464,44 @@ void AIManager::update(float deltaTime) {
 
     m_frameCounter.fetch_add(1, std::memory_order_relaxed);
 
-    VOIDLIGHT_DEBUG_ONLY(
-        // Interval stats logging - zero overhead in release (entire block compiles out)
-        static thread_local uint64_t logFrameCounter = 0;
-        if (++logFrameCounter % 1800 == 0 && entityCount > 0) {  // ~30 seconds at 60fps
-          // Only calculate expensive stats when actually logging
-          double entitiesPerSecond =
-              totalUpdateTime > 0 ? (entityCount * 1000.0 / totalUpdateTime) : 0.0;
-          const auto crowdStats = AIInternal::GetCrowdStats();
-          double crowdHitRate =
-              crowdStats.queryCount > 0
-                  ? (100.0 * static_cast<double>(crowdStats.cacheHits) /
-                     static_cast<double>(crowdStats.queryCount))
-                  : 0.0;
-          PathfinderManager::PathfinderStats pathStats{};
-          if (mp_pathfinderManager) {
-            pathStats = mp_pathfinderManager->getStats();
-          }
-          double pathHitRate = pathStats.cacheHitRate * 100.0;
-          if (logWasThreaded) {
-            AI_DEBUG(std::format(
-                "AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
-                "[Threaded: {} batches, {}/batch] Crowd[q:{} hit:{:.0f}% res:{}] "
-                "Path[rps:{:.1f} hit:{:.0f}% cache:{}]",
-                entityCount, totalUpdateTime, entitiesPerSecond, logBatchCount,
-                entityCount / logBatchCount, crowdStats.queryCount, crowdHitRate,
-                crowdStats.resultsCount, pathStats.requestsPerSecond, pathHitRate,
-                pathStats.cacheSize));
-          } else {
-            AI_DEBUG(std::format(
-                "AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
-                "[Single-threaded] Crowd[q:{} hit:{:.0f}% res:{}] "
-                "Path[rps:{:.1f} hit:{:.0f}% cache:{}]",
-                entityCount, totalUpdateTime, entitiesPerSecond,
-                crowdStats.queryCount, crowdHitRate, crowdStats.resultsCount,
-                pathStats.requestsPerSecond, pathHitRate, pathStats.cacheSize));
-          }
-        }
-    )
+#ifndef NDEBUG
+    // Interval stats logging - zero overhead in release (entire block compiles out)
+    static thread_local uint64_t logFrameCounter = 0;
+    if (++logFrameCounter % 1800 == 0 && entityCount > 0) {  // ~30 seconds at 60fps
+      // Only calculate expensive stats when actually logging
+      double entitiesPerSecond =
+          totalUpdateTime > 0 ? (entityCount * 1000.0 / totalUpdateTime) : 0.0;
+      const auto crowdStats = AIInternal::GetCrowdStats();
+      double crowdHitRate =
+          crowdStats.queryCount > 0
+              ? (100.0 * static_cast<double>(crowdStats.cacheHits) /
+                 static_cast<double>(crowdStats.queryCount))
+              : 0.0;
+      PathfinderManager::PathfinderStats pathStats{};
+      if (mp_pathfinderManager) {
+        pathStats = mp_pathfinderManager->getStats();
+      }
+      double pathHitRate = pathStats.cacheHitRate * 100.0;
+      if (logWasThreaded) {
+        AI_DEBUG(std::format(
+            "AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
+            "[Threaded: {} batches, {}/batch] Crowd[q:{} hit:{:.0f}% res:{}] "
+            "Path[rps:{:.1f} hit:{:.0f}% cache:{}]",
+            entityCount, totalUpdateTime, entitiesPerSecond, logBatchCount,
+            entityCount / logBatchCount, crowdStats.queryCount, crowdHitRate,
+            crowdStats.resultsCount, pathStats.requestsPerSecond, pathHitRate,
+            pathStats.cacheSize));
+      } else {
+        AI_DEBUG(std::format(
+            "AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
+            "[Single-threaded] Crowd[q:{} hit:{:.0f}% res:{}] "
+            "Path[rps:{:.1f} hit:{:.0f}% cache:{}]",
+            entityCount, totalUpdateTime, entitiesPerSecond,
+            crowdStats.queryCount, crowdHitRate, crowdStats.resultsCount,
+            pathStats.requestsPerSecond, pathHitRate, pathStats.cacheSize));
+      }
+    }
+#endif
 
   } catch (const std::exception &e) {
     AI_ERROR(std::format("Exception in AIManager::update: {}", e.what()));

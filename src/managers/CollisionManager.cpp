@@ -687,89 +687,89 @@ void CollisionManager::addCollisionCallback(CollisionCB cb) {
 }
 
 void CollisionManager::logCollisionStatistics() const {
-  VOIDLIGHT_DEBUG_ONLY(
-      // Only recalculate expensive statistics when dirty
-      if (m_statisticsDirty) {
-        m_cachedStaticBodies = getStaticBodyCount();
-        m_cachedKinematicBodies = getKinematicBodyCount();
-        m_cachedDynamicBodies = getDynamicBodyCount();
+#ifndef NDEBUG
+   // Only recalculate expensive statistics when dirty
+   if (m_statisticsDirty) {
+     m_cachedStaticBodies = getStaticBodyCount();
+     m_cachedKinematicBodies = getKinematicBodyCount();
+     m_cachedDynamicBodies = getDynamicBodyCount();
 
-        // Count trigger types for Phase 3 optimization visibility
-        m_cachedEventOnlyTriggers = 0;
-        m_cachedPhysicalTriggers = 0;
-        m_cachedSolidObstacles = 0;
-        for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-          const auto &hot = m_storage.hotData[i];
-          if (hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
-            if (hot.isTrigger != 0) {
-              if (hot.triggerType ==
-                  static_cast<uint8_t>(VoidLight::TriggerType::EventOnly)) {
-                ++m_cachedEventOnlyTriggers;
-              } else {
-                ++m_cachedPhysicalTriggers;
-              }
-            } else {
-              ++m_cachedSolidObstacles;
-            }
-          }
-        }
+     // Count trigger types for Phase 3 optimization visibility
+     m_cachedEventOnlyTriggers = 0;
+     m_cachedPhysicalTriggers = 0;
+     m_cachedSolidObstacles = 0;
+     for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+       const auto &hot = m_storage.hotData[i];
+       if (hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+         if (hot.isTrigger != 0) {
+           if (hot.triggerType ==
+               static_cast<uint8_t>(VoidLight::TriggerType::EventOnly)) {
+             ++m_cachedEventOnlyTriggers;
+           } else {
+             ++m_cachedPhysicalTriggers;
+           }
+         } else {
+           ++m_cachedSolidObstacles;
+         }
+       }
+     }
 
-        // Count bodies by layer using SOA storage
-        m_cachedLayerCounts.clear();
-        for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-          const auto &hot = m_storage.hotData[i];
-          if (hot.active) {
-            m_cachedLayerCounts[hot.layers]++;
-          }
-        }
+     // Count bodies by layer using SOA storage
+     m_cachedLayerCounts.clear();
+     for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+       const auto &hot = m_storage.hotData[i];
+       if (hot.active) {
+         m_cachedLayerCounts[hot.layers]++;
+       }
+     }
 
-        m_statisticsDirty = false;
-      }
+     m_statisticsDirty = false;
+   }
 
-      COLLISION_INFO("Collision Statistics:");
-      COLLISION_INFO(std::format("  Total Bodies: {}", getBodyCount()));
-      COLLISION_INFO(std::format("  Static Bodies: {} (obstacles + triggers)",
-                                 m_cachedStaticBodies));
-      COLLISION_INFO(std::format("    - Solid obstacles: {} (broadphase)",
-                                 m_cachedSolidObstacles));
-      COLLISION_INFO(std::format("    - Physical triggers: {} (broadphase + events)",
-                                 m_cachedPhysicalTriggers));
-      COLLISION_INFO(std::format("    - EventOnly triggers: {} (events only, skip broadphase)",
-                                 m_cachedEventOnlyTriggers));
-      COLLISION_INFO(std::format("  Kinematic Bodies: {} (NPCs)",
-                                 m_cachedKinematicBodies));
-      COLLISION_INFO(std::format("  Dynamic Bodies: {} (player, projectiles)",
-                                 m_cachedDynamicBodies));
+   COLLISION_INFO("Collision Statistics:");
+   COLLISION_INFO(std::format("  Total Bodies: {}", getBodyCount()));
+   COLLISION_INFO(std::format("  Static Bodies: {} (obstacles + triggers)",
+                              m_cachedStaticBodies));
+   COLLISION_INFO(std::format("    - Solid obstacles: {} (broadphase)",
+                              m_cachedSolidObstacles));
+   COLLISION_INFO(std::format("    - Physical triggers: {} (broadphase + events)",
+                              m_cachedPhysicalTriggers));
+   COLLISION_INFO(std::format("    - EventOnly triggers: {} (events only, skip broadphase)",
+                              m_cachedEventOnlyTriggers));
+   COLLISION_INFO(std::format("  Kinematic Bodies: {} (NPCs)",
+                              m_cachedKinematicBodies));
+   COLLISION_INFO(std::format("  Dynamic Bodies: {} (player, projectiles)",
+                              m_cachedDynamicBodies));
 
-      COLLISION_INFO("  Layer Distribution:");
-      for (const auto &layerCount : m_cachedLayerCounts) {
-        std::string layerName;
-        switch (layerCount.first) {
-        case CollisionLayer::Layer_Default:
-          layerName = "Default";
-          break;
-        case CollisionLayer::Layer_Player:
-          layerName = "Player";
-          break;
-        case CollisionLayer::Layer_Enemy:
-          layerName = "Enemy";
-          break;
-        case CollisionLayer::Layer_Environment:
-          layerName = "Environment";
-          break;
-        case CollisionLayer::Layer_Projectile:
-          layerName = "Projectile";
-          break;
-        case CollisionLayer::Layer_Trigger:
-          layerName = "Trigger";
-          break;
-        default:
-          layerName = "Unknown";
-          break;
-        }
-        COLLISION_INFO(std::format("    {}: {}", layerName, layerCount.second));
-      }
-  )
+   COLLISION_INFO("  Layer Distribution:");
+   for (const auto &layerCount : m_cachedLayerCounts) {
+     std::string layerName;
+     switch (layerCount.first) {
+     case CollisionLayer::Layer_Default:
+       layerName = "Default";
+       break;
+     case CollisionLayer::Layer_Player:
+       layerName = "Player";
+       break;
+     case CollisionLayer::Layer_Enemy:
+       layerName = "Enemy";
+       break;
+     case CollisionLayer::Layer_Environment:
+       layerName = "Environment";
+       break;
+     case CollisionLayer::Layer_Projectile:
+       layerName = "Projectile";
+       break;
+     case CollisionLayer::Layer_Trigger:
+       layerName = "Trigger";
+       break;
+     default:
+       layerName = "Unknown";
+       break;
+     }
+     COLLISION_INFO(std::format("    {}: {}", layerName, layerCount.second));
+   }
+#endif
 }
 
 size_t CollisionManager::getStaticBodyCount() const {
@@ -827,23 +827,23 @@ void CollisionManager::rebuildStaticFromWorld() {
         std::format("World colliders built: solid={}, water triggers={}",
                     solidBodies, waterTriggers));
 
-    VOIDLIGHT_DEBUG_ONLY(
-        int buildingBodyCount = 0;
-        for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
-          EntityID id = m_storage.entityIds[i];
-          if ((id >> 61) == 3) {
-            buildingBodyCount++;
-            uint32_t buildingId = (id >> 16) & 0xFFFF;
-            uint16_t subBodyIndex = id & 0xFFFF;
-            COLLISION_DEBUG(std::format(
-                "Building collision body found: buildingId={}, subBodyIndex={}",
-                buildingId, subBodyIndex));
-          }
-        }
-        COLLISION_INFO(std::format(
-            "Total building collision bodies in storage: {}", buildingBodyCount));
-        logCollisionStatistics();
-    )
+#ifndef NDEBUG
+    int buildingBodyCount = 0;
+    for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
+      EntityID id = m_storage.entityIds[i];
+      if ((id >> 61) == 3) {
+        buildingBodyCount++;
+        uint32_t buildingId = (id >> 16) & 0xFFFF;
+        uint16_t subBodyIndex = id & 0xFFFF;
+        COLLISION_DEBUG(std::format(
+            "Building collision body found: buildingId={}, subBodyIndex={}",
+            buildingId, subBodyIndex));
+      }
+    }
+    COLLISION_INFO(std::format(
+        "Total building collision bodies in storage: {}", buildingBodyCount));
+    logCollisionStatistics();
+#endif
 
     rebuildStaticSpatialHashUnlocked();
   }
