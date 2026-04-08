@@ -18,6 +18,7 @@
 
 using namespace VoidLight::SIMD;
 
+constexpr float MIN_PROJECTILE_SPEED_SQ = 1.0f;
 
 // ============================================================================
 // LIFECYCLE
@@ -236,14 +237,23 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
     const auto& proj = edm.getProjectileData(edm.getHandle(projIdx));
     EntityHandle targetHandle = edm.getHandle(targetIdx);
 
+    // Skip damage if projectile is not moving — stationary projectiles stick but don't hurt
+    const auto& projHot = edm.getHotDataByIndex(projIdx);
+    const float actualSpeedSq = projHot.transform.velocity.lengthSquared();
+    if (actualSpeedSq < MIN_PROJECTILE_SPEED_SQ)
+    {
+        return;
+    }
+
     // Create and enqueue DamageEvent (deferred — same pipeline as NPC combat)
     auto& eventMgr = EventManager::Instance();
     auto damageEvent = eventMgr.acquireDamageEvent();
 
-    // Knockback scaled by projectile speed — faster projectiles hit harder
+    // Knockback scaled by actual projectile speed — faster projectiles hit harder
     constexpr float KNOCKBACK_BASE = 30.0f;
     constexpr float KNOCKBACK_SPEED_FACTOR = 0.1f;
-    const float knockbackForce = KNOCKBACK_BASE + proj.speed * KNOCKBACK_SPEED_FACTOR;
+    const float actualSpeed = std::sqrt(actualSpeedSq);
+    const float knockbackForce = KNOCKBACK_BASE + actualSpeed * KNOCKBACK_SPEED_FACTOR;
     Vector2D knockback = info.normal * knockbackForce;
 
     damageEvent->configure(proj.owner, targetHandle, proj.damage, knockback);
