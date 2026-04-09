@@ -56,7 +56,7 @@ struct ProjectileTestFixture {
         PathfinderManager::Instance().init();
         CollisionManager::Instance().init();
         EventManager::Instance().init();
-        ProjectileManager::Instance().init();
+        BOOST_REQUIRE(ProjectileManager::Instance().init());
     }
 
     ~ProjectileTestFixture() {

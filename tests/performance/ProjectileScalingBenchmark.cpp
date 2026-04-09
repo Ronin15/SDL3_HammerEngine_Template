@@ -49,7 +49,7 @@ public:
             PathfinderManager::Instance().init();
             CollisionManager::Instance().init();
             EventManager::Instance().init();
-            ProjectileManager::Instance().init();
+            BOOST_REQUIRE(ProjectileManager::Instance().init());
             s_initialized = true;
         }
         m_rng.seed(42);
