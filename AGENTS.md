@@ -41,6 +41,13 @@ Before finishing:
 - Prefer direct test executables over slow wrapper scripts.
 - State exactly what you verified and what you did not.
 
+## Codex CLI Guidance
+
+- Treat this as repository-level guidance. More specific nested `AGENTS.md` or `AGENTS.override.md` files may override it for narrower work areas.
+- Keep this file focused on durable project rules, commands, traps, and acceptance checks. Do not duplicate personal/global preferences that belong in `~/.codex/AGENTS.md`.
+- Keep the combined instruction size practical; Codex has a default project-document budget of 32 KiB, so move subsystem-only guidance into nested files if this file grows too large.
+- When changing this file, preserve Codex-oriented wording and avoid tool-specific instructions for other assistants.
+
 ## Fast Commands
 
 Build:
@@ -53,6 +60,8 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release -DUSE_SDL3_GPU=ON && ninja -
 ```
 
 Sanitizers:
+
+Mutually exclusive. Remove `build/CMakeCache.txt` when switching sanitizers or build options.
 
 ```bash
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address -fno-omit-frame-pointer -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF && ninja -C build
@@ -70,6 +79,7 @@ Run:
 
 ```bash
 ./bin/debug/VoidLight_Template
+./bin/release/VoidLight_Template
 ```
 
 Tests:
@@ -80,6 +90,7 @@ Tests:
 ./bin/debug/<test_executable> --run_test="TestCase*"
 ./bin/debug/entity_data_manager_tests
 ./bin/debug/ai_manager_edm_integration_tests
+./bin/debug/behavior_functionality_tests --run_test="FleeFromAttacker*"
 ```
 
 Slow comprehensive scripts:
@@ -111,6 +122,7 @@ Key systems:
 - Managers: `EntityDataManager`, `AIManager`, `EventManager`, `CollisionManager`, `ParticleManager`, `PathfinderManager`, `WorldManager`, `WorldResourceManager`, `BackgroundSimulationManager`, `UIManager`, `GameTimeManager`, `InputManager`, `TextureManager`, `FontManager`, `SoundManager`
 - AI: `AIBehavior` base with Idle, Wander, Patrol, Chase, Flee, Follow, Guard, Attack
 - Controllers are state-scoped via `ControllerRegistry`
+- Utils: `Camera`, `Vector2D`, `SIMDMath`, `JsonReader`, `BinarySerializer`, `UniqueID`, `FrameProfiler`
 - GPU path: `GPUDevice`, `GPURenderer`, `GPUShaderManager`, `SpriteBatch`, `GPUVertexPool`, `GPUSceneRecorder`
 
 ## Core Coding Rules
@@ -125,8 +137,11 @@ Key systems:
 - Avoid raw arrays, raw pointer escape paths, nullable pointer-return accessors, and new legacy compatibility overloads.
 - Stored raw pointers are not acceptable for ownership or long-lived cached state. Materialize raw pointers only at the final C API submission boundary.
 - Naming: UpperCamelCase for types, lowerCamelCase for functions and variables, `m_` and `mp_` members, `ALL_CAPS` constants.
-- Use `.hpp` for headers. Keep non-trivial logic in `.cpp`.
+- Use `.hpp` for C++ headers and `.h` for C headers. Prefer forward declarations. Keep non-trivial logic in `.cpp`.
 - Use `std::format()` for logs. Never concatenate log strings with `+`. Use `AI_INFO_IF(cond, msg)` when only logging is conditional.
+- Use `VOIDLIGHT_DEBUG_ONLY(...)` for debug-only variables, metrics, logs, and blocks. Do not use raw `#ifdef DEBUG`.
+- Remove unused parameter names and keep the type, such as `void foo(float)`. Do not use `(void)param`, commented parameter names, or `[[maybe_unused]]` to suppress warnings. `[[maybe_unused]]` is only permitted on virtual base class empty default implementations.
+- Check critical `[[nodiscard]]` bool-returning calls such as `init()`, `load()`, and `create()`. Use `BOOST_REQUIRE()` in tests and production error handling such as `if (!init())`.
 - Copyright header:
 
 ```cpp
@@ -140,6 +155,13 @@ Key systems:
 - Always `reserve()` when size is known.
 - Use thread-local storage for RNG, reusable buffers, and spatial caches.
 - Prefer ref-based APIs for reusable buffers over return-by-value patterns that force allocations.
+- When collecting from thread-local vectors, use ref-based APIs with `clear()` to preserve capacity. Do not use `swap()` or return-by-value patterns that destroy capacity.
+
+## SIMD
+
+- Use `include/utils/SIMDMath.hpp` for cross-platform SIMD.
+- Process 4 elements per iteration plus a scalar tail.
+- Always provide a scalar fallback.
 
 ## Threading and State Invariants
 
@@ -150,6 +172,7 @@ Key systems:
 - Cache-line align hot atomics with `alignas(64)`.
 - `ThreadSystem` uses `hardware_concurrency - 1` workers and priority levels from Critical to Idle.
 - Use `enqueueTaskWithResult()` for future-based work and `batchEnqueueTasks()` for bulk submission.
+- Use `shared_mutex` for reader-writer access, `mutex` for exclusive access, `atomic<bool>` for flags, and `condition_variable` for worker wakeups.
 - `WorkerBudget` rules:
   - `shouldUseThreading()` decides whether to thread.
   - `getBatchStrategy()` sizes batches.
@@ -173,6 +196,7 @@ State transition rules:
 - Call `prepareForStateTransition()` on active managers before cleanup.
 - Current AI-heavy cleanup order when initialized:
   - `AIManager`
+  - `ProjectileManager`
   - `BackgroundSimulationManager`
   - `WorldResourceManager`
   - `EventManager`
@@ -182,6 +206,16 @@ State transition rules:
   - `WorkerBudgetManager`
   - `ParticleManager`
 - Demo states may skip managers they do not initialize.
+- `ControllerRegistry::clear()`, not just `unsubscribeAll()`, must be called in `GamePlayState::exit()`.
+
+Event handler persistence:
+
+- `EventManager` supports persistent and transient handlers.
+- `prepareForStateTransition()` calls `clearTransientHandlers()`. Persistent handlers survive; transient handlers are removed.
+- `clearAllHandlers()` is for shutdown only.
+- Manager-level infrastructure registers in `init()` with `registerPersistentHandler[WithToken]()` and is not manually unsubscribed or resubscribed across transitions.
+- State-level handlers register in `enter()` with `registerHandler[WithToken]()` and are cleared automatically on transition.
+- `CollisionManager` `m_callbacks` for the collision-to-`EventManager` bridge are persistent and are not cleared in `prepareForStateTransition()`. No state registers collision callbacks.
 
 ## EDM, AI, and Controller Boundaries
 
@@ -192,6 +226,7 @@ State transition rules:
 - `Behaviors::processWitnessedCombat()` handles distance falloff, composure-scaled emotion changes, and memory via `EDM::addMemory()`.
 - Emotional contagion runs in a main-thread pre-pass in `AIManager::update()`.
 - Behaviors use pre-fetched `ctx.behaviorData` and `ctx.pathData` from `processBatch()`.
+- `switchBehavior()` calls `clearBehaviorData()`, `setBehaviorConfig()`, then `init()`. State set before switching is wiped, so set behavior state after the switch.
 
 Controller boundary:
 
@@ -271,6 +306,13 @@ GameState architecture:
 - For `EventManager` regressions, first distinguish missing state-owned handler wiring in tests from an actual production bug.
 - Delete dead code and unused parameters entirely. Do not comment them out.
 
+## Debug Tools
+
+- `FrameProfiler` uses F3 for the debug overlay.
+- Use RAII timers: `ScopedPhaseTimer`, `ScopedManagerTimer`, and `ScopedRenderTimer`.
+- Hitch detection starts above 20ms.
+- Profiling is a no-op in release builds.
+
 ## Repo-Specific Traps
 
 - Demo states are for testing and showcasing features.
@@ -279,6 +321,8 @@ GameState architecture:
 - `UIDemoState.hpp` defines `UIExampleState`.
 - `GamePlayState` is the pristine official gameplay state. Keep it clean and production-ready.
 - Use `SettingsMenuState` and `MainMenuState` as menu references.
+- `WorldResourceManager` is a spatial index over EDM, not a quantity store.
+- Do not wire `subscribeWorldEvents()` in `init()` because `WorldManager` fires deferred events that arrive after a new world is populated.
 
 ## Task Checklists
 
