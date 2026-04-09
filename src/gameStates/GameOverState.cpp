@@ -50,11 +50,11 @@ bool GameOverState::enter() {
                           buttonWidth, buttonHeight, "Main Menu");
 
   ui.setOnClick("gameover_retry_btn", [this]() {
-    mp_stateManager->changeState("GamePlayState");
+    mp_stateManager->changeState(GameStateId::GAME_PLAY);
   });
 
   ui.setOnClick("gameover_mainmenu_btn", [this]() {
-    mp_stateManager->changeState("MainMenuState");
+    mp_stateManager->changeState(GameStateId::MAIN_MENU);
   });
 
   return true;
@@ -71,11 +71,11 @@ void GameOverState::handleInput() {
   const auto& inputMgr = InputManager::Instance();
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_R)) {
-    mp_stateManager->changeState("GamePlayState");
+    mp_stateManager->changeState(GameStateId::GAME_PLAY);
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_M)) {
-    mp_stateManager->changeState("MainMenuState");
+    mp_stateManager->changeState(GameStateId::MAIN_MENU);
   }
 }
 
@@ -85,7 +85,6 @@ bool GameOverState::exit() {
   return true;
 }
 
-std::string GameOverState::getName() const { return "GameOverState"; }
 
 void GameOverState::recordGPUVertices(
     VoidLight::GPURenderer& gpuRenderer,

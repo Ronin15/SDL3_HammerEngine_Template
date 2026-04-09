@@ -220,13 +220,13 @@ void GamePlayState::update(float deltaTime) {
 
     // Configure LoadingState and transition to it
     auto *loadingState = dynamic_cast<LoadingState *>(
-        mp_stateManager->getState("LoadingState").get());
+        mp_stateManager->getState(GameStateId::LOADING).get());
     if (loadingState) {
-      loadingState->configure("GamePlayState", config);
+      loadingState->configure(GameStateId::GAME_PLAY, config);
       // Set flag before transitioning to preserve m_worldLoaded in exit()
       m_transitioningToLoading = true;
       // Use changeState (called from update) to properly exit and re-enter
-      mp_stateManager->changeState("LoadingState");
+      mp_stateManager->changeState(GameStateId::LOADING);
     }
 
     return; // Don't continue with rest of update
@@ -257,11 +257,11 @@ void GamePlayState::update(float deltaTime) {
     if (!mp_Player->isAlive() && !m_transitioningToGameOver) {
       m_transitioningToGameOver = true;
 
-      if (!mp_stateManager->hasState("GameOverState")) {
+      if (!mp_stateManager->hasState(GameStateId::GAME_OVER)) {
         mp_stateManager->addState(std::make_unique<GameOverState>());
       }
 
-      mp_stateManager->changeState("GameOverState");
+      mp_stateManager->changeState(GameStateId::GAME_OVER);
       return;
     }
   }
@@ -461,7 +461,6 @@ bool GamePlayState::exit() {
   return true;
 }
 
-std::string GamePlayState::getName() const { return "GamePlayState"; }
 
 void GamePlayState::registerEventHandlers() {
   auto &eventMgr = EventManager::Instance();
@@ -595,15 +594,15 @@ void GamePlayState::handleInput() {
   // Use InputManager's new event-driven key press detection
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_P)) {
     // Create PauseState if it doesn't exist
-    if (!mp_stateManager->hasState("PauseState")) {
+    if (!mp_stateManager->hasState(GameStateId::PAUSE)) {
       mp_stateManager->addState(std::make_unique<PauseState>());
     }
     // pushState will call pause() which handles UI hiding and player velocity
-    mp_stateManager->pushState("PauseState");
+    mp_stateManager->pushState(GameStateId::PAUSE);
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-    mp_stateManager->changeState("MainMenuState");
+    mp_stateManager->changeState(GameStateId::MAIN_MENU);
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {

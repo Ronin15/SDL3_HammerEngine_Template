@@ -389,7 +389,7 @@ void OverlayDemoState::handleInput() {
 }
 
 void OverlayDemoState::handleBackButton() {
-    mp_stateManager->changeState("MainMenuState");
+    mp_stateManager->changeState(GameStateId::MAIN_MENU);
 }
 
 void OverlayDemoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,

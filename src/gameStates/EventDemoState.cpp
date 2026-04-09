@@ -536,13 +536,13 @@ void EventDemoState::update(float deltaTime) {
 
     // Configure LoadingState and transition to it
     auto *loadingState = dynamic_cast<LoadingState *>(
-        mp_stateManager->getState("LoadingState").get());
+        mp_stateManager->getState(GameStateId::LOADING).get());
     if (loadingState) {
-      loadingState->configure("EventDemoState", config);
+      loadingState->configure(GameStateId::EVENT_DEMO, config);
       // Set flag before transitioning to preserve m_worldLoaded in exit()
       m_transitioningToLoading = true;
       // Use changeState (called from update) to properly exit and re-enter
-      mp_stateManager->changeState("LoadingState");
+      mp_stateManager->changeState(GameStateId::LOADING);
     } else {
       GAMESTATE_ERROR("LoadingState not found in GameStateManager");
     }
@@ -704,7 +704,7 @@ void EventDemoState::handleInput() {
 
   // Back to main menu
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-    mp_stateManager->changeState("MainMenuState");
+    mp_stateManager->changeState(GameStateId::MAIN_MENU);
   }
 
 }

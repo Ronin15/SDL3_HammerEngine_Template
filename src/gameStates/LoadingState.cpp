@@ -18,9 +18,9 @@
 #include <format>
 
 void LoadingState::configure(
-    const std::string &targetStateName,
+    GameStateId targetStateId,
     const VoidLight::WorldGenerationConfig &worldConfig) {
-  m_targetStateName = targetStateName;
+  m_targetStateId = targetStateId;
   m_worldConfig = worldConfig;
 
   // Reset state for reuse
@@ -39,14 +39,14 @@ void LoadingState::configure(
 
 bool LoadingState::enter() {
   // Validate that LoadingState was properly configured
-  if (m_targetStateName.empty()) {
+  if (m_targetStateId == GameStateId::COUNT) {
     GAMESTATE_ERROR(
         "LoadingState not configured - call configure() before pushing state");
     return false;
   }
 
   GAMESTATE_INFO(
-      std::format("Entering LoadingState - Target: {}", m_targetStateName));
+      std::format("Entering LoadingState - Target: {}", static_cast<int>(m_targetStateId)));
 
   // Pause game time during loading (time shouldn't advance while loading)
   GameTimeManager::Instance().setGlobalPause(true);
@@ -101,21 +101,20 @@ void LoadingState::update(float) {
       } else {
         GAMESTATE_INFO(
             std::format("World and pathfinding ready - transitioning to {}",
-                        m_targetStateName));
+                        static_cast<int>(m_targetStateId)));
       }
 
       // Transition to target state
-      if (mp_stateManager->hasState(m_targetStateName)) {
-        mp_stateManager->changeState(m_targetStateName);
+      if (mp_stateManager->hasState(m_targetStateId)) {
+        mp_stateManager->changeState(m_targetStateId);
       } else {
-        std::string errorMsg =
-            std::format("Target state not found: {}", m_targetStateName);
-        GAMESTATE_ERROR(errorMsg);
+        GAMESTATE_ERROR(
+            std::format("Target state not found: {}", static_cast<int>(m_targetStateId)));
 
         // Store error for diagnostic purposes
         {
           std::lock_guard<std::mutex> lock(m_errorMutex);
-          m_lastError = errorMsg;
+          m_lastError = std::format("Target state not found: {}", static_cast<int>(m_targetStateId));
         }
       }
     }
@@ -152,7 +151,6 @@ bool LoadingState::exit() {
   return true;
 }
 
-std::string LoadingState::getName() const { return "LoadingState"; }
 
 void LoadingState::startAsyncWorldLoad() {
   auto &threadSystem = VoidLight::ThreadSystem::Instance();

@@ -14,7 +14,7 @@ class GameOverState : public GameState {
   void update(float deltaTime) override;
   void handleInput() override;
   bool exit() override;
-  std::string getName() const override;
+  GameStateId getStateId() const override { return GameStateId::GAME_OVER; }
 
   void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                          float interpolationAlpha) override;

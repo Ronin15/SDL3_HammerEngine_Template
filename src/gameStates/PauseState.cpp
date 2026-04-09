@@ -50,7 +50,7 @@ bool PauseState::enter() {
   });
 
   ui.setOnClick("pause_mainmenu_btn", [this]() {
-      mp_stateManager->changeState("MainMenuState");
+      mp_stateManager->changeState(GameStateId::MAIN_MENU);
   });
 
   return true;
@@ -79,9 +79,6 @@ bool PauseState::exit() {
   return true;
 }
 
-std::string PauseState::getName() const {
-  return "PauseState";
-}
 
 void PauseState::handleInput() {
   const auto& inputMgr = InputManager::Instance();

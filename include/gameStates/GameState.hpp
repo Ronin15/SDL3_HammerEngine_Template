@@ -7,12 +7,29 @@
 #define GAME_STATE_HPP
 
 #include <SDL3/SDL_gpu.h>
-#include <string>
+#include <cstdint>
 
 class GameStateManager;
 namespace VoidLight {
 class GPURenderer;
 }
+
+enum class GameStateId : uint8_t
+{
+    LOGO,
+    LOADING,
+    MAIN_MENU,
+    SETTINGS_MENU,
+    GAME_PLAY,
+    GAME_OVER,
+    PAUSE,
+    AI_DEMO,
+    ADVANCED_AI_DEMO,
+    EVENT_DEMO,
+    UI_DEMO,
+    OVERLAY_DEMO,
+    COUNT
+};
 
 // pure virtual for inheritance
 class GameState {
@@ -23,7 +40,7 @@ class GameState {
   virtual bool exit() = 0;
   virtual void pause() {}
   virtual void resume() {}
-  virtual std::string getName() const = 0;
+  virtual GameStateId getStateId() const = 0;
   virtual ~GameState() = default;
 
   /**

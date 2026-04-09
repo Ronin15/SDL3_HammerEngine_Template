@@ -85,7 +85,7 @@ void SettingsMenuState::handleInput() {
 
     // ESC to go back without saving
     if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
-        mp_stateManager->changeState("MainMenuState");
+        mp_stateManager->changeState(GameStateId::MAIN_MENU);
     }
 
     // Tab switching shortcuts
@@ -100,9 +100,6 @@ void SettingsMenuState::handleInput() {
     }
 }
 
-std::string SettingsMenuState::getName() const {
-    return "SettingsMenuState";
-}
 
 void SettingsMenuState::loadCurrentSettings() {
     using namespace VoidLight;
@@ -387,7 +384,7 @@ void SettingsMenuState::createActionButtons() {
         "Back");
     ui.setComponentPositioning("settings_back_btn", {UIPositionMode::BOTTOM_CENTERED, buttonWidth/2 + buttonSpacing/2, bottomOffset, buttonWidth, buttonHeight});
     ui.setOnClick("settings_back_btn", [this]() {
-        mp_stateManager->changeState("MainMenuState");
+        mp_stateManager->changeState(GameStateId::MAIN_MENU);
     });
 }
 

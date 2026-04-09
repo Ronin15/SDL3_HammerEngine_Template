@@ -64,31 +64,31 @@ bool MainMenuState::enter() {
 
   // Set up button callbacks - capture mp_stateManager for proper architecture
   ui.setOnClick("mainmenu_start_game_btn", [this]() {
-    mp_stateManager->changeState("GamePlayState");
+    mp_stateManager->changeState(GameStateId::GAME_PLAY);
   });
 
   ui.setOnClick("mainmenu_ai_demo_btn", [this]() {
-    mp_stateManager->changeState("AIDemoState");
+    mp_stateManager->changeState(GameStateId::AI_DEMO);
   });
 
   ui.setOnClick("mainmenu_advanced_ai_demo_btn", [this]() {
-    mp_stateManager->changeState("AdvancedAIDemoState");
+    mp_stateManager->changeState(GameStateId::ADVANCED_AI_DEMO);
   });
 
   ui.setOnClick("mainmenu_event_demo_btn", [this]() {
-    mp_stateManager->changeState("EventDemoState");
+    mp_stateManager->changeState(GameStateId::EVENT_DEMO);
   });
 
   ui.setOnClick("mainmenu_ui_example_btn", [this]() {
-    mp_stateManager->changeState("UIDemoState");
+    mp_stateManager->changeState(GameStateId::UI_DEMO);
   });
 
   ui.setOnClick("mainmenu_overlay_demo_btn", [this]() {
-    mp_stateManager->changeState("OverlayDemoState");
+    mp_stateManager->changeState(GameStateId::OVERLAY_DEMO);
   });
 
   ui.setOnClick("mainmenu_settings_btn", [this]() {
-    mp_stateManager->changeState("SettingsMenuState");
+    mp_stateManager->changeState(GameStateId::SETTINGS_MENU);
   });
 
   ui.setOnClick("mainmenu_exit_btn", []() {
@@ -124,27 +124,27 @@ void MainMenuState::handleInput() {
 
   // Keyboard shortcuts for quick navigation
   if (inputManager.wasKeyPressed(SDL_SCANCODE_RETURN)) {
-      mp_stateManager->changeState("GamePlayState");
+      mp_stateManager->changeState(GameStateId::GAME_PLAY);
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_A)) {
-      mp_stateManager->changeState("AIDemoState");
+      mp_stateManager->changeState(GameStateId::AI_DEMO);
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_E)) {
-      mp_stateManager->changeState("EventDemoState");
+      mp_stateManager->changeState(GameStateId::EVENT_DEMO);
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_U)) {
-      mp_stateManager->changeState("UIDemoState");
+      mp_stateManager->changeState(GameStateId::UI_DEMO);
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_O)) {
-      mp_stateManager->changeState("OverlayDemoState");
+      mp_stateManager->changeState(GameStateId::OVERLAY_DEMO);
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_S)) {
-      mp_stateManager->changeState("SettingsMenuState");
+      mp_stateManager->changeState(GameStateId::SETTINGS_MENU);
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
@@ -152,9 +152,6 @@ void MainMenuState::handleInput() {
   }
 }
 
-std::string MainMenuState::getName() const {
-  return "MainMenuState";
-}
 
 void MainMenuState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                                        float) {

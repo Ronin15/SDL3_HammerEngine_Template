@@ -61,7 +61,7 @@ int main(int, char*[]) {
                               : "hardware VSync"));
 
   // Push initial state before starting main loop
-  gameEngine.getGameStateManager()->pushState("LogoState");
+  gameEngine.getGameStateManager()->pushState(GameStateId::LOGO);
 
   // Suppress hitch detection for first few frames while engine stabilizes
   VoidLight::FrameProfiler::Instance().suppressFrames(10);

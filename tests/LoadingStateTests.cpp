@@ -34,7 +34,7 @@ BOOST_AUTO_TEST_CASE(TestAtomicProgressTracking) {
     config.width = 800;
     config.height = 600;
 
-    loadingState.configure("TestTargetState", config);
+    loadingState.configure(GameStateId::GAME_PLAY, config);
 
     // After configuration, progress should be reset to 0
     // (We can't directly access private m_progress, but we validate behavior)
@@ -92,7 +92,7 @@ BOOST_AUTO_TEST_CASE(TestLoadingStateReuse) {
     config1.height = 300;
 
     // First configuration
-    loadingState.configure("State1", config1);
+    loadingState.configure(GameStateId::LOGO, config1);
     BOOST_CHECK(!loadingState.hasError());
 
     // Second configuration (reuse)
@@ -100,7 +100,7 @@ BOOST_AUTO_TEST_CASE(TestLoadingStateReuse) {
     config2.width = 800;
     config2.height = 600;
 
-    loadingState.configure("State2", config2);
+    loadingState.configure(GameStateId::LOADING, config2);
     BOOST_CHECK(!loadingState.hasError());
     BOOST_CHECK_EQUAL(loadingState.getLastError(), ""); // Error cleared on reconfigure
     BOOST_CHECK(!loadingState.hasError());

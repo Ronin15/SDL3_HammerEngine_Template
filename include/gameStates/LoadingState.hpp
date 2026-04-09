@@ -41,14 +41,14 @@ public:
      * @param targetStateName State to transition to after loading completes
      * @param worldConfig World generation configuration
      */
-    void configure(const std::string& targetStateName,
+    void configure(GameStateId targetStateId,
                    const VoidLight::WorldGenerationConfig& worldConfig);
 
     bool enter() override;
     void update(float deltaTime) override;
     void handleInput() override;
     bool exit() override;
-    std::string getName() const override;
+    GameStateId getStateId() const override { return GameStateId::LOADING; }
 
     // GPU rendering support
     void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
@@ -71,7 +71,7 @@ public:
 
 private:
     // Target state to transition to after loading
-    std::string m_targetStateName;
+    GameStateId m_targetStateId{GameStateId::COUNT};
 
     // World generation configuration
     VoidLight::WorldGenerationConfig m_worldConfig{};

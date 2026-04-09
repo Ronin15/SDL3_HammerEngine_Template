@@ -14,7 +14,7 @@ class MainMenuState : public GameState {
   void update(float deltaTime) override;
   void handleInput() override;
   bool exit() override;
-  std::string getName() const override;
+  GameStateId getStateId() const override { return GameStateId::MAIN_MENU; }
 
   // GPU rendering support
   void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,

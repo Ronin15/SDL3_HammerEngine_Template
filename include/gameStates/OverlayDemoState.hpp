@@ -7,6 +7,7 @@
 #define OVERLAY_DEMO_STATE_HPP
 
 #include "gameStates/GameState.hpp"
+#include <string>
 
 // Demo state to showcase different overlay usage scenarios
 class OverlayDemoState : public GameState {
@@ -19,7 +20,7 @@ public:
     void update(float deltaTime) override;
     void handleInput() override;
     bool exit() override;
-    std::string getName() const override { return "OverlayDemoState"; }
+    GameStateId getStateId() const override { return GameStateId::OVERLAY_DEMO; }
 
     // GPU rendering support
     void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,

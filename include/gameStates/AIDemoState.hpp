@@ -36,7 +36,7 @@ public:
     bool enter() override;
     bool exit() override;
 
-    std::string getName() const override { return "AIDemoState"; }
+    GameStateId getStateId() const override { return GameStateId::AI_DEMO; }
 
     // GPU rendering support
     void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,

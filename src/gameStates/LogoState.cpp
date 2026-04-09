@@ -76,8 +76,8 @@ void LogoState::update(float deltaTime) {
 
   if (m_stateTimer > 3.0f) {
     // Use immediate state change - proper enter/exit sequencing handles timing
-    if (mp_stateManager->hasState("MainMenuState")) {
-      mp_stateManager->changeState("MainMenuState");
+    if (mp_stateManager->hasState(GameStateId::MAIN_MENU)) {
+      mp_stateManager->changeState(GameStateId::MAIN_MENU);
     }
   }
 }
@@ -93,9 +93,6 @@ void LogoState::handleInput() {
   // LogoState doesn't need input handling
 }
 
-std::string LogoState::getName() const {
-  return "LogoState";
-}
 
 void LogoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                                   float) {

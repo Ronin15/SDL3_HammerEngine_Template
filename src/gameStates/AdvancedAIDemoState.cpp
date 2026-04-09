@@ -76,7 +76,7 @@ void AdvancedAIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
     GAMESTATE_INFO("Preparing to exit AdvancedAIDemoState...");
-    mp_stateManager->changeState("MainMenuState");
+    mp_stateManager->changeState(GameStateId::MAIN_MENU);
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
@@ -481,13 +481,13 @@ void AdvancedAIDemoState::update(float deltaTime) {
 
       // Configure LoadingState and transition to it
       auto *loadingState = dynamic_cast<LoadingState *>(
-          mp_stateManager->getState("LoadingState").get());
+          mp_stateManager->getState(GameStateId::LOADING).get());
       if (loadingState) {
-        loadingState->configure("AdvancedAIDemoState", config);
+        loadingState->configure(GameStateId::ADVANCED_AI_DEMO, config);
         // Set flag before transitioning to preserve m_worldLoaded in exit()
         m_transitioningToLoading = true;
         // Use changeState (called from update) to properly exit and re-enter
-        mp_stateManager->changeState("LoadingState");
+        mp_stateManager->changeState(GameStateId::LOADING);
       } else {
         GAMESTATE_ERROR("LoadingState not found in GameStateManager");
       }
@@ -501,7 +501,7 @@ void AdvancedAIDemoState::update(float deltaTime) {
 
       if (!m_player->isAlive() && !m_transitioningToGameOver) {
         m_transitioningToGameOver = true;
-        mp_stateManager->changeState("GameOverState");
+        mp_stateManager->changeState(GameStateId::GAME_OVER);
         return;
       }
     }

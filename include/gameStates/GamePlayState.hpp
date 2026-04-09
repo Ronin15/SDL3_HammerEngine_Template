@@ -33,7 +33,7 @@ public:
   bool exit() override;
   void pause() override;
   void resume() override;
-  std::string getName() const override;
+  GameStateId getStateId() const override { return GameStateId::GAME_PLAY; }
 
   // GPU rendering support
   void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,

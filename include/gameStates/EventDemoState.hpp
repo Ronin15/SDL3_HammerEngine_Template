@@ -42,7 +42,7 @@ public:
   bool enter() override;
   bool exit() override;
 
-  std::string getName() const override { return "EventDemoState"; }
+  GameStateId getStateId() const override { return GameStateId::EVENT_DEMO; }
 
   // GPU rendering support
   void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
