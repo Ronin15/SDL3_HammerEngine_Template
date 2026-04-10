@@ -762,6 +762,10 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
 
         if (proj.lifetime <= 0.0f)
         {
+            hot.setCollisionEnabled(false);
+            hot.collisionMask = 0;
+            hot.transform.velocity = Vector2D(0.0f, 0.0f);
+            hot.transform.acceleration = Vector2D(0.0f, 0.0f);
             EntityHandle handle = edm.getHandle(edmIdx);
             outDestroyQueue.push_back(handle);
             continue;

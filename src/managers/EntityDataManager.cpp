@@ -1383,18 +1383,43 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Initialize collision data — auto-detect mask from owner's entity kind
-    // Player projectiles hit enemies; NPC/Monster projectiles hit player
+    // Initialize collision data — derive mask from owner faction hostility.
+    // Attack target selection treats any different faction as hostile, so
+    // projectile masks must include all collision layers that can represent
+    // non-owner factions.
     hot.collisionLayers = VoidLight::CollisionLayer::Layer_Projectile;
     size_t ownerIdx = getIndex(owner);
     if (ownerIdx != SIZE_MAX)
     {
-        EntityKind ownerKind = m_hotData[ownerIdx].kind;
-        hot.collisionMask = (ownerKind == EntityKind::Player)
-            ? (VoidLight::CollisionLayer::Layer_Enemy |
-               VoidLight::CollisionLayer::Layer_Environment)
-            : (VoidLight::CollisionLayer::Layer_Player |
-               VoidLight::CollisionLayer::Layer_Environment);
+        const auto& ownerHot = m_hotData[ownerIdx];
+        if (EntityTraits::hasHealth(ownerHot.kind))
+        {
+            const uint8_t ownerFaction = m_characterData[ownerHot.typeLocalIndex].faction;
+            switch (ownerFaction)
+            {
+                case 0: // Friendly: hostile to Enemy + Neutral
+                    hot.collisionMask = VoidLight::CollisionLayer::Layer_Enemy |
+                                        VoidLight::CollisionLayer::Layer_Default |
+                                        VoidLight::CollisionLayer::Layer_Environment;
+                    break;
+                case 1: // Enemy: hostile to Friendly + Neutral (+Player)
+                    hot.collisionMask = VoidLight::CollisionLayer::Layer_Player |
+                                        VoidLight::CollisionLayer::Layer_Default |
+                                        VoidLight::CollisionLayer::Layer_Environment;
+                    break;
+                default: // Neutral: hostile to Friendly + Enemy (+Player)
+                    hot.collisionMask = VoidLight::CollisionLayer::Layer_Player |
+                                        VoidLight::CollisionLayer::Layer_Enemy |
+                                        VoidLight::CollisionLayer::Layer_Default |
+                                        VoidLight::CollisionLayer::Layer_Environment;
+                    break;
+            }
+        }
+        else
+        {
+            hot.collisionMask = VoidLight::CollisionLayer::Layer_Enemy |
+                                VoidLight::CollisionLayer::Layer_Environment;
+        }
     }
     else
     {
