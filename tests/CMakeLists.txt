@@ -88,6 +88,7 @@ set(ALL_TESTS
     harvest_controller_tests
     item_controller_tests
     combat_controller_tests
+    gameplay_hud_controller_tests
     social_controller_tests
     resource_render_controller_tests
     ai_manager_edm_integration_tests
@@ -254,6 +255,8 @@ foreach(test_name ${ALL_TESTS})
         set(test_source "controllers/ItemControllerTests.cpp")
     elseif(${test_name} STREQUAL "combat_controller_tests")
         set(test_source "controllers/CombatControllerTests.cpp")
+    elseif(${test_name} STREQUAL "gameplay_hud_controller_tests")
+        set(test_source "controllers/GameplayHUDControllerTests.cpp")
     elseif(${test_name} STREQUAL "social_controller_tests")
         set(test_source "controllers/SocialControllerTests.cpp")
     elseif(${test_name} STREQUAL "ai_manager_edm_integration_tests")
@@ -274,6 +277,7 @@ set(EVENT_ACCESS_TESTS
     weather_event_tests
     harvest_controller_tests
     item_controller_tests
+    gameplay_hud_controller_tests
     social_controller_tests
     resource_render_controller_tests
     weather_controller_tests

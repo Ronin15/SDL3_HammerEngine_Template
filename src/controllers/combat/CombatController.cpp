@@ -14,7 +14,7 @@
 #include <format>
 
 namespace {
-    constexpr const char* GAMEPLAY_EVENT_LOG = "gameplay_event_log";
+constexpr const char* GAMEPLAY_EVENT_LOG = "gameplay_event_log";
 }
 
 void CombatController::subscribe() {
@@ -49,8 +49,6 @@ void CombatController::update(float deltaTime) {
     regenerateStamina(player.get(), deltaTime);
   }
 
-  // Update target display timer
-  updateTargetTimer(deltaTime);
 }
 
 bool CombatController::tryAttack() {
@@ -99,8 +97,6 @@ void CombatController::performAttack(Player *player) {
   // Cache manager references at function scope
   auto& edm = EntityDataManager::Instance();
   auto& aiMgr = AIManager::Instance();
-  auto& uiMgr = UIManager::Instance();
-
   const Vector2D playerPos = player->getPosition();
   const float attackRange = player->getAttackRange();
   const float attackDamage = player->getAttackDamage();
@@ -113,10 +109,6 @@ void CombatController::performAttack(Player *player) {
   m_nearbyHandlesBuffer.clear();  // Keeps capacity
   aiMgr.scanActiveHandlesInRadius(playerPos, attackRange,
                              m_nearbyHandlesBuffer, true);
-
-  // Check all nearby entities for hits
-  EntityHandle closestHandle{}; // Invalid handle by default
-  float closestDist = attackRange + 1.0f;
 
   // Get player's EntityHandle for event-driven damage
   EntityHandle playerHandle = player->getHandle();
@@ -144,8 +136,6 @@ void CombatController::performAttack(Player *player) {
 
     const Vector2D npcPos = hotData.transform.position;
     const Vector2D diff = npcPos - playerPos;
-    const float distance = diff.length();
-
     // Check if in attack direction (180 degree arc in front of player)
     float dotProduct = diff.getX() * attackDirX;
     if (dotProduct < 0.0f) {
@@ -174,30 +164,18 @@ void CombatController::performAttack(Player *player) {
         std::format("Hit entity {} for {:.1f} damage! HP: {:.1f} -> {:.1f}",
                     handle.getId(), attackDamage, oldHealth, newHealth));
 
-    uiMgr.addEventLogEntry(
+    UIManager::Instance().addEventLogEntry(
         GAMEPLAY_EVENT_LOG,
         std::format("Hit Enemy #{} for {:.0f} damage!", handle.getId(), attackDamage));
-
-    // Track closest hit for targeting
-    if (distance < closestDist) {
-      closestDist = distance;
-      closestHandle = handle;
-    }
 
     // Kill notification for UI
     if (wasLethal) {
       COMBAT_INFO(std::format("Entity {} killed!", handle.getId()));
 
-      uiMgr.addEventLogEntry(
+      UIManager::Instance().addEventLogEntry(
           GAMEPLAY_EVENT_LOG,
           std::format("Defeated Enemy #{}!", handle.getId()));
     }
-  }
-
-  // Update target tracking (using handle)
-  if (closestHandle.isValid()) {
-    m_targetedHandle = closestHandle;
-    m_targetDisplayTimer = TARGET_DISPLAY_DURATION;
   }
 }
 
@@ -213,44 +191,4 @@ void CombatController::regenerateStamina(Player *player, float deltaTime) {
     float regenAmount = STAMINA_REGEN_RATE * deltaTime;
     player->restoreStamina(regenAmount);
   }
-}
-
-void CombatController::updateTargetTimer(float deltaTime) {
-  if (m_targetDisplayTimer > 0.0f) {
-    m_targetDisplayTimer -= deltaTime;
-    if (m_targetDisplayTimer <= 0.0f) {
-      m_targetDisplayTimer = 0.0f;
-      m_targetedHandle = EntityHandle{}; // Clear handle
-      COMBAT_DEBUG("Target display timer expired");
-    }
-  }
-}
-
-bool CombatController::hasActiveTarget() const {
-  // Phase 2 EDM Migration: Use handle + EDM check
-  if (m_targetDisplayTimer <= 0.0f || !m_targetedHandle.isValid()) {
-    return false;
-  }
-
-  auto &edm = EntityDataManager::Instance();
-  size_t idx = edm.getIndex(m_targetedHandle);
-  if (idx == SIZE_MAX) {
-    return false;
-  }
-
-  return edm.getHotDataByIndex(idx).isAlive();
-}
-
-float CombatController::getTargetHealth() const {
-  if (!m_targetedHandle.isValid()) {
-    return 0.0f;
-  }
-
-  auto &edm = EntityDataManager::Instance();
-  size_t idx = edm.getIndex(m_targetedHandle);
-  if (idx == SIZE_MAX) {
-    return 0.0f;
-  }
-
-  return edm.getCharacterDataByIndex(idx).health;
 }

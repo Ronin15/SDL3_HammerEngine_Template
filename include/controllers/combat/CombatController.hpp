@@ -13,7 +13,6 @@
  * CombatController handles:
  * - Attack execution and cooldowns
  * - Stamina consumption and regeneration
- * - Target tracking for UI display
  * - Hit detection against NPCs (via AIManager)
  *
  * This is a frame-updatable controller (implements IUpdatable) because it
@@ -65,7 +64,7 @@ public:
     // --- IUpdatable interface ---
 
     /**
-     * @brief Update combat state (cooldowns, stamina regen, target timer)
+     * @brief Update combat state (cooldowns, stamina regen)
      * @param deltaTime Frame delta time in seconds
      * @note Called by ControllerRegistry::updateAll()
      */
@@ -80,34 +79,9 @@ public:
      */
     bool tryAttack();
 
-    /**
-     * @brief Get the currently targeted entity handle (for data-driven UI)
-     * @return EntityHandle of targeted NPC, or invalid handle if no target
-     */
-    [[nodiscard]] EntityHandle getTargetedHandle() const { return m_targetedHandle; }
-
-    /**
-     * @brief Get remaining time for target display
-     * @return Seconds remaining before target frame hides
-     */
-    [[nodiscard]] float getTargetDisplayTimer() const { return m_targetDisplayTimer; }
-
-    /**
-     * @brief Check if there's an active target to display
-     * @return true if target frame should be visible
-     */
-    [[nodiscard]] bool hasActiveTarget() const;
-
-    /**
-     * @brief Get the current target's health from EDM
-     * @return Target health, or 0.0f if no valid target
-     */
-    [[nodiscard]] float getTargetHealth() const;
-
     // Configuration constants
     static constexpr float ATTACK_STAMINA_COST{10.0f};
     static constexpr float STAMINA_REGEN_RATE{15.0f};     // per second
-    static constexpr float TARGET_DISPLAY_DURATION{3.0f}; // seconds after last hit
     static constexpr float ATTACK_COOLDOWN{0.5f};         // seconds between attacks
 
 private:
@@ -124,18 +98,8 @@ private:
      */
     void regenerateStamina(Player* player, float deltaTime);
 
-    /**
-     * @brief Update target display timer
-     * @param deltaTime Frame delta time in seconds
-     */
-    void updateTargetTimer(float deltaTime);
-
     // Player reference (set via setPlayer())
     std::weak_ptr<Player> mp_player;
-
-    // Target tracking - Phase 2 EDM Migration: Use handle instead of weak_ptr
-    EntityHandle m_targetedHandle{};
-    float m_targetDisplayTimer{0.0f};
 
     // Attack timing
     float m_attackCooldown{0.0f};

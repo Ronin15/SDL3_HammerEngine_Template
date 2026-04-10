@@ -6,6 +6,7 @@
 #include "gameStates/GamePlayState.hpp"
 #include "entities/Player.hpp"
 #include "controllers/combat/CombatController.hpp"
+#include "controllers/ui/GameplayHUDController.hpp"
 #include "controllers/social/SocialController.hpp"
 #include "controllers/world/DayNightController.hpp"
 #include "controllers/world/HarvestController.hpp"
@@ -106,6 +107,7 @@ bool GamePlayState::enter() {
     m_controllers.add<WeatherController>();
     m_controllers.add<DayNightController>();
     m_controllers.add<CombatController>(mp_Player);
+    m_controllers.add<GameplayHUDController>(mp_Player->getHandle());
     m_controllers.add<ItemController>(mp_Player);
     m_controllers.add<HarvestController>(mp_Player);
     m_controllers.add<ResourceRenderController>();
@@ -246,13 +248,13 @@ void GamePlayState::update(float deltaTime) {
     m_npcRenderCtrl.update(deltaTime);
 
     // Update combat HUD (health/stamina bars, target frame)
-    auto& combatCtrl = *m_controllers.get<CombatController>();
+    auto& gameplayHudCtrl = *m_controllers.get<GameplayHUDController>();
     ui.updateCombatHUD(
         mp_Player->getHealth(),
         mp_Player->getStamina(),
-        combatCtrl.hasActiveTarget(),
-        "Target",
-        combatCtrl.getTargetHealth());
+        gameplayHudCtrl.hasActiveTarget(),
+        gameplayHudCtrl.getTargetLabel(),
+        gameplayHudCtrl.getTargetHealth());
 
     if (!mp_Player->isAlive() && !m_transitioningToGameOver) {
       m_transitioningToGameOver = true;

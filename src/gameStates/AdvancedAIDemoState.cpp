@@ -5,6 +5,7 @@
 
 #include "gameStates/AdvancedAIDemoState.hpp"
 #include "controllers/combat/CombatController.hpp"
+#include "controllers/ui/GameplayHUDController.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/GameOverState.hpp"
@@ -231,6 +232,7 @@ bool AdvancedAIDemoState::enter() {
 
     // Register CombatController (follows GamePlayState pattern)
     m_controllers.add<CombatController>(m_player);
+    m_controllers.add<GameplayHUDController>(m_player->getHandle());
     m_controllers.subscribeAll();
     registerEventHandlers();
 
@@ -522,13 +524,13 @@ void AdvancedAIDemoState::update(float deltaTime) {
     m_controllers.updateAll(deltaTime);
 
     // Update combat HUD (health/stamina bars, target frame)
-    auto& combatCtrl = *m_controllers.get<CombatController>();
+    auto& gameplayHudCtrl = *m_controllers.get<GameplayHUDController>();
     UIManager::Instance().updateCombatHUD(
         m_player->getHealth(),
         m_player->getStamina(),
-        combatCtrl.hasActiveTarget(),
-        "Target",
-        combatCtrl.getTargetHealth());
+        gameplayHudCtrl.hasActiveTarget(),
+        gameplayHudCtrl.getTargetLabel(),
+        gameplayHudCtrl.getTargetHealth());
 
     // Update UI (moved from render path for consistent frame timing)
     if (!ui.isShutdown()) {
