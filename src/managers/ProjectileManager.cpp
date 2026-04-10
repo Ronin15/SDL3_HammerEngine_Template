@@ -309,9 +309,17 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
     const auto& proj = edm.getProjectileData(edm.getHandle(projIdx));
     EntityHandle targetHandle = edm.getHandle(targetIdx);
 
-    // Skip damage if projectile is not moving — stationary projectiles stick but don't hurt
+    // Collision events are dispatched on the next frame after CollisionManager::resolve().
+    // By then, resolve() may already have cancelled the projectile velocity, so fall back
+    // to the projectile's stored launch speed when deciding whether this hit should damage.
     const float actualSpeedSq = projHot.transform.velocity.lengthSquared();
-    if (actualSpeedSq < MIN_PROJECTILE_SPEED_SQ)
+    float effectiveSpeedSq = actualSpeedSq;
+    if (effectiveSpeedSq < MIN_PROJECTILE_SPEED_SQ)
+    {
+        effectiveSpeedSq = proj.speed * proj.speed;
+    }
+
+    if (effectiveSpeedSq < MIN_PROJECTILE_SPEED_SQ)
     {
         return;
     }
@@ -320,11 +328,11 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
     auto& eventMgr = EventManager::Instance();
     auto damageEvent = eventMgr.acquireDamageEvent();
 
-    // Knockback scaled by actual projectile speed — faster projectiles hit harder
+    // Knockback scaled by impact speed — faster projectiles hit harder
     constexpr float KNOCKBACK_BASE = 30.0f;
     constexpr float KNOCKBACK_SPEED_FACTOR = 0.1f;
-    const float actualSpeed = std::sqrt(actualSpeedSq);
-    const float knockbackForce = KNOCKBACK_BASE + actualSpeed * KNOCKBACK_SPEED_FACTOR;
+    const float effectiveSpeed = std::sqrt(effectiveSpeedSq);
+    const float knockbackForce = KNOCKBACK_BASE + effectiveSpeed * KNOCKBACK_SPEED_FACTOR;
     Vector2D knockback = knockbackNormal * knockbackForce;
 
     damageEvent->configure(proj.owner, targetHandle, proj.damage, knockback);

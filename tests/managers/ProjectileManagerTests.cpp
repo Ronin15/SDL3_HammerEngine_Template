@@ -371,6 +371,65 @@ BOOST_AUTO_TEST_CASE(CollisionDamage)
     eventMgr.removeHandler(combatToken);
 }
 
+BOOST_AUTO_TEST_CASE(CollisionDamageAfterVelocityCancellation)
+{
+    prepareForTest();
+    auto& edm = EntityDataManager::Instance();
+    auto& eventMgr = EventManager::Instance();
+
+    EntityHandle owner = createPlayerOwner(Vector2D(100.0f, 100.0f));
+    EntityHandle target = createNPCTarget(Vector2D(200.0f, 100.0f));
+
+    constexpr float projSpeed = 220.0f;
+    constexpr float projDamage = 18.0f;
+    EntityHandle proj = edm.createProjectile(
+        Vector2D(190.0f, 100.0f), Vector2D(projSpeed, 0.0f), owner, projDamage, 5.0f);
+
+    const size_t projIdx = edm.getIndex(proj);
+    const size_t targetIdx = edm.getIndex(target);
+    BOOST_REQUIRE_NE(projIdx, SIZE_MAX);
+    BOOST_REQUIRE_NE(targetIdx, SIZE_MAX);
+
+    std::atomic<bool> damageReceived{false};
+    float receivedDamage = 0.0f;
+    float receivedKnockbackX = 0.0f;
+    auto combatToken = eventMgr.registerHandlerWithToken(
+        EventTypeId::Combat,
+        [&](const EventData& data) {
+            auto dmgEvent = std::dynamic_pointer_cast<DamageEvent>(data.event);
+            if (dmgEvent) {
+                receivedDamage = dmgEvent->getDamage();
+                receivedKnockbackX = dmgEvent->getKnockback().getX();
+                damageReceived.store(true, std::memory_order_release);
+            }
+        });
+
+    VoidLight::CollisionInfo info{};
+    info.indexA = projIdx;
+    info.indexB = targetIdx;
+    info.normal = Vector2D(1.0f, 0.0f);
+    info.penetration = 1.0f;
+    info.isMovableMovable = true;
+
+    enqueueCollisionEvent(info);
+
+    // Match the real frame order: CollisionManager::resolve() has already cancelled the
+    // projectile velocity before ProjectileManager sees the deferred collision event.
+    edm.getHotDataByIndex(projIdx).transform.velocity = Vector2D(0.0f, 0.0f);
+
+    eventMgr.update();
+    processDestructions();
+    eventMgr.update();
+
+    BOOST_CHECK(damageReceived.load(std::memory_order_acquire));
+    BOOST_CHECK_CLOSE(receivedDamage, projDamage, 0.01f);
+
+    const float expectedKnockback = 30.0f + projSpeed * 0.1f;
+    BOOST_CHECK_CLOSE(receivedKnockbackX, expectedKnockback, 1.0f);
+
+    eventMgr.removeHandler(combatToken);
+}
+
 BOOST_AUTO_TEST_CASE(PiercingFlag)
 {
     prepareForTest();
