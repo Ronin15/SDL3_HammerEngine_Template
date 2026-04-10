@@ -47,6 +47,7 @@ bool ProjectileManager::init()
     m_destroyQueue.reserve(64);
     m_batchFutures.reserve(16);
     m_batchDestroyQueues.reserve(16);
+    m_singleDeferredEventBatch.reserve(1);
 
     // Subscribe to collision events for projectile-hit-to-damage conversion
     subscribeCollisionHandler();
@@ -85,6 +86,8 @@ void ProjectileManager::clean()
     m_destroyQueue.shrink_to_fit();
     m_batchFutures.clear();
     m_batchFutures.shrink_to_fit();
+    m_singleDeferredEventBatch.clear();
+    m_singleDeferredEventBatch.shrink_to_fit();
     m_batchDestroyQueues.clear();
     m_batchDestroyQueues.shrink_to_fit();
 
@@ -160,6 +163,42 @@ void ProjectileManager::unsubscribeCollisionHandler()
     m_collisionHandlerRegistered = false;
 }
 
+void ProjectileManager::queueProjectileDestroy(size_t projectileIndex)
+{
+    auto& edm = EntityDataManager::Instance();
+    auto& projectileHot = edm.getHotDataByIndex(projectileIndex);
+    projectileHot.transform.velocity = Vector2D(0.0f, 0.0f);
+
+    EntityHandle projHandle = edm.getHandle(projectileIndex);
+    if (projHandle.isValid())
+    {
+        edm.destroyEntity(projHandle);
+    }
+}
+
+void ProjectileManager::embedProjectile(size_t projectileIndex, const Vector2D& impactNormal)
+{
+    auto& edm = EntityDataManager::Instance();
+    auto& projectileHot = edm.getHotDataByIndex(projectileIndex);
+    auto& projectile = edm.getProjectileData(projectileHot.typeLocalIndex);
+
+    if (projectile.isEmbedded())
+    {
+        return;
+    }
+
+    projectile.flags |= ProjectileData::FLAG_EMBEDDED;
+    projectile.lifetime = ProjectileData::EMBEDDED_LIFETIME_SECONDS;
+    projectile.embeddedOffsetX = impactNormal.getX() * projectileHot.halfWidth;
+    projectile.embeddedOffsetY = impactNormal.getY() * projectileHot.halfHeight;
+
+    projectileHot.transform.velocity = Vector2D(0.0f, 0.0f);
+    projectileHot.transform.acceleration = Vector2D(0.0f, 0.0f);
+    projectileHot.transform.previousPosition = projectileHot.transform.position;
+    projectileHot.setCollisionEnabled(false);
+    projectileHot.collisionMask = 0;
+}
+
 void ProjectileManager::handleCollisionEvent(const EventData& eventData)
 {
     if (!m_initialized.load(std::memory_order_acquire) ||
@@ -182,27 +221,53 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
 
     const auto& info = collisionEvent->getInfo();
 
-    // Only handle movable-movable collisions (projectile vs entity)
-    if (!info.isMovableMovable)
+    auto& edm = EntityDataManager::Instance();
+
+    if (info.trigger)
     {
         return;
     }
 
-    auto& edm = EntityDataManager::Instance();
+    if (info.indexA == SIZE_MAX)
+    {
+        return;
+    }
+
+    size_t projIdx = SIZE_MAX;
+    size_t targetIdx = SIZE_MAX;
+    Vector2D knockbackNormal = info.normal;
 
     const auto& hotA = edm.getHotDataByIndex(info.indexA);
+    if (!hotA.isAlive())
+    {
+        return;
+    }
+
+    if (!info.isMovableMovable)
+    {
+        if (hotA.kind != EntityKind::Projectile)
+        {
+            return;
+        }
+
+        embedProjectile(info.indexA, info.normal);
+        return;
+    }
+
+    if (info.indexB == SIZE_MAX)
+    {
+        return;
+    }
+
     const auto& hotB = edm.getHotDataByIndex(info.indexB);
 
     // Skip if either entity is already dead (destroyed between collision detect and event dispatch)
-    if (!hotA.isAlive() || !hotB.isAlive())
+    if (!hotB.isAlive())
     {
         return;
     }
 
     // Identify which entity is the projectile (if any)
-    size_t projIdx = SIZE_MAX;
-    size_t targetIdx = SIZE_MAX;
-
     if (hotA.kind == EntityKind::Projectile && hotB.kind != EntityKind::Projectile)
     {
         projIdx = info.indexA;
@@ -212,6 +277,7 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
     {
         projIdx = info.indexB;
         targetIdx = info.indexA;
+        knockbackNormal = info.normal * -1.0f;
     }
     else
     {
@@ -219,17 +285,23 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
         return;
     }
 
-    const auto& targetHot = edm.getHotDataByIndex(targetIdx);
+    auto& projHot = edm.getHotDataByIndex(projIdx);
+    if (!projHot.isAlive())
+    {
+        return;
+    }
+
+    if (edm.getProjectileData(projHot.typeLocalIndex).isEmbedded())
+    {
+        return;
+    }
 
     // Only damage entities that have health (Player, NPC)
+    const auto& targetHot = edm.getHotDataByIndex(targetIdx);
     if (!EntityTraits::hasHealth(targetHot.kind))
     {
-        // Hit environment or non-damageable — just destroy projectile
-        EntityHandle projHandle = edm.getHandle(projIdx);
-        if (projHandle.isValid())
-        {
-            edm.destroyEntity(projHandle);
-        }
+        // Hit non-damageable entity — embed and stop participating in collision/damage.
+        embedProjectile(projIdx, knockbackNormal);
         return;
     }
 
@@ -238,7 +310,6 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
     EntityHandle targetHandle = edm.getHandle(targetIdx);
 
     // Skip damage if projectile is not moving — stationary projectiles stick but don't hurt
-    const auto& projHot = edm.getHotDataByIndex(projIdx);
     const float actualSpeedSq = projHot.transform.velocity.lengthSquared();
     if (actualSpeedSq < MIN_PROJECTILE_SPEED_SQ)
     {
@@ -254,7 +325,7 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
     constexpr float KNOCKBACK_SPEED_FACTOR = 0.1f;
     const float actualSpeed = std::sqrt(actualSpeedSq);
     const float knockbackForce = KNOCKBACK_BASE + actualSpeed * KNOCKBACK_SPEED_FACTOR;
-    Vector2D knockback = info.normal * knockbackForce;
+    Vector2D knockback = knockbackNormal * knockbackForce;
 
     damageEvent->configure(proj.owner, targetHandle, proj.damage, knockback);
 
@@ -263,19 +334,14 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
     damageData.setActive(true);
     damageData.event = damageEvent;
 
-    std::vector<EventManager::DeferredEvent> batch;
-    batch.reserve(1);
-    batch.push_back({EventTypeId::Combat, std::move(damageData)});
-    eventMgr.enqueueBatch(std::move(batch));
+    m_singleDeferredEventBatch.clear();
+    m_singleDeferredEventBatch.push_back({EventTypeId::Combat, std::move(damageData)});
+    eventMgr.enqueueBatch(std::move(m_singleDeferredEventBatch));
 
     // Destroy projectile (unless piercing)
     if (!(proj.flags & ProjectileData::FLAG_PIERCING))
     {
-        EntityHandle projHandle = edm.getHandle(projIdx);
-        if (projHandle.isValid())
-        {
-            edm.destroyEntity(projHandle);
-        }
+        embedProjectile(projIdx, knockbackNormal);
     }
 }
 
@@ -497,7 +563,7 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
     std::array<size_t, 4> batchEdmIndices{};
     size_t batchCount = 0;
 
-    // Returns true if projectile hit world boundary (should be destroyed)
+    // Returns true if projectile hit world boundary and should embed there.
     auto updateMovementScalar = [&](TransformData& transform,
                                     const EntityHotData& hotData) -> bool
     {
@@ -549,8 +615,25 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
             {
                 if (updateMovementScalar(*batchTransforms[lane], *batchHotData[lane]))
                 {
-                    EntityHandle handle = edm.getHandle(batchEdmIndices[lane]);
-                    outDestroyQueue.push_back(handle);
+                    TransformData* transform = batchTransforms[lane];
+                    Vector2D impactNormal(0.0f, 0.0f);
+                    if (transform->position.getX() <= batchHotData[lane]->halfWidth)
+                    {
+                        impactNormal.setX(-1.0f);
+                    }
+                    else if (transform->position.getX() >= worldWidth - batchHotData[lane]->halfWidth)
+                    {
+                        impactNormal.setX(1.0f);
+                    }
+                    if (transform->position.getY() <= batchHotData[lane]->halfHeight)
+                    {
+                        impactNormal.setY(-1.0f);
+                    }
+                    else if (transform->position.getY() >= worldHeight - batchHotData[lane]->halfHeight)
+                    {
+                        impactNormal.setY(1.0f);
+                    }
+                    embedProjectile(batchEdmIndices[lane], impactNormal);
                 }
             }
             batchCount = 0;
@@ -636,11 +719,22 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
                 transform->velocity.setY(0.0f);
             }
 
-            // Destroy projectiles that hit world boundary
+            // Embed projectiles that hit the world boundary
             if ((boundaryMask >> lane) & 0x1)
             {
-                EntityHandle handle = edm.getHandle(batchEdmIndices[lane]);
-                outDestroyQueue.push_back(handle);
+                const size_t projectileIndex = batchEdmIndices[lane];
+                auto& projectileHot = edm.getHotDataByIndex(projectileIndex);
+                Vector2D impactNormal(0.0f, 0.0f);
+                if ((clampXMask >> lane) & 0x1)
+                {
+                    impactNormal.setX((velX[lane] > 0.0f) ? 1.0f : -1.0f);
+                }
+                if ((clampYMask >> lane) & 0x1)
+                {
+                    impactNormal.setY((velY[lane] > 0.0f) ? 1.0f : -1.0f);
+                }
+                embedProjectile(projectileIndex, impactNormal);
+                projectileHot.transform.previousPosition = projectileHot.transform.position;
             }
         }
 
@@ -655,7 +749,6 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
 
         if (!hot.isAlive()) continue;
 
-        // Decrement lifetime first — if expired, destroy without movement
         auto& proj = edm.getProjectileData(hot.typeLocalIndex);
         proj.lifetime -= deltaTime;
 
@@ -670,6 +763,11 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
 
         // Store previous position for render interpolation
         transform.previousPosition = transform.position;
+
+        if (proj.isEmbedded())
+        {
+            continue;
+        }
 
         // Accumulate for SIMD batch movement
         batchTransforms[batchCount] = &transform;

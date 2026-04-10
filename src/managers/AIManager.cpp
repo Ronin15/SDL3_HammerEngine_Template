@@ -849,6 +849,21 @@ void AIManager::unregisterEntity(EntityHandle handle) {
   }
 }
 
+void AIManager::destroyAllNPCsForStateTransition() {
+  auto& edm = EntityDataManager::Instance();
+  auto npcIndices = edm.getIndicesByKind(EntityKind::NPC);
+
+  for (size_t idx : npcIndices) {
+    EntityHandle handle = edm.getHandle(idx);
+    if (!handle.isValid()) {
+      continue;
+    }
+
+    unregisterEntity(handle);
+    edm.destroyEntity(handle);
+  }
+}
+
 void AIManager::onEntityFactionChanged(size_t edmIndex, uint8_t oldFaction, uint8_t newFaction) {
   if (oldFaction >= MAX_FACTIONS || newFaction >= MAX_FACTIONS || oldFaction == newFaction) {
     return;

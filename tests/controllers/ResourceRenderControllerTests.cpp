@@ -157,37 +157,6 @@ BOOST_AUTO_TEST_CASE(TestUpdateMultipleTimes) {
 BOOST_AUTO_TEST_SUITE_END()
 
 // ============================================================================
-// ClearAll Tests
-// ============================================================================
-
-BOOST_FIXTURE_TEST_SUITE(ResourceRenderControllerClearTests, ResourceRenderControllerTestFixture)
-
-BOOST_AUTO_TEST_CASE(TestClearAllWithNoResources) {
-    ResourceRenderController controller;
-    auto& edm = EntityDataManager::Instance();
-
-    BOOST_CHECK_EQUAL(edm.getEntityCount(EntityKind::DroppedItem), 0);
-    BOOST_CHECK_EQUAL(edm.getEntityCount(EntityKind::Container), 0);
-    controller.clearAll();
-    BOOST_CHECK_EQUAL(edm.getEntityCount(EntityKind::DroppedItem), 0);
-    BOOST_CHECK_EQUAL(edm.getEntityCount(EntityKind::Container), 0);
-}
-
-BOOST_AUTO_TEST_CASE(TestClearAllMultipleTimes) {
-    ResourceRenderController controller;
-    auto& edm = EntityDataManager::Instance();
-
-    controller.clearAll();
-    controller.clearAll();
-    controller.clearAll();
-
-    BOOST_CHECK_EQUAL(edm.getEntityCount(EntityKind::DroppedItem), 0);
-    BOOST_CHECK_EQUAL(edm.getEntityCount(EntityKind::Container), 0);
-}
-
-BOOST_AUTO_TEST_SUITE_END()
-
-// ============================================================================
 // Animation Constants Tests
 // ============================================================================
 
@@ -366,20 +335,24 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUContainersUsesOpenAndClosedVariants) {
     BOOST_CHECK_NE(openVertices[2].y, closedVertices[2].y);
 }
 
-BOOST_AUTO_TEST_CASE(TestClearAllRemovesTrackedResources) {
+BOOST_AUTO_TEST_CASE(TestWorldResourceManagerTransitionCleanupStopsTrackingResources) {
     EntityHandle item = createDroppedItem(Vector2D(100.0f, 100.0f));
     EntityHandle container = createContainer(Vector2D(120.0f, 120.0f), ContainerType::Chest);
     BOOST_REQUIRE(item.isValid());
     BOOST_REQUIRE(container.isValid());
 
-    ResourceRenderController controller;
-    controller.clearAll();
-    EntityDataManager::Instance().processDestructionQueue();
+    auto& wrm = WorldResourceManager::Instance();
+    wrm.prepareForStateTransition();
 
-    BOOST_CHECK(!EntityDataManager::Instance().isValidHandle(item));
-    BOOST_CHECK(!EntityDataManager::Instance().isValidHandle(container));
-    BOOST_CHECK_EQUAL(EntityDataManager::Instance().getEntityCount(EntityKind::DroppedItem), 0);
-    BOOST_CHECK_EQUAL(EntityDataManager::Instance().getEntityCount(EntityKind::Container), 0);
+    std::vector<size_t> foundItems;
+    std::vector<size_t> foundContainers;
+    wrm.queryDroppedItemsInRadius(Vector2D(0.0f, 0.0f), 100000.0f, foundItems);
+    wrm.queryContainersInRadius(Vector2D(0.0f, 0.0f), 100000.0f, foundContainers);
+
+    BOOST_CHECK(EntityDataManager::Instance().isValidHandle(item));
+    BOOST_CHECK(EntityDataManager::Instance().isValidHandle(container));
+    BOOST_CHECK(foundItems.empty());
+    BOOST_CHECK(foundContainers.empty());
 }
 
 BOOST_AUTO_TEST_SUITE_END()

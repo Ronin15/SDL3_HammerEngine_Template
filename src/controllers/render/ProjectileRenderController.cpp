@@ -23,6 +23,7 @@ void ProjectileRenderController::recordGPU(const VoidLight::GPUSceneContext& ctx
     {
         const auto& hot = edm.getHotDataByIndex(idx);
         if (!hot.isAlive()) { continue; }
+        const auto& projectile = edm.getProjectileData(hot.typeLocalIndex);
 
         // Interpolate position for smooth rendering
         float interpX = hot.transform.previousPosition.getX() +
@@ -30,16 +31,31 @@ void ProjectileRenderController::recordGPU(const VoidLight::GPUSceneContext& ctx
         float interpY = hot.transform.previousPosition.getY() +
             (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
 
+        if (projectile.isEmbedded())
+        {
+            interpX += projectile.embeddedOffsetX;
+            interpY += projectile.embeddedOffsetY;
+        }
+
         // Destination rect (screen space, centered on position)
         float halfW = PROJECTILE_WIDTH * 0.5f;
         float halfH = PROJECTILE_HEIGHT * 0.5f;
         float dstX = interpX - ctx.cameraX - halfW;
         float dstY = interpY - ctx.cameraY - halfH;
 
+        uint8_t alphaByte = 255;
+        if (projectile.isEmbedded() &&
+            projectile.lifetime < ProjectileData::EMBEDDED_FADE_SECONDS)
+        {
+            const float fadeRatio = std::clamp(
+                projectile.lifetime / ProjectileData::EMBEDDED_FADE_SECONDS, 0.0f, 1.0f);
+            alphaByte = static_cast<uint8_t>(255.0f * fadeRatio);
+        }
+
         // Solid green placeholder: sample atlas center (guaranteed opaque in packed atlas)
         // using degenerate UV (single texel) so tint dominates the output color
         ctx.spriteBatch->drawUV(0.5f, 0.5f, 0.5f, 0.5f,
                                 dstX, dstY, PROJECTILE_WIDTH, PROJECTILE_HEIGHT,
-                                0, 255, 0, 255);
+                                0, 255, 0, alphaByte);
     }
 }

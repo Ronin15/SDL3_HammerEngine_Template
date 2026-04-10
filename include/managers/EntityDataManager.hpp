@@ -276,12 +276,22 @@ struct ProjectileData {
     float damage{10.0f};
     float lifetime{5.0f};       // Time until despawn
     float speed{200.0f};
+    float embeddedOffsetX{0.0f};
+    float embeddedOffsetY{0.0f};
     uint8_t damageType{0};      // Physical, Fire, Ice, etc.
     uint8_t flags{0};
 
     static constexpr uint8_t FLAG_PIERCING = 0x01;
     static constexpr uint8_t FLAG_HOMING = 0x02;
     static constexpr uint8_t FLAG_EXPLOSIVE = 0x04;
+    static constexpr uint8_t FLAG_EMBEDDED = 0x08;
+
+    static constexpr float EMBEDDED_LIFETIME_SECONDS = 1.25f;
+    static constexpr float EMBEDDED_FADE_SECONDS = 0.45f;
+
+    [[nodiscard]] bool isEmbedded() const noexcept {
+        return flags & FLAG_EMBEDDED;
+    }
 };
 
 /**

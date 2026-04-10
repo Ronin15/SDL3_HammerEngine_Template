@@ -7,7 +7,7 @@
  * @file NPCRenderControllerTests.cpp
  * @brief Tests for NPCRenderController
  *
- * Tests velocity-based animation logic, edge cases, and cleanup.
+ * Tests velocity-based animation logic and edge cases.
  * Note: Render tests are limited since we can't easily test SDL rendering.
  */
 
@@ -439,12 +439,12 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUFlipsHorizontalSourceCoords) {
 BOOST_AUTO_TEST_SUITE_END()
 
 // ============================================================================
-// CLEAR SPAWNED NPCS TESTS
+// AI-OWNED NPC CLEANUP TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(ClearSpawnedNPCsTests, NPCRenderControllerFixture)
+BOOST_FIXTURE_TEST_SUITE(AIManagerNPCTransitionCleanupTests, NPCRenderControllerFixture)
 
-BOOST_AUTO_TEST_CASE(TestClearDestroysAllNPCs) {
+BOOST_AUTO_TEST_CASE(TestDestroyAllNPCsForStateTransitionDestroysAllNPCs) {
     // Create several NPCs
     createTestNPC(Vector2D(100.0f, 100.0f));
     createTestNPC(Vector2D(200.0f, 200.0f));
@@ -452,8 +452,7 @@ BOOST_AUTO_TEST_CASE(TestClearDestroysAllNPCs) {
 
     BOOST_CHECK_EQUAL(EntityDataManager::Instance().getEntityCount(EntityKind::NPC), 3);
 
-    // Clear all NPCs
-    m_controller.clearSpawnedNPCs();
+    AIManager::Instance().destroyAllNPCsForStateTransition();
 
     // Process destruction queue
     EntityDataManager::Instance().processDestructionQueue();
@@ -462,30 +461,30 @@ BOOST_AUTO_TEST_CASE(TestClearDestroysAllNPCs) {
     BOOST_CHECK_EQUAL(EntityDataManager::Instance().getEntityCount(EntityKind::NPC), 0);
 }
 
-BOOST_AUTO_TEST_CASE(TestClearUnregistersFromAI) {
+BOOST_AUTO_TEST_CASE(TestDestroyAllNPCsForStateTransitionUnregistersFromAI) {
     EntityHandle npc = createTestNPC(Vector2D(100.0f, 100.0f));
     BOOST_REQUIRE(npc.isValid());
 
-    // Register with AI (need a behavior registered first)
-    // Since we don't have behaviors registered in this test, we skip the AI check
-    // but verify the destroy path works
+    AIManager::Instance().registerEntity(npc, "Idle");
+    BOOST_CHECK(AIManager::Instance().hasBehavior(npc));
 
-    m_controller.clearSpawnedNPCs();
+    AIManager::Instance().destroyAllNPCsForStateTransition();
+    BOOST_CHECK(!AIManager::Instance().hasBehavior(npc));
     EntityDataManager::Instance().processDestructionQueue();
 
     // NPC handle should now be invalid
     BOOST_CHECK(!EntityDataManager::Instance().isValidHandle(npc));
 }
 
-BOOST_AUTO_TEST_CASE(TestClearWithNoNPCsIsNoOp) {
+BOOST_AUTO_TEST_CASE(TestDestroyAllNPCsForStateTransitionWithNoNPCsIsNoOp) {
     // Ensure no NPCs exist
     BOOST_CHECK_EQUAL(EntityDataManager::Instance().getEntityCount(EntityKind::NPC), 0);
 
     // This should not crash
-    BOOST_CHECK_NO_THROW(m_controller.clearSpawnedNPCs());
+    BOOST_CHECK_NO_THROW(AIManager::Instance().destroyAllNPCsForStateTransition());
 }
 
-BOOST_AUTO_TEST_CASE(TestClearDoesNotAffectOtherEntities) {
+BOOST_AUTO_TEST_CASE(TestDestroyAllNPCsForStateTransitionDoesNotAffectOtherEntities) {
     // Create an NPC
     createTestNPC(Vector2D(100.0f, 100.0f));
 
@@ -496,8 +495,7 @@ BOOST_AUTO_TEST_CASE(TestClearDoesNotAffectOtherEntities) {
     BOOST_CHECK_EQUAL(EntityDataManager::Instance().getEntityCount(EntityKind::NPC), 1);
     BOOST_CHECK_EQUAL(EntityDataManager::Instance().getEntityCount(EntityKind::Player), 1);
 
-    // Clear NPCs
-    m_controller.clearSpawnedNPCs();
+    AIManager::Instance().destroyAllNPCsForStateTransition();
     EntityDataManager::Instance().processDestructionQueue();
 
     // NPCs should be gone, player should remain

@@ -44,7 +44,7 @@ AIDemoState::~AIDemoState() {
     // Reset AI behaviors first to clear entity references
     // Don't call unassignBehaviorFromEntity here - it uses shared_from_this()
     // Clear NPCs without calling clean() on them
-    m_npcRenderCtrl.clearSpawnedNPCs();
+    AIManager::Instance().destroyAllNPCsForStateTransition();
 
     // Clean up player
     m_player.reset();
@@ -384,7 +384,7 @@ bool AIDemoState::exit() {
 
     // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
     // NPCs hold EDM indices - must be destroyed while EDM data is still valid
-    m_npcRenderCtrl.clearSpawnedNPCs();
+    aiMgr.destroyAllNPCsForStateTransition();
     if (m_player) {
       m_player.reset();
     }
@@ -444,7 +444,7 @@ bool AIDemoState::exit() {
 
   // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
   // NPCs hold EDM indices - must be destroyed while EDM data is still valid
-  m_npcRenderCtrl.clearSpawnedNPCs();
+  aiMgr.destroyAllNPCsForStateTransition();
   if (m_player) {
     m_player->setCamera(nullptr);
     m_player.reset();

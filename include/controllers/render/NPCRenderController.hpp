@@ -54,12 +54,6 @@ public:
      */
     void recordGPU(const VoidLight::GPUSceneContext& ctx);
 
-    /**
-     * @brief Clear all spawned NPCs (cleanup for state transitions)
-     * Queries EDM for NPC indices and destroys them.
-     */
-    void clearSpawnedNPCs();
-
 private:
     static constexpr float MOVEMENT_THRESHOLD = 15.0f;  // Velocity threshold for Moving/Idle
     static constexpr float MOVEMENT_THRESHOLD_SQ = MOVEMENT_THRESHOLD * MOVEMENT_THRESHOLD;  // Squared for lengthSquared() comparison

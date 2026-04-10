@@ -5,7 +5,6 @@
 
 #include "controllers/render/NPCRenderController.hpp"
 #include "entities/EntityHandle.hpp"
-#include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "gpu/SpriteBatch.hpp"
 #include "utils/GPUSceneRecorder.hpp"
@@ -39,23 +38,6 @@ void NPCRenderController::update(float deltaTime) {
 
         if (vx < 0.0f) r.flipMode = static_cast<uint8_t>(SDL_FLIP_HORIZONTAL);
         else if (vx > 0.0f) r.flipMode = static_cast<uint8_t>(SDL_FLIP_NONE);
-    }
-}
-
-void NPCRenderController::clearSpawnedNPCs() {
-    auto& edm = EntityDataManager::Instance();
-    auto& aiMgr = AIManager::Instance();
-
-    // Get all NPC indices
-    auto npcIndices = edm.getIndicesByKind(EntityKind::NPC);
-
-    // Unregister from AI and destroy via EDM
-    for (size_t idx : npcIndices) {
-        EntityHandle handle = edm.getHandle(idx);
-        if (handle.isValid()) {
-            aiMgr.unregisterEntity(handle);
-            edm.destroyEntity(handle);
-        }
     }
 }
 

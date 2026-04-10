@@ -40,8 +40,8 @@ AdvancedAIDemoState::~AdvancedAIDemoState() {
     // Note: Proper cleanup should already have happened in exit()
     // This destructor is just a safety measure in case exit() wasn't called
 
-    // Clear NPCs via NPCRenderController
-    m_npcRenderCtrl.clearSpawnedNPCs();
+    // Clear NPCs through the AI-owned transition cleanup path.
+    AIManager::Instance().destroyAllNPCsForStateTransition();
 
     // Clean up player
     m_player.reset();
@@ -335,7 +335,7 @@ bool AdvancedAIDemoState::exit() {
 
     // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
     // NPCs hold EDM indices - must be destroyed while EDM data is still valid
-    m_npcRenderCtrl.clearSpawnedNPCs();
+    aiMgr.destroyAllNPCsForStateTransition();
     if (m_player) {
       m_player.reset();
     }
@@ -398,7 +398,7 @@ bool AdvancedAIDemoState::exit() {
 
   // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
   // NPCs hold EDM indices - must be destroyed while EDM data is still valid
-  m_npcRenderCtrl.clearSpawnedNPCs();
+  aiMgr.destroyAllNPCsForStateTransition();
   if (m_player) {
     m_player->setCamera(nullptr);
     m_player.reset();

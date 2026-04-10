@@ -39,13 +39,18 @@ void GameStateManager::pushState(GameStateId stateId) {
     VoidLight::FrameProfiler::Instance().suppressFrames(5);
 
     // Pause the current top state if it exists
+    std::shared_ptr<GameState> previousState;
     if (!m_activeStates.empty()) {
-      m_activeStates.back()->pause();
+      previousState = m_activeStates.back();
+      previousState->pause();
     }
 
     // CRITICAL: Enter the state BEFORE adding to active stack to prevent rendering before initialization
     auto newState = it->second;
     if (!newState->enter()) {
+      if (previousState) {
+        previousState->resume();
+      }
       GAMESTATE_ERROR(std::format("Failed to enter state: {}", static_cast<int>(stateId)));
       return;
     }

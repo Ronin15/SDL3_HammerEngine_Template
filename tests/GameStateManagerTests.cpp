@@ -13,14 +13,14 @@
 // Mock GameState for testing
 class MockGameState : public GameState {
 public:
-    explicit MockGameState(GameStateId id)
+    explicit MockGameState(GameStateId id, bool enterResult = true)
         : m_id(id), m_enterCalled(false), m_exitCalled(false),
           m_updateCalled(false), m_renderCalled(false), m_handleInputCalled(false),
-          m_pauseCalled(false), m_resumeCalled(false) {}
+          m_pauseCalled(false), m_resumeCalled(false), m_enterResult(enterResult) {}
 
     bool enter() override {
         m_enterCalled = true;
-        return true;
+        return m_enterResult;
     }
 
     void update(float deltaTime) override {
@@ -73,6 +73,7 @@ private:
     GameStateId m_id;
     bool m_enterCalled, m_exitCalled, m_updateCalled, m_renderCalled,
          m_handleInputCalled, m_pauseCalled, m_resumeCalled;
+    bool m_enterResult;
     float m_lastDeltaTime{0.0f};
 };
 
@@ -127,7 +128,31 @@ BOOST_AUTO_TEST_CASE(TestPushState) {
 
 BOOST_AUTO_TEST_CASE(TestPushNonexistentState) {
     // Pushing nonexistent state should not crash (logs error)
-    BOOST_CHECK_NO_THROW(manager.pushState(GameStateId::LOGO));
+    BOOST_CHECK_NO_THROW(manager.pushState(GameStateId::COUNT));
+}
+
+BOOST_AUTO_TEST_CASE(TestPushStateFailureResumesPreviousState) {
+    auto currentState = std::make_unique<MockGameState>(GameStateId::LOGO);
+    auto failingState = std::make_unique<MockGameState>(GameStateId::LOADING, false);
+    MockGameState* currentStatePtr = currentState.get();
+    MockGameState* failingStatePtr = failingState.get();
+
+    manager.addState(std::move(currentState));
+    manager.addState(std::move(failingState));
+
+    manager.pushState(GameStateId::LOGO);
+    currentStatePtr->resetFlags();
+    failingStatePtr->resetFlags();
+
+    manager.pushState(GameStateId::LOADING);
+
+    BOOST_CHECK(currentStatePtr->wasPauseCalled());
+    BOOST_CHECK(currentStatePtr->wasResumeCalled());
+    BOOST_CHECK(failingStatePtr->wasEnterCalled());
+
+    currentStatePtr->resetFlags();
+    manager.update(0.016f);
+    BOOST_CHECK(currentStatePtr->wasUpdateCalled());
 }
 
 BOOST_AUTO_TEST_CASE(TestPopState) {

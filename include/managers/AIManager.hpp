@@ -163,6 +163,7 @@ public:
   // Entity registration (requires behavior - use assignBehavior() or registerEntity with behavior)
   void registerEntity(EntityHandle handle, const std::string &behaviorName);
   void unregisterEntity(EntityHandle handle);
+  void destroyAllNPCsForStateTransition();
   void onEntityFactionChanged(size_t edmIndex, uint8_t oldFaction, uint8_t newFaction);
 
   /**

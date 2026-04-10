@@ -66,12 +66,6 @@ public:
     void recordGPUContainers(const VoidLight::GPUSceneContext& ctx,
                              const VoidLight::Camera& camera);
 
-    /**
-     * @brief Clear all spawned resources (cleanup for state transitions)
-     * Queries EDM for all resource indices and destroys them.
-     */
-    void clearAll();
-
 private:
     // Update helpers - use camera-based queries for efficiency
     void updateDroppedItemAnimations(float deltaTime, const VoidLight::Camera& camera);

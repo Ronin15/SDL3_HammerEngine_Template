@@ -325,7 +325,7 @@ bool GamePlayState::exit() {
     m_transitioningToGameOver = false;
 
     // Clear NPCs before manager cleanup (NPCs hold EDM indices)
-    m_npcRenderCtrl.clearSpawnedNPCs();
+    aiMgr.destroyAllNPCsForStateTransition();
 
     // Unsubscribe event handlers before clearing controllers
     // (handlers capture `this` and call m_controllers.get<>() which returns
@@ -393,7 +393,7 @@ bool GamePlayState::exit() {
   m_transitioningToGameOver = false;
 
   // Clear NPCs before manager cleanup (NPCs hold EDM indices)
-  m_npcRenderCtrl.clearSpawnedNPCs();
+  aiMgr.destroyAllNPCsForStateTransition();
 
   // Unsubscribe from event handlers before EventManager teardown.
   unregisterEventHandlers();

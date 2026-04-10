@@ -107,6 +107,8 @@ private:
 
     // Collision event handler — converts projectile hits to DamageEvents
     void handleCollisionEvent(const EventData& eventData);
+    void queueProjectileDestroy(size_t projectileIndex);
+    void embedProjectile(size_t projectileIndex, const Vector2D& impactNormal);
 
     // Subscribe/unsubscribe collision event handler
     void subscribeCollisionHandler();
@@ -125,6 +127,7 @@ private:
     std::vector<size_t> m_activeProjectileIndices;
     std::vector<EntityHandle> m_destroyQueue;
     std::vector<std::future<void>> m_batchFutures;
+    std::vector<EventManager::DeferredEvent> m_singleDeferredEventBatch;
 
     // Per-batch destroy queues for multi-threaded processing
     std::vector<std::vector<EntityHandle>> m_batchDestroyQueues;

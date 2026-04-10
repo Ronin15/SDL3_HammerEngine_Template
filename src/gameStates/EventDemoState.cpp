@@ -363,7 +363,7 @@ bool EventDemoState::exit() {
       m_player.reset();
 
       // Clear spawned NPCs (data-driven via NPCRenderController)
-      m_npcRenderCtrl.clearSpawnedNPCs();
+      aiMgr.destroyAllNPCsForStateTransition();
 
       // Clear controllers
       m_controllers.clear();
@@ -435,7 +435,7 @@ bool EventDemoState::exit() {
     m_player.reset();
 
     // Clear spawned NPCs (data-driven via NPCRenderController)
-    m_npcRenderCtrl.clearSpawnedNPCs();
+    aiMgr.destroyAllNPCsForStateTransition();
 
     // Clear controllers
     m_controllers.clear();
@@ -444,6 +444,7 @@ bool EventDemoState::exit() {
     unregisterEventHandlers();
 
     aiMgr.prepareForStateTransition();
+    ProjectileManager::Instance().prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
     worldMgr.prepareForStateTransition();
 
@@ -1069,7 +1070,7 @@ std::string EventDemoState::getCurrentWeatherString() const {
 
 void EventDemoState::cleanupSpawnedNPCs() {
   // Data-driven cleanup via NPCRenderController (handles AI unregistration and EDM destruction)
-  m_npcRenderCtrl.clearSpawnedNPCs();
+  AIManager::Instance().destroyAllNPCsForStateTransition();
 }
 
 void EventDemoState::setupResourceAchievements() {
