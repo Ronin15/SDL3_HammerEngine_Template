@@ -169,6 +169,12 @@ bool WorldResourceManager::removeWorld(const WorldId& worldId) {
         return false;
     }
 
+    if (worldId == m_activeWorld) {
+        m_activeWorld.clear();
+        m_activeWorldItemCount.store(0, std::memory_order_relaxed);
+        m_activeWorldHarvestableCount.store(0, std::memory_order_relaxed);
+    }
+
     // Remove reverse lookups for this world's inventories
     for (uint32_t invIdx : invIt->second) {
         m_inventoryToWorld.erase(invIdx);
@@ -180,6 +186,30 @@ bool WorldResourceManager::removeWorld(const WorldId& worldId) {
             m_harvestableToWorld.erase(harvIdx);
         }
         m_harvestableRegistry.erase(harvIt);
+    }
+
+    auto itemIt = m_itemSpatialIndices.find(worldId);
+    if (itemIt != m_itemSpatialIndices.end()) {
+        for (const auto& entry : itemIt->second.entityToCell) {
+            m_itemToWorld.erase(entry.first);
+        }
+        m_itemSpatialIndices.erase(itemIt);
+    }
+
+    auto harvSpatialIt = m_harvestableSpatialIndices.find(worldId);
+    if (harvSpatialIt != m_harvestableSpatialIndices.end()) {
+        for (const auto& entry : harvSpatialIt->second.entityToCell) {
+            m_harvestableSpatialToWorld.erase(entry.first);
+        }
+        m_harvestableSpatialIndices.erase(harvSpatialIt);
+    }
+
+    auto containerIt = m_containerSpatialIndices.find(worldId);
+    if (containerIt != m_containerSpatialIndices.end()) {
+        for (const auto& entry : containerIt->second.entityToCell) {
+            m_containerToWorld.erase(entry.first);
+        }
+        m_containerSpatialIndices.erase(containerIt);
     }
 
     m_inventoryRegistry.erase(invIt);
@@ -820,6 +850,15 @@ void WorldResourceManager::clearSpatialDataForWorld(const WorldId& worldId) {
             m_harvestableSpatialToWorld.erase(entry.first);
         }
         harvIt->second.clear();
+    }
+
+    // Clear container spatial index
+    auto containerIt = m_containerSpatialIndices.find(worldId);
+    if (containerIt != m_containerSpatialIndices.end()) {
+        for (const auto& entry : containerIt->second.entityToCell) {
+            m_containerToWorld.erase(entry.first);
+        }
+        containerIt->second.clear();
     }
 
     WORLD_RESOURCE_INFO(std::format("Cleared spatial data for world: {}", worldId));

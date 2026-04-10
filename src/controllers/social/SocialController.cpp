@@ -20,6 +20,25 @@
 
 namespace {
     constexpr const char* GAMEPLAY_EVENT_LOG = "gameplay_event_log";
+
+    AIManager::SocialInteractionType toAISocialInteractionType(InteractionType type) {
+        switch (type) {
+            case InteractionType::Trade:
+                return AIManager::SocialInteractionType::Trade;
+            case InteractionType::Gift:
+                return AIManager::SocialInteractionType::Gift;
+            case InteractionType::Greeting:
+                return AIManager::SocialInteractionType::Greeting;
+            case InteractionType::Help:
+                return AIManager::SocialInteractionType::Help;
+            case InteractionType::Theft:
+                return AIManager::SocialInteractionType::Theft;
+            case InteractionType::Insult:
+                return AIManager::SocialInteractionType::Insult;
+        }
+
+        return AIManager::SocialInteractionType::Greeting;
+    }
 }
 
 void SocialController::subscribe() {
@@ -462,45 +481,10 @@ void SocialController::recordInteraction(EntityHandle npcHandle,
         return;
     }
 
-    auto& edm = EntityDataManager::Instance();
-    size_t idx = edm.getIndex(npcHandle);
-    if (idx == SIZE_MAX) {
-        return;
-    }
-
     auto player = mp_player.lock();
     EntityHandle playerHandle = player ? player->getHandle() : EntityHandle{};
-
-    MemoryEntry entry;
-    entry.subject = playerHandle;
-    entry.location = edm.getHotDataByIndex(idx).transform.position;
-    entry.timestamp = GameTimeManager::Instance().getTotalGameTimeSeconds();
-    entry.value = value;
-    entry.type = MemoryType::Interaction;
-    entry.flags = MemoryEntry::FLAG_VALID;
-
-    float importance = std::abs(value) * 50.0f;
-    switch (type) {
-        case InteractionType::Gift:
-            importance += 50.0f;
-            break;
-        case InteractionType::Help:
-            importance += 75.0f;
-            break;
-        case InteractionType::Theft:
-            importance = 200.0f;
-            break;
-        case InteractionType::Trade:
-            importance += 25.0f;
-            break;
-        default:
-            importance += 10.0f;
-            break;
-    }
-    entry.importance = static_cast<uint8_t>(std::min(255.0f, importance));
-
-    edm.addMemory(idx, entry);
-    updateEmotions(npcHandle, type, value);
+    AIManager::Instance().applySocialInteraction(
+        npcHandle, playerHandle, toAISocialInteractionType(type), value);
 }
 
 void SocialController::reportTheft(EntityHandle thief,
@@ -628,51 +612,6 @@ void SocialController::recordTrade(EntityHandle npcHandle, float tradeValue, boo
 void SocialController::recordGift(EntityHandle npcHandle, float giftValue) {
     float value = GIFT_RELATIONSHIP_BASE + (giftValue * GIFT_VALUE_SCALE);
     recordInteraction(npcHandle, InteractionType::Gift, value);
-}
-
-void SocialController::updateEmotions(EntityHandle npcHandle,
-                                      InteractionType type,
-                                      float value) {
-    auto& edm = EntityDataManager::Instance();
-    size_t idx = edm.getIndex(npcHandle);
-    if (idx == SIZE_MAX) {
-        return;
-    }
-
-    float aggression = 0.0f;
-    float fear = 0.0f;
-    float curiosity = 0.0f;
-    float suspicion = 0.0f;
-
-    switch (type) {
-        case InteractionType::Trade:
-            suspicion = -0.05f * (value > 0 ? 1.0f : -0.5f);
-            break;
-        case InteractionType::Gift:
-            suspicion = -0.15f;
-            aggression = -0.1f;
-            fear = -0.05f;
-            break;
-        case InteractionType::Greeting:
-            suspicion = -0.02f;
-            break;
-        case InteractionType::Help:
-            suspicion = -0.2f;
-            aggression = -0.15f;
-            fear = -0.1f;
-            break;
-        case InteractionType::Theft:
-            suspicion = 0.4f;
-            aggression = 0.3f;
-            fear = 0.1f;
-            break;
-        case InteractionType::Insult:
-            aggression = 0.2f;
-            suspicion = 0.15f;
-            break;
-    }
-
-    edm.modifyEmotions(idx, aggression, fear, curiosity, suspicion);
 }
 
 float SocialController::getItemBaseValue(VoidLight::ResourceHandle itemHandle) const {

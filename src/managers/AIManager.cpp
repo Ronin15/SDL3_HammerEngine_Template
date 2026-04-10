@@ -873,6 +873,86 @@ void AIManager::onEntityFactionChanged(size_t edmIndex, uint8_t oldFaction, uint
       edm.getHandle(edmIndex), edmIndex, oldFaction, newFaction);
 }
 
+void AIManager::applySocialInteraction(EntityHandle npcHandle,
+                                       EntityHandle subjectHandle,
+                                       SocialInteractionType interactionType,
+                                       float value) {
+  if (!npcHandle.isValid()) {
+    return;
+  }
+
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(npcHandle);
+  if (idx == SIZE_MAX || !edm.hasMemoryData(idx)) {
+    return;
+  }
+
+  MemoryEntry entry;
+  entry.subject = subjectHandle;
+  entry.location = edm.getHotDataByIndex(idx).transform.position;
+  entry.timestamp = GameTimeManager::Instance().getTotalGameTimeSeconds();
+  entry.value = value;
+  entry.type = MemoryType::Interaction;
+  entry.flags = MemoryEntry::FLAG_VALID;
+
+  float importance = std::abs(value) * 50.0f;
+  switch (interactionType) {
+    case SocialInteractionType::Gift:
+      importance += 50.0f;
+      break;
+    case SocialInteractionType::Help:
+      importance += 75.0f;
+      break;
+    case SocialInteractionType::Theft:
+      importance = 200.0f;
+      break;
+    case SocialInteractionType::Trade:
+      importance += 25.0f;
+      break;
+    case SocialInteractionType::Greeting:
+    case SocialInteractionType::Insult:
+      importance += 10.0f;
+      break;
+  }
+  entry.importance = static_cast<uint8_t>(std::min(255.0f, importance));
+  edm.addMemory(idx, entry);
+
+  float aggression = 0.0f;
+  float fear = 0.0f;
+  float curiosity = 0.0f;
+  float suspicion = 0.0f;
+
+  switch (interactionType) {
+    case SocialInteractionType::Trade:
+      suspicion = -0.05f * (value > 0 ? 1.0f : -0.5f);
+      break;
+    case SocialInteractionType::Gift:
+      suspicion = -0.15f;
+      aggression = -0.1f;
+      fear = -0.05f;
+      break;
+    case SocialInteractionType::Greeting:
+      suspicion = -0.02f;
+      break;
+    case SocialInteractionType::Help:
+      suspicion = -0.2f;
+      aggression = -0.15f;
+      fear = -0.1f;
+      break;
+    case SocialInteractionType::Theft:
+      suspicion = 0.4f;
+      aggression = 0.3f;
+      fear = 0.1f;
+      break;
+    case SocialInteractionType::Insult:
+      aggression = 0.2f;
+      suspicion = 0.15f;
+      break;
+  }
+
+  edm.modifyEmotions(idx, aggression, fear, curiosity, suspicion);
+}
+
 // Thread safety: m_activeIndicesBuffer and m_cachedPlayerEdmIdx are written on
 // the main thread before batch futures are submitted. Futures create a
 // happens-before edge, so worker threads read consistent data without a lock.

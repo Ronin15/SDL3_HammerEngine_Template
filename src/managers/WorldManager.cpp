@@ -204,6 +204,8 @@ void WorldManager::unloadWorldUnsafe() {
       m_tileRenderer->clearChunkCache();
     }
 
+    WorldResourceManager::Instance().removeWorld(worldId);
+
     m_currentWorld.reset();
   }
 }

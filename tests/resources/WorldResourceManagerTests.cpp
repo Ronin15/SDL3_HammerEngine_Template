@@ -166,6 +166,36 @@ BOOST_AUTO_TEST_CASE(TestWorldCreationAndRemoval) {
   BOOST_CHECK(std::find(worlds.begin(), worlds.end(), "default") != worlds.end());
 }
 
+BOOST_AUTO_TEST_CASE(TestRemoveWorldClearsSpatialIndices) {
+  const std::string worldId = "spatial_cleanup_world";
+  BOOST_REQUIRE(worldManager->createWorld(worldId));
+  worldManager->setActiveWorld(worldId);
+  BOOST_REQUIRE(goldHandle.isValid());
+  BOOST_REQUIRE(oreHandle.isValid());
+
+  EntityHandle droppedItem = entityDataManager->createDroppedItem(
+      Vector2D(64.0f, 64.0f), goldHandle, 3, worldId);
+  EntityHandle harvestable = entityDataManager->createHarvestable(
+      Vector2D(96.0f, 64.0f), oreHandle, 1, 2, 30.0f, worldId);
+  EntityHandle container = entityDataManager->createContainer(
+      Vector2D(128.0f, 64.0f), ContainerType::Chest, 8, 0, worldId);
+  BOOST_REQUIRE(droppedItem.isValid());
+  BOOST_REQUIRE(harvestable.isValid());
+  BOOST_REQUIRE(container.isValid());
+
+  std::vector<size_t> indices;
+  BOOST_CHECK_GT(worldManager->queryDroppedItemsInRadius(Vector2D(64.0f, 64.0f), 32.0f, indices), 0);
+  BOOST_CHECK_GT(worldManager->queryHarvestablesInRadius(Vector2D(96.0f, 64.0f), 32.0f, indices), 0);
+  BOOST_CHECK_GT(worldManager->queryContainersInRadius(Vector2D(128.0f, 64.0f), 32.0f, indices), 0);
+
+  BOOST_REQUIRE(worldManager->removeWorld(worldId));
+
+  BOOST_CHECK(worldManager->getActiveWorld().empty());
+  BOOST_CHECK_EQUAL(worldManager->queryDroppedItemsInRadius(Vector2D(64.0f, 64.0f), 32.0f, indices), 0);
+  BOOST_CHECK_EQUAL(worldManager->queryHarvestablesInRadius(Vector2D(96.0f, 64.0f), 32.0f, indices), 0);
+  BOOST_CHECK_EQUAL(worldManager->queryContainersInRadius(Vector2D(128.0f, 64.0f), 32.0f, indices), 0);
+}
+
 //==============================================================================
 // Inventory Registration Tests
 //==============================================================================

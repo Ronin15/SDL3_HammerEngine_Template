@@ -66,6 +66,15 @@ struct AIEntityData {
  */
 class AIManager {
 public:
+  enum class SocialInteractionType : uint8_t {
+    Trade,
+    Gift,
+    Greeting,
+    Help,
+    Theft,
+    Insult
+  };
+
   static AIManager &Instance() {
     static AIManager instance;
     return instance;
@@ -165,6 +174,9 @@ public:
   void unregisterEntity(EntityHandle handle);
   void destroyAllNPCsForStateTransition();
   void onEntityFactionChanged(size_t edmIndex, uint8_t oldFaction, uint8_t newFaction);
+  void applySocialInteraction(EntityHandle npcHandle, EntityHandle subjectHandle,
+                              SocialInteractionType interactionType,
+                              float value);
 
   /**
    * @brief Linear scan of active entities returning handles within radius (O(N))

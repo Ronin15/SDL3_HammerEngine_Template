@@ -75,10 +75,15 @@ bool ItemController::attemptPickup() {
         return false;
     }
 
+    const int oldQuantity = edm.getInventoryQuantity(playerInvIdx, itemData.resourceHandle);
     if (!edm.addToInventory(playerInvIdx, itemData.resourceHandle, itemData.quantity)) {
         ITEM_DEBUG("Inventory full, cannot pick up item");
         return false;
     }
+    const int newQuantity = oldQuantity + itemData.quantity;
+    EventManager::Instance().triggerResourceChange(
+        player->getHandle(), itemData.resourceHandle, oldQuantity, newQuantity,
+        "picked_up");
 
     // Destroy the item (auto-unregisters from WRM via freeSlot)
     edm.destroyEntity(itemHandle);

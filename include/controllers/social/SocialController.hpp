@@ -16,11 +16,10 @@
  *    Price modifiers, inventory transfer, trade UI lifecycle.
  *
  * 2. SOCIAL INTERACTIONS — Gifts, greetings, theft, relationship building.
- *    Records interactions in NPC memory (NPCMemoryData), modifies emotions,
- *    and will expand to affect NPC personality stats (bravery, etc.)
- *    through sustained social bonds.
+ *    Detects and routes interaction outcomes through AI-owned social state
+ *    application so NPC memory and emotions stay under AI ownership.
  *
- * Both domains share relationship queries and NPC memory access.
+ * Both domains share relationship queries over NPC memory state.
  *
  * Ownership: ControllerRegistry owns the controller instance.
  */
@@ -159,12 +158,11 @@ public:
                  int quantity = 1);
 
     /**
-     * @brief Record a social interaction in NPC memory
+     * @brief Record a social interaction for AI-owned NPC state application
      * @param value Interaction quality (-1.0 to +1.0)
      *
-     * Creates a MemoryType::Interaction entry and updates NPC emotions.
-     * Future: sustained positive interactions will improve NPC personality
-     * stats (bravery, composure, etc.) through social bonds.
+     * Routes the interaction to AI-owned logic that records
+     * MemoryType::Interaction and updates NPC emotions.
      */
     void recordInteraction(EntityHandle npcHandle,
                            InteractionType type,
@@ -240,8 +238,6 @@ private:
     // --- Memory recording ---
     void recordTrade(EntityHandle npcHandle, float tradeValue, bool wasGoodDeal);
     void recordGift(EntityHandle npcHandle, float giftValue);
-    void updateEmotions(EntityHandle npcHandle, InteractionType type, float value);
-
     // --- Utility ---
     [[nodiscard]] float getItemBaseValue(VoidLight::ResourceHandle itemHandle) const;
 

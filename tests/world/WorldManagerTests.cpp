@@ -96,6 +96,28 @@ BOOST_AUTO_TEST_CASE(TestLoadNewWorld) {
     });
 }
 
+BOOST_AUTO_TEST_CASE(TestUnloadWorldRemovesWRMState) {
+    WorldGenerationConfig config;
+    config.width = 20;
+    config.height = 20;
+    config.seed = 67890;
+    config.elevationFrequency = 0.1f;
+    config.humidityFrequency = 0.1f;
+    config.waterLevel = 0.3f;
+    config.mountainLevel = 0.7f;
+
+    BOOST_REQUIRE(worldManager->loadNewWorld(config));
+    const std::string worldId = worldManager->getCurrentWorldId();
+    BOOST_REQUIRE(!worldId.empty());
+    BOOST_REQUIRE(worldResourceManager->hasWorld(worldId));
+
+    worldManager->unloadWorld();
+
+    BOOST_CHECK(!worldManager->hasActiveWorld());
+    BOOST_CHECK(!worldResourceManager->hasWorld(worldId));
+    BOOST_CHECK(worldResourceManager->getActiveWorld().empty());
+}
+
 BOOST_AUTO_TEST_CASE(TestHarvestablesUseConfiguredHarvestTypes) {
     WorldGenerationConfig config;
     config.width = 40;
