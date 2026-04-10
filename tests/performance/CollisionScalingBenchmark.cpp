@@ -38,15 +38,17 @@ namespace {
 // Test fixture for collision scaling benchmarks
 class CollisionScalingFixture {
 public:
+    static bool& initializedFlag() { return s_initialized; }
+
     CollisionScalingFixture() {
         // Initialize systems once per fixture
         if (!s_initialized) {
-            HammerEngine::ThreadSystem::Instance().init();
-            EntityDataManager::Instance().init();
+            BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
+            BOOST_REQUIRE(EntityDataManager::Instance().init());
             CollisionManager::Instance().init();
             BackgroundSimulationManager::Instance().init();
             // Enable benchmark mode to suppress verbose logging during benchmarks
-            HAMMER_ENABLE_BENCHMARK_MODE();
+            VOIDLIGHT_ENABLE_BENCHMARK_MODE();
             s_initialized = true;
         }
         m_rng.seed(42); // Fixed seed for reproducibility
@@ -58,7 +60,7 @@ public:
     void prepareForTest() {
         CollisionManager::Instance().prepareForStateTransition();
         EntityDataManager::Instance().prepareForStateTransition();
-        HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+        VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
     }
 
     // Create movable entities in EDM
@@ -137,8 +139,8 @@ public:
             // Create EventOnly trigger (water, area markers, etc.)
             EntityID id = cm.createTriggerAreaAt(
                 pos.getX(), pos.getY(), 32.0f, 32.0f,
-                HammerEngine::TriggerTag::Water,
-                HammerEngine::TriggerType::EventOnly,
+                VoidLight::TriggerTag::Water,
+                VoidLight::TriggerType::EventOnly,
                 CollisionLayer::Layer_Environment,
                 CollisionLayer::Layer_Player | CollisionLayer::Layer_Enemy
             );
@@ -238,6 +240,23 @@ private:
 
 bool CollisionScalingFixture::s_initialized = false;
 
+struct CollisionScalingModuleCleanup {
+    ~CollisionScalingModuleCleanup() {
+        if (!CollisionScalingFixture::initializedFlag()) {
+            return;
+        }
+
+        BackgroundSimulationManager::Instance().clean();
+        CollisionManager::Instance().clean();
+        EntityDataManager::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
+
+        CollisionScalingFixture::initializedFlag() = false;
+    }
+};
+
+BOOST_GLOBAL_FIXTURE(CollisionScalingModuleCleanup);
+
 } // anonymous namespace
 
 // ===========================================================================
@@ -249,7 +268,7 @@ BOOST_FIXTURE_TEST_SUITE(CollisionScalingTests, CollisionScalingFixture)
 // Print header with system info
 BOOST_AUTO_TEST_CASE(PrintHeader)
 {
-    const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+    const auto& budget = VoidLight::WorkerBudgetManager::Instance().getBudget();
 
     std::cout << "\n=== Collision Scaling Benchmark ===\n";
     std::cout << "Date: " << __DATE__ << " " << __TIME__ << "\n";

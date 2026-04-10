@@ -15,7 +15,7 @@
 // ============================================================================
 // TEST SUITE: BufferReusePatternTests
 // ============================================================================
-// Tests that verify the fundamental buffer reuse patterns used throughout HammerEngine
+// Tests that verify the fundamental buffer reuse patterns used throughout VoidLight
 // These patterns are documented in CLAUDE.md "Memory Management" section
 
 BOOST_AUTO_TEST_SUITE(BufferReusePatternTests)

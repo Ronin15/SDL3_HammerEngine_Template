@@ -18,7 +18,7 @@
 #include "ResourceTestAccess.hpp"
 #include "utils/JsonReader.hpp"
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 class ResourceFactoryTestFixture {
 public:

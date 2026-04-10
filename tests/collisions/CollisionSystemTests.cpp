@@ -26,7 +26,7 @@
 #include <random>
 #include <atomic>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 BOOST_AUTO_TEST_SUITE(AABBTests)
 
@@ -505,7 +505,7 @@ BOOST_AUTO_TEST_CASE(TestStaticMovableSeparation)
 {
     // Initialize managers
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -519,7 +519,7 @@ BOOST_AUTO_TEST_CASE(TestStaticMovableSeparation)
     EntityID staticId = staticHandle.getId();
     CollisionManager::Instance().addStaticBody(staticId, testAABB.center, testAABB.halfSize,
                                                 CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex);
+                                                false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), staticEdmIndex);
 
     // Create movable entity via EDM (NPCs)
     Vector2D npcPos(150.0f, 150.0f);
@@ -550,7 +550,7 @@ BOOST_AUTO_TEST_CASE(TestBroadphasePerformanceWithDualHashes)
 {
     // Test that broadphase performance is improved with separate static/movable storage
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -572,7 +572,7 @@ BOOST_AUTO_TEST_CASE(TestBroadphasePerformanceWithDualHashes)
         size_t staticEdmIndex = edm.getStaticIndex(staticHandle);
         EntityID id = staticHandle.getId();
         CollisionManager::Instance().addStaticBody(id, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-                                                    false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex);
+                                                    false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), staticEdmIndex);
         staticBodies.push_back(id);
     }
 
@@ -639,7 +639,7 @@ BOOST_AUTO_TEST_CASE(TestMovableBatchUpdateWithEDM)
 {
     // Test that batch movable updates work correctly with EDM-centric system
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -717,7 +717,7 @@ BOOST_AUTO_TEST_CASE(TestStaticBodyCacheInvalidation)
 {
     // Test that static body cache is properly invalidated when static bodies change
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -729,7 +729,7 @@ BOOST_AUTO_TEST_CASE(TestStaticBodyCacheInvalidation)
     size_t staticEdmIndex = edm.getStaticIndex(staticHandle);
     EntityID staticId = staticHandle.getId();
     CollisionManager::Instance().addStaticBody(staticId, staticAABB.center, staticAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex);
+                                                false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), staticEdmIndex);
 
     // Add a movable body near the static body via EDM
     EntityID movableId = 40001;
@@ -753,7 +753,7 @@ BOOST_AUTO_TEST_CASE(TestStaticBodyCacheInvalidation)
     size_t staticEdmIndex2 = edm.getStaticIndex(staticHandle2);
     EntityID staticId2 = staticHandle2.getId();
     CollisionManager::Instance().addStaticBody(staticId2, staticAABB2.center, staticAABB2.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex2);
+                                                false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), staticEdmIndex2);
 
     // Verify cache invalidation by checking that static body count is correct
     BOOST_CHECK_EQUAL(CollisionManager::Instance().getStaticBodyCount(), 2);
@@ -782,8 +782,8 @@ BOOST_AUTO_TEST_CASE(TestTriggerSystemCreation)
     AABB triggerAABB(100.0f, 100.0f, 50.0f, 50.0f);
     EntityID triggerId = CollisionManager::Instance().createTriggerArea(
         triggerAABB,
-        HammerEngine::TriggerTag::Water,
-        HammerEngine::TriggerType::EventOnly,
+        VoidLight::TriggerTag::Water,
+        VoidLight::TriggerType::EventOnly,
         CollisionLayer::Layer_Environment,
         CollisionLayer::Layer_Player | CollisionLayer::Layer_Enemy
     );
@@ -794,8 +794,8 @@ BOOST_AUTO_TEST_CASE(TestTriggerSystemCreation)
     // Test createTriggerAreaAt convenience method
     EntityID triggerId2 = CollisionManager::Instance().createTriggerAreaAt(
         200.0f, 200.0f, 25.0f, 25.0f,
-        HammerEngine::TriggerTag::Lava,
-        HammerEngine::TriggerType::EventOnly,
+        VoidLight::TriggerTag::Lava,
+        VoidLight::TriggerType::EventOnly,
         CollisionLayer::Layer_Environment,
         CollisionLayer::Layer_Player
     );
@@ -826,8 +826,8 @@ BOOST_AUTO_TEST_CASE(TestTriggerCooldowns)
     // Create a trigger
     EntityID triggerId = CollisionManager::Instance().createTriggerAreaAt(
         50.0f, 50.0f, 20.0f, 20.0f,
-        HammerEngine::TriggerTag::Portal,
-        HammerEngine::TriggerType::EventOnly
+        VoidLight::TriggerTag::Portal,
+        VoidLight::TriggerType::EventOnly
     );
 
     // Set specific cooldown for this trigger
@@ -845,7 +845,7 @@ BOOST_AUTO_TEST_CASE(TestBodyLayerFiltering)
 {
     // Test collision layer filtering functionality via EDM
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     // Create movable entities with different layers via EDM
@@ -878,7 +878,7 @@ BOOST_AUTO_TEST_CASE(TestBodyLayerFiltering)
     size_t envEdmIndex = edm.getStaticIndex(envHandle);
     EntityID environmentId = envHandle.getId();
     CollisionManager::Instance().addStaticBody(environmentId, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), envEdmIndex);
+                                                false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), envEdmIndex);
 
     // Verify layer settings on EDM entities
     BOOST_CHECK(playerHot.hasCollision());
@@ -898,7 +898,7 @@ BOOST_AUTO_TEST_CASE(TestBodyEnableDisable)
 {
     // Test body enable/disable functionality via EDM
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     EntityID bodyId = 6000;
@@ -933,7 +933,7 @@ BOOST_AUTO_TEST_CASE(TestBodyResize)
 {
     // Test body resize functionality via EDM
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     Vector2D originalPos(200.0f, 200.0f);
@@ -972,7 +972,7 @@ BOOST_AUTO_TEST_CASE(TestVelocityManagement)
 {
     // Test velocity setting via EDM
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     EntityID bodyId = 8000;
@@ -1026,7 +1026,7 @@ BOOST_AUTO_TEST_CASE(TestCollisionInfoIndicesIntegrity)
     // EDM-CENTRIC: Movables must be registered in EDM to participate in collision
 
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     // Create two overlapping NPC entities in EDM (Active tier = participates in collision)
@@ -1043,10 +1043,10 @@ BOOST_AUTO_TEST_CASE(TestCollisionInfoIndicesIntegrity)
     size_t edmIdxB = edm.findIndexByEntityId(handleB.getId());
     auto& hotA = edm.getHotDataByIndex(edmIdxA);
     auto& hotB = edm.getHotDataByIndex(edmIdxB);
-    hotA.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
-    hotA.collisionMask = HammerEngine::CollisionLayer::Layer_Enemy;
-    hotB.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
-    hotB.collisionMask = HammerEngine::CollisionLayer::Layer_Enemy;
+    hotA.collisionLayers = VoidLight::CollisionLayer::Layer_Enemy;
+    hotA.collisionMask = VoidLight::CollisionLayer::Layer_Enemy;
+    hotB.collisionLayers = VoidLight::CollisionLayer::Layer_Enemy;
+    hotB.collisionMask = VoidLight::CollisionLayer::Layer_Enemy;
 
     // EDM-CENTRIC: Use BackgroundSimulationManager to update tiers
     // This populates m_activeIndices for collision detection
@@ -1120,8 +1120,8 @@ BOOST_AUTO_TEST_SUITE(CollisionIntegrationTests)
 struct CollisionIntegrationFixture {
     CollisionIntegrationFixture() {
         // Initialize ThreadSystem first (following established pattern)
-        if (!HammerEngine::ThreadSystem::Exists()) {
-            HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
+        if (!VoidLight::ThreadSystem::Exists()) {
+            BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init()); // Auto-detect system threads
         }
         
         // Initialize EventManager for event testing
@@ -1169,7 +1169,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrat
     
     // Test 1: Adding a static body should trigger an event
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
 
     Vector2D staticPos(100.0f, 200.0f);
     AABB staticAABB(staticPos.getX(), staticPos.getY(), 32.0f, 32.0f);
@@ -1178,7 +1178,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrat
     EntityID staticId = staticHandle.getId();
 
     CollisionManager::Instance().addStaticBody(staticId, staticAABB.center, staticAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex);
+                                                false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), staticEdmIndex);
 
     // Process deferred events - CollisionManager fires events in Deferred mode
     // so we need to drain all events to ensure deterministic test behavior
@@ -1240,7 +1240,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventRadiusCalculation, CollisionIntegratio
     
     // Test different sized obstacles produce appropriate radii
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
 
     // Small obstacle: 10x10
     AABB smallAABB(0.0f, 0.0f, 5.0f, 5.0f);
@@ -1248,7 +1248,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventRadiusCalculation, CollisionIntegratio
     size_t smallEdmIndex = edm.getStaticIndex(smallHandle);
     EntityID smallId = smallHandle.getId();
     CollisionManager::Instance().addStaticBody(smallId, smallAABB.center, smallAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), smallEdmIndex);
+                                                false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), smallEdmIndex);
     EventManager::Instance().drainAllDeferredEvents();
 
     float smallRadius = lastEventRadius;
@@ -1261,7 +1261,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventRadiusCalculation, CollisionIntegratio
     size_t largeEdmIndex = edm.getStaticIndex(largeHandle);
     EntityID largeId = largeHandle.getId();
     CollisionManager::Instance().addStaticBody(largeId, largeAABB.center, largeAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), largeEdmIndex);
+                                                false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), largeEdmIndex);
     EventManager::Instance().drainAllDeferredEvents();
 
     float largeRadius = lastEventRadius;
@@ -1293,7 +1293,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventPerformanceImpact, CollisionIntegratio
     std::vector<EntityID> bodies;
 
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
 
     // Measure time to add many static bodies (which trigger events)
     auto start = std::chrono::high_resolution_clock::now();
@@ -1304,7 +1304,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventPerformanceImpact, CollisionIntegratio
         size_t staticEdmIndex = edm.getStaticIndex(staticHandle);
         EntityID id = staticHandle.getId();
         CollisionManager::Instance().addStaticBody(id, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-                                                    false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex);
+                                                    false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), staticEdmIndex);
         bodies.push_back(id);
     }
 
@@ -1344,7 +1344,7 @@ BOOST_AUTO_TEST_CASE(TestTriggerEventNotifications)
     // Test that trigger events are properly generated
     std::atomic<int> triggerEventCount{0};
     Vector2D lastTriggerPosition;
-    HammerEngine::TriggerTag lastTriggerTag;
+    VoidLight::TriggerTag lastTriggerTag;
     bool lastTriggerEntering = false;
 
     // Subscribe to trigger events
@@ -1365,8 +1365,8 @@ BOOST_AUTO_TEST_CASE(TestTriggerEventNotifications)
     // Create a trigger
     EntityID triggerId = CollisionManager::Instance().createTriggerAreaAt(
         300.0f, 300.0f, 30.0f, 30.0f,
-        HammerEngine::TriggerTag::Water,
-        HammerEngine::TriggerType::EventOnly
+        VoidLight::TriggerTag::Water,
+        VoidLight::TriggerType::EventOnly
     );
 
     BOOST_CHECK(CollisionManager::Instance().isTrigger(triggerId));
@@ -1383,7 +1383,7 @@ BOOST_AUTO_TEST_CASE(TestWorldBounds)
 {
     // Test world bounds functionality
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     // Set world bounds
@@ -1416,7 +1416,7 @@ BOOST_AUTO_TEST_CASE(TestLayerCollisionFiltering)
 {
     // Test that collision detection respects layer filtering via EDM
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     // Create two movable bodies that should NOT collide due to layer filtering
@@ -1461,7 +1461,7 @@ BOOST_AUTO_TEST_CASE(TestMixedBodyTypeInteractions)
 {
     // Test interactions between different body types
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     EntityID movableId = 11001;
@@ -1475,7 +1475,7 @@ BOOST_AUTO_TEST_CASE(TestMixedBodyTypeInteractions)
     size_t staticEdmIndex = edm.getStaticIndex(staticHandle);
     EntityID staticId = staticHandle.getId();
     CollisionManager::Instance().addStaticBody(staticId, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex);
+                                                false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), staticEdmIndex);
 
     // Add movable body via EDM
     EntityHandle movableHandle = edm.createNPCWithRaceClass( position, "Human", "Guard");
@@ -1488,8 +1488,8 @@ BOOST_AUTO_TEST_CASE(TestMixedBodyTypeInteractions)
     // Add trigger via CollisionManager
     triggerId = CollisionManager::Instance().createTriggerAreaAt(
         position.getX(), position.getY(), 25.0f, 25.0f,
-        HammerEngine::TriggerTag::Checkpoint,
-        HammerEngine::TriggerType::EventOnly
+        VoidLight::TriggerTag::Checkpoint,
+        VoidLight::TriggerType::EventOnly
     );
 
     // Verify static body type in CollisionManager
@@ -1525,12 +1525,12 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
 {
     // Test spatial partitioning edge cases for static bodies in CollisionManager
     // Note: Movables are now in EDM, so these tests focus on static body spatial hashing
-    if (!HammerEngine::ThreadSystem::Exists()) {
-        HammerEngine::ThreadSystem::Instance().init();
+    if (!VoidLight::ThreadSystem::Exists()) {
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
     }
 
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     // Test 1: Static bodies exactly at grid boundaries
@@ -1543,7 +1543,7 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     CollisionManager::Instance().addStaticBody(
         boundaryId, boundaryAABB.center, boundaryAABB.halfSize,
         CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-        false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), boundaryEdmIndex
+        false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), boundaryEdmIndex
     );
 
     // Should be findable via area query
@@ -1560,7 +1560,7 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     CollisionManager::Instance().addStaticBody(
         largeId, largeAABB.center, largeAABB.halfSize,
         CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-        false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), largeEdmIndex
+        false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), largeEdmIndex
     );
 
     // Should be findable from multiple query regions
@@ -1587,7 +1587,7 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     CollisionManager::Instance().addStaticBody(
         extremeId, extremeAABB.center, extremeAABB.halfSize,
         CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-        false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), extremeEdmIndex
+        false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), extremeEdmIndex
     );
 
     // Should still be queryable
@@ -1604,7 +1604,7 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     CollisionManager::Instance().addStaticBody(
         zeroId, zeroAABB.center, zeroAABB.halfSize,
         CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-        false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), zeroEdmIndex
+        false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), zeroEdmIndex
     );
 
     // Should still be tracked and queryable
@@ -1623,7 +1623,7 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     CollisionManager::Instance().addStaticBody(
         movingId, movingAABB.center, movingAABB.halfSize,
         CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-        false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), movingEdmIndex
+        false, 0, static_cast<uint8_t>(VoidLight::TriggerType::Physical), movingEdmIndex
     );
 
     // Move across fine cell boundaries multiple times
@@ -1662,7 +1662,7 @@ BOOST_AUTO_TEST_CASE(TestEDMBatchPositionUpdate)
 {
     // EDM-CENTRIC: Test batch position updates via EntityDataManager
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     const int NUM_ENTITIES = 50;
@@ -1717,7 +1717,7 @@ BOOST_AUTO_TEST_CASE(TestEDMMultiBatchUpdates)
 {
     // EDM-CENTRIC: Test multiple batch updates (like AIManager does per-thread)
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     const int NUM_BATCHES = 4;
@@ -1782,7 +1782,7 @@ BOOST_AUTO_TEST_CASE(TestEDMBatchUpdatePerformance)
 {
     // EDM-CENTRIC: Measure performance of batch position updates via EDM
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
 
     const int NUM_ENTITIES = 500;
@@ -1843,7 +1843,7 @@ BOOST_AUTO_TEST_CASE(TestTriggerDetectionFlag)
 {
     // Test that NEEDS_TRIGGER_DETECTION flag is properly set and queried
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -1908,7 +1908,7 @@ BOOST_AUTO_TEST_CASE(TestEventOnlyTriggerDetection)
 {
     // Test that EventOnly triggers are detected via spatial queries
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -1927,8 +1927,8 @@ BOOST_AUTO_TEST_CASE(TestEventOnlyTriggerDetection)
     // Create EventOnly trigger at position X (overlapping with player)
     EntityID nearTriggerId = CollisionManager::Instance().createTriggerAreaAt(
         105.0f, 105.0f, 30.0f, 30.0f,
-        HammerEngine::TriggerTag::Water,
-        HammerEngine::TriggerType::EventOnly,
+        VoidLight::TriggerTag::Water,
+        VoidLight::TriggerType::EventOnly,
         CollisionLayer::Layer_Environment,
         CollisionLayer::Layer_Player
     );
@@ -1936,8 +1936,8 @@ BOOST_AUTO_TEST_CASE(TestEventOnlyTriggerDetection)
     // Create EventOnly trigger at distant position Y (NOT overlapping)
     EntityID farTriggerId = CollisionManager::Instance().createTriggerAreaAt(
         1000.0f, 1000.0f, 30.0f, 30.0f,
-        HammerEngine::TriggerTag::Lava,
-        HammerEngine::TriggerType::EventOnly,
+        VoidLight::TriggerTag::Lava,
+        VoidLight::TriggerType::EventOnly,
         CollisionLayer::Layer_Environment,
         CollisionLayer::Layer_Player
     );
@@ -1970,7 +1970,7 @@ BOOST_AUTO_TEST_CASE(TestNPCTriggerDetection)
 {
     // Test that NPCs with NEEDS_TRIGGER_DETECTION flag can fire trigger events
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -1994,8 +1994,8 @@ BOOST_AUTO_TEST_CASE(TestNPCTriggerDetection)
     // Create EventOnly trigger overlapping NPC
     EntityID triggerId = CollisionManager::Instance().createTriggerAreaAt(
         155.0f, 155.0f, 30.0f, 30.0f,
-        HammerEngine::TriggerTag::Checkpoint,
-        HammerEngine::TriggerType::EventOnly,
+        VoidLight::TriggerTag::Checkpoint,
+        VoidLight::TriggerType::EventOnly,
         CollisionLayer::Layer_Environment,
         CollisionLayer::Layer_Enemy  // Mask includes Layer_Enemy so NPC can trigger it
     );
@@ -2045,7 +2045,7 @@ BOOST_AUTO_TEST_CASE(TestSweepAndPruneTriggerDetection)
 {
     // Test that sweep-and-prune path works correctly for large entity counts
     auto& edm = EntityDataManager::Instance();
-    edm.init();
+    BOOST_REQUIRE(edm.init());
     CollisionManager::Instance().init();
     auto& bgm = BackgroundSimulationManager::Instance();
     bgm.init();
@@ -2083,8 +2083,8 @@ BOOST_AUTO_TEST_CASE(TestSweepAndPruneTriggerDetection)
 
         EntityID triggerId = CollisionManager::Instance().createTriggerAreaAt(
             x, y, 50.0f, 50.0f,
-            HammerEngine::TriggerTag::Water,
-            HammerEngine::TriggerType::EventOnly,
+            VoidLight::TriggerTag::Water,
+            VoidLight::TriggerType::EventOnly,
             CollisionLayer::Layer_Environment,
             CollisionLayer::Layer_Enemy
         );

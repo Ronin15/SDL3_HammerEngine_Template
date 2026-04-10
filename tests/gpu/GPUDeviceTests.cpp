@@ -15,8 +15,8 @@
 #include <SDL3/SDL.h>
 #include <string>
 
-using namespace HammerEngine;
-using namespace HammerEngine::Test;
+using namespace VoidLight;
+using namespace VoidLight::Test;
 
 // Global fixture for SDL cleanup
 BOOST_GLOBAL_FIXTURE(GPUGlobalFixture);
@@ -127,7 +127,7 @@ BOOST_FIXTURE_TEST_CASE(DoubleShutdownSafety, GPUTestFixture) {
     SDL_Window* window = getTestWindow();
     BOOST_REQUIRE(window != nullptr);
 
-    device.init(window);
+    BOOST_REQUIRE(device.init(window));
     BOOST_REQUIRE(device.isInitialized());
 
     // First shutdown
@@ -175,7 +175,7 @@ BOOST_FIXTURE_TEST_CASE(GetShaderFormats, GPUTestFixture) {
     BOOST_CHECK(hasSPIRV || hasMSL || hasDXBC || hasDXIL);
 
     const SDL_GPUShaderFormat requestedFormats =
-        HammerEngine::GPUPlatformConfig::getRequestedShaderFormats();
+        VoidLight::GPUPlatformConfig::getRequestedShaderFormats();
     BOOST_CHECK((formats & requestedFormats) == requestedFormats);
 
     BOOST_TEST_MESSAGE("Shader formats - SPIRV: " << hasSPIRV
@@ -236,7 +236,7 @@ BOOST_FIXTURE_TEST_CASE(GetDriverName, GPUTestFixture) {
     BOOST_CHECK(driverName != nullptr);
     BOOST_CHECK(strlen(driverName) > 0);
     BOOST_CHECK_EQUAL(std::string(driverName),
-                      std::string(HammerEngine::GPUPlatformConfig::getPreferredDriverName()));
+                      std::string(VoidLight::GPUPlatformConfig::getPreferredDriverName()));
 
     BOOST_TEST_MESSAGE("GPU driver: " << driverName);
 
@@ -335,7 +335,7 @@ BOOST_FIXTURE_TEST_CASE(IsInitializedAccuracy, GPUTestFixture) {
     SDL_Window* window = getTestWindow();
     BOOST_REQUIRE(window != nullptr);
 
-    device.init(window);
+    BOOST_REQUIRE(device.init(window));
     BOOST_CHECK(device.isInitialized());
 
     device.shutdown();

@@ -7,12 +7,29 @@
 #define GAME_STATE_HPP
 
 #include <SDL3/SDL_gpu.h>
-#include <string>
+#include <cstdint>
 
 class GameStateManager;
-namespace HammerEngine {
+namespace VoidLight {
 class GPURenderer;
 }
+
+enum class GameStateId : uint8_t
+{
+    LOGO,
+    LOADING,
+    MAIN_MENU,
+    SETTINGS_MENU,
+    GAME_PLAY,
+    GAME_OVER,
+    PAUSE,
+    AI_DEMO,
+    ADVANCED_AI_DEMO,
+    EVENT_DEMO,
+    UI_DEMO,
+    OVERLAY_DEMO,
+    COUNT
+};
 
 // pure virtual for inheritance
 class GameState {
@@ -23,7 +40,7 @@ class GameState {
   virtual bool exit() = 0;
   virtual void pause() {}
   virtual void resume() {}
-  virtual std::string getName() const = 0;
+  virtual GameStateId getStateId() const = 0;
   virtual ~GameState() = default;
 
   /**
@@ -32,7 +49,7 @@ class GameState {
    * @param gpuRenderer Reference to GPURenderer for accessing vertex pools/batches
    * @param interpolationAlpha Interpolation factor for smooth rendering
    */
-  virtual void recordGPUVertices([[maybe_unused]] HammerEngine::GPURenderer& gpuRenderer,
+  virtual void recordGPUVertices([[maybe_unused]] VoidLight::GPURenderer& gpuRenderer,
                                   [[maybe_unused]] float interpolationAlpha) {}
 
   /**
@@ -42,7 +59,7 @@ class GameState {
    * @param scenePass Active scene render pass
    * @param interpolationAlpha Interpolation factor
    */
-  virtual void renderGPUScene([[maybe_unused]] HammerEngine::GPURenderer& gpuRenderer,
+  virtual void renderGPUScene([[maybe_unused]] VoidLight::GPURenderer& gpuRenderer,
                                [[maybe_unused]] SDL_GPURenderPass* scenePass,
                                [[maybe_unused]] float interpolationAlpha) {}
 
@@ -53,7 +70,7 @@ class GameState {
    * @param gpuRenderer Reference to GPURenderer
    * @param swapchainPass Active swapchain render pass
    */
-  virtual void renderGPUUI([[maybe_unused]] HammerEngine::GPURenderer& gpuRenderer,
+  virtual void renderGPUUI([[maybe_unused]] VoidLight::GPURenderer& gpuRenderer,
                             [[maybe_unused]] SDL_GPURenderPass* swapchainPass) {}
 
   /**

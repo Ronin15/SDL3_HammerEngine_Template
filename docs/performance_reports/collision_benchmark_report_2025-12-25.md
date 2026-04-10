@@ -102,12 +102,12 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
     return;
   }
 
-  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  auto& budgetMgr = VoidLight-Framework::WorkerBudgetManager::Instance();
   size_t optimalWorkers = budgetMgr.getOptimalWorkers(
-      HammerEngine::SystemType::Collision, indexPairs.size());
+      VoidLight-Framework::SystemType::Collision, indexPairs.size());
 
   auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-      HammerEngine::SystemType::Collision,
+      VoidLight-Framework::SystemType::Collision,
       indexPairs.size(),
       optimalWorkers);
 
@@ -184,10 +184,10 @@ void CollisionManager::narrowphaseBatch(
 ```cpp
 // After narrowphase completes (in updateSOA())
 if (m_lastNarrowphaseWasThreaded && pairCount > 0) {
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight-Framework::WorkerBudgetManager::Instance();
     double narrowphaseMs = std::chrono::duration<double, std::milli>(t3 - t2).count();
     budgetMgr.reportBatchCompletion(
-        HammerEngine::SystemType::Collision,
+        VoidLight-Framework::SystemType::Collision,
         pairCount,
         m_lastNarrowphaseBatchCount,
         narrowphaseMs

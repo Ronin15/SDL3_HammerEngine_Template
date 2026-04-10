@@ -19,7 +19,7 @@
 #include <atomic>
 #include <vector>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 /**
  * PathfinderAIContentionTests
@@ -37,7 +37,9 @@ using namespace HammerEngine;
 // Global ThreadSystem fixture (matching PathfinderManagerTests pattern)
 struct ContentionThreadFixture {
     ContentionThreadFixture() {
-        ThreadSystem::Instance().init(4096);
+        if (!ThreadSystem::Instance().init(4096)) {
+            throw std::runtime_error("ThreadSystem::init() failed");
+        }
     }
     ~ContentionThreadFixture() {
         if (!ThreadSystem::Instance().isShutdown()) {
@@ -52,7 +54,7 @@ BOOST_AUTO_TEST_SUITE(PathfinderAIContentionTestSuite)
 
 struct ContentionFixture {
     ContentionFixture() {
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         EventManager::Instance().init();
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();

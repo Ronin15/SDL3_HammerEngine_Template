@@ -57,34 +57,34 @@ public:
     }
 
     // Initialize save game system
-    bool init();
+    [[nodiscard]] bool init();
 
     // Check if initialized
     bool isInitialized() const { return m_isInitialized; }
 
     // Save game data to a file
     // Returns true if save was successful
-    bool save(const std::string& saveFileName, const Player& player);
+    [[nodiscard]] bool save(const std::string& saveFileName, const Player& player);
 
     // Save game data to a slot (creates a file with a standard naming convention)
     // Returns true if save was successful
-    bool saveToSlot(int slotNumber, const Player& player);
+    [[nodiscard]] bool saveToSlot(int slotNumber, const Player& player);
 
     // Load game data from a file
     // Returns true if load was successful
-    bool load(const std::string& saveFileName, Player& player) const;
+    [[nodiscard]] bool load(const std::string& saveFileName, Player& player) const;
 
     // Load game data from a slot
     // Returns true if load was successful
-    bool loadFromSlot(int slotNumber, Player& player) const;
+    [[nodiscard]] bool loadFromSlot(int slotNumber, Player& player) const;
 
     // Delete a save file
     // Returns true if deletion was successful
-    bool deleteSave(const std::string& saveFileName) const;
+    [[nodiscard]] bool deleteSave(const std::string& saveFileName) const;
 
     // Delete a save slot
     // Returns true if deletion was successful
-    bool deleteSlot(int slotNumber) const;
+    [[nodiscard]] bool deleteSlot(int slotNumber) const;
 
     // Get a list of all save files in the save directory
     std::vector<std::string> getSaveFiles() const;

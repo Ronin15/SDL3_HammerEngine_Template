@@ -13,8 +13,8 @@
 #include <memory>
 
 namespace {
-EventManager::HandlerToken registerParticleEffectForwarder() {
-  return EventManager::Instance().registerHandlerWithToken(
+void registerParticleEffectForwarder() {
+  EventManager::Instance().registerHandler(
       EventTypeId::ParticleEffect, [](const EventData &data) {
         ParticleManager::Instance().handleParticleEffectEvent(data);
       });
@@ -271,8 +271,7 @@ BOOST_FIXTURE_TEST_CASE(TestTriggerParticleEffectIntegration,
                         ParticleManagerCoreFixture) {
   manager->init();
   manager->registerBuiltInEffects();
-  const auto particleForwarder = registerParticleEffectForwarder();
-  (void)particleForwarder;
+  registerParticleEffectForwarder();
 
   // This is how production code triggers particle effects
   bool result = EventManager::Instance().triggerParticleEffect(
@@ -293,8 +292,7 @@ BOOST_FIXTURE_TEST_CASE(TestTriggerDifferentEffectTypes,
                         ParticleManagerCoreFixture) {
   manager->init();
   manager->registerBuiltInEffects();
-  const auto particleForwarder = registerParticleEffectForwarder();
-  (void)particleForwarder;
+  registerParticleEffectForwarder();
 
   // Test all built-in effect types via production API
   std::vector<std::string> effectNames = {"Fire", "Smoke", "Sparks",
@@ -384,8 +382,7 @@ BOOST_FIXTURE_TEST_CASE(TestTriggerEffectExtremeValues,
                         ParticleManagerCoreFixture) {
   manager->init();
   manager->registerBuiltInEffects();
-  const auto particleForwarder = registerParticleEffectForwarder();
-  (void)particleForwarder;
+  registerParticleEffectForwarder();
 
   // Extreme positions - should not crash
   BOOST_CHECK(EventManager::Instance().triggerParticleEffect(
@@ -417,8 +414,7 @@ BOOST_FIXTURE_TEST_CASE(TestMultipleParticleEffectEvents,
                         ParticleManagerCoreFixture) {
   manager->init();
   manager->registerBuiltInEffects();
-  const auto particleForwarder = registerParticleEffectForwarder();
-  (void)particleForwarder;
+  registerParticleEffectForwarder();
 
   // Dispatch multiple effects through EventManager
   EventManager::Instance().triggerParticleEffect(

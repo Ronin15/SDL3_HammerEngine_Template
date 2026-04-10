@@ -46,10 +46,10 @@ class PathfinderBenchmarkFixture {
 public:
     PathfinderBenchmarkFixture() {
         // Initialize core systems required for pathfinding (order matters!)
-        HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init()); // Auto-detect system threads
 
         // Log WorkerBudget allocations for production-matching verification
-        const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+        const auto& budget = VoidLight::WorkerBudgetManager::Instance().getBudget();
         std::cout << "System: " << std::thread::hardware_concurrency() << " hardware threads\n";
         std::cout << "WorkerBudget: " << budget.totalWorkers << " workers (all available per manager)\n";
 
@@ -61,7 +61,7 @@ public:
         EventManager::Instance().init();
 
         // Initialize EntityDataManager before collision manager (EDM owns static body data)
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
 
         // Initialize world and collision managers
         WorldManager::Instance().init();
@@ -84,7 +84,7 @@ public:
 private:
     void setupTestWorld() {
         // Create a 200x200 world for testing using WorldManager
-        HammerEngine::WorldGenerationConfig config;
+        VoidLight::WorldGenerationConfig config;
         config.width = 200;
         config.height = 200;
         config.seed = 42; // Fixed seed for reproducible results
@@ -127,7 +127,7 @@ private:
             int y = posDist(rng);
 
             // Create static body through EDM and get its index
-            Vector2D center(x * HammerEngine::TILE_SIZE, y * HammerEngine::TILE_SIZE);
+            Vector2D center(x * VoidLight::TILE_SIZE, y * VoidLight::TILE_SIZE);
             EntityHandle handle = edm.createStaticBody(center, 16.0f, 16.0f);
             size_t edmIndex = edm.getStaticIndex(handle);
             EntityID obstacleId = handle.getId();
@@ -177,8 +177,8 @@ BOOST_AUTO_TEST_CASE(BenchmarkImmediatePathfinding) {
         auto startBatch = high_resolution_clock::now();
 
         for (int i = 0; i < pathsPerSize; ++i) {
-            Vector2D start(coordDist(rng) * HammerEngine::TILE_SIZE, coordDist(rng) * HammerEngine::TILE_SIZE);
-            Vector2D goal(coordDist(rng) * HammerEngine::TILE_SIZE, coordDist(rng) * HammerEngine::TILE_SIZE);
+            Vector2D start(coordDist(rng) * VoidLight::TILE_SIZE, coordDist(rng) * VoidLight::TILE_SIZE);
+            Vector2D goal(coordDist(rng) * VoidLight::TILE_SIZE, coordDist(rng) * VoidLight::TILE_SIZE);
 
             std::vector<Vector2D> path;
             std::atomic<bool> pathReady{false};
@@ -275,8 +275,8 @@ BOOST_AUTO_TEST_CASE(BenchmarkAsyncPathfinding) {
 
         // Submit batch of async requests
         for (int i = 0; i < batchSize; ++i) {
-            Vector2D start(coordDist(rng) * HammerEngine::TILE_SIZE, coordDist(rng) * HammerEngine::TILE_SIZE);
-            Vector2D goal(coordDist(rng) * HammerEngine::TILE_SIZE, coordDist(rng) * HammerEngine::TILE_SIZE);
+            Vector2D start(coordDist(rng) * VoidLight::TILE_SIZE, coordDist(rng) * VoidLight::TILE_SIZE);
+            Vector2D goal(coordDist(rng) * VoidLight::TILE_SIZE, coordDist(rng) * VoidLight::TILE_SIZE);
 
             uint64_t requestId = PathfinderManager::Instance().requestPath(
                 static_cast<EntityID>(2000 + i),
@@ -343,11 +343,11 @@ BOOST_AUTO_TEST_CASE(BenchmarkPathLengthScaling) {
     std::cout << "=== Path Length vs Performance ===\n";
 
     const std::vector<std::pair<Vector2D, Vector2D>> pathTests = {
-        {{HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE}, {64.0f, 64.0f}}, // Very short path
-        {{HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE}, {320.0f, 320.0f}}, // Short path
-        {{HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE}, {1600.0f, 1600.0f}}, // Medium path
-        {{HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE}, {3200.0f, 3200.0f}}, // Long path
-        {{HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE}, {6000.0f, 6000.0f}} // Very long path
+        {{VoidLight::TILE_SIZE, VoidLight::TILE_SIZE}, {64.0f, 64.0f}}, // Very short path
+        {{VoidLight::TILE_SIZE, VoidLight::TILE_SIZE}, {320.0f, 320.0f}}, // Short path
+        {{VoidLight::TILE_SIZE, VoidLight::TILE_SIZE}, {1600.0f, 1600.0f}}, // Medium path
+        {{VoidLight::TILE_SIZE, VoidLight::TILE_SIZE}, {3200.0f, 3200.0f}}, // Long path
+        {{VoidLight::TILE_SIZE, VoidLight::TILE_SIZE}, {6000.0f, 6000.0f}} // Very long path
     };
 
     const int testsPerPath = 20;
@@ -435,8 +435,8 @@ BOOST_AUTO_TEST_CASE(BenchmarkCachePerformance) {
     // Generate unique path requests
     std::vector<std::pair<Vector2D, Vector2D>> uniquePaths;
     for (int i = 0; i < numUniquePaths; ++i) {
-        Vector2D start(coordDist(rng) * HammerEngine::TILE_SIZE, coordDist(rng) * HammerEngine::TILE_SIZE);
-        Vector2D goal(coordDist(rng) * HammerEngine::TILE_SIZE, coordDist(rng) * HammerEngine::TILE_SIZE);
+        Vector2D start(coordDist(rng) * VoidLight::TILE_SIZE, coordDist(rng) * VoidLight::TILE_SIZE);
+        Vector2D goal(coordDist(rng) * VoidLight::TILE_SIZE, coordDist(rng) * VoidLight::TILE_SIZE);
         uniquePaths.emplace_back(start, goal);
     }
 
@@ -582,7 +582,7 @@ struct BenchmarkGlobalFixture {
         EventManager::Instance().clean();
         WorldResourceManager::Instance().clean();
         ResourceTemplateManager::Instance().clean();
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
 
         std::cout << "\n=== Pathfinder Benchmark Summary ===\n";
         std::cout << "Benchmark completed successfully!\n";

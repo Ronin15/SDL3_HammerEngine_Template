@@ -1,4 +1,4 @@
-# Camera-Driven Rendering Refactor Plan (SDL3_HammerEngine_Template)
+# Camera-Driven Rendering Refactor Plan (SDL3_VoidLight-Framework_Template)
 
 ## Purpose
 

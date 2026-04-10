@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <unordered_map>
 
-namespace HammerEngine {
+namespace VoidLight {
 class Camera;
 class GPURenderer;
 }  // Forward declarations
@@ -31,7 +31,7 @@ public:
    * @param cameraY Camera Y offset
    * @param interpolationAlpha Interpolation factor for smooth rendering
    */
-  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer, float cameraX,
+  void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer, float cameraX,
                          float cameraY, float interpolationAlpha);
 
   /**
@@ -39,7 +39,7 @@ public:
    * @param gpuRenderer GPU renderer instance
    * @param scenePass Active scene render pass
    */
-  void renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* scenePass);
+  void renderGPU(VoidLight::GPURenderer& gpuRenderer, SDL_GPURenderPass* scenePass);
 
   void clean() override;
 
@@ -69,21 +69,21 @@ public:
   [[nodiscard]] uint32_t getInventoryIndex() const { return m_inventoryIndex; }
 
   // Resource operations (delegate to EntityDataManager)
-  bool addToInventory(HammerEngine::ResourceHandle handle, int quantity);
-  bool removeFromInventory(HammerEngine::ResourceHandle handle, int quantity);
-  [[nodiscard]] int getInventoryQuantity(HammerEngine::ResourceHandle handle) const;
-  [[nodiscard]] bool hasInInventory(HammerEngine::ResourceHandle handle, int quantity = 1) const;
+  bool addToInventory(VoidLight::ResourceHandle handle, int quantity);
+  bool removeFromInventory(VoidLight::ResourceHandle handle, int quantity);
+  [[nodiscard]] int getInventoryQuantity(VoidLight::ResourceHandle handle) const;
+  [[nodiscard]] bool hasInInventory(VoidLight::ResourceHandle handle, int quantity = 1) const;
 
   // Equipment management
-  bool equipItem(HammerEngine::ResourceHandle itemHandle);
+  bool equipItem(VoidLight::ResourceHandle itemHandle);
   bool unequipItem(const std::string &slotName);
-  HammerEngine::ResourceHandle
+  VoidLight::ResourceHandle
   getEquippedItem(const std::string &slotName) const;
 
   // Crafting and consumption
   bool canCraft(const std::string &recipeId) const;
   bool craftItem(const std::string &recipeId);
-  bool consumeItem(HammerEngine::ResourceHandle itemHandle);
+  bool consumeItem(VoidLight::ResourceHandle itemHandle);
 
   // Initialization - call after construction to setup inventory
   void initializeInventory();
@@ -95,8 +95,8 @@ public:
   void invalidateWorldBoundsCache() { m_worldBoundsCached = false; }
 
   // Camera access for player states (non-owning, must be cleared before camera teardown)
-  void setCamera(HammerEngine::Camera* camera) { mp_camera = camera; }
-  HammerEngine::Camera* getCamera() const { return mp_camera; }
+  void setCamera(VoidLight::Camera* camera) { mp_camera = camera; }
+  VoidLight::Camera* getCamera() const { return mp_camera; }
 
   // Combat system - all stats stored in EntityDataManager::CharacterData
   void takeDamage(float damage, const Vector2D& knockback = Vector2D(0, 0));
@@ -134,7 +134,7 @@ private:
   void setupStates();
   void setupInventory();
   void initializeAnimationMap();
-  void onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
+  void onResourceChanged(VoidLight::ResourceHandle resourceHandle,
                          int oldQuantity, int newQuantity);
   EntityStateManager m_stateManager;
   uint32_t m_inventoryIndex{0};       // EDM inventory index (0 = not created yet)
@@ -146,7 +146,7 @@ private:
   // m_animationMap and m_animationLoops inherited from Entity
 
   // Equipment slots - store handles instead of item IDs
-  std::unordered_map<std::string, HammerEngine::ResourceHandle>
+  std::unordered_map<std::string, VoidLight::ResourceHandle>
       m_equippedItems; // slot -> itemHandle
 
   // PERFORMANCE: Cached world bounds to avoid WorldManager::Instance() call every frame
@@ -165,9 +165,9 @@ private:
   Vector2D m_initialPosition{400.0f, 300.0f};
 
   // Non-owning camera pointer for player states (set by GamePlayState)
-  HammerEngine::Camera* mp_camera{nullptr};
+  VoidLight::Camera* mp_camera{nullptr};
 
   // PERFORMANCE: Cache gold resource handle to avoid repeated lookups in gold methods
-  HammerEngine::ResourceHandle m_goldHandle{};
+  VoidLight::ResourceHandle m_goldHandle{};
 };
 #endif // PLAYER_HPP

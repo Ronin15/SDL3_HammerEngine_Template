@@ -13,8 +13,8 @@
 #include "utils/ResourcePath.hpp"  // For path resolution in JSON loading
 #include "utils/UniqueID.hpp"
 
-using HammerEngine::JsonReader;
-using HammerEngine::JsonValue;
+using VoidLight::JsonReader;
+using VoidLight::JsonValue;
 #include <algorithm>
 #include <cassert>
 #include <format>
@@ -37,7 +37,7 @@ AtlasRegion lookupAtlasRegion(const std::string& regionId) {
     // map is const (read-only) after initialization so concurrent reads are safe.
     static const std::unordered_map<std::string, JsonValue> atlasRegions = [] {
         JsonReader atlasReader;
-        if (!atlasReader.loadFromFile(HammerEngine::ResourcePath::resolve("res/data/atlas.json"))) {
+        if (!atlasReader.loadFromFile(VoidLight::ResourcePath::resolve("res/data/atlas.json"))) {
             return std::unordered_map<std::string, JsonValue>{};
         }
 
@@ -56,11 +56,11 @@ AtlasRegion lookupAtlasRegion(const std::string& regionId) {
 
     const auto& region = it->second;
     return {
-        static_cast<uint16_t>(region["x"].asInt()),
-        static_cast<uint16_t>(region["y"].asInt()),
-        static_cast<uint16_t>(region["w"].asInt()),
-        static_cast<uint16_t>(region["h"].asInt()),
-        true
+        .x     = static_cast<uint16_t>(region["x"].asInt()),
+        .y     = static_cast<uint16_t>(region["y"].asInt()),
+        .w     = static_cast<uint16_t>(region["w"].asInt()),
+        .h     = static_cast<uint16_t>(region["h"].asInt()),
+        .found = true
     };
 }
 
@@ -487,7 +487,7 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     std::lock_guard<std::mutex> lock(m_creationMutex);
 
     size_t index = allocateSlot();
-    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    EntityHandle::IDType id = VoidLight::UniqueID::generate();
     uint8_t generation = nextGeneration(index);
 
     // Initialize hot data
@@ -518,16 +518,16 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     // Enemy NPCs: Layer_Enemy, can collide with other enemies
     uint8_t faction = m_characterData[charIndex].faction;
     if (faction == 1) {  // Enemy
-        hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
-        hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player |
-                            HammerEngine::CollisionLayer::Layer_Environment |
-                            HammerEngine::CollisionLayer::Layer_Projectile |
-                            HammerEngine::CollisionLayer::Layer_Enemy;
+        hot.collisionLayers = VoidLight::CollisionLayer::Layer_Enemy;
+        hot.collisionMask = VoidLight::CollisionLayer::Layer_Player |
+                            VoidLight::CollisionLayer::Layer_Environment |
+                            VoidLight::CollisionLayer::Layer_Projectile |
+                            VoidLight::CollisionLayer::Layer_Enemy;
     } else {  // Friendly (0) or Neutral (2)
-        hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Default;
-        hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player |
-                            HammerEngine::CollisionLayer::Layer_Environment |
-                            HammerEngine::CollisionLayer::Layer_Projectile;
+        hot.collisionLayers = VoidLight::CollisionLayer::Layer_Default;
+        hot.collisionMask = VoidLight::CollisionLayer::Layer_Player |
+                            VoidLight::CollisionLayer::Layer_Environment |
+                            VoidLight::CollisionLayer::Layer_Projectile;
     }
     hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
     hot.triggerTag = 0;
@@ -616,6 +616,10 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     charData.priority = classInfo.basePriority;
     charData.faction = (factionOverride != 0xFF) ? factionOverride : classInfo.defaultFaction;
     charData.emotionalResilience = classInfo.emotionalResilience;
+    charData.combatStyle = (classInfo.combatStyle == "ranged")
+        ? CharacterData::CombatStyle::Ranged
+        : CharacterData::CombatStyle::Melee;
+    charData.projectileSpeed = classInfo.projectileSpeed;
     charData.mass = raceInfo.sizeMultiplier * raceInfo.sizeMultiplier;  // Mass scales with area
 
     // Apply faction-based collision layers
@@ -878,16 +882,16 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
 void EntityDataManager::applyFactionCollision(size_t index, uint8_t faction) {
     auto& hot = m_hotData[index];
     if (faction == 1) {  // Enemy
-        hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
-        hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player |
-                            HammerEngine::CollisionLayer::Layer_Environment |
-                            HammerEngine::CollisionLayer::Layer_Projectile |
-                            HammerEngine::CollisionLayer::Layer_Enemy;
+        hot.collisionLayers = VoidLight::CollisionLayer::Layer_Enemy;
+        hot.collisionMask = VoidLight::CollisionLayer::Layer_Player |
+                            VoidLight::CollisionLayer::Layer_Environment |
+                            VoidLight::CollisionLayer::Layer_Projectile |
+                            VoidLight::CollisionLayer::Layer_Enemy;
     } else {  // Friendly (0) or Neutral (2)
-        hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Default;
-        hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player |
-                            HammerEngine::CollisionLayer::Layer_Environment |
-                            HammerEngine::CollisionLayer::Layer_Projectile;
+        hot.collisionLayers = VoidLight::CollisionLayer::Layer_Default;
+        hot.collisionMask = VoidLight::CollisionLayer::Layer_Player |
+                            VoidLight::CollisionLayer::Layer_Environment |
+                            VoidLight::CollisionLayer::Layer_Projectile;
     }
 }
 
@@ -954,7 +958,7 @@ const AnimalRoleInfo* EntityDataManager::getAnimalRoleInfo(const std::string& ro
 }
 
 EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
-                                                  HammerEngine::ResourceHandle resourceHandle,
+                                                  VoidLight::ResourceHandle resourceHandle,
                                                   int quantity,
                                                   const std::string& worldId) {
     // Validation: Invalid resource handle
@@ -991,7 +995,7 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
         m_staticGenerations.push_back(0);
     }
 
-    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    EntityHandle::IDType id = VoidLight::UniqueID::generate();
     uint8_t generation = ++m_staticGenerations[index];
 
     // Initialize hot data in STATIC pool
@@ -1130,7 +1134,7 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
         m_staticGenerations.push_back(0);
     }
 
-    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    EntityHandle::IDType id = VoidLight::UniqueID::generate();
     uint8_t generation = ++m_staticGenerations[index];
 
     // Initialize hot data in STATIC pool
@@ -1249,12 +1253,12 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
 }
 
 EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
-                                                  HammerEngine::ResourceHandle yieldResource,
+                                                  VoidLight::ResourceHandle yieldResource,
                                                   int yieldMin,
                                                   int yieldMax,
                                                   float respawnTime,
                                                   const std::string& worldId,
-                                                  HammerEngine::HarvestType harvestType) {
+                                                  VoidLight::HarvestType harvestType) {
     // Validation: Valid yield resource
     if (!yieldResource.isValid()) {
         ENTITY_ERROR("createHarvestable: Invalid yield resource handle");
@@ -1289,7 +1293,7 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
         m_staticGenerations.push_back(0);
     }
 
-    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    EntityHandle::IDType id = VoidLight::UniqueID::generate();
     uint8_t generation = ++m_staticGenerations[index];
 
     // Initialize hot data in STATIC pool
@@ -1362,7 +1366,7 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
     std::lock_guard<std::mutex> lock(m_creationMutex);
 
     size_t index = allocateSlot();
-    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    EntityHandle::IDType id = VoidLight::UniqueID::generate();
     uint8_t generation = nextGeneration(index);
 
     // Initialize hot data
@@ -1379,10 +1383,49 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Initialize collision data (Projectiles collide with enemies and environment)
-    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Projectile;
-    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Enemy |
-                        HammerEngine::CollisionLayer::Layer_Environment;
+    // Initialize collision data — derive mask from owner faction hostility.
+    // Attack target selection treats any different faction as hostile, so
+    // projectile masks must include all collision layers that can represent
+    // non-owner factions.
+    hot.collisionLayers = VoidLight::CollisionLayer::Layer_Projectile;
+    size_t ownerIdx = getIndex(owner);
+    if (ownerIdx != SIZE_MAX)
+    {
+        const auto& ownerHot = m_hotData[ownerIdx];
+        if (EntityTraits::hasHealth(ownerHot.kind))
+        {
+            const uint8_t ownerFaction = m_characterData[ownerHot.typeLocalIndex].faction;
+            switch (ownerFaction)
+            {
+                case 0: // Friendly: hostile to Enemy + Neutral
+                    hot.collisionMask = VoidLight::CollisionLayer::Layer_Enemy |
+                                        VoidLight::CollisionLayer::Layer_Default |
+                                        VoidLight::CollisionLayer::Layer_Environment;
+                    break;
+                case 1: // Enemy: hostile to Friendly + Neutral (+Player)
+                    hot.collisionMask = VoidLight::CollisionLayer::Layer_Player |
+                                        VoidLight::CollisionLayer::Layer_Default |
+                                        VoidLight::CollisionLayer::Layer_Environment;
+                    break;
+                default: // Neutral: hostile to Friendly + Enemy (+Player)
+                    hot.collisionMask = VoidLight::CollisionLayer::Layer_Player |
+                                        VoidLight::CollisionLayer::Layer_Enemy |
+                                        VoidLight::CollisionLayer::Layer_Default |
+                                        VoidLight::CollisionLayer::Layer_Environment;
+                    break;
+            }
+        }
+        else
+        {
+            hot.collisionMask = VoidLight::CollisionLayer::Layer_Enemy |
+                                VoidLight::CollisionLayer::Layer_Environment;
+        }
+    }
+    else
+    {
+        hot.collisionMask = VoidLight::CollisionLayer::Layer_Enemy |
+                            VoidLight::CollisionLayer::Layer_Environment;
+    }
     hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
     hot.triggerTag = 0;
 
@@ -1428,7 +1471,7 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
     std::lock_guard<std::mutex> lock(m_creationMutex);
 
     size_t index = allocateSlot();
-    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    EntityHandle::IDType id = VoidLight::UniqueID::generate();
     uint8_t generation = nextGeneration(index);
 
     // Initialize hot data
@@ -1498,7 +1541,7 @@ EntityHandle EntityDataManager::createStaticBody(const Vector2D& position,
         m_staticGenerations.push_back(0);
     }
 
-    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    EntityHandle::IDType id = VoidLight::UniqueID::generate();
     uint8_t generation = ++m_staticGenerations[index];
 
     // Initialize static hot data
@@ -1529,8 +1572,8 @@ EntityHandle EntityDataManager::createStaticBody(const Vector2D& position,
 EntityHandle EntityDataManager::createTrigger(const Vector2D& position,
                                                float halfWidth,
                                                float halfHeight,
-                                               HammerEngine::TriggerTag tag,
-                                               HammerEngine::TriggerType type) {
+                                               VoidLight::TriggerTag tag,
+                                               VoidLight::TriggerType type) {
     // Thread safety: Lock for entire creation (may be called from worker thread)
     std::lock_guard<std::mutex> lock(m_creationMutex);
 
@@ -1546,7 +1589,7 @@ EntityHandle EntityDataManager::createTrigger(const Vector2D& position,
         m_staticGenerations.push_back(0);
     }
 
-    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    EntityHandle::IDType id = VoidLight::UniqueID::generate();
     uint8_t generation = ++m_staticGenerations[index];
 
     // Initialize trigger hot data
@@ -1564,7 +1607,7 @@ EntityHandle EntityDataManager::createTrigger(const Vector2D& position,
     hot.typeLocalIndex = 0;
 
     // Set collision data for trigger
-    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Environment;
+    hot.collisionLayers = VoidLight::CollisionLayer::Layer_Environment;
     hot.collisionMask = 0xFFFF;  // Collides with all layers
     hot.setCollisionEnabled(true);
     hot.setTrigger(true);
@@ -1621,11 +1664,11 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
     hot.generation = generation;
 
     // Initialize collision data (Player collides with enemies, environment, triggers)
-    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Player;
-    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Enemy |
-                        HammerEngine::CollisionLayer::Layer_Environment |
-                        HammerEngine::CollisionLayer::Layer_Trigger |
-                        HammerEngine::CollisionLayer::Layer_Default;
+    hot.collisionLayers = VoidLight::CollisionLayer::Layer_Player;
+    hot.collisionMask = VoidLight::CollisionLayer::Layer_Enemy |
+                        VoidLight::CollisionLayer::Layer_Environment |
+                        VoidLight::CollisionLayer::Layer_Trigger |
+                        VoidLight::CollisionLayer::Layer_Default;
     hot.collisionFlags = EntityHotData::COLLISION_ENABLED | EntityHotData::NEEDS_TRIGGER_DETECTION;
     hot.triggerTag = 0;
 
@@ -1660,7 +1703,7 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
 
 EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityId,
                                                     const Vector2D& position,
-                                                    HammerEngine::ResourceHandle resourceHandle,
+                                                    VoidLight::ResourceHandle resourceHandle,
                                                     int quantity) {
     if (entityId == 0) {
         ENTITY_ERROR("registerDroppedItem: Invalid entity ID (0)");
@@ -2037,7 +2080,7 @@ uint32_t EntityDataManager::getNPCInventoryIndex(EntityHandle handle) const {
 }
 
 bool EntityDataManager::addToInventory(uint32_t inventoryIndex,
-                                       HammerEngine::ResourceHandle handle,
+                                       VoidLight::ResourceHandle handle,
                                        int quantity) {
     // Validation: valid inventory index (outside lock for quick fail)
     if (!isValidInventoryIndex(inventoryIndex)) {
@@ -2138,7 +2181,7 @@ bool EntityDataManager::addToInventory(uint32_t inventoryIndex,
 }
 
 bool EntityDataManager::removeFromInventory(uint32_t inventoryIndex,
-                                            HammerEngine::ResourceHandle handle,
+                                            VoidLight::ResourceHandle handle,
                                             int quantity) {
     if (!isValidInventoryIndex(inventoryIndex)) {
         return false;
@@ -2197,7 +2240,7 @@ bool EntityDataManager::removeFromInventory(uint32_t inventoryIndex,
 }
 
 int EntityDataManager::getInventoryQuantity(uint32_t inventoryIndex,
-                                            HammerEngine::ResourceHandle handle) const {
+                                            VoidLight::ResourceHandle handle) const {
     if (!isValidInventoryIndex(inventoryIndex)) {
         return 0;
     }
@@ -2212,7 +2255,7 @@ int EntityDataManager::getInventoryQuantity(uint32_t inventoryIndex,
 }
 
 int EntityDataManager::getInventoryQuantityLocked(uint32_t inventoryIndex,
-                                                   HammerEngine::ResourceHandle handle) const {
+                                                   VoidLight::ResourceHandle handle) const {
     // Note: Caller MUST hold m_inventoryMutex
     // No validation here - caller already validated before acquiring lock
 
@@ -2248,14 +2291,14 @@ int EntityDataManager::getInventoryQuantityLocked(uint32_t inventoryIndex,
 }
 
 bool EntityDataManager::hasInInventory(uint32_t inventoryIndex,
-                                       HammerEngine::ResourceHandle handle,
+                                       VoidLight::ResourceHandle handle,
                                        int quantity) const {
     return getInventoryQuantity(inventoryIndex, handle) >= quantity;
 }
 
-std::unordered_map<HammerEngine::ResourceHandle, int>
+std::unordered_map<VoidLight::ResourceHandle, int>
 EntityDataManager::getInventoryResources(uint32_t inventoryIndex) const {
-    std::unordered_map<HammerEngine::ResourceHandle, int> result;
+    std::unordered_map<VoidLight::ResourceHandle, int> result;
 
     if (!isValidInventoryIndex(inventoryIndex)) {
         return result;
@@ -3239,13 +3282,13 @@ EntityHandle EntityDataManager::getHandle(size_t index) const {
 // ============================================================================
 
 void EntityDataManager::initializeRaceRegistry() {
-    const std::string jsonPath = HammerEngine::ResourcePath::resolve("res/data/races.json");
+    const std::string jsonPath = VoidLight::ResourcePath::resolve("res/data/races.json");
     JsonReader reader;
 
     // Load atlas.json for coordinate lookup (following WorldManager pattern)
     JsonReader atlasReader;
     std::unordered_map<std::string, JsonValue> atlasRegions;
-    if (atlasReader.loadFromFile(HammerEngine::ResourcePath::resolve("res/data/atlas.json"))) {
+    if (atlasReader.loadFromFile(VoidLight::ResourcePath::resolve("res/data/atlas.json"))) {
         const auto& atlasRoot = atlasReader.getRoot();
         if (atlasRoot.hasKey("regions")) {
             atlasRegions = atlasRoot["regions"].asObject();
@@ -3352,7 +3395,7 @@ void EntityDataManager::initializeRaceRegistry() {
 }
 
 void EntityDataManager::initializeClassRegistry() {
-    const std::string jsonPath = HammerEngine::ResourcePath::resolve("res/data/classes.json");
+    const std::string jsonPath = VoidLight::ResourcePath::resolve("res/data/classes.json");
     JsonReader reader;
 
     if (reader.loadFromFile(jsonPath)) {
@@ -3379,6 +3422,10 @@ void EntityDataManager::initializeClassRegistry() {
                 info.moveSpeedMult = c.hasKey("moveSpeedMult") ? static_cast<float>(c["moveSpeedMult"].asNumber()) : 1.0f;
                 info.attackDamageMult = c.hasKey("attackDamageMult") ? static_cast<float>(c["attackDamageMult"].asNumber()) : 1.0f;
                 info.attackRangeMult = c.hasKey("attackRangeMult") ? static_cast<float>(c["attackRangeMult"].asNumber()) : 1.0f;
+
+                // Combat style
+                info.combatStyle = c.hasKey("combatStyle") ? c["combatStyle"].asString() : "melee";
+                info.projectileSpeed = c.hasKey("projectileSpeed") ? static_cast<float>(c["projectileSpeed"].asNumber()) : 0.0f;
 
                 // AI
                 info.suggestedBehavior = c.hasKey("suggestedBehavior") ? c["suggestedBehavior"].asString() : "Idle";
@@ -3421,35 +3468,35 @@ void EntityDataManager::initializeClassRegistry() {
     ENTITY_WARN(std::format("Failed to load classes from {}, using defaults", jsonPath));
 
     // emotionalResilience: 0.7 for warriors, 0.8 for guards, 0.3 for merchants, etc.
-    m_classRegistry["Warrior"] = {"Warrior", 1.3f, 1.0f, 0.9f, 1.5f, 1.0f, "Chase", 7, 1, false, 0.7f, {}};
+    m_classRegistry["Warrior"] = {"Warrior", 1.3f, 1.0f, 0.9f, 1.5f, 1.0f, "melee", 0.0f, "Chase", 7, 1, false, 0.7f, {}};
     m_classNameToId["Warrior"] = 0; m_classIdToName.push_back("Warrior");
 
-    m_classRegistry["Guard"] = {"Guard", 1.2f, 1.1f, 0.8f, 1.2f, 1.0f, "Guard", 6, 0, false, 0.8f, {}};
+    m_classRegistry["Guard"] = {"Guard", 1.2f, 1.1f, 0.8f, 1.2f, 1.0f, "melee", 0.0f, "Guard", 6, 0, false, 0.8f, {}};
     m_classNameToId["Guard"] = 1; m_classIdToName.push_back("Guard");
 
-    m_classRegistry["GeneralMerchant"] = {"GeneralMerchant", 0.7f, 0.8f, 0.9f, 0.3f, 0.5f, "Idle", 2, 0, true, 0.3f, {}};
+    m_classRegistry["GeneralMerchant"] = {"GeneralMerchant", 0.7f, 0.8f, 0.9f, 0.3f, 0.5f, "melee", 0.0f, "Idle", 2, 0, true, 0.3f, {}};
     m_classNameToId["GeneralMerchant"] = 2; m_classIdToName.push_back("GeneralMerchant");
 
-    m_classRegistry["Rogue"] = {"Rogue", 0.8f, 1.3f, 1.3f, 1.2f, 0.8f, "Chase", 8, 1, false, 0.5f, {}};
+    m_classRegistry["Rogue"] = {"Rogue", 0.8f, 1.3f, 1.3f, 1.2f, 0.8f, "melee", 0.0f, "Chase", 8, 1, false, 0.5f, {}};
     m_classNameToId["Rogue"] = 3; m_classIdToName.push_back("Rogue");
 
-    m_classRegistry["Mage"] = {"Mage", 0.6f, 1.5f, 0.85f, 1.8f, 2.5f, "Attack", 7, 2, false, 0.4f, {}};
+    m_classRegistry["Mage"] = {"Mage", 0.6f, 1.5f, 0.85f, 1.8f, 3.0f, "ranged", 200.0f, "Attack", 7, 2, false, 0.4f, {}};
     m_classNameToId["Mage"] = 4; m_classIdToName.push_back("Mage");
 
-    m_classRegistry["Farmer"] = {"Farmer", 0.9f, 1.1f, 1.0f, 0.5f, 0.5f, "Wander", 3, 0, true, 0.4f, {}};
+    m_classRegistry["Farmer"] = {"Farmer", 0.9f, 1.1f, 1.0f, 0.5f, 0.5f, "melee", 0.0f, "Wander", 3, 0, true, 0.4f, {}};
     m_classNameToId["Farmer"] = 5; m_classIdToName.push_back("Farmer");
 
     ENTITY_INFO(std::format("Initialized class registry with {} classes (fallback)", m_classRegistry.size()));
 }
 
 void EntityDataManager::initializeMonsterTypeRegistry() {
-    const std::string jsonPath = HammerEngine::ResourcePath::resolve("res/data/monster_types.json");
+    const std::string jsonPath = VoidLight::ResourcePath::resolve("res/data/monster_types.json");
     JsonReader reader;
 
     // Load atlas.json for coordinate lookup (following WorldManager pattern)
     JsonReader atlasReader;
     std::unordered_map<std::string, JsonValue> atlasRegions;
-    if (atlasReader.loadFromFile(HammerEngine::ResourcePath::resolve("res/data/atlas.json"))) {
+    if (atlasReader.loadFromFile(VoidLight::ResourcePath::resolve("res/data/atlas.json"))) {
         const auto& atlasRoot = atlasReader.getRoot();
         if (atlasRoot.hasKey("regions")) {
             atlasRegions = atlasRoot["regions"].asObject();
@@ -3533,7 +3580,7 @@ void EntityDataManager::initializeMonsterTypeRegistry() {
 }
 
 void EntityDataManager::initializeMonsterVariantRegistry() {
-    const std::string jsonPath = HammerEngine::ResourcePath::resolve("res/data/monster_variants.json");
+    const std::string jsonPath = VoidLight::ResourcePath::resolve("res/data/monster_variants.json");
     JsonReader reader;
 
     if (reader.loadFromFile(jsonPath)) {
@@ -3588,13 +3635,13 @@ void EntityDataManager::initializeMonsterVariantRegistry() {
 }
 
 void EntityDataManager::initializeSpeciesRegistry() {
-    const std::string jsonPath = HammerEngine::ResourcePath::resolve("res/data/species.json");
+    const std::string jsonPath = VoidLight::ResourcePath::resolve("res/data/species.json");
     JsonReader reader;
 
     // Load atlas.json for coordinate lookup (following WorldManager pattern)
     JsonReader atlasReader;
     std::unordered_map<std::string, JsonValue> atlasRegions;
-    if (atlasReader.loadFromFile(HammerEngine::ResourcePath::resolve("res/data/atlas.json"))) {
+    if (atlasReader.loadFromFile(VoidLight::ResourcePath::resolve("res/data/atlas.json"))) {
         const auto& atlasRoot = atlasReader.getRoot();
         if (atlasRoot.hasKey("regions")) {
             atlasRegions = atlasRoot["regions"].asObject();
@@ -3678,7 +3725,7 @@ void EntityDataManager::initializeSpeciesRegistry() {
 }
 
 void EntityDataManager::initializeAnimalRoleRegistry() {
-    const std::string jsonPath = HammerEngine::ResourcePath::resolve("res/data/animal_roles.json");
+    const std::string jsonPath = VoidLight::ResourcePath::resolve("res/data/animal_roles.json");
     JsonReader reader;
 
     if (reader.loadFromFile(jsonPath)) {

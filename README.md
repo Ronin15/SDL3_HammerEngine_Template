@@ -44,6 +44,10 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
     Built-in frame profiler (F3 toggle) with live timing overlay and automatic hitch detection. Zero overhead in Release builds.
 
+- **Release Logging**
+
+    In Release builds, CRITICAL and ERROR messages are written to a timestamped log file. All other levels are compiled out entirely. under the OS user data directory (`~/Library/Application Support/HammerForgedGames/VoidLight_Template/logs/` on macOS, `%APPDATA%\HammerForgedGames\VoidLight_Template\logs\` on Windows, `~/.local/share/HammerForgedGames/VoidLight_Template/logs/` on Linux). Files are named `voidlight_YYYYMMDD_HHMMSS.log` and the 5 most recent are kept automatically. See [Logger](docs/utils/Logger.md) for details.
+
 - **Cross-Platform Optimizations**
 
     Unified codebase with platform-specific enhancements: SIMD acceleration (x86-64: SSE2/AVX2, ARM64: NEON), macOS Retina support, Wayland detection, VSync-aware frame pacing, and native DPI scaling.
@@ -68,7 +72,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
     
     Full guides, API references, best practices, and troubleshooting for all major systems.
 
-### Why Choose HammerEngine Template?
+### Why Choose VoidLight-Framework?
 
 - **Performance**: Engineered for cache efficiency, lock-free concurrency, and minimal CPU overhead—even with thousands of entities.
 - **Safety**: Smart pointers, RAII, strong typing, and robust error handling throughout.
@@ -101,8 +105,8 @@ See the [documentation hub](docs/README.md) and subsystem docs for current setup
 ### Build
 
 ```bash
-git clone https://github.com/yourname/SDL3_HammerEngine_Template.git
-cd SDL3_HammerEngine_Template
+git clone https://github.com/yourname/VoidLight-Framework.git
+cd VoidLight-Framework
 
 # Debug build (recommended for development)
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
@@ -111,8 +115,8 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
 
 # Run the engine
-./bin/debug/SDL3_Template   # Debug build
-./bin/release/SDL3_Template # Release build
+./bin/debug/VoidLight_Template   # Debug build
+./bin/release/VoidLight_Template # Release build
 ```
 
 > Platform shader tools (see Prerequisites) must be installed for the build to compile shaders.
@@ -206,8 +210,8 @@ For the full workflow, command reference, file locations, and legacy texture map
 - **Collision & Physics:** [CollisionManager](docs/managers/CollisionManager.md)
 - **Entity System:** [Overview](docs/entities/README.md), [EntityHandle](docs/entities/EntityHandle.md), [EntityDataManager](docs/managers/EntityDataManager.md), [BackgroundSimulationManager](docs/managers/BackgroundSimulationManager.md)
 - **Event System:** [Overview](docs/events/EventManager.md), [Quick Reference](docs/events/EventManager_QuickReference.md), [Advanced](docs/events/EventManager_Advanced.md), [TimeEvents](docs/events/TimeEvents.md), [EventFactory](docs/events/EventFactory.md)
-- **Controllers:** [Overview](docs/controllers/README.md), [ControllerRegistry](docs/controllers/ControllerRegistry.md), [WeatherController](docs/controllers/WeatherController.md), [DayNightController](docs/controllers/DayNightController.md), [CombatController](docs/controllers/CombatController.md), [HarvestController](docs/controllers/HarvestController.md), [SocialController](docs/controllers/SocialController.md)
-- **Managers:** [BackgroundSimulationManager](docs/managers/BackgroundSimulationManager.md), [CollisionManager](docs/managers/CollisionManager.md), [EntityDataManager](docs/managers/EntityDataManager.md), [FontManager](docs/managers/FontManager.md), [ParticleManager](docs/managers/ParticleManager.md), [PathfinderManager](docs/managers/PathfinderManager.md), [ResourceFactory](docs/managers/ResourceFactory.md), [ResourceTemplateManager](docs/managers/ResourceTemplateManager.md), [SoundManager](docs/managers/SoundManager.md), [TextureManager](docs/managers/TextureManager.md), [WorldManager](docs/managers/WorldManager.md), [WorldResourceManager](docs/managers/WorldResourceManager.md)
+- **Controllers:** [Overview](docs/controllers/README.md), [ControllerRegistry](docs/controllers/ControllerRegistry.md), [WeatherController](docs/controllers/WeatherController.md), [DayNightController](docs/controllers/DayNightController.md), [CombatController](docs/controllers/CombatController.md), [GameplayHUDController](docs/controllers/GameplayHUDController.md), [HarvestController](docs/controllers/HarvestController.md), [SocialController](docs/controllers/SocialController.md)
+- **Managers:** [BackgroundSimulationManager](docs/managers/BackgroundSimulationManager.md), [CollisionManager](docs/managers/CollisionManager.md), [EntityDataManager](docs/managers/EntityDataManager.md), [FontManager](docs/managers/FontManager.md), [ParticleManager](docs/managers/ParticleManager.md), [PathfinderManager](docs/managers/PathfinderManager.md), [ProjectileManager](docs/managers/ProjectileManager.md), [ResourceFactory](docs/managers/ResourceFactory.md), [ResourceTemplateManager](docs/managers/ResourceTemplateManager.md), [SoundManager](docs/managers/SoundManager.md), [TextureManager](docs/managers/TextureManager.md), [WorldManager](docs/managers/WorldManager.md), [WorldResourceManager](docs/managers/WorldResourceManager.md)
 - **UI:** [UIManager Guide](docs/ui/UIManager_Guide.md), [UIConstants Reference](docs/ui/UIConstants.md), [Auto-Sizing](docs/ui/Auto_Sizing_System.md), [DPI-Aware Fonts](docs/ui/DPI_Aware_Font_System.md), [Minimap Implementation](docs/ui/Minimap_Implementation.md)
 - **GPU Rendering:** [GPU System Overview](docs/gpu/GPURendering.md)
 - **GameStates:** [Overview](docs/gameStates/README.md), [LoadingState](docs/gameStates/LoadingState.md), [SettingsMenuState](docs/gameStates/SettingsMenuState.md), [GameOverState](docs/gameStates/GameOverState.md)

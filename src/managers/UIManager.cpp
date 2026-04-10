@@ -1209,11 +1209,11 @@ void UIManager::setLightTheme() {
 
   // Button style - improved contrast and professional appearance
   UIStyle buttonStyle;
-  buttonStyle.backgroundColor = {60, 120, 180, 255};
-  buttonStyle.borderColor = {255, 255, 255, 255};
-  buttonStyle.textColor = {255, 255, 255, 255};
-  buttonStyle.hoverColor = {80, 140, 200, 255};
-  buttonStyle.pressedColor = {40, 100, 160, 255};
+  buttonStyle.backgroundColor = {.r=60, .g=120, .b=180, .a=255};
+  buttonStyle.borderColor = {.r=255, .g=255, .b=255, .a=255};
+  buttonStyle.textColor = {.r=255, .g=255, .b=255, .a=255};
+  buttonStyle.hoverColor = {.r=80, .g=140, .b=200, .a=255};
+  buttonStyle.pressedColor = {.r=40, .g=100, .b=160, .a=255};
   buttonStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
   buttonStyle.fontID = UIConstants::FONT_UI;
@@ -1221,64 +1221,62 @@ void UIManager::setLightTheme() {
 
   // Button Danger style - red buttons for Back, Quit, Exit, Delete, etc.
   UIStyle dangerButtonStyle = buttonStyle;
-  dangerButtonStyle.backgroundColor = {180, 50, 50, 255};
-  dangerButtonStyle.hoverColor = {200, 70, 70, 255};
-  dangerButtonStyle.pressedColor = {160, 30, 30, 255};
+  dangerButtonStyle.backgroundColor = {.r=180, .g=50, .b=50, .a=255};
+  dangerButtonStyle.hoverColor = {.r=200, .g=70, .b=70, .a=255};
+  dangerButtonStyle.pressedColor = {.r=160, .g=30, .b=30, .a=255};
   lightTheme.m_componentStyles[UIComponentType::BUTTON_DANGER] =
       dangerButtonStyle;
 
   // Button Success style - green buttons for Save, Confirm, Accept, etc.
   UIStyle successButtonStyle = buttonStyle;
-  successButtonStyle.backgroundColor = {50, 150, 50, 255};
-  successButtonStyle.hoverColor = {70, 170, 70, 255};
-  successButtonStyle.pressedColor = {30, 130, 30, 255};
+  successButtonStyle.backgroundColor = {.r=50, .g=150, .b=50, .a=255};
+  successButtonStyle.hoverColor = {.r=70, .g=170, .b=70, .a=255};
+  successButtonStyle.pressedColor = {.r=30, .g=130, .b=30, .a=255};
   lightTheme.m_componentStyles[UIComponentType::BUTTON_SUCCESS] =
       successButtonStyle;
 
   // Button Warning style - orange buttons for Caution, Reset, etc.
   UIStyle warningButtonStyle = buttonStyle;
-  warningButtonStyle.backgroundColor = {200, 140, 50, 255};
-  warningButtonStyle.hoverColor = {220, 160, 70, 255};
-  warningButtonStyle.pressedColor = {180, 120, 30, 255};
+  warningButtonStyle.backgroundColor = {.r=200, .g=140, .b=50, .a=255};
+  warningButtonStyle.hoverColor = {.r=220, .g=160, .b=70, .a=255};
+  warningButtonStyle.pressedColor = {.r=180, .g=120, .b=30, .a=255};
   lightTheme.m_componentStyles[UIComponentType::BUTTON_WARNING] =
       warningButtonStyle;
 
   // Label style - enhanced contrast
   UIStyle labelStyle;
-  labelStyle.backgroundColor = {0, 0, 0, 0}; // Transparent
-  labelStyle.textColor = {20, 20, 20, 255};  // Dark text for light backgrounds
+  labelStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=0}; // Transparent
+  labelStyle.textColor = {.r=20, .g=20, .b=20, .a=255};  // Dark text for light backgrounds
   labelStyle.textAlign = UIAlignment::CENTER_LEFT;
   labelStyle.fontID = UIConstants::FONT_UI;
   // Text background enabled by default for readability on any background
   labelStyle.useTextBackground = true;
-  labelStyle.textBackgroundColor = {255, 255, 255,
-                                    100}; // More transparent white
+  labelStyle.textBackgroundColor = {.r=255, .g=255, .b=255, .a=100}; // More transparent white
   labelStyle.textBackgroundPadding = UIConstants::LABEL_TEXT_BG_PADDING;
   lightTheme.m_componentStyles[UIComponentType::LABEL] = labelStyle;
 
   // Panel style - light overlay for subtle UI separation
   UIStyle panelStyle;
-  panelStyle.backgroundColor = {0, 0, 0,
-                                40}; // Very light overlay (15% opacity)
+  panelStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=40}; // Very light overlay (15% opacity)
   panelStyle.borderWidth = UIConstants::BORDER_WIDTH_NONE;
   panelStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::PANEL] = panelStyle;
 
   // Progress bar style - enhanced visibility
   UIStyle progressStyle;
-  progressStyle.backgroundColor = {40, 40, 40, 255};
-  progressStyle.borderColor = {180, 180, 180, 255}; // Stronger borders
-  progressStyle.hoverColor = {0, 180, 0, 255};      // Green fill
+  progressStyle.backgroundColor = {.r=40, .g=40, .b=40, .a=255};
+  progressStyle.borderColor = {.r=180, .g=180, .b=180, .a=255}; // Stronger borders
+  progressStyle.hoverColor = {.r=0, .g=180, .b=0, .a=255};      // Green fill
   progressStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   progressStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::PROGRESS_BAR] = progressStyle;
 
   // Input field style - light background with dark text
   UIStyle inputStyle;
-  inputStyle.backgroundColor = {245, 245, 245, 255};
-  inputStyle.textColor = {20, 20, 20, 255}; // Dark text for good contrast
-  inputStyle.borderColor = {180, 180, 180, 255};
-  inputStyle.hoverColor = {235, 245, 255, 255};
+  inputStyle.backgroundColor = {.r=245, .g=245, .b=245, .a=255};
+  inputStyle.textColor = {.r=20, .g=20, .b=20, .a=255}; // Dark text for good contrast
+  inputStyle.borderColor = {.r=180, .g=180, .b=180, .a=255};
+  inputStyle.hoverColor = {.r=235, .g=245, .b=255, .a=255};
   inputStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   inputStyle.textAlign = UIAlignment::CENTER_LEFT;
   inputStyle.fontID = UIConstants::FONT_UI;
@@ -1286,10 +1284,10 @@ void UIManager::setLightTheme() {
 
   // List style - light background with enhanced item height
   UIStyle listStyle;
-  listStyle.backgroundColor = {240, 240, 240, 255};
-  listStyle.borderColor = {180, 180, 180, 255};
-  listStyle.textColor = {20, 20, 20, 255};     // Dark text on light background
-  listStyle.hoverColor = {180, 200, 255, 255}; // Light blue selection
+  listStyle.backgroundColor = {.r=240, .g=240, .b=240, .a=255};
+  listStyle.borderColor = {.r=180, .g=180, .b=180, .a=255};
+  listStyle.textColor = {.r=20, .g=20, .b=20, .a=255};     // Dark text on light background
+  listStyle.hoverColor = {.r=180, .g=200, .b=255, .a=255}; // Light blue selection
   listStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   // Calculate list item height based on font metrics
   listStyle.listItemHeight =
@@ -1299,37 +1297,35 @@ void UIManager::setLightTheme() {
 
   // Slider style - enhanced borders
   UIStyle sliderStyle;
-  sliderStyle.backgroundColor = {100, 100, 100, 255};
-  sliderStyle.borderColor = {180, 180, 180, 255};
-  sliderStyle.hoverColor = {60, 120, 180, 255}; // Blue handle
-  sliderStyle.pressedColor = {40, 100, 160, 255};
+  sliderStyle.backgroundColor = {.r=100, .g=100, .b=100, .a=255};
+  sliderStyle.borderColor = {.r=180, .g=180, .b=180, .a=255};
+  sliderStyle.hoverColor = {.r=60, .g=120, .b=180, .a=255}; // Blue handle
+  sliderStyle.pressedColor = {.r=40, .g=100, .b=160, .a=255};
   sliderStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   sliderStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::SLIDER] = sliderStyle;
 
   // Checkbox style - enhanced visibility
   UIStyle checkboxStyle = buttonStyle;
-  checkboxStyle.backgroundColor = {180, 180, 180, 255};
-  checkboxStyle.hoverColor = {200, 200, 200, 255};
-  checkboxStyle.textColor = {20, 20, 20,
-                             255}; // Dark text for light backgrounds
+  checkboxStyle.backgroundColor = {.r=180, .g=180, .b=180, .a=255};
+  checkboxStyle.hoverColor = {.r=200, .g=200, .b=200, .a=255};
+  checkboxStyle.textColor = {.r=20, .g=20, .b=20, .a=255}; // Dark text for light backgrounds
   checkboxStyle.textAlign = UIAlignment::CENTER_LEFT;
   checkboxStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::CHECKBOX] = checkboxStyle;
 
   // Tooltip style
   UIStyle tooltipStyle = panelStyle;
-  tooltipStyle.backgroundColor = {40, 40, 40, 230}; // More opaque for tooltips
-  tooltipStyle.borderColor = {180, 180, 180, 255};
+  tooltipStyle.backgroundColor = {.r=40, .g=40, .b=40, .a=230}; // More opaque for tooltips
+  tooltipStyle.borderColor = {.r=180, .g=180, .b=180, .a=255};
   tooltipStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
-  tooltipStyle.textColor = {255, 255, 255,
-                            255}; // White text for dark tooltip background
+  tooltipStyle.textColor = {.r=255, .g=255, .b=255, .a=255}; // White text for dark tooltip background
   tooltipStyle.fontID = UIConstants::FONT_TOOLTIP;
   lightTheme.m_componentStyles[UIComponentType::TOOLTIP] = tooltipStyle;
 
   // Image component uses transparent background
   UIStyle imageStyle;
-  imageStyle.backgroundColor = {0, 0, 0, 0};
+  imageStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=0};
   imageStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::IMAGE] = imageStyle;
 
@@ -1338,30 +1334,28 @@ void UIManager::setLightTheme() {
   // Calculate event log item height based on font metrics
   eventLogStyle.listItemHeight =
       24; // Will be calculated dynamically during rendering
-  eventLogStyle.backgroundColor = {245, 245, 250,
-                                   160};    // Semi-transparent light background
-  eventLogStyle.textColor = {0, 0, 0, 255}; // Black text for maximum contrast
-  eventLogStyle.borderColor = {120, 120, 140, 180}; // Less transparent border
+  eventLogStyle.backgroundColor = {.r=245, .g=245, .b=250, .a=160};    // Semi-transparent light background
+  eventLogStyle.textColor = {.r=0, .g=0, .b=0, .a=255}; // Black text for maximum contrast
+  eventLogStyle.borderColor = {.r=120, .g=120, .b=140, .a=180}; // Less transparent border
   lightTheme.m_componentStyles[UIComponentType::EVENT_LOG] = eventLogStyle;
 
   // Title style - large, prominent text for headings
   UIStyle titleStyle;
-  titleStyle.backgroundColor = {0, 0, 0, 0}; // Transparent background
-  titleStyle.textColor = {0, 198, 230, 255}; // Dark Cyan color for titles
+  titleStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=0}; // Transparent background
+  titleStyle.textColor = {.r=0, .g=198, .b=230, .a=255}; // Dark Cyan color for titles
   titleStyle.fontSize = UIConstants::TITLE_FONT_SIZE;                  // Use native title font size
   titleStyle.textAlign = UIAlignment::CENTER_LEFT;
   titleStyle.fontID = UIConstants::FONT_TITLE;
   // Text background enabled by default for readability on any background
   titleStyle.useTextBackground = true;
-  titleStyle.textBackgroundColor = {20, 20, 20,
-                                    120}; // More transparent dark for gold text
+  titleStyle.textBackgroundColor = {.r=20, .g=20, .b=20, .a=120}; // More transparent dark for gold text
   titleStyle.textBackgroundPadding = UIConstants::TITLE_TEXT_BG_PADDING;
   lightTheme.m_componentStyles[UIComponentType::TITLE] = titleStyle;
 
   // Dialog style - solid background for modal dialogs
   UIStyle dialogStyle;
-  dialogStyle.backgroundColor = {245, 245, 245, 255}; // Light solid background
-  dialogStyle.borderColor = {120, 120, 120, 255}; // Dark border for definition
+  dialogStyle.backgroundColor = {.r=245, .g=245, .b=245, .a=255}; // Light solid background
+  dialogStyle.borderColor = {.r=120, .g=120, .b=120, .a=255}; // Dark border for definition
   dialogStyle.borderWidth = UIConstants::BORDER_WIDTH_DIALOG;
   dialogStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::DIALOG] = dialogStyle;
@@ -1385,11 +1379,11 @@ void UIManager::setDarkTheme() {
 
   // Button style - enhanced contrast for dark theme
   UIStyle buttonStyle;
-  buttonStyle.backgroundColor = {50, 50, 60, 255};
-  buttonStyle.borderColor = {180, 180, 180, 255}; // Brighter borders
-  buttonStyle.textColor = {255, 255, 255, 255};
-  buttonStyle.hoverColor = {70, 70, 80, 255};
-  buttonStyle.pressedColor = {30, 30, 40, 255};
+  buttonStyle.backgroundColor = {.r=50, .g=50, .b=60, .a=255};
+  buttonStyle.borderColor = {.r=180, .g=180, .b=180, .a=255}; // Brighter borders
+  buttonStyle.textColor = {.r=255, .g=255, .b=255, .a=255};
+  buttonStyle.hoverColor = {.r=70, .g=70, .b=80, .a=255};
+  buttonStyle.pressedColor = {.r=30, .g=30, .b=40, .a=255};
   buttonStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
   buttonStyle.fontID = UIConstants::FONT_UI;
@@ -1397,61 +1391,61 @@ void UIManager::setDarkTheme() {
 
   // Button Danger style - red buttons for Back, Quit, Exit, Delete, etc.
   UIStyle dangerButtonStyle = buttonStyle;
-  dangerButtonStyle.backgroundColor = {200, 60, 60, 255};
-  dangerButtonStyle.hoverColor = {220, 80, 80, 255};
-  dangerButtonStyle.pressedColor = {180, 40, 40, 255};
+  dangerButtonStyle.backgroundColor = {.r=200, .g=60, .b=60, .a=255};
+  dangerButtonStyle.hoverColor = {.r=220, .g=80, .b=80, .a=255};
+  dangerButtonStyle.pressedColor = {.r=180, .g=40, .b=40, .a=255};
   darkTheme.m_componentStyles[UIComponentType::BUTTON_DANGER] = dangerButtonStyle;
 
   // Button Success style - green buttons for Save, Confirm, Accept, etc.
   UIStyle successButtonStyle = buttonStyle;
-  successButtonStyle.backgroundColor = {60, 160, 60, 255};
-  successButtonStyle.hoverColor = {80, 180, 80, 255};
-  successButtonStyle.pressedColor = {40, 140, 40, 255};
+  successButtonStyle.backgroundColor = {.r=60, .g=160, .b=60, .a=255};
+  successButtonStyle.hoverColor = {.r=80, .g=180, .b=80, .a=255};
+  successButtonStyle.pressedColor = {.r=40, .g=140, .b=40, .a=255};
   darkTheme.m_componentStyles[UIComponentType::BUTTON_SUCCESS] =
       successButtonStyle;
 
   // Button Warning style - orange buttons for Caution, Reset, etc.
   UIStyle warningButtonStyle = buttonStyle;
-  warningButtonStyle.backgroundColor = {220, 150, 60, 255};
-  warningButtonStyle.hoverColor = {240, 170, 80, 255};
-  warningButtonStyle.pressedColor = {200, 130, 40, 255};
+  warningButtonStyle.backgroundColor = {.r=220, .g=150, .b=60, .a=255};
+  warningButtonStyle.hoverColor = {.r=240, .g=170, .b=80, .a=255};
+  warningButtonStyle.pressedColor = {.r=200, .g=130, .b=40, .a=255};
   darkTheme.m_componentStyles[UIComponentType::BUTTON_WARNING] =
       warningButtonStyle;
 
   // Label style - pure white text for maximum contrast
   UIStyle labelStyle;
-  labelStyle.backgroundColor = {0, 0, 0, 0};   // Transparent
-  labelStyle.textColor = {255, 255, 255, 255}; // Pure white
+  labelStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=0};   // Transparent
+  labelStyle.textColor = {.r=255, .g=255, .b=255, .a=255}; // Pure white
   labelStyle.textAlign = UIAlignment::CENTER_LEFT;
   labelStyle.fontID = UIConstants::FONT_UI;
   // Text background enabled by default for readability on any background
   labelStyle.useTextBackground = true;
-  labelStyle.textBackgroundColor = {0, 0, 0, 100}; // More transparent black
+  labelStyle.textBackgroundColor = {.r=0, .g=0, .b=0, .a=100}; // More transparent black
   labelStyle.textBackgroundPadding = UIConstants::LABEL_TEXT_BG_PADDING;
   darkTheme.m_componentStyles[UIComponentType::LABEL] = labelStyle;
 
   // Panel style - slightly more overlay for dark theme
   UIStyle panelStyle;
-  panelStyle.backgroundColor = {0, 0, 0, 50}; // 19% opacity
+  panelStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=50}; // 19% opacity
   panelStyle.borderWidth = UIConstants::BORDER_WIDTH_NONE;
   panelStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::PANEL] = panelStyle;
 
   // Progress bar style
   UIStyle progressStyle;
-  progressStyle.backgroundColor = {20, 20, 20, 255};
-  progressStyle.borderColor = {180, 180, 180, 255};
-  progressStyle.hoverColor = {0, 180, 0, 255}; // Green fill
+  progressStyle.backgroundColor = {.r=20, .g=20, .b=20, .a=255};
+  progressStyle.borderColor = {.r=180, .g=180, .b=180, .a=255};
+  progressStyle.hoverColor = {.r=0, .g=180, .b=0, .a=255}; // Green fill
   progressStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   progressStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::PROGRESS_BAR] = progressStyle;
 
   // Input field style - dark theme
   UIStyle inputStyle;
-  inputStyle.backgroundColor = {40, 40, 40, 255};
-  inputStyle.textColor = {255, 255, 255, 255}; // White text
-  inputStyle.borderColor = {180, 180, 180, 255};
-  inputStyle.hoverColor = {50, 50, 50, 255};
+  inputStyle.backgroundColor = {.r=40, .g=40, .b=40, .a=255};
+  inputStyle.textColor = {.r=255, .g=255, .b=255, .a=255}; // White text
+  inputStyle.borderColor = {.r=180, .g=180, .b=180, .a=255};
+  inputStyle.hoverColor = {.r=50, .g=50, .b=50, .a=255};
   inputStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   inputStyle.textAlign = UIAlignment::CENTER_LEFT;
   inputStyle.fontID = UIConstants::FONT_UI;
@@ -1459,10 +1453,10 @@ void UIManager::setDarkTheme() {
 
   // List style - dark theme
   UIStyle listStyle;
-  listStyle.backgroundColor = {35, 35, 35, 255};
-  listStyle.borderColor = {180, 180, 180, 255};
-  listStyle.textColor = {255, 255, 255, 255}; // White text
-  listStyle.hoverColor = {60, 80, 150, 255};  // Blue selection
+  listStyle.backgroundColor = {.r=35, .g=35, .b=35, .a=255};
+  listStyle.borderColor = {.r=180, .g=180, .b=180, .a=255};
+  listStyle.textColor = {.r=255, .g=255, .b=255, .a=255}; // White text
+  listStyle.hoverColor = {.r=60, .g=80, .b=150, .a=255};  // Blue selection
   listStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   // Calculate list item height based on font metrics
   listStyle.listItemHeight =
@@ -1472,35 +1466,35 @@ void UIManager::setDarkTheme() {
 
   // Slider style
   UIStyle sliderStyle;
-  sliderStyle.backgroundColor = {30, 30, 30, 255};
-  sliderStyle.borderColor = {180, 180, 180, 255};
-  sliderStyle.hoverColor = {60, 120, 180, 255}; // Blue handle
-  sliderStyle.pressedColor = {40, 100, 160, 255};
+  sliderStyle.backgroundColor = {.r=30, .g=30, .b=30, .a=255};
+  sliderStyle.borderColor = {.r=180, .g=180, .b=180, .a=255};
+  sliderStyle.hoverColor = {.r=60, .g=120, .b=180, .a=255}; // Blue handle
+  sliderStyle.pressedColor = {.r=40, .g=100, .b=160, .a=255};
   sliderStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   sliderStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::SLIDER] = sliderStyle;
 
   // Checkbox style
   UIStyle checkboxStyle = buttonStyle;
-  checkboxStyle.backgroundColor = {60, 60, 60, 255};
-  checkboxStyle.hoverColor = {80, 80, 80, 255};
-  checkboxStyle.textColor = {255, 255, 255, 255};
+  checkboxStyle.backgroundColor = {.r=60, .g=60, .b=60, .a=255};
+  checkboxStyle.hoverColor = {.r=80, .g=80, .b=80, .a=255};
+  checkboxStyle.textColor = {.r=255, .g=255, .b=255, .a=255};
   checkboxStyle.textAlign = UIAlignment::CENTER_LEFT;
   checkboxStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::CHECKBOX] = checkboxStyle;
 
   // Tooltip style
   UIStyle tooltipStyle;
-  tooltipStyle.backgroundColor = {20, 20, 20, 240};
-  tooltipStyle.borderColor = {180, 180, 180, 255};
+  tooltipStyle.backgroundColor = {.r=20, .g=20, .b=20, .a=240};
+  tooltipStyle.borderColor = {.r=180, .g=180, .b=180, .a=255};
   tooltipStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
-  tooltipStyle.textColor = {255, 255, 255, 255};
+  tooltipStyle.textColor = {.r=255, .g=255, .b=255, .a=255};
   tooltipStyle.fontID = UIConstants::FONT_TOOLTIP;
   darkTheme.m_componentStyles[UIComponentType::TOOLTIP] = tooltipStyle;
 
   // Image component uses transparent background
   UIStyle imageStyle;
-  imageStyle.backgroundColor = {0, 0, 0, 0};
+  imageStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=0};
   imageStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::IMAGE] = imageStyle;
 
@@ -1509,32 +1503,28 @@ void UIManager::setDarkTheme() {
   // Calculate event log item height based on font metrics
   eventLogStyle.listItemHeight =
       24; // Will be calculated dynamically during rendering
-  eventLogStyle.backgroundColor = {25, 30, 35,
-                                   80}; // Highly transparent dark background
-  eventLogStyle.textColor = {255, 255, 255,
-                             255}; // Pure white text for maximum contrast
-  eventLogStyle.borderColor = {100, 120, 140,
-                               100}; // Highly transparent blue-gray border
+  eventLogStyle.backgroundColor = {.r=25, .g=30, .b=35, .a=80}; // Highly transparent dark background
+  eventLogStyle.textColor = {.r=255, .g=255, .b=255, .a=255}; // Pure white text for maximum contrast
+  eventLogStyle.borderColor = {.r=100, .g=120, .b=140, .a=100}; // Highly transparent blue-gray border
   darkTheme.m_componentStyles[UIComponentType::EVENT_LOG] = eventLogStyle;
 
   // Title style - large, prominent text for headings
   UIStyle titleStyle;
-  titleStyle.backgroundColor = {0, 0, 0, 0}; // Transparent background
-  titleStyle.textColor = {0, 198, 230, 255}; // Dark Cyan color for titles
+  titleStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=0}; // Transparent background
+  titleStyle.textColor = {.r=0, .g=198, .b=230, .a=255}; // Dark Cyan color for titles
   titleStyle.fontSize = UIConstants::TITLE_FONT_SIZE;                  // Use native title font size
   titleStyle.textAlign = UIAlignment::CENTER_LEFT;
   titleStyle.fontID = UIConstants::FONT_TITLE;
   // Text background enabled by default for readability on any background
   titleStyle.useTextBackground = true;
-  titleStyle.textBackgroundColor = {
-      0, 0, 0, 120}; // More transparent black for gold text
+  titleStyle.textBackgroundColor = {.r=0, .g=0, .b=0, .a=120}; // More transparent black for gold text
   titleStyle.textBackgroundPadding = UIConstants::TITLE_TEXT_BG_PADDING;
   darkTheme.m_componentStyles[UIComponentType::TITLE] = titleStyle;
 
   // Dialog style - solid background for modal dialogs
   UIStyle dialogStyle;
-  dialogStyle.backgroundColor = {45, 45, 45, 255}; // Dark solid background
-  dialogStyle.borderColor = {160, 160, 160, 255}; // Light border for definition
+  dialogStyle.backgroundColor = {.r=45, .g=45, .b=45, .a=255}; // Dark solid background
+  dialogStyle.borderColor = {.r=160, .g=160, .b=160, .a=255}; // Light border for definition
   dialogStyle.borderWidth = UIConstants::BORDER_WIDTH_DIALOG;
   dialogStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::DIALOG] = dialogStyle;
@@ -2065,10 +2055,10 @@ void UIManager::applyAnchorLayout(const std::shared_ptr<UILayout> &layout) {
 
 SDL_Color UIManager::interpolateColor(const SDL_Color &start,
                                       const SDL_Color &end, float t) {
-  return {static_cast<Uint8>(start.r + (end.r - start.r) * t),
-          static_cast<Uint8>(start.g + (end.g - start.g) * t),
-          static_cast<Uint8>(start.b + (end.b - start.b) * t),
-          static_cast<Uint8>(start.a + (end.a - start.a) * t)};
+  return {.r = static_cast<Uint8>(start.r + (end.r - start.r) * t),
+          .g = static_cast<Uint8>(start.g + (end.g - start.g) * t),
+          .b = static_cast<Uint8>(start.b + (end.b - start.b) * t),
+          .a = static_cast<Uint8>(start.a + (end.a - start.a) * t)};
 }
 
 UIRect UIManager::interpolateRect(const UIRect &start, const UIRect &end,
@@ -2442,9 +2432,9 @@ void UIManager::createCombatHUD() {
                            barWidth, barHeight});
 
   UIStyle healthStyle;
-  healthStyle.backgroundColor = {40, 40, 40, 255};
-  healthStyle.borderColor = {180, 180, 180, 255};
-  healthStyle.hoverColor = {50, 200, 50, 255};
+  healthStyle.backgroundColor = {.r=40, .g=40, .b=40, .a=255};
+  healthStyle.borderColor = {.r=180, .g=180, .b=180, .a=255};
+  healthStyle.hoverColor = {.r=50, .g=200, .b=50, .a=255};
   healthStyle.borderWidth = 1;
   setStyle("hud_health_bar", healthStyle);
 
@@ -2465,9 +2455,9 @@ void UIManager::createCombatHUD() {
                            barWidth, barHeight});
 
   UIStyle staminaStyle;
-  staminaStyle.backgroundColor = {40, 40, 40, 255};
-  staminaStyle.borderColor = {180, 180, 180, 255};
-  staminaStyle.hoverColor = {255, 200, 50, 255};
+  staminaStyle.backgroundColor = {.r=40, .g=40, .b=40, .a=255};
+  staminaStyle.borderColor = {.r=180, .g=180, .b=180, .a=255};
+  staminaStyle.hoverColor = {.r=255, .g=200, .b=50, .a=255};
   staminaStyle.borderWidth = 1;
   setStyle("hud_stamina_bar", staminaStyle);
 
@@ -2492,9 +2482,9 @@ void UIManager::createCombatHUD() {
   setComponentVisible("hud_target_health", false);
 
   UIStyle targetHealthStyle;
-  targetHealthStyle.backgroundColor = {40, 40, 40, 255};
-  targetHealthStyle.borderColor = {180, 180, 180, 255};
-  targetHealthStyle.hoverColor = {200, 50, 50, 255};
+  targetHealthStyle.backgroundColor = {.r=40, .g=40, .b=40, .a=255};
+  targetHealthStyle.borderColor = {.r=180, .g=180, .b=180, .a=255};
+  targetHealthStyle.hoverColor = {.r=200, .g=50, .b=50, .a=255};
   targetHealthStyle.borderWidth = 1;
   setStyle("hud_target_health", targetHealthStyle);
 
@@ -2676,7 +2666,7 @@ void UIManager::setComponentPositioning(const std::string &id,
   }
 }
 
-void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
+void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
   if (m_components.empty()) {
     return;
   }
@@ -2687,8 +2677,8 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
   auto& primPool = gpuRenderer.getPrimitiveVertexPool();
   auto& uiPool = gpuRenderer.getUIVertexPool();
 
-  auto* primBase = static_cast<HammerEngine::ColorVertex*>(primPool.getMappedPtr());
-  auto* uiBase = static_cast<HammerEngine::SpriteVertex*>(uiPool.getMappedPtr());
+  auto* primBase = static_cast<VoidLight::ColorVertex*>(primPool.getMappedPtr());
+  auto* uiBase = static_cast<VoidLight::SpriteVertex*>(uiPool.getMappedPtr());
 
   if (!primBase || !uiBase) {
     return;
@@ -2709,15 +2699,15 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
     float top = viewportHeight - y;
     float bottom = top - h;
 
-    HammerEngine::ColorVertex* v = primBase + primOffset;
+    VoidLight::ColorVertex* v = primBase + primOffset;
     // Triangle 1
-    v[0] = {x, top, color.r, color.g, color.b, color.a};
-    v[1] = {x + w, top, color.r, color.g, color.b, color.a};
-    v[2] = {x + w, bottom, color.r, color.g, color.b, color.a};
+    v[0] = {.x=x,     .y=top,    .r=color.r, .g=color.g, .b=color.b, .a=color.a};
+    v[1] = {.x=x + w, .y=top,    .r=color.r, .g=color.g, .b=color.b, .a=color.a};
+    v[2] = {.x=x + w, .y=bottom, .r=color.r, .g=color.g, .b=color.b, .a=color.a};
     // Triangle 2
-    v[3] = {x, top, color.r, color.g, color.b, color.a};
-    v[4] = {x + w, bottom, color.r, color.g, color.b, color.a};
-    v[5] = {x, bottom, color.r, color.g, color.b, color.a};
+    v[3] = {.x=x,     .y=top,    .r=color.r, .g=color.g, .b=color.b, .a=color.a};
+    v[4] = {.x=x + w, .y=bottom, .r=color.r, .g=color.g, .b=color.b, .a=color.a};
+    v[5] = {.x=x,     .y=bottom, .r=color.r, .g=color.g, .b=color.b, .a=color.a};
 
     UIGPUDrawCommand cmd;
     cmd.type = UIGPUDrawCommand::Type::Rect;
@@ -2745,7 +2735,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
   auto addText = [&](const std::string& textKey, const std::string& text,
                      const std::string& fontID, int x, int y,
                      const SDL_Color& color, int alignment,
-                     bool useBackground = false, const SDL_Color& bgColor = {0,0,0,0},
+                     bool useBackground = false, const SDL_Color& bgColor = {.r=0, .g=0, .b=0, .a=0},
                      int bgPadding = 0) {
     if (text.empty()) return;
 
@@ -2810,7 +2800,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
       return;
     }
 
-    HammerEngine::SpriteVertex* v = uiBase + uiOffset;
+    VoidLight::SpriteVertex* v = uiBase + uiOffset;
     for (TTF_GPUAtlasDrawSequence* seq = drawSequence; seq != nullptr; seq = seq->next) {
       if (!seq->atlas_texture || !seq->xy || !seq->uv || !seq->indices ||
           seq->num_indices <= 0 || seq->num_vertices <= 0) {
@@ -2824,7 +2814,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
       v = uiBase + uiOffset;
       SDL_Color drawColor = color;
       if (seq->image_type == TTF_IMAGE_COLOR) {
-        drawColor = {255, 255, 255, color.a};
+        drawColor = {.r=255, .g=255, .b=255, .a=color.a};
       }
       for (int i = 0; i < seq->num_indices; ++i) {
         int sourceIndex = seq->indices[i];
@@ -2835,9 +2825,9 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
         const SDL_FPoint& pos = seq->xy[sourceIndex];
         const SDL_FPoint& uv = seq->uv[sourceIndex];
         // SDL3_ttf GPU text already provides UVs in SDL_GPU convention.
-        v[i] = {dstX + pos.x, (viewportHeight - dstY) + pos.y,
-                uv.x, uv.y,
-                drawColor.r, drawColor.g, drawColor.b, drawColor.a};
+        v[i] = {.x=dstX + pos.x, .y=(viewportHeight - dstY) + pos.y,
+                .u=uv.x, .v=uv.y,
+                .r=drawColor.r, .g=drawColor.g, .b=drawColor.b, .a=drawColor.a};
       }
 
       UIGPUDrawCommand cmd;
@@ -3071,7 +3061,7 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
           // Draw border (blue if focused)
           SDL_Color borderColor = component->m_style.borderColor;
           if (component->m_state == UIState::FOCUSED) {
-            borderColor = {100, 150, 255, 255};  // Blue focus border
+            borderColor = {.r=100, .g=150, .b=255, .a=255};  // Blue focus border
           }
           addBorder(component->m_bounds, borderColor, component->m_style.borderWidth);
 
@@ -3239,11 +3229,11 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
         UIRect tooltipBounds = {tooltipX, tooltipY, tooltipWidth, tooltipHeight};
 
         // Draw tooltip background
-        SDL_Color tooltipBg = {50, 50, 50, 230};
+        SDL_Color tooltipBg = {.r=50, .g=50, .b=50, .a=230};
         addFilledRect(tooltipBounds, tooltipBg);
 
         // Draw tooltip border
-        SDL_Color tooltipBorder = {100, 100, 100, 255};  // Default border color
+        SDL_Color tooltipBorder = {.r=100, .g=100, .b=100, .a=255};  // Default border color
         addBorder(tooltipBounds, tooltipBorder, 1);
 
         // Draw tooltip text (centered in the tooltip box)
@@ -3259,12 +3249,12 @@ void UIManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer) {
   uiPool.setWrittenVertexCount(uiOffset);
 }
 
-void UIManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass) {
+void UIManager::renderGPU(VoidLight::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass) {
   if (!pass) return;
 
   // Create orthographic projection for screen-space rendering
   float orthoMatrix[16];
-  HammerEngine::GPURenderer::createOrthoMatrix(
+  VoidLight::GPURenderer::createOrthoMatrix(
       0.0f, static_cast<float>(gpuRenderer.getViewportWidth()),
       0.0f, static_cast<float>(gpuRenderer.getViewportHeight()),
       orthoMatrix);

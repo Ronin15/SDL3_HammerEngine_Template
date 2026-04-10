@@ -22,7 +22,7 @@
 #include <vector>
 #include "managers/EventManager.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 class Camera;  // Forward declaration for camera pointer storage
 
 class GPURenderer;  // Forward declaration for GPU rendering
@@ -98,6 +98,7 @@ public:
     // Season management
     void subscribeToSeasonEvents();
     void unsubscribeFromSeasonEvents();
+    [[nodiscard]] bool isSubscribedToSeasons() const { return m_subscribedToSeasons; }
     Season getCurrentSeason() const { return m_currentSeason; }
     void setCurrentSeason(Season season);
 
@@ -214,14 +215,14 @@ public:
     void prepareForStateTransition();
     void setupEventHandlers();
 
-    bool loadNewWorld(const HammerEngine::WorldGenerationConfig& config,
-                     const HammerEngine::WorldGenerationProgressCallback& progressCallback = nullptr);
+    bool loadNewWorld(const VoidLight::WorldGenerationConfig& config,
+                     const VoidLight::WorldGenerationProgressCallback& progressCallback = nullptr);
     bool loadWorld(const std::string& worldId);
     void unloadWorld();
 
-    std::optional<HammerEngine::Tile> getTileCopyAt(int x, int y) const;
-    std::optional<HammerEngine::Biome> getTileBiomeAt(int x, int y) const;
-    std::optional<HammerEngine::ObstacleType> getTileObstacleTypeAt(int x, int y) const;
+    std::optional<VoidLight::Tile> getTileCopyAt(int x, int y) const;
+    std::optional<VoidLight::Biome> getTileBiomeAt(int x, int y) const;
+    std::optional<VoidLight::ObstacleType> getTileObstacleTypeAt(int x, int y) const;
 
     bool isValidPosition(int x, int y) const;
     std::string getCurrentWorldId() const;
@@ -233,7 +234,7 @@ public:
      * @brief Set active camera for chunk visibility (called by states with world rendering)
      */
     // Non-owning observer used for chunk prefetching; callers must clear this before destroying the camera.
-    void setActiveCamera(HammerEngine::Camera* camera) { mp_activeCamera = camera; }
+    void setActiveCamera(VoidLight::Camera* camera) { mp_activeCamera = camera; }
 
     /**
      * @brief Record world tile vertices for GPU rendering
@@ -249,12 +250,12 @@ public:
      * @param viewHeight Viewport height at 1x scale
      * @param zoom Current zoom level
      */
-    void recordGPU(HammerEngine::SpriteBatch& spriteBatch, float cameraX, float cameraY,
+    void recordGPU(VoidLight::SpriteBatch& spriteBatch, float cameraX, float cameraY,
                    float viewWidth, float viewHeight, float zoom);
 
     bool handleHarvestResource(int entityId, int targetX, int targetY);
-    bool modifyTile(int x, int y, const std::function<void(HammerEngine::Tile&)>& mutator);
-    bool updateTile(int x, int y, const HammerEngine::Tile& newTile);
+    bool modifyTile(int x, int y, const std::function<void(VoidLight::Tile&)>& mutator);
+    bool updateTile(int x, int y, const VoidLight::Tile& newTile);
 
     void enableRendering(bool enable) { m_renderingEnabled = enable; }
     bool isRenderingEnabled() const { return m_renderingEnabled; }
@@ -277,7 +278,7 @@ public:
 
     template <typename Func>
     decltype(auto) withWorldDataRead(Func&& func) const {
-        using Result = std::invoke_result_t<Func, const HammerEngine::WorldData*>;
+        using Result = std::invoke_result_t<Func, const VoidLight::WorldData*>;
         static_assert(!std::is_reference_v<Result>,
                       "withWorldDataRead() callbacks must not return references");
         static_assert(!std::is_pointer_v<std::remove_cv_t<Result>>,
@@ -325,15 +326,15 @@ private:
     WorldManager(const WorldManager&) = delete;
     WorldManager& operator=(const WorldManager&) = delete;
 
-    void fireTileChangedEvent(int x, int y, const HammerEngine::Tile& tile);
+    void fireTileChangedEvent(int x, int y, const VoidLight::Tile& tile);
     void fireWorldLoadedEvent(const std::string& worldId);
     void fireWorldUnloadedEvent(const std::string& worldId);
     void initializeWorldResources();
     void unloadWorldUnsafe();  // Internal method - assumes caller already holds lock
-    bool applyTileUpdateLocked(int x, int y, const HammerEngine::Tile& newTile);
+    bool applyTileUpdateLocked(int x, int y, const VoidLight::Tile& newTile);
 
-    std::unique_ptr<HammerEngine::WorldData> m_currentWorld;
-    std::unique_ptr<HammerEngine::TileRenderer> m_tileRenderer;
+    std::unique_ptr<VoidLight::WorldData> m_currentWorld;
+    std::unique_ptr<VoidLight::TileRenderer> m_tileRenderer;
 
     mutable std::shared_mutex m_worldMutex;
     std::atomic<bool> m_initialized{false};
@@ -348,7 +349,7 @@ private:
     int m_viewportWidth{80};
     int m_viewportHeight{25};
 
-    HammerEngine::Camera* mp_activeCamera{nullptr};
+    VoidLight::Camera* mp_activeCamera{nullptr};
 };
 
 #endif // WORLD_MANAGER_HPP

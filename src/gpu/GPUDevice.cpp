@@ -6,7 +6,7 @@
 #include "core/Logger.hpp"
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 GPUDevice& GPUDevice::Instance() {
     static GPUDevice instance;
@@ -139,4 +139,4 @@ const char* GPUDevice::getDriverName() const {
     return SDL_GetGPUDeviceDriver(m_device);
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

@@ -17,8 +17,7 @@ void PlayerDyingState::enter() {
     m_player.get().setAcceleration(Vector2D(0, 0));
 }
 
-void PlayerDyingState::update(float deltaTime) {
-    (void)deltaTime;
+void PlayerDyingState::update(float) {
     // Player stays dead - no transition
 }
 

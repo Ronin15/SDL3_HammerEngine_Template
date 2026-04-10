@@ -30,11 +30,11 @@ BOOST_AUTO_TEST_CASE(TestAtomicProgressTracking) {
     LoadingState loadingState;
 
     // Verify LoadingState starts with zero progress
-    HammerEngine::WorldGenerationConfig config;
+    VoidLight::WorldGenerationConfig config;
     config.width = 800;
     config.height = 600;
 
-    loadingState.configure("TestTargetState", config);
+    loadingState.configure(GameStateId::GAME_PLAY, config);
 
     // After configuration, progress should be reset to 0
     // (We can't directly access private m_progress, but we validate behavior)
@@ -61,8 +61,8 @@ BOOST_AUTO_TEST_CASE(TestThreadSafeErrorHandling) {
 
     auto checkErrors = [&loadingState, &checksCompleted]() {
         for (int i = 0; i < 100; ++i) {
-            (void)loadingState.hasError();
-            (void)loadingState.getLastError();
+            loadingState.hasError();
+            loadingState.getLastError();
         }
         checksCompleted.fetch_add(1, std::memory_order_relaxed);
     };
@@ -87,20 +87,20 @@ BOOST_AUTO_TEST_CASE(TestThreadSafeErrorHandling) {
 BOOST_AUTO_TEST_CASE(TestLoadingStateReuse) {
     LoadingState loadingState;
 
-    HammerEngine::WorldGenerationConfig config1;
+    VoidLight::WorldGenerationConfig config1;
     config1.width = 400;
     config1.height = 300;
 
     // First configuration
-    loadingState.configure("State1", config1);
+    loadingState.configure(GameStateId::LOGO, config1);
     BOOST_CHECK(!loadingState.hasError());
 
     // Second configuration (reuse)
-    HammerEngine::WorldGenerationConfig config2;
+    VoidLight::WorldGenerationConfig config2;
     config2.width = 800;
     config2.height = 600;
 
-    loadingState.configure("State2", config2);
+    loadingState.configure(GameStateId::LOADING, config2);
     BOOST_CHECK(!loadingState.hasError());
     BOOST_CHECK_EQUAL(loadingState.getLastError(), ""); // Error cleared on reconfigure
     BOOST_CHECK(!loadingState.hasError());

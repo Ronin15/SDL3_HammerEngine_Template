@@ -106,6 +106,8 @@ for %%T in (
     run_ai_manager_edm_integration_tests.bat
     run_collision_manager_edm_integration_tests.bat
     run_pathfinder_manager_edm_integration_tests.bat
+    run_pathfinder_manager_tests.bat
+    run_projectile_manager_tests.bat
     run_npc_memory_tests.bat
     run_gpu_tests.bat
     run_crowd_runtime_tests.bat
@@ -160,6 +162,7 @@ for %%T in (
     run_integrated_benchmark.bat
     run_background_simulation_manager_benchmark.bat
     run_adaptive_threading_analysis.bat
+    run_projectile_benchmark.bat
 ) do (
     echo.
     echo Running benchmark: %%T

@@ -1,10 +1,10 @@
-# Doxyfile for SDL3 HammerEngine
+# Doxyfile for VoidLight-Framework
 # Generated for documentation from header comments
 
 #---------------------------------------------------------------------------
 # Project related configuration options
 #---------------------------------------------------------------------------
-PROJECT_NAME           = "SDL3 HammerEngine"
+PROJECT_NAME           = "VoidLight-Framework"
 PROJECT_NUMBER         = "1.0"
 PROJECT_BRIEF          = "High-performance C++20 game engine built on SDL3"
 PROJECT_LOGO           =

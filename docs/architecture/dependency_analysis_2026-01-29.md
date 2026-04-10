@@ -1,4 +1,4 @@
-# HammerEngine Dependency Analysis Report
+# VoidLight-Framework Dependency Analysis Report
 
 **Generated:** 2026-01-29 14:52:48
 **Branch:** SDL3_GPU
@@ -173,7 +173,7 @@ These are foundational components that many files depend on:
 
 ✅ **ARCHITECTURE HEALTHY**
 
-The HammerEngine codebase demonstrates:
+The VoidLight-Framework codebase demonstrates:
 - Clean layered architecture
 - No circular dependencies
 - Appropriate coupling for game engine systems

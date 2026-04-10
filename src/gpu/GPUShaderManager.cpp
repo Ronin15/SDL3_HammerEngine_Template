@@ -8,7 +8,7 @@
 #include <fstream>
 #include <vector>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 namespace {
 
@@ -260,4 +260,4 @@ ShaderCacheKey GPUShaderManager::makeCacheKey(const std::string& basePath,
     return ShaderCacheKey{resolveShaderPath(basePath, stage), stage, info};
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

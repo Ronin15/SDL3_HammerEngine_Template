@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-The `testing_update` branch represents a major infrastructure investment in SDL3 HammerEngine's reliability and quality assurance. This update introduces 15+ new test files covering critical engine systems while simultaneously delivering high-value fixes discovered during the testing process.
+The `testing_update` branch represents a major infrastructure investment in SDL3 VoidLight-Framework's reliability and quality assurance. This update introduces 15+ new test files covering critical engine systems while simultaneously delivering high-value fixes discovered during the testing process.
 
 The testing infrastructure directly uncovered and validated fixes for a pathfinding performance regression, buffer statistics data races, ASAN/TSAN stability issues, and UI scaling inconsistencies. The UI Constants unification establishes a maintainable foundation for resolution-aware interfaces across all screen sizes.
 
@@ -108,7 +108,7 @@ Pathfinding grid was being built sequentially and THEN rebuilt in parallel, caus
 - Added incremental pathfinding grid rebuild for world event changes (commit `7ee58c3`)
 - Implemented threaded grid rebuild Phase 1 (commit `c117223`)
 - LoadingState now waits for pathfinding grid before state transition (commit `20ca61c`)
-- Fixed tile size from hard-coded 64 to correct 32 (`HammerEngine::TILE_SIZE`) (commit `52515a1`)
+- Fixed tile size from hard-coded 64 to correct 32 (`VoidLight-Framework::TILE_SIZE`) (commit `52515a1`)
 
 **Impact:**
 - Eliminated critical performance regression

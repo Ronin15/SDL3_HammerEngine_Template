@@ -28,16 +28,32 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
 }
 
 // ============================================================================
-// Test Fixture
+// Global Fixture — ThreadSystem lives for the entire test module
+// ============================================================================
+
+struct ThreadSystemFixture {
+    ThreadSystemFixture() {
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            throw std::runtime_error("ThreadSystem::init() failed");
+        }
+    }
+    ~ThreadSystemFixture() {
+        VoidLight::ThreadSystem::Instance().clean();
+    }
+};
+
+BOOST_GLOBAL_FIXTURE(ThreadSystemFixture);
+
+// ============================================================================
+// Per-Test Fixture — managers reset between tests
 // ============================================================================
 
 class EntityDataManagerTestFixture {
 public:
     EntityDataManagerTestFixture() {
-        HammerEngine::ThreadSystem::Instance().init();
         ResourceTemplateManager::Instance().init();
         edm = &EntityDataManager::Instance();
-        edm->init();
+        BOOST_REQUIRE(edm->init());
         EventManager::Instance().init();
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
@@ -51,7 +67,6 @@ public:
         EventManager::Instance().clean();
         edm->clean();
         ResourceTemplateManager::Instance().clean();
-        HammerEngine::ThreadSystem::Instance().clean();
     }
 
 protected:
@@ -172,7 +187,7 @@ BOOST_AUTO_TEST_CASE(TestCreatePlayer) {
 
 BOOST_AUTO_TEST_CASE(TestCreateDroppedItem) {
     Vector2D position(500.0f, 600.0f);
-    HammerEngine::ResourceHandle resourceHandle{1, 1};
+    VoidLight::ResourceHandle resourceHandle{1, 1};
     EntityHandle handle = edm->createDroppedItem(position, resourceHandle, 5);
 
     BOOST_CHECK(handle.isValid());
@@ -245,7 +260,7 @@ BOOST_AUTO_TEST_CASE(TestCreateMultipleEntities) {
     edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
     edm->registerPlayer(1,Vector2D(300.0f, 300.0f));
-    edm->createDroppedItem(Vector2D(400.0f, 400.0f), HammerEngine::ResourceHandle{1, 1}, 1);
+    edm->createDroppedItem(Vector2D(400.0f, 400.0f), VoidLight::ResourceHandle{1, 1}, 1);
 
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 4);
     BOOST_CHECK_EQUAL(edm->getEntityCount(EntityKind::NPC), 2);
@@ -291,7 +306,7 @@ BOOST_AUTO_TEST_CASE(TestRegisterPlayer) {
 BOOST_AUTO_TEST_CASE(TestRegisterDroppedItem) {
     EntityHandle::IDType entityId = 11111;
     Vector2D position(500.0f, 600.0f);
-    HammerEngine::ResourceHandle resourceHandle{2, 3};
+    VoidLight::ResourceHandle resourceHandle{2, 3};
 
     EntityHandle handle = edm->registerDroppedItem(entityId, position, resourceHandle, 10);
 
@@ -603,7 +618,7 @@ BOOST_AUTO_TEST_CASE(TestGetCharacterDataByIndex) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetItemData) {
-    HammerEngine::ResourceHandle resourceHandle{1, 2};
+    VoidLight::ResourceHandle resourceHandle{1, 2};
     EntityHandle handle = edm->createDroppedItem(Vector2D(100.0f, 100.0f), resourceHandle, 5);
 
     auto& itemData = edm->getItemData(handle);
@@ -752,7 +767,7 @@ BOOST_AUTO_TEST_CASE(TestQueryEntitiesInRadius) {
 BOOST_AUTO_TEST_CASE(TestQueryEntitiesWithKindFilter) {
     edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     edm->registerPlayer(1,Vector2D(150.0f, 150.0f));
-    edm->createDroppedItem(Vector2D(120.0f, 120.0f), HammerEngine::ResourceHandle{1, 1}, 1);
+    edm->createDroppedItem(Vector2D(120.0f, 120.0f), VoidLight::ResourceHandle{1, 1}, 1);
 
     std::vector<EntityHandle> found;
     edm->queryEntitiesInRadius(Vector2D(100.0f, 100.0f), 500.0f, found, EntityKind::NPC);
@@ -784,7 +799,7 @@ BOOST_AUTO_TEST_CASE(TestGetEntityCountByKind) {
     edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
     edm->registerPlayer(1,Vector2D(300.0f, 300.0f));
-    edm->createDroppedItem(Vector2D(400.0f, 400.0f), HammerEngine::ResourceHandle{1, 1}, 1);
+    edm->createDroppedItem(Vector2D(400.0f, 400.0f), VoidLight::ResourceHandle{1, 1}, 1);
 
     BOOST_CHECK_EQUAL(edm->getEntityCount(EntityKind::NPC), 2);
     BOOST_CHECK_EQUAL(edm->getEntityCount(EntityKind::Player), 1);
@@ -1062,7 +1077,7 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsKindIndices) {
     edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
     edm->registerPlayer(99999, Vector2D(300.0f, 300.0f));  // Use unique ID to avoid collision
     // Note: DroppedItems are now in static pool, not tracked by getIndicesByKind()
-    edm->createDroppedItem(Vector2D(400.0f, 400.0f), HammerEngine::ResourceHandle{1, 1}, 1);
+    edm->createDroppedItem(Vector2D(400.0f, 400.0f), VoidLight::ResourceHandle{1, 1}, 1);
 
     // Get kind indices - this populates the cache (dynamic pool only)
     auto npcIndices = edm->getIndicesByKind(EntityKind::NPC);
@@ -1108,7 +1123,7 @@ BOOST_AUTO_TEST_CASE(TestAllCachedIndicesClearedComprehensive) {
 
     // Items
     handles.push_back(edm->createDroppedItem(Vector2D(400.0f, 400.0f),
-        HammerEngine::ResourceHandle{1, 1}, 5));
+        VoidLight::ResourceHandle{1, 1}, 5));
 
     // Enable collision on some
     for (size_t i = 0; i < 3; ++i) {

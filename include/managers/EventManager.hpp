@@ -39,7 +39,7 @@
 
 // Forward declarations
 class Event;
-namespace HammerEngine { struct CollisionInfo; }
+namespace VoidLight { struct CollisionInfo; }
 class WeatherEvent;
 class NPCSpawnEvent;
 class ResourceChangeEvent;
@@ -96,14 +96,19 @@ using FastEventHandler = std::function<void(const EventData &)>;
 
 /**
  * @brief Handler entry combining callable with ID for token-based removal
+ *
+ * Handlers marked persistent survive prepareForStateTransition().
+ * Manager-level handlers (registered in init()) should be persistent.
+ * State-level handlers (registered in enter()) should be transient (default).
  */
 struct HandlerEntry {
   FastEventHandler callable;
   uint64_t id = 0;
+  bool persistent = false;
 
   HandlerEntry() = default;
-  HandlerEntry(FastEventHandler c, uint64_t i)
-    : callable(std::move(c)), id(i) {}
+  HandlerEntry(FastEventHandler c, uint64_t i, bool p = false)
+    : callable(std::move(c)), id(i), persistent(p) {}
 
   explicit operator bool() const { return static_cast<bool>(callable); }
 };
@@ -269,9 +274,17 @@ public:
   // ==================== Handler Registration ====================
 
   /**
-   * @brief Registers a handler for an event type
+   * @brief Registers a transient handler (cleared on state transition)
    */
   void registerHandler(EventTypeId typeId, FastEventHandler handler);
+
+  /**
+   * @brief Registers a persistent handler (survives state transitions)
+   *
+   * Use for manager-level infrastructure handlers registered in init().
+   * State-level handlers should use registerHandler() instead.
+   */
+  void registerPersistentHandler(EventTypeId typeId, FastEventHandler handler);
 
   /**
    * @brief Removes all handlers for an event type
@@ -279,9 +292,17 @@ public:
   void removeHandlers(EventTypeId typeId);
 
   /**
-   * @brief Clears all registered handlers
+   * @brief Clears all registered handlers (including persistent — for shutdown)
    */
   void clearAllHandlers();
+
+  /**
+   * @brief Clears only transient handlers (persistent handlers survive)
+   *
+   * Called during state transitions. Manager-level handlers registered
+   * with registerPersistentHandler() are retained.
+   */
+  void clearTransientHandlers();
 
   /**
    * @brief Gets the handler count for an event type
@@ -295,13 +316,19 @@ public:
   };
 
   /**
-   * @brief Registers a handler and returns a token for removal
+   * @brief Registers a transient handler and returns a token for removal
    */
   HandlerToken registerHandlerWithToken(EventTypeId typeId,
                                         FastEventHandler handler);
 
   /**
-   * @brief Removes a handler using its token
+   * @brief Registers a persistent handler and returns a token for removal
+   */
+  HandlerToken registerPersistentHandlerWithToken(EventTypeId typeId,
+                                                  FastEventHandler handler);
+
+  /**
+   * @brief Removes a handler using its token (works for both persistent and transient)
    */
   bool removeHandler(const HandlerToken &token);
 
@@ -359,7 +386,7 @@ public:
    * @brief Triggers a resource change event
    */
   bool triggerResourceChange(EntityHandle ownerHandle,
-                             HammerEngine::ResourceHandle resourceHandle,
+                             VoidLight::ResourceHandle resourceHandle,
                              int oldQuantity, int newQuantity,
                              const std::string &changeReason = "",
                              DispatchMode mode = DispatchMode::Deferred) const;
@@ -367,7 +394,7 @@ public:
   /**
    * @brief Triggers a collision event
    */
-  bool triggerCollision(const HammerEngine::CollisionInfo &info,
+  bool triggerCollision(const VoidLight::CollisionInfo &info,
                         DispatchMode mode = DispatchMode::Deferred) const;
 
   /**
@@ -510,13 +537,6 @@ private:
   mutable std::array<PerformanceStats, static_cast<size_t>(EventTypeId::COUNT)>
       m_performanceStats;
   mutable std::mutex m_perfMutex;
-
-  // Performance tracking for DEBUG logging
-  static constexpr size_t PERF_SAMPLE_SIZE = 60;
-  mutable std::array<double, PERF_SAMPLE_SIZE> m_updateTimeSamples{};
-  mutable size_t m_currentSampleIndex{0};
-  mutable double m_avgUpdateTimeMs{0.0};
-  mutable uint64_t m_totalHandlerCalls{0};
 
   // Timing
   std::atomic<uint64_t> m_lastUpdateTime{0};

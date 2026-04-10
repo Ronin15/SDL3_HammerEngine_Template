@@ -2,7 +2,7 @@
 
 **Code:** `include/ai/AIBehavior.hpp`, `include/managers/EventManager.hpp`, `include/managers/EntityDataManager.hpp`, `include/managers/WorldResourceManager.hpp`
 
-Analysis of SDL3 HammerEngine's current capabilities and recommendations for supporting emergent gameplay systems.
+Analysis of SDL3 VoidLight-Framework's current capabilities and recommendations for supporting emergent gameplay systems.
 
 **Date**: January 2026
 **Status**: Analysis Complete
@@ -24,7 +24,7 @@ Analysis of SDL3 HammerEngine's current capabilities and recommendations for sup
 
 ## Executive Summary
 
-SDL3 HammerEngine has **strong foundational support** for emergent gameplay through:
+SDL3 VoidLight-Framework has **strong foundational support** for emergent gameplay through:
 
 - Data-oriented entity architecture with decoupled systems
 - Event-driven communication enabling system interplay
@@ -472,7 +472,7 @@ void onTimePeriodChanged(TimePeriod period) {
 
 ## Conclusion
 
-SDL3 HammerEngine has a solid architectural foundation for emergent gameplay. The event-driven design, modular behavior system, and data-oriented entity management provide the infrastructure needed.
+SDL3 VoidLight-Framework has a solid architectural foundation for emergent gameplay. The event-driven design, modular behavior system, and data-oriented entity management provide the infrastructure needed.
 
 The primary gaps are in **social systems** (factions, relationships), **autonomous decision-making** (utility AI), and **system interconnection** (resources/environment affecting AI).
 

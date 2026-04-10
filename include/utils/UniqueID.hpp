@@ -9,7 +9,7 @@
 #include <atomic>
 #include <cstdint>
 
-namespace HammerEngine {
+namespace VoidLight {
     /**
      * @brief A thread-safe generator for unique 64-bit identifiers.
      *
@@ -42,6 +42,6 @@ namespace HammerEngine {
         static inline std::atomic<IDType> m_nextID{1};
     };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // UNIQUE_ID_HPP

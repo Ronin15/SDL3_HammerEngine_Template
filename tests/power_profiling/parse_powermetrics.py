@@ -486,7 +486,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    print("PowerMetrics Parser - SDL3 HammerEngine Power Analysis")
+    print("PowerMetrics Parser - SDL3 VoidLight-Framework Power Analysis")
     print("="*70)
 
     all_results = []

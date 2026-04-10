@@ -20,7 +20,7 @@
 #include <thread>
 
 // Use SIMD abstraction layer
-using namespace HammerEngine::SIMD;
+using namespace VoidLight::SIMD;
 
 // BatchRenderBuffers is now defined in ParticleManager.hpp as a member struct
 // to allow the buffer to persist across frames (eliminating per-frame std::fill overhead)
@@ -831,9 +831,9 @@ void ParticleManager::update(float deltaTime) {
 
     // Phase 4: Update particle physics with optimal threading strategy
     // WorkerBudget is the AUTHORITATIVE source - no manager overrides
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     auto decision = budgetMgr.shouldUseThreading(
-        HammerEngine::SystemType::Particle, traversedCount);
+        VoidLight::SystemType::Particle, traversedCount);
     bool useThreading = decision.shouldThread;
 
     // Track threading decision for interval logging (local vars, zero overhead in release)
@@ -928,7 +928,7 @@ void ParticleManager::update(float deltaTime) {
 #endif
 
     // Report tight per-path timing for adaptive tuning (not preprocessing/postprocessing)
-    budgetMgr.reportExecution(HammerEngine::SystemType::Particle,
+    budgetMgr.reportExecution(VoidLight::SystemType::Particle,
                               traversedCount, threadingInfo.wasThreaded,
                               threadingInfo.batchCount, threadingInfo.batchTimeMs);
 
@@ -940,7 +940,7 @@ void ParticleManager::update(float deltaTime) {
 #include "gpu/GPURenderer.hpp"
 #include "gpu/GPUTypes.hpp"
 
-void ParticleManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+void ParticleManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                                         float cameraX, float cameraY,
                                         float interpolationAlpha) {
   // Store camera position for weather particle spawning
@@ -959,7 +959,7 @@ void ParticleManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
 
   // Get particle vertex pool from GPURenderer (already mapped by GPURenderer::beginFrame)
   auto& vertexPool = gpuRenderer.getParticleVertexPool();
-  auto* basePtr = static_cast<HammerEngine::ColorVertex*>(vertexPool.getMappedPtr());
+  auto* basePtr = static_cast<VoidLight::ColorVertex*>(vertexPool.getMappedPtr());
   if (!basePtr) {
     return;
   }
@@ -1031,7 +1031,7 @@ void ParticleManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
   vertexPool.setWrittenVertexCount(vertexOffset);
 }
 
-void ParticleManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
+void ParticleManager::renderGPU(VoidLight::GPURenderer& gpuRenderer,
                                 SDL_GPURenderPass* scenePass) {
   if (m_globallyPaused.load(std::memory_order_acquire) ||
       !m_globallyVisible.load(std::memory_order_acquire)) {
@@ -1039,7 +1039,7 @@ void ParticleManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
   }
 
   // Get particle vertex pool
-  auto& vertexPool = gpuRenderer.getParticleVertexPool();
+  const auto& vertexPool = gpuRenderer.getParticleVertexPool();
   size_t vertexCount = vertexPool.getPendingVertexCount();
 
   if (vertexCount == 0) return;
@@ -1050,7 +1050,7 @@ void ParticleManager::renderGPU(HammerEngine::GPURenderer& gpuRenderer,
 
   // Create orthographic projection for scene texture
   float orthoMatrix[16];
-  HammerEngine::GPURenderer::createOrthoMatrix(
+  VoidLight::GPURenderer::createOrthoMatrix(
       0.0f, static_cast<float>(sceneTexture->getWidth()),
       0.0f, static_cast<float>(sceneTexture->getHeight()),
       orthoMatrix);
@@ -2168,20 +2168,20 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   // WorkerBudget-aware threading following engine architecture
   // This implementation follows the same patterns as AIManager for consistent
   // resource allocation across the engine's subsystems
-  auto &threadSystem = HammerEngine::ThreadSystem::Instance();
+  auto &threadSystem = VoidLight::ThreadSystem::Instance();
   size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
 
   // Use centralized WorkerBudgetManager for smart worker allocation
-  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
   const auto& budget = budgetMgr.getBudget();
 
   // Get optimal workers (WorkerBudget determines everything dynamically)
   size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-      HammerEngine::SystemType::Particle, traversedParticleCount);
+      VoidLight::SystemType::Particle, traversedParticleCount);
 
   // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on timing)
   auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-      HammerEngine::SystemType::Particle, traversedParticleCount, optimalWorkerCount);
+      VoidLight::SystemType::Particle, traversedParticleCount, optimalWorkerCount);
 
   // Set threading info for interval logging (local struct, zero overhead in release)
   outThreadingInfo.workerCount = optimalWorkerCount;
@@ -2230,7 +2230,7 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
           PARTICLE_ERROR("Unknown exception in particle batch");
         }
       },
-      HammerEngine::TaskPriority::Normal,
+      VoidLight::TaskPriority::Normal,
       "Particle_Batch"
     ));
   }
@@ -2621,7 +2621,7 @@ void ParticleManager::enableWorkerBudgetThreading(bool enable) {
    *
    * When enabled, ParticleManager will:
    * 1. Calculate its allocated thread budget using
-   * HammerEngine::calculateWorkerBudget()
+   * VoidLight::calculateWorkerBudget()
    * 2. Use budget.getOptimalWorkerCount() to determine threads needed for
    * current workload
    * 3. Submit particle update batches via ThreadSystem::enqueueTaskWithResult()

@@ -1,4 +1,4 @@
-// Project tasks configuration for SDL3 HammerEngine
+// Project tasks configuration for SDL3 VoidLight-Framework
 // Build tasks using Ninja and CMake
 [
   {
@@ -15,7 +15,7 @@
   },
   {
     "label": "ninja_run",
-    "command": "ninja -C build && ./bin/debug/SDL3_Template",
+    "command": "ninja -C build && ./bin/debug/VoidLight_Template",
     "use_new_terminal": false,
     "allow_concurrent_runs": false,
     "reveal": "always",

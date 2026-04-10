@@ -1,4 +1,4 @@
-# clang-tidy suppressions for SDL3_HammerEngine
+# clang-tidy suppressions for SDL3 VoidLight-Framework
 # Format: file_pattern:check_name:reason
 #
 # These are false positives or intentional patterns that should be suppressed
@@ -82,3 +82,7 @@ EntityDataManager.cpp:misc-unused-parameters:kind IS used in m_kindIndices[stati
 
 # Dead store false positive - initial biome_default IS used when default switch case is taken
 WorldManager.cpp:clang-analyzer-deadcode.DeadStores:false positive - biome_default used in default case
+
+# False positive: std::milli is a standard library type in <ratio>, using it as a template
+# argument to std::chrono::duration does NOT modify namespace std
+.cpp:bugprone-std-namespace-modification:std::milli used as template arg is not namespace modification

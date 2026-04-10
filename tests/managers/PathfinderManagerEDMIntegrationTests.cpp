@@ -33,22 +33,21 @@
 #include <thread>
 #include <vector>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
-namespace {
-
-struct ThreadSystemTestLifetime {
-    ThreadSystemTestLifetime() {
-        BOOST_REQUIRE_MESSAGE(ThreadSystem::Instance().init(),
-                              "Failed to initialize ThreadSystem for Pathfinder EDM tests");
+struct ThreadSystemFixture {
+    ThreadSystemFixture() {
+        if (!ThreadSystem::Instance().init()) {
+            throw std::runtime_error("Failed to initialize ThreadSystem for Pathfinder EDM tests");
+        }
     }
-
-    ~ThreadSystemTestLifetime() {
+    ~ThreadSystemFixture() {
         ThreadSystem::Instance().clean();
     }
 };
+BOOST_GLOBAL_FIXTURE(ThreadSystemFixture);
 
-ThreadSystemTestLifetime g_threadSystemTestLifetime{};
+namespace {
 
 bool ensureActiveWorldForPathfindingTests() {
     auto& worldResMgr = WorldResourceManager::Instance();
@@ -128,7 +127,7 @@ private:
 // Test fixture
 struct PathfinderEDMFixture {
     PathfinderEDMFixture() {
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         WorldResourceManager::Instance().init();
         ResourceTemplateManager::Instance().init();
         WorldManager::Instance().init();

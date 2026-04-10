@@ -1,4 +1,4 @@
-# HammerEngine Dependency Analysis Report
+# VoidLight-Framework Dependency Analysis Report
 
 **Generated:** 2025-12-02
 **Branch:** main
@@ -19,7 +19,7 @@
 - All manager coupling is functional and correct for game engine design
 - Some header bloat opportunities identified for compile time optimization
 
-**Overall Assessment:** HammerEngine exhibits excellent architectural health. The layered architecture is properly enforced, dependencies flow correctly, and manager coupling serves functional game system requirements. Minor optimization opportunities exist for header bloat reduction.
+**Overall Assessment:** VoidLight-Framework exhibits excellent architectural health. The layered architecture is properly enforced, dependencies flow correctly, and manager coupling serves functional game system requirements. Minor optimization opportunities exist for header bloat reduction.
 
 ---
 

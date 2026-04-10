@@ -21,47 +21,52 @@ GameStateManager::GameStateManager() {
 }
 
 void GameStateManager::addState(std::unique_ptr<GameState> state) {
-  const std::string name = state->getName();
-  if (hasState(name)) {
-    GAMESTATE_ERROR(std::format("State with name {} already exists", name));
-    throw std::runtime_error(std::format("Hammer Game Engine - State with name {} already exists", name));
+  const auto id = state->getStateId();
+  if (hasState(id)) {
+    GAMESTATE_ERROR(std::format("State {} already exists", static_cast<int>(id)));
+    throw std::runtime_error(std::format("VoidLight Engine - State {} already exists", static_cast<int>(id)));
   }
   // Set state manager reference so state can access transitions and frame data
   state->setStateManager(this);
   // Move the state into the map as shared_ptr
-  m_registeredStates[name] = std::shared_ptr<GameState>(std::move(state));
+  m_registeredStates[id] = std::shared_ptr<GameState>(std::move(state));
 }
 
-void GameStateManager::pushState(const std::string &stateName) {
-  auto it = m_registeredStates.find(stateName);
+void GameStateManager::pushState(GameStateId stateId) {
+  auto it = m_registeredStates.find(stateId);
   if (it != m_registeredStates.end()) {
     // Suppress profiler hitch detection during state transition
-    HammerEngine::FrameProfiler::Instance().suppressFrames(5);
+    VoidLight::FrameProfiler::Instance().suppressFrames(5);
 
     // Pause the current top state if it exists
+    std::shared_ptr<GameState> previousState;
     if (!m_activeStates.empty()) {
-      m_activeStates.back()->pause();
+      previousState = m_activeStates.back();
+      previousState->pause();
     }
 
     // CRITICAL: Enter the state BEFORE adding to active stack to prevent rendering before initialization
     auto newState = it->second;
     if (!newState->enter()) {
-      GAMESTATE_ERROR(std::format("Failed to enter state: {}", stateName));
+      if (previousState) {
+        previousState->resume();
+      }
+      GAMESTATE_ERROR(std::format("Failed to enter state: {}", static_cast<int>(stateId)));
       return;
     }
 
     // Now push the fully initialized state onto the stack
     m_activeStates.push_back(newState);
-    GAMESTATE_INFO(std::format("Pushed state: {}", stateName));
+    GAMESTATE_INFO(std::format("Pushed state: {}", static_cast<int>(stateId)));
   } else {
-    GAMESTATE_ERROR(std::format("State not found: {}", stateName));
+    GAMESTATE_ERROR(std::format("State not found: {}", static_cast<int>(stateId)));
   }
 }
 
 void GameStateManager::popState() {
   if (!m_activeStates.empty()) {
     // Suppress profiler hitch detection during state transition
-    HammerEngine::FrameProfiler::Instance().suppressFrames(5);
+    VoidLight::FrameProfiler::Instance().suppressFrames(5);
 
     // CRITICAL: Wait for exit to complete BEFORE removing from stack
     auto currentState = m_activeStates.back();
@@ -78,18 +83,18 @@ void GameStateManager::popState() {
   }
 }
 
-void GameStateManager::changeState(const std::string &stateName) {
+void GameStateManager::changeState(GameStateId stateId) {
   // Pop the current state if one exists (waits for exit to complete)
   if (!m_activeStates.empty()) {
     popState();
   }
   // Push the new state (waits for enter to complete)
-  pushState(stateName);
+  pushState(stateId);
 }
 
 void GameStateManager::update(float deltaTime) {
   m_lastDeltaTime = deltaTime; // Store deltaTime for render
-  
+
   // Only update the top state when multiple states are active (e.g., PauseState over GamePlayState)
   // This prevents underlying states from processing game logic when paused
   if (!m_activeStates.empty()) {
@@ -97,14 +102,14 @@ void GameStateManager::update(float deltaTime) {
   }
 }
 
-void GameStateManager::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+void GameStateManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                                           float interpolationAlpha) {
   if (!m_activeStates.empty()) {
     m_activeStates.back()->recordGPUVertices(gpuRenderer, interpolationAlpha);
   }
 }
 
-void GameStateManager::renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+void GameStateManager::renderGPUScene(VoidLight::GPURenderer& gpuRenderer,
                                         SDL_GPURenderPass* scenePass,
                                         float interpolationAlpha) {
   if (!m_activeStates.empty()) {
@@ -112,7 +117,7 @@ void GameStateManager::renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
   }
 }
 
-void GameStateManager::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void GameStateManager::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                                      SDL_GPURenderPass* swapchainPass) {
   if (!m_activeStates.empty()) {
     m_activeStates.back()->renderGPUUI(gpuRenderer, swapchainPass);
@@ -126,22 +131,22 @@ void GameStateManager::handleInput() {
   }
 }
 
-bool GameStateManager::hasState(const std::string &stateName) const {
-  return m_registeredStates.find(stateName) != m_registeredStates.end();
+bool GameStateManager::hasState(GameStateId stateId) const {
+  return m_registeredStates.find(stateId) != m_registeredStates.end();
 }
 
 std::shared_ptr<GameState>
-GameStateManager::getState(const std::string &stateName) const {
-  auto it = m_registeredStates.find(stateName);
+GameStateManager::getState(GameStateId stateId) const {
+  auto it = m_registeredStates.find(stateId);
   return it != m_registeredStates.end() ? it->second : nullptr;
 }
 
-void GameStateManager::removeState(const std::string &stateName) {
+void GameStateManager::removeState(GameStateId stateId) {
   // First, remove the state from the active stack if it's there
   m_activeStates.erase(
       std::remove_if(m_activeStates.begin(), m_activeStates.end(),
                      [&](const std::shared_ptr<GameState> &state) {
-                       if (state->getName() == stateName) {
+                       if (state->getStateId() == stateId) {
                          state->exit();
                          return true;
                        }
@@ -155,7 +160,7 @@ void GameStateManager::removeState(const std::string &stateName) {
   }
 
   // Remove from the registered states map
-  m_registeredStates.erase(stateName);
+  m_registeredStates.erase(stateId);
 }
 
 void GameStateManager::clearAllStates() {

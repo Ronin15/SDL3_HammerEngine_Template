@@ -1,4 +1,4 @@
-# CLAUDE.md
+# CLAUDE.md — VoidLight-Framework
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -12,8 +12,8 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
 
 # Run the engine
-./bin/debug/SDL3_Template
-./bin/release/SDL3_Template
+./bin/debug/VoidLight_Template
+./bin/release/VoidLight_Template
 
 # Reconfigure (required when switching sanitizers or build options)
 rm build/CMakeCache.txt && cmake -B build/ ...
@@ -59,7 +59,7 @@ Prefer direct test executables over wrapper scripts for speed.
 
 ## Architecture
 
-**C++20 game engine** using SDL3, built with CMake/Ninja. Data-oriented design supporting 10K+ entities at 60+ FPS.
+**VoidLight-Framework** — C++20 game engine using SDL3, built with CMake/Ninja. Data-oriented design supporting 10K+ entities at 60+ FPS.
 
 ### Dependency Direction
 ```
@@ -112,11 +112,22 @@ Core → Managers → GameStates → Entities/Controllers
 
 ### State Transitions
 Cleanup order for AI-heavy states when all managers are initialized:
-AIManager → BackgroundSimulationManager → WorldResourceManager → EventManager → CollisionManager → PathfinderManager → EntityDataManager → WorkerBudgetManager → ParticleManager
+AIManager → ProjectileManager → BackgroundSimulationManager → WorldResourceManager → EventManager → CollisionManager → PathfinderManager → EntityDataManager → WorkerBudgetManager → ParticleManager
 
 Call `prepareForStateTransition()` on managers before cleanup. Pauses work, waits for pending batches, drains message queues.
 
 `ControllerRegistry::clear()` (not just `unsubscribeAll()`) must be called in `GamePlayState::exit()`.
+
+### Event Handler Persistence
+
+EventManager supports **persistent** and **transient** handlers. `prepareForStateTransition()` calls `clearTransientHandlers()` — persistent handlers survive, transient ones are removed. `clearAllHandlers()` (shutdown only) removes everything.
+
+- **`init()` → `registerPersistentHandler[WithToken]()`** — manager-level infrastructure (CollisionManager world events, ProjectileManager collision handler, PathfinderManager world/obstacle events, WorldManager season events). Registered once, never re-subscribed.
+- **`enter()` → `registerHandler[WithToken]()`** — state-level handlers (GamePlayState time/weather/harvest, controller subscriptions via ControllerRegistry). Cleared automatically on transition.
+
+CollisionManager's `m_callbacks` (collision→EventManager bridge) are also persistent — not cleared in `prepareForStateTransition()`. No state registers collision callbacks.
+
+**Rule**: Never manually unsubscribe/resubscribe manager handlers across transitions. Use persistent registration and let `clearTransientHandlers()` handle the rest.
 
 ## Standards
 
@@ -128,7 +139,11 @@ Call `prepareForStateTransition()` on managers before cleanup. Pauses work, wait
 
 **Params**: `const T&` for read-only, `T&` for mutation, value only for primitives. `const std::string&` for map lookups (never string_view→string conversion).
 
-**Logging**: Use `std::format()`, never `+` concatenation. Use `AI_INFO_IF(cond, msg)` macros when condition only gates logging.
+**Logging**: Use `std::format()`, never `+` concatenation. Use `AI_INFO_IF(cond, msg)` macros when condition only gates logging. For debug-only code blocks (variables, metrics, logging), use `VOIDLIGHT_DEBUG_ONLY(...)` — never raw `#ifdef DEBUG`. The macro compiles out entirely in release. Defined in `Logger.hpp`.
+
+**Unused parameters**: Remove the name, keep the type: `void foo(float)` not `void foo(float /*deltaTime*/)`. Never use `(void)param;` or `[[maybe_unused]]` to suppress warnings — fix the root cause instead. `[[maybe_unused]]` is only permitted on virtual base class empty default implementations (e.g., `GameState.hpp`).
+
+**`[[nodiscard]]`**: Applied to critical bool-returning functions (`init()`, `load()`, `create()`). Callers must check the return value — use `BOOST_REQUIRE()` in tests, `if (!init())` error handling in production.
 
 **Copyright**: `/* Copyright (c) 2025 Hammer Forged Games ... MIT License */`
 

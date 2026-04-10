@@ -1,8 +1,8 @@
-# Power Profiling Suite - SDL3 HammerEngine
+# Power Profiling Suite - SDL3 VoidLight-Framework
 
 ## Overview
 
-This power profiling suite validates the **race-to-idle energy efficiency strategy** of the SDL3 HammerEngine's parallel threading architecture.
+This power profiling suite validates the **race-to-idle energy efficiency strategy** of the SDL3 VoidLight-Framework's parallel threading architecture.
 
 **Goal:** Prove that processing 20K+ AI entities in <8ms with 8-11ms idle time (race-to-idle) consumes significantly less battery power than traditional single-threaded approaches.
 

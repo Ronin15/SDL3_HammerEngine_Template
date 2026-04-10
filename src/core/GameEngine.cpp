@@ -35,6 +35,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/ProjectileManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/SaveGameManager.hpp"
 #include "managers/SettingsManager.hpp"
@@ -51,7 +52,7 @@
 #include <string_view>
 #include <vector>
 
-#define HAMMER_GRAY 31, 32, 34, 255
+#define VOIDLIGHT_GRAY 31, 32, 34, 255
 
 bool GameEngine::init(std::string_view title) {
   GAMEENGINE_INFO("Initializing SDL Video and Gamepad");
@@ -67,14 +68,14 @@ bool GameEngine::init(std::string_view title) {
 
   // Initialize resource path resolver (detects bundle vs direct execution)
   // Must be after SDL_Init for SDL_GetBasePath() to work
-  HammerEngine::ResourcePath::init();
+  VoidLight::ResourcePath::init();
 
   // Load settings from disk - window dimensions and fullscreen state
   constexpr int DEFAULT_WIDTH = 1280;
   constexpr int DEFAULT_HEIGHT = 720;
   const std::string settingsPath =
-      HammerEngine::ResourcePath::resolve("res/settings.json");
-  auto &settingsManager = HammerEngine::SettingsManager::Instance();
+      VoidLight::ResourcePath::resolve("res/settings.json");
+  auto &settingsManager = VoidLight::SettingsManager::Instance();
   if (!settingsManager.loadFromFile(settingsPath)) {
     GAMEENGINE_WARN("Failed to load settings.json - using defaults");
   } else {
@@ -227,13 +228,13 @@ bool GameEngine::init(std::string_view title) {
   // Spaces fullscreen (SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES=1) preserves ProMotion adaptive refresh
 
   GAMEENGINE_INFO("Initializing SDL3_GPU rendering backend");
-  auto &gpuDevice = HammerEngine::GPUDevice::Instance();
+  auto &gpuDevice = VoidLight::GPUDevice::Instance();
   if (!gpuDevice.init(mp_window.get())) {
     GAMEENGINE_ERROR("GPUDevice init failed");
     return false;
   }
 
-  auto &gpuRenderer = HammerEngine::GPURenderer::Instance();
+  auto &gpuRenderer = VoidLight::GPURenderer::Instance();
   if (!gpuRenderer.init()) {
     GAMEENGINE_ERROR("GPURenderer init failed");
     gpuDevice.shutdown();
@@ -246,11 +247,11 @@ bool GameEngine::init(std::string_view title) {
   GAMEENGINE_INFO("Setting window icon");
 
   // Use native SDL3 PNG loading for the icon
-  const std::string iconPath = HammerEngine::ResourcePath::resolve("res/img/icon.png");
+  const std::string iconPath = VoidLight::ResourcePath::resolve("res/img/icon.png");
 
   // Use a separate thread to load the icon
   auto iconFuture =
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+      VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
           [iconPath]()
               -> std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> {
             return std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
@@ -295,8 +296,7 @@ bool GameEngine::init(std::string_view title) {
     m_isWayland = (sessionType == "wayland") || hasWaylandDisplay;
   }
 
-#ifdef DEBUG
-  // Log detected platform
+  VOIDLIGHT_DEBUG_ONLY(
   if (m_isWayland) {
     GAMEENGINE_INFO("Platform detected: Wayland");
   } else {
@@ -304,10 +304,10 @@ bool GameEngine::init(std::string_view title) {
         "Platform detected: {}",
         videoDriver.empty() ? "Unknown" : std::string(videoDriver)));
   }
-#endif
+  )
 
   // Load VSync preference from SettingsManager (defaults to enabled)
-  auto &settings = HammerEngine::SettingsManager::Instance();
+  auto &settings = VoidLight::SettingsManager::Instance();
   bool vsyncRequested = settings.get<bool>("graphics", "vsync", true);
   GAMEENGINE_INFO(std::format("VSync setting from SettingsManager: {}",
                               vsyncRequested ? "enabled" : "disabled"));
@@ -317,7 +317,7 @@ bool GameEngine::init(std::string_view title) {
   m_timestepManager = std::make_unique<TimestepManager>();
   updateDisplayRefreshRate();
 
-  auto& gpuDev = HammerEngine::GPUDevice::Instance();
+  auto& gpuDev = VoidLight::GPUDevice::Instance();
   const SDL_GPUPresentMode requestedMode = vsyncRequested
       ? SDL_GPU_PRESENTMODE_VSYNC
       : SDL_GPU_PRESENTMODE_MAILBOX;
@@ -432,7 +432,7 @@ bool GameEngine::init(std::string_view title) {
   // CRITICAL: Initialize Event Manager FIRST - #1
   // All other managers that register event handlers depend on this
   initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+      VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
             GAMEENGINE_INFO("Creating Event Manager");
             EventManager &eventMgr = EventManager::Instance();
@@ -448,7 +448,7 @@ bool GameEngine::init(std::string_view title) {
   // Central data authority for all entities (Phase 1 of Entity System Overhaul)
   // Must be initialized before any entities are created
   initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+      VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
             GAMEENGINE_INFO("Creating Entity Data Manager");
             EntityDataManager &edm = EntityDataManager::Instance();
@@ -462,7 +462,7 @@ bool GameEngine::init(std::string_view title) {
 
   // Initialize input manager in a background thread - #2
   initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+      VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
             GAMEENGINE_INFO(
                 "Detecting and initializing gamepads and input handling");
@@ -481,17 +481,17 @@ bool GameEngine::init(std::string_view title) {
 
   // Load textures in main thread
   GAMEENGINE_INFO("Creating and loading textures");
-  const std::string textureResPath = HammerEngine::ResourcePath::resolve("res/img");
+  const std::string textureResPath = VoidLight::ResourcePath::resolve("res/img");
   constexpr std::string_view texturePrefix = "";
 
   texMgr.loadGPU(textureResPath, std::string(texturePrefix));
 
   // Initialize sound manager in a separate thread - #3
   // Resolve paths before lambda capture
-  const std::string sfxPath = HammerEngine::ResourcePath::resolve("res/sfx");
-  const std::string musicPath = HammerEngine::ResourcePath::resolve("res/music");
+  const std::string sfxPath = VoidLight::ResourcePath::resolve("res/sfx");
+  const std::string musicPath = VoidLight::ResourcePath::resolve("res/music");
   initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+      VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
           [sfxPath, musicPath]() -> bool {
             GAMEENGINE_INFO("Creating Sound Manager");
             SoundManager &soundMgr = SoundManager::Instance();
@@ -509,9 +509,9 @@ bool GameEngine::init(std::string_view title) {
           }));
 
   // Initialize font manager in a separate thread - #4
-  const std::string fontsPath = HammerEngine::ResourcePath::resolve("res/fonts");
+  const std::string fontsPath = VoidLight::ResourcePath::resolve("res/fonts");
   initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+      VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
           [this, fontsPath]() -> bool {
             GAMEENGINE_INFO("Creating Font Manager");
             FontManager &fontMgr = FontManager::Instance();
@@ -535,17 +535,17 @@ bool GameEngine::init(std::string_view title) {
 
   // Initialize save game manager in a separate thread - #5
   // Use SDL_GetPrefPath for a writable save location (works with bundles)
-  const char* prefPath = SDL_GetPrefPath("HammerForged", "SDL3_Template");
+  const char* prefPath = SDL_GetPrefPath("HammerForgedGames", VOIDLIGHT_APP_NAME);
   std::string saveDir;
   if (prefPath) {
     saveDir = prefPath;
     GAMEENGINE_INFO(std::format("Using SDL pref path for saves: {}", saveDir));
   } else {
-    saveDir = HammerEngine::ResourcePath::resolve("res");
+    saveDir = VoidLight::ResourcePath::resolve("res");
     GAMEENGINE_WARN(std::format("SDL_GetPrefPath failed, using: {}", saveDir));
   }
   initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+      VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
           [saveDir]() -> bool {
             GAMEENGINE_INFO("Creating Save Game Manager");
             SaveGameManager &saveMgr = SaveGameManager::Instance();
@@ -564,7 +564,7 @@ bool GameEngine::init(std::string_view title) {
   // CRITICAL: Must complete BEFORE AIManager (explicit dependency)
   GAMEENGINE_INFO("Creating Pathfinder Manager (AIManager dependency)");
   auto pathfinderFuture =
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+      VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
             GAMEENGINE_INFO("Initializing PathfinderManager");
             PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
@@ -580,7 +580,7 @@ bool GameEngine::init(std::string_view title) {
   // CRITICAL: Must complete BEFORE AIManager (explicit dependency)
   GAMEENGINE_INFO("Creating Collision Manager (AIManager dependency)");
   auto collisionFuture =
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+      VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
             GAMEENGINE_INFO("Initializing CollisionManager");
             CollisionManager &collisionMgr = CollisionManager::Instance();
@@ -616,7 +616,7 @@ bool GameEngine::init(std::string_view title) {
   // Dependencies satisfied: PathfinderManager and CollisionManager are now
   // fully initialized
   initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+      VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
             GAMEENGINE_INFO("Creating AI Manager");
             AIManager &aiMgr = AIManager::Instance();
@@ -630,7 +630,7 @@ bool GameEngine::init(std::string_view title) {
 
   // Initialize Particle Manager in a separate thread - #9
   initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([]()
+      VoidLight::ThreadSystem::Instance().enqueueTaskWithResult([]()
                                                                        -> bool {
         GAMEENGINE_INFO("Creating Particle Manager");
         ParticleManager &particleMgr = ParticleManager::Instance();
@@ -645,7 +645,7 @@ bool GameEngine::init(std::string_view title) {
 
   // Initialize Resource Template Manager in a separate thread - #10
   initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([]()
+      VoidLight::ThreadSystem::Instance().enqueueTaskWithResult([]()
                                                                        -> bool {
         GAMEENGINE_INFO("Creating Resource Template Manager");
         ResourceTemplateManager &resourceMgr =
@@ -660,7 +660,7 @@ bool GameEngine::init(std::string_view title) {
 
   // Initialize World Resource Manager for global resource tracking - #11
   initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+      VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
             GAMEENGINE_INFO("Creating World Resource Manager");
             WorldResourceManager &worldResourceMgr =
@@ -676,7 +676,7 @@ bool GameEngine::init(std::string_view title) {
 
   // Initialize World Manager for world generation and management - #12
   initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+      VoidLight::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
             GAMEENGINE_INFO("Creating World Manager");
             WorldManager &worldMgr = WorldManager::Instance();
@@ -752,6 +752,13 @@ bool GameEngine::init(std::string_view title) {
     GAMEENGINE_CRITICAL("Failed to initialize Background Simulation Manager");
     return false;
   }
+
+  // Initialize Projectile Manager (after CollisionManager and EventManager)
+  GAMEENGINE_INFO("Initializing Projectile Manager");
+  if (!ProjectileManager::Instance().init()) {
+    GAMEENGINE_CRITICAL("Failed to initialize Projectile Manager");
+    return false;
+  }
   // Configure tier radii based on logical screen size (dynamic for different
   // devices)
   BackgroundSimulationManager::Instance().configureForScreenSize(
@@ -819,6 +826,14 @@ bool GameEngine::init(std::string_view title) {
       return false;
     }
     mp_backgroundSimManager = &bgSimMgrTest;
+
+    // Validate Projectile Manager before caching
+    ProjectileManager &projectileMgrTest = ProjectileManager::Instance();
+    if (!projectileMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL("ProjectileManager not properly initialized before caching!");
+      return false;
+    }
+    mp_projectileManager = &projectileMgrTest;
 
     // Validate Resource Manager before caching
     ResourceTemplateManager &resourceMgrTest =
@@ -958,7 +973,7 @@ void GameEngine::handleEvents() {
 
   // Debug profiler overlay toggle (F3 key) - Debug builds only
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_F3)) {
-    HammerEngine::FrameProfiler::Instance().toggleOverlay();
+    VoidLight::FrameProfiler::Instance().toggleOverlay();
   }
 
   // Handle game state input on main thread where SDL events are processed
@@ -1008,46 +1023,52 @@ void GameEngine::update(float deltaTime) {
   //   See UIDemoState::update() for proper state-managed pattern
 
   // Mark frame start for WorkerBudget per-frame caching
-  HammerEngine::WorkerBudgetManager::Instance().markFrameStart();
+  VoidLight::WorkerBudgetManager::Instance().markFrameStart();
 
   // 1. Event system - FIRST: process global events, state changes, weather triggers
-  { PROFILE_MANAGER(HammerEngine::ManagerPhase::Event);
+  { PROFILE_MANAGER(VoidLight::ManagerPhase::Event);
     mp_eventManager->update(); }
 
   // 2. Game states - player movement and state logic
   //    MUST update BEFORE AIManager so NPCs react to current player position.
   //    Push FPS to GameStateManager so states don't need to call GameEngine::Instance()
-  { PROFILE_MANAGER(HammerEngine::ManagerPhase::GameState);
+  { PROFILE_MANAGER(VoidLight::ManagerPhase::GameState);
     mp_gameStateManager->setCurrentFPS(m_timestepManager->getCurrentFPS());
     mp_gameStateManager->update(deltaTime); }
 
   // 3. AI system - processes NPC behaviors with internal parallelization
   //    Sets NPC velocities and applies position updates.
   //    Batches run in parallel, waits for completion internally before returning.
-  { PROFILE_MANAGER(HammerEngine::ManagerPhase::AI);
+  { PROFILE_MANAGER(VoidLight::ManagerPhase::AI);
     mp_aiManager->update(deltaTime); }
 
+  // 3.5 Projectile system - position integration + lifetime management
+  //     Uses WorkerBudget threading with SIMD 4-wide movement.
+  //     Collision damage handled via EventTypeId::Collision subscription.
+  { PROFILE_MANAGER(VoidLight::ManagerPhase::Projectile);
+    mp_projectileManager->update(deltaTime); }
+
   // 4. Particle system - global weather and effect particles
-  { PROFILE_MANAGER(HammerEngine::ManagerPhase::Particle);
+  { PROFILE_MANAGER(VoidLight::ManagerPhase::Particle);
     mp_particleManager->update(deltaTime); }
 
   // 5. Pathfinding system - periodic grid updates (every 300/600 frames)
   // PathfinderManager initialized by AIManager, cached by GameEngine for
   // performance
-  { PROFILE_MANAGER(HammerEngine::ManagerPhase::Pathfinder);
+  { PROFILE_MANAGER(VoidLight::ManagerPhase::Pathfinder);
     mp_pathfinderManager->update(); }
 
   // 6. Collision system - processes complete NPC updates from AIManager
   //    AIManager guarantees all batches complete before returning, so collision
   //    always receives complete, consistent updates (no partial/stale data).
-  { PROFILE_MANAGER(HammerEngine::ManagerPhase::Collision);
+  { PROFILE_MANAGER(VoidLight::ManagerPhase::Collision);
     mp_collisionManager->update(deltaTime); }
 
   // 7. Background simulation (tier updates + entity processing)
   // Single call handles everything: tier recalc every 60 frames,
   // background entity processing at 10Hz when entities exist.
   // Power-efficient: immediate return when paused or no work needed.
-  { PROFILE_MANAGER(HammerEngine::ManagerPhase::BackgroundSim);
+  { PROFILE_MANAGER(VoidLight::ManagerPhase::BackgroundSim);
     mp_backgroundSimManager->update(mp_aiManager->getPlayerPosition(), deltaTime); }
 }
 
@@ -1056,8 +1077,8 @@ void GameEngine::render() {
   float interpolationAlpha =
       static_cast<float>(m_timestepManager->getInterpolationAlpha());
 
-  auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
-  auto& profiler = HammerEngine::FrameProfiler::Instance();
+  auto& gpuRenderer = VoidLight::GPURenderer::Instance();
+  auto& profiler = VoidLight::FrameProfiler::Instance();
 
   if (!gpuRenderer.beginFrame()) {
     return;
@@ -1065,53 +1086,51 @@ void GameEngine::render() {
 
   profiler.renderOverlay();
 
-  profiler.beginRender(HammerEngine::RenderPhase::WorldTiles);
+  profiler.beginRender(VoidLight::RenderPhase::WorldTiles);
   mp_gameStateManager->recordGPUVertices(gpuRenderer, interpolationAlpha);
-  profiler.endRender(HammerEngine::RenderPhase::WorldTiles);
+  profiler.endRender(VoidLight::RenderPhase::WorldTiles);
 
   SDL_GPURenderPass* scenePass = gpuRenderer.beginScenePass();
 
-  profiler.beginRender(HammerEngine::RenderPhase::Entities);
+  profiler.beginRender(VoidLight::RenderPhase::Entities);
   if (scenePass) {
     mp_gameStateManager->renderGPUScene(gpuRenderer, scenePass, interpolationAlpha);
   }
-  profiler.endRender(HammerEngine::RenderPhase::Entities);
+  profiler.endRender(VoidLight::RenderPhase::Entities);
 
-  profiler.beginRender(HammerEngine::RenderPhase::EndScene);
+  profiler.beginRender(VoidLight::RenderPhase::EndScene);
   SDL_GPURenderPass* swapchainPass = gpuRenderer.beginSwapchainPass();
   if (swapchainPass) {
     gpuRenderer.renderComposite(swapchainPass);
   }
-  profiler.endRender(HammerEngine::RenderPhase::EndScene);
+  profiler.endRender(VoidLight::RenderPhase::EndScene);
 
-  profiler.beginRender(HammerEngine::RenderPhase::UI);
+  profiler.beginRender(VoidLight::RenderPhase::UI);
   if (swapchainPass) {
     mp_gameStateManager->renderGPUUI(gpuRenderer, swapchainPass);
   }
-  profiler.endRender(HammerEngine::RenderPhase::UI);
+  profiler.endRender(VoidLight::RenderPhase::UI);
 }
 
 void GameEngine::present() {
   // Present is separate from render for accurate profiling.
   // For the GPU path, frame pacing now happens when the swapchain pass acquires
   // the swapchain texture rather than at frame start.
-  HammerEngine::GPURenderer::Instance().endFrame();
+  VoidLight::GPURenderer::Instance().endFrame();
 }
 
 void GameEngine::processBackgroundTasks() {
-  // Background task processing hook for truly-async, non-critical work.
+  // End-of-frame cleanup hook — runs once per frame after render/present,
+  // using otherwise-idle CPU time while GPU finishes the frame.
   //
-  // Background simulation moved to update() for power efficiency.
-  // This hook remains for future truly-async background work like:
-  //   - Asset pre-loading for upcoming game states
-  //   - Background save game serialization
-  //   - Analytics/telemetry data collection
-  //   - Periodic cache cleanup or memory defragmentation
-  //   - Network polling for non-latency-critical updates
-  //
-  // THREAD SAFETY:
-  //   Any work added here must be thread-safe and not require main-thread
-  //   resources (SDL rendering, UI state, etc.).
+  // All managers and rendering are complete at this point, so structural
+  // changes to entity storage (freeing slots, updating indices) are safe.
+
+  // Drain deferred entity destructions — returns slots to m_freeSlots,
+  // keeping the free list healthy for next frame's allocations.
+  // This is the ONLY place processDestructionQueue runs during gameplay.
+  // (prepareForStateTransition also calls it during state changes.)
+  EntityDataManager::Instance().processDestructionQueue();
 }
 
 bool GameEngine::isVSyncEnabled() const noexcept {
@@ -1130,9 +1149,9 @@ void GameEngine::clean() {
   // worker pool down before singleton manager cleanup so no late tasks can race
   // with SDL-backed resource destruction.
   GAMEENGINE_INFO("Cleaning up Thread System...");
-  if (HammerEngine::ThreadSystem::Exists()) {
-    HammerEngine::ThreadSystem &threadSystem =
-        HammerEngine::ThreadSystem::Instance();
+  if (VoidLight::ThreadSystem::Exists()) {
+    VoidLight::ThreadSystem &threadSystem =
+        VoidLight::ThreadSystem::Instance();
     if (!threadSystem.isShutdown()) {
       threadSystem.clean();
     }
@@ -1156,6 +1175,15 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Cleaning up UI Manager...");
   UIManager::Instance().clean();
 
+  GAMEENGINE_INFO("Cleaning up AI Manager...");
+  AIManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up Projectile Manager...");
+  ProjectileManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up Background Simulation Manager...");
+  BackgroundSimulationManager::Instance().clean();
+
   GAMEENGINE_INFO("Cleaning up Event Manager...");
   EventManager::Instance().clean();
 
@@ -1164,12 +1192,6 @@ void GameEngine::clean() {
 
   GAMEENGINE_INFO("Cleaning up Collision Manager...");
   CollisionManager::Instance().clean();
-
-  GAMEENGINE_INFO("Cleaning up Background Simulation Manager...");
-  BackgroundSimulationManager::Instance().clean();
-
-  GAMEENGINE_INFO("Cleaning up AI Manager...");
-  AIManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Entity Data Manager...");
   EntityDataManager::Instance().clean();
@@ -1199,6 +1221,7 @@ void GameEngine::clean() {
   mp_particleManager = nullptr;
   mp_pathfinderManager = nullptr;
   mp_collisionManager = nullptr;
+  mp_projectileManager = nullptr;
   mp_resourceTemplateManager = nullptr;
   mp_worldResourceManager = nullptr;
   mp_worldManager = nullptr;
@@ -1212,9 +1235,9 @@ void GameEngine::clean() {
   // Explicitly reset smart pointers at the end, after all subsystems
   // are done using them - this will trigger their custom deleters
   GAMEENGINE_INFO("Shutting down GPU renderer...");
-  HammerEngine::GPURenderer::Instance().shutdown();
+  VoidLight::GPURenderer::Instance().shutdown();
   GAMEENGINE_INFO("Shutting down GPU device...");
-  HammerEngine::GPUDevice::Instance().shutdown();
+  VoidLight::GPUDevice::Instance().shutdown();
 
   GAMEENGINE_INFO("Destroying window...");
   window_to_destroy.reset();
@@ -1231,7 +1254,7 @@ bool GameEngine::setVSyncEnabled(bool enable) {
   GAMEENGINE_INFO(
       std::format("{} VSync...", enable ? "Enabling" : "Disabling"));
 
-  auto& gpuDevice = HammerEngine::GPUDevice::Instance();
+  auto& gpuDevice = VoidLight::GPUDevice::Instance();
   if (!gpuDevice.isInitialized()) {
     GAMEENGINE_ERROR("Cannot set VSync - GPU device not initialized");
     return false;
@@ -1287,9 +1310,9 @@ bool GameEngine::setVSyncEnabled(bool enable) {
                                 committedVSync ? "VSYNC" : "MAILBOX"));
   }
 
-  auto &settings = HammerEngine::SettingsManager::Instance();
+  auto &settings = VoidLight::SettingsManager::Instance();
   settings.set("graphics", "vsync", committedVSync);
-  settings.saveToFile(HammerEngine::ResourcePath::resolve("res/settings.json"));
+  settings.saveToFile(VoidLight::ResourcePath::resolve("res/settings.json"));
 
   return success;
 }
@@ -1388,16 +1411,17 @@ void GameEngine::setGlobalPause(bool paused) {
   mp_collisionManager->setGlobalPause(paused);
   mp_pathfinderManager->setGlobalPause(paused);
   mp_backgroundSimManager->setGlobalPause(paused);
+  mp_projectileManager->setGlobalPause(paused);
   GameTimeManager::Instance().setGlobalPause(paused);
   EventManager::Instance().setGlobalPause(paused);
 
-#ifdef DEBUG
+  VOIDLIGHT_DEBUG_ONLY(
   if (paused) {
     GAMEENGINE_INFO("Game globally paused - all managers idle");
   } else {
     GAMEENGINE_INFO("Game globally resumed");
   }
-#endif
+  )
 }
 
 bool GameEngine::isGloballyPaused() const { return m_globallyPaused; }
@@ -1544,7 +1568,7 @@ void GameEngine::refreshWindowMetrics(std::string_view reason) {
     uiManager.setGlobalScale(1.0f);
 
     FontManager &fontManager = FontManager::Instance();
-    const std::string fontsPath = HammerEngine::ResourcePath::resolve("res/fonts");
+    const std::string fontsPath = VoidLight::ResourcePath::resolve("res/fonts");
     if (!fontManager.reloadFontsForDisplay(fontsPath, m_windowWidth,
                                            m_windowHeight, m_dpiScale)) {
       GAMEENGINE_WARN("Failed to reload fonts for updated window/display metrics");

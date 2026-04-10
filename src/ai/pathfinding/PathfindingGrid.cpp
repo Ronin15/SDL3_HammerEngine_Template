@@ -18,7 +18,7 @@
 #include <queue>
 #include <stdexcept>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // NodePool will be thread_local within findPath function
 
@@ -142,7 +142,7 @@ void PathfindingGrid::initializeArrays() {
 
 void PathfindingGrid::rebuildFromWorld(int rowStart, int rowEnd) {
   const WorldManager &wm = WorldManager::Instance();
-  wm.withWorldDataRead([&](const HammerEngine::WorldData *world) {
+  wm.withWorldDataRead([&](const VoidLight::WorldData *world) {
     if (!world) {
       PATHFIND_WARN("rebuildFromWorld(): no active world");
       return;
@@ -175,13 +175,13 @@ void PathfindingGrid::rebuildFromWorld(int rowStart, int rowEnd) {
       return;
     }
 
-    constexpr float tileSize = HammerEngine::TILE_SIZE;
+    constexpr float tileSize = VoidLight::TILE_SIZE;
     int blockedCount = 0;
     int collisionBlockedCount = 0;
 
     for (int cy = rowStart; cy < rowEnd; ++cy) {
-      if (!HammerEngine::ThreadSystem::Exists() ||
-          HammerEngine::ThreadSystem::Instance().isShutdown()) {
+      if (!VoidLight::ThreadSystem::Exists() ||
+          VoidLight::ThreadSystem::Instance().isShutdown()) {
         PATHFIND_DEBUG("Grid rebuild interrupted by ThreadSystem shutdown");
         return;
       }
@@ -1109,13 +1109,11 @@ PathfindingGrid::findPathHierarchical(const Vector2D &start,
   }
 
   // Step 2: Refine coarse path segments on fine grid
-  auto refineResult = refineCoarsePath(coarsePath, start, goal, outPath);
+  const auto refineResult = refineCoarsePath(coarsePath, start, goal, outPath);
 
   // Step 3: Validate refined path has no disconnected segments
   // When segment refinement fails, refineCoarsePath() inserts direct waypoints
   // which can create large gaps. Detect and fallback to direct A* if needed.
-  // Note: refineCoarsePath always returns SUCCESS, so we only check path size
-  (void)refineResult; // Mark as used for clarity
   if (outPath.size() >= 2) {
     // Allow gaps up to 8x coarse cell size (accounts for diagonal + refinement
     // skips) Larger tolerance prevents unnecessary fallbacks to direct A*
@@ -1216,4 +1214,4 @@ void PathfindingGrid::setWeight(int gx, int gy, float weight) {
   }
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

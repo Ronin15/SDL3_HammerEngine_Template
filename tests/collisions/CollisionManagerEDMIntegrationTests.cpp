@@ -32,30 +32,25 @@
 #include <memory>
 #include <vector>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
-namespace {
-
-struct ThreadSystemTestLifetime {
-    ThreadSystemTestLifetime() {
-        BOOST_REQUIRE_MESSAGE(ThreadSystem::Instance().init(),
-                              "Failed to initialize ThreadSystem for Collision EDM tests");
+struct ThreadSystemFixture {
+    ThreadSystemFixture() {
+        if (!ThreadSystem::Instance().init()) {
+            throw std::runtime_error("Failed to initialize ThreadSystem for Collision EDM tests");
+        }
     }
-
-    ~ThreadSystemTestLifetime() {
+    ~ThreadSystemFixture() {
         ThreadSystem::Instance().clean();
     }
 };
-
-ThreadSystemTestLifetime g_threadSystemTestLifetime{};
-
-} // namespace
+BOOST_GLOBAL_FIXTURE(ThreadSystemFixture);
 
 // Test fixture
 struct CollisionEDMFixture {
     CollisionEDMFixture() {
         EventManager::Instance().init();
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         BackgroundSimulationManager::Instance().init();
         CollisionManager::Instance().init();
 

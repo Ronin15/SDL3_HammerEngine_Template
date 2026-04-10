@@ -142,7 +142,7 @@ When testing components that use ThreadSystem's priority-based scheduling (AIMan
 1. **Initialization with Priorities**:
    ```cpp
    // Initialize ThreadSystem first
-   HammerEngine::ThreadSystem::Instance().init();
+   VoidLight-Framework::ThreadSystem::Instance().init();
 
    // Initialize manager
    AIManager::Instance().init();

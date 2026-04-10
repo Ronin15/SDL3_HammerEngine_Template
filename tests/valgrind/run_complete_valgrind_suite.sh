@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SDL3 HammerEngine Template - Complete Valgrind Test Suite
+# SDL3 VoidLight-Framework - Complete Valgrind Test Suite
 # Master script for comprehensive memory, cache, and thread safety analysis
 
 # Don't exit on non-zero codes from tests - we handle errors explicitly
@@ -38,7 +38,7 @@ CRITICAL_ISSUES=0
 WARNINGS=0
 
 echo -e "${BOLD}${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BOLD}${BLUE}║                SDL3 HammerEngine Template                    ║${NC}"
+echo -e "${BOLD}${BLUE}║                SDL3 VoidLight-Framework                    ║${NC}"
 echo -e "${BOLD}${BLUE}║              Complete Valgrind Analysis Suite               ║${NC}"
 echo -e "${BOLD}${BLUE}║                                                              ║${NC}"
 echo -e "${BOLD}${BLUE}║  Comprehensive Memory, Cache, Thread Safety & Profiling     ║${NC}"
@@ -416,7 +416,7 @@ generate_final_report() {
     section_header "GENERATING COMPREHENSIVE REPORT"
 
     cat > "${FINAL_REPORT}" << EOF
-# SDL3 HammerEngine Template - Complete Valgrind Analysis Report
+# SDL3 VoidLight-Framework - Complete Valgrind Analysis Report
 
 **Analysis Date**: $(date)
 **Analysis Duration**: Complete Valgrind test suite
@@ -425,7 +425,7 @@ generate_final_report() {
 
 ## Executive Summary
 
-This comprehensive analysis evaluated the SDL3 HammerEngine Template across four critical performance and safety dimensions:
+This comprehensive analysis evaluated the SDL3 VoidLight-Framework across four critical performance and safety dimensions:
 - **Memory Management** (Leak detection and error analysis)
 - **Cache Performance** (Memory hierarchy optimization)
 - **Thread Safety** (Concurrency and race condition analysis)
@@ -529,7 +529,7 @@ To reproduce this analysis:
 
 ---
 
-**Conclusion**: The SDL3 HammerEngine Template demonstrates $([ $CRITICAL_ISSUES -eq 0 ] && echo "exceptional engineering quality" || echo "solid engineering with areas for improvement"), making it $([ $CRITICAL_ISSUES -eq 0 ] && echo "immediately suitable for production use" || echo "suitable for production after addressing flagged issues").
+**Conclusion**: The SDL3 VoidLight-Framework demonstrates $([ $CRITICAL_ISSUES -eq 0 ] && echo "exceptional engineering quality" || echo "solid engineering with areas for improvement"), making it $([ $CRITICAL_ISSUES -eq 0 ] && echo "immediately suitable for production use" || echo "suitable for production after addressing flagged issues").
 
 ## Expected Behaviors (Not Issues)
 
@@ -625,7 +625,7 @@ case "${1:-all}" in
         run_callgrind_analysis
         ;;
     "help"|"-h"|"--help")
-        echo "SDL3 HammerEngine Complete Valgrind Analysis Suite"
+        echo "SDL3 VoidLight-Framework Complete Valgrind Analysis Suite"
         echo ""
         echo "Usage: $0 [analysis_type]"
         echo ""

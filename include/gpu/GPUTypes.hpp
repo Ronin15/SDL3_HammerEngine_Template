@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <cstddef>  // for offsetof
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * Vertex format for textured sprites.
@@ -60,6 +60,6 @@ static_assert(sizeof(CompositeUBO) == 32, "CompositeUBO must be 32 bytes for std
 static_assert(offsetof(CompositeUBO, zoom) == 8, "CompositeUBO::zoom must be at offset 8");
 static_assert(offsetof(CompositeUBO, ambientR) == 16, "CompositeUBO::ambientR must be at offset 16");
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_TYPES_HPP

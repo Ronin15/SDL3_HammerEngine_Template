@@ -50,17 +50,17 @@ bool GameOverState::enter() {
                           buttonWidth, buttonHeight, "Main Menu");
 
   ui.setOnClick("gameover_retry_btn", [this]() {
-    mp_stateManager->changeState("GamePlayState");
+    mp_stateManager->changeState(GameStateId::GAME_PLAY);
   });
 
   ui.setOnClick("gameover_mainmenu_btn", [this]() {
-    mp_stateManager->changeState("MainMenuState");
+    mp_stateManager->changeState(GameStateId::MAIN_MENU);
   });
 
   return true;
 }
 
-void GameOverState::update([[maybe_unused]] float deltaTime) {
+void GameOverState::update(float) {
   auto& ui = UIManager::Instance();
   if (!ui.isShutdown()) {
     ui.update(0.0f);
@@ -71,11 +71,11 @@ void GameOverState::handleInput() {
   const auto& inputMgr = InputManager::Instance();
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_R)) {
-    mp_stateManager->changeState("GamePlayState");
+    mp_stateManager->changeState(GameStateId::GAME_PLAY);
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_M)) {
-    mp_stateManager->changeState("MainMenuState");
+    mp_stateManager->changeState(GameStateId::MAIN_MENU);
   }
 }
 
@@ -85,18 +85,17 @@ bool GameOverState::exit() {
   return true;
 }
 
-std::string GameOverState::getName() const { return "GameOverState"; }
 
 void GameOverState::recordGPUVertices(
-    HammerEngine::GPURenderer& gpuRenderer,
-    [[maybe_unused]] float interpolationAlpha) {
+    VoidLight::GPURenderer& gpuRenderer,
+    float) {
   auto& ui = UIManager::Instance();
   if (!ui.isShutdown()) {
     ui.recordGPUVertices(gpuRenderer);
   }
 }
 
-void GameOverState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void GameOverState::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                                 SDL_GPURenderPass* swapchainPass) {
   auto& ui = UIManager::Instance();
   if (!ui.isShutdown()) {

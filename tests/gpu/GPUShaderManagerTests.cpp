@@ -15,8 +15,8 @@
 #include "gpu/GPUShaderManager.hpp"
 #include "utils/ResourcePath.hpp"
 
-using namespace HammerEngine;
-using namespace HammerEngine::Test;
+using namespace VoidLight;
+using namespace VoidLight::Test;
 
 // Global fixture for SDL cleanup
 BOOST_GLOBAL_FIXTURE(GPUGlobalFixture);
@@ -35,12 +35,12 @@ struct ShaderTestFixture : public GPUTestFixture {
 
         SDL_Window* window = getTestWindow();
         if (window) {
-            device->init(window);
+            BOOST_REQUIRE(device->init(window));
         }
 
         shaderMgr = &GPUShaderManager::Instance();
         if (device->isInitialized()) {
-            shaderMgr->init(device->get());
+            BOOST_REQUIRE(shaderMgr->init(device->get()));
         }
     }
 
@@ -259,7 +259,7 @@ BOOST_FIXTURE_TEST_CASE(ShutdownClearsCachedShaders, ShaderTestFixture) {
     BOOST_CHECK(!shaderMgr->hasShader(shaderPath, SDL_GPU_SHADERSTAGE_VERTEX, info));
 
     // Re-init for fixture cleanup
-    shaderMgr->init(device->get());
+    BOOST_REQUIRE(shaderMgr->init(device->get()));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -295,9 +295,9 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_AUTO_TEST_SUITE(ShaderPathTests)
 
 BOOST_AUTO_TEST_CASE(PlatformShaderFilesExist) {
-    HammerEngine::ResourcePath::init();
+    VoidLight::ResourcePath::init();
 
-    const std::string ext = HammerEngine::GPUPlatformConfig::getShaderBinaryExtension();
+    const std::string ext = VoidLight::GPUPlatformConfig::getShaderBinaryExtension();
     std::vector<std::string> shaderFiles = {
         "res/shaders/sprite.vert" + ext,
         "res/shaders/sprite.frag" + ext,
@@ -310,8 +310,8 @@ BOOST_AUTO_TEST_CASE(PlatformShaderFilesExist) {
     };
 
     for (const auto& path : shaderFiles) {
-        const std::string resolvedPath = HammerEngine::ResourcePath::resolve(path);
-        const bool exists = HammerEngine::ResourcePath::exists(path);
+        const std::string resolvedPath = VoidLight::ResourcePath::resolve(path);
+        const bool exists = VoidLight::ResourcePath::exists(path);
 
         BOOST_TEST_MESSAGE("Checking platform shader: " << resolvedPath);
         BOOST_CHECK_MESSAGE(exists, "Missing platform shader: " << resolvedPath);
@@ -343,7 +343,7 @@ BOOST_FIXTURE_TEST_CASE(InitWithNullDevice, ShaderTestFixture) {
 
     // Re-init with valid device for fixture cleanup
     if (device && device->isInitialized()) {
-        mgr.init(device->get());
+        BOOST_REQUIRE(mgr.init(device->get()));
     }
 }
 
@@ -356,7 +356,7 @@ BOOST_FIXTURE_TEST_CASE(ShutdownWithoutInit, ShaderTestFixture) {
 
     // Re-init for fixture cleanup
     if (device && device->isInitialized()) {
-        mgr.init(device->get());
+        BOOST_REQUIRE(mgr.init(device->get()));
     }
 }
 

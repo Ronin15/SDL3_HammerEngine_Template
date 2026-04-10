@@ -152,9 +152,6 @@ void NPCSpawnEvent::onMessage(const std::string &message) {
   EVENT_INFO(std::format("NPCSpawnEvent received message: {}", message));
   EVENT_INFO("  - Event demonstrates messaging system coordination");
   EVENT_INFO("  - Actual entity management handled by GameStates");
-
-  // Suppress unused parameter warning in release builds
-  (void)message;
 }
 
 void NPCSpawnEvent::addSpawnPoint(float x, float y) {
@@ -359,16 +356,16 @@ NPCSpawnEvent::spawnNPCs(const SpawnParameters &params, float x, float y) {
       // Adjust to navigable position
       if (params.useAreaRect) {
         spawnPos = PathfinderManager::Instance().adjustSpawnToNavigableInRect(
-            spawnPos, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f,
+            spawnPos, VoidLight::TILE_SIZE, VoidLight::TILE_SIZE, 150.0f,
             params.areaMinX, params.areaMinY, params.areaMaxX, params.areaMaxY);
       } else if (params.useAreaCircle) {
         spawnPos = PathfinderManager::Instance().adjustSpawnToNavigableInCircle(
-            spawnPos, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f,
+            spawnPos, VoidLight::TILE_SIZE, VoidLight::TILE_SIZE, 150.0f,
             Vector2D(params.areaCenterX, params.areaCenterY),
             params.areaRadius);
       } else {
         spawnPos = PathfinderManager::Instance().adjustSpawnToNavigable(
-            spawnPos, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f);
+            spawnPos, VoidLight::TILE_SIZE, VoidLight::TILE_SIZE, 150.0f);
       }
 
       // Determine race and class for this NPC
@@ -547,10 +544,9 @@ Vector2D NPCSpawnEvent::getPlayerPosition() const {
   return ::getPlayerPosition();
 }
 
-EntityPtr NPCSpawnEvent::spawnSingleNPC(const Vector2D &position) {
+EntityPtr NPCSpawnEvent::spawnSingleNPC(const Vector2D &) {
   // Base implementation returns nullptr - override in test mocks for actual
   // spawning
-  (void)position; // Suppress unused parameter warning
   return nullptr;
 }
 

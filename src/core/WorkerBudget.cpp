@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // Static singleton instance
 WorkerBudgetManager& WorkerBudgetManager::Instance() {
@@ -32,7 +32,7 @@ const WorkerBudget& WorkerBudgetManager::getBudget() {
     return m_cachedBudget;
 }
 
-size_t WorkerBudgetManager::getOptimalWorkers([[maybe_unused]] SystemType system,
+size_t WorkerBudgetManager::getOptimalWorkers(SystemType,
                                                size_t workloadSize) {
     // No work = no workers needed
     if (workloadSize == 0) {
@@ -94,17 +94,17 @@ std::pair<size_t, size_t> WorkerBudgetManager::getBatchStrategy(
 ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, size_t workloadSize) {
     // ThreadSystem must exist for threading to be possible
     if (!ThreadSystem::Exists()) {
-        return {false, 0};
+        return {.shouldThread = false, .probePhase = 0};
     }
 
     // Single-core hardware: no parallelism possible, always single-threaded
     if (ThreadSystem::Instance().getThreadCount() <= 1) {
-        return {false, 0};
+        return {.shouldThread = false, .probePhase = 0};
     }
 
     // Always single-threaded for very small workloads
     if (workloadSize < SystemTuningState::MIN_WORKLOAD) {
-        return {false, 0};
+        return {.shouldThread = false, .probePhase = 0};
     }
 
     auto& state = m_systemState[static_cast<size_t>(system)];
@@ -116,7 +116,7 @@ ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, siz
     if (threshold == 0) {
         // LEARNING: No threshold learned yet - stay single-threaded
         // reportExecution() will detect when to set threshold (time >= 1.0ms)
-        return {false, 0};
+        return {.shouldThread = false, .probePhase = 0};
     }
 
     if (active) {
@@ -132,25 +132,25 @@ ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, siz
             state.singleSampleCount.store(0, std::memory_order_relaxed);     // Reset warmup for re-learning
 
 #ifndef NDEBUG
-            HAMMER_DEBUG("WorkerBudget", std::format(
+            VOIDLIGHT_DEBUG("WorkerBudget", std::format(
                 "{}: Re-learning (workload {} < hysteresis {})",
                 getSystemName(system), workloadSize, hysteresisLow));
 #endif
-            return {false, 0};  // Back to learning mode
+            return {.shouldThread = false, .probePhase = 0};  // Back to learning mode
         }
 
         // Still above hysteresis - continue multi-threaded
-        return {true, 0};
+        return {.shouldThread = true, .probePhase = 0};
     }
 
     // Threshold learned but not active (edge case: workload dropped then rose again)
     // Activate if workload exceeds threshold
     if (workloadSize >= threshold) {
         state.thresholdActive.store(true, std::memory_order_relaxed);
-        return {true, 0};
+        return {.shouldThread = true, .probePhase = 0};
     }
 
-    return {false, 0};
+    return {.shouldThread = false, .probePhase = 0};
 }
 
 void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize,
@@ -191,7 +191,7 @@ void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize
             state.thresholdActive.store(true, std::memory_order_relaxed);
 
 #ifndef NDEBUG
-            HAMMER_DEBUG("WorkerBudget", std::format(
+            VOIDLIGHT_DEBUG("WorkerBudget", std::format(
                 "{}: Learned threshold={} (smoothed={:.2f}ms >= {:.1f}ms, instant={:.2f}ms)",
                 getSystemName(system), workloadSize, newSmoothed,
                 SystemTuningState::LEARNING_TIME_THRESHOLD_MS, totalTimeMs));
@@ -285,6 +285,7 @@ const char* WorkerBudgetManager::getSystemName(SystemType system) {
         case SystemType::Event: return "Event";
         case SystemType::Collision: return "Collision";
         case SystemType::BackgroundSim: return "BackgroundSim";
+        case SystemType::ProjectileSim: return "ProjectileSim";
         default: return "Unknown";
     }
 }
@@ -359,4 +360,4 @@ WorkerBudget WorkerBudgetManager::calculateBudget() const {
     return budget;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

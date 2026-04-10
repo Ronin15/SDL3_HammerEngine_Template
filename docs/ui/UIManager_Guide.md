@@ -26,7 +26,7 @@ void SomeState::render(SDL_Renderer* renderer, float alpha) {
 }
 
 #ifdef USE_SDL3_GPU
-void SomeState::renderGPUUI(HammerEngine::GPURenderer& gpu,
+void SomeState::renderGPUUI(VoidLight-Framework::GPURenderer& gpu,
                             SDL_GPURenderPass* swapchainPass) {
     UIManager::Instance().renderGPU(gpu, swapchainPass);
 }

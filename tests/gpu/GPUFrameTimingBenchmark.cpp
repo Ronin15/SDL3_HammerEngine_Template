@@ -122,13 +122,13 @@ struct SampleSet {
     }
 };
 
-void writeColorQuads(HammerEngine::GPUVertexPool& pool,
+void writeColorQuads(VoidLight::GPUVertexPool& pool,
                      uint32_t quadCount,
                      float viewportWidth,
                      float viewportHeight,
                      float quadSize,
                      uint32_t colorSeed) {
-    auto* vertices = static_cast<HammerEngine::ColorVertex*>(pool.getMappedPtr());
+    auto* vertices = static_cast<VoidLight::ColorVertex*>(pool.getMappedPtr());
     if (!vertices) {
         pool.setWrittenVertexCount(0);
         return;
@@ -164,8 +164,8 @@ void writeColorQuads(HammerEngine::GPUVertexPool& pool,
     pool.setWrittenVertexCount(offset);
 }
 
-void renderColorQuads(HammerEngine::GPURenderer& renderer,
-                      HammerEngine::GPUVertexPool& pool,
+void renderColorQuads(VoidLight::GPURenderer& renderer,
+                      VoidLight::GPUVertexPool& pool,
                       SDL_GPUGraphicsPipeline* pipeline,
                       SDL_GPURenderPass* pass,
                       float width,
@@ -180,7 +180,7 @@ void renderColorQuads(HammerEngine::GPURenderer& renderer,
     }
 
     float orthoMatrix[16];
-    HammerEngine::GPURenderer::createOrthoMatrix(0.0f, width, height, 0.0f, orthoMatrix);
+    VoidLight::GPURenderer::createOrthoMatrix(0.0f, width, height, 0.0f, orthoMatrix);
 
     renderer.pushViewProjection(pass, orthoMatrix);
     SDL_BindGPUGraphicsPipeline(pass, pipeline);
@@ -193,15 +193,15 @@ void renderColorQuads(HammerEngine::GPURenderer& renderer,
     SDL_DrawGPUPrimitives(pass, static_cast<uint32_t>(vertexCount), 1, 0, 0);
 }
 
-void writeSpriteQuads(HammerEngine::SpriteBatch& batch,
-                      HammerEngine::GPUVertexPool& pool,
+void writeSpriteQuads(VoidLight::SpriteBatch& batch,
+                      VoidLight::GPUVertexPool& pool,
                       const GPUTextureData& atlasData,
                       SDL_GPUSampler* sampler,
                       uint32_t quadCount,
                       float width,
                       float height,
                       float quadSize) {
-    auto* vertices = static_cast<HammerEngine::SpriteVertex*>(pool.getMappedPtr());
+    auto* vertices = static_cast<VoidLight::SpriteVertex*>(pool.getMappedPtr());
     if (!vertices) {
         pool.setWrittenVertexCount(0);
         return;
@@ -224,9 +224,9 @@ void writeSpriteQuads(HammerEngine::SpriteBatch& batch,
     }
 }
 
-void renderSpriteBatch(HammerEngine::GPURenderer& renderer,
-                       HammerEngine::SpriteBatch& batch,
-                       HammerEngine::GPUVertexPool& pool,
+void renderSpriteBatch(VoidLight::GPURenderer& renderer,
+                       VoidLight::SpriteBatch& batch,
+                       VoidLight::GPUVertexPool& pool,
                        SDL_GPURenderPass* pass,
                        SDL_GPUGraphicsPipeline* pipeline,
                        float width,
@@ -236,16 +236,16 @@ void renderSpriteBatch(HammerEngine::GPURenderer& renderer,
     }
 
     float orthoMatrix[16];
-    HammerEngine::GPURenderer::createOrthoMatrix(0.0f, width, height, 0.0f, orthoMatrix);
+    VoidLight::GPURenderer::createOrthoMatrix(0.0f, width, height, 0.0f, orthoMatrix);
     renderer.pushViewProjection(pass, orthoMatrix);
     batch.render(pass, pipeline, pool.getGPUBuffer());
 }
 
-void writeUISprites(HammerEngine::GPUVertexPool& pool,
+void writeUISprites(VoidLight::GPUVertexPool& pool,
                     uint32_t quadCount,
                     float width,
                     float height) {
-    auto* vertices = static_cast<HammerEngine::SpriteVertex*>(pool.getMappedPtr());
+    auto* vertices = static_cast<VoidLight::SpriteVertex*>(pool.getMappedPtr());
     if (!vertices) {
         pool.setWrittenVertexCount(0);
         return;
@@ -276,7 +276,7 @@ void writeUISprites(HammerEngine::GPUVertexPool& pool,
     pool.setWrittenVertexCount(offset);
 }
 
-void renderUISprites(HammerEngine::GPURenderer& renderer,
+void renderUISprites(VoidLight::GPURenderer& renderer,
                      const GPUTextureData& atlasData,
                      SDL_GPURenderPass* pass) {
     if (!pass) {
@@ -290,7 +290,7 @@ void renderUISprites(HammerEngine::GPURenderer& renderer,
     }
 
     float orthoMatrix[16];
-    HammerEngine::GPURenderer::createOrthoMatrix(
+    VoidLight::GPURenderer::createOrthoMatrix(
         0.0f, static_cast<float>(renderer.getViewportWidth()),
         static_cast<float>(renderer.getViewportHeight()), 0.0f,
         orthoMatrix);
@@ -338,10 +338,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    auto& gpuDevice = HammerEngine::GPUDevice::Instance();
-    auto& renderer = HammerEngine::GPURenderer::Instance();
+    auto& gpuDevice = VoidLight::GPUDevice::Instance();
+    auto& renderer = VoidLight::GPURenderer::Instance();
     auto& textureMgr = TextureManager::Instance();
-    auto& profiler = HammerEngine::FrameProfiler::Instance();
+    auto& profiler = VoidLight::FrameProfiler::Instance();
     profiler.suppressFrames(config.m_warmupFrames + config.m_measureFrames + 8);
 
     if (!gpuDevice.init(window)) {
@@ -362,7 +362,7 @@ int main(int argc, char* argv[]) {
     if (config.m_mode == BenchmarkMode::Sprite ||
         config.m_mode == BenchmarkMode::UI ||
         config.m_mode == BenchmarkMode::Mixed) {
-        const std::string atlasPath = HammerEngine::ResourcePath::resolve("res/img/atlas.png");
+        const std::string atlasPath = VoidLight::ResourcePath::resolve("res/img/atlas.png");
         if (!textureMgr.loadGPU(atlasPath, "atlas")) {
             std::cerr << std::format("TextureManager::loadGPU failed for {}\n", atlasPath);
             renderer.shutdown();
@@ -470,9 +470,9 @@ int main(int argc, char* argv[]) {
             const double frameMs = std::chrono::duration<double, std::milli>(frameEnd - frameStart).count();
             samples.add(
                 frameMs,
-                profiler.getRenderTimeMs(HammerEngine::RenderPhase::GPUSwapchainWait),
-                profiler.getRenderTimeMs(HammerEngine::RenderPhase::GPUUpload),
-                profiler.getRenderTimeMs(HammerEngine::RenderPhase::GPUSubmit)
+                profiler.getRenderTimeMs(VoidLight::RenderPhase::GPUSwapchainWait),
+                profiler.getRenderTimeMs(VoidLight::RenderPhase::GPUUpload),
+                profiler.getRenderTimeMs(VoidLight::RenderPhase::GPUSubmit)
             );
         }
     }

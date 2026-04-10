@@ -14,7 +14,7 @@
 #include <random>
 #include <cmath>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 // Test fixture for pathfinding grid
 struct PathfindingGridFixture {

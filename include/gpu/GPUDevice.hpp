@@ -7,7 +7,7 @@
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_video.h>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * Singleton wrapper for SDL_GPUDevice.
@@ -24,7 +24,7 @@ public:
      * @param window SDL window to claim for GPU rendering
      * @return true on success, false on failure
      */
-    bool init(SDL_Window* window);
+    [[nodiscard]] bool init(SDL_Window* window);
 
     /**
      * Shutdown GPU device and release window claim.
@@ -71,6 +71,6 @@ private:
     SDL_Window* m_window{nullptr};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_DEVICE_HPP

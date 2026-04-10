@@ -4,7 +4,7 @@
 
 ## Overview
 
-HammerEngine uses a **race-to-idle** strategy optimized for battery-powered devices. The engine completes frame work as quickly as possible, then sleeps until the next frame budget begins, keeping CPU cores in low-power C-states even during active gameplay.
+VoidLight-Framework uses a **race-to-idle** strategy optimized for battery-powered devices. The engine completes frame work as quickly as possible, then sleeps until the next frame budget begins, keeping CPU cores in low-power C-states even during active gameplay.
 
 Three systems work together to achieve this:
 

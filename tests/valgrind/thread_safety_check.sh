@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SDL3 HammerEngine Template - Thread Safety Analysis
+# SDL3 VoidLight-Framework - Thread Safety Analysis
 # Focused thread safety testing without overflow scenarios
 
 set -e
@@ -185,7 +185,7 @@ Analysis Tools: Helgrind, DRD (Data Race Detector)
 
 ## Executive Summary
 
-This report analyzes thread safety in the SDL3 HammerEngine Template using Valgrind's thread analysis tools.
+This report analyzes thread safety in the SDL3 VoidLight-Framework using Valgrind's thread analysis tools.
 
 ## Test Results
 

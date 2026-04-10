@@ -66,6 +66,15 @@ struct AIEntityData {
  */
 class AIManager {
 public:
+  enum class SocialInteractionType : uint8_t {
+    Trade,
+    Gift,
+    Greeting,
+    Help,
+    Theft,
+    Insult
+  };
+
   static AIManager &Instance() {
     static AIManager instance;
     return instance;
@@ -141,7 +150,7 @@ public:
    * @param handle Entity to assign behavior to
    * @param config Behavior configuration (includes type)
    */
-  void assignBehavior(EntityHandle handle, const HammerEngine::BehaviorConfigData& config);
+  void assignBehavior(EntityHandle handle, const VoidLight::BehaviorConfigData& config);
 
   /**
    * @brief Removes behavior assignment from an entity
@@ -163,7 +172,11 @@ public:
   // Entity registration (requires behavior - use assignBehavior() or registerEntity with behavior)
   void registerEntity(EntityHandle handle, const std::string &behaviorName);
   void unregisterEntity(EntityHandle handle);
+  void destroyAllNPCsForStateTransition();
   void onEntityFactionChanged(size_t edmIndex, uint8_t oldFaction, uint8_t newFaction);
+  void applySocialInteraction(EntityHandle npcHandle, EntityHandle subjectHandle,
+                              SocialInteractionType interactionType,
+                              float value);
 
   /**
    * @brief Linear scan of active entities returning handles within radius (O(N))
@@ -262,7 +275,7 @@ private:
   std::unordered_map<std::string, BehaviorType> m_behaviorTypeMap;
 
   // Named preset configs (SmallWander, LargeWander, etc.) - checked before m_behaviorTypeMap
-  std::unordered_map<std::string, HammerEngine::BehaviorConfigData> m_presetConfigs;
+  std::unordered_map<std::string, VoidLight::BehaviorConfigData> m_presetConfigs;
 
   // Reverse mapping: EDM index -> dense storage index for O(1) lookup in processBatch
   // SIZE_MAX = no behavior assigned. Much cheaper than shared_ptr (8 bytes vs 16, no atomic ops)
@@ -317,11 +330,11 @@ private:
   static constexpr uint8_t MAX_FACTIONS = 16;
   std::vector<size_t> m_guardEdmIndices;                           // EDM indices of Guard-assigned entities
   std::array<std::vector<size_t>, MAX_FACTIONS> m_factionEdmIndices;  // Per-faction EDM indices
-  std::vector<HammerEngine::AICommandBus::BehaviorMessageCommand> m_pendingBehaviorMessages;
-  std::vector<HammerEngine::AICommandBus::BehaviorTransitionCommand> m_pendingBehaviorTransitions;
-  std::vector<HammerEngine::AICommandBus::BehaviorTransitionCommand> m_selectedTransitions;
+  std::vector<VoidLight::AICommandBus::BehaviorMessageCommand> m_pendingBehaviorMessages;
+  std::vector<VoidLight::AICommandBus::BehaviorTransitionCommand> m_pendingBehaviorTransitions;
+  std::vector<VoidLight::AICommandBus::BehaviorTransitionCommand> m_selectedTransitions;
   std::unordered_map<size_t, size_t> m_selectedTransitionsByEdmIndex;
-  std::vector<HammerEngine::AICommandBus::FactionChangeCommand> m_pendingFactionChanges;
+  std::vector<VoidLight::AICommandBus::FactionChangeCommand> m_pendingFactionChanges;
 
   void addToIndices(size_t edmIndex, BehaviorType behaviorType);
   void removeFromIndices(size_t edmIndex, BehaviorType oldBehaviorType);

@@ -1,4 +1,4 @@
-# HammerEngine Dependency Analysis Report
+# VoidLight-Framework Dependency Analysis Report
 
 **Generated:** 2025-11-17 07:18:47
 **Branch:** testing_update
@@ -20,7 +20,7 @@
 - Low dependency depth (max 4) - minimal recompilation cascade risk
 - 20 forward declaration opportunities for compile time optimization
 
-**Overall Assessment:** HammerEngine demonstrates strong architectural health with excellent layer separation and no circular dependencies. The primary concern is tight coupling between certain managers (AIManager, CollisionManager, EventManager, WorldManager), which should be addressed through interface extraction or event-based communication. Header bloat is minimal (7.7% of headers), and dependency depths are very low, indicating good compilation efficiency.
+**Overall Assessment:** VoidLight-Framework demonstrates strong architectural health with excellent layer separation and no circular dependencies. The primary concern is tight coupling between certain managers (AIManager, CollisionManager, EventManager, WorldManager), which should be addressed through interface extraction or event-based communication. Header bloat is minimal (7.7% of headers), and dependency depths are very low, indicating good compilation efficiency.
 
 ---
 
@@ -370,7 +370,7 @@ This is an **excellent result**. Maximum depth of 4 means:
 **Comparison with Industry Standards:**
 - Large codebases often have depths of 10-15 (problematic)
 - Well-architected systems aim for depths < 7
-- HammerEngine achieves depths ≤ 4 (exceptional)
+- VoidLight-Framework achieves depths ≤ 4 (exceptional)
 
 **Why This Matters:**
 - Low depth = fast incremental compilation
@@ -397,7 +397,7 @@ This is an **excellent result**. Maximum depth of 4 means:
 
 **Grading Scale:**
 - 90-100: A+ (Excellent architecture)
-- **80-89: A (Good architecture, minor issues)** ← HammerEngine
+- **80-89: A (Good architecture, minor issues)** ← VoidLight-Framework
 - 70-79: B (Fair architecture, needs improvement)
 - 60-69: C (Poor architecture, refactoring required)
 - Below 60: F (Critical issues, major refactoring needed)
@@ -435,7 +435,7 @@ This is an **excellent result**. Maximum depth of 4 means:
 
 **Overall Assessment:**
 
-HammerEngine achieves a **Good (A)** architecture health score of **85/100**. The codebase demonstrates excellent structural discipline with zero circular dependencies, zero layer violations, and very low dependency depths. The primary opportunity for improvement is reducing tight coupling between certain managers through interface extraction and dependency injection patterns.
+VoidLight-Framework achieves a **Good (A)** architecture health score of **85/100**. The codebase demonstrates excellent structural discipline with zero circular dependencies, zero layer violations, and very low dependency depths. The primary opportunity for improvement is reducing tight coupling between certain managers through interface extraction and dependency injection patterns.
 
 ---
 
@@ -768,7 +768,7 @@ Future analyses will compare against these metrics to track architectural trends
 
 ## Conclusion
 
-HammerEngine demonstrates **strong architectural health** with excellent separation of concerns, clean layering, and no circular dependencies. The codebase follows modern C++ best practices with appropriate use of managers, event-driven architecture, and threading patterns.
+VoidLight-Framework demonstrates **strong architectural health** with excellent separation of concerns, clean layering, and no circular dependencies. The codebase follows modern C++ best practices with appropriate use of managers, event-driven architecture, and threading patterns.
 
 **Strengths:**
 - ✅ Zero circular dependencies

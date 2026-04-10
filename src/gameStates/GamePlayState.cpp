@@ -6,6 +6,7 @@
 #include "gameStates/GamePlayState.hpp"
 #include "entities/Player.hpp"
 #include "controllers/combat/CombatController.hpp"
+#include "controllers/ui/GameplayHUDController.hpp"
 #include "controllers/social/SocialController.hpp"
 #include "controllers/world/DayNightController.hpp"
 #include "controllers/world/HarvestController.hpp"
@@ -33,6 +34,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"
+#include "managers/ProjectileManager.hpp"
 #include "core/WorkerBudget.hpp"
 #include "utils/Camera.hpp"
 #include "world/WorldData.hpp"
@@ -99,12 +101,13 @@ bool GamePlayState::enter() {
     initializeCamera();
 
     // Create GPU scene recorder for coordinated GPU rendering
-    m_gpuSceneRecorder = std::make_unique<HammerEngine::GPUSceneRecorder>();
+    m_gpuSceneRecorder = std::make_unique<VoidLight::GPUSceneRecorder>();
 
     // Register controllers with the registry
     m_controllers.add<WeatherController>();
     m_controllers.add<DayNightController>();
     m_controllers.add<CombatController>(mp_Player);
+    m_controllers.add<GameplayHUDController>(mp_Player->getHandle());
     m_controllers.add<ItemController>(mp_Player);
     m_controllers.add<HarvestController>(mp_Player);
     m_controllers.add<ResourceRenderController>();
@@ -178,7 +181,7 @@ bool GamePlayState::enter() {
     m_controllers.subscribeAll();
 
     // Initialize combat HUD (health/stamina bars, target frame)
-    UIManager::Instance().createCombatHUD();
+    ui.createCombatHUD();
 
     registerEventHandlers();
 
@@ -208,7 +211,7 @@ void GamePlayState::update(float deltaTime) {
     GAMEPLAY_INFO("Transitioning to LoadingState for world generation");
 
     // Create world configuration for gameplay
-    HammerEngine::WorldGenerationConfig config;
+    VoidLight::WorldGenerationConfig config;
     config.width = 200; // Standard gameplay world
     config.height = 200;
     config.seed = static_cast<int>(std::time(nullptr));
@@ -219,13 +222,13 @@ void GamePlayState::update(float deltaTime) {
 
     // Configure LoadingState and transition to it
     auto *loadingState = dynamic_cast<LoadingState *>(
-        mp_stateManager->getState("LoadingState").get());
+        mp_stateManager->getState(GameStateId::LOADING).get());
     if (loadingState) {
-      loadingState->configure("GamePlayState", config);
+      loadingState->configure(GameStateId::GAME_PLAY, config);
       // Set flag before transitioning to preserve m_worldLoaded in exit()
       m_transitioningToLoading = true;
       // Use changeState (called from update) to properly exit and re-enter
-      mp_stateManager->changeState("LoadingState");
+      mp_stateManager->changeState(GameStateId::LOADING);
     }
 
     return; // Don't continue with rest of update
@@ -245,22 +248,22 @@ void GamePlayState::update(float deltaTime) {
     m_npcRenderCtrl.update(deltaTime);
 
     // Update combat HUD (health/stamina bars, target frame)
-    auto& combatCtrl = *m_controllers.get<CombatController>();
-    UIManager::Instance().updateCombatHUD(
+    auto& gameplayHudCtrl = *m_controllers.get<GameplayHUDController>();
+    ui.updateCombatHUD(
         mp_Player->getHealth(),
         mp_Player->getStamina(),
-        combatCtrl.hasActiveTarget(),
-        "Target",
-        combatCtrl.getTargetHealth());
+        gameplayHudCtrl.hasActiveTarget(),
+        gameplayHudCtrl.getTargetLabel(),
+        gameplayHudCtrl.getTargetHealth());
 
     if (!mp_Player->isAlive() && !m_transitioningToGameOver) {
       m_transitioningToGameOver = true;
 
-      if (!mp_stateManager->hasState("GameOverState")) {
+      if (!mp_stateManager->hasState(GameStateId::GAME_OVER)) {
         mp_stateManager->addState(std::make_unique<GameOverState>());
       }
 
-      mp_stateManager->changeState("GameOverState");
+      mp_stateManager->changeState(GameStateId::GAME_OVER);
       return;
     }
   }
@@ -324,7 +327,7 @@ bool GamePlayState::exit() {
     m_transitioningToGameOver = false;
 
     // Clear NPCs before manager cleanup (NPCs hold EDM indices)
-    m_npcRenderCtrl.clearSpawnedNPCs();
+    aiMgr.destroyAllNPCsForStateTransition();
 
     // Unsubscribe event handlers before clearing controllers
     // (handlers capture `this` and call m_controllers.get<>() which returns
@@ -332,6 +335,7 @@ bool GamePlayState::exit() {
     unregisterEventHandlers();
 
     aiMgr.prepareForStateTransition();
+    ProjectileManager::Instance().prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
     worldMgr.prepareForStateTransition();
 
@@ -350,7 +354,7 @@ bool GamePlayState::exit() {
     }
 
     edm.prepareForStateTransition();
-    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+    VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
 
     if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
       particleMgr.prepareForStateTransition();
@@ -391,12 +395,13 @@ bool GamePlayState::exit() {
   m_transitioningToGameOver = false;
 
   // Clear NPCs before manager cleanup (NPCs hold EDM indices)
-  m_npcRenderCtrl.clearSpawnedNPCs();
+  aiMgr.destroyAllNPCsForStateTransition();
 
   // Unsubscribe from event handlers before EventManager teardown.
   unregisterEventHandlers();
 
   aiMgr.prepareForStateTransition();
+  ProjectileManager::Instance().prepareForStateTransition();
   bgSimMgr.prepareForStateTransition();
   worldMgr.prepareForStateTransition();
 
@@ -415,7 +420,7 @@ bool GamePlayState::exit() {
   }
 
   edm.prepareForStateTransition();
-  HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+  VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
 
   // Simple particle cleanup
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
@@ -458,7 +463,6 @@ bool GamePlayState::exit() {
   return true;
 }
 
-std::string GamePlayState::getName() const { return "GamePlayState"; }
 
 void GamePlayState::registerEventHandlers() {
   auto &eventMgr = EventManager::Instance();
@@ -592,15 +596,15 @@ void GamePlayState::handleInput() {
   // Use InputManager's new event-driven key press detection
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_P)) {
     // Create PauseState if it doesn't exist
-    if (!mp_stateManager->hasState("PauseState")) {
+    if (!mp_stateManager->hasState(GameStateId::PAUSE)) {
       mp_stateManager->addState(std::make_unique<PauseState>());
     }
     // pushState will call pause() which handles UI hiding and player velocity
-    mp_stateManager->pushState("PauseState");
+    mp_stateManager->pushState(GameStateId::PAUSE);
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-    mp_stateManager->changeState("MainMenuState");
+    mp_stateManager->changeState(GameStateId::MAIN_MENU);
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
@@ -619,10 +623,42 @@ void GamePlayState::handleInput() {
     ui.setComponentVisible("gameplay_fps", m_fpsVisible);
   }
 
-  // Combat - F or spacebar to attack (F matches AdvancedAIDemoState)
-  if ((inputMgr.wasKeyPressed(SDL_SCANCODE_F) || inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) && mp_Player) {
+  // Combat - F for melee attack
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_F) && mp_Player) {
     m_controllers.get<CombatController>()->tryAttack();
   }
+
+#ifndef NDEBUG
+  // Debug: R to spawn a hostile ranged NPC near player (test hook)
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_R) && mp_Player) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+    Vector2D playerPos = mp_Player->getPosition();
+    Vector2D spawnPos = playerPos + Vector2D(150.0f, 0.0f);
+    EntityHandle npc = edm.createNPCWithRaceClass(spawnPos, "Human", "Warrior",
+                                                   Sex::Unknown, 1);  // faction 1 = Enemy
+    if (npc.isValid()) {
+      aiMgr.assignBehavior(npc, "RangedAttack");
+    }
+  }
+
+  // Debug: Space to fire projectile (test hook)
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE) && mp_Player) {
+    auto& edm = EntityDataManager::Instance();
+    Vector2D playerPos = mp_Player->getPosition();
+    EntityHandle playerHandle = mp_Player->getHandle();
+
+    // Direction based on player facing
+    float dirX = (mp_Player->getFlip() == SDL_FLIP_HORIZONTAL) ? -1.0f : 1.0f;
+    constexpr float PROJECTILE_SPEED = 300.0f;
+    Vector2D velocity(dirX * PROJECTILE_SPEED, 0.0f);
+
+    // Offset spawn slightly in front of player
+    Vector2D spawnPos = playerPos + Vector2D(dirX * 20.0f, 0.0f);
+
+    edm.createProjectile(spawnPos, velocity, playerHandle, 10.0f, 3.0f);
+  }
+#endif
 
   // Interaction - E to trade/pickup/harvest
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_E) && mp_Player) {
@@ -698,9 +734,9 @@ void GamePlayState::handleInput() {
     if (!ui.isClickOnUI(mousePos)) {
       Vector2D worldPos = m_camera->screenToWorld(mousePos);
       int const tileX =
-          static_cast<int>(worldPos.getX() / HammerEngine::TILE_SIZE);
+          static_cast<int>(worldPos.getX() / VoidLight::TILE_SIZE);
       int const tileY =
-          static_cast<int>(worldPos.getY() / HammerEngine::TILE_SIZE);
+          static_cast<int>(worldPos.getY() / VoidLight::TILE_SIZE);
 
       auto &worldMgr = WorldManager::Instance();
       if (worldMgr.isValidPosition(tileX, tileY)) {
@@ -861,7 +897,7 @@ void GamePlayState::initializeCamera() {
       mp_Player ? mp_Player->getPosition() : Vector2D(0, 0);
 
   // Create camera with position, then sync viewport from the active GPU renderer.
-  m_camera = std::make_unique<HammerEngine::Camera>();
+  m_camera = std::make_unique<VoidLight::Camera>();
   m_camera->setPosition(playerPosition);
   m_camera->syncViewportWithEngine();
 
@@ -875,11 +911,11 @@ void GamePlayState::initializeCamera() {
     std::weak_ptr<Entity> playerAsEntity =
         std::static_pointer_cast<Entity>(mp_Player);
     m_camera->setTarget(playerAsEntity);
-    m_camera->setMode(HammerEngine::Camera::Mode::Follow);
+    m_camera->setMode(VoidLight::Camera::Mode::Follow);
 
     // Set up camera configuration for smooth following
     // Using exponential smoothing for smooth, responsive follow
-    HammerEngine::Camera::Config config;
+    VoidLight::Camera::Config config;
     config.followSpeed = 5.0f;      // Speed of camera interpolation
     config.deadZoneRadius = 0.0f;   // No dead zone - always follow
     config.smoothingFactor = 0.85f; // Smoothing factor (0-1, higher = smoother)
@@ -1048,7 +1084,7 @@ void GamePlayState::onWeatherChanged(const EventData &data) {
   GAMEPLAY_DEBUG(weatherEvent->getWeatherTypeString());
 }
 
-void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
+void GamePlayState::recordGPUVertices(VoidLight::GPURenderer &gpuRenderer,
                                       float interpolationAlpha) {
   // Skip if world not active or GPU scene recorder not initialized
   if (!m_camera || !m_gpuSceneRecorder) {
@@ -1074,6 +1110,9 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
 
   // Record NPCs after resources to preserve SDL render-order parity.
   m_npcRenderCtrl.recordGPU(ctx);
+
+  // Record projectiles after NPCs (rendered on top of NPCs)
+  m_projectileRenderCtrl.recordGPU(ctx);
 
   // End sprite batch recording before switching to entity batch
   m_gpuSceneRecorder->endSpriteBatch();
@@ -1110,9 +1149,9 @@ void GamePlayState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   ui.recordGPUVertices(gpuRenderer);
 }
 
-void GamePlayState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
+void GamePlayState::renderGPUScene(VoidLight::GPURenderer &gpuRenderer,
                                    SDL_GPURenderPass *scenePass,
-                                   [[maybe_unused]] float interpolationAlpha) {
+                                   float) {
   if (!m_camera || !m_gpuSceneRecorder) {
     return;
   }
@@ -1132,7 +1171,7 @@ void GamePlayState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
   }
 }
 
-void GamePlayState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
+void GamePlayState::renderGPUUI(VoidLight::GPURenderer &gpuRenderer,
                                 SDL_GPURenderPass *swapchainPass) {
   // Day/night lighting is handled by the composite shader (DayNightController updates GPURenderer)
 

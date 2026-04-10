@@ -116,7 +116,7 @@ bool UIDemoState::enter() {
 
     // Set up button callbacks - capture mp_stateManager for proper architecture
     ui.setOnClick("uiexample_back_btn", [this]() {
-        mp_stateManager->changeState("MainMenuState");
+        mp_stateManager->changeState(GameStateId::MAIN_MENU);
     });
 
     ui.setOnClick("uiexample_animate_btn", [this]() {
@@ -223,7 +223,7 @@ void UIDemoState::handleInput() {
     // Handle B key to go back
     const auto& inputManager = InputManager::Instance();
     if (inputManager.wasKeyPressed(SDL_SCANCODE_B)) {
-        mp_stateManager->changeState("MainMenuState");
+        mp_stateManager->changeState(GameStateId::MAIN_MENU);
     }
 }
 
@@ -300,15 +300,15 @@ void UIDemoState::updateEventLogDemo(float deltaTime) {
     }
 }
 
-void UIDemoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
-                                        [[maybe_unused]] float interpolationAlpha) {
+void UIDemoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
+                                        float) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
         ui.recordGPUVertices(gpuRenderer);
     }
 }
 
-void UIDemoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void UIDemoState::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                                   SDL_GPURenderPass* swapchainPass) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {

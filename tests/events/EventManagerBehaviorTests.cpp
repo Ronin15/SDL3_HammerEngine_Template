@@ -14,21 +14,22 @@
 #include "events/CameraEvent.hpp"
 #include "events/Event.hpp"
 #include "events/WeatherEvent.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 
-namespace {
-
-struct ThreadSystemTestLifetime {
-  ThreadSystemTestLifetime() {
-    BOOST_REQUIRE_MESSAGE(HammerEngine::ThreadSystem::Instance().init(),
-                          "Failed to initialize ThreadSystem for EventManagerBehaviorTests");
+struct ThreadSystemFixture {
+  ThreadSystemFixture() {
+    if (!VoidLight::ThreadSystem::Instance().init()) {
+      throw std::runtime_error("Failed to initialize ThreadSystem for EventManagerBehaviorTests");
+    }
   }
-  ~ThreadSystemTestLifetime() {
-    HammerEngine::ThreadSystem::Instance().clean();
+  ~ThreadSystemFixture() {
+    VoidLight::ThreadSystem::Instance().clean();
   }
 };
+BOOST_GLOBAL_FIXTURE(ThreadSystemFixture);
 
-ThreadSystemTestLifetime g_threadSystemTestLifetime{};
+namespace {
 
 class TestEvent : public Event {
 public:
@@ -53,10 +54,12 @@ private:
 struct EventFixture {
   EventFixture() {
     EventManagerTestAccess::reset();
+    BOOST_REQUIRE(EntityDataManager::Instance().init());
   }
   ~EventFixture() {
     // Clean after each test
     EventManager::Instance().clean();
+    EntityDataManager::Instance().clean();
   }
 };
 
@@ -112,6 +115,8 @@ BOOST_AUTO_TEST_CASE(ChangeWeather_DispatchesToHandlers) {
 
 BOOST_AUTO_TEST_CASE(SpawnNPC_DispatchesToHandlers) {
   std::atomic<bool> npcHandlerCalled{false};
+  auto& edm = EntityDataManager::Instance();
+  const size_t npcCountBefore = edm.getEntityCount(EntityKind::NPC);
   auto tok = EventManager::Instance().registerHandlerWithToken(
       EventTypeId::NPCSpawn, [&npcHandlerCalled](const EventData &data) {
         if (data.event) npcHandlerCalled.store(true);
@@ -122,6 +127,7 @@ BOOST_AUTO_TEST_CASE(SpawnNPC_DispatchesToHandlers) {
 
   EventManager::Instance().update(); // Process deferred events
   BOOST_CHECK(npcHandlerCalled.load());
+  BOOST_CHECK_GT(edm.getEntityCount(EntityKind::NPC), npcCountBefore);
 
   EventManager::Instance().removeHandler(tok);
 }
@@ -242,7 +248,7 @@ BOOST_AUTO_TEST_CASE(DeferredDispatch_PreservesFIFOOrderAcrossTypes) {
       std::make_shared<TestEvent>("First"), EventManager::DispatchMode::Deferred);
   EventManager::Instance().changeWeather(
       "Rainy", 1.0f, EventManager::DispatchMode::Deferred);
-  HammerEngine::CollisionInfo info{};
+  VoidLight::CollisionInfo info{};
   EventManager::Instance().triggerCollision(
       info, EventManager::DispatchMode::Deferred);
 
@@ -272,6 +278,31 @@ BOOST_AUTO_TEST_CASE(PrepareForStateTransition_ClearsCustomHandlersButKeepsBuilt
 
   // Removing the stale token should be harmless after transition cleanup.
   BOOST_CHECK(!EventManager::Instance().removeHandler(customTok));
+}
+
+BOOST_AUTO_TEST_CASE(PrepareForStateTransition_KeepsPersistentHandlersFunctional) {
+  std::atomic<int> transientCalls{0};
+  std::atomic<int> persistentCalls{0};
+
+  EventManager::Instance().registerHandler(
+      EventTypeId::Custom, [&transientCalls](const EventData &) {
+        transientCalls.fetch_add(1, std::memory_order_release);
+      });
+  auto persistentToken = EventManager::Instance().registerPersistentHandlerWithToken(
+      EventTypeId::Custom, [&persistentCalls](const EventData &) {
+        persistentCalls.fetch_add(1, std::memory_order_release);
+      });
+
+  EventManager::Instance().prepareForStateTransition();
+
+  EventManager::Instance().dispatchEvent(
+      std::make_shared<TestEvent>("PersistentAfterTransition"),
+      EventManager::DispatchMode::Deferred);
+  EventManager::Instance().update();
+
+  BOOST_CHECK_EQUAL(transientCalls.load(std::memory_order_acquire), 0);
+  BOOST_CHECK_EQUAL(persistentCalls.load(std::memory_order_acquire), 1);
+  BOOST_CHECK(EventManager::Instance().removeHandler(persistentToken));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

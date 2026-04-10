@@ -2,7 +2,7 @@
 
 ## Overview
 
-SIMDMath is a cross-platform SIMD (Single Instruction, Multiple Data) abstraction layer for the Hammer Engine that provides unified SIMD operations across x86-64 (SSE2/AVX2) and ARM64 (NEON) platforms. This allows writing vectorized code once and compiling for multiple architectures without duplicating logic, achieving 2-4x performance improvements for arithmetic-heavy operations.
+SIMDMath is a cross-platform SIMD (Single Instruction, Multiple Data) abstraction layer for the VoidLight-Framework that provides unified SIMD operations across x86-64 (SSE2/AVX2) and ARM64 (NEON) platforms. This allows writing vectorized code once and compiling for multiple architectures without duplicating logic, achieving 2-4x performance improvements for arithmetic-heavy operations.
 
 ## Supported Platforms
 
@@ -26,22 +26,22 @@ SIMDMath is a cross-platform SIMD (Single Instruction, Multiple Data) abstractio
 ### Compile-Time Detection
 ```cpp
 // SSE2 (x86-64 baseline)
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(VOIDLIGHT_SIMD_SSE2)
     // SSE2 code path
 #endif
 
 // SSE4.1 (x86-64 enhanced)
-#if defined(HAMMER_SIMD_SSE4)
+#if defined(VOIDLIGHT_SIMD_SSE4)
     // SSE4 code path
 #endif
 
 // AVX2 (x86-64 advanced)
-#if defined(HAMMER_SIMD_AVX2)
+#if defined(VOIDLIGHT_SIMD_AVX2)
     // AVX2 code path
 #endif
 
 // ARM NEON (Apple Silicon)
-#if defined(HAMMER_SIMD_NEON)
+#if defined(VOIDLIGHT_SIMD_NEON)
     // NEON code path
 #endif
 ```
@@ -51,9 +51,9 @@ SIMDMath is a cross-platform SIMD (Single Instruction, Multiple Data) abstractio
 #include "utils/SIMDMath.hpp"
 
 void processData(float* data, size_t count) {
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+#if defined(VOIDLIGHT_SIMD_SSE2) || defined(VOIDLIGHT_SIMD_NEON)
     // Unified SIMD path (works on both x86 and ARM)
-    using namespace HammerEngine::SIMD;
+    using namespace VoidLight-Framework::SIMD;
 
     for (size_t i = 0; i + 3 < count; i += 4) {
         Float4 v = load4(&data[i]);
@@ -263,7 +263,7 @@ float sum = horizontal_add(v); // 1 + 2 + 3 + 4 = 10.0
 ```cpp
 // Compute distances from AI entity to 4 targets simultaneously
 void computeDistances(const Vector2D& aiPos, const Vector2D targets[4], float distances[4]) {
-    using namespace HammerEngine::SIMD;
+    using namespace VoidLight-Framework::SIMD;
 
     // Load AI position into all lanes
     Float4 aiX = broadcast(aiPos.x);
@@ -298,7 +298,7 @@ struct AABB {
 };
 
 void computeBounds(const Vector2D centers[4], const Vector2D halfsizes[4], AABB bounds[4]) {
-    using namespace HammerEngine::SIMD;
+    using namespace VoidLight-Framework::SIMD;
 
     // Load centers
     float centerX[4] = {centers[0].x, centers[1].x, centers[2].x, centers[3].x};
@@ -338,7 +338,7 @@ void computeBounds(const Vector2D centers[4], const Vector2D halfsizes[4], AABB 
 ```cpp
 // Check collision layer masks for 4 bodies simultaneously
 bool canCollide(uint32_t layerMasks[4], uint32_t collideMasks[4], bool results[4]) {
-    using namespace HammerEngine::SIMD;
+    using namespace VoidLight-Framework::SIMD;
 
     // Load masks
     Int4 layers = _mm_loadu_si128(reinterpret_cast<const __m128i*>(layerMasks));
@@ -368,7 +368,7 @@ bool canCollide(uint32_t layerMasks[4], uint32_t collideMasks[4], bool results[4
 void updateParticles(float posX[4], float posY[4],
                      const float velX[4], const float velY[4],
                      float deltaTime) {
-    using namespace HammerEngine::SIMD;
+    using namespace VoidLight-Framework::SIMD;
 
     // Load positions and velocities
     Float4 px = load4(posX);
@@ -425,7 +425,7 @@ Float4 v = load4(data); // Aligned load (faster on some platforms)
 #### 3. Process 4 Elements at a Time
 ```cpp
 void processData(float* data, size_t count) {
-    using namespace HammerEngine::SIMD;
+    using namespace VoidLight-Framework::SIMD;
 
     size_t i = 0;
 
@@ -497,7 +497,7 @@ if (count < 16) {
 - **Performance**: Competitive with SSE2, excellent FMA support
 
 ### Performance Metrics
-Based on HammerEngine benchmarks:
+Based on VoidLight-Framework benchmarks:
 - **AIManager Distance Calculations**: 3.2x speedup on 10,000+ entities
 - **CollisionManager AABB Operations**: 2.8x speedup on 10,000+ bodies
 - **ParticleManager Updates**: 3.5x speedup on 50,000+ particles
@@ -523,7 +523,7 @@ Based on HammerEngine benchmarks:
 
 #### After (Cross-Platform)
 ```cpp
-using namespace HammerEngine::SIMD;
+using namespace VoidLight-Framework::SIMD;
 
 Float4 v = load4(data);
 v = mul(v, broadcast(2.0f));
@@ -560,7 +560,7 @@ struct ParticleSystem {
 #include "utils/SIMDMath.hpp"
 
 void updateParticles(ParticleSystem& ps, float dt) {
-    using namespace HammerEngine::SIMD;
+    using namespace VoidLight-Framework::SIMD;
 
     size_t count = ps.posX.size();
     size_t i = 0;
@@ -605,11 +605,11 @@ printFloat4("v", v); // Prints: v: [5.00, 5.00, 5.00, 5.00]
 
 ### Verify SIMD Path Selection
 ```cpp
-#if defined(HAMMER_SIMD_AVX2)
+#if defined(VOIDLIGHT_SIMD_AVX2)
     LOGGER_INFO("Using AVX2 SIMD path");
-#elif defined(HAMMER_SIMD_SSE2)
+#elif defined(VOIDLIGHT_SIMD_SSE2)
     LOGGER_INFO("Using SSE2 SIMD path");
-#elif defined(HAMMER_SIMD_NEON)
+#elif defined(VOIDLIGHT_SIMD_NEON)
     LOGGER_INFO("Using NEON SIMD path");
 #else
     LOGGER_INFO("Using scalar fallback path");

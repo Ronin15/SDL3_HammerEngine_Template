@@ -8,7 +8,7 @@
 #include <array>
 #include <cstdint>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * Pipeline type identifiers for render sorting.
@@ -84,7 +84,7 @@ public:
      * @param config Pipeline configuration
      * @return true on success
      */
-    bool create(SDL_GPUDevice* device, const PipelineConfig& config);
+    [[nodiscard]] bool create(SDL_GPUDevice* device, const PipelineConfig& config);
 
     /**
      * Release the pipeline.
@@ -132,6 +132,6 @@ private:
     SDL_GPUDevice* m_device{nullptr};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_PIPELINE_HPP

@@ -27,7 +27,7 @@ The `ResourceTemplateManager` is a singleton responsible for registering, indexi
 
 ### ResourceHandle Overview
 ```cpp
-namespace HammerEngine {
+namespace VoidLight-Framework {
     class ResourceHandle {
         // 32-bit ID + 16-bit generation for stale reference detection
         // Lightweight, cache-friendly, type-safe resource identification
@@ -70,7 +70,7 @@ bool registerResourceTemplate(const ResourcePtr& resource);
     // Registers a new resource template. Returns true on success.
     // Automatically detects duplicate names and rejects them.
 
-ResourcePtr getResourceTemplate(HammerEngine::ResourceHandle handle) const;
+ResourcePtr getResourceTemplate(VoidLight-Framework::ResourceHandle handle) const;
     // Retrieves a resource template by handle, or nullptr if not found.
 
 std::vector<ResourcePtr> getResourcesByCategory(ResourceCategory category) const;
@@ -80,14 +80,14 @@ std::vector<ResourcePtr> getResourcesByType(ResourceType type) const;
     // Returns all templates of a given type.
 
 // Fast property access (cache-optimized)
-int getMaxStackSize(HammerEngine::ResourceHandle handle) const;
-float getValue(HammerEngine::ResourceHandle handle) const;
-ResourceCategory getCategory(HammerEngine::ResourceHandle handle) const;
-ResourceType getType(HammerEngine::ResourceHandle handle) const;
+int getMaxStackSize(VoidLight-Framework::ResourceHandle handle) const;
+float getValue(VoidLight-Framework::ResourceHandle handle) const;
+ResourceCategory getCategory(VoidLight-Framework::ResourceHandle handle) const;
+ResourceType getType(VoidLight-Framework::ResourceHandle handle) const;
 
 // Bulk operations for better performance
-std::vector<int> getMaxStackSizes(const std::vector<HammerEngine::ResourceHandle>& handles) const;
-std::vector<float> getValues(const std::vector<HammerEngine::ResourceHandle>& handles) const;
+std::vector<int> getMaxStackSizes(const std::vector<VoidLight-Framework::ResourceHandle>& handles) const;
+std::vector<float> getValues(const std::vector<VoidLight-Framework::ResourceHandle>& handles) const;
 ```
 
 ### Resource Template Management (Data Load/Validation - Name-based)
@@ -100,22 +100,22 @@ ResourcePtr getResourceById(const std::string& id) const;
     // Use ONLY during data loading, validation, or development tools
     // Returns resource template by JSON ID, or nullptr if not found.
 
-HammerEngine::ResourceHandle getHandleByName(const std::string& name) const;
+VoidLight-Framework::ResourceHandle getHandleByName(const std::string& name) const;
     // Convert name to handle during initialization/validation phase.
 
-HammerEngine::ResourceHandle getHandleById(const std::string& id) const;
+VoidLight-Framework::ResourceHandle getHandleById(const std::string& id) const;
     // Convert JSON ID to handle during initialization/validation phase.
 ```
 
 ### Handle Management
 ```cpp
-HammerEngine::ResourceHandle generateHandle();
+VoidLight-Framework::ResourceHandle generateHandle();
     // Generates a new unique handle for resource creation.
 
-bool isValidHandle(HammerEngine::ResourceHandle handle) const;
+bool isValidHandle(VoidLight-Framework::ResourceHandle handle) const;
     // Checks if a handle is valid and points to an existing resource.
 
-void releaseHandle(HammerEngine::ResourceHandle handle);
+void releaseHandle(VoidLight-Framework::ResourceHandle handle);
     // Marks handle as freed for reuse (use with caution).
 ```
 
@@ -132,7 +132,7 @@ bool loadResourcesFromJsonString(const std::string& jsonString);
 
 ### Resource Creation
 ```cpp
-ResourcePtr createResource(HammerEngine::ResourceHandle handle) const;
+ResourcePtr createResource(VoidLight-Framework::ResourceHandle handle) const;
     // Creates a new resource instance from a template by handle.
 ```
 
@@ -147,7 +147,7 @@ void resetStats();
 size_t getResourceTemplateCount() const;
     // Returns the number of registered templates.
 
-bool hasResourceTemplate(HammerEngine::ResourceHandle handle) const;
+bool hasResourceTemplate(VoidLight-Framework::ResourceHandle handle) const;
     // Checks if a template exists.
 
 size_t getMemoryUsage() const;
@@ -295,7 +295,7 @@ if (magicSwordTemplate) {
     std::cout << "Found: " << magicSwordTemplate->getName() << std::endl;
     
     // Convert to handle for runtime use
-    HammerEngine::ResourceHandle swordHandle = magicSwordTemplate->getHandle();
+    VoidLight-Framework::ResourceHandle swordHandle = magicSwordTemplate->getHandle();
     
     // Check if it's an Equipment
     auto equipment = std::dynamic_pointer_cast<Equipment>(magicSwordTemplate);
@@ -305,7 +305,7 @@ if (magicSwordTemplate) {
 }
 
 // Phase 2: Runtime Operations (handle-based only)
-HammerEngine::ResourceHandle swordHandle = rtm.getHandleByName("Magic Sword");
+VoidLight-Framework::ResourceHandle swordHandle = rtm.getHandleByName("Magic Sword");
 if (swordHandle.isValid()) {
     // Fast property access
     int stackSize = rtm.getMaxStackSize(swordHandle);
@@ -347,15 +347,15 @@ rtm.init();
 rtm.loadResourcesFromJson("res/data/resources.json");
 
 // Convert names to handles during initialization
-HammerEngine::ResourceHandle goldHandle = rtm.getHandleByName("Gold");
-HammerEngine::ResourceHandle healthPotionHandle = rtm.getHandleByName("Health Potion");
-HammerEngine::ResourceHandle swordHandle = rtm.getHandleByName("Magic Sword");
+VoidLight-Framework::ResourceHandle goldHandle = rtm.getHandleByName("Gold");
+VoidLight-Framework::ResourceHandle healthPotionHandle = rtm.getHandleByName("Health Potion");
+VoidLight-Framework::ResourceHandle swordHandle = rtm.getHandleByName("Magic Sword");
 
 // Phase 2: Runtime Operations (handle-based only)
 class GameLogic {
 private:
-    HammerEngine::ResourceHandle m_goldHandle;
-    HammerEngine::ResourceHandle m_healthPotionHandle;
+    VoidLight-Framework::ResourceHandle m_goldHandle;
+    VoidLight-Framework::ResourceHandle m_healthPotionHandle;
     
 public:
     void init() {
@@ -375,7 +375,7 @@ public:
         }
         
         // Bulk operations for better performance
-        std::vector<HammerEngine::ResourceHandle> handles = {m_goldHandle, m_healthPotionHandle};
+        std::vector<VoidLight-Framework::ResourceHandle> handles = {m_goldHandle, m_healthPotionHandle};
         auto values = rtm.getValues(handles);  // Single optimized call
         auto stackSizes = rtm.getMaxStackSizes(handles);
     }

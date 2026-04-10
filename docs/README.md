@@ -30,10 +30,12 @@ This hub covers the engine architecture and the major subsystem docs. The curren
 
 - [Controllers Overview](controllers/README.md)
 - [CombatController](controllers/CombatController.md)
+- [GameplayHUDController](controllers/GameplayHUDController.md)
 - [HarvestController](controllers/HarvestController.md)
 - [SocialController](controllers/SocialController.md)
 - [WorldManager](managers/WorldManager.md)
 - [WorldResourceManager](managers/WorldResourceManager.md)
+- [ProjectileManager](managers/ProjectileManager.md)
 
 ## Rendering and UI
 

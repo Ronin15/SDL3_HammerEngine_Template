@@ -41,7 +41,7 @@ public:
         EventManager::Instance().init();
 
         // Initialize EntityDataManager
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
 
         // Initialize WorldResourceManager
         WorldResourceManager::Instance().init();
@@ -65,7 +65,7 @@ public:
 BOOST_AUTO_TEST_SUITE(HarvestTypeTests)
 
 BOOST_AUTO_TEST_CASE(TestHarvestTypeToString) {
-    using namespace HammerEngine;
+    using namespace VoidLight;
 
     BOOST_CHECK_EQUAL(harvestTypeToString(HarvestType::Gathering), "Gathering");
     BOOST_CHECK_EQUAL(harvestTypeToString(HarvestType::Chopping), "Chopping");
@@ -75,7 +75,7 @@ BOOST_AUTO_TEST_CASE(TestHarvestTypeToString) {
 }
 
 BOOST_AUTO_TEST_CASE(TestHarvestTypeActionVerb) {
-    using namespace HammerEngine;
+    using namespace VoidLight;
 
     BOOST_CHECK_EQUAL(harvestTypeToActionVerb(HarvestType::Gathering), "Gathering...");
     BOOST_CHECK_EQUAL(harvestTypeToActionVerb(HarvestType::Chopping), "Chopping...");
@@ -85,7 +85,7 @@ BOOST_AUTO_TEST_CASE(TestHarvestTypeActionVerb) {
 }
 
 BOOST_AUTO_TEST_CASE(TestHarvestTypeCount) {
-    using namespace HammerEngine;
+    using namespace VoidLight;
 
     // Verify COUNT matches expected number of types
     BOOST_CHECK_EQUAL(static_cast<int>(HarvestType::COUNT), 5);
@@ -100,7 +100,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_AUTO_TEST_SUITE(HarvestConfigTests)
 
 BOOST_AUTO_TEST_CASE(TestHarvestTypeConfigDurations) {
-    using namespace HammerEngine;
+    using namespace VoidLight;
 
     // Gathering should be fastest
     const auto& gatherConfig = getHarvestTypeConfig(HarvestType::Gathering);
@@ -122,7 +122,7 @@ BOOST_AUTO_TEST_CASE(TestHarvestTypeConfigDurations) {
 }
 
 BOOST_AUTO_TEST_CASE(TestIsHarvestableObstacle) {
-    using namespace HammerEngine;
+    using namespace VoidLight;
 
     // Harvestable obstacles
     BOOST_CHECK(isHarvestableObstacle(ObstacleType::TREE));
@@ -145,7 +145,7 @@ BOOST_AUTO_TEST_CASE(TestIsHarvestableObstacle) {
 }
 
 BOOST_AUTO_TEST_CASE(TestDepositConfigs) {
-    using namespace HammerEngine;
+    using namespace VoidLight;
 
     // Check ore deposits have valid configs
     const auto& ironConfig = getDepositConfig(ObstacleType::IRON_DEPOSIT);
@@ -172,7 +172,7 @@ BOOST_AUTO_TEST_CASE(TestDepositConfigs) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetHarvestTypeForObstacle) {
-    using namespace HammerEngine;
+    using namespace VoidLight;
 
     BOOST_CHECK(getHarvestTypeForObstacle(ObstacleType::TREE) == HarvestType::Chopping);
     BOOST_CHECK(getHarvestTypeForObstacle(ObstacleType::ROCK) == HarvestType::Quarrying);
@@ -201,7 +201,7 @@ BOOST_AUTO_TEST_CASE(TestInitialState) {
 
     BOOST_CHECK(!controller.isHarvesting());
     BOOST_CHECK_EQUAL(controller.getProgress(), 0.0f);
-    BOOST_CHECK(controller.getCurrentType() == HammerEngine::HarvestType::Gathering);
+    BOOST_CHECK(controller.getCurrentType() == VoidLight::HarvestType::Gathering);
 }
 
 BOOST_AUTO_TEST_CASE(TestStartHarvestWithoutPlayer) {

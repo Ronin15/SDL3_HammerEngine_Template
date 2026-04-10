@@ -145,7 +145,7 @@
 
 ## 🎯 Next Steps
 
-This world update branch represents a major milestone in the HammerEngine development, providing:
+This world update branch represents a major milestone in the VoidLight-Framework development, providing:
 - A robust world management foundation
 - Enhanced performance across all systems
 - Comprehensive testing infrastructure

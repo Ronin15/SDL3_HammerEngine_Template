@@ -7,7 +7,7 @@
 #include <SDL3/SDL_gpu.h>
 #include <cstdint>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * RAII wrapper for SDL_GPUTransferBuffer.
@@ -68,6 +68,6 @@ private:
     bool m_mapped{false};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_TRANSFER_BUFFER_HPP

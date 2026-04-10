@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SDL3 HammerEngine Template - Detailed Cache Performance Analysis
+# SDL3 VoidLight-Framework - Detailed Cache Performance Analysis
 # Comprehensive cachegrind analysis with performance comparisons and detailed reporting
 
 set -e
@@ -288,7 +288,7 @@ System: $(uname -a)
 
 ## Executive Summary
 
-This report provides detailed cache performance analysis of the SDL3 HammerEngine Template components using Valgrind's Cachegrind tool.
+This report provides detailed cache performance analysis of the SDL3 VoidLight-Framework components using Valgrind's Cachegrind tool.
 
 ## System Configuration
 
@@ -392,7 +392,7 @@ cg_annotate cachegrind.out.[pid]
 
 ---
 
-This analysis confirms the SDL3 HammerEngine Template's exceptional cache efficiency, placing it in the top tier of optimized applications worldwide.
+This analysis confirms the SDL3 VoidLight-Framework's exceptional cache efficiency, placing it in the top tier of optimized applications worldwide.
 
 EOF
 

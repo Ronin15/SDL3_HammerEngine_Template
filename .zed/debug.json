@@ -1,9 +1,9 @@
 [
   {
-    "label": "Debug Main Application (SDL3_Template)",
+    "label": "Debug Main Application (VoidLight_Template)",
     "adapter": "gdb",
     "request": "launch",
-    "program": "${workspaceFolder}/bin/debug/SDL3_Template",
+    "program": "${workspaceFolder}/bin/debug/VoidLight_Template",
     "cwd": "${workspaceFolder}",
     "stopAtEntry": false,
     "setupCommands": [

@@ -15,6 +15,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/ProjectileManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/EventManager.hpp"
@@ -43,7 +44,7 @@ AIDemoState::~AIDemoState() {
     // Reset AI behaviors first to clear entity references
     // Don't call unassignBehaviorFromEntity here - it uses shared_from_this()
     // Clear NPCs without calling clean() on them
-    m_npcRenderCtrl.clearSpawnedNPCs();
+    AIManager::Instance().destroyAllNPCsForStateTransition();
 
     // Clean up player
     m_player.reset();
@@ -77,7 +78,7 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
     GAMESTATE_INFO("Preparing to exit AIDemoState...");
-    mp_stateManager->changeState("MainMenuState");
+    mp_stateManager->changeState(GameStateId::MAIN_MENU);
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
@@ -339,7 +340,7 @@ bool AIDemoState::enter() {
     initializeCamera();
 
     // Create GPU scene renderer for coordinated GPU rendering
-    m_gpuSceneRecorder = std::make_unique<HammerEngine::GPUSceneRecorder>();
+    m_gpuSceneRecorder = std::make_unique<VoidLight::GPUSceneRecorder>();
 
     // Pre-allocate status buffer to avoid per-frame allocations
     m_statusBuffer.reserve(64);
@@ -383,12 +384,13 @@ bool AIDemoState::exit() {
 
     // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
     // NPCs hold EDM indices - must be destroyed while EDM data is still valid
-    m_npcRenderCtrl.clearSpawnedNPCs();
+    aiMgr.destroyAllNPCsForStateTransition();
     if (m_player) {
       m_player.reset();
     }
 
     aiMgr.prepareForStateTransition();
+    ProjectileManager::Instance().prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
     worldMgr.prepareForStateTransition();
 
@@ -403,7 +405,7 @@ bool AIDemoState::exit() {
     }
 
     edm.prepareForStateTransition();
-    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+    VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
 
     WorldManager::Instance().setActiveCamera(nullptr);
     if (m_player) {
@@ -442,13 +444,14 @@ bool AIDemoState::exit() {
 
   // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
   // NPCs hold EDM indices - must be destroyed while EDM data is still valid
-  m_npcRenderCtrl.clearSpawnedNPCs();
+  aiMgr.destroyAllNPCsForStateTransition();
   if (m_player) {
     m_player->setCamera(nullptr);
     m_player.reset();
   }
 
   aiMgr.prepareForStateTransition();
+  ProjectileManager::Instance().prepareForStateTransition();
   bgSimMgr.prepareForStateTransition();
   worldMgr.prepareForStateTransition();
 
@@ -464,7 +467,7 @@ bool AIDemoState::exit() {
   }
 
   edm.prepareForStateTransition();
-  HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+  VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
 
   WorldManager::Instance().setActiveCamera(nullptr);
 
@@ -504,7 +507,7 @@ void AIDemoState::update(float deltaTime) {
       GAMESTATE_INFO("Transitioning to LoadingState for world generation");
 
       // Create world configuration for AI demo
-      HammerEngine::WorldGenerationConfig config;
+      VoidLight::WorldGenerationConfig config;
       config.width = 500; // Massive world matching EventDemoState
       config.height = 500;
       config.seed = static_cast<int>(std::time(nullptr));
@@ -515,13 +518,13 @@ void AIDemoState::update(float deltaTime) {
 
       // Configure LoadingState and transition to it
       auto *loadingState = dynamic_cast<LoadingState *>(
-          mp_stateManager->getState("LoadingState").get());
+          mp_stateManager->getState(GameStateId::LOADING).get());
       if (loadingState) {
-        loadingState->configure("AIDemoState", config);
+        loadingState->configure(GameStateId::AI_DEMO, config);
         // Set flag before transitioning to preserve m_worldLoaded in exit()
         m_transitioningToLoading = true;
         // Use changeState (called from update) to properly exit and re-enter
-        mp_stateManager->changeState("LoadingState");
+        mp_stateManager->changeState(GameStateId::LOADING);
       } else {
         GAMESTATE_ERROR("LoadingState not found in GameStateManager");
       }
@@ -572,7 +575,7 @@ void AIDemoState::initializeCamera() {
   Vector2D playerPosition = m_player ? m_player->getPosition() : Vector2D(0, 0);
 
   // Create camera starting at player position
-  m_camera = std::make_unique<HammerEngine::Camera>(
+  m_camera = std::make_unique<VoidLight::Camera>(
       playerPosition.getX(), playerPosition.getY(), // Start at player position
       static_cast<float>(gameEngine.getLogicalWidth()),
       static_cast<float>(gameEngine.getLogicalHeight()));
@@ -586,11 +589,11 @@ void AIDemoState::initializeCamera() {
     std::weak_ptr<Entity> playerAsEntity =
         std::static_pointer_cast<Entity>(m_player);
     m_camera->setTarget(playerAsEntity);
-    m_camera->setMode(HammerEngine::Camera::Mode::Follow);
+    m_camera->setMode(VoidLight::Camera::Mode::Follow);
 
     // Set up camera configuration for fast, smooth following
     // Using exponential smoothing for smooth, responsive follow
-    HammerEngine::Camera::Config config;
+    VoidLight::Camera::Config config;
     config.followSpeed = 5.0f;      // Speed of camera interpolation
     config.deadZoneRadius = 0.0f;   // No dead zone - always follow
     config.smoothingFactor = 0.85f; // Smoothing factor (0-1, higher = smoother)
@@ -617,7 +620,7 @@ void AIDemoState::updateCamera(float deltaTime) {
   }
 }
 
-void AIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
+void AIDemoState::recordGPUVertices(VoidLight::GPURenderer &gpuRenderer,
                                     float interpolationAlpha) {
   if (!m_camera || !m_gpuSceneRecorder) { return; }
 
@@ -630,8 +633,9 @@ void AIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   worldMgr.recordGPU(*ctx.spriteBatch, ctx.cameraX, ctx.cameraY,
                      ctx.viewWidth, ctx.viewHeight, ctx.zoom);
 
-  // Record NPCs to sprite batch (atlas-based)
+  // Record NPCs and projectiles to sprite batch (atlas-based)
   m_npcRenderCtrl.recordGPU(ctx);
+  m_projectileRenderCtrl.recordGPU(ctx);
 
   // End sprite batch recording (finalizes atlas-based sprites)
   m_gpuSceneRecorder->endSpriteBatch();
@@ -669,9 +673,9 @@ void AIDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   m_gpuSceneRecorder->endRecording();
 }
 
-void AIDemoState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
+void AIDemoState::renderGPUScene(VoidLight::GPURenderer &gpuRenderer,
                                  SDL_GPURenderPass *scenePass,
-                                 [[maybe_unused]] float interpolationAlpha) {
+                                 float) {
   if (!m_camera || !m_gpuSceneRecorder) { return; }
 
   // Render previously recorded scene data into the engine-owned scene pass
@@ -683,7 +687,7 @@ void AIDemoState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
   }
 }
 
-void AIDemoState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
+void AIDemoState::renderGPUUI(VoidLight::GPURenderer &gpuRenderer,
                               SDL_GPURenderPass *swapchainPass) {
   UIManager::Instance().renderGPU(gpuRenderer, swapchainPass);
 }

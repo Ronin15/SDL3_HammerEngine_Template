@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SDL3 HammerEngine Template - Quick Memory Analysis
+# SDL3 VoidLight-Framework - Quick Memory Analysis
 # Fast Valgrind memory leak detection for development workflow
 
 set -e

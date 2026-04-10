@@ -47,6 +47,18 @@ private:
     int m_id;
 };
 
+struct ThreadSystemFixture {
+    ThreadSystemFixture() {
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            throw std::runtime_error("ThreadSystem::init() failed");
+        }
+    }
+    ~ThreadSystemFixture() {
+        VoidLight::ThreadSystem::Instance().clean();
+    }
+};
+BOOST_GLOBAL_FIXTURE(ThreadSystemFixture);
+
 BOOST_AUTO_TEST_SUITE(IntegratedSystemBenchmarkSuite)
 
 namespace {
@@ -259,13 +271,11 @@ namespace {
 
         void initializeAllManagers() {
             // Enable benchmark mode to suppress verbose logging during benchmarks
-            HAMMER_ENABLE_BENCHMARK_MODE();
+            VOIDLIGHT_ENABLE_BENCHMARK_MODE();
 
             // Initialize in dependency order (matching GameEngine::init pattern)
-            HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
-
-            // EntityDataManager must be early - entities need it for registration
-            EntityDataManager::Instance().init();
+            // ThreadSystem handled by global fixture
+            BOOST_REQUIRE(EntityDataManager::Instance().init());
 
             EventManager::Instance().init();
             PathfinderManager::Instance().init();
@@ -297,7 +307,6 @@ namespace {
             PathfinderManager::Instance().clean();
             EventManager::Instance().clean();
             EntityDataManager::Instance().clean();
-            HammerEngine::ThreadSystem::Instance().clean();
         }
 
         void cleanupScenario() {

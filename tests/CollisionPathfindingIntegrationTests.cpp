@@ -22,24 +22,24 @@
 #include <thread>
 #include <vector>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 // Test fixture for collision-pathfinding integration
 struct CollisionPathfindingFixture {
     CollisionPathfindingFixture() {
         // Initialize ThreadSystem first (required for PathfinderManager async tasks)
         // Always call init() - it has guards against double-initialization
-        HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
+        BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init()); // Auto-detect system threads
 
         // Initialize managers in proper order
         EventManager::Instance().init();
         WorldManager::Instance().init();
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
 
         // Load a test world - larger size with reduced blocking for navigable paths
-        HammerEngine::WorldGenerationConfig cfg{};
+        VoidLight::WorldGenerationConfig cfg{};
         cfg.width = 50; cfg.height = 50; cfg.seed = 1234;
         cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f;
         cfg.waterLevel = 0.1f; cfg.mountainLevel = 0.9f;

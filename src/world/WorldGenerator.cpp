@@ -10,7 +10,7 @@
 #include <numeric>
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // ============================================================================
 // WORLD GENERATION SPAWN CONFIGURATION
@@ -1062,4 +1062,4 @@ void WorldGenerator::tryConnectBuildings(WorldData& world, int x, int y, uint32_
   }
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

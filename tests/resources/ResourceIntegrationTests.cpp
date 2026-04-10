@@ -3,37 +3,8 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#include <cstdio>
-__attribute__((constructor)) static void print_startup() {
-  printf("[PRINT] ResourceIntegrationTests binary startup!\n");
-  fflush(stdout);
-}
 #define BOOST_TEST_MODULE ResourceIntegrationTests
-#include "core/Logger.hpp"
-#include "managers/ResourceTemplateManager.hpp"
 #include <boost/test/unit_test.hpp>
-
-// Force ResourceTemplateManager reset for test isolation
-struct ResourceTemplateManagerResetter {
-  ResourceTemplateManagerResetter() {
-    RESOURCE_INFO("ResourceTemplateManagerResetter: before clean");
-    if (ResourceTemplateManager::Instance().isInitialized()) {
-      ResourceTemplateManager::Instance().clean();
-    }
-    RESOURCE_INFO("ResourceTemplateManagerResetter: after clean, before init");
-    ResourceTemplateManager::Instance().init();
-    RESOURCE_INFO("ResourceTemplateManagerResetter: after init");
-  }
-
-  ~ResourceTemplateManagerResetter() {
-    RESOURCE_INFO("ResourceTemplateManagerResetter: destructor - before clean");
-    if (ResourceTemplateManager::Instance().isInitialized()) {
-      ResourceTemplateManager::Instance().clean();
-    }
-    RESOURCE_INFO("ResourceTemplateManagerResetter: destructor - after clean");
-  }
-};
-static ResourceTemplateManagerResetter resourceTemplateManagerResetterInstance;
 
 #include <chrono>
 #include <future>
@@ -46,32 +17,30 @@ static ResourceTemplateManagerResetter resourceTemplateManagerResetterInstance;
 #include "managers/EntityDataManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 
+struct GlobalFixture {
+    GlobalFixture() {
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            throw std::runtime_error("Failed to initialize ThreadSystem for resource integration tests");
+        }
+        ResourceTemplateManager::Instance().init();
+        if (!EntityDataManager::Instance().init()) {
+            throw std::runtime_error("EntityDataManager::init() failed");
+        }
+    }
+    ~GlobalFixture() {
+        EntityDataManager::Instance().clean();
+        ResourceTemplateManager::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
+    }
+};
+BOOST_GLOBAL_FIXTURE(GlobalFixture);
+
 class ResourceIntegrationTestFixture {
 public:
   ResourceIntegrationTestFixture() {
-    // Initialize ThreadSystem first for threading tests
-    threadSystem = &HammerEngine::ThreadSystem::Instance();
-    if (threadSystem->isShutdown() || threadSystem->getThreadCount() == 0) {
-      bool initSuccess = threadSystem->init();
-      if (!initSuccess && threadSystem->getThreadCount() == 0) {
-        throw std::runtime_error(
-            "Failed to initialize ThreadSystem for threading tests");
-      }
-    }
-
-    // Initialize ResourceTemplateManager
+    threadSystem = &VoidLight::ThreadSystem::Instance();
     resourceManager = &ResourceTemplateManager::Instance();
-
-    // Ensure ResourceTemplateManager is initialized with default resources
-    if (!resourceManager->isInitialized()) {
-      resourceManager->init();
-    }
-
-    // Initialize EntityDataManager
     entityDataManager = &EntityDataManager::Instance();
-    if (!entityDataManager->isInitialized()) {
-      entityDataManager->init();
-    }
 
     // Create EDM inventories to simulate player and NPC
     playerInvIndex = entityDataManager->createInventory(50, true);  // Player with 50 slots
@@ -120,7 +89,7 @@ public:
 protected:
   ResourceTemplateManager *resourceManager;
   EntityDataManager *entityDataManager;
-  HammerEngine::ThreadSystem *threadSystem;
+  VoidLight::ThreadSystem *threadSystem;
   uint32_t playerInvIndex;
   uint32_t npcInvIndex;
   std::shared_ptr<Resource> healthPotion;
@@ -129,44 +98,44 @@ protected:
   std::shared_ptr<Resource> gold;
 
   // Resource handles for easy access
-  HammerEngine::ResourceHandle healthPotionHandle;
-  HammerEngine::ResourceHandle ironSwordHandle;
-  HammerEngine::ResourceHandle ironOreHandle;
-  HammerEngine::ResourceHandle goldHandle;
+  VoidLight::ResourceHandle healthPotionHandle;
+  VoidLight::ResourceHandle ironSwordHandle;
+  VoidLight::ResourceHandle ironOreHandle;
+  VoidLight::ResourceHandle goldHandle;
 
   // Helper to check if inventory has resource
-  bool playerHasResource(HammerEngine::ResourceHandle handle, int qty = 1) {
+  bool playerHasResource(VoidLight::ResourceHandle handle, int qty = 1) {
     return entityDataManager->hasInInventory(playerInvIndex, handle, qty);
   }
 
-  bool npcHasResource(HammerEngine::ResourceHandle handle, int qty = 1) {
+  bool npcHasResource(VoidLight::ResourceHandle handle, int qty = 1) {
     return entityDataManager->hasInInventory(npcInvIndex, handle, qty);
   }
 
   // Helper to get inventory quantity
-  int playerGetQty(HammerEngine::ResourceHandle handle) {
+  int playerGetQty(VoidLight::ResourceHandle handle) {
     return entityDataManager->getInventoryQuantity(playerInvIndex, handle);
   }
 
-  int npcGetQty(HammerEngine::ResourceHandle handle) {
+  int npcGetQty(VoidLight::ResourceHandle handle) {
     return entityDataManager->getInventoryQuantity(npcInvIndex, handle);
   }
 
   // Helper to add to inventory
-  bool playerAdd(HammerEngine::ResourceHandle handle, int qty) {
+  bool playerAdd(VoidLight::ResourceHandle handle, int qty) {
     return entityDataManager->addToInventory(playerInvIndex, handle, qty);
   }
 
-  bool npcAdd(HammerEngine::ResourceHandle handle, int qty) {
+  bool npcAdd(VoidLight::ResourceHandle handle, int qty) {
     return entityDataManager->addToInventory(npcInvIndex, handle, qty);
   }
 
   // Helper to remove from inventory
-  bool playerRemove(HammerEngine::ResourceHandle handle, int qty) {
+  bool playerRemove(VoidLight::ResourceHandle handle, int qty) {
     return entityDataManager->removeFromInventory(playerInvIndex, handle, qty);
   }
 
-  bool npcRemove(HammerEngine::ResourceHandle handle, int qty) {
+  bool npcRemove(VoidLight::ResourceHandle handle, int qty) {
     return entityDataManager->removeFromInventory(npcInvIndex, handle, qty);
   }
 };
@@ -466,7 +435,7 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
             std::this_thread::sleep_for(std::chrono::microseconds(1));
           }
         },
-        HammerEngine::TaskPriority::Normal, "ResourceIntegrationTask");
+        VoidLight::TaskPriority::Normal, "ResourceIntegrationTask");
 
     futures.push_back(std::move(future));
   }

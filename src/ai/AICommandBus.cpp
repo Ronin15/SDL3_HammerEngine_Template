@@ -6,7 +6,7 @@
 #include "ai/AICommandBus.hpp"
 #include <algorithm>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 void AICommandBus::enqueueBehaviorMessage(EntityHandle targetHandle, size_t targetEdmIndex,
                                           uint8_t messageId, uint8_t param) {
@@ -60,4 +60,4 @@ void AICommandBus::drainFactionChanges(std::vector<FactionChangeCommand>& out) {
     out.swap(m_pendingFactionChanges);
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

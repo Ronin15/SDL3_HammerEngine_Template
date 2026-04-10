@@ -2,7 +2,7 @@
 
 ## Overview
 
-LoadingState is a non-blocking loading screen implementation for the Hammer Engine that handles asynchronous world generation and state transitions. It provides responsive UI feedback during long-running operations by executing world generation on ThreadSystem background threads while keeping the render loop active. This is the industry-standard pattern used by Unity, Unreal Engine, and Godot.
+LoadingState is a non-blocking loading screen implementation for the VoidLight-Framework that handles asynchronous world generation and state transitions. It provides responsive UI feedback during long-running operations by executing world generation on ThreadSystem background threads while keeping the render loop active. This is the industry-standard pattern used by Unity, Unreal Engine, and Godot.
 
 ## Architecture
 
@@ -53,7 +53,7 @@ auto* loadingState = dynamic_cast<LoadingState*>(
 );
 
 // Configure with target state and world params
-HammerEngine::WorldGenerationConfig config;
+VoidLight-Framework::WorldGenerationConfig config;
 config.seed = 12345;
 config.width = 200;
 config.height = 200;
@@ -140,7 +140,7 @@ void MainMenuState::onNewGameSelected() {
     );
 
     // Configure world generation
-    HammerEngine::WorldGenerationConfig config;
+    VoidLight-Framework::WorldGenerationConfig config;
     config.seed = static_cast<int>(time(nullptr)); // Random seed
     config.width = 200;
     config.height = 200;
@@ -166,7 +166,7 @@ void loadSavedWorld(int seed) {
     );
 
     // Configure with saved seed
-    HammerEngine::WorldGenerationConfig config;
+    VoidLight-Framework::WorldGenerationConfig config;
     config.seed = seed;
     config.width = 200;
     config.height = 200;
@@ -230,7 +230,7 @@ bool GamePlayState::enter() {
 ```cpp
 // LoadingState uses ThreadSystem for async execution
 void LoadingState::startAsyncWorldLoad() {
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    auto& threadSystem = VoidLight-Framework::ThreadSystem::Instance();
     auto& worldManager = WorldManager::Instance();
 
     // Create lambda that runs on background thread
@@ -254,7 +254,7 @@ void LoadingState::startAsyncWorldLoad() {
     // Enqueue task with high priority
     m_loadTask = threadSystem.enqueueTaskWithResult(
         loadTask,
-        HammerEngine::TaskPriority::High,
+        VoidLight-Framework::TaskPriority::High,
         "LoadingState_WorldGeneration"
     );
 }
@@ -391,7 +391,7 @@ public:
                 gameStateManager->getState("LoadingState").get()
             );
 
-            HammerEngine::WorldGenerationConfig config;
+            VoidLight-Framework::WorldGenerationConfig config;
             config.seed = 12345;
             config.width = 200;
             config.height = 200;
@@ -464,7 +464,7 @@ gameStateManager->pushState("LoadingState");
 ### Manual Testing
 ```bash
 # Run application and test loading flow
-./bin/debug/SDL3_Template
+./bin/debug/VoidLight_Template
 
 # Test scenarios:
 # 1. New game from main menu
@@ -479,7 +479,7 @@ gameStateManager->pushState("LoadingState");
 void testLoadingStateConfiguration() {
     auto* loadingState = new LoadingState();
 
-    HammerEngine::WorldGenerationConfig config;
+    VoidLight-Framework::WorldGenerationConfig config;
     config.seed = 12345;
 
     // Test configuration

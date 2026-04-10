@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="$PROJECT_ROOT/build"
 POWER_PROFILE_BIN="$PROJECT_ROOT/bin/debug/PowerProfile"
-GAME_BIN="$PROJECT_ROOT/bin/debug/SDL3_Template"
+GAME_BIN="$PROJECT_ROOT/bin/debug/VoidLight_Template"
 RESULTS_DIR="$PROJECT_ROOT/tests/test_results/power_profiling"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
@@ -32,7 +32,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --real-app         Run actual SDL3_Template game with rendering (default: headless PowerProfile)"
+            echo "  --real-app         Run actual VoidLight_Template game with rendering (default: headless PowerProfile)"
             echo "  --duration SECS    Override measurement duration (default: 30s for real-app, 60s for headless)"
             echo "  --help             Show this help message"
             echo ""
@@ -160,7 +160,7 @@ run_real_app_scenario() {
         print_error "Game binary not found: $GAME_BIN"
         echo "Building game..."
         cd "$BUILD_DIR"
-        ninja SDL3_Template
+        ninja VoidLight_Template
         cd -
     fi
 
@@ -207,7 +207,7 @@ if [[ "$USE_REAL_APP" == true ]]; then
         DURATION=30
     fi
 
-    print_info "Running with real SDL3_Template game (all systems active)"
+    print_info "Running with real VoidLight_Template game (all systems active)"
     print_info "This includes rendering, collision, pathfinding, events, UI, etc."
     echo ""
 
@@ -247,7 +247,7 @@ Real Application Power Profiling Report
 ========================================
 
 Date: $(date)
-Mode: Real SDL3_Template Game Measurement
+Mode: Real VoidLight_Template Game Measurement
 Duration: ${DURATION}s
 Timestamp: $TIMESTAMP
 
@@ -266,7 +266,7 @@ To parse results:
 What This Measures:
 ===================
 
-This test captures power consumption of the actual SDL3_Template game with:
+This test captures power consumption of the actual VoidLight_Template game with:
   ✓ Full rendering (SDL3 2D graphics)
   ✓ Collision detection (spatial hash lookups)
   ✓ Pathfinding (A* path calculations)
@@ -319,7 +319,7 @@ Power Profiling Analysis Report - Headless Benchmarks
 ======================================================
 
 This report compares CPU power consumption and energy efficiency across
-different threading configurations on the SDL3 HammerEngine.
+different threading configurations on the SDL3 VoidLight-Framework.
 
 Mode: Headless PowerProfile (AI system isolation)
 Files Generated:

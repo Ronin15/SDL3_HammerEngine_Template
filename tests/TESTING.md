@@ -1,12 +1,12 @@
-# Hammer Game Engine Test Framework
+# VoidLight Engine Test Framework
 
-This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
+This document provides a comprehensive guide to the testing framework used in the VoidLight Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
 **Current Test Coverage:** 74 source-controlled test executables covering AI systems, AI behaviors, behavior state transitions, crowd-query runtime behavior, UI functionality, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading-state helpers, manager runtime behavior, frame profiling, GameTimeManager simulation, controller systems, entity state management, entity data management, NPC memory system, background simulation, EDM integration tests, GPU rendering subsystem, GPU frame timing benchmarks, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
-The Hammer Game Engine has the following test suites:
+The VoidLight Engine has the following test suites:
 
 1. **AI System Tests**
    - AI Optimization Tests: Verify performance optimizations in the AI system
@@ -141,8 +141,10 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 ./tests/test_scripts/run_collision_tests.sh             # Collision system and spatial hash tests
 ./tests/test_scripts/run_pathfinding_tests.sh           # Pathfinding algorithm and grid tests
 ./tests/test_scripts/run_pathfinder_ai_contention_tests.sh  # PathfinderManager & AIManager WorkerBudget coordination tests
+./tests/test_scripts/run_pathfinder_manager_tests.sh      # PathfinderManager EDM integration and lifecycle tests
 ./tests/test_scripts/run_game_time_tests.sh               # GameTimeManager tests
 ./tests/test_scripts/run_controller_tests.sh              # Controller tests (Registry, Weather, DayNight)
+./tests/test_scripts/run_projectile_manager_tests.sh      # ProjectileManager EDM integration and lifecycle tests
 ./tests/test_scripts/run_entity_state_manager_tests.sh    # Entity state machine tests
 ./tests/test_scripts/run_entity_data_manager_tests.sh     # EntityDataManager and BackgroundSimulationManager tests
 ./tests/test_scripts/run_ai_manager_edm_integration_tests.sh      # AIManager EDM integration tests
@@ -154,6 +156,7 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 ./tests/test_scripts/run_ai_benchmark.sh                # AI scaling benchmark with realistic automatic threading
 ./tests/test_scripts/run_collision_benchmark.sh         # Collision system performance benchmarks
 ./tests/test_scripts/run_pathfinder_benchmark.sh        # Pathfinder system performance benchmarks
+./tests/test_scripts/run_projectile_benchmark.sh        # Projectile scaling and SIMD throughput benchmarks
 
 # Run all tests
 ./tests/test_scripts/run_all_tests.sh                   # Run all test scripts sequentially
@@ -193,8 +196,10 @@ tests/test_scripts/run_save_tests.bat                   # Save manager and Binar
 tests/test_scripts/run_event_tests.bat                  # Event manager tests
 tests/test_scripts/run_collision_tests.bat              # Collision system and spatial hash tests
 tests/test_scripts/run_pathfinding_tests.bat            # Pathfinding algorithm and grid tests
+tests/test_scripts/run_pathfinder_manager_tests.bat     # PathfinderManager EDM integration and lifecycle tests
 tests/test_scripts/run_game_time_tests.bat              # GameTimeManager tests
 tests/test_scripts/run_controller_tests.bat             # Controller tests (Registry, Weather, DayNight)
+tests/test_scripts/run_projectile_manager_tests.bat     # ProjectileManager EDM integration and lifecycle tests
 tests/test_scripts/run_entity_state_manager_tests.bat   # Entity state machine tests
 tests/test_scripts/run_entity_data_manager_tests.bat    # EntityDataManager and BackgroundSimulationManager tests
 tests/test_scripts/run_ai_manager_edm_integration_tests.bat      # AIManager EDM integration tests
@@ -208,6 +213,7 @@ tests/test_scripts/run_event_scaling_benchmark.bat      # Event manager scaling 
 tests/test_scripts/run_ai_benchmark.bat                 # AI scaling benchmark
 tests/test_scripts/run_collision_benchmark.bat          # Collision system performance benchmarks
 tests/test_scripts/run_pathfinder_benchmark.bat         # Pathfinder system performance benchmarks
+tests/test_scripts/run_projectile_benchmark.bat         # Projectile scaling and SIMD throughput benchmarks
 
 # Run all tests
 tests/test_scripts/run_all_tests.bat                    # Run all test scripts sequentially

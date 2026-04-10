@@ -18,7 +18,7 @@
 #include <mutex> // IWYU pragma: keep - Required for thread-safe logging
 #include <string> // IWYU pragma: keep - Required for std::string() conversions in macros
 
-namespace HammerEngine {
+namespace VoidLight {
 enum class LogLevel : uint8_t {
   CRITICAL = 0,     // Always logs (even in release for crashes)
   ERROR_LEVEL = 1,  // Debug only (renamed to avoid macro conflicts)
@@ -51,7 +51,7 @@ public:
 
     // Thread-safe logging with mutex protection
     std::lock_guard<std::mutex> lock(s_logMutex);
-    printf("Hammer Game Engine - [%s] %s: %s\n", system, getLevelString(level),
+    printf("VoidLight Engine - [%s] %s: %s\n", system, getLevelString(level),
            message.c_str());
     if (level == LogLevel::ERROR_LEVEL || level == LogLevel::CRITICAL) {
       fflush(stdout);
@@ -64,7 +64,7 @@ public:
 
     // Thread-safe logging with mutex protection
     std::lock_guard<std::mutex> lock(s_logMutex);
-    printf("Hammer Game Engine - [%s] %s: %s\n", system, getLevelString(level),
+    printf("VoidLight Engine - [%s] %s: %s\n", system, getLevelString(level),
            message);
     if (level == LogLevel::ERROR_LEVEL || level == LogLevel::CRITICAL) {
       fflush(stdout);
@@ -91,25 +91,25 @@ private:
 };
 
 // Debug build macros - full functionality
-#define HAMMER_CRITICAL(system, msg)                                           \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::CRITICAL, system, msg)
-#define HAMMER_ERROR(system, msg)                                              \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::ERROR_LEVEL, system, msg)
-#define HAMMER_WARN(system, msg)                                               \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::WARNING, system, msg)
-#define HAMMER_INFO(system, msg)                                               \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::INFO, system, msg)
-#define HAMMER_DEBUG(system, msg)                                              \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::DEBUG_LEVEL, system, msg)
+#define VOIDLIGHT_CRITICAL(system, msg)                                           \
+  VoidLight::Logger::Log(VoidLight::LogLevel::CRITICAL, system, msg)
+#define VOIDLIGHT_ERROR(system, msg)                                              \
+  VoidLight::Logger::Log(VoidLight::LogLevel::ERROR_LEVEL, system, msg)
+#define VOIDLIGHT_WARN(system, msg)                                               \
+  VoidLight::Logger::Log(VoidLight::LogLevel::WARNING, system, msg)
+#define VOIDLIGHT_INFO(system, msg)                                               \
+  VoidLight::Logger::Log(VoidLight::LogLevel::INFO, system, msg)
+#define VOIDLIGHT_DEBUG(system, msg)                                              \
+  VoidLight::Logger::Log(VoidLight::LogLevel::DEBUG_LEVEL, system, msg)
 
 // Conditional logging macros - use when logging is the ONLY content in an if-block
 // These eliminate condition evaluation overhead in release builds
-#define HAMMER_WARN_IF(cond, system, msg)                                      \
-  do { if (cond) HAMMER_WARN(system, msg); } while(0)
-#define HAMMER_INFO_IF(cond, system, msg)                                      \
-  do { if (cond) HAMMER_INFO(system, msg); } while(0)
-#define HAMMER_DEBUG_IF(cond, system, msg)                                     \
-  do { if (cond) HAMMER_DEBUG(system, msg); } while(0)
+#define VOIDLIGHT_WARN_IF(cond, system, msg)                                      \
+  do { if (cond) VOIDLIGHT_WARN(system, msg); } while(0)
+#define VOIDLIGHT_INFO_IF(cond, system, msg)                                      \
+  do { if (cond) VOIDLIGHT_INFO(system, msg); } while(0)
+#define VOIDLIGHT_DEBUG_IF(cond, system, msg)                                     \
+  do { if (cond) VOIDLIGHT_DEBUG(system, msg); } while(0)
 
 #else
 // Release builds - file-based logging, no console dependency
@@ -117,10 +117,9 @@ private:
 class Logger {
 private:
   static std::atomic<bool> s_benchmarkMode;
+  static std::mutex s_logMutex;
 
 public:
-  static std::mutex s_logMutex; // Public for legacy compatibility
-
   static void SetBenchmarkMode(bool enabled) {
     s_benchmarkMode.store(enabled, std::memory_order_relaxed);
   }
@@ -135,324 +134,332 @@ public:
   static void Log(const char *level, const char *system, const char *message);
 };
 
-#define HAMMER_CRITICAL(system, msg)                                           \
-  HammerEngine::Logger::Log("CRITICAL", system, msg)
+#define VOIDLIGHT_CRITICAL(system, msg)                                           \
+  VoidLight::Logger::Log("CRITICAL", system, msg)
 
-#define HAMMER_ERROR(system, msg)                                              \
-  HammerEngine::Logger::Log("ERROR", system, msg)
+#define VOIDLIGHT_ERROR(system, msg)                                              \
+  VoidLight::Logger::Log("ERROR", system, msg)
 
-#define HAMMER_WARN(system, msg) ((void)0)  // Zero overhead
-#define HAMMER_INFO(system, msg) ((void)0)  // Zero overhead
-#define HAMMER_DEBUG(system, msg) ((void)0) // Zero overhead
+#define VOIDLIGHT_WARN(system, msg) ((void)0)  // Zero overhead
+#define VOIDLIGHT_INFO(system, msg) ((void)0)  // Zero overhead
+#define VOIDLIGHT_DEBUG(system, msg) ((void)0) // Zero overhead
 
 // Conditional logging macros - compiled out entirely in release
-#define HAMMER_WARN_IF(cond, system, msg) ((void)0)
-#define HAMMER_INFO_IF(cond, system, msg) ((void)0)
-#define HAMMER_DEBUG_IF(cond, system, msg) ((void)0)
+#define VOIDLIGHT_WARN_IF(cond, system, msg) ((void)0)
+#define VOIDLIGHT_INFO_IF(cond, system, msg) ((void)0)
+#define VOIDLIGHT_DEBUG_IF(cond, system, msg) ((void)0)
 #endif
 
-// Static member definitions - shared by both DEBUG and RELEASE builds
-inline std::atomic<bool> Logger::s_benchmarkMode{false};
-inline std::mutex Logger::s_logMutex{};
+// Debug-only code block — compiles out entirely in release
+#ifdef DEBUG
+#define VOIDLIGHT_DEBUG_ONLY(...) __VA_ARGS__
+#else
+#define VOIDLIGHT_DEBUG_ONLY(...)
+#endif
 
 // Convenience macros for each manager and core system
 
 // Core Systems
-#define GAMELOOP_CRITICAL(msg) HAMMER_CRITICAL("GameLoop", msg)
-#define GAMELOOP_ERROR(msg) HAMMER_ERROR("GameLoop", msg)
-#define GAMELOOP_WARN(msg) HAMMER_WARN("GameLoop", msg)
-#define GAMELOOP_INFO(msg) HAMMER_INFO("GameLoop", msg)
-#define GAMELOOP_DEBUG(msg) HAMMER_DEBUG("GameLoop", msg)
+#define GAMELOOP_CRITICAL(msg) VOIDLIGHT_CRITICAL("GameLoop", msg)
+#define GAMELOOP_ERROR(msg) VOIDLIGHT_ERROR("GameLoop", msg)
+#define GAMELOOP_WARN(msg) VOIDLIGHT_WARN("GameLoop", msg)
+#define GAMELOOP_INFO(msg) VOIDLIGHT_INFO("GameLoop", msg)
+#define GAMELOOP_DEBUG(msg) VOIDLIGHT_DEBUG("GameLoop", msg)
 
-#define GAMEENGINE_CRITICAL(msg) HAMMER_CRITICAL("GameEngine", msg)
-#define GAMEENGINE_ERROR(msg) HAMMER_ERROR("GameEngine", msg)
-#define GAMEENGINE_WARN(msg) HAMMER_WARN("GameEngine", msg)
-#define GAMEENGINE_INFO(msg) HAMMER_INFO("GameEngine", msg)
-#define GAMEENGINE_DEBUG(msg) HAMMER_DEBUG("GameEngine", msg)
+#define GAMEENGINE_CRITICAL(msg) VOIDLIGHT_CRITICAL("GameEngine", msg)
+#define GAMEENGINE_ERROR(msg) VOIDLIGHT_ERROR("GameEngine", msg)
+#define GAMEENGINE_WARN(msg) VOIDLIGHT_WARN("GameEngine", msg)
+#define GAMEENGINE_INFO(msg) VOIDLIGHT_INFO("GameEngine", msg)
+#define GAMEENGINE_DEBUG(msg) VOIDLIGHT_DEBUG("GameEngine", msg)
 
-#define THREADSYSTEM_CRITICAL(msg) HAMMER_CRITICAL("ThreadSystem", msg)
-#define THREADSYSTEM_ERROR(msg) HAMMER_ERROR("ThreadSystem", msg)
-#define THREADSYSTEM_WARN(msg) HAMMER_WARN("ThreadSystem", msg)
-#define THREADSYSTEM_INFO(msg) HAMMER_INFO("ThreadSystem", msg)
-#define THREADSYSTEM_DEBUG(msg) HAMMER_DEBUG("ThreadSystem", msg)
+#define THREADSYSTEM_CRITICAL(msg) VOIDLIGHT_CRITICAL("ThreadSystem", msg)
+#define THREADSYSTEM_ERROR(msg) VOIDLIGHT_ERROR("ThreadSystem", msg)
+#define THREADSYSTEM_WARN(msg) VOIDLIGHT_WARN("ThreadSystem", msg)
+#define THREADSYSTEM_INFO(msg) VOIDLIGHT_INFO("ThreadSystem", msg)
+#define THREADSYSTEM_DEBUG(msg) VOIDLIGHT_DEBUG("ThreadSystem", msg)
 
-#define TIMESTEP_CRITICAL(msg) HAMMER_CRITICAL("TimestepManager", msg)
-#define TIMESTEP_ERROR(msg) HAMMER_ERROR("TimestepManager", msg)
-#define TIMESTEP_WARN(msg) HAMMER_WARN("TimestepManager", msg)
-#define TIMESTEP_INFO(msg) HAMMER_INFO("TimestepManager", msg)
-#define TIMESTEP_DEBUG(msg) HAMMER_DEBUG("TimestepManager", msg)
+#define TIMESTEP_CRITICAL(msg) VOIDLIGHT_CRITICAL("TimestepManager", msg)
+#define TIMESTEP_ERROR(msg) VOIDLIGHT_ERROR("TimestepManager", msg)
+#define TIMESTEP_WARN(msg) VOIDLIGHT_WARN("TimestepManager", msg)
+#define TIMESTEP_INFO(msg) VOIDLIGHT_INFO("TimestepManager", msg)
+#define TIMESTEP_DEBUG(msg) VOIDLIGHT_DEBUG("TimestepManager", msg)
 
-#define RESOURCEPATH_CRITICAL(msg) HAMMER_CRITICAL("ResourcePath", msg)
-#define RESOURCEPATH_ERROR(msg) HAMMER_ERROR("ResourcePath", msg)
-#define RESOURCEPATH_WARN(msg) HAMMER_WARN("ResourcePath", msg)
-#define RESOURCEPATH_INFO(msg) HAMMER_INFO("ResourcePath", msg)
-#define RESOURCEPATH_DEBUG(msg) HAMMER_DEBUG("ResourcePath", msg)
+#define RESOURCEPATH_CRITICAL(msg) VOIDLIGHT_CRITICAL("ResourcePath", msg)
+#define RESOURCEPATH_ERROR(msg) VOIDLIGHT_ERROR("ResourcePath", msg)
+#define RESOURCEPATH_WARN(msg) VOIDLIGHT_WARN("ResourcePath", msg)
+#define RESOURCEPATH_INFO(msg) VOIDLIGHT_INFO("ResourcePath", msg)
+#define RESOURCEPATH_DEBUG(msg) VOIDLIGHT_DEBUG("ResourcePath", msg)
 
 // Manager Systems
-#define BGSIM_CRITICAL(msg) HAMMER_CRITICAL("BackgroundSim", msg)
-#define BGSIM_ERROR(msg) HAMMER_ERROR("BackgroundSim", msg)
-#define BGSIM_WARN(msg) HAMMER_WARN("BackgroundSim", msg)
-#define BGSIM_INFO(msg) HAMMER_INFO("BackgroundSim", msg)
-#define BGSIM_DEBUG(msg) HAMMER_DEBUG("BackgroundSim", msg)
-#define TEXTURE_CRITICAL(msg) HAMMER_CRITICAL("TextureManager", msg)
-#define TEXTURE_ERROR(msg) HAMMER_ERROR("TextureManager", msg)
-#define TEXTURE_WARN(msg) HAMMER_WARN("TextureManager", msg)
-#define TEXTURE_INFO(msg) HAMMER_INFO("TextureManager", msg)
-#define TEXTURE_DEBUG(msg) HAMMER_DEBUG("TextureManager", msg)
+#define BGSIM_CRITICAL(msg) VOIDLIGHT_CRITICAL("BackgroundSim", msg)
+#define BGSIM_ERROR(msg) VOIDLIGHT_ERROR("BackgroundSim", msg)
+#define BGSIM_WARN(msg) VOIDLIGHT_WARN("BackgroundSim", msg)
+#define BGSIM_INFO(msg) VOIDLIGHT_INFO("BackgroundSim", msg)
+#define BGSIM_DEBUG(msg) VOIDLIGHT_DEBUG("BackgroundSim", msg)
+#define PROJ_CRITICAL(msg) VOIDLIGHT_CRITICAL("Projectile", msg)
+#define PROJ_ERROR(msg) VOIDLIGHT_ERROR("Projectile", msg)
+#define PROJ_WARN(msg) VOIDLIGHT_WARN("Projectile", msg)
+#define PROJ_INFO(msg) VOIDLIGHT_INFO("Projectile", msg)
+#define PROJ_DEBUG(msg) VOIDLIGHT_DEBUG("Projectile", msg)
+#define TEXTURE_CRITICAL(msg) VOIDLIGHT_CRITICAL("TextureManager", msg)
+#define TEXTURE_ERROR(msg) VOIDLIGHT_ERROR("TextureManager", msg)
+#define TEXTURE_WARN(msg) VOIDLIGHT_WARN("TextureManager", msg)
+#define TEXTURE_INFO(msg) VOIDLIGHT_INFO("TextureManager", msg)
+#define TEXTURE_DEBUG(msg) VOIDLIGHT_DEBUG("TextureManager", msg)
 
-#define SOUND_CRITICAL(msg) HAMMER_CRITICAL("SoundManager", msg)
-#define SOUND_ERROR(msg) HAMMER_ERROR("SoundManager", msg)
-#define SOUND_WARN(msg) HAMMER_WARN("SoundManager", msg)
-#define SOUND_INFO(msg) HAMMER_INFO("SoundManager", msg)
-#define SOUND_DEBUG(msg) HAMMER_DEBUG("SoundManager", msg)
+#define SOUND_CRITICAL(msg) VOIDLIGHT_CRITICAL("SoundManager", msg)
+#define SOUND_ERROR(msg) VOIDLIGHT_ERROR("SoundManager", msg)
+#define SOUND_WARN(msg) VOIDLIGHT_WARN("SoundManager", msg)
+#define SOUND_INFO(msg) VOIDLIGHT_INFO("SoundManager", msg)
+#define SOUND_DEBUG(msg) VOIDLIGHT_DEBUG("SoundManager", msg)
 
-#define FONT_CRITICAL(msg) HAMMER_CRITICAL("FontManager", msg)
-#define FONT_ERROR(msg) HAMMER_ERROR("FontManager", msg)
-#define FONT_WARN(msg) HAMMER_WARN("FontManager", msg)
-#define FONT_INFO(msg) HAMMER_INFO("FontManager", msg)
-#define FONT_DEBUG(msg) HAMMER_DEBUG("FontManager", msg)
+#define FONT_CRITICAL(msg) VOIDLIGHT_CRITICAL("FontManager", msg)
+#define FONT_ERROR(msg) VOIDLIGHT_ERROR("FontManager", msg)
+#define FONT_WARN(msg) VOIDLIGHT_WARN("FontManager", msg)
+#define FONT_INFO(msg) VOIDLIGHT_INFO("FontManager", msg)
+#define FONT_DEBUG(msg) VOIDLIGHT_DEBUG("FontManager", msg)
 
-#define PARTICLE_CRITICAL(msg) HAMMER_CRITICAL("ParticleManager", msg)
-#define PARTICLE_ERROR(msg) HAMMER_ERROR("ParticleManager", msg)
-#define PARTICLE_WARN(msg) HAMMER_WARN("ParticleManager", msg)
-#define PARTICLE_INFO(msg) HAMMER_INFO("ParticleManager", msg)
-#define PARTICLE_DEBUG(msg) HAMMER_DEBUG("ParticleManager", msg)
+#define PARTICLE_CRITICAL(msg) VOIDLIGHT_CRITICAL("ParticleManager", msg)
+#define PARTICLE_ERROR(msg) VOIDLIGHT_ERROR("ParticleManager", msg)
+#define PARTICLE_WARN(msg) VOIDLIGHT_WARN("ParticleManager", msg)
+#define PARTICLE_INFO(msg) VOIDLIGHT_INFO("ParticleManager", msg)
+#define PARTICLE_DEBUG(msg) VOIDLIGHT_DEBUG("ParticleManager", msg)
 
-#define AI_CRITICAL(msg) HAMMER_CRITICAL("AIManager", msg)
-#define AI_ERROR(msg) HAMMER_ERROR("AIManager", msg)
-#define AI_WARN(msg) HAMMER_WARN("AIManager", msg)
-#define AI_INFO(msg) HAMMER_INFO("AIManager", msg)
-#define AI_DEBUG(msg) HAMMER_DEBUG("AIManager", msg)
+#define AI_CRITICAL(msg) VOIDLIGHT_CRITICAL("AIManager", msg)
+#define AI_ERROR(msg) VOIDLIGHT_ERROR("AIManager", msg)
+#define AI_WARN(msg) VOIDLIGHT_WARN("AIManager", msg)
+#define AI_INFO(msg) VOIDLIGHT_INFO("AIManager", msg)
+#define AI_DEBUG(msg) VOIDLIGHT_DEBUG("AIManager", msg)
 
-#define EVENT_CRITICAL(msg) HAMMER_CRITICAL("EventManager", msg)
-#define EVENT_ERROR(msg) HAMMER_ERROR("EventManager", msg)
-#define EVENT_WARN(msg) HAMMER_WARN("EventManager", msg)
-#define EVENT_INFO(msg) HAMMER_INFO("EventManager", msg)
-#define EVENT_DEBUG(msg) HAMMER_DEBUG("EventManager", msg)
+#define EVENT_CRITICAL(msg) VOIDLIGHT_CRITICAL("EventManager", msg)
+#define EVENT_ERROR(msg) VOIDLIGHT_ERROR("EventManager", msg)
+#define EVENT_WARN(msg) VOIDLIGHT_WARN("EventManager", msg)
+#define EVENT_INFO(msg) VOIDLIGHT_INFO("EventManager", msg)
+#define EVENT_DEBUG(msg) VOIDLIGHT_DEBUG("EventManager", msg)
 
-#define INPUT_CRITICAL(msg) HAMMER_CRITICAL("InputManager", msg)
-#define INPUT_ERROR(msg) HAMMER_ERROR("InputManager", msg)
-#define INPUT_WARN(msg) HAMMER_WARN("InputManager", msg)
-#define INPUT_INFO(msg) HAMMER_INFO("InputManager", msg)
-#define INPUT_DEBUG(msg) HAMMER_DEBUG("InputManager", msg)
-#define INPUT_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "InputManager", msg)
-#define INPUT_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "InputManager", msg)
-#define INPUT_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "InputManager", msg)
+#define INPUT_CRITICAL(msg) VOIDLIGHT_CRITICAL("InputManager", msg)
+#define INPUT_ERROR(msg) VOIDLIGHT_ERROR("InputManager", msg)
+#define INPUT_WARN(msg) VOIDLIGHT_WARN("InputManager", msg)
+#define INPUT_INFO(msg) VOIDLIGHT_INFO("InputManager", msg)
+#define INPUT_DEBUG(msg) VOIDLIGHT_DEBUG("InputManager", msg)
+#define INPUT_WARN_IF(cond, msg) VOIDLIGHT_WARN_IF(cond, "InputManager", msg)
+#define INPUT_INFO_IF(cond, msg) VOIDLIGHT_INFO_IF(cond, "InputManager", msg)
+#define INPUT_DEBUG_IF(cond, msg) VOIDLIGHT_DEBUG_IF(cond, "InputManager", msg)
 
-#define UI_CRITICAL(msg) HAMMER_CRITICAL("UIManager", msg)
-#define UI_ERROR(msg) HAMMER_ERROR("UIManager", msg)
-#define UI_WARN(msg) HAMMER_WARN("UIManager", msg)
-#define UI_INFO(msg) HAMMER_INFO("UIManager", msg)
-#define UI_DEBUG(msg) HAMMER_DEBUG("UIManager", msg)
+#define UI_CRITICAL(msg) VOIDLIGHT_CRITICAL("UIManager", msg)
+#define UI_ERROR(msg) VOIDLIGHT_ERROR("UIManager", msg)
+#define UI_WARN(msg) VOIDLIGHT_WARN("UIManager", msg)
+#define UI_INFO(msg) VOIDLIGHT_INFO("UIManager", msg)
+#define UI_DEBUG(msg) VOIDLIGHT_DEBUG("UIManager", msg)
 
-#define CAMERA_CRITICAL(msg) HAMMER_CRITICAL("Camera", msg)
-#define CAMERA_ERROR(msg) HAMMER_ERROR("Camera", msg)
-#define CAMERA_WARN(msg) HAMMER_WARN("Camera", msg)
-#define CAMERA_INFO(msg) HAMMER_INFO("Camera", msg)
-#define CAMERA_DEBUG(msg) HAMMER_DEBUG("Camera", msg)
+#define CAMERA_CRITICAL(msg) VOIDLIGHT_CRITICAL("Camera", msg)
+#define CAMERA_ERROR(msg) VOIDLIGHT_ERROR("Camera", msg)
+#define CAMERA_WARN(msg) VOIDLIGHT_WARN("Camera", msg)
+#define CAMERA_INFO(msg) VOIDLIGHT_INFO("Camera", msg)
+#define CAMERA_DEBUG(msg) VOIDLIGHT_DEBUG("Camera", msg)
 
-#define GPU_SCENE_RECORDER_CRITICAL(msg) HAMMER_CRITICAL("GPUSceneRecorder", msg)
-#define GPU_SCENE_RECORDER_ERROR(msg) HAMMER_ERROR("GPUSceneRecorder", msg)
-#define GPU_SCENE_RECORDER_WARN(msg) HAMMER_WARN("GPUSceneRecorder", msg)
-#define GPU_SCENE_RECORDER_INFO(msg) HAMMER_INFO("GPUSceneRecorder", msg)
-#define GPU_SCENE_RECORDER_DEBUG(msg) HAMMER_DEBUG("GPUSceneRecorder", msg)
+#define GPU_SCENE_RECORDER_CRITICAL(msg) VOIDLIGHT_CRITICAL("GPUSceneRecorder", msg)
+#define GPU_SCENE_RECORDER_ERROR(msg) VOIDLIGHT_ERROR("GPUSceneRecorder", msg)
+#define GPU_SCENE_RECORDER_WARN(msg) VOIDLIGHT_WARN("GPUSceneRecorder", msg)
+#define GPU_SCENE_RECORDER_INFO(msg) VOIDLIGHT_INFO("GPUSceneRecorder", msg)
+#define GPU_SCENE_RECORDER_DEBUG(msg) VOIDLIGHT_DEBUG("GPUSceneRecorder", msg)
 
-#define SAVEGAME_CRITICAL(msg) HAMMER_CRITICAL("SaveGameManager", msg)
-#define SAVEGAME_ERROR(msg) HAMMER_ERROR("SaveGameManager", msg)
-#define SAVEGAME_WARN(msg) HAMMER_WARN("SaveGameManager", msg)
-#define SAVEGAME_INFO(msg) HAMMER_INFO("SaveGameManager", msg)
-#define SAVEGAME_DEBUG(msg) HAMMER_DEBUG("SaveGameManager", msg)
+#define SAVEGAME_CRITICAL(msg) VOIDLIGHT_CRITICAL("SaveGameManager", msg)
+#define SAVEGAME_ERROR(msg) VOIDLIGHT_ERROR("SaveGameManager", msg)
+#define SAVEGAME_WARN(msg) VOIDLIGHT_WARN("SaveGameManager", msg)
+#define SAVEGAME_INFO(msg) VOIDLIGHT_INFO("SaveGameManager", msg)
+#define SAVEGAME_DEBUG(msg) VOIDLIGHT_DEBUG("SaveGameManager", msg)
 
-#define RESOURCE_CRITICAL(msg) HAMMER_CRITICAL("ResourceTemplateManager", msg)
-#define RESOURCE_ERROR(msg) HAMMER_ERROR("ResourceTemplateManager", msg)
-#define RESOURCE_WARN(msg) HAMMER_WARN("ResourceTemplateManager", msg)
-#define RESOURCE_INFO(msg) HAMMER_INFO("ResourceTemplateManager", msg)
-#define RESOURCE_DEBUG(msg) HAMMER_DEBUG("ResourceTemplateManager", msg)
-#define RESOURCE_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "ResourceTemplateManager", msg)
-#define RESOURCE_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "ResourceTemplateManager", msg)
-#define RESOURCE_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "ResourceTemplateManager", msg)
+#define RESOURCE_CRITICAL(msg) VOIDLIGHT_CRITICAL("ResourceTemplateManager", msg)
+#define RESOURCE_ERROR(msg) VOIDLIGHT_ERROR("ResourceTemplateManager", msg)
+#define RESOURCE_WARN(msg) VOIDLIGHT_WARN("ResourceTemplateManager", msg)
+#define RESOURCE_INFO(msg) VOIDLIGHT_INFO("ResourceTemplateManager", msg)
+#define RESOURCE_DEBUG(msg) VOIDLIGHT_DEBUG("ResourceTemplateManager", msg)
+#define RESOURCE_WARN_IF(cond, msg) VOIDLIGHT_WARN_IF(cond, "ResourceTemplateManager", msg)
+#define RESOURCE_INFO_IF(cond, msg) VOIDLIGHT_INFO_IF(cond, "ResourceTemplateManager", msg)
+#define RESOURCE_DEBUG_IF(cond, msg) VOIDLIGHT_DEBUG_IF(cond, "ResourceTemplateManager", msg)
 
-#define INVENTORY_CRITICAL(msg) HAMMER_CRITICAL("InventoryComponent", msg)
-#define INVENTORY_ERROR(msg) HAMMER_ERROR("InventoryComponent", msg)
-#define INVENTORY_WARN(msg) HAMMER_WARN("InventoryComponent", msg)
-#define INVENTORY_INFO(msg) HAMMER_INFO("InventoryComponent", msg)
-#define INVENTORY_DEBUG(msg) HAMMER_DEBUG("InventoryComponent", msg)
-#define INVENTORY_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "InventoryComponent", msg)
-#define INVENTORY_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "InventoryComponent", msg)
-#define INVENTORY_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "InventoryComponent", msg)
+#define INVENTORY_CRITICAL(msg) VOIDLIGHT_CRITICAL("InventoryComponent", msg)
+#define INVENTORY_ERROR(msg) VOIDLIGHT_ERROR("InventoryComponent", msg)
+#define INVENTORY_WARN(msg) VOIDLIGHT_WARN("InventoryComponent", msg)
+#define INVENTORY_INFO(msg) VOIDLIGHT_INFO("InventoryComponent", msg)
+#define INVENTORY_DEBUG(msg) VOIDLIGHT_DEBUG("InventoryComponent", msg)
+#define INVENTORY_WARN_IF(cond, msg) VOIDLIGHT_WARN_IF(cond, "InventoryComponent", msg)
+#define INVENTORY_INFO_IF(cond, msg) VOIDLIGHT_INFO_IF(cond, "InventoryComponent", msg)
+#define INVENTORY_DEBUG_IF(cond, msg) VOIDLIGHT_DEBUG_IF(cond, "InventoryComponent", msg)
 
 #define WORLD_RESOURCE_CRITICAL(msg)                                           \
-  HAMMER_CRITICAL("WorldResourceManager", msg)
-#define WORLD_RESOURCE_ERROR(msg) HAMMER_ERROR("WorldResourceManager", msg)
-#define WORLD_RESOURCE_WARN(msg) HAMMER_WARN("WorldResourceManager", msg)
-#define WORLD_RESOURCE_INFO(msg) HAMMER_INFO("WorldResourceManager", msg)
-#define WORLD_RESOURCE_DEBUG(msg) HAMMER_DEBUG("WorldResourceManager", msg)
-#define WORLD_RESOURCE_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "WorldResourceManager", msg)
-#define WORLD_RESOURCE_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "WorldResourceManager", msg)
-#define WORLD_RESOURCE_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "WorldResourceManager", msg)
+  VOIDLIGHT_CRITICAL("WorldResourceManager", msg)
+#define WORLD_RESOURCE_ERROR(msg) VOIDLIGHT_ERROR("WorldResourceManager", msg)
+#define WORLD_RESOURCE_WARN(msg) VOIDLIGHT_WARN("WorldResourceManager", msg)
+#define WORLD_RESOURCE_INFO(msg) VOIDLIGHT_INFO("WorldResourceManager", msg)
+#define WORLD_RESOURCE_DEBUG(msg) VOIDLIGHT_DEBUG("WorldResourceManager", msg)
+#define WORLD_RESOURCE_WARN_IF(cond, msg) VOIDLIGHT_WARN_IF(cond, "WorldResourceManager", msg)
+#define WORLD_RESOURCE_INFO_IF(cond, msg) VOIDLIGHT_INFO_IF(cond, "WorldResourceManager", msg)
+#define WORLD_RESOURCE_DEBUG_IF(cond, msg) VOIDLIGHT_DEBUG_IF(cond, "WorldResourceManager", msg)
 
-#define WORLD_MANAGER_CRITICAL(msg) HAMMER_CRITICAL("WorldManager", msg)
-#define WORLD_MANAGER_ERROR(msg) HAMMER_ERROR("WorldManager", msg)
-#define WORLD_MANAGER_WARN(msg) HAMMER_WARN("WorldManager", msg)
-#define WORLD_MANAGER_INFO(msg) HAMMER_INFO("WorldManager", msg)
-#define WORLD_MANAGER_DEBUG(msg) HAMMER_DEBUG("WorldManager", msg)
+#define WORLD_MANAGER_CRITICAL(msg) VOIDLIGHT_CRITICAL("WorldManager", msg)
+#define WORLD_MANAGER_ERROR(msg) VOIDLIGHT_ERROR("WorldManager", msg)
+#define WORLD_MANAGER_WARN(msg) VOIDLIGHT_WARN("WorldManager", msg)
+#define WORLD_MANAGER_INFO(msg) VOIDLIGHT_INFO("WorldManager", msg)
+#define WORLD_MANAGER_DEBUG(msg) VOIDLIGHT_DEBUG("WorldManager", msg)
 
 // Entity and State Systems
-#define GAMESTATE_CRITICAL(msg) HAMMER_CRITICAL("GameStateManager", msg)
-#define GAMESTATE_ERROR(msg) HAMMER_ERROR("GameStateManager", msg)
-#define GAMESTATE_WARN(msg) HAMMER_WARN("GameStateManager", msg)
-#define GAMESTATE_INFO(msg) HAMMER_INFO("GameStateManager", msg)
-#define GAMESTATE_DEBUG(msg) HAMMER_DEBUG("GameStateManager", msg)
-#define GAMESTATE_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "GameStateManager", msg)
-#define GAMESTATE_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "GameStateManager", msg)
-#define GAMESTATE_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "GameStateManager", msg)
+#define GAMESTATE_CRITICAL(msg) VOIDLIGHT_CRITICAL("GameStateManager", msg)
+#define GAMESTATE_ERROR(msg) VOIDLIGHT_ERROR("GameStateManager", msg)
+#define GAMESTATE_WARN(msg) VOIDLIGHT_WARN("GameStateManager", msg)
+#define GAMESTATE_INFO(msg) VOIDLIGHT_INFO("GameStateManager", msg)
+#define GAMESTATE_DEBUG(msg) VOIDLIGHT_DEBUG("GameStateManager", msg)
+#define GAMESTATE_WARN_IF(cond, msg) VOIDLIGHT_WARN_IF(cond, "GameStateManager", msg)
+#define GAMESTATE_INFO_IF(cond, msg) VOIDLIGHT_INFO_IF(cond, "GameStateManager", msg)
+#define GAMESTATE_DEBUG_IF(cond, msg) VOIDLIGHT_DEBUG_IF(cond, "GameStateManager", msg)
 
-#define GAMEPLAY_CRITICAL(msg) HAMMER_CRITICAL("GamePlayState", msg)
-#define GAMEPLAY_ERROR(msg) HAMMER_ERROR("GamePlayState", msg)
-#define GAMEPLAY_WARN(msg) HAMMER_WARN("GamePlayState", msg)
-#define GAMEPLAY_INFO(msg) HAMMER_INFO("GamePlayState", msg)
-#define GAMEPLAY_DEBUG(msg) HAMMER_DEBUG("GamePlayState", msg)
-#define GAMEPLAY_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "GamePlayState", msg)
-#define GAMEPLAY_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "GamePlayState", msg)
-#define GAMEPLAY_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "GamePlayState", msg)
+#define GAMEPLAY_CRITICAL(msg) VOIDLIGHT_CRITICAL("GamePlayState", msg)
+#define GAMEPLAY_ERROR(msg) VOIDLIGHT_ERROR("GamePlayState", msg)
+#define GAMEPLAY_WARN(msg) VOIDLIGHT_WARN("GamePlayState", msg)
+#define GAMEPLAY_INFO(msg) VOIDLIGHT_INFO("GamePlayState", msg)
+#define GAMEPLAY_DEBUG(msg) VOIDLIGHT_DEBUG("GamePlayState", msg)
+#define GAMEPLAY_WARN_IF(cond, msg) VOIDLIGHT_WARN_IF(cond, "GamePlayState", msg)
+#define GAMEPLAY_INFO_IF(cond, msg) VOIDLIGHT_INFO_IF(cond, "GamePlayState", msg)
+#define GAMEPLAY_DEBUG_IF(cond, msg) VOIDLIGHT_DEBUG_IF(cond, "GamePlayState", msg)
 
-#define ENTITYSTATE_CRITICAL(msg) HAMMER_CRITICAL("EntityStateManager", msg)
-#define ENTITYSTATE_ERROR(msg) HAMMER_ERROR("EntityStateManager", msg)
-#define ENTITYSTATE_WARN(msg) HAMMER_WARN("EntityStateManager", msg)
-#define ENTITYSTATE_INFO(msg) HAMMER_INFO("EntityStateManager", msg)
-#define ENTITYSTATE_DEBUG(msg) HAMMER_DEBUG("EntityStateManager", msg)
+#define ENTITYSTATE_CRITICAL(msg) VOIDLIGHT_CRITICAL("EntityStateManager", msg)
+#define ENTITYSTATE_ERROR(msg) VOIDLIGHT_ERROR("EntityStateManager", msg)
+#define ENTITYSTATE_WARN(msg) VOIDLIGHT_WARN("EntityStateManager", msg)
+#define ENTITYSTATE_INFO(msg) VOIDLIGHT_INFO("EntityStateManager", msg)
+#define ENTITYSTATE_DEBUG(msg) VOIDLIGHT_DEBUG("EntityStateManager", msg)
 
 // Entity Systems
-#define ENTITY_CRITICAL(msg) HAMMER_CRITICAL("Entity", msg)
-#define ENTITY_ERROR(msg) HAMMER_ERROR("Entity", msg)
-#define ENTITY_WARN(msg) HAMMER_WARN("Entity", msg)
-#define ENTITY_INFO(msg) HAMMER_INFO("Entity", msg)
-#define ENTITY_DEBUG(msg) HAMMER_DEBUG("Entity", msg)
+#define ENTITY_CRITICAL(msg) VOIDLIGHT_CRITICAL("Entity", msg)
+#define ENTITY_ERROR(msg) VOIDLIGHT_ERROR("Entity", msg)
+#define ENTITY_WARN(msg) VOIDLIGHT_WARN("Entity", msg)
+#define ENTITY_INFO(msg) VOIDLIGHT_INFO("Entity", msg)
+#define ENTITY_DEBUG(msg) VOIDLIGHT_DEBUG("Entity", msg)
 
-#define PLAYER_CRITICAL(msg) HAMMER_CRITICAL("Player", msg)
-#define PLAYER_ERROR(msg) HAMMER_ERROR("Player", msg)
-#define PLAYER_WARN(msg) HAMMER_WARN("Player", msg)
-#define PLAYER_INFO(msg) HAMMER_INFO("Player", msg)
-#define PLAYER_DEBUG(msg) HAMMER_DEBUG("Player", msg)
-#define PLAYER_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "Player", msg)
-#define PLAYER_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "Player", msg)
-#define PLAYER_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "Player", msg)
+#define PLAYER_CRITICAL(msg) VOIDLIGHT_CRITICAL("Player", msg)
+#define PLAYER_ERROR(msg) VOIDLIGHT_ERROR("Player", msg)
+#define PLAYER_WARN(msg) VOIDLIGHT_WARN("Player", msg)
+#define PLAYER_INFO(msg) VOIDLIGHT_INFO("Player", msg)
+#define PLAYER_DEBUG(msg) VOIDLIGHT_DEBUG("Player", msg)
+#define PLAYER_WARN_IF(cond, msg) VOIDLIGHT_WARN_IF(cond, "Player", msg)
+#define PLAYER_INFO_IF(cond, msg) VOIDLIGHT_INFO_IF(cond, "Player", msg)
+#define PLAYER_DEBUG_IF(cond, msg) VOIDLIGHT_DEBUG_IF(cond, "Player", msg)
 
-#define NPC_CRITICAL(msg) HAMMER_CRITICAL("NPC", msg)
-#define NPC_ERROR(msg) HAMMER_ERROR("NPC", msg)
-#define NPC_WARN(msg) HAMMER_WARN("NPC", msg)
-#define NPC_INFO(msg) HAMMER_INFO("NPC", msg)
-#define NPC_DEBUG(msg) HAMMER_DEBUG("NPC", msg)
+#define NPC_CRITICAL(msg) VOIDLIGHT_CRITICAL("NPC", msg)
+#define NPC_ERROR(msg) VOIDLIGHT_ERROR("NPC", msg)
+#define NPC_WARN(msg) VOIDLIGHT_WARN("NPC", msg)
+#define NPC_INFO(msg) VOIDLIGHT_INFO("NPC", msg)
+#define NPC_DEBUG(msg) VOIDLIGHT_DEBUG("NPC", msg)
 
 // Collision and Pathfinding Systems
-#define COLLISION_CRITICAL(msg) HAMMER_CRITICAL("CollisionManager", msg)
-#define COLLISION_ERROR(msg) HAMMER_ERROR("CollisionManager", msg)
-#define COLLISION_WARN(msg) HAMMER_WARN("CollisionManager", msg)
-#define COLLISION_INFO(msg) HAMMER_INFO("CollisionManager", msg)
-#define COLLISION_DEBUG(msg) HAMMER_DEBUG("CollisionManager", msg)
+#define COLLISION_CRITICAL(msg) VOIDLIGHT_CRITICAL("CollisionManager", msg)
+#define COLLISION_ERROR(msg) VOIDLIGHT_ERROR("CollisionManager", msg)
+#define COLLISION_WARN(msg) VOIDLIGHT_WARN("CollisionManager", msg)
+#define COLLISION_INFO(msg) VOIDLIGHT_INFO("CollisionManager", msg)
+#define COLLISION_DEBUG(msg) VOIDLIGHT_DEBUG("CollisionManager", msg)
 
-#define PATHFIND_CRITICAL(msg) HAMMER_CRITICAL("Pathfinding", msg)
-#define PATHFIND_ERROR(msg) HAMMER_ERROR("Pathfinding", msg)
-#define PATHFIND_WARN(msg) HAMMER_WARN("Pathfinding", msg)
-#define PATHFIND_INFO(msg) HAMMER_INFO("Pathfinding", msg)
-#define PATHFIND_DEBUG(msg) HAMMER_DEBUG("Pathfinding", msg)
+#define PATHFIND_CRITICAL(msg) VOIDLIGHT_CRITICAL("Pathfinding", msg)
+#define PATHFIND_ERROR(msg) VOIDLIGHT_ERROR("Pathfinding", msg)
+#define PATHFIND_WARN(msg) VOIDLIGHT_WARN("Pathfinding", msg)
+#define PATHFIND_INFO(msg) VOIDLIGHT_INFO("Pathfinding", msg)
+#define PATHFIND_DEBUG(msg) VOIDLIGHT_DEBUG("Pathfinding", msg)
 
-#define SETTINGS_CRITICAL(msg) HAMMER_CRITICAL("SettingsManager", msg)
-#define SETTINGS_ERROR(msg) HAMMER_ERROR("SettingsManager", msg)
-#define SETTINGS_WARNING(msg) HAMMER_WARN("SettingsManager", msg)
+#define SETTINGS_CRITICAL(msg) VOIDLIGHT_CRITICAL("SettingsManager", msg)
+#define SETTINGS_ERROR(msg) VOIDLIGHT_ERROR("SettingsManager", msg)
+#define SETTINGS_WARNING(msg) VOIDLIGHT_WARN("SettingsManager", msg)
 #define SETTINGS_WARN(msg) SETTINGS_WARNING(msg)
-#define SETTINGS_INFO(msg) HAMMER_INFO("SettingsManager", msg)
-#define SETTINGS_DEBUG(msg) HAMMER_DEBUG("SettingsManager", msg)
+#define SETTINGS_INFO(msg) VOIDLIGHT_INFO("SettingsManager", msg)
+#define SETTINGS_DEBUG(msg) VOIDLIGHT_DEBUG("SettingsManager", msg)
 
 // WeatherController logging
-#define WEATHER_CRITICAL(msg) HAMMER_CRITICAL("WeatherController", msg)
-#define WEATHER_ERROR(msg) HAMMER_ERROR("WeatherController", msg)
-#define WEATHER_WARNING(msg) HAMMER_WARN("WeatherController", msg)
+#define WEATHER_CRITICAL(msg) VOIDLIGHT_CRITICAL("WeatherController", msg)
+#define WEATHER_ERROR(msg) VOIDLIGHT_ERROR("WeatherController", msg)
+#define WEATHER_WARNING(msg) VOIDLIGHT_WARN("WeatherController", msg)
 #define WEATHER_WARN(msg) WEATHER_WARNING(msg)
-#define WEATHER_INFO(msg) HAMMER_INFO("WeatherController", msg)
-#define WEATHER_DEBUG(msg) HAMMER_DEBUG("WeatherController", msg)
+#define WEATHER_INFO(msg) VOIDLIGHT_INFO("WeatherController", msg)
+#define WEATHER_DEBUG(msg) VOIDLIGHT_DEBUG("WeatherController", msg)
 
 // DayNightController logging
-#define DAYNIGHT_CRITICAL(msg) HAMMER_CRITICAL("DayNightController", msg)
-#define DAYNIGHT_ERROR(msg) HAMMER_ERROR("DayNightController", msg)
-#define DAYNIGHT_WARN(msg) HAMMER_WARN("DayNightController", msg)
-#define DAYNIGHT_INFO(msg) HAMMER_INFO("DayNightController", msg)
-#define DAYNIGHT_DEBUG(msg) HAMMER_DEBUG("DayNightController", msg)
+#define DAYNIGHT_CRITICAL(msg) VOIDLIGHT_CRITICAL("DayNightController", msg)
+#define DAYNIGHT_ERROR(msg) VOIDLIGHT_ERROR("DayNightController", msg)
+#define DAYNIGHT_WARN(msg) VOIDLIGHT_WARN("DayNightController", msg)
+#define DAYNIGHT_INFO(msg) VOIDLIGHT_INFO("DayNightController", msg)
+#define DAYNIGHT_DEBUG(msg) VOIDLIGHT_DEBUG("DayNightController", msg)
 
 // TimeController logging
-#define TIME_CRITICAL(msg) HAMMER_CRITICAL("TimeController", msg)
-#define TIME_ERROR(msg) HAMMER_ERROR("TimeController", msg)
-#define TIME_WARN(msg) HAMMER_WARN("TimeController", msg)
-#define TIME_INFO(msg) HAMMER_INFO("TimeController", msg)
-#define TIME_DEBUG(msg) HAMMER_DEBUG("TimeController", msg)
+#define TIME_CRITICAL(msg) VOIDLIGHT_CRITICAL("TimeController", msg)
+#define TIME_ERROR(msg) VOIDLIGHT_ERROR("TimeController", msg)
+#define TIME_WARN(msg) VOIDLIGHT_WARN("TimeController", msg)
+#define TIME_INFO(msg) VOIDLIGHT_INFO("TimeController", msg)
+#define TIME_DEBUG(msg) VOIDLIGHT_DEBUG("TimeController", msg)
 
 // CombatController logging
-#define COMBAT_CRITICAL(msg) HAMMER_CRITICAL("CombatController", msg)
-#define COMBAT_ERROR(msg) HAMMER_ERROR("CombatController", msg)
-#define COMBAT_WARN(msg) HAMMER_WARN("CombatController", msg)
-#define COMBAT_INFO(msg) HAMMER_INFO("CombatController", msg)
-#define COMBAT_DEBUG(msg) HAMMER_DEBUG("CombatController", msg)
+#define COMBAT_CRITICAL(msg) VOIDLIGHT_CRITICAL("CombatController", msg)
+#define COMBAT_ERROR(msg) VOIDLIGHT_ERROR("CombatController", msg)
+#define COMBAT_WARN(msg) VOIDLIGHT_WARN("CombatController", msg)
+#define COMBAT_INFO(msg) VOIDLIGHT_INFO("CombatController", msg)
+#define COMBAT_DEBUG(msg) VOIDLIGHT_DEBUG("CombatController", msg)
 
 // ItemController logging
-#define ITEM_CRITICAL(msg) HAMMER_CRITICAL("ItemController", msg)
-#define ITEM_ERROR(msg) HAMMER_ERROR("ItemController", msg)
-#define ITEM_WARN(msg) HAMMER_WARN("ItemController", msg)
-#define ITEM_INFO(msg) HAMMER_INFO("ItemController", msg)
-#define ITEM_DEBUG(msg) HAMMER_DEBUG("ItemController", msg)
+#define ITEM_CRITICAL(msg) VOIDLIGHT_CRITICAL("ItemController", msg)
+#define ITEM_ERROR(msg) VOIDLIGHT_ERROR("ItemController", msg)
+#define ITEM_WARN(msg) VOIDLIGHT_WARN("ItemController", msg)
+#define ITEM_INFO(msg) VOIDLIGHT_INFO("ItemController", msg)
+#define ITEM_DEBUG(msg) VOIDLIGHT_DEBUG("ItemController", msg)
 
 // SocialController logging
-#define SOCIAL_CRITICAL(msg) HAMMER_CRITICAL("SocialController", msg)
-#define SOCIAL_ERROR(msg) HAMMER_ERROR("SocialController", msg)
-#define SOCIAL_WARN(msg) HAMMER_WARN("SocialController", msg)
-#define SOCIAL_INFO(msg) HAMMER_INFO("SocialController", msg)
-#define SOCIAL_DEBUG(msg) HAMMER_DEBUG("SocialController", msg)
+#define SOCIAL_CRITICAL(msg) VOIDLIGHT_CRITICAL("SocialController", msg)
+#define SOCIAL_ERROR(msg) VOIDLIGHT_ERROR("SocialController", msg)
+#define SOCIAL_WARN(msg) VOIDLIGHT_WARN("SocialController", msg)
+#define SOCIAL_INFO(msg) VOIDLIGHT_INFO("SocialController", msg)
+#define SOCIAL_DEBUG(msg) VOIDLIGHT_DEBUG("SocialController", msg)
 
 // HarvestController logging
-#define HARVEST_CRITICAL(msg) HAMMER_CRITICAL("HarvestController", msg)
-#define HARVEST_ERROR(msg) HAMMER_ERROR("HarvestController", msg)
-#define HARVEST_WARN(msg) HAMMER_WARN("HarvestController", msg)
-#define HARVEST_INFO(msg) HAMMER_INFO("HarvestController", msg)
-#define HARVEST_DEBUG(msg) HAMMER_DEBUG("HarvestController", msg)
+#define HARVEST_CRITICAL(msg) VOIDLIGHT_CRITICAL("HarvestController", msg)
+#define HARVEST_ERROR(msg) VOIDLIGHT_ERROR("HarvestController", msg)
+#define HARVEST_WARN(msg) VOIDLIGHT_WARN("HarvestController", msg)
+#define HARVEST_INFO(msg) VOIDLIGHT_INFO("HarvestController", msg)
+#define HARVEST_DEBUG(msg) VOIDLIGHT_DEBUG("HarvestController", msg)
 
-#define RESOURCE_RENDER_CRITICAL(msg) HAMMER_CRITICAL("ResourceRenderController", msg)
-#define RESOURCE_RENDER_ERROR(msg) HAMMER_ERROR("ResourceRenderController", msg)
-#define RESOURCE_RENDER_WARN(msg) HAMMER_WARN("ResourceRenderController", msg)
-#define RESOURCE_RENDER_INFO(msg) HAMMER_INFO("ResourceRenderController", msg)
-#define RESOURCE_RENDER_DEBUG(msg) HAMMER_DEBUG("ResourceRenderController", msg)
-#define RESOURCE_RENDER_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "ResourceRenderController", msg)
+#define RESOURCE_RENDER_CRITICAL(msg) VOIDLIGHT_CRITICAL("ResourceRenderController", msg)
+#define RESOURCE_RENDER_ERROR(msg) VOIDLIGHT_ERROR("ResourceRenderController", msg)
+#define RESOURCE_RENDER_WARN(msg) VOIDLIGHT_WARN("ResourceRenderController", msg)
+#define RESOURCE_RENDER_INFO(msg) VOIDLIGHT_INFO("ResourceRenderController", msg)
+#define RESOURCE_RENDER_DEBUG(msg) VOIDLIGHT_DEBUG("ResourceRenderController", msg)
+#define RESOURCE_RENDER_WARN_IF(cond, msg) VOIDLIGHT_WARN_IF(cond, "ResourceRenderController", msg)
 
 // Conditional logging macros for common systems
 // Use these when an if-block contains ONLY logging (eliminates condition overhead in release)
-#define GAMEENGINE_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "GameEngine", msg)
-#define GAMEENGINE_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "GameEngine", msg)
-#define GAMEENGINE_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "GameEngine", msg)
+#define GAMEENGINE_WARN_IF(cond, msg) VOIDLIGHT_WARN_IF(cond, "GameEngine", msg)
+#define GAMEENGINE_INFO_IF(cond, msg) VOIDLIGHT_INFO_IF(cond, "GameEngine", msg)
+#define GAMEENGINE_DEBUG_IF(cond, msg) VOIDLIGHT_DEBUG_IF(cond, "GameEngine", msg)
 
-#define AI_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "AIManager", msg)
-#define AI_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "AIManager", msg)
-#define AI_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "AIManager", msg)
+#define AI_WARN_IF(cond, msg) VOIDLIGHT_WARN_IF(cond, "AIManager", msg)
+#define AI_INFO_IF(cond, msg) VOIDLIGHT_INFO_IF(cond, "AIManager", msg)
+#define AI_DEBUG_IF(cond, msg) VOIDLIGHT_DEBUG_IF(cond, "AIManager", msg)
 
-#define COLLISION_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "CollisionManager", msg)
-#define COLLISION_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "CollisionManager", msg)
-#define COLLISION_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "CollisionManager", msg)
+#define COLLISION_WARN_IF(cond, msg) VOIDLIGHT_WARN_IF(cond, "CollisionManager", msg)
+#define COLLISION_INFO_IF(cond, msg) VOIDLIGHT_INFO_IF(cond, "CollisionManager", msg)
+#define COLLISION_DEBUG_IF(cond, msg) VOIDLIGHT_DEBUG_IF(cond, "CollisionManager", msg)
 
-#define PATHFIND_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "Pathfinding", msg)
-#define PATHFIND_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "Pathfinding", msg)
-#define PATHFIND_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "Pathfinding", msg)
+#define PATHFIND_WARN_IF(cond, msg) VOIDLIGHT_WARN_IF(cond, "Pathfinding", msg)
+#define PATHFIND_INFO_IF(cond, msg) VOIDLIGHT_INFO_IF(cond, "Pathfinding", msg)
+#define PATHFIND_DEBUG_IF(cond, msg) VOIDLIGHT_DEBUG_IF(cond, "Pathfinding", msg)
 
-#define EVENT_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "EventManager", msg)
-#define EVENT_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "EventManager", msg)
-#define EVENT_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "EventManager", msg)
+#define EVENT_WARN_IF(cond, msg) VOIDLIGHT_WARN_IF(cond, "EventManager", msg)
+#define EVENT_INFO_IF(cond, msg) VOIDLIGHT_INFO_IF(cond, "EventManager", msg)
+#define EVENT_DEBUG_IF(cond, msg) VOIDLIGHT_DEBUG_IF(cond, "EventManager", msg)
 
-#define WORLD_MANAGER_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "WorldManager", msg)
-#define WORLD_MANAGER_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "WorldManager", msg)
-#define WORLD_MANAGER_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "WorldManager", msg)
+#define WORLD_MANAGER_WARN_IF(cond, msg) VOIDLIGHT_WARN_IF(cond, "WorldManager", msg)
+#define WORLD_MANAGER_INFO_IF(cond, msg) VOIDLIGHT_INFO_IF(cond, "WorldManager", msg)
+#define WORLD_MANAGER_DEBUG_IF(cond, msg) VOIDLIGHT_DEBUG_IF(cond, "WorldManager", msg)
 
 // Benchmark mode convenience macros
-#define HAMMER_ENABLE_BENCHMARK_MODE()                                         \
-  HammerEngine::Logger::SetBenchmarkMode(true)
-#define HAMMER_DISABLE_BENCHMARK_MODE()                                        \
-  HammerEngine::Logger::SetBenchmarkMode(false)
+#define VOIDLIGHT_ENABLE_BENCHMARK_MODE()                                         \
+  VoidLight::Logger::SetBenchmarkMode(true)
+#define VOIDLIGHT_DISABLE_BENCHMARK_MODE()                                        \
+  VoidLight::Logger::SetBenchmarkMode(false)
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // LOGGER_HPP

@@ -12,7 +12,7 @@
 
 ## Executive Summary
 
-This massive update delivers two major architectural advancements: a complete **SDL3 GPU rendering pipeline** running alongside the existing SDL_Renderer path, and a **data-driven resource system** that consolidates all resource entities (NPCs, items, resources) into the EntityDataManager. This represents the largest single feature addition to HammerEngine, introducing modern GPU rendering with shader-based effects while maintaining full backward compatibility with the CPU-based rendering path.
+This massive update delivers two major architectural advancements: a complete **SDL3 GPU rendering pipeline** running alongside the existing SDL_Renderer path, and a **data-driven resource system** that consolidates all resource entities (NPCs, items, resources) into the EntityDataManager. This represents the largest single feature addition to VoidLight-Framework, introducing modern GPU rendering with shader-based effects while maintaining full backward compatibility with the CPU-based rendering path.
 
 The SDL3 GPU implementation provides hardware-accelerated sprite batching (25,000 sprites/batch), triple-buffered vertex pools for zero-stall rendering, and a two-pass architecture enabling global day/night lighting effects via composite shaders. The data-driven migration eliminates legacy entity classes (NPC.cpp, DroppedItem.cpp, InventoryComponent.cpp), consolidating ~3,000 lines of scattered code into EDM's centralized SoA storage with full render controller separation.
 

@@ -46,9 +46,9 @@ public:
     BGSimBenchmarkFixture() {
         // Initialize systems once per fixture
         if (!s_initialized) {
-            HAMMER_ENABLE_BENCHMARK_MODE();
-            HammerEngine::ThreadSystem::Instance().init();
-            EntityDataManager::Instance().init();
+            VOIDLIGHT_ENABLE_BENCHMARK_MODE();
+            BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
+            BOOST_REQUIRE(EntityDataManager::Instance().init());
             PathfinderManager::Instance().init();
             PathfinderManager::Instance().rebuildGrid();
             CollisionManager::Instance().init();
@@ -74,7 +74,7 @@ public:
         AIManager::Instance().prepareForStateTransition();
         EntityDataManager::Instance().prepareForStateTransition();
         CollisionManager::Instance().prepareForStateTransition();
-        HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+        VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
     }
 
     // Create NPC entities and force them into background tier
@@ -163,7 +163,7 @@ struct BGSimBenchmarkModuleCleanup {
         CollisionManager::Instance().clean();
         PathfinderManager::Instance().clean();
         EntityDataManager::Instance().clean();
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
 
         BGSimBenchmarkFixture::initializedFlag() = false;
     }
@@ -238,7 +238,7 @@ BOOST_AUTO_TEST_CASE(ThreadingThresholdDetection) {
     size_t optimalThreshold = 0;
     size_t marginalThreshold = 0;
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
     std::cout << std::setw(12) << "Entities"
               << std::setw(15) << "Avg (ms)"
@@ -286,8 +286,8 @@ BOOST_AUTO_TEST_CASE(ThreadingThresholdDetection) {
     }
 
     std::cout << "\n=== THREADING RECOMMENDATION ===" << std::endl;
-    double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
-    float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
+    double multiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::AI, true);
+    float batchMult = budgetMgr.getBatchMultiplier(VoidLight::SystemType::AI);
     std::cout << "Multi throughput:  " << std::fixed << std::setprecision(2) << multiTP << " items/ms" << std::endl;
     std::cout << "Batch multiplier:  " << std::fixed << std::setprecision(2) << batchMult << std::endl;
 
@@ -308,7 +308,7 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning) {
     std::cout << "\n===== WORKERBUDGET ADAPTIVE TUNING TEST =====" << std::endl;
     std::cout << "Testing both batch sizing hill-climb and threading threshold adaptation\n" << std::endl;
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     auto& bgsim = BackgroundSimulationManager::Instance();
 
     // Fresh state
@@ -322,7 +322,7 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning) {
 
     // Part 1: Batch Sizing Hill-Climb Convergence
     std::cout << "--- Part 1: Batch Sizing Hill-Climb ---" << std::endl;
-    size_t initialBatch = budgetMgr.getBatchStrategy(HammerEngine::SystemType::AI, 5000, 4).first;
+    size_t initialBatch = budgetMgr.getBatchStrategy(VoidLight::SystemType::AI, 5000, 4).first;
     std::cout << "Initial batch count for 5000 entities: " << initialBatch << std::endl;
 
     // Run updates to let hill-climb converge
@@ -334,12 +334,12 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning) {
 
         // Sample every 20 frames
         if (frame % 20 == 0) {
-            size_t currentBatch = budgetMgr.getBatchStrategy(HammerEngine::SystemType::AI, 5000, 4).first;
+            size_t currentBatch = budgetMgr.getBatchStrategy(VoidLight::SystemType::AI, 5000, 4).first;
             batchHistory.push_back(currentBatch);
         }
     }
 
-    size_t finalBatch = budgetMgr.getBatchStrategy(HammerEngine::SystemType::AI, 5000, 4).first;
+    size_t finalBatch = budgetMgr.getBatchStrategy(VoidLight::SystemType::AI, 5000, 4).first;
     std::cout << "Final batch count after " << CONVERGENCE_FRAMES << " frames: " << finalBatch << std::endl;
 
     // Check convergence: batch count should stabilize (low variance in last few samples)
@@ -359,7 +359,7 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning) {
 
     // Part 2: Throughput Tracking (replaces threshold adaptation)
     std::cout << "\n--- Part 2: Throughput Tracking ---" << std::endl;
-    double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
+    double initialMultiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::AI, true);
     std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms" << std::endl;
 
     // Run additional frames to allow throughput tracking
@@ -370,15 +370,15 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning) {
 
         // Sample throughput every 100 frames
         if (frame % 100 == 0) {
-            double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
-            float batchMultNow = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
+            double multiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::AI, true);
+            float batchMultNow = budgetMgr.getBatchMultiplier(VoidLight::SystemType::AI);
             std::cout << "Frame " << frame << ": multiTP=" << std::fixed << std::setprecision(2)
                       << multiTP << " batchMult=" << batchMultNow << std::endl;
         }
     }
 
-    double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
-    float finalBatchMultTP = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
+    double finalMultiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::AI, true);
+    float finalBatchMultTP = budgetMgr.getBatchMultiplier(VoidLight::SystemType::AI);
     std::cout << "Final multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms" << std::endl;
     std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMultTP << std::endl;
 

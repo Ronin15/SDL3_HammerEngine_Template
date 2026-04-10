@@ -1,4 +1,4 @@
-# clang-tidy Configuration for SDL3_HammerEngine
+# clang-tidy Configuration for SDL3_VoidLight-Framework
 
 This directory contains clang-tidy configuration for comprehensive static analysis.
 clang-tidy uses the Clang compiler frontend for accurate cross-translation-unit analysis.

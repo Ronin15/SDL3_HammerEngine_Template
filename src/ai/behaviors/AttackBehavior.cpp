@@ -69,7 +69,7 @@ enum class AttackMode : uint8_t {
 };
 
 float getEffectiveAttackRange(const CharacterData& charData, AttackMode attackMode,
-                              const HammerEngine::AttackBehaviorConfig& config) {
+                              const VoidLight::AttackBehaviorConfig& config) {
     const bool usesMeleeReach =
         attackMode == AttackMode::MELEE ||
         attackMode == AttackMode::AMBUSH ||
@@ -112,17 +112,13 @@ void updateTimers(BehaviorData& data, float deltaTime) {
 }
 
 // Process pending messages for Attack behavior
-void processAttackMessages(BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
+void processAttackMessages(BehaviorData& data, const VoidLight::AttackBehaviorConfig&) {
     auto& attack = data.state.attack;
 
     for (uint8_t i = 0; i < data.pendingMessageCount; ++i) {
         uint8_t msgId = data.pendingMessages[i].messageId;
-        uint8_t param = data.pendingMessages[i].param;
-
         switch (msgId) {
             case BehaviorMessage::ATTACK_TARGET:
-                // param could encode target info if needed
-                (void)param;
                 break;
 
             case BehaviorMessage::RETREAT:
@@ -144,7 +140,6 @@ void processAttackMessages(BehaviorData& data, const HammerEngine::AttackBehavio
         }
     }
     data.pendingMessageCount = 0;
-    (void)config;
 }
 
 void changeState(BehaviorData& data, AttackState newState) {
@@ -172,7 +167,7 @@ void changeState(BehaviorData& data, AttackState newState) {
     }
 }
 
-float calculateDamage(const BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
+float calculateDamage(const BehaviorData& data, const VoidLight::AttackBehaviorConfig& config) {
     const auto& attack = data.state.attack;
     float baseDamage = config.attackDamage;
 
@@ -220,6 +215,25 @@ void applyDamageToTarget(EntityHandle targetHandle, float damage, const Vector2D
     t_deferredDamageEvents.push_back({EventTypeId::Combat, std::move(eventData)});
 }
 
+constexpr float NPC_PROJECTILE_SPAWN_OFFSET = 20.0f;
+
+void fireProjectile(const Vector2D& attackerPos, const Vector2D& targetPos,
+                    EntityHandle attackerHandle, float damage,
+                    float attackRange, float projectileSpeed) {
+    auto& edm = EntityDataManager::Instance();
+    Vector2D direction = targetPos - attackerPos;
+    float dist = direction.length();
+    if (dist < 1.0f) return;
+    direction = direction * (1.0f / dist);
+
+    Vector2D spawnPos = attackerPos + direction * NPC_PROJECTILE_SPAWN_OFFSET;
+    Vector2D velocity = direction * projectileSpeed;
+    float lifetime = (attackRange / projectileSpeed) + 0.5f;
+
+    // Collision mask auto-detected from owner kind inside createProjectile()
+    edm.createProjectile(spawnPos, velocity, attackerHandle, damage, lifetime);
+}
+
 void moveToPosition(BehaviorContext& ctx, const Vector2D& targetPos, float speed) {
     if (speed <= 0.0f) return;
 
@@ -250,7 +264,7 @@ bool isAttackTargetCandidate(size_t selfIdx, size_t candidateIdx, const Characte
 }
 
 bool tryAcquireTarget(BehaviorContext& ctx, BehaviorData& data,
-                      const HammerEngine::AttackBehaviorConfig& config,
+                      const VoidLight::AttackBehaviorConfig& config,
                       Vector2D& targetPos) {
     auto& edm = EntityDataManager::Instance();
     auto& attack = data.state.attack;
@@ -313,7 +327,7 @@ bool shouldRetreat(const BehaviorContext& ctx, float retreatThreshold, float agg
 }
 
 void executeAttackAction(BehaviorContext& ctx, const Vector2D& targetPos,
-                         const HammerEngine::AttackBehaviorConfig& config) {
+                         const VoidLight::AttackBehaviorConfig& config) {
     auto& edm = EntityDataManager::Instance();
     auto& data = ctx.behaviorData;
     auto& attack = data.state.attack;
@@ -342,7 +356,14 @@ void executeAttackAction(BehaviorContext& ctx, const Vector2D& targetPos,
     }
     if (!targetHandle.isValid()) return;  // No valid target — main execute handles re-acquisition
 
-    applyDamageToTarget(targetHandle, damage, knockback, attackerHandle);
+    // Ranged mode fires a projectile; melee applies instant damage
+    AttackMode mode = static_cast<AttackMode>(attack.attackMode);
+    if (mode == AttackMode::RANGED) {
+        fireProjectile(entityPos, targetPos, attackerHandle, damage,
+                       config.attackRange, config.projectileSpeed);
+    } else {
+        applyDamageToTarget(targetHandle, damage, knockback, attackerHandle);
+    }
 
     // Faction escalation: neutral attacker (faction > 1) attacking a friendly (faction 0)
     // reveals them as hostile (faction 1), which also updates collision layers
@@ -379,7 +400,7 @@ void executeAttackAction(BehaviorContext& ctx, const Vector2D& targetPos,
  * @return true if we should skip normal positioning, false to continue
  */
 bool applyRangedPositioning(BehaviorContext& ctx, const Vector2D& entityPos, const Vector2D& targetPos,
-                            BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
+                            BehaviorData& data, const VoidLight::AttackBehaviorConfig& config) {
     auto& attack = data.state.attack;
     float optimalRange = config.attackRange * config.optimalRangeMultiplier;
     float minimumRange = config.attackRange * config.minimumRangeMultiplier;
@@ -405,7 +426,7 @@ bool applyRangedPositioning(BehaviorContext& ctx, const Vector2D& entityPos, con
  * @brief Apply charge attack positioning (rush attacks)
  */
 bool applyChargePositioning(BehaviorContext& ctx, const Vector2D& entityPos, const Vector2D& targetPos,
-                            BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
+                            BehaviorData& data, const VoidLight::AttackBehaviorConfig& config) {
     auto& attack = data.state.attack;
     float chargeDistance = config.attackRange * CHARGE_DISTANCE_THRESHOLD_MULT;
 
@@ -428,7 +449,7 @@ bool applyChargePositioning(BehaviorContext& ctx, const Vector2D& entityPos, con
  * @brief Apply hit-and-run positioning (frequent retreats)
  */
 bool applyHitAndRunPositioning(BehaviorContext& ctx, const Vector2D& entityPos, const Vector2D& targetPos,
-                               BehaviorData& data, const HammerEngine::AttackBehaviorConfig& config) {
+                               BehaviorData& data, const VoidLight::AttackBehaviorConfig& config) {
     auto& attack = data.state.attack;
 
     // After recovering, force retreat - scale speed by optimal range preference
@@ -449,11 +470,8 @@ bool applyHitAndRunPositioning(BehaviorContext& ctx, const Vector2D& entityPos, 
 /**
  * @brief Apply berserker mode modifiers (no retreat, fast attacks)
  */
-void applyBerserkerModifiers(BehaviorData& data, float& effectiveRetreatThreshold,
+void applyBerserkerModifiers(BehaviorData&, float& effectiveRetreatThreshold,
                              float& effectiveCooldown) {
-    auto& attack = data.state.attack;
-    (void)attack;  // Used for potential future state checks
-
     // Berserkers almost never retreat
     effectiveRetreatThreshold = 0.1f;
 
@@ -469,7 +487,7 @@ namespace Behaviors {
 // PUBLIC API
 // ============================================================================
 
-void initAttack(size_t edmIndex, const HammerEngine::AttackBehaviorConfig& config) {
+void initAttack(size_t edmIndex, const VoidLight::AttackBehaviorConfig& config) {
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Attack);
     auto& data = edm.getBehaviorData(edmIndex);
@@ -484,7 +502,7 @@ void initAttack(size_t edmIndex, const HammerEngine::AttackBehaviorConfig& confi
     attack.retreatPosition = Vector2D(0, 0);
     attack.strafeVector = Vector2D(0, 0);
     attack.currentState = 0; // SEEKING
-    attack.attackMode = 0;   // MELEE by default
+    attack.attackMode = config.attackMode;  // From config (0=Melee, 1=Ranged, etc.)
     attack.attackTimer = 0.0f;
     attack.stateChangeTimer = 0.0f;
     attack.damageTimer = 0.0f;
@@ -515,10 +533,9 @@ void initAttack(size_t edmIndex, const HammerEngine::AttackBehaviorConfig& confi
     attack.explicitTarget = EntityHandle{};
 
     data.setInitialized(true);
-    (void)config;
 }
 
-void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfig& config) {
+void executeAttack(BehaviorContext& ctx, const VoidLight::AttackBehaviorConfig& config) {
     if (!ctx.behaviorData.isValid()) return;
 
     auto& data = ctx.behaviorData;
@@ -773,33 +790,39 @@ void executeAttack(BehaviorContext& ctx, const HammerEngine::AttackBehaviorConfi
                 }
                 if (targetHandle.isValid()) {
                     EntityHandle attackerHandle = edm.getHandle(ctx.edmIndex);
-                    applyDamageToTarget(targetHandle, specialDamage, knockback, attackerHandle);
+                    AttackMode specialMode = static_cast<AttackMode>(attack.attackMode);
+                    if (specialMode == AttackMode::RANGED) {
+                        fireProjectile(entityPos, targetPos, attackerHandle, specialDamage,
+                                       config.attackRange, config.projectileSpeed);
+                    } else {
+                        applyDamageToTarget(targetHandle, specialDamage, knockback, attackerHandle);
 
-                    // AOE damage around impact point
-                    if (config.aoeRadius > 0.0f)
-                    {
-                        s_scanBuffer.clear();
-                        AIManager::Instance().scanActiveIndicesInRadius(
-                            targetPos, config.aoeRadius, s_scanBuffer, false);
-                        uint8_t myFaction = ctx.characterData.faction;
-
-                        for (size_t aoeIdx : s_scanBuffer)
+                        // AOE damage around impact point
+                        if (config.aoeRadius > 0.0f)
                         {
-                            if (aoeIdx == ctx.edmIndex) continue;
-                            const auto& aoeHot = edm.getHotDataByIndex(aoeIdx);
-                            if (!aoeHot.isAlive()) continue;
-                            EntityHandle aoeTarget = edm.getHandle(aoeIdx);
-                            if (aoeTarget == targetHandle) continue;
-                            if (config.avoidFriendlyFire &&
-                                edm.getCharacterDataByIndex(aoeIdx).faction == myFaction) continue;
+                            s_scanBuffer.clear();
+                            AIManager::Instance().scanActiveIndicesInRadius(
+                                targetPos, config.aoeRadius, s_scanBuffer, false);
+                            uint8_t myFaction = ctx.characterData.faction;
 
-                            float distSq = Vector2D::distanceSquared(targetPos, aoeHot.transform.position);
-                            float dist = std::sqrt(distSq);
-                            float falloff = 1.0f - (dist / config.aoeRadius) * 0.5f;
-                            float aoeDamage = specialDamage * falloff;
-                            Vector2D aoeKnockback = calculateKnockbackVector(targetPos, aoeHot.transform.position)
-                                                    * config.knockbackForce * 0.5f;
-                            applyDamageToTarget(aoeTarget, aoeDamage, aoeKnockback, attackerHandle);
+                            for (size_t aoeIdx : s_scanBuffer)
+                            {
+                                if (aoeIdx == ctx.edmIndex) continue;
+                                const auto& aoeHot = edm.getHotDataByIndex(aoeIdx);
+                                if (!aoeHot.isAlive()) continue;
+                                EntityHandle aoeTarget = edm.getHandle(aoeIdx);
+                                if (aoeTarget == targetHandle) continue;
+                                if (config.avoidFriendlyFire &&
+                                    edm.getCharacterDataByIndex(aoeIdx).faction == myFaction) continue;
+
+                                float distSq = Vector2D::distanceSquared(targetPos, aoeHot.transform.position);
+                                float dist = std::sqrt(distSq);
+                                float falloff = 1.0f - (dist / config.aoeRadius) * 0.5f;
+                                float aoeDamage = specialDamage * falloff;
+                                Vector2D aoeKnockback = calculateKnockbackVector(targetPos, aoeHot.transform.position)
+                                                        * config.knockbackForce * 0.5f;
+                                applyDamageToTarget(aoeTarget, aoeDamage, aoeKnockback, attackerHandle);
+                            }
                         }
                     }
                 }

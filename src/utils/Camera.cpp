@@ -17,7 +17,7 @@
 
 #include "gpu/GPURenderer.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 
 Camera::Camera() {
     // Initialize zoom from default config
@@ -43,7 +43,7 @@ Camera::Camera(const Config& config) : m_config(config) {
 }
 
 Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
-    : m_viewport{viewportWidth, viewportHeight} {
+    : m_viewport{.width = viewportWidth, .height = viewportHeight} {
     m_position.setX(x);
     m_position.setY(y);
     m_targetPosition.setX(x);
@@ -266,10 +266,10 @@ Camera::ViewRect Camera::getViewRect() const {
     // Use full floating-point precision for smooth sub-pixel camera movement
     // Callers snap to pixels at render time if tile-aligned rendering is needed
     return ViewRect{
-        m_position.getX() - (worldViewWidth * 0.5f),
-        m_position.getY() - (worldViewHeight * 0.5f),
-        worldViewWidth,
-        worldViewHeight
+        .x      = m_position.getX() - (worldViewWidth * 0.5f),
+        .y      = m_position.getY() - (worldViewHeight * 0.5f),
+        .width  = worldViewWidth,
+        .height = worldViewHeight
     };
 }
 
@@ -506,7 +506,7 @@ Vector2D Camera::generateShakeOffset() const {
 void Camera::firePositionChangedEvent(const Vector2D& oldPosition, const Vector2D& newPosition) {
     try {
         const EventManager& eventMgr = EventManager::Instance();
-        (void)eventMgr.triggerCameraMoved(newPosition, oldPosition,
+        eventMgr.triggerCameraMoved(newPosition, oldPosition,
                                           EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
         CAMERA_ERROR(std::format("Failed to fire CameraMovedEvent: {}", ex.what()));
@@ -516,7 +516,7 @@ void Camera::firePositionChangedEvent(const Vector2D& oldPosition, const Vector2
 void Camera::fireModeChangedEvent(Mode oldMode, Mode newMode) {
     try {
         const EventManager& eventMgr = EventManager::Instance();
-        (void)eventMgr.triggerCameraModeChanged(static_cast<int>(newMode), static_cast<int>(oldMode),
+        eventMgr.triggerCameraModeChanged(static_cast<int>(newMode), static_cast<int>(oldMode),
                                                 EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
         CAMERA_ERROR(std::format("Failed to fire CameraModeChangedEvent: {}", ex.what()));
@@ -526,7 +526,7 @@ void Camera::fireModeChangedEvent(Mode oldMode, Mode newMode) {
 void Camera::fireTargetChangedEvent(const std::weak_ptr<Entity>& oldTarget, const std::weak_ptr<Entity>& newTarget) {
     try {
         const EventManager& eventMgr = EventManager::Instance();
-        (void)eventMgr.triggerCameraTargetChanged(newTarget, oldTarget,
+        eventMgr.triggerCameraTargetChanged(newTarget, oldTarget,
                                                   EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
         CAMERA_ERROR(std::format("Failed to fire CameraTargetChangedEvent: {}", ex.what()));
@@ -536,7 +536,7 @@ void Camera::fireTargetChangedEvent(const std::weak_ptr<Entity>& oldTarget, cons
 void Camera::fireShakeStartedEvent(float duration, float intensity) {
     try {
         const EventManager& eventMgr = EventManager::Instance();
-        (void)eventMgr.triggerCameraShakeStarted(duration, intensity,
+        eventMgr.triggerCameraShakeStarted(duration, intensity,
                                                  EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
         CAMERA_ERROR(std::format("Failed to fire CameraShakeStartedEvent: {}", ex.what()));
@@ -546,7 +546,7 @@ void Camera::fireShakeStartedEvent(float duration, float intensity) {
 void Camera::fireShakeEndedEvent() {
     try {
         const EventManager& eventMgr = EventManager::Instance();
-        (void)eventMgr.triggerCameraShakeEnded(EventManager::DispatchMode::Deferred);
+        eventMgr.triggerCameraShakeEnded(EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
         CAMERA_ERROR(std::format("Failed to fire CameraShakeEndedEvent: {}", ex.what()));
     }
@@ -555,7 +555,7 @@ void Camera::fireShakeEndedEvent() {
 void Camera::fireZoomChangedEvent(float oldZoom, float newZoom) {
     try {
         const EventManager& eventMgr = EventManager::Instance();
-        (void)eventMgr.triggerCameraZoomChanged(newZoom, oldZoom, EventManager::DispatchMode::Deferred);
+        eventMgr.triggerCameraZoomChanged(newZoom, oldZoom, EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
         CAMERA_ERROR(std::format("Failed to fire CameraZoomChangedEvent: {}", ex.what()));
     }
@@ -622,7 +622,7 @@ bool Camera::setZoomLevel(int levelIndex) {
 }
 
 void Camera::syncViewportWithEngine() {
-    const auto& gpuRenderer = HammerEngine::GPURenderer::Instance();
+    const auto& gpuRenderer = VoidLight::GPURenderer::Instance();
     float const viewportWidth = static_cast<float>(gpuRenderer.getViewportWidth());
     float const viewportHeight = static_cast<float>(gpuRenderer.getViewportHeight());
 
@@ -633,4 +633,4 @@ void Camera::syncViewportWithEngine() {
     }
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

@@ -1,4 +1,4 @@
-# HammerEngine Dependency Analysis Report
+# VoidLight-Framework Dependency Analysis Report
 
 **Generated:** 2026-01-08
 **Branch:** EDM_handles
@@ -18,7 +18,7 @@
 - ✅ Manager coupling is functional and appropriate for game engine
 - ⚠️ Minor header bloat in 2 files (ThreadSystem.hpp, EventManager.hpp)
 
-**Overall Assessment:** The HammerEngine architecture demonstrates excellent adherence to layered design principles. The EDM (EntityDataManager) migration has been implemented cleanly with proper separation of concerns. All detected cross-layer dependencies are legitimate architectural patterns (inheritance, orchestration, cross-cutting concerns).
+**Overall Assessment:** The VoidLight-Framework architecture demonstrates excellent adherence to layered design principles. The EDM (EntityDataManager) migration has been implemented cleanly with proper separation of concerns. All detected cross-layer dependencies are legitimate architectural patterns (inheritance, orchestration, cross-cutting concerns).
 
 ---
 
@@ -248,7 +248,7 @@ The architecture is healthy. No immediate action required.
 
 ## Conclusion
 
-The HammerEngine codebase demonstrates **excellent architectural discipline**. The EDM migration has been implemented cleanly with:
+The VoidLight-Framework codebase demonstrates **excellent architectural discipline**. The EDM migration has been implemented cleanly with:
 
 - Zero circular dependencies
 - Zero layer violations

@@ -8,7 +8,7 @@
 
 #include "utils/Vector2D.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 
 struct AABB {
     Vector2D center;   // world center
@@ -27,7 +27,7 @@ struct AABB {
     Vector2D closestPoint(const Vector2D& p) const;
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // AABB_HPP
 

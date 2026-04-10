@@ -14,7 +14,7 @@
 #include "utils/SIMDMath.hpp"
 #include "utils/Vector2D.hpp"
 
-using namespace HammerEngine::SIMD;
+using namespace VoidLight::SIMD;
 
 // Test tolerance for floating-point comparisons
 // SIMD can have slight precision differences from scalar due to FMA instructions
@@ -425,10 +425,12 @@ BOOST_AUTO_TEST_CASE(TestBasicLayerMaskAND) {
     Int4 simdMaskA = broadcast_int(static_cast<int32_t>(maskA));
     Int4 simdMaskB = broadcast_int(static_cast<int32_t>(maskB));
     Int4 simdResult = bitwise_and(simdMaskA, simdMaskB);
-    (void)simdResult; // Suppress unused warning - SIMD correctness validated by scalar check
 
     // Verify: Result should be 0b00000011 (only layers 0-1 set in both)
     BOOST_CHECK_EQUAL(scalarResult, 0b00000011);
+    // Verify SIMD result matches scalar across all lanes
+    Int4 expected = broadcast_int(static_cast<int32_t>(scalarResult));
+    BOOST_CHECK_EQUAL(movemask_int(cmpeq_int(simdResult, expected)), 0xF);
 }
 
 BOOST_AUTO_TEST_CASE(TestLayerMaskNoCollision) {
@@ -667,10 +669,8 @@ BOOST_AUTO_TEST_CASE(TestMovemaskInt) {
     Int4 a = set_int4(-1, 0, -1, 0);  // negative=sign bit set, 0=sign bit clear
     int mask = movemask_int(a);
 
-    // Note: movemask_int behavior may differ by platform
-    // Just verify it's not all zeros or all ones for mixed input
-    BOOST_CHECK(mask != 0);
-    BOOST_CHECK(mask != 0xFFFF);
+    // 4-bit mask: lanes 0,2 have sign bit set → bits 0,2 → 0b0101 = 0x5
+    BOOST_CHECK_EQUAL(mask, 0x5);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

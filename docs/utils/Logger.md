@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Hammer Game Engine logging system provides efficient, configurable logging with zero overhead in release builds. The system is designed for high-performance game development with separate debug and release configurations.
+The VoidLight Engine logging system provides efficient, configurable logging with zero overhead in release builds. The system is designed for high-performance game development with separate debug and release configurations.
 
 ## Table of Contents
 
@@ -24,9 +24,9 @@ The Hammer Game Engine logging system provides efficient, configurable logging w
 #include "core/Logger.hpp"
 
 // Basic logging with system identification
-HAMMER_INFO("MySystem", "Application started successfully");
-HAMMER_ERROR("Network", "Failed to connect to server");
-HAMMER_CRITICAL("Memory", "Out of memory condition detected");
+VOIDLIGHT_INFO("MySystem", "Application started successfully");
+VOIDLIGHT_ERROR("Network", "Failed to connect to server");
+VOIDLIGHT_CRITICAL("Memory", "Out of memory condition detected");
 ```
 
 ### System-Specific Macros
@@ -51,7 +51,7 @@ SOUND_WARN("Audio device not found, using software mixing");
 ### Class Structure
 
 ```cpp
-namespace HammerEngine {
+namespace VoidLight-Framework {
     enum class LogLevel : uint8_t {
         CRITICAL = 0,  // Always logged (even in release)
         ERROR = 1,     // Debug only
@@ -104,7 +104,7 @@ namespace HammerEngine {
     // Full Logger class with printf-based output
     // All log levels functional
     // Immediate flushing for real-time feedback
-    #define HAMMER_INFO(system, msg) HammerEngine::Logger::Log(HammerEngine::LogLevel::INFO, system, std::string(msg))
+    #define VOIDLIGHT_INFO(system, msg) VoidLight-Framework::Logger::Log(VoidLight-Framework::LogLevel::INFO, system, std::string(msg))
 #endif
 ```
 
@@ -112,15 +112,35 @@ namespace HammerEngine {
 ```cpp
 #else
     // Ultra-minimal overhead
-    #define HAMMER_CRITICAL(system, msg) do { \
-        printf("Hammer Game Engine - [%s] CRITICAL: %s\n", system, std::string(msg).c_str()); \
+    #define VOIDLIGHT_CRITICAL(system, msg) do { \
+        printf("VoidLight Engine - [%s] CRITICAL: %s\n", system, std::string(msg).c_str()); \
     } while(0)
 
     // All other levels become no-ops
-    #define HAMMER_ERROR(system, msg) ((void)0)
-    #define HAMMER_WARN(system, msg) ((void)0)
+    #define VOIDLIGHT_ERROR(system, msg) ((void)0)
+    #define VOIDLIGHT_WARN(system, msg) ((void)0)
     // ... etc
 #endif
+```
+
+### Release Log File
+
+In release builds, **CRITICAL and ERROR** messages are written to a timestamped log file. WARN, INFO, and DEBUG are compiled out entirely (zero overhead). The file is created via `SDL_GetPrefPath` under the OS user data directory:
+
+| Platform | Path |
+|----------|------|
+| macOS    | `~/Library/Application Support/HammerForgedGames/VoidLight_Template/logs/` |
+| Windows  | `%APPDATA%\HammerForgedGames\VoidLight_Template\logs\` |
+| Linux    | `~/.local/share/HammerForgedGames/VoidLight_Template/logs/` |
+
+**Filename format:** `voidlight_YYYYMMDD_HHMMSS.log`
+
+The logger automatically keeps the **5 most recent** log files and deletes older ones on startup. Each file opens with a header:
+
+```
+=== VoidLight_Template Log ===
+Started: YYYY-MM-DD HH:MM:SS
+==========================================
 ```
 
 ## Available Macros
@@ -129,11 +149,11 @@ namespace HammerEngine {
 
 | Macro | Parameters | Description |
 |-------|------------|-------------|
-| `HAMMER_CRITICAL(system, msg)` | system: const char*, msg: any type | Critical error logging |
-| `HAMMER_ERROR(system, msg)` | system: const char*, msg: any type | Error logging |
-| `HAMMER_WARN(system, msg)` | system: const char*, msg: any type | Warning logging |
-| `HAMMER_INFO(system, msg)` | system: const char*, msg: any type | Information logging |
-| `HAMMER_DEBUG(system, msg)` | system: const char*, msg: any type | Debug logging |
+| `VOIDLIGHT_CRITICAL(system, msg)` | system: const char*, msg: any type | Critical error logging |
+| `VOIDLIGHT_ERROR(system, msg)` | system: const char*, msg: any type | Error logging |
+| `VOIDLIGHT_WARN(system, msg)` | system: const char*, msg: any type | Warning logging |
+| `VOIDLIGHT_INFO(system, msg)` | system: const char*, msg: any type | Information logging |
+| `VOIDLIGHT_DEBUG(system, msg)` | system: const char*, msg: any type | Debug logging |
 
 ### Message Parameter Types
 The `msg` parameter accepts:
@@ -317,7 +337,7 @@ TEXTURE_ERROR("Load failed");
 SOUND_INFO("Audio subsystem initialized with OpenAL");
 
 // Less ideal: Generic macro requires system parameter
-HAMMER_INFO("SoundManager", "Audio subsystem initialized with OpenAL");
+VOIDLIGHT_INFO("SoundManager", "Audio subsystem initialized with OpenAL");
 ```
 
 ### 4. Format Complex Data
@@ -337,17 +357,17 @@ The logging system includes a benchmark mode that disables all logging output fo
 ### Benchmark Mode Control
 ```cpp
 // Enable benchmark mode (disables all logging)
-HAMMER_ENABLE_BENCHMARK_MODE();
+VOIDLIGHT_ENABLE_BENCHMARK_MODE();
 // or
-HammerEngine::Logger::SetBenchmarkMode(true);
+VoidLight-Framework::Logger::SetBenchmarkMode(true);
 
 // Disable benchmark mode (re-enables logging)
-HAMMER_DISABLE_BENCHMARK_MODE();
+VOIDLIGHT_DISABLE_BENCHMARK_MODE();
 // or
-HammerEngine::Logger::SetBenchmarkMode(false);
+VoidLight-Framework::Logger::SetBenchmarkMode(false);
 
 // Check current benchmark mode status
-if (HammerEngine::Logger::IsBenchmarkMode()) {
+if (VoidLight-Framework::Logger::IsBenchmarkMode()) {
     // Logging is currently disabled
 }
 ```
@@ -364,7 +384,7 @@ void runPerformanceTest() {
     GAMELOOP_INFO("Starting performance test");
 
     // Enable benchmark mode for clean performance measurement
-    HAMMER_ENABLE_BENCHMARK_MODE();
+    VOIDLIGHT_ENABLE_BENCHMARK_MODE();
 
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -377,7 +397,7 @@ void runPerformanceTest() {
     auto end = std::chrono::high_resolution_clock::now();
 
     // Re-enable logging for results
-    HAMMER_DISABLE_BENCHMARK_MODE();
+    VOIDLIGHT_DISABLE_BENCHMARK_MODE();
 
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
     GAMELOOP_INFO("Performance test completed in " + std::to_string(duration.count()) + " microseconds");
@@ -412,7 +432,7 @@ void runPerformanceTest() {
 ### Basic System Initialization
 ```cpp
 bool GameEngine::init(std::string_view title, int width, int height, bool fullscreen) {
-    GAMEENGINE_INFO("Initializing Hammer Game Engine");
+    GAMEENGINE_INFO("Initializing VoidLight Engine");
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
         GAMEENGINE_CRITICAL("Failed to initialize SDL: " + std::string(SDL_GetError()));
@@ -608,4 +628,4 @@ AI_DEBUG("AI update completed in " + std::to_string(duration.count()) + " micros
 
 ---
 
-The Logger system provides the foundation for debugging and monitoring the Hammer Game Engine. Use it liberally in debug builds for comprehensive insight into system behavior, while maintaining zero overhead in release builds for optimal performance.
+The Logger system provides the foundation for debugging and monitoring the VoidLight Engine. Use it liberally in debug builds for comprehensive insight into system behavior, while maintaining zero overhead in release builds for optimal performance.

@@ -22,7 +22,7 @@ enum class BehaviorType : uint8_t {
     None = 0xFF  // Invalid/uninitialized
 };
 
-namespace HammerEngine
+namespace VoidLight
 {
 
 /**
@@ -444,6 +444,8 @@ struct AttackBehaviorConfig
     float aoeRadius = 0.0f;                       // Area of effect radius (0 = disabled)
 
     // Mode-specific parameters
+    uint8_t attackMode = 0;                       // 0=Melee, 1=Ranged (matches AttackMode enum in AttackBehavior.cpp)
+    float projectileSpeed = 250.0f;               // Ranged projectile speed (px/s)
     float chargeDamageMultiplier = 1.5f;          // Damage multiplier for charge attacks
 
     /**
@@ -475,6 +477,8 @@ struct AttackBehaviorConfig
         config.attackSpeed = 0.8f;
         config.movementSpeed = 50.0f;
         config.attackDamage = 8.0f;
+        config.attackMode = 1;           // RANGED
+        config.projectileSpeed = 250.0f;
         return config;
     }
 
@@ -600,7 +604,7 @@ struct BehaviorConfigData {
         FollowBehaviorConfig follow;
 
         uint8_t raw[384];  // Sized to accommodate largest config (AttackBehaviorConfig)
-    } config;
+    } params;
 
     BehaviorConfigData() = default;
 
@@ -619,59 +623,59 @@ struct BehaviorConfigData {
 inline BehaviorConfigData BehaviorConfigData::makeIdle(const IdleBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Idle;
-    data.config.idle = cfg;
+    data.params.idle = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeWander(const WanderBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Wander;
-    data.config.wander = cfg;
+    data.params.wander = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeChase(const ChaseBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Chase;
-    data.config.chase = cfg;
+    data.params.chase = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makePatrol(const PatrolBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Patrol;
-    data.config.patrol = cfg;
+    data.params.patrol = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeGuard(const GuardBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Guard;
-    data.config.guard = cfg;
+    data.params.guard = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeAttack(const AttackBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Attack;
-    data.config.attack = cfg;
+    data.params.attack = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeFlee(const FleeBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Flee;
-    data.config.flee = cfg;
+    data.params.flee = cfg;
     return data;
 }
 
 inline BehaviorConfigData BehaviorConfigData::makeFollow(const FollowBehaviorConfig& cfg) {
     BehaviorConfigData data;
     data.type = BehaviorType::Follow;
-    data.config.follow = cfg;
+    data.params.follow = cfg;
     return data;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // BEHAVIOR_CONFIG_HPP

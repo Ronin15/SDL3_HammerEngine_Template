@@ -17,7 +17,7 @@ enum class TriggerPhase { Enter = 0, Exit = 1 };
 class WorldTriggerEvent : public Event {
 public:
   WorldTriggerEvent(EntityID playerId, EntityID triggerId,
-                    HammerEngine::TriggerTag tag, const Vector2D &position,
+                    VoidLight::TriggerTag tag, const Vector2D &position,
                     TriggerPhase phase = TriggerPhase::Enter)
       : m_playerId(playerId), m_triggerId(triggerId), m_tag(tag),
         m_position(position), m_phase(phase) {}
@@ -35,7 +35,7 @@ public:
 
   EntityID getPlayerId() const { return m_playerId; }
   EntityID getTriggerId() const { return m_triggerId; }
-  HammerEngine::TriggerTag getTag() const { return m_tag; }
+  VoidLight::TriggerTag getTag() const { return m_tag; }
   const Vector2D &getPosition() const { return m_position; }
   TriggerPhase getPhase() const { return m_phase; }
   bool isConsumed() const { return m_consumed; }
@@ -44,7 +44,7 @@ public:
 private:
   EntityID m_playerId{0};
   EntityID m_triggerId{0};
-  HammerEngine::TriggerTag m_tag{HammerEngine::TriggerTag::None};
+  VoidLight::TriggerTag m_tag{VoidLight::TriggerTag::None};
   Vector2D m_position{}; // Typically player's contact position (use player center)
   TriggerPhase m_phase{TriggerPhase::Enter};
   bool m_consumed{false};

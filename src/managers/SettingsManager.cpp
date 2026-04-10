@@ -10,7 +10,7 @@
 #include <format>
 #include <fstream>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 bool SettingsManager::loadFromFile(const std::string &filepath) {
   JsonReader reader;
@@ -263,4 +263,4 @@ std::string SettingsManager::variantToString(const SettingValue &value) const {
       value);
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

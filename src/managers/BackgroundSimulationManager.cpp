@@ -146,12 +146,12 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     const size_t entityCount = m_backgroundIndices.size();
 
     // Use centralized WorkerBudgetManager for smart worker allocation (follows AIManager pattern)
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
     // Decide threading strategy first using adaptive threshold from WorkerBudget
     // WorkerBudget is the AUTHORITATIVE source - no manager overrides
     auto decision = budgetMgr.shouldUseThreading(
-        HammerEngine::SystemType::BackgroundSim, entityCount);
+        VoidLight::SystemType::BackgroundSim, entityCount);
     bool useThreading = decision.shouldThread;
 
     size_t actualBatchCount = 1;
@@ -163,9 +163,9 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     if (useThreading) {
         // Compute batch strategy (not timed — only actual work is timed)
         size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-            HammerEngine::SystemType::BackgroundSim, entityCount);
+            VoidLight::SystemType::BackgroundSim, entityCount);
         auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-            HammerEngine::SystemType::BackgroundSim, entityCount, optimalWorkerCount);
+            VoidLight::SystemType::BackgroundSim, entityCount, optimalWorkerCount);
 
         batchStart = std::chrono::steady_clock::now();
         processMultiThreaded(fixedDeltaTime, m_backgroundIndices, batchCount, batchSize);
@@ -190,19 +190,19 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     m_perf.updateAverage(elapsedMs);
 
     // Report ONLY batch time for adaptive tuning (not index retrieval/threading decision)
-    budgetMgr.reportExecution(HammerEngine::SystemType::BackgroundSim,
+    budgetMgr.reportExecution(VoidLight::SystemType::BackgroundSim,
                               entityCount, useThreading,
                               actualBatchCount, batchMs);
 
-#ifndef NDEBUG
-    // Rolling log every 60 seconds (600 updates at 10Hz)
-    if (m_perf.totalUpdates % 600 == 0) {
-        BGSIM_DEBUG(std::format(
-            "Entities: {}, Avg: {:.2f}ms [{}]",
-            entityCount, m_perf.avgUpdateMs,
-            useThreading ? std::format("{} batches", actualBatchCount) : "single"));
-    }
-#endif
+    VOIDLIGHT_DEBUG_ONLY(
+        // Rolling log every 60 seconds (600 updates at 10Hz)
+        if (m_perf.totalUpdates % 600 == 0) {
+            BGSIM_DEBUG(std::format(
+                "Entities: {}, Avg: {:.2f}ms [{}]",
+                entityCount, m_perf.avgUpdateMs,
+                useThreading ? std::format("{} batches", actualBatchCount) : "single"));
+        }
+    )
 }
 
 void BackgroundSimulationManager::waitForAsyncCompletion() {
@@ -265,7 +265,7 @@ void BackgroundSimulationManager::processMultiThreaded(float deltaTime,
                                                        const std::vector<size_t>& indices,
                                                        size_t batchCount,
                                                        size_t batchSize) {
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    auto& threadSystem = VoidLight::ThreadSystem::Instance();
 
     // Clear previous futures (reuse capacity)
     {
@@ -300,7 +300,7 @@ void BackgroundSimulationManager::processMultiThreaded(float deltaTime,
                     BGSIM_ERROR("Unknown exception in background sim batch");
                 }
             },
-            HammerEngine::TaskPriority::Low,  // Background sim is low priority
+            VoidLight::TaskPriority::Low,  // Background sim is low priority
             "BGSim_Batch"
         );
 
@@ -378,7 +378,7 @@ void BackgroundSimulationManager::simulateNPC(float deltaTime, size_t index) {
     }
 }
 
-void BackgroundSimulationManager::simulateItem(float deltaTime, size_t index) {
+void BackgroundSimulationManager::simulateItem(float, size_t index) {
     auto& edm = EntityDataManager::Instance();
 
     // Items in background tier:
@@ -396,5 +396,4 @@ void BackgroundSimulationManager::simulateItem(float deltaTime, size_t index) {
 
     // Note: Actual despawn logic would use ItemData from EntityDataManager
     // For now, items in background tier are just preserved
-    (void)deltaTime;  // Unused for now
 }

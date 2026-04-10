@@ -30,7 +30,7 @@ public:
     BackgroundSimManagerTestFixture() {
         // Initialize EntityDataManager first (dependency)
         edm = &EntityDataManager::Instance();
-        edm->init();
+        BOOST_REQUIRE(edm->init());
 
         // Then initialize BackgroundSimulationManager
         bgsm = &BackgroundSimulationManager::Instance();
@@ -361,8 +361,8 @@ BOOST_AUTO_TEST_CASE(TestUpdateWithBackgroundEntities) {
     bgsm->update(Vector2D(0.0f, 0.0f), 0.0f);
     bgsm->resetPerfStats();
 
-    // Verify entities are in background tier (span access, don't need variable)
-    (void)edm->getBackgroundIndices();
+    // Verify entities are in background tier
+    BOOST_CHECK(!edm->getBackgroundIndices().empty());
 
     for (int i = 0; i < 5; ++i) {
         bgsm->update(Vector2D(0.0f, 0.0f), 0.1f);  // 100ms per update

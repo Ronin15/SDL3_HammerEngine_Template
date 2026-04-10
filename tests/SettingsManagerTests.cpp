@@ -10,7 +10,7 @@
 #include <fstream>
 #include <thread>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 // Test fixture for setup/cleanup
 struct SettingsTestFixture {
@@ -257,11 +257,10 @@ BOOST_AUTO_TEST_CASE(TestChangeListener) {
 
     // Register listener
     auto callbackId = settings.registerChangeListener("graphics",
-        [&](const std::string& category, const std::string& key, const SettingsManager::SettingValue& value) {
+        [&](const std::string& category, const std::string& key, const SettingsManager::SettingValue&) {
             callbackCount++;
             lastCategory = category;
             lastKey = key;
-            (void)value;  // Suppress unused warning
         });
 
     // Make changes
@@ -288,10 +287,7 @@ BOOST_AUTO_TEST_CASE(TestGlobalChangeListener) {
 
     // Register global listener (empty category string)
     auto callbackId = settings.registerChangeListener("",
-        [&](const std::string& category, const std::string& key, const SettingsManager::SettingValue& value) {
-            (void)category;  // Suppress unused warning
-            (void)key;       // Suppress unused warning
-            (void)value;     // Suppress unused warning
+        [&](const std::string&, const std::string&, const SettingsManager::SettingValue&) {
             callbackCount++;
         });
 

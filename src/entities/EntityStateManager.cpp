@@ -19,7 +19,7 @@ EntityStateManager::~EntityStateManager() {
 void EntityStateManager::addState(const std::string& stateName, std::unique_ptr<EntityState> state) {
   if (m_states.find(stateName) != m_states.end()) {
     ENTITYSTATE_ERROR(std::format("State already exists: {}", stateName));
-    throw std::invalid_argument(std::format("Hammer Game Engine - State already exists: {}", stateName));
+    throw std::invalid_argument(std::format("VoidLight Engine - State already exists: {}", stateName));
   }
   // Convert unique_ptr to shared_ptr and add to container
   m_states[stateName] = std::shared_ptr<EntityState>(std::move(state));

@@ -10,7 +10,7 @@
 #include "world/WorldData.hpp"
 #include <memory>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 BOOST_AUTO_TEST_SUITE(WorldGeneratorTestSuite)
 

@@ -169,6 +169,12 @@ bool WorldResourceManager::removeWorld(const WorldId& worldId) {
         return false;
     }
 
+    if (worldId == m_activeWorld) {
+        m_activeWorld.clear();
+        m_activeWorldItemCount.store(0, std::memory_order_relaxed);
+        m_activeWorldHarvestableCount.store(0, std::memory_order_relaxed);
+    }
+
     // Remove reverse lookups for this world's inventories
     for (uint32_t invIdx : invIt->second) {
         m_inventoryToWorld.erase(invIdx);
@@ -180,6 +186,30 @@ bool WorldResourceManager::removeWorld(const WorldId& worldId) {
             m_harvestableToWorld.erase(harvIdx);
         }
         m_harvestableRegistry.erase(harvIt);
+    }
+
+    auto itemIt = m_itemSpatialIndices.find(worldId);
+    if (itemIt != m_itemSpatialIndices.end()) {
+        for (const auto& entry : itemIt->second.entityToCell) {
+            m_itemToWorld.erase(entry.first);
+        }
+        m_itemSpatialIndices.erase(itemIt);
+    }
+
+    auto harvSpatialIt = m_harvestableSpatialIndices.find(worldId);
+    if (harvSpatialIt != m_harvestableSpatialIndices.end()) {
+        for (const auto& entry : harvSpatialIt->second.entityToCell) {
+            m_harvestableSpatialToWorld.erase(entry.first);
+        }
+        m_harvestableSpatialIndices.erase(harvSpatialIt);
+    }
+
+    auto containerIt = m_containerSpatialIndices.find(worldId);
+    if (containerIt != m_containerSpatialIndices.end()) {
+        for (const auto& entry : containerIt->second.entityToCell) {
+            m_containerToWorld.erase(entry.first);
+        }
+        m_containerSpatialIndices.erase(containerIt);
     }
 
     m_inventoryRegistry.erase(invIt);
@@ -325,7 +355,7 @@ void WorldResourceManager::unregisterHarvestable(size_t edmIndex) {
 
 WorldResourceManager::Quantity WorldResourceManager::queryInventoryTotal(
     const WorldId& worldId,
-    HammerEngine::ResourceHandle handle) const {
+    VoidLight::ResourceHandle handle) const {
 
     m_stats.queryCount.fetch_add(1, std::memory_order_relaxed);
 
@@ -350,7 +380,7 @@ WorldResourceManager::Quantity WorldResourceManager::queryInventoryTotal(
 
 WorldResourceManager::Quantity WorldResourceManager::queryHarvestableTotal(
     const WorldId& worldId,
-    HammerEngine::ResourceHandle handle) const {
+    VoidLight::ResourceHandle handle) const {
 
     m_stats.queryCount.fetch_add(1, std::memory_order_relaxed);
 
@@ -385,25 +415,25 @@ WorldResourceManager::Quantity WorldResourceManager::queryHarvestableTotal(
 
 WorldResourceManager::Quantity WorldResourceManager::queryWorldTotal(
     const WorldId& worldId,
-    HammerEngine::ResourceHandle handle) const {
+    VoidLight::ResourceHandle handle) const {
 
     return queryInventoryTotal(worldId, handle) + queryHarvestableTotal(worldId, handle);
 }
 
 bool WorldResourceManager::hasResource(
     const WorldId& worldId,
-    HammerEngine::ResourceHandle handle,
+    VoidLight::ResourceHandle handle,
     Quantity minimumQuantity) const {
 
     return queryWorldTotal(worldId, handle) >= minimumQuantity;
 }
 
-std::unordered_map<HammerEngine::ResourceHandle, WorldResourceManager::Quantity>
+std::unordered_map<VoidLight::ResourceHandle, WorldResourceManager::Quantity>
 WorldResourceManager::getWorldResources(const WorldId& worldId) const {
 
     m_stats.queryCount.fetch_add(1, std::memory_order_relaxed);
 
-    std::unordered_map<HammerEngine::ResourceHandle, Quantity> totals;
+    std::unordered_map<VoidLight::ResourceHandle, Quantity> totals;
 
     std::shared_lock lock(m_registryMutex);
     auto& edm = EntityDataManager::Instance();
@@ -806,9 +836,8 @@ void WorldResourceManager::clearSpatialDataForWorld(const WorldId& worldId) {
     auto itemIt = m_itemSpatialIndices.find(worldId);
     if (itemIt != m_itemSpatialIndices.end()) {
         // Remove reverse lookups for items in this world
-        for (const auto& [edmIdx, cellKey] : itemIt->second.entityToCell) {
-            (void)cellKey;  // Unused
-            m_itemToWorld.erase(edmIdx);
+        for (const auto& entry : itemIt->second.entityToCell) {
+            m_itemToWorld.erase(entry.first);
         }
         itemIt->second.clear();
     }
@@ -817,11 +846,19 @@ void WorldResourceManager::clearSpatialDataForWorld(const WorldId& worldId) {
     auto harvIt = m_harvestableSpatialIndices.find(worldId);
     if (harvIt != m_harvestableSpatialIndices.end()) {
         // Remove reverse lookups
-        for (const auto& [edmIdx, cellKey] : harvIt->second.entityToCell) {
-            (void)cellKey;  // Unused
-            m_harvestableSpatialToWorld.erase(edmIdx);
+        for (const auto& entry : harvIt->second.entityToCell) {
+            m_harvestableSpatialToWorld.erase(entry.first);
         }
         harvIt->second.clear();
+    }
+
+    // Clear container spatial index
+    auto containerIt = m_containerSpatialIndices.find(worldId);
+    if (containerIt != m_containerSpatialIndices.end()) {
+        for (const auto& entry : containerIt->second.entityToCell) {
+            m_containerToWorld.erase(entry.first);
+        }
+        containerIt->second.clear();
     }
 
     WORLD_RESOURCE_INFO(std::format("Cleared spatial data for world: {}", worldId));

@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * Batched sprite renderer for GPU rendering.
@@ -56,7 +56,7 @@ public:
      * @param device GPU device
      * @return true on success
      */
-    bool init(SDL_GPUDevice* device, const char* name = "SpriteBatch");
+    [[nodiscard]] bool init(SDL_GPUDevice* device, const char* name = "SpriteBatch");
 
     /**
      * Shutdown and release resources.
@@ -177,6 +177,6 @@ private:
     bool m_initialized{false};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // SPRITE_BATCH_HPP

@@ -1,4 +1,4 @@
-# GitHub Copilot Instructions for SDL3 Hammer Engine Template
+# GitHub Copilot Instructions for SDL3 VoidLight-Framework
 
 ## Project Context
 This is a C++ game engine project using SDL3, built with CMake and following modern C++20 standards. Please refer to `AGENTS.md` for detailed guidelines.

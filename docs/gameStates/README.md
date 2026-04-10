@@ -47,6 +47,7 @@ AI-heavy states use a strict cleanup sequence:
 Typical manager order when present:
 
 - `AIManager`
+- `ProjectileManager`
 - `BackgroundSimulationManager`
 - `WorldResourceManager`
 - `EventManager`

@@ -9,7 +9,7 @@
 #include <array>
 #include <cstdint>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * Triple-buffered vertex pool for zero-allocation per-frame rendering.
@@ -42,7 +42,7 @@ public:
      * @param maxVertices Maximum number of vertices to support
      * @return true on success
      */
-    bool init(SDL_GPUDevice* device, uint32_t vertexSize,
+    [[nodiscard]] bool init(SDL_GPUDevice* device, uint32_t vertexSize,
               size_t maxVertices = DEFAULT_VERTEX_CAPACITY);
 
     /**
@@ -114,6 +114,6 @@ private:
     void* m_mappedPtr{nullptr};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_VERTEX_POOL_HPP

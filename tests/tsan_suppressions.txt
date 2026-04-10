@@ -1,4 +1,4 @@
-# ThreadSanitizer Suppressions for SDL3 HammerEngine
+# ThreadSanitizer Suppressions for SDL3 VoidLight-Framework
 # These suppressions are for VERIFIED BENIGN data races that are safe by design.
 # Each suppression is documented with the reason why it's safe to ignore.
 #
@@ -57,7 +57,7 @@ race:AIManager::configureThreading
 # CLASSIFICATION: Benign race on non-critical statistics
 # LOCATION: PathfindingGrid.cpp:424, 437 - totalRequests++, successfulPaths++, totalIterations
 # ALTERNATIVE FIX: Use std::atomic<int> for counters (adds ~5-10ns overhead per pathfinding request)
-race:HammerEngine::PathfindingGrid::findPath
+race:VoidLight::PathfindingGrid::findPath
 
 # =============================================================================
 # CollisionManager: SOA Cache Coherence Flags (~3 warnings)

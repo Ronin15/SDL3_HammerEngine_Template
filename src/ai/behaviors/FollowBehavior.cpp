@@ -9,7 +9,7 @@
 
 namespace Behaviors {
 
-void initFollow(size_t edmIndex, const HammerEngine::FollowBehaviorConfig& config) {
+void initFollow(size_t edmIndex, const VoidLight::FollowBehaviorConfig&) {
     auto& edm = EntityDataManager::Instance();
     edm.initBehaviorData(edmIndex, BehaviorType::Follow);
     auto& data = edm.getBehaviorData(edmIndex);
@@ -35,10 +35,9 @@ void initFollow(size_t edmIndex, const HammerEngine::FollowBehaviorConfig& confi
     follow.isStopped = true;
 
     data.setInitialized(true);
-    (void)config;
 }
 
-void executeFollow(BehaviorContext& ctx, const HammerEngine::FollowBehaviorConfig& config) {
+void executeFollow(BehaviorContext& ctx, const VoidLight::FollowBehaviorConfig& config) {
     if (!ctx.behaviorData.isValid()) return;
 
     auto& data = ctx.behaviorData;

@@ -12,7 +12,7 @@
 #include <memory>
 #include <string_view>
 
-namespace HammerEngine {
+namespace VoidLight {
 class GPURenderer;
 }
 
@@ -27,6 +27,7 @@ class ResourceTemplateManager;
 class WorldResourceManager;
 class WorldManager;
 class CollisionManager;
+class ProjectileManager;
 
 class GameEngine {
 public:
@@ -81,7 +82,7 @@ public:
    * Note: Initialization uses ThreadSystem futures to parallelize where possible
    * while respecting the dependency constraints above.
    */
-  bool init(std::string_view title);
+  [[nodiscard]] bool init(std::string_view title);
 
   /**
    * @brief Handles SDL events and input processing
@@ -378,6 +379,7 @@ private:
   WorldResourceManager *mp_worldResourceManager{nullptr};
   WorldManager *mp_worldManager{nullptr};
   CollisionManager *mp_collisionManager{nullptr};
+  ProjectileManager *mp_projectileManager{nullptr};
 
   // DPI scaling
   float m_dpiScale{1.0f};

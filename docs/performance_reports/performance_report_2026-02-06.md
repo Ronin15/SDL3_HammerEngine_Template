@@ -1,4 +1,4 @@
-# SDL3 HammerEngine Performance Report
+# SDL3 VoidLight-Framework Performance Report
 
 **Generated:** 2026-02-06
 **Build Type:** Debug
@@ -15,7 +15,7 @@
 
 ### Overall Performance: ✓ EXCELLENT
 
-SDL3 HammerEngine maintains strong performance across all critical systems. Sequential benchmark execution (one benchmark at a time) provides accurate measurements free of CPU contention artifacts.
+SDL3 VoidLight-Framework maintains strong performance across all critical systems. Sequential benchmark execution (one benchmark at a time) provides accurate measurements free of CPU contention artifacts.
 
 **System Overview:**
 

@@ -21,10 +21,10 @@
 struct ParticleManagerPerformanceFixture {
   ParticleManagerPerformanceFixture() {
     // Initialize ThreadSystem first (required for batch submissions)
-    if (!HammerEngine::ThreadSystem::Instance().isShutdown()) {
-      HammerEngine::ThreadSystem::Instance().init();
+    if (!VoidLight::ThreadSystem::Instance().isShutdown()) {
+      BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
       // Log WorkerBudget allocations for production-matching verification
-      const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+      const auto& budget = VoidLight::WorkerBudgetManager::Instance().getBudget();
       std::cout << "System: " << std::thread::hardware_concurrency() << " hardware threads\n";
       std::cout << "WorkerBudget: " << budget.totalWorkers << " workers (all available per manager)\n";
     }
@@ -47,8 +47,8 @@ struct ParticleManagerPerformanceFixture {
     }
 
     // Clean up ThreadSystem
-    if (!HammerEngine::ThreadSystem::Instance().isShutdown()) {
-      HammerEngine::ThreadSystem::Instance().clean();
+    if (!VoidLight::ThreadSystem::Instance().isShutdown()) {
+      VoidLight::ThreadSystem::Instance().clean();
     }
   }
 
@@ -638,7 +638,7 @@ BOOST_FIXTURE_TEST_CASE(WorkerBudgetAdaptiveTuning,
   std::cout << "\n===== WORKERBUDGET ADAPTIVE TUNING TEST =====" << std::endl;
   std::cout << "Testing both batch sizing hill-climb and threading threshold adaptation\n" << std::endl;
 
-  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
   // Fresh state
   if (manager->isInitialized()) manager->clean();
@@ -647,7 +647,7 @@ BOOST_FIXTURE_TEST_CASE(WorkerBudgetAdaptiveTuning,
 
   // Part 1: Batch Sizing Hill-Climb Convergence
   std::cout << "--- Part 1: Batch Sizing Hill-Climb ---" << std::endl;
-  size_t initialBatch = budgetMgr.getBatchStrategy(HammerEngine::SystemType::Particle, 5000, 4).first;
+  size_t initialBatch = budgetMgr.getBatchStrategy(VoidLight::SystemType::Particle, 5000, 4).first;
   std::cout << "Initial batch count for 5000 particles: " << initialBatch << std::endl;
 
   // Create particles for sustained update
@@ -662,12 +662,12 @@ BOOST_FIXTURE_TEST_CASE(WorkerBudgetAdaptiveTuning,
 
     // Sample every 20 frames
     if (frame % 20 == 0) {
-      size_t currentBatch = budgetMgr.getBatchStrategy(HammerEngine::SystemType::Particle, 5000, 4).first;
+      size_t currentBatch = budgetMgr.getBatchStrategy(VoidLight::SystemType::Particle, 5000, 4).first;
       batchHistory.push_back(currentBatch);
     }
   }
 
-  size_t finalBatch = budgetMgr.getBatchStrategy(HammerEngine::SystemType::Particle, 5000, 4).first;
+  size_t finalBatch = budgetMgr.getBatchStrategy(VoidLight::SystemType::Particle, 5000, 4).first;
   std::cout << "Final batch count after " << CONVERGENCE_FRAMES << " frames: " << finalBatch << std::endl;
 
   // Check convergence: batch count should stabilize (low variance in last few samples)
@@ -687,7 +687,7 @@ BOOST_FIXTURE_TEST_CASE(WorkerBudgetAdaptiveTuning,
 
   // Part 2: Throughput Tracking (replaces threshold adaptation)
   std::cout << "\n--- Part 2: Throughput Tracking ---" << std::endl;
-  double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Particle, true);
+  double initialMultiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::Particle, true);
   std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms" << std::endl;
 
   // Run additional frames to allow throughput tracking
@@ -698,15 +698,15 @@ BOOST_FIXTURE_TEST_CASE(WorkerBudgetAdaptiveTuning,
 
     // Sample throughput every 100 frames
     if (frame % 100 == 0) {
-      double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Particle, true);
-      float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Particle);
+      double multiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::Particle, true);
+      float batchMult = budgetMgr.getBatchMultiplier(VoidLight::SystemType::Particle);
       std::cout << "Frame " << frame << ": multiTP=" << std::fixed << std::setprecision(2)
                 << multiTP << " batchMult=" << batchMult << std::endl;
     }
   }
 
-  double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Particle, true);
-  float finalBatchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Particle);
+  double finalMultiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::Particle, true);
+  float finalBatchMult = budgetMgr.getBatchMultiplier(VoidLight::SystemType::Particle);
   std::cout << "Final multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms" << std::endl;
   std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMult << std::endl;
 

@@ -40,7 +40,7 @@ bool WorldManager::init() {
   }
 
   try {
-    m_tileRenderer = std::make_unique<HammerEngine::TileRenderer>();
+    m_tileRenderer = std::make_unique<VoidLight::TileRenderer>();
     m_isShutdown = false;
     m_initialized.store(true, std::memory_order_release);
     WORLD_MANAGER_INFO("WorldManager initialized successfully");
@@ -96,14 +96,12 @@ void WorldManager::prepareForStateTransition() {
     return;
   }
 
-  if (m_tileRenderer) {
-    m_tileRenderer->unsubscribeFromSeasonEvents();
-  }
+  // TileRenderer's season handler is persistent — no unsubscribe needed.
 }
 
 bool WorldManager::loadNewWorld(
-    const HammerEngine::WorldGenerationConfig &config,
-    const HammerEngine::WorldGenerationProgressCallback &progressCallback) {
+    const VoidLight::WorldGenerationConfig &config,
+    const VoidLight::WorldGenerationProgressCallback &progressCallback) {
   if (!m_initialized.load(std::memory_order_acquire)) {
     WORLD_MANAGER_ERROR("WorldManager not initialized");
     return false;
@@ -113,7 +111,7 @@ bool WorldManager::loadNewWorld(
 
   try {
     auto newWorld =
-        HammerEngine::WorldGenerator::generateWorld(config, progressCallback);
+        VoidLight::WorldGenerator::generateWorld(config, progressCallback);
     if (!newWorld) {
       WORLD_MANAGER_ERROR("Failed to generate new world");
       return false;
@@ -136,10 +134,10 @@ bool WorldManager::loadNewWorld(
     // Initialize world resources based on world data
     initializeWorldResources();
 
-    // State transitions clear EventManager handlers during the loading path.
-    // Refresh world season wiring here so the tile renderer tracks the
-    // active GameTime season for the newly loaded world.
-    if (EventManager::Instance().isInitialized()) {
+    // Season handler is persistent — survives state transitions.
+    // Only wire up on first world load (handler not yet registered).
+    if (m_tileRenderer && !m_tileRenderer->isSubscribedToSeasons() &&
+        EventManager::Instance().isInitialized()) {
       setupEventHandlers();
     }
 
@@ -154,13 +152,13 @@ bool WorldManager::loadNewWorld(
     // deadlocks Use high priority to ensure it executes quickly for tests
     WORLD_MANAGER_INFO(std::format(
         "Enqueuing WorldLoadedEvent task for world: {}", worldIdCopy));
-    HammerEngine::ThreadSystem::Instance().enqueueTask(
+    VoidLight::ThreadSystem::Instance().enqueueTask(
         [worldIdCopy, this]() {
           WORLD_MANAGER_INFO(std::format(
               "Executing WorldLoadedEvent task for world: {}", worldIdCopy));
           fireWorldLoadedEvent(worldIdCopy);
         },
-        HammerEngine::TaskPriority::High,
+        VoidLight::TaskPriority::High,
         std::format("WorldLoadedEvent_{}", worldIdCopy));
 
     return true;
@@ -171,14 +169,11 @@ bool WorldManager::loadNewWorld(
   }
 }
 
-bool WorldManager::loadWorld(const std::string &worldId) {
+bool WorldManager::loadWorld(const std::string& /*worldId*/) {
   if (!m_initialized.load(std::memory_order_acquire)) {
     WORLD_MANAGER_ERROR("WorldManager not initialized");
     return false;
   }
-
-  // Suppress unused parameter warning since this is not implemented yet
-  (void)worldId;
 
   WORLD_MANAGER_WARN(
       "WorldManager::loadWorld - Loading saved worlds not yet implemented");
@@ -209,11 +204,13 @@ void WorldManager::unloadWorldUnsafe() {
       m_tileRenderer->clearChunkCache();
     }
 
+    WorldResourceManager::Instance().removeWorld(worldId);
+
     m_currentWorld.reset();
   }
 }
 
-std::optional<HammerEngine::Tile> WorldManager::getTileCopyAt(int x, int y) const {
+std::optional<VoidLight::Tile> WorldManager::getTileCopyAt(int x, int y) const {
   std::shared_lock<std::shared_mutex> lock(m_worldMutex);
 
   if (!m_currentWorld || !isValidPosition(x, y)) {
@@ -223,7 +220,7 @@ std::optional<HammerEngine::Tile> WorldManager::getTileCopyAt(int x, int y) cons
   return m_currentWorld->grid[y][x];
 }
 
-std::optional<HammerEngine::Biome> WorldManager::getTileBiomeAt(int x, int y) const {
+std::optional<VoidLight::Biome> WorldManager::getTileBiomeAt(int x, int y) const {
   std::shared_lock<std::shared_mutex> lock(m_worldMutex);
 
   if (!m_currentWorld || !isValidPosition(x, y)) {
@@ -233,7 +230,7 @@ std::optional<HammerEngine::Biome> WorldManager::getTileBiomeAt(int x, int y) co
   return m_currentWorld->grid[y][x].biome;
 }
 
-std::optional<HammerEngine::ObstacleType>
+std::optional<VoidLight::ObstacleType>
 WorldManager::getTileObstacleTypeAt(int x, int y) const {
   std::shared_lock<std::shared_mutex> lock(m_worldMutex);
 
@@ -282,10 +279,6 @@ bool WorldManager::handleHarvestResource(int entityId, int targetX,
     return false;
   }
 
-  // Suppress unused parameter warning since this is for future resource
-  // tracking
-  (void)entityId;
-
   std::lock_guard<std::shared_mutex> lock(m_worldMutex);
 
   if (!isValidPosition(targetX, targetY)) {
@@ -294,22 +287,18 @@ bool WorldManager::handleHarvestResource(int entityId, int targetX,
     return false;
   }
 
-  const HammerEngine::Tile &tile = m_currentWorld->grid[targetY][targetX];
+  const VoidLight::Tile &tile = m_currentWorld->grid[targetY][targetX];
 
-  if (tile.obstacleType == HammerEngine::ObstacleType::NONE) {
+  if (tile.obstacleType == VoidLight::ObstacleType::NONE) {
     // This is expected for EDM-based harvestables that don't have tile obstacles
     WORLD_MANAGER_DEBUG(std::format(
         "No tile obstacle at position: ({}, {}) - EDM harvestable only", targetX, targetY));
     return false;
   }
 
-  // Store the original obstacle type for resource tracking
-  const HammerEngine::ObstacleType harvestedType = tile.obstacleType;
-  (void)harvestedType; // Suppress unused warning
-
-  HammerEngine::Tile updatedTile = tile;
-  updatedTile.obstacleType = HammerEngine::ObstacleType::NONE;
-  updatedTile.resourceHandle = HammerEngine::ResourceHandle{};
+  VoidLight::Tile updatedTile = tile;
+  updatedTile.obstacleType = VoidLight::ObstacleType::NONE;
+  updatedTile.resourceHandle = VoidLight::ResourceHandle{};
   if (!applyTileUpdateLocked(targetX, targetY, updatedTile)) {
     return false;
   }
@@ -323,7 +312,7 @@ bool WorldManager::handleHarvestResource(int entityId, int targetX,
   return true;
 }
 
-bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile &newTile) {
+bool WorldManager::updateTile(int x, int y, const VoidLight::Tile &newTile) {
   if (!m_initialized.load(std::memory_order_acquire) || !m_currentWorld) {
     WORLD_MANAGER_ERROR("WorldManager not initialized or no active world");
     return false;
@@ -334,7 +323,7 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile &newTile) {
 }
 
 bool WorldManager::modifyTile(
-    int x, int y, const std::function<void(HammerEngine::Tile&)>& mutator) {
+    int x, int y, const std::function<void(VoidLight::Tile&)>& mutator) {
   if (!m_initialized.load(std::memory_order_acquire) || !m_currentWorld) {
     WORLD_MANAGER_ERROR("WorldManager not initialized or no active world");
     return false;
@@ -346,19 +335,19 @@ bool WorldManager::modifyTile(
     return false;
   }
 
-  HammerEngine::Tile updatedTile = m_currentWorld->grid[y][x];
+  VoidLight::Tile updatedTile = m_currentWorld->grid[y][x];
   mutator(updatedTile);
   return applyTileUpdateLocked(x, y, updatedTile);
 }
 
 bool WorldManager::applyTileUpdateLocked(int x, int y,
-                                         const HammerEngine::Tile &newTile) {
+                                         const VoidLight::Tile &newTile) {
   if (!isValidPosition(x, y)) {
     WORLD_MANAGER_ERROR(std::format("Invalid tile position: ({}, {})", x, y));
     return false;
   }
 
-  const HammerEngine::Tile &oldTile = m_currentWorld->grid[y][x];
+  const VoidLight::Tile &oldTile = m_currentWorld->grid[y][x];
 
   // Skip invalidation entirely if tile data hasn't changed
   if (oldTile.biome == newTile.biome &&
@@ -429,7 +418,7 @@ bool WorldManager::applyTileUpdateLocked(int x, int y,
 }
 
 void WorldManager::fireTileChangedEvent(int x, int y,
-                                        const HammerEngine::Tile &tile) {
+                                        const VoidLight::Tile &tile) {
   // Increment world version for change tracking by other systems
   // (PathfinderManager, etc.)
   m_worldVersion.fetch_add(1, std::memory_order_release);
@@ -439,15 +428,15 @@ void WorldManager::fireTileChangedEvent(int x, int y,
     std::string changeType = "tile_modified";
     if (tile.isWater) {
       changeType = "water_tile_changed";
-    } else if (tile.biome == HammerEngine::Biome::FOREST) {
+    } else if (tile.biome == VoidLight::Biome::FOREST) {
       changeType = "forest_tile_changed";
-    } else if (tile.biome == HammerEngine::Biome::MOUNTAIN) {
+    } else if (tile.biome == VoidLight::Biome::MOUNTAIN) {
       changeType = "mountain_tile_changed";
     }
 
     // Trigger world tile changed through EventManager (no registration)
     const EventManager &eventMgr = EventManager::Instance();
-    (void)eventMgr.triggerTileChanged(x, y, changeType,
+    eventMgr.triggerTileChanged(x, y, changeType,
                                       EventManager::DispatchMode::Deferred);
 
     WORLD_MANAGER_DEBUG(
@@ -473,7 +462,7 @@ void WorldManager::fireWorldLoadedEvent(const std::string &worldId) {
 
     // Trigger a world loaded event via EventManager (no registration)
     const EventManager &eventMgr = EventManager::Instance();
-    (void)eventMgr.triggerWorldLoaded(worldId, width, height,
+    eventMgr.triggerWorldLoaded(worldId, width, height,
                                       EventManager::DispatchMode::Deferred);
 
     WORLD_MANAGER_INFO(std::format(
@@ -489,7 +478,7 @@ void WorldManager::fireWorldUnloadedEvent(const std::string &worldId) {
   try {
     // Trigger world unloaded via EventManager (no registration)
     const EventManager &eventMgr = EventManager::Instance();
-    (void)eventMgr.triggerWorldUnloaded(worldId,
+    eventMgr.triggerWorldUnloaded(worldId,
                                         EventManager::DispatchMode::Deferred);
 
     WORLD_MANAGER_INFO(
@@ -531,9 +520,9 @@ bool WorldManager::getWorldBounds(float &minX, float &minY, float &maxX,
   minX = 0.0f;
   minY = 0.0f;
   maxX = static_cast<float>(width) *
-         HammerEngine::TILE_SIZE; // Convert tiles to pixels
+         VoidLight::TILE_SIZE; // Convert tiles to pixels
   maxY = static_cast<float>(height) *
-         HammerEngine::TILE_SIZE; // Convert tiles to pixels
+         VoidLight::TILE_SIZE; // Convert tiles to pixels
 
   return true;
 }
@@ -565,16 +554,16 @@ void WorldManager::initializeWorldResources() {
         totalTiles++;
 
         switch (tile.biome) {
-        case HammerEngine::Biome::FOREST:
+        case VoidLight::Biome::FOREST:
           forestTiles++;
           break;
-        case HammerEngine::Biome::MOUNTAIN:
+        case VoidLight::Biome::MOUNTAIN:
           mountainTiles++;
           break;
-        case HammerEngine::Biome::SWAMP:
+        case VoidLight::Biome::SWAMP:
           swampTiles++;
           break;
-        case HammerEngine::Biome::CELESTIAL:
+        case VoidLight::Biome::CELESTIAL:
           celestialTiles++;
           break;
         default:
@@ -604,13 +593,13 @@ void WorldManager::initializeWorldResources() {
     // When harvested, both EDM entity and tile obstacle are updated together
     // EVERY obstacle gets a harvestable for visual/gameplay coherence
     auto spawnHarvestablesAtObstacles = [&](const char* resourceId,
-                                            HammerEngine::ResourceHandle handle,
-                                            HammerEngine::ObstacleType targetObstacle,
+                                            VoidLight::ResourceHandle handle,
+                                            VoidLight::ObstacleType targetObstacle,
                                             int yieldMin, int yieldMax,
                                             float respawnTime) {
       if (!handle.isValid()) {
         WORLD_MANAGER_ERROR(std::format("Invalid resource handle for obstacle type {}",
-                                        HammerEngine::obstacleTypeToString(targetObstacle)));
+                                        VoidLight::obstacleTypeToString(targetObstacle)));
         return;
       }
 
@@ -625,10 +614,10 @@ void WorldManager::initializeWorldResources() {
           const auto& tile = m_currentWorld->grid[y][x];
           if (tile.obstacleType != targetObstacle) continue;
 
-          Vector2D pos(static_cast<float>(x) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
-                       static_cast<float>(y) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
+          Vector2D pos(static_cast<float>(x) * VoidLight::TILE_SIZE + VoidLight::TILE_SIZE * 0.5f,
+                       static_cast<float>(y) * VoidLight::TILE_SIZE + VoidLight::TILE_SIZE * 0.5f);
 
-          auto harvestType = HammerEngine::getHarvestTypeForResource(resourceId);
+          auto harvestType = VoidLight::getHarvestTypeForResource(resourceId);
           EntityHandle h = edm.createHarvestable(pos, handle, yieldMin, yieldMax, respawnTime, worldId, harvestType);
           if (h.isValid()) {
             ++spawned;
@@ -637,18 +626,18 @@ void WorldManager::initializeWorldResources() {
       }
       WORLD_MANAGER_INFO(std::format("Spawned {} harvestables of {} at {} obstacles",
                                      spawned, handle.toString(),
-                                     HammerEngine::obstacleTypeToString(targetObstacle)));
+                                     VoidLight::obstacleTypeToString(targetObstacle)));
     };
 
     // Helper for biome-based resources (for things without tile obstacles)
     auto spawnHarvestablesInBiome = [&](const char* resourceId,
-                                        HammerEngine::ResourceHandle handle,
-                                        HammerEngine::Biome targetBiome,
+                                        VoidLight::ResourceHandle handle,
+                                        VoidLight::Biome targetBiome,
                                         int count, int yieldMin, int yieldMax,
                                         float respawnTime) {
       if (!handle.isValid()) {
         WORLD_MANAGER_ERROR(std::format("Invalid resource handle for biome {}",
-                                        HammerEngine::biomeToString(targetBiome)));
+                                        VoidLight::biomeToString(targetBiome)));
         return;
       }
       if (count <= 0) return;
@@ -665,31 +654,31 @@ void WorldManager::initializeWorldResources() {
           if (tile.isWater) continue;
           if (tile.biome != targetBiome) continue;
           // Skip tiles that already have obstacles (those are handled by spawnHarvestablesAtObstacles)
-          if (tile.obstacleType != HammerEngine::ObstacleType::NONE) continue;
+          if (tile.obstacleType != VoidLight::ObstacleType::NONE) continue;
 
           // Skip some tiles for natural distribution (every ~10 tiles)
           if ((x + y * 7) % 10 != 0) continue;
 
-          Vector2D pos(static_cast<float>(x) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
-                       static_cast<float>(y) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
+          Vector2D pos(static_cast<float>(x) * VoidLight::TILE_SIZE + VoidLight::TILE_SIZE * 0.5f,
+                       static_cast<float>(y) * VoidLight::TILE_SIZE + VoidLight::TILE_SIZE * 0.5f);
 
-          auto harvestType = HammerEngine::getHarvestTypeForResource(resourceId);
+          auto harvestType = VoidLight::getHarvestTypeForResource(resourceId);
           EntityHandle h = edm.createHarvestable(pos, handle, yieldMin, yieldMax, respawnTime, worldId, harvestType);
           if (h.isValid()) {
             ++spawned;
           }
         }
       }
-      const auto harvestType = HammerEngine::getHarvestTypeForResource(resourceId);
+      const auto harvestType = VoidLight::getHarvestTypeForResource(resourceId);
       WORLD_MANAGER_INFO(std::format("Spawned {} harvestables of type {} ({}) in {} biome",
                                      spawned, handle.toString(),
-                                     HammerEngine::harvestTypeToString(harvestType),
-                                     HammerEngine::biomeToString(targetBiome)));
+                                     VoidLight::harvestTypeToString(harvestType),
+                                     VoidLight::biomeToString(targetBiome)));
     };
 
     // Helper for high-elevation resources
     auto spawnHarvestablesAtElevation = [&](const char* resourceId,
-                                            HammerEngine::ResourceHandle handle,
+                                            VoidLight::ResourceHandle handle,
                                             float minElevation, int count,
                                             int yieldMin, int yieldMax,
                                             float respawnTime) {
@@ -710,93 +699,93 @@ void WorldManager::initializeWorldResources() {
           const auto& tile = m_currentWorld->grid[y][x];
           if (tile.isWater || tile.elevation < minElevation) continue;
           // Skip tiles with obstacles (those are handled by spawnHarvestablesAtObstacles)
-          if (tile.obstacleType != HammerEngine::ObstacleType::NONE) continue;
+          if (tile.obstacleType != VoidLight::ObstacleType::NONE) continue;
 
           // Skip some tiles for natural distribution
           if ((x + y * 11) % 12 != 0) continue;
 
-          Vector2D pos(static_cast<float>(x) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
-                       static_cast<float>(y) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
+          Vector2D pos(static_cast<float>(x) * VoidLight::TILE_SIZE + VoidLight::TILE_SIZE * 0.5f,
+                       static_cast<float>(y) * VoidLight::TILE_SIZE + VoidLight::TILE_SIZE * 0.5f);
 
           // createHarvestable auto-registers with WRM using worldId
           // Use HarvestConfig to derive the correct HarvestType from resource
-          auto harvestType = HammerEngine::getHarvestTypeForResource(resourceId);
+          auto harvestType = VoidLight::getHarvestTypeForResource(resourceId);
           EntityHandle h = edm.createHarvestable(pos, handle, yieldMin, yieldMax, respawnTime, worldId, harvestType);
           if (h.isValid()) {
             ++spawned;
           }
         }
       }
-      const auto harvestType = HammerEngine::getHarvestTypeForResource(resourceId);
+      const auto harvestType = VoidLight::getHarvestTypeForResource(resourceId);
       WORLD_MANAGER_INFO(std::format("Spawned {} high-elevation harvestables of type {} ({})",
                                      spawned, handle.toString(),
-                                     HammerEngine::harvestTypeToString(harvestType)));
+                                     VoidLight::harvestTypeToString(harvestType)));
     };
 
     // Basic resources - spawn AT tile obstacles for visual coherence
     // When harvested, both EDM entity and tile obstacle are updated
     // All obstacles of matching type get harvestables (no count limit)
     auto woodHandle = resourceMgr.getHandleById("wood");
-    spawnHarvestablesAtObstacles("wood", woodHandle, HammerEngine::ObstacleType::TREE, 1, 3, 60.0f);
+    spawnHarvestablesAtObstacles("wood", woodHandle, VoidLight::ObstacleType::TREE, 1, 3, 60.0f);
 
     auto stoneHandle = resourceMgr.getHandleById("stone");
-    spawnHarvestablesAtObstacles("stone", stoneHandle, HammerEngine::ObstacleType::ROCK, 1, 3, 90.0f);
+    spawnHarvestablesAtObstacles("stone", stoneHandle, VoidLight::ObstacleType::ROCK, 1, 3, 90.0f);
 
     // Ore deposits
     auto ironHandle = resourceMgr.getHandleById("iron_ore");
-    spawnHarvestablesAtObstacles("iron_ore", ironHandle, HammerEngine::ObstacleType::IRON_DEPOSIT, 2, 5, 90.0f);
+    spawnHarvestablesAtObstacles("iron_ore", ironHandle, VoidLight::ObstacleType::IRON_DEPOSIT, 2, 5, 90.0f);
 
     auto goldHandle = resourceMgr.getHandleById("gold_ore");
-    spawnHarvestablesAtObstacles("gold_ore", goldHandle, HammerEngine::ObstacleType::GOLD_DEPOSIT, 1, 3, 150.0f);
+    spawnHarvestablesAtObstacles("gold_ore", goldHandle, VoidLight::ObstacleType::GOLD_DEPOSIT, 1, 3, 150.0f);
 
     auto coalHandle = resourceMgr.getHandleById("coal");
-    spawnHarvestablesAtObstacles("coal", coalHandle, HammerEngine::ObstacleType::COAL_DEPOSIT, 3, 6, 75.0f);
+    spawnHarvestablesAtObstacles("coal", coalHandle, VoidLight::ObstacleType::COAL_DEPOSIT, 3, 6, 75.0f);
 
     auto copperHandle = resourceMgr.getHandleById("copper_ore");
-    spawnHarvestablesAtObstacles("copper_ore", copperHandle, HammerEngine::ObstacleType::COPPER_DEPOSIT, 2, 4, 60.0f);
+    spawnHarvestablesAtObstacles("copper_ore", copperHandle, VoidLight::ObstacleType::COPPER_DEPOSIT, 2, 4, 60.0f);
 
     auto mithrilHandle = resourceMgr.getHandleById("mithril_ore");
-    spawnHarvestablesAtObstacles("mithril_ore", mithrilHandle, HammerEngine::ObstacleType::MITHRIL_DEPOSIT, 1, 2, 300.0f);
+    spawnHarvestablesAtObstacles("mithril_ore", mithrilHandle, VoidLight::ObstacleType::MITHRIL_DEPOSIT, 1, 2, 300.0f);
 
     auto limestoneHandle = resourceMgr.getHandleById("limestone");
-    spawnHarvestablesAtObstacles("limestone", limestoneHandle, HammerEngine::ObstacleType::LIMESTONE_DEPOSIT, 2, 4, 120.0f);
+    spawnHarvestablesAtObstacles("limestone", limestoneHandle, VoidLight::ObstacleType::LIMESTONE_DEPOSIT, 2, 4, 120.0f);
 
     // Gem deposits
     auto emeraldHandle = resourceMgr.getHandleById("rough_emerald");
-    spawnHarvestablesAtObstacles("rough_emerald", emeraldHandle, HammerEngine::ObstacleType::EMERALD_DEPOSIT, 1, 2, 180.0f);
+    spawnHarvestablesAtObstacles("rough_emerald", emeraldHandle, VoidLight::ObstacleType::EMERALD_DEPOSIT, 1, 2, 180.0f);
 
     auto rubyHandle = resourceMgr.getHandleById("rough_ruby");
-    spawnHarvestablesAtObstacles("rough_ruby", rubyHandle, HammerEngine::ObstacleType::RUBY_DEPOSIT, 1, 2, 180.0f);
+    spawnHarvestablesAtObstacles("rough_ruby", rubyHandle, VoidLight::ObstacleType::RUBY_DEPOSIT, 1, 2, 180.0f);
 
     auto sapphireHandle = resourceMgr.getHandleById("rough_sapphire");
-    spawnHarvestablesAtObstacles("rough_sapphire", sapphireHandle, HammerEngine::ObstacleType::SAPPHIRE_DEPOSIT, 1, 2, 180.0f);
+    spawnHarvestablesAtObstacles("rough_sapphire", sapphireHandle, VoidLight::ObstacleType::SAPPHIRE_DEPOSIT, 1, 2, 180.0f);
 
     auto diamondHandle = resourceMgr.getHandleById("rough_diamond");
-    spawnHarvestablesAtObstacles("rough_diamond", diamondHandle, HammerEngine::ObstacleType::DIAMOND_DEPOSIT, 1, 1, 360.0f);
+    spawnHarvestablesAtObstacles("rough_diamond", diamondHandle, VoidLight::ObstacleType::DIAMOND_DEPOSIT, 1, 1, 360.0f);
 
     // Rare biome-based resources (no tile obstacles - for resources without visual tiles)
     if (forestTiles > 0) {
       auto enchantedWoodHandle = resourceMgr.getHandleById("enchanted_wood");
-      spawnHarvestablesInBiome("enchanted_wood", enchantedWoodHandle, HammerEngine::Biome::FOREST,
+      spawnHarvestablesInBiome("enchanted_wood", enchantedWoodHandle, VoidLight::Biome::FOREST,
                                std::max(1, forestTiles / 40), 1, 2, 120.0f);
     }
 
     if (celestialTiles > 0) {
       auto crystalHandle = resourceMgr.getHandleById("crystal_essence");
-      spawnHarvestablesInBiome("crystal_essence", crystalHandle, HammerEngine::Biome::CELESTIAL,
+      spawnHarvestablesInBiome("crystal_essence", crystalHandle, VoidLight::Biome::CELESTIAL,
                                std::max(1, celestialTiles / 30), 1, 2, 150.0f);
     }
 
     if (swampTiles > 0) {
       auto voidSilkHandle = resourceMgr.getHandleById("void_silk");
-      spawnHarvestablesInBiome("void_silk", voidSilkHandle, HammerEngine::Biome::SWAMP,
+      spawnHarvestablesInBiome("void_silk", voidSilkHandle, VoidLight::Biome::SWAMP,
                                std::max(1, swampTiles / 60), 1, 1, 200.0f);
     }
 
     // Mountain biome gets extra stone deposits
     if (mountainTiles > 0) {
       auto mountainStoneHandle = resourceMgr.getHandleById("stone");
-      spawnHarvestablesInBiome("stone", mountainStoneHandle, HammerEngine::Biome::MOUNTAIN,
+      spawnHarvestablesInBiome("stone", mountainStoneHandle, VoidLight::Biome::MOUNTAIN,
                                std::max(1, mountainTiles / 25), 2, 5, 90.0f);
     }
 
@@ -865,7 +854,7 @@ void WorldManager::setCurrentSeason(Season season) {
 
 // TileRenderer Implementation
 
-HammerEngine::TileRenderer::TileRenderer()
+VoidLight::TileRenderer::TileRenderer()
     : m_currentSeason(Season::Spring), m_subscribedToSeasons(false) {
   m_gpuDecoBuffer.reserve(512);
   m_gpuObstacleBuffer.reserve(512);
@@ -880,7 +869,7 @@ HammerEngine::TileRenderer::TileRenderer()
   updateCachedTextureIDs();
 }
 
-void HammerEngine::TileRenderer::loadWorldObjects() {
+void VoidLight::TileRenderer::loadWorldObjects() {
   JsonReader reader;
   if (!reader.loadFromFile(ResourcePath::resolve("res/data/world_objects.json"))) {
     WORLD_MANAGER_WARN(std::format(
@@ -955,30 +944,29 @@ void HammerEngine::TileRenderer::loadWorldObjects() {
       m_worldObjects.buildings.size()));
 }
 
-void HammerEngine::TileRenderer::updateCachedTextureIDs() {
+void VoidLight::TileRenderer::updateCachedTextureIDs() {
   if (!m_useAtlas) {
     WORLD_MANAGER_WARN("TileRenderer: atlas texture unavailable in GPU-only mode");
   }
 }
 
-void HammerEngine::TileRenderer::setCurrentSeason(Season season) {
+void VoidLight::TileRenderer::setCurrentSeason(Season season) {
   if (m_currentSeason != season) {
     m_currentSeason = season;
     updateCachedTextureIDs();
   }
 }
 
-void HammerEngine::TileRenderer::invalidateChunk([[maybe_unused]] int chunkX,
-                                                 [[maybe_unused]] int chunkY) {
+void VoidLight::TileRenderer::invalidateChunk(int, int) {
 }
 
-void HammerEngine::TileRenderer::clearChunkCache() {
+void VoidLight::TileRenderer::clearChunkCache() {
   // GPU path renders directly from world data each frame.
 }
 
-HammerEngine::TileRenderer::~TileRenderer() { unsubscribeFromSeasonEvents(); }
+VoidLight::TileRenderer::~TileRenderer() { unsubscribeFromSeasonEvents(); }
 
-void HammerEngine::TileRenderer::initAtlasCoords() {
+void VoidLight::TileRenderer::initAtlasCoords() {
   auto gpuTex = TextureManager::Instance().getGPUTextureData("atlas");
   if (!gpuTex || !gpuTex->texture) {
     WORLD_MANAGER_INFO("Atlas texture not found for GPU rendering");
@@ -1020,14 +1008,14 @@ void HammerEngine::TileRenderer::initAtlasCoords() {
   auto getCoords = [&regions](const std::string& id) -> AtlasCoords {
     auto it = regions.find(id);
     if (it == regions.end()) {
-      return {0, 0, 0, 0};
+      return {.x = 0, .y = 0, .w = 0, .h = 0};
     }
     const auto& r = it->second;
     return {
-      static_cast<float>(r["x"].asNumber()),
-      static_cast<float>(r["y"].asNumber()),
-      static_cast<float>(r["w"].asNumber()),
-      static_cast<float>(r["h"].asNumber())
+      .x = static_cast<float>(r["x"].asNumber()),
+      .y = static_cast<float>(r["y"].asNumber()),
+      .w = static_cast<float>(r["w"].asNumber()),
+      .h = static_cast<float>(r["h"].asNumber())
     };
   };
 
@@ -1115,12 +1103,12 @@ void HammerEngine::TileRenderer::initAtlasCoords() {
     // Decorations - special handling for seasonal availability
     auto loadDecoration = [&](AtlasCoords& target, const std::string& key) {
       if (!worldRoot.hasKey("decorations")) {
-        target = {0, 0, 0, 0};
+        target = {.x = 0, .y = 0, .w = 0, .h = 0};
         return;
       }
       const auto& decorations = worldRoot["decorations"];
       if (!decorations.hasKey(key)) {
-        target = {0, 0, 0, 0};
+        target = {.x = 0, .y = 0, .w = 0, .h = 0};
         return;
       }
       const auto& obj = decorations[key];
@@ -1140,7 +1128,7 @@ void HammerEngine::TileRenderer::initAtlasCoords() {
           }
         }
         if (!availableThisSeason) {
-          target = {0, 0, 0, 0};
+          target = {.x = 0, .y = 0, .w = 0, .h = 0};
           return;
         }
       }
@@ -1196,13 +1184,13 @@ void HammerEngine::TileRenderer::initAtlasCoords() {
   WORLD_MANAGER_INFO("TileRenderer: Atlas coords loaded from world_objects.json");
 }
 
-void HammerEngine::TileRenderer::subscribeToSeasonEvents() {
+void VoidLight::TileRenderer::subscribeToSeasonEvents() {
   if (m_subscribedToSeasons) {
     unsubscribeFromSeasonEvents();
   }
 
   auto &eventMgr = EventManager::Instance();
-  m_seasonToken = eventMgr.registerHandlerWithToken(
+  m_seasonToken = eventMgr.registerPersistentHandlerWithToken(
       EventTypeId::Time,
       [this](const EventData &data) { onSeasonChange(data); });
   m_subscribedToSeasons = true;
@@ -1214,7 +1202,7 @@ void HammerEngine::TileRenderer::subscribeToSeasonEvents() {
       GameTimeManager::Instance().getSeasonName()));
 }
 
-void HammerEngine::TileRenderer::unsubscribeFromSeasonEvents() {
+void VoidLight::TileRenderer::unsubscribeFromSeasonEvents() {
   if (!m_subscribedToSeasons) {
     return;
   }
@@ -1225,7 +1213,7 @@ void HammerEngine::TileRenderer::unsubscribeFromSeasonEvents() {
   WORLD_MANAGER_DEBUG("TileRenderer unsubscribed from season events");
 }
 
-void HammerEngine::TileRenderer::onSeasonChange(const EventData &data) {
+void VoidLight::TileRenderer::onSeasonChange(const EventData &data) {
   if (!data.event) {
     return;
   }
@@ -1247,8 +1235,8 @@ void HammerEngine::TileRenderer::onSeasonChange(const EventData &data) {
   }
 }
 
-HammerEngine::GPUTexture*
-HammerEngine::TileRenderer::getAtlasGPUTexture() const {
+VoidLight::GPUTexture*
+VoidLight::TileRenderer::getAtlasGPUTexture() const {
   if (!m_useAtlas) {
     return nullptr;
   }
@@ -1264,7 +1252,7 @@ HammerEngine::TileRenderer::getAtlasGPUTexture() const {
   return m_atlasGPUPtr;
 }
 
-void HammerEngine::TileRenderer::recordGPUTiles(
+void VoidLight::TileRenderer::recordGPUTiles(
     SpriteBatch& spriteBatch, float cameraX, float cameraY,
     float viewportWidth, float viewportHeight, float zoom,
     Season season) {
@@ -1275,7 +1263,7 @@ void HammerEngine::TileRenderer::recordGPUTiles(
     return;
   }
 
-  WorldManager::Instance().withWorldDataRead([&](const HammerEngine::WorldData* worldData) {
+  WorldManager::Instance().withWorldDataRead([&](const VoidLight::WorldData* worldData) {
     if (!worldData || worldData->grid.empty()) {
       return;
     }
@@ -1503,7 +1491,7 @@ void HammerEngine::TileRenderer::recordGPUTiles(
 }
 
 // WorldManager GPU method - delegates to TileRenderer
-void WorldManager::recordGPU(HammerEngine::SpriteBatch& spriteBatch,
+void WorldManager::recordGPU(VoidLight::SpriteBatch& spriteBatch,
                              float cameraX, float cameraY,
                              float viewWidth, float viewHeight, float zoom) {
   if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled) {

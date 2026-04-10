@@ -17,8 +17,8 @@
 #include "gpu/GPUSampler.hpp"
 #include "gpu/GPUTypes.hpp"
 
-using namespace HammerEngine;
-using namespace HammerEngine::Test;
+using namespace VoidLight;
+using namespace VoidLight::Test;
 
 // Global fixture for SDL cleanup
 BOOST_GLOBAL_FIXTURE(GPUGlobalFixture);
@@ -37,7 +37,7 @@ struct ResourceTestFixture : public GPUTestFixture {
 
         SDL_Window* window = getTestWindow();
         if (window) {
-            device->init(window);
+            BOOST_REQUIRE(device->init(window));
         }
     }
 

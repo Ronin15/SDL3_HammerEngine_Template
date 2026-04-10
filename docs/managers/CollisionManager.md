@@ -2,7 +2,7 @@
 
 ## Overview
 
-The CollisionManager is a high-performance collision detection and response system designed for the Hammer Engine. It provides efficient spatial partitioning, batch processing capabilities, and tight integration with the AI and pathfinding systems. The manager supports 27,000+ collision bodies at 60+ FPS through hybrid dual-path threading, SOA storage, and SIMD optimizations.
+The CollisionManager is a high-performance collision detection and response system designed for the VoidLight-Framework. It provides efficient spatial partitioning, batch processing capabilities, and tight integration with the AI and pathfinding systems. The manager supports 27,000+ collision bodies at 60+ FPS through hybrid dual-path threading, SOA storage, and SIMD optimizations.
 
 ## Architecture
 
@@ -113,7 +113,7 @@ void registerCollisionBody(EntityHandle handle, const Vector2D& halfSize,
 #### AABB (Axis-Aligned Bounding Box)
 The fundamental collision primitive used throughout the system.
 ```cpp
-namespace HammerEngine {
+namespace VoidLight-Framework {
     struct AABB {
         Vector2D center;    // World center position
         Vector2D halfSize;  // Half-width and half-height
@@ -218,18 +218,18 @@ CollisionManager queries WorkerBudgetManager for optimal batch configuration:
 
 ```cpp
 // Dispatcher in broadphaseSOA()
-auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+auto& budgetMgr = VoidLight-Framework::WorkerBudgetManager::Instance();
 size_t optimalWorkers = budgetMgr.getOptimalWorkers(
-    HammerEngine::SystemType::Collision, movableIndices.size());
+    VoidLight-Framework::SystemType::Collision, movableIndices.size());
 
 auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-    HammerEngine::SystemType::Collision,
+    VoidLight-Framework::SystemType::Collision,
     movableIndices.size(),
     optimalWorkers);
 
 // Adaptive threshold learns optimal cutoff based on measured throughput
 bool useThreading = batchCount > 1 &&
-    budgetMgr.shouldUseThreading(HammerEngine::SystemType::Collision, movableIndices.size());
+    budgetMgr.shouldUseThreading(VoidLight-Framework::SystemType::Collision, movableIndices.size());
 
 if (!useThreading) {
     broadphaseSingleThreaded(indexPairs);
@@ -510,7 +510,7 @@ Zero-contention batch updates where each AI batch has its own buffer.
 // Create water trigger area
 EntityID waterTriggerId = CollisionManager::Instance().createTriggerArea(
     AABB(100.0f, 100.0f, 50.0f, 50.0f),
-    HammerEngine::TriggerTag::Water,
+    VoidLight-Framework::TriggerTag::Water,
     CollisionLayer::Layer_Environment,
     CollisionLayer::Layer_Player | CollisionLayer::Layer_NPC
 );
@@ -518,7 +518,7 @@ EntityID waterTriggerId = CollisionManager::Instance().createTriggerArea(
 // Create trigger at specific coordinates
 EntityID triggerId = CollisionManager::Instance().createTriggerAreaAt(
     x, y, halfWidth, halfHeight,
-    HammerEngine::TriggerTag::Portal,
+    VoidLight-Framework::TriggerTag::Portal,
     CollisionLayer::Layer_Trigger,
     CollisionLayer::Layer_Player
 );

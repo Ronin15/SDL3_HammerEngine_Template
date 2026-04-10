@@ -51,7 +51,7 @@ Multi-threaded runs feed the batch multiplier hill-climb through `reportExecutio
 ## Usage Pattern
 
 ```cpp
-auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+auto& budgetMgr = VoidLight-Framework::WorkerBudgetManager::Instance();
 auto decision = budgetMgr.shouldUseThreading(SystemType::AI, count);
 
 size_t batchCount = 1;

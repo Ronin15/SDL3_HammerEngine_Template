@@ -244,10 +244,12 @@ struct GlobalFixture {
         g_shutdownInProgress.store(false);
 
         // Enable benchmark mode to silence manager logging during tests
-        HAMMER_ENABLE_BENCHMARK_MODE();
+        VOIDLIGHT_ENABLE_BENCHMARK_MODE();
 
         // Initialize ThreadSystem for EventManager threading
-        HammerEngine::ThreadSystem::Instance().init();
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            throw std::runtime_error("ThreadSystem::init() failed");
+        }
         EventManager::Instance().init();
     }
 
@@ -264,7 +266,7 @@ struct GlobalFixture {
         }
 
         // Disable benchmark mode after cleanup
-        HAMMER_DISABLE_BENCHMARK_MODE();
+        VOIDLIGHT_DISABLE_BENCHMARK_MODE();
 
         std::cout << "\n===== EventManager Scaling Benchmark Completed =====" << std::endl;
     }
@@ -307,7 +309,7 @@ struct EventManagerScalingFixture {
         // Use default threshold (100) - matches EventManager::m_threadingThreshold
 
         // WorkerBudget: all workers available to each manager during its update window
-        auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+        auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
         size_t totalWorkers = budgetMgr.getBudget().totalWorkers;
 
         std::cout << "\n=== Deferred Event Benchmark ===" << std::endl;
@@ -420,7 +422,7 @@ struct EventManagerScalingFixture {
     void runScalabilityTest() {
         std::cout << "\n===== SCALABILITY TEST =====" << std::endl;
         // WorkerBudget: all workers available to each manager during its update window
-        auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+        auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
         size_t totalWorkers = budgetMgr.getBudget().totalWorkers;
         std::cout << "System Configuration: " << totalWorkers
                   << " workers (all available via WorkerBudget)" << std::endl;
@@ -465,7 +467,7 @@ struct EventManagerScalingFixture {
             [handlerCallCount](const EventData&) { ++(*handlerCallCount); });
 
         // Benchmark concurrent deferred dispatch + drain
-        auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+        auto& threadSystem = VoidLight::ThreadSystem::Instance();
         std::atomic<int> tasksCompleted{0};
 
         auto startTime = std::chrono::high_resolution_clock::now();
@@ -598,11 +600,11 @@ BOOST_AUTO_TEST_CASE(ConcurrencyTest) {
     }
 
     // Test concurrent event generation using WorkerBudget (production config)
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
     // Use the same logic as production: optimal workers for 4000 events
     size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::Event, 4000);
+        VoidLight::SystemType::Event, 4000);
     int numThreads = static_cast<int>(std::max(static_cast<size_t>(1), optimalWorkerCount));
 
     // FIXED: Keep total at 4000 events, divide by thread count
@@ -841,9 +843,9 @@ BOOST_AUTO_TEST_CASE(TestThreadingThreshold) {
     }
 
     std::cout << "\n=== EVENT THREADING RECOMMENDATION ===" << std::endl;
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
-    float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Event);
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
+    double multiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::Event, true);
+    float batchMult = budgetMgr.getBatchMultiplier(VoidLight::SystemType::Event);
     std::cout << "Multi throughput:  " << std::fixed << std::setprecision(2) << multiTP << " items/ms" << std::endl;
     std::cout << "Batch multiplier:  " << std::fixed << std::setprecision(2) << batchMult << std::endl;
 
@@ -880,10 +882,10 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
     std::cout << "Tests throughput tracking and mode selection\n";
     std::cout << "(Tracks multi throughput for batch tuning)\n\n";
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     auto& eventMgr = EventManager::Instance();
 
-    double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
+    double initialMultiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::Event, true);
     std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms\n\n";
 
     // Setup handlers
@@ -924,8 +926,8 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
         double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
         double avgMs = totalMs / FRAMES_PER_PHASE;
 
-        double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
-        float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Event);
+        double multiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::Event, true);
+        float batchMult = budgetMgr.getBatchMultiplier(VoidLight::SystemType::Event);
 
         std::cout << std::setw(8) << (phase + 1)
                   << std::setw(12) << ((phase + 1) * FRAMES_PER_PHASE)
@@ -934,8 +936,8 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
                   << std::setw(12) << std::fixed << std::setprecision(2) << batchMult << "\n";
     }
 
-    double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
-    float finalBatchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Event);
+    double finalMultiTP = budgetMgr.getExpectedThroughput(VoidLight::SystemType::Event, true);
+    float finalBatchMult = budgetMgr.getBatchMultiplier(VoidLight::SystemType::Event);
 
     std::cout << "\nFinal multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms\n";
     std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMult << "\n";
@@ -1001,7 +1003,7 @@ BOOST_AUTO_TEST_CASE(BatchEnqueuePerformanceTest)
         for (int run = 0; run < numRuns; ++run) {
             auto startTime = std::chrono::high_resolution_clock::now();
 
-            auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+            auto& threadSystem = VoidLight::ThreadSystem::Instance();
             std::atomic<int> workersComplete{0};
 
             for (int w = 0; w < numWorkers; ++w) {
@@ -1037,7 +1039,7 @@ BOOST_AUTO_TEST_CASE(BatchEnqueuePerformanceTest)
         for (int run = 0; run < numRuns; ++run) {
             auto startTime = std::chrono::high_resolution_clock::now();
 
-            auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+            auto& threadSystem = VoidLight::ThreadSystem::Instance();
             std::atomic<int> workersComplete{0};
 
             for (int w = 0; w < numWorkers; ++w) {
@@ -1073,7 +1075,7 @@ BOOST_AUTO_TEST_CASE(BatchEnqueuePerformanceTest)
         for (int run = 0; run < numRuns; ++run) {
             auto startTime = std::chrono::high_resolution_clock::now();
 
-            auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+            auto& threadSystem = VoidLight::ThreadSystem::Instance();
             std::atomic<int> workersComplete{0};
 
             for (int w = 0; w < numWorkers; ++w) {
@@ -1156,7 +1158,7 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
         EventManager::Instance().clean();
         EntityDataManager::Instance().clean();
 
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         EventManager::Instance().init();
     };
 
@@ -1196,8 +1198,8 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
     auto runCombatBurst = [](const CombatProfile& profile,
                              const CombatScene& scene) {
         auto& eventMgr = EventManager::Instance();
-        auto& threadSystem = HammerEngine::ThreadSystem::Instance();
-        auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+        auto& threadSystem = VoidLight::ThreadSystem::Instance();
+        auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
         const size_t producerWorkers =
             std::max<size_t>(1, std::min<size_t>(budgetMgr.getBudget().totalWorkers,
                                                  static_cast<size_t>(profile.totalEvents)));
@@ -1234,7 +1236,7 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
 
     for (const auto& profile : profiles) {
         const int totalEvents = profile.totalEvents;
-        auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+        auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
         const size_t producerWorkers =
             std::max<size_t>(1, std::min<size_t>(budgetMgr.getBudget().totalWorkers,
                                                  static_cast<size_t>(totalEvents)));
@@ -1257,7 +1259,7 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
 
         auto scene = setupCombatScene(totalEvents);
 
-        auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+        auto& threadSystem = VoidLight::ThreadSystem::Instance();
         auto& eventMgr = EventManager::Instance();
         std::atomic<int> workersComplete{0};
 
@@ -1291,15 +1293,15 @@ BOOST_AUTO_TEST_CASE(CombatBurstProfileBenchmark)
         auto drainEnd = std::chrono::high_resolution_clock::now();
 
         auto decision = budgetMgr.shouldUseThreading(
-            HammerEngine::SystemType::Event, static_cast<size_t>(totalEvents));
+            VoidLight::SystemType::Event, static_cast<size_t>(totalEvents));
         const size_t optimalWorkers = budgetMgr.getOptimalWorkers(
-            HammerEngine::SystemType::Event, static_cast<size_t>(totalEvents));
+            VoidLight::SystemType::Event, static_cast<size_t>(totalEvents));
         const auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-            HammerEngine::SystemType::Event, static_cast<size_t>(totalEvents), optimalWorkers);
+            VoidLight::SystemType::Event, static_cast<size_t>(totalEvents), optimalWorkers);
         const size_t learnedThreshold =
-            budgetMgr.getLearnedThreshold(HammerEngine::SystemType::Event);
+            budgetMgr.getLearnedThreshold(VoidLight::SystemType::Event);
         const float batchMultiplier =
-            budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Event);
+            budgetMgr.getBatchMultiplier(VoidLight::SystemType::Event);
 
         const double enqueueMs =
             std::chrono::duration<double, std::milli>(enqueueEnd - enqueueStart).count();

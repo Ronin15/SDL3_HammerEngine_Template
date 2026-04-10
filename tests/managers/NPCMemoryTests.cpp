@@ -24,21 +24,17 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
     return std::abs(a - b) < epsilon;
 }
 
-namespace {
-
-struct ThreadSystemTestLifetime {
-    ThreadSystemTestLifetime() {
-        HammerEngine::ThreadSystem::Instance().init();
+struct ThreadSystemFixture {
+    ThreadSystemFixture() {
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            throw std::runtime_error("ThreadSystem::init() failed");
+        }
     }
-
-    ~ThreadSystemTestLifetime() {
-        HammerEngine::ThreadSystem::Instance().clean();
+    ~ThreadSystemFixture() {
+        VoidLight::ThreadSystem::Instance().clean();
     }
 };
-
-ThreadSystemTestLifetime g_threadSystemTestLifetime{};
-
-} // namespace
+BOOST_GLOBAL_FIXTURE(ThreadSystemFixture);
 
 // ============================================================================
 // Test Fixture
@@ -48,7 +44,7 @@ class NPCMemoryTestFixture {
 public:
     NPCMemoryTestFixture() {
         edm = &EntityDataManager::Instance();
-        edm->init();
+        BOOST_REQUIRE(edm->init());
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         AIManager::Instance().init();
@@ -144,10 +140,11 @@ BOOST_AUTO_TEST_CASE(TestMemoryDataPreallocated) {
 
     // Memory data should exist for the entity (pre-allocated with entity)
     BOOST_CHECK(index < 1000000);  // Valid index
+    BOOST_CHECK(edm->hasMemoryData(index));
 
-    // Get memory data - should not crash
-    auto& memData = edm->getMemoryData(index);
-    (void)memData;  // Suppress unused warning
+    // Verify default emotional state on a freshly created NPC
+    const auto& memData = edm->getMemoryData(index);
+    BOOST_CHECK_EQUAL(memData.emotions.fear, 0.0f);
 }
 
 BOOST_AUTO_TEST_CASE(TestInitMemoryData) {

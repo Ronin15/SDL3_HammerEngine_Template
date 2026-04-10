@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(SDL3_Template VERSION 1.0.0 LANGUAGES C CXX)
+project(VoidLight_Template VERSION 1.0.0 LANGUAGES C CXX)
 
 # Set build configurations
 if(NOT CMAKE_BUILD_TYPE)
@@ -12,24 +12,12 @@ set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Profile" CACHE STRING "" FORCE)
 
 # Set output directory paths based on build type
 set(OUTPUT_BASE_DIR "${CMAKE_SOURCE_DIR}/bin")
-set(OUTPUT_DEBUG_DIR "${OUTPUT_BASE_DIR}/debug")
-set(OUTPUT_RELEASE_DIR "${OUTPUT_BASE_DIR}/release")
-set(OUTPUT_PROFILE_DIR "${OUTPUT_BASE_DIR}/profile")
+string(TOLOWER "${CMAKE_BUILD_TYPE}" _build_type_lower)
+set(OUTPUT_DIR "${OUTPUT_BASE_DIR}/${_build_type_lower}")
 
-# Configure output directories based on the current build type
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DEBUG_DIR})
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${OUTPUT_DEBUG_DIR})
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OUTPUT_DEBUG_DIR})
-elseif(CMAKE_BUILD_TYPE STREQUAL "Profile")
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_PROFILE_DIR})
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${OUTPUT_PROFILE_DIR})
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OUTPUT_PROFILE_DIR})
-else() # Release build
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_RELEASE_DIR})
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${OUTPUT_RELEASE_DIR})
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OUTPUT_RELEASE_DIR})
-endif()
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${OUTPUT_DIR})
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OUTPUT_DIR})
 
 # Debug build settings
 if(APPLE)
@@ -51,42 +39,28 @@ endif()
 
 # Release build settings - keep minimal safe flags for dependencies (SDL3 etc.)
 # Aggressive optimizations like -ffast-math are applied only to our targets below
-if(APPLE)
-    # macOS-specific release flags (safe for all targets including SDL3)
-    set(CMAKE_C_FLAGS_RELEASE "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer")
+set(CMAKE_C_FLAGS_RELEASE "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer")
+set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto")
+set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -flto")
 
-    # Add Apple Silicon specific optimizations if on Apple Silicon
+if(APPLE)
+    # Apple Silicon specific optimizations
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")
         set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -mcpu=apple-m1")
         set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -mcpu=apple-m1")
     endif()
 
-    # LTO requires linker flags to match compiler flags
-    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto")
-    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -flto")
-
-    # Store aggressive flags for our project targets only
-    set(HAMMER_AGGRESSIVE_C_FLAGS
-        "-ffunction-sections -fdata-sections -ffast-math -ftree-vectorize -funroll-loops")
-    set(HAMMER_AGGRESSIVE_CXX_FLAGS
+    # Aggressive flags for our project targets only (not SDL3)
+    set(VOIDLIGHT_AGGRESSIVE_FLAGS
         "-ffunction-sections -fdata-sections -ffast-math -ftree-vectorize -funroll-loops")
 else()
-    # x86-64 specific flags (safe for all targets)
-    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -flto \
-        -fno-strict-aliasing -fomit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto \
-        -fno-strict-aliasing -fomit-frame-pointer")
+    # x86-64 linker plugin for LTO
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -fuse-linker-plugin")
+    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -fuse-linker-plugin")
 
-    # LTO requires linker flags to match compiler flags
-    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto -fuse-linker-plugin")
-    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -flto -fuse-linker-plugin")
-
-    # Store aggressive flags for our project targets only
-    set(HAMMER_AGGRESSIVE_C_FLAGS
-        "-ffunction-sections -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
-        -funroll-loops -march=x86-64-v3 -mtune=generic -msse4.2 -mavx -mavx2 -mfma")
-    set(HAMMER_AGGRESSIVE_CXX_FLAGS
+    # Aggressive flags for our project targets only (not SDL3)
+    set(VOIDLIGHT_AGGRESSIVE_FLAGS
         "-ffunction-sections -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
         -funroll-loops -march=x86-64-v3 -mtune=generic -msse4.2 -mavx -mavx2 -mfma")
 endif()
@@ -94,18 +68,14 @@ endif()
 # Profile build settings - Valgrind-compatible optimized build
 # Uses O2 optimization without AVX/AVX2 instructions that Valgrind struggles with
 # Keeps debug symbols for profiling annotation
+set(CMAKE_C_FLAGS_PROFILE "-O2 -g -fno-strict-aliasing -DNDEBUG")
+set(CMAKE_CXX_FLAGS_PROFILE "-O2 -g -fno-strict-aliasing -DNDEBUG")
+
 if(APPLE)
-    set(CMAKE_C_FLAGS_PROFILE "-O2 -g -fno-strict-aliasing -DNDEBUG")
-    set(CMAKE_CXX_FLAGS_PROFILE "-O2 -g -fno-strict-aliasing -DNDEBUG")
-    set(HAMMER_PROFILE_C_FLAGS "-ffunction-sections -fdata-sections -ftree-vectorize")
-    set(HAMMER_PROFILE_CXX_FLAGS "-ffunction-sections -fdata-sections -ftree-vectorize")
+    set(VOIDLIGHT_PROFILE_FLAGS "-ffunction-sections -fdata-sections -ftree-vectorize")
 else()
     # x86-64 Profile flags - SSE4.2 max (no AVX) for Valgrind compatibility
-    set(CMAKE_C_FLAGS_PROFILE "-O2 -g -fno-strict-aliasing -DNDEBUG")
-    set(CMAKE_CXX_FLAGS_PROFILE "-O2 -g -fno-strict-aliasing -DNDEBUG")
-    set(HAMMER_PROFILE_C_FLAGS
-        "-ffunction-sections -fdata-sections -ftree-vectorize -march=x86-64-v2 -mtune=generic -msse4.2")
-    set(HAMMER_PROFILE_CXX_FLAGS
+    set(VOIDLIGHT_PROFILE_FLAGS
         "-ffunction-sections -fdata-sections -ftree-vectorize -march=x86-64-v2 -mtune=generic -msse4.2")
 endif()
 
@@ -175,7 +145,7 @@ message(STATUS
 
 # Specify the stable release tags for each SDL3 component
 # SDL3 3.4.0 is first stable release - includes native PNG loading (SDL_LoadPNG)
-set(SDL3_GIT_TAG "release-3.4.2")          # SDL3 3.4.0 stable release
+set(SDL3_GIT_TAG "release-3.4.4")          # SDL3 3.4.0 stable release
 set(SDL3_TTF_GIT_TAG "release-3.2.2")      # SDL3_ttf stable release
 set(SDL3_MIXER_GIT_TAG "release-3.2.0")    # SDL3_mixer stable release
 
@@ -215,8 +185,6 @@ set(SDL3MIXER_SAMPLES FALSE CACHE BOOL "Build the SDL3_mixer sample programs")
 set(SDL3MIXER_VENDORED TRUE CACHE BOOL "Use vendored third-party libraries")
 set(SDL3MIXER_DEPS_SHARED FALSE CACHE BOOL "Use shared dependencies")
 
-
-
 # Make the SDL3 packages available
 FetchContent_MakeAvailable(SDL3 SDL3_ttf SDL3_mixer)
 
@@ -234,8 +202,8 @@ file(GLOB_RECURSE SOURCES
     "src/controllers/**/*.cpp"
 )
 
-# Exclude HammerMain.cpp from library sources (contains main() which conflicts with test frameworks)
-list(FILTER SOURCES EXCLUDE REGEX ".*HammerMain\\.cpp$")
+# Exclude VoidLightMain.cpp from library sources (contains main() which conflicts with test frameworks)
+list(FILTER SOURCES EXCLUDE REGEX ".*VoidLightMain\\.cpp$")
 
 # SDL3_GPU support is mandatory for this project.
 # Add GPU module sources
@@ -259,7 +227,7 @@ endif()
 # Find optional shader toolchain for regenerating checked-in shader binaries.
 # Builds still succeed without these tools by using the prebuilt shader assets
 # already present under res/shaders/.
-set(HAMMER_CAN_COMPILE_GPU_SHADERS TRUE)
+set(VOIDLIGHT_CAN_COMPILE_GPU_SHADERS TRUE)
 
 find_program(GLSLANG_VALIDATOR
     NAMES glslangValidator glslang
@@ -268,13 +236,13 @@ find_program(GLSLANG_VALIDATOR
 )
 
 if(NOT GLSLANG_VALIDATOR)
-    set(HAMMER_CAN_COMPILE_GPU_SHADERS FALSE)
+    set(VOIDLIGHT_CAN_COMPILE_GPU_SHADERS FALSE)
     message(WARNING "glslangValidator not found - using checked-in GPU shader binaries")
 else()
     message(STATUS "Found glslangValidator: ${GLSLANG_VALIDATOR}")
 endif()
 
-if((WIN32 OR APPLE) AND HAMMER_CAN_COMPILE_GPU_SHADERS)
+if((WIN32 OR APPLE) AND VOIDLIGHT_CAN_COMPILE_GPU_SHADERS)
     find_program(SPIRV_CROSS
         NAMES spirv-cross
         HINTS ENV VULKAN_SDK /opt/homebrew/bin /usr/local/bin
@@ -282,14 +250,14 @@ if((WIN32 OR APPLE) AND HAMMER_CAN_COMPILE_GPU_SHADERS)
     )
 
     if(NOT SPIRV_CROSS)
-        set(HAMMER_CAN_COMPILE_GPU_SHADERS FALSE)
+        set(VOIDLIGHT_CAN_COMPILE_GPU_SHADERS FALSE)
         message(WARNING "spirv-cross not found - using checked-in GPU shader binaries")
     else()
         message(STATUS "Found spirv-cross: ${SPIRV_CROSS}")
     endif()
 endif()
 
-if(WIN32 AND HAMMER_CAN_COMPILE_GPU_SHADERS)
+if(WIN32 AND VOIDLIGHT_CAN_COMPILE_GPU_SHADERS)
     find_program(DXC_EXECUTABLE
         NAMES dxc
         HINTS ENV DXC_PATH ENV WindowsSdkDir
@@ -297,7 +265,7 @@ if(WIN32 AND HAMMER_CAN_COMPILE_GPU_SHADERS)
     )
 
     if(NOT DXC_EXECUTABLE)
-        set(HAMMER_CAN_COMPILE_GPU_SHADERS FALSE)
+        set(VOIDLIGHT_CAN_COMPILE_GPU_SHADERS FALSE)
         message(WARNING "dxc not found - using checked-in GPU shader binaries")
     else()
         message(STATUS "Found dxc: ${DXC_EXECUTABLE}")
@@ -319,7 +287,7 @@ set(SHADER_SOURCES
 set(GPU_SHADER_INTERMEDIATE_DIR "${CMAKE_BINARY_DIR}/generated_shaders")
 file(MAKE_DIRECTORY ${GPU_SHADER_INTERMEDIATE_DIR})
 
-if(HAMMER_CAN_COMPILE_GPU_SHADERS)
+if(VOIDLIGHT_CAN_COMPILE_GPU_SHADERS)
     # Compile each shader to the platform-native artifact.
     set(PLATFORM_SHADER_OUTPUTS "")
     foreach(SHADER_SOURCE ${SHADER_SOURCES})
@@ -417,8 +385,8 @@ else()
 endif()
 
 # Create object library for shared compilation (without main())
-add_library(HammerEngineObjects OBJECT ${SOURCES})
-target_include_directories(HammerEngineObjects PUBLIC
+add_library(VoidLightObjects OBJECT ${SOURCES})
+target_include_directories(VoidLightObjects PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include/core
     ${CMAKE_CURRENT_SOURCE_DIR}/include/managers
@@ -435,66 +403,53 @@ target_include_directories(HammerEngineObjects PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include/collisions
     ${CMAKE_CURRENT_SOURCE_DIR}/include/gpu
 )
-target_include_directories(HammerEngineObjects PRIVATE
+target_include_directories(VoidLightObjects PRIVATE
     ${INTERNAL_SRC_INCLUDE}
 )
-target_link_libraries(HammerEngineObjects PUBLIC
+target_link_libraries(VoidLightObjects PUBLIC
     SDL3::SDL3
     SDL3_ttf::SDL3_ttf
     SDL3_mixer::SDL3_mixer
 )
 
 # Pass project name to code for file logging paths
-target_compile_definitions(HammerEngineObjects PRIVATE
-    HAMMER_APP_NAME="${PROJECT_NAME}"
+target_compile_definitions(VoidLightObjects PRIVATE
+    VOIDLIGHT_APP_NAME="${PROJECT_NAME}"
 )
 
-target_compile_definitions(HammerEngineObjects PUBLIC ${HE_GPU_SHADER_FORMAT_DEFINE})
+target_compile_definitions(VoidLightObjects PUBLIC ${HE_GPU_SHADER_FORMAT_DEFINE})
 
 if(TARGET compile_shaders)
-    add_dependencies(HammerEngineObjects compile_shaders)
+    add_dependencies(VoidLightObjects compile_shaders)
 endif()
 
 # Apply aggressive optimization flags to our project targets only (not SDL3)
 # These flags like -ffast-math conflict with SDL3's audio code
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    separate_arguments(HAMMER_AGGRESSIVE_CXX_FLAGS_LIST NATIVE_COMMAND "${HAMMER_AGGRESSIVE_CXX_FLAGS}")
-    target_compile_options(HammerEngineObjects PRIVATE ${HAMMER_AGGRESSIVE_CXX_FLAGS_LIST})
+    separate_arguments(_voidlight_opt_flags NATIVE_COMMAND "${VOIDLIGHT_AGGRESSIVE_FLAGS}")
+    target_compile_options(VoidLightObjects PRIVATE ${_voidlight_opt_flags})
 elseif(CMAKE_BUILD_TYPE STREQUAL "Profile")
     # Profile build: Valgrind-compatible optimization (no AVX, SSE4.2 max)
-    separate_arguments(HAMMER_PROFILE_CXX_FLAGS_LIST NATIVE_COMMAND "${HAMMER_PROFILE_CXX_FLAGS}")
-    target_compile_options(HammerEngineObjects PRIVATE ${HAMMER_PROFILE_CXX_FLAGS_LIST})
+    separate_arguments(_voidlight_opt_flags NATIVE_COMMAND "${VOIDLIGHT_PROFILE_FLAGS}")
+    target_compile_options(VoidLightObjects PRIVATE ${_voidlight_opt_flags})
 endif()
 
-# Create shared library for tests
-add_library(HammerEngineLib STATIC $<TARGET_OBJECTS:HammerEngineObjects>)
-target_include_directories(HammerEngineLib PUBLIC
-    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_INCLUDE_DIRECTORIES>
+# Create static library for tests
+add_library(VoidLightLib STATIC $<TARGET_OBJECTS:VoidLightObjects>)
+target_include_directories(VoidLightLib PUBLIC
+    $<TARGET_PROPERTY:VoidLightObjects,INTERFACE_INCLUDE_DIRECTORIES>
 )
-target_link_libraries(HammerEngineLib PUBLIC
-    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_LINK_LIBRARIES>
+target_link_libraries(VoidLightLib PUBLIC
+    $<TARGET_PROPERTY:VoidLightObjects,INTERFACE_LINK_LIBRARIES>
 )
-target_compile_definitions(HammerEngineLib PUBLIC
-    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_COMPILE_DEFINITIONS>
+target_compile_definitions(VoidLightLib PUBLIC
+    $<TARGET_PROPERTY:VoidLightObjects,INTERFACE_COMPILE_DEFINITIONS>
 )
 
-# Create executable for your project with proper extensions
-if(WIN32)
-    set(EXE_EXTENSION "")
-elseif(APPLE)
-    set(EXE_EXTENSION "")
-else()
-    set(EXE_EXTENSION "")
-endif()
-
-# Set the output name with proper extension
-# Include HammerMain.cpp (contains main()) only in the executable, not the library
+# Include VoidLightMain.cpp (contains main()) only in the executable, not the library
 add_executable(${PROJECT_NAME}
-    $<TARGET_OBJECTS:HammerEngineObjects>
-    src/core/HammerMain.cpp
-)
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    OUTPUT_NAME "${PROJECT_NAME}${EXE_EXTENSION}"
+    $<TARGET_OBJECTS:VoidLightObjects>
+    src/core/VoidLightMain.cpp
 )
 
 # Configure window icon
@@ -528,54 +483,27 @@ elseif(APPLE)
     endif()
 endif()
 
-if(UNIX AND NOT APPLE)
-    # For Linux targets
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        # Enable SDL console output for Linux debug builds
-        target_compile_definitions(${PROJECT_NAME} PRIVATE SDL_MAIN_HANDLED)
-
-        # No need for subsystem flags on Linux - console is the default
-
-        message(STATUS "SDL console output enabled for debug build")
-    endif()
+# Enable SDL console output for all debug builds (all platforms)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE SDL_MAIN_HANDLED)
+    message(STATUS "SDL console output enabled for debug build")
 endif()
 
 if(WIN32)
-    # For Windows targets
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-            set(DLL_DESTINATION ${OUTPUT_DEBUG_DIR})
-        else()
-            set(DLL_DESTINATION ${OUTPUT_RELEASE_DIR})
-        endif()
-
-        # Enable SDL console output for Windows debug builds
-        target_compile_definitions(${PROJECT_NAME} PRIVATE 
-            SDL_MAIN_HANDLED)
-
-        # Set the subsystem to console for debug builds
         set_target_properties(${PROJECT_NAME} PROPERTIES
             WIN32_EXECUTABLE FALSE
         )
-
-        message(STATUS "SDL console output enabled for debug build")
     else()
         # Use Windows subsystem for Release builds (no console)
         set_target_properties(${PROJECT_NAME} PROPERTIES
-      WIN32_EXECUTABLE TRUE
-    )
+            WIN32_EXECUTABLE TRUE
+        )
     endif()
 endif()
 
 if(APPLE)
-    # For macOS targets
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        # Enable SDL console output for macOS debug builds
-        target_compile_definitions(${PROJECT_NAME} PRIVATE 
-            SDL_MAIN_HANDLED)
-
-        # On macOS, applications are bundles by default, but we can ensure
-        # that console output works properly in debug mode
         set_target_properties(${PROJECT_NAME} PROPERTIES
             MACOSX_BUNDLE FALSE      # Don't create a bundle in debug mode
             BUILD_WITH_INSTALL_RPATH TRUE
@@ -601,20 +529,13 @@ if(APPLE)
             XCODE_ATTRIBUTE_STRIP_STYLE "non-global"
         )
 
-        # Add a post-build message
-        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND echo "macOS console output enabled for debug build"
-        )
-
-        message(STATUS "SDL console output enabled for macOS debug build")
         message(STATUS "dSYM generation enabled for debug symbols")
-        message(STATUS 
-            "LLDB debugging flags enabled (-glldb, -fstandalone-debug)")
+        message(STATUS "LLDB debugging flags enabled (-glldb, -fstandalone-debug)")
     else()
         # For release builds, create a proper macOS application bundle
         # Set bundle metadata
         set(MACOSX_BUNDLE_BUNDLE_NAME "${PROJECT_NAME}")
-        set(MACOSX_BUNDLE_GUI_IDENTIFIER "com.hammerforged.${PROJECT_NAME}")
+        set(MACOSX_BUNDLE_GUI_IDENTIFIER "com.voidlight.${PROJECT_NAME}")
         set(MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
         set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
 
@@ -664,17 +585,17 @@ endif()
 
 # Link against SDL3 libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_LINK_LIBRARIES>
+    $<TARGET_PROPERTY:VoidLightObjects,INTERFACE_LINK_LIBRARIES>
 )
 
 # Specify include directories
 target_include_directories(${PROJECT_NAME} PRIVATE
-    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:VoidLightObjects,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
 # Propagate compile definitions
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_COMPILE_DEFINITIONS>
+    $<TARGET_PROPERTY:VoidLightObjects,INTERFACE_COMPILE_DEFINITIONS>
 )
 
 # Copy SDL3 runtime libraries to build directory (Windows-specific)
@@ -698,16 +619,13 @@ if(WIN32)
     )
 endif()
 
-# Create output directories if they don't exist
-file(MAKE_DIRECTORY ${OUTPUT_DEBUG_DIR})
-file(MAKE_DIRECTORY ${OUTPUT_RELEASE_DIR})
+# Create output directory if it doesn't exist
+file(MAKE_DIRECTORY ${OUTPUT_DIR})
 
 # Display status message indicating successful configuration
 message(STATUS
     "SDL3, SDL3_ttf, and SDL3_mixer have been configured successfully")
-message(STATUS "Debug binaries will be output to: ${OUTPUT_DEBUG_DIR}")
-message(STATUS "Release binaries will be output to: ${OUTPUT_RELEASE_DIR}")
-message(STATUS "Profile binaries will be output to: ${OUTPUT_PROFILE_DIR} (Valgrind-compatible)")
+message(STATUS "${CMAKE_BUILD_TYPE} binaries will be output to: ${OUTPUT_DIR}")
 
 # Enable testing only if Boost Test is available (tests require Boost.Test framework)
 if(HAVE_BOOST_TEST)

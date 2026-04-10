@@ -12,7 +12,7 @@
 #include <memory>
 #include <vector>
 
-using HammerEngine::ResourceHandle;
+using VoidLight::ResourceHandle;
 
 struct ResourceTemplateManagerFixture {
   ResourceTemplateManager *manager;

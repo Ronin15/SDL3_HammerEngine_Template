@@ -11,7 +11,7 @@
 #include <iostream>
 #include "utils/ResourceHandle.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 
 struct WorldGenerationConfig {
     int width;
@@ -180,7 +180,7 @@ struct Tile {
     DecorationType decorationType = DecorationType::NONE;
     float elevation = 0.0f;
     bool isWater = false;
-    HammerEngine::ResourceHandle resourceHandle;
+    VoidLight::ResourceHandle resourceHandle;
 
     // Building support for multi-tile structures
     uint32_t buildingId = 0;        // 0 = no building, >0 = unique building ID

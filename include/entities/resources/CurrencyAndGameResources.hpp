@@ -13,7 +13,7 @@
  */
 class Currency : public Resource {
 public:
-  Currency(HammerEngine::ResourceHandle handle, const std::string &id,
+  Currency(VoidLight::ResourceHandle handle, const std::string &id,
            const std::string &name, ResourceType type);
   ~Currency() override = default;
 
@@ -34,7 +34,7 @@ protected:
  */
 class Gold : public Currency {
 public:
-  Gold(HammerEngine::ResourceHandle handle, const std::string &id,
+  Gold(VoidLight::ResourceHandle handle, const std::string &id,
        const std::string &name);
   ~Gold() override = default;
 };
@@ -52,7 +52,7 @@ public:
     COUNT = 4
   };
 
-  Gem(HammerEngine::ResourceHandle handle, const std::string &id,
+  Gem(VoidLight::ResourceHandle handle, const std::string &id,
       const std::string &name, GemType gemType);
   ~Gem() override = default;
 
@@ -76,7 +76,7 @@ private:
  */
 class FactionToken : public Currency {
 public:
-  FactionToken(HammerEngine::ResourceHandle handle, const std::string &id,
+  FactionToken(VoidLight::ResourceHandle handle, const std::string &id,
                const std::string &name, const std::string &factionId);
   ~FactionToken() override = default;
 
@@ -99,7 +99,7 @@ private:
  */
 class GameResource : public Resource {
 public:
-  GameResource(HammerEngine::ResourceHandle handle, const std::string &id,
+  GameResource(VoidLight::ResourceHandle handle, const std::string &id,
                const std::string &name, ResourceType type);
   ~GameResource() override = default;
 
@@ -120,7 +120,7 @@ protected:
  */
 class Energy : public GameResource {
 public:
-  Energy(HammerEngine::ResourceHandle handle, const std::string &id,
+  Energy(VoidLight::ResourceHandle handle, const std::string &id,
          const std::string &name);
   ~Energy() override = default;
 
@@ -148,7 +148,7 @@ public:
     COUNT = 4
   };
 
-  Mana(HammerEngine::ResourceHandle handle, const std::string &id,
+  Mana(VoidLight::ResourceHandle handle, const std::string &id,
        const std::string &name, ManaType manaType = ManaType::Arcane);
   ~Mana() override = default;
 
@@ -180,7 +180,7 @@ public:
     COUNT = 4
   };
 
-  BuildingMaterial(HammerEngine::ResourceHandle handle, const std::string &id,
+  BuildingMaterial(VoidLight::ResourceHandle handle, const std::string &id,
                    const std::string &name, MaterialType materialType);
   ~BuildingMaterial() override = default;
 
@@ -213,7 +213,7 @@ public:
     COUNT = 5
   };
 
-  Ammunition(HammerEngine::ResourceHandle handle, const std::string &id,
+  Ammunition(VoidLight::ResourceHandle handle, const std::string &id,
              const std::string &name, AmmoType ammoType);
   ~Ammunition() override = default;
 

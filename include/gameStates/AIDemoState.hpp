@@ -9,6 +9,7 @@
 #include "gameStates/GameState.hpp"
 #include "controllers/ControllerRegistry.hpp"
 #include "controllers/render/NPCRenderController.hpp"
+#include "controllers/render/ProjectileRenderController.hpp"
 #include "entities/EntityHandle.hpp"
 #include "entities/Player.hpp"
 #include "utils/Camera.hpp"
@@ -20,7 +21,7 @@
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
-namespace HammerEngine {
+namespace VoidLight {
 class GPUSceneRecorder;
 }
 
@@ -35,15 +36,15 @@ public:
     bool enter() override;
     bool exit() override;
 
-    std::string getName() const override { return "AIDemoState"; }
+    GameStateId getStateId() const override { return GameStateId::AI_DEMO; }
 
     // GPU rendering support
-    void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+    void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                            float interpolationAlpha) override;
-    void renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+    void renderGPUScene(VoidLight::GPURenderer& gpuRenderer,
                         SDL_GPURenderPass* scenePass,
                         float interpolationAlpha) override;
-    void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+    void renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                      SDL_GPURenderPass* swapchainPass) override;
     bool supportsGPURendering() const override { return true; }
 
@@ -60,6 +61,7 @@ private:
 
     // Data-driven NPC rendering (velocity-based animation)
     NPCRenderController m_npcRenderCtrl{};
+    ProjectileRenderController m_projectileRenderCtrl{};
 
     // Player entity
     PlayerPtr m_player{};
@@ -81,10 +83,10 @@ private:
     bool m_initialized{false};
 
     // Camera for world navigation
-    std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
+    std::unique_ptr<VoidLight::Camera> m_camera{nullptr};
 
     // GPU scene recorder for coordinated scene-data recording
-    std::unique_ptr<HammerEngine::GPUSceneRecorder> m_gpuSceneRecorder{nullptr};
+    std::unique_ptr<VoidLight::GPUSceneRecorder> m_gpuSceneRecorder{nullptr};
 
     // AI pause state
     bool m_aiPaused{false};

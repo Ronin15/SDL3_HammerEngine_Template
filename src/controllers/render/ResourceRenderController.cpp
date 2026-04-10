@@ -28,12 +28,12 @@ namespace {
 
 } // namespace
 
-void ResourceRenderController::update(float deltaTime, const HammerEngine::Camera& camera) {
+void ResourceRenderController::update(float deltaTime, const VoidLight::Camera& camera) {
     updateDroppedItemAnimations(deltaTime, camera);
     updateContainerStates(deltaTime, camera);
 }
 
-void ResourceRenderController::updateDroppedItemAnimations(float deltaTime, const HammerEngine::Camera& camera) {
+void ResourceRenderController::updateDroppedItemAnimations(float deltaTime, const VoidLight::Camera& camera) {
     auto& edm = EntityDataManager::Instance();
     auto& wrm = WorldResourceManager::Instance();
 
@@ -70,41 +70,14 @@ void ResourceRenderController::updateDroppedItemAnimations(float deltaTime, cons
     }
 }
 
-void ResourceRenderController::updateContainerStates([[maybe_unused]] float deltaTime,
-                                                      [[maybe_unused]] const HammerEngine::Camera& camera) {
+void ResourceRenderController::updateContainerStates(float,
+                                                      const VoidLight::Camera&) {
     // Container open/close animations will be implemented when containers are added
     // For now, containers are static (just open or closed state)
 }
 
-void ResourceRenderController::clearAll() {
-    auto& edm = EntityDataManager::Instance();
-    auto& wrm = WorldResourceManager::Instance();
-
-    // Collect all resource indices from all worlds using WRM queries
-    // Use large radius to capture all resources in loaded worlds
-    std::vector<size_t> toDestroy;
-    constexpr float LARGE_RADIUS = 100000.0f;
-    Vector2D center(0.0f, 0.0f);
-
-    // Collect dropped items
-    wrm.queryDroppedItemsInRadius(center, LARGE_RADIUS, toDestroy);
-
-    // Collect containers
-    std::vector<size_t> containers;
-    wrm.queryContainersInRadius(center, LARGE_RADIUS, containers);
-    toDestroy.insert(toDestroy.end(), containers.begin(), containers.end());
-
-    // Now destroy all collected entities (using static handle accessor)
-    for (size_t idx : toDestroy) {
-        EntityHandle handle = edm.getStaticHandle(idx);
-        if (handle.isValid()) {
-            edm.destroyEntity(handle);
-        }
-    }
-}
-
-void ResourceRenderController::recordGPUDroppedItems(const HammerEngine::GPUSceneContext& ctx,
-                                                      const HammerEngine::Camera& camera) {
+void ResourceRenderController::recordGPUDroppedItems(const VoidLight::GPUSceneContext& ctx,
+                                                      const VoidLight::Camera& camera) {
     RESOURCE_RENDER_WARN_IF(!ctx.spriteBatch, "recordGPUDroppedItems: ctx.spriteBatch is null");
     if (!ctx.spriteBatch) { return; }
 
@@ -157,8 +130,8 @@ void ResourceRenderController::recordGPUDroppedItems(const HammerEngine::GPUScen
     }
 }
 
-void ResourceRenderController::recordGPUContainers(const HammerEngine::GPUSceneContext& ctx,
-                                                    const HammerEngine::Camera& camera) {
+void ResourceRenderController::recordGPUContainers(const VoidLight::GPUSceneContext& ctx,
+                                                    const VoidLight::Camera& camera) {
     RESOURCE_RENDER_WARN_IF(!ctx.spriteBatch, "recordGPUContainers: ctx.spriteBatch is null");
     if (!ctx.spriteBatch) { return; }
 

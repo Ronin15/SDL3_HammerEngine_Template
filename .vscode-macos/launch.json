@@ -2,10 +2,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug SDL3_Template (macOS)",
+            "name": "Debug VoidLight_Template (macOS)",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/bin/debug/SDL3_Template",
+            "program": "${workspaceFolder}/bin/debug/VoidLight_Template",
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
@@ -20,10 +20,10 @@
             }
         },
         {
-            "name": "Debug SDL3_Template (No Build - macOS)",
+            "name": "Debug VoidLight_Template (No Build - macOS)",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/bin/debug/SDL3_Template",
+            "program": "${workspaceFolder}/bin/debug/VoidLight_Template",
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
@@ -37,10 +37,10 @@
             }
         },
         {
-            "name": "Debug SDL3_Template.app (Bundle)",
+            "name": "Debug VoidLight_Template.app (Bundle)",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/bin/debug/SDL3_Template.app/Contents/MacOS/SDL3_Template",
+            "program": "${workspaceFolder}/bin/debug/VoidLight_Template.app/Contents/MacOS/VoidLight_Template",
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
@@ -55,10 +55,10 @@
             }
         },
         {
-            "name": "Release SDL3_Template (macOS)",
+            "name": "Release VoidLight_Template (macOS)",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/bin/release/SDL3_Template",
+            "program": "${workspaceFolder}/bin/release/VoidLight_Template",
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {

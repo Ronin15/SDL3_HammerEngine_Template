@@ -47,9 +47,9 @@ public:
 
     AnalysisFixture() {
         if (!s_initialized) {
-            HAMMER_ENABLE_BENCHMARK_MODE();
-            HammerEngine::ThreadSystem::Instance().init();
-            EntityDataManager::Instance().init();
+            VOIDLIGHT_ENABLE_BENCHMARK_MODE();
+            BOOST_REQUIRE(VoidLight::ThreadSystem::Instance().init());
+            BOOST_REQUIRE(EntityDataManager::Instance().init());
             PathfinderManager::Instance().init();
             PathfinderManager::Instance().rebuildGrid();
             CollisionManager::Instance().init();
@@ -70,7 +70,7 @@ public:
         AIManager::Instance().prepareForStateTransition();
         ParticleManager::Instance().prepareForStateTransition();
         EventManager::Instance().prepareForStateTransition();
-        HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+        VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
     }
 
     float calculateWorldSize(size_t entityCount) {
@@ -120,7 +120,7 @@ struct AnalysisModuleCleanup {
         CollisionManager::Instance().clean();
         PathfinderManager::Instance().clean();
         EntityDataManager::Instance().clean();
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
 
         AnalysisFixture::initializedFlag() = false;
     }
@@ -139,13 +139,13 @@ BOOST_FIXTURE_TEST_SUITE(WorkerBudgetValidation, AnalysisFixture)
 BOOST_AUTO_TEST_CASE(MinWorkloadEnforcement) {
     std::cout << "\n===== MIN_WORKLOAD ENFORCEMENT (ALL SYSTEMS) =====\n" << std::endl;
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
-    std::vector<std::pair<HammerEngine::SystemType, const char*>> systems = {
-        {HammerEngine::SystemType::AI, "AI"},
-        {HammerEngine::SystemType::Collision, "Collision"},
-        {HammerEngine::SystemType::Particle, "Particle"},
-        {HammerEngine::SystemType::Event, "Event"},
+    std::vector<std::pair<VoidLight::SystemType, const char*>> systems = {
+        {VoidLight::SystemType::AI, "AI"},
+        {VoidLight::SystemType::Collision, "Collision"},
+        {VoidLight::SystemType::Particle, "Particle"},
+        {VoidLight::SystemType::Event, "Event"},
     };
 
     std::cout << "Testing MIN_WORKLOAD=100 enforcement:" << std::endl;
@@ -189,10 +189,10 @@ BOOST_AUTO_TEST_CASE(AIManager_ThresholdLearning) {
     std::cout << "\n===== AI MANAGER THRESHOLD LEARNING =====\n" << std::endl;
 
     reset();
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     auto& aiMgr = AIManager::Instance();
 
-    size_t initialThreshold = budgetMgr.getLearnedThreshold(HammerEngine::SystemType::AI);
+    size_t initialThreshold = budgetMgr.getLearnedThreshold(VoidLight::SystemType::AI);
     std::cout << "Initial threshold: " << initialThreshold << std::endl;
 
     createEntities(2000);
@@ -205,7 +205,7 @@ BOOST_AUTO_TEST_CASE(AIManager_ThresholdLearning) {
     for (int i = 0; i < 100; ++i) {
         aiMgr.update(0.016f);
 
-        size_t threshold = budgetMgr.getLearnedThreshold(HammerEngine::SystemType::AI);
+        size_t threshold = budgetMgr.getLearnedThreshold(VoidLight::SystemType::AI);
         if (threshold > 0 && learnedAt == 0) {
             learnedAt = i + 1;
             std::cout << "  Threshold learned at frame " << learnedAt
@@ -213,8 +213,8 @@ BOOST_AUTO_TEST_CASE(AIManager_ThresholdLearning) {
         }
     }
 
-    size_t finalThreshold = budgetMgr.getLearnedThreshold(HammerEngine::SystemType::AI);
-    bool finalActive = budgetMgr.isThresholdActive(HammerEngine::SystemType::AI);
+    size_t finalThreshold = budgetMgr.getLearnedThreshold(VoidLight::SystemType::AI);
+    bool finalActive = budgetMgr.isThresholdActive(VoidLight::SystemType::AI);
 
     std::cout << "\nFinal state:" << std::endl;
     std::cout << "  Learned threshold: " << finalThreshold << std::endl;
@@ -235,10 +235,10 @@ BOOST_AUTO_TEST_CASE(CollisionManager_ThresholdLearning) {
     std::cout << "\n===== COLLISION MANAGER THRESHOLD LEARNING =====\n" << std::endl;
 
     reset();
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     auto& colMgr = CollisionManager::Instance();
 
-    size_t initialThreshold = budgetMgr.getLearnedThreshold(HammerEngine::SystemType::Collision);
+    size_t initialThreshold = budgetMgr.getLearnedThreshold(VoidLight::SystemType::Collision);
     std::cout << "Initial threshold: " << initialThreshold << std::endl;
 
     createEntities(2000);
@@ -250,7 +250,7 @@ BOOST_AUTO_TEST_CASE(CollisionManager_ThresholdLearning) {
     for (int i = 0; i < 100; ++i) {
         colMgr.update(0.016f);
 
-        size_t threshold = budgetMgr.getLearnedThreshold(HammerEngine::SystemType::Collision);
+        size_t threshold = budgetMgr.getLearnedThreshold(VoidLight::SystemType::Collision);
         if (threshold > 0 && learnedAt == 0) {
             learnedAt = i + 1;
             std::cout << "  Threshold learned at frame " << learnedAt
@@ -258,8 +258,8 @@ BOOST_AUTO_TEST_CASE(CollisionManager_ThresholdLearning) {
         }
     }
 
-    size_t finalThreshold = budgetMgr.getLearnedThreshold(HammerEngine::SystemType::Collision);
-    bool finalActive = budgetMgr.isThresholdActive(HammerEngine::SystemType::Collision);
+    size_t finalThreshold = budgetMgr.getLearnedThreshold(VoidLight::SystemType::Collision);
+    bool finalActive = budgetMgr.isThresholdActive(VoidLight::SystemType::Collision);
 
     std::cout << "\nFinal state:" << std::endl;
     std::cout << "  Learned threshold: " << finalThreshold << std::endl;
@@ -276,10 +276,10 @@ BOOST_AUTO_TEST_CASE(ParticleManager_ThresholdLearning) {
     std::cout << "\n===== PARTICLE MANAGER THRESHOLD LEARNING =====\n" << std::endl;
 
     reset();
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     auto& particleMgr = ParticleManager::Instance();
 
-    size_t initialThreshold = budgetMgr.getLearnedThreshold(HammerEngine::SystemType::Particle);
+    size_t initialThreshold = budgetMgr.getLearnedThreshold(VoidLight::SystemType::Particle);
     std::cout << "Initial threshold: " << initialThreshold << std::endl;
 
     createParticleEffects(5000);
@@ -291,7 +291,7 @@ BOOST_AUTO_TEST_CASE(ParticleManager_ThresholdLearning) {
     for (int i = 0; i < 100; ++i) {
         particleMgr.update(0.016f);
 
-        size_t threshold = budgetMgr.getLearnedThreshold(HammerEngine::SystemType::Particle);
+        size_t threshold = budgetMgr.getLearnedThreshold(VoidLight::SystemType::Particle);
         if (threshold > 0 && learnedAt == 0) {
             learnedAt = i + 1;
             std::cout << "  Threshold learned at frame " << learnedAt
@@ -299,8 +299,8 @@ BOOST_AUTO_TEST_CASE(ParticleManager_ThresholdLearning) {
         }
     }
 
-    size_t finalThreshold = budgetMgr.getLearnedThreshold(HammerEngine::SystemType::Particle);
-    bool finalActive = budgetMgr.isThresholdActive(HammerEngine::SystemType::Particle);
+    size_t finalThreshold = budgetMgr.getLearnedThreshold(VoidLight::SystemType::Particle);
+    bool finalActive = budgetMgr.isThresholdActive(VoidLight::SystemType::Particle);
 
     std::cout << "\nFinal state:" << std::endl;
     std::cout << "  Learned threshold: " << finalThreshold << std::endl;
@@ -318,7 +318,7 @@ BOOST_AUTO_TEST_CASE(HysteresisRelearning) {
     std::cout << "\n===== HYSTERESIS BAND RE-LEARNING =====\n" << std::endl;
 
     reset();
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     auto& colMgr = CollisionManager::Instance();
 
     createEntities(3000);
@@ -328,8 +328,8 @@ BOOST_AUTO_TEST_CASE(HysteresisRelearning) {
         colMgr.update(0.016f);
     }
 
-    size_t threshold = budgetMgr.getLearnedThreshold(HammerEngine::SystemType::Collision);
-    bool active = budgetMgr.isThresholdActive(HammerEngine::SystemType::Collision);
+    size_t threshold = budgetMgr.getLearnedThreshold(VoidLight::SystemType::Collision);
+    bool active = budgetMgr.isThresholdActive(VoidLight::SystemType::Collision);
 
     std::cout << "  Learned threshold: " << threshold << std::endl;
     std::cout << "  Threshold active: " << (active ? "true" : "false") << std::endl;
@@ -346,10 +346,10 @@ BOOST_AUTO_TEST_CASE(HysteresisRelearning) {
 
     std::cout << "\nPhase 2: Testing workload at " << (hysteresisLow - 10) << " (below hysteresis)..." << std::endl;
 
-    auto decision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::Collision, hysteresisLow - 10);
+    auto decision = budgetMgr.shouldUseThreading(VoidLight::SystemType::Collision, hysteresisLow - 10);
 
-    size_t newThreshold = budgetMgr.getLearnedThreshold(HammerEngine::SystemType::Collision);
-    bool newActive = budgetMgr.isThresholdActive(HammerEngine::SystemType::Collision);
+    size_t newThreshold = budgetMgr.getLearnedThreshold(VoidLight::SystemType::Collision);
+    bool newActive = budgetMgr.isThresholdActive(VoidLight::SystemType::Collision);
 
     std::cout << "  After hysteresis drop:" << std::endl;
     std::cout << "    Threshold: " << newThreshold << " (was " << threshold << ")" << std::endl;
@@ -369,13 +369,13 @@ BOOST_AUTO_TEST_CASE(HysteresisRelearning) {
 BOOST_AUTO_TEST_CASE(BatchMultiplierTuning) {
     std::cout << "\n===== BATCH MULTIPLIER TUNING =====\n" << std::endl;
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
-    std::vector<std::pair<HammerEngine::SystemType, const char*>> systems = {
-        {HammerEngine::SystemType::AI, "AI"},
-        {HammerEngine::SystemType::Collision, "Collision"},
-        {HammerEngine::SystemType::Particle, "Particle"},
-        {HammerEngine::SystemType::Event, "Event"},
+    std::vector<std::pair<VoidLight::SystemType, const char*>> systems = {
+        {VoidLight::SystemType::AI, "AI"},
+        {VoidLight::SystemType::Collision, "Collision"},
+        {VoidLight::SystemType::Particle, "Particle"},
+        {VoidLight::SystemType::Event, "Event"},
     };
 
     std::cout << "Batch multiplier range validation [0.4, 2.0]:" << std::endl;
@@ -406,14 +406,14 @@ BOOST_AUTO_TEST_CASE(BatchMultiplierTuning) {
 BOOST_AUTO_TEST_CASE(ThreadingStateSummary) {
     std::cout << "\n===== WORKERBUDGET STATE SUMMARY (ALL SYSTEMS) =====\n" << std::endl;
 
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
-    std::vector<std::pair<HammerEngine::SystemType, const char*>> systems = {
-        {HammerEngine::SystemType::AI, "AI"},
-        {HammerEngine::SystemType::Collision, "Collision"},
-        {HammerEngine::SystemType::Particle, "Particle"},
-        {HammerEngine::SystemType::Event, "Event"},
-        {HammerEngine::SystemType::Pathfinding, "Pathfinding"},
+    std::vector<std::pair<VoidLight::SystemType, const char*>> systems = {
+        {VoidLight::SystemType::AI, "AI"},
+        {VoidLight::SystemType::Collision, "Collision"},
+        {VoidLight::SystemType::Particle, "Particle"},
+        {VoidLight::SystemType::Event, "Event"},
+        {VoidLight::SystemType::Pathfinding, "Pathfinding"},
     };
 
     std::cout << "System       Threshold   Active    BatchMult   MultiTP" << std::endl;

@@ -73,7 +73,7 @@ struct PowerProfileConfig {
     }
 
     static void printHelp() {
-        std::cout << "PowerProfile - SDL3 HammerEngine Power Profiling Tool\n\n";
+        std::cout << "PowerProfile - SDL3 VoidLight Power Profiling Tool\n\n";
         std::cout << "Usage: PowerProfile [OPTIONS]\n\n";
         std::cout << "Options:\n";
         std::cout << "  --entity-count NUM         Number of AI entities (default: 20000)\n";
@@ -104,7 +104,7 @@ void cleanup() {
     CollisionManager::Instance().clean();
     EntityDataManager::Instance().clean();
     PathfinderManager::Instance().clean();
-    HammerEngine::ThreadSystem::Instance().clean();
+    VoidLight::ThreadSystem::Instance().clean();
 }
 
 int main(int argc, char* argv[]) {
@@ -117,7 +117,10 @@ int main(int argc, char* argv[]) {
         if (config.verbose) {
             std::cout << "[INIT] Initializing ThreadSystem...\n";
         }
-        HammerEngine::ThreadSystem::Instance().init();
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            std::cerr << "[ERROR] ThreadSystem init failed\n";
+            return 1;
+        }
 
         if (config.verbose) {
             std::cout << "[INIT] Initializing PathfinderManager...\n";
@@ -128,7 +131,10 @@ int main(int argc, char* argv[]) {
         if (config.verbose) {
             std::cout << "[INIT] Initializing EntityDataManager...\n";
         }
-        EntityDataManager::Instance().init();
+        if (!EntityDataManager::Instance().init()) {
+            std::cerr << "[ERROR] EntityDataManager init failed\n";
+            return 1;
+        }
 
         if (config.verbose) {
             std::cout << "[INIT] Initializing CollisionManager...\n";
@@ -205,7 +211,7 @@ int main(int argc, char* argv[]) {
             AIManager::Instance().update(0.016f);
 
             // Wait for async work to complete
-            while (HammerEngine::ThreadSystem::Instance().isBusy()) {
+            while (VoidLight::ThreadSystem::Instance().isBusy()) {
                 std::this_thread::sleep_for(std::chrono::microseconds(50));
             }
 

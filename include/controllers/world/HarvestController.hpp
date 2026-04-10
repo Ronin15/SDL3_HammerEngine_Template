@@ -102,7 +102,7 @@ public:
      * @brief Get the type of current harvest
      * @return HarvestType of current target, Gathering if not harvesting
      */
-    [[nodiscard]] HammerEngine::HarvestType getCurrentType() const { return m_currentType; }
+    [[nodiscard]] VoidLight::HarvestType getCurrentType() const { return m_currentType; }
 
     /**
      * @brief Get action verb for UI display ("Mining...", "Chopping...", etc.)
@@ -147,7 +147,7 @@ private:
     float m_harvestDuration{0.0f};
     EntityHandle m_currentTarget{};
     size_t m_targetStaticIndex{0};  // EDM static pool index
-    HammerEngine::HarvestType m_currentType{HammerEngine::HarvestType::Gathering};
+    VoidLight::HarvestType m_currentType{VoidLight::HarvestType::Gathering};
     Vector2D m_harvestStartPos{};   // Player position when harvest started
     Vector2D m_targetPosition{};    // Target harvestable position
 

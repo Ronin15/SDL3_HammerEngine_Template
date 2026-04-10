@@ -15,7 +15,9 @@
 // Global fixture for test setup and cleanup
 struct TestFixture {
     TestFixture() {
-        EntityDataManager::Instance().init();
+        if (!EntityDataManager::Instance().init()) {
+            throw std::runtime_error("EntityDataManager::init() failed");
+        }
     }
 
     ~TestFixture() {

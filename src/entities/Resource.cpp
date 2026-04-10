@@ -8,7 +8,7 @@
 #include <format>
 #include <unordered_map>
 
-Resource::Resource(HammerEngine::ResourceHandle handle, const std::string &id,
+Resource::Resource(VoidLight::ResourceHandle handle, const std::string &id,
                    const std::string &name, ResourceCategory category,
                    ResourceType type)
     : m_handle(handle), m_id(id), m_name(name), m_category(category),

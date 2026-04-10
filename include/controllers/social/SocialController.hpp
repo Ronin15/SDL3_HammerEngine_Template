@@ -16,11 +16,10 @@
  *    Price modifiers, inventory transfer, trade UI lifecycle.
  *
  * 2. SOCIAL INTERACTIONS — Gifts, greetings, theft, relationship building.
- *    Records interactions in NPC memory (NPCMemoryData), modifies emotions,
- *    and will expand to affect NPC personality stats (bravery, etc.)
- *    through sustained social bonds.
+ *    Detects and routes interaction outcomes through AI-owned social state
+ *    application so NPC memory and emotions stay under AI ownership.
  *
- * Both domains share relationship queries and NPC memory access.
+ * Both domains share relationship queries over NPC memory state.
  *
  * Ownership: ControllerRegistry owns the controller instance.
  */
@@ -66,7 +65,7 @@ enum class InteractionType {
  * @brief Item display info for trade UI lists
  */
 struct TradeItemInfo {
-    HammerEngine::ResourceHandle handle;
+    VoidLight::ResourceHandle handle;
     std::string name;
     int quantity{0};
     float unitPrice{0.0f};
@@ -129,19 +128,19 @@ public:
     // ========================================================================
 
     TradeResult tryBuy(EntityHandle npcHandle,
-                       HammerEngine::ResourceHandle itemHandle,
+                       VoidLight::ResourceHandle itemHandle,
                        int quantity = 1);
 
     TradeResult trySell(EntityHandle npcHandle,
-                        HammerEngine::ResourceHandle itemHandle,
+                        VoidLight::ResourceHandle itemHandle,
                         int quantity = 1);
 
     [[nodiscard]] float calculateBuyPrice(EntityHandle npcHandle,
-                                          HammerEngine::ResourceHandle itemHandle,
+                                          VoidLight::ResourceHandle itemHandle,
                                           int quantity = 1) const;
 
     [[nodiscard]] float calculateSellPrice(EntityHandle npcHandle,
-                                           HammerEngine::ResourceHandle itemHandle,
+                                           VoidLight::ResourceHandle itemHandle,
                                            int quantity = 1) const;
 
     // ========================================================================
@@ -155,16 +154,15 @@ public:
      * NPCs remember gifts and become more friendly.
      */
     bool tryGift(EntityHandle npcHandle,
-                 HammerEngine::ResourceHandle itemHandle,
+                 VoidLight::ResourceHandle itemHandle,
                  int quantity = 1);
 
     /**
-     * @brief Record a social interaction in NPC memory
+     * @brief Record a social interaction for AI-owned NPC state application
      * @param value Interaction quality (-1.0 to +1.0)
      *
-     * Creates a MemoryType::Interaction entry and updates NPC emotions.
-     * Future: sustained positive interactions will improve NPC personality
-     * stats (bravery, composure, etc.) through social bonds.
+     * Routes the interaction to AI-owned logic that records
+     * MemoryType::Interaction and updates NPC emotions.
      */
     void recordInteraction(EntityHandle npcHandle,
                            InteractionType type,
@@ -175,7 +173,7 @@ public:
      */
     void reportTheft(EntityHandle thief,
                      EntityHandle victim,
-                     HammerEngine::ResourceHandle stolenItem,
+                     VoidLight::ResourceHandle stolenItem,
                      int quantity = 1);
 
     /**
@@ -240,10 +238,8 @@ private:
     // --- Memory recording ---
     void recordTrade(EntityHandle npcHandle, float tradeValue, bool wasGoodDeal);
     void recordGift(EntityHandle npcHandle, float giftValue);
-    void updateEmotions(EntityHandle npcHandle, InteractionType type, float value);
-
     // --- Utility ---
-    [[nodiscard]] float getItemBaseValue(HammerEngine::ResourceHandle itemHandle) const;
+    [[nodiscard]] float getItemBaseValue(VoidLight::ResourceHandle itemHandle) const;
 
     // Player reference
     std::weak_ptr<Player> mp_player;

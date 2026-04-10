@@ -20,6 +20,25 @@
 
 namespace {
     constexpr const char* GAMEPLAY_EVENT_LOG = "gameplay_event_log";
+
+    AIManager::SocialInteractionType toAISocialInteractionType(InteractionType type) {
+        switch (type) {
+            case InteractionType::Trade:
+                return AIManager::SocialInteractionType::Trade;
+            case InteractionType::Gift:
+                return AIManager::SocialInteractionType::Gift;
+            case InteractionType::Greeting:
+                return AIManager::SocialInteractionType::Greeting;
+            case InteractionType::Help:
+                return AIManager::SocialInteractionType::Help;
+            case InteractionType::Theft:
+                return AIManager::SocialInteractionType::Theft;
+            case InteractionType::Insult:
+                return AIManager::SocialInteractionType::Insult;
+        }
+
+        return AIManager::SocialInteractionType::Greeting;
+    }
 }
 
 void SocialController::subscribe() {
@@ -34,7 +53,7 @@ void SocialController::subscribe() {
     SOCIAL_INFO("SocialController subscribed");
 }
 
-void SocialController::update([[maybe_unused]] float deltaTime) {
+void SocialController::update(float) {
     if (!m_isTrading) {
         return;
     }
@@ -247,7 +266,7 @@ float SocialController::getCurrentTradePriceModifier() const {
 // ============================================================================
 
 TradeResult SocialController::tryBuy(EntityHandle npcHandle,
-                                     HammerEngine::ResourceHandle itemHandle,
+                                     VoidLight::ResourceHandle itemHandle,
                                      int quantity) {
     auto player = mp_player.lock();
     if (!player) {
@@ -317,7 +336,7 @@ TradeResult SocialController::tryBuy(EntityHandle npcHandle,
 }
 
 TradeResult SocialController::trySell(EntityHandle npcHandle,
-                                      HammerEngine::ResourceHandle itemHandle,
+                                      VoidLight::ResourceHandle itemHandle,
                                       int quantity) {
     auto player = mp_player.lock();
     if (!player) {
@@ -388,7 +407,7 @@ TradeResult SocialController::trySell(EntityHandle npcHandle,
 }
 
 float SocialController::calculateBuyPrice(EntityHandle npcHandle,
-                                          HammerEngine::ResourceHandle itemHandle,
+                                          VoidLight::ResourceHandle itemHandle,
                                           int quantity) const {
     float baseValue = getItemBaseValue(itemHandle);
     float modifier = getPriceModifier(npcHandle);
@@ -397,7 +416,7 @@ float SocialController::calculateBuyPrice(EntityHandle npcHandle,
 }
 
 float SocialController::calculateSellPrice(EntityHandle npcHandle,
-                                           HammerEngine::ResourceHandle itemHandle,
+                                           VoidLight::ResourceHandle itemHandle,
                                            int quantity) const {
     float baseValue = getItemBaseValue(itemHandle);
     float modifier = getPriceModifier(npcHandle);
@@ -413,7 +432,7 @@ float SocialController::calculateSellPrice(EntityHandle npcHandle,
 // ============================================================================
 
 bool SocialController::tryGift(EntityHandle npcHandle,
-                               HammerEngine::ResourceHandle itemHandle,
+                               VoidLight::ResourceHandle itemHandle,
                                int quantity) {
     auto player = mp_player.lock();
     if (!player) {
@@ -462,50 +481,15 @@ void SocialController::recordInteraction(EntityHandle npcHandle,
         return;
     }
 
-    auto& edm = EntityDataManager::Instance();
-    size_t idx = edm.getIndex(npcHandle);
-    if (idx == SIZE_MAX) {
-        return;
-    }
-
     auto player = mp_player.lock();
     EntityHandle playerHandle = player ? player->getHandle() : EntityHandle{};
-
-    MemoryEntry entry;
-    entry.subject = playerHandle;
-    entry.location = edm.getHotDataByIndex(idx).transform.position;
-    entry.timestamp = GameTimeManager::Instance().getTotalGameTimeSeconds();
-    entry.value = value;
-    entry.type = MemoryType::Interaction;
-    entry.flags = MemoryEntry::FLAG_VALID;
-
-    float importance = std::abs(value) * 50.0f;
-    switch (type) {
-        case InteractionType::Gift:
-            importance += 50.0f;
-            break;
-        case InteractionType::Help:
-            importance += 75.0f;
-            break;
-        case InteractionType::Theft:
-            importance = 200.0f;
-            break;
-        case InteractionType::Trade:
-            importance += 25.0f;
-            break;
-        default:
-            importance += 10.0f;
-            break;
-    }
-    entry.importance = static_cast<uint8_t>(std::min(255.0f, importance));
-
-    edm.addMemory(idx, entry);
-    updateEmotions(npcHandle, type, value);
+    AIManager::Instance().applySocialInteraction(
+        npcHandle, playerHandle, toAISocialInteractionType(type), value);
 }
 
 void SocialController::reportTheft(EntityHandle thief,
                                    EntityHandle victim,
-                                   HammerEngine::ResourceHandle stolenItem,
+                                   VoidLight::ResourceHandle stolenItem,
                                    int quantity) {
     if (!victim.isValid()) {
         SOCIAL_DEBUG("reportTheft: Invalid victim handle");
@@ -537,8 +521,8 @@ void SocialController::reportTheft(EntityHandle thief,
     alertNearbyGuards(theftLocation, thief);
 }
 
-void SocialController::alertNearbyGuards(const Vector2D& location, EntityHandle criminal) {
-    (void)criminal;  // Guards detect threats autonomously after alert
+void SocialController::alertNearbyGuards(const Vector2D& location, EntityHandle) {
+    // Guards detect threats autonomously after alert
     auto& edm = EntityDataManager::Instance();
 
     // Scan guard index for nearby guards — O(G) not O(N)
@@ -630,52 +614,7 @@ void SocialController::recordGift(EntityHandle npcHandle, float giftValue) {
     recordInteraction(npcHandle, InteractionType::Gift, value);
 }
 
-void SocialController::updateEmotions(EntityHandle npcHandle,
-                                      InteractionType type,
-                                      float value) {
-    auto& edm = EntityDataManager::Instance();
-    size_t idx = edm.getIndex(npcHandle);
-    if (idx == SIZE_MAX) {
-        return;
-    }
-
-    float aggression = 0.0f;
-    float fear = 0.0f;
-    float curiosity = 0.0f;
-    float suspicion = 0.0f;
-
-    switch (type) {
-        case InteractionType::Trade:
-            suspicion = -0.05f * (value > 0 ? 1.0f : -0.5f);
-            break;
-        case InteractionType::Gift:
-            suspicion = -0.15f;
-            aggression = -0.1f;
-            fear = -0.05f;
-            break;
-        case InteractionType::Greeting:
-            suspicion = -0.02f;
-            break;
-        case InteractionType::Help:
-            suspicion = -0.2f;
-            aggression = -0.15f;
-            fear = -0.1f;
-            break;
-        case InteractionType::Theft:
-            suspicion = 0.4f;
-            aggression = 0.3f;
-            fear = 0.1f;
-            break;
-        case InteractionType::Insult:
-            aggression = 0.2f;
-            suspicion = 0.15f;
-            break;
-    }
-
-    edm.modifyEmotions(idx, aggression, fear, curiosity, suspicion);
-}
-
-float SocialController::getItemBaseValue(HammerEngine::ResourceHandle itemHandle) const {
+float SocialController::getItemBaseValue(VoidLight::ResourceHandle itemHandle) const {
     if (!itemHandle.isValid()) {
         return 0.0f;
     }

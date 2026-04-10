@@ -7,6 +7,7 @@ Controllers are state-scoped helpers owned by `ControllerRegistry`. They do not 
 Current controller families:
 
 - `controllers/combat/`
+- `controllers/ui/`
 - `controllers/social/`
 - `controllers/world/`
 - `controllers/render/`
@@ -16,6 +17,7 @@ Current controller families:
 | Controller | Role | Notes |
 |-----------|------|-------|
 | [CombatController](CombatController.md) | Player melee combat, stamina, target HUD data | Queries AI/EDM directly, updates gameplay event log |
+| [GameplayHUDController](GameplayHUDController.md) | State-scoped combat HUD bridge | Subscribes to Combat events; exposes transient target state |
 | [WeatherController](WeatherController.md) | Weather state tracking | Event-driven |
 | [DayNightController](DayNightController.md) | Time-of-day visuals and GPU lighting | Requires `update(dt)` each frame |
 | [HarvestController](HarvestController.md) | Progress-based harvesting of WRM/EDM harvestables | Cancels on movement, emits resource/harvest events |
@@ -26,6 +28,7 @@ Current controller families:
 ```cpp
 bool GamePlayState::enter() {
     m_controllers.add<CombatController>(mp_player);
+    m_controllers.add<GameplayHUDController>(mp_player->getHandle());
     m_controllers.add<HarvestController>(mp_player);
     m_controllers.add<SocialController>(mp_player);
     m_controllers.add<WeatherController>();
@@ -39,7 +42,7 @@ void GamePlayState::update(float dt) {
 }
 
 bool GamePlayState::exit() {
-    m_controllers.unsubscribeAll();
+    m_controllers.clear();
     return true;
 }
 ```

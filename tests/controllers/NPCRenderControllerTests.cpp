@@ -7,7 +7,7 @@
  * @file NPCRenderControllerTests.cpp
  * @brief Tests for NPCRenderController
  *
- * Tests velocity-based animation logic, edge cases, and cleanup.
+ * Tests velocity-based animation logic and edge cases.
  * Note: Render tests are limited since we can't easily test SDL rendering.
  */
 
@@ -34,23 +34,22 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
     return std::abs(a - b) < epsilon;
 }
 
-namespace {
-
-struct ThreadSystemTestLifetime {
-    ThreadSystemTestLifetime() {
-        BOOST_REQUIRE_MESSAGE(HammerEngine::ThreadSystem::Instance().init(),
-                              "Failed to initialize ThreadSystem for NPCRenderController tests");
+struct ThreadSystemFixture {
+    ThreadSystemFixture() {
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            throw std::runtime_error("Failed to initialize ThreadSystem for NPCRenderController tests");
+        }
     }
-
-    ~ThreadSystemTestLifetime() {
-        HammerEngine::ThreadSystem::Instance().clean();
+    ~ThreadSystemFixture() {
+        VoidLight::ThreadSystem::Instance().clean();
     }
 };
+BOOST_GLOBAL_FIXTURE(ThreadSystemFixture);
 
-ThreadSystemTestLifetime g_threadSystemTestLifetime{};
+namespace {
 
-bool initSpriteBatchForRecording(HammerEngine::SpriteBatch& batch) {
-    SDL_GPUDevice* device = HammerEngine::GPUDevice::Instance().get();
+bool initSpriteBatchForRecording(VoidLight::SpriteBatch& batch) {
+    SDL_GPUDevice* device = VoidLight::GPUDevice::Instance().get();
     if (!device) {
         return false;
     }
@@ -72,7 +71,7 @@ bool initSpriteBatchForRecording(HammerEngine::SpriteBatch& batch) {
 class NPCRenderControllerFixture {
 public:
     NPCRenderControllerFixture() {
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         AIManager::Instance().init();
@@ -361,15 +360,15 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUUsesInterpolatedPositionAndAtlasFrame) {
     rd.currentRow = 1;
     rd.flipMode = static_cast<uint8_t>(SDL_FLIP_NONE);
 
-    std::vector<HammerEngine::SpriteVertex> vertices(8);
-    HammerEngine::SpriteBatch batch;
+    std::vector<VoidLight::SpriteVertex> vertices(8);
+    VoidLight::SpriteBatch batch;
     if (!initSpriteBatchForRecording(batch)) {
         BOOST_TEST_MESSAGE("Skipping GPU recording test: no GPU device available");
         return;
     }
     batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 1024.0f, 1024.0f, 512.0f);
 
-    HammerEngine::GPUSceneContext ctx{};
+    VoidLight::GPUSceneContext ctx{};
     ctx.cameraX = 10.0f;
     ctx.cameraY = 20.0f;
     ctx.interpolationAlpha = 0.25f;
@@ -378,7 +377,7 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUUsesInterpolatedPositionAndAtlasFrame) {
 
     m_controller.recordGPU(ctx);
 
-    BOOST_CHECK_EQUAL(batch.end(), HammerEngine::SpriteBatch::VERTICES_PER_SPRITE);
+    BOOST_CHECK_EQUAL(batch.end(), VoidLight::SpriteBatch::VERTICES_PER_SPRITE);
     BOOST_CHECK_CLOSE(vertices[0].x, 95.0f - ctx.cameraX - rd.frameWidth * 0.5f, 0.001f);
     BOOST_CHECK_CLOSE(vertices[0].y, 512.0f - (115.0f - 20.0f - rd.frameHeight * 0.5f), 0.001f);
     BOOST_CHECK_CLOSE(vertices[1].x, vertices[0].x + rd.frameWidth, 0.001f);
@@ -414,15 +413,15 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUFlipsHorizontalSourceCoords) {
     m_controller.update(0.016f);
     BOOST_CHECK_EQUAL(rd.flipMode, static_cast<uint8_t>(SDL_FLIP_HORIZONTAL));
 
-    std::vector<HammerEngine::SpriteVertex> vertices(8);
-    HammerEngine::SpriteBatch batch;
+    std::vector<VoidLight::SpriteVertex> vertices(8);
+    VoidLight::SpriteBatch batch;
     if (!initSpriteBatchForRecording(batch)) {
         BOOST_TEST_MESSAGE("Skipping GPU recording test: no GPU device available");
         return;
     }
     batch.begin(vertices.data(), vertices.size(), nullptr, nullptr, 1024.0f, 1024.0f, 512.0f);
 
-    HammerEngine::GPUSceneContext ctx{};
+    VoidLight::GPUSceneContext ctx{};
     ctx.cameraX = 0.0f;
     ctx.cameraY = 0.0f;
     ctx.interpolationAlpha = 1.0f;
@@ -431,7 +430,7 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUFlipsHorizontalSourceCoords) {
 
     m_controller.recordGPU(ctx);
 
-    BOOST_CHECK_EQUAL(batch.end(), HammerEngine::SpriteBatch::VERTICES_PER_SPRITE);
+    BOOST_CHECK_EQUAL(batch.end(), VoidLight::SpriteBatch::VERTICES_PER_SPRITE);
     BOOST_CHECK_GT(vertices[0].u, vertices[1].u);
     BOOST_CHECK_CLOSE(vertices[0].v, vertices[1].v, 0.001f);
     batch.shutdown();
@@ -440,12 +439,12 @@ BOOST_AUTO_TEST_CASE(TestRecordGPUFlipsHorizontalSourceCoords) {
 BOOST_AUTO_TEST_SUITE_END()
 
 // ============================================================================
-// CLEAR SPAWNED NPCS TESTS
+// AI-OWNED NPC CLEANUP TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(ClearSpawnedNPCsTests, NPCRenderControllerFixture)
+BOOST_FIXTURE_TEST_SUITE(AIManagerNPCTransitionCleanupTests, NPCRenderControllerFixture)
 
-BOOST_AUTO_TEST_CASE(TestClearDestroysAllNPCs) {
+BOOST_AUTO_TEST_CASE(TestDestroyAllNPCsForStateTransitionDestroysAllNPCs) {
     // Create several NPCs
     createTestNPC(Vector2D(100.0f, 100.0f));
     createTestNPC(Vector2D(200.0f, 200.0f));
@@ -453,8 +452,7 @@ BOOST_AUTO_TEST_CASE(TestClearDestroysAllNPCs) {
 
     BOOST_CHECK_EQUAL(EntityDataManager::Instance().getEntityCount(EntityKind::NPC), 3);
 
-    // Clear all NPCs
-    m_controller.clearSpawnedNPCs();
+    AIManager::Instance().destroyAllNPCsForStateTransition();
 
     // Process destruction queue
     EntityDataManager::Instance().processDestructionQueue();
@@ -463,30 +461,30 @@ BOOST_AUTO_TEST_CASE(TestClearDestroysAllNPCs) {
     BOOST_CHECK_EQUAL(EntityDataManager::Instance().getEntityCount(EntityKind::NPC), 0);
 }
 
-BOOST_AUTO_TEST_CASE(TestClearUnregistersFromAI) {
+BOOST_AUTO_TEST_CASE(TestDestroyAllNPCsForStateTransitionUnregistersFromAI) {
     EntityHandle npc = createTestNPC(Vector2D(100.0f, 100.0f));
     BOOST_REQUIRE(npc.isValid());
 
-    // Register with AI (need a behavior registered first)
-    // Since we don't have behaviors registered in this test, we skip the AI check
-    // but verify the destroy path works
+    AIManager::Instance().registerEntity(npc, "Idle");
+    BOOST_CHECK(AIManager::Instance().hasBehavior(npc));
 
-    m_controller.clearSpawnedNPCs();
+    AIManager::Instance().destroyAllNPCsForStateTransition();
+    BOOST_CHECK(!AIManager::Instance().hasBehavior(npc));
     EntityDataManager::Instance().processDestructionQueue();
 
     // NPC handle should now be invalid
     BOOST_CHECK(!EntityDataManager::Instance().isValidHandle(npc));
 }
 
-BOOST_AUTO_TEST_CASE(TestClearWithNoNPCsIsNoOp) {
+BOOST_AUTO_TEST_CASE(TestDestroyAllNPCsForStateTransitionWithNoNPCsIsNoOp) {
     // Ensure no NPCs exist
     BOOST_CHECK_EQUAL(EntityDataManager::Instance().getEntityCount(EntityKind::NPC), 0);
 
     // This should not crash
-    BOOST_CHECK_NO_THROW(m_controller.clearSpawnedNPCs());
+    BOOST_CHECK_NO_THROW(AIManager::Instance().destroyAllNPCsForStateTransition());
 }
 
-BOOST_AUTO_TEST_CASE(TestClearDoesNotAffectOtherEntities) {
+BOOST_AUTO_TEST_CASE(TestDestroyAllNPCsForStateTransitionDoesNotAffectOtherEntities) {
     // Create an NPC
     createTestNPC(Vector2D(100.0f, 100.0f));
 
@@ -497,8 +495,7 @@ BOOST_AUTO_TEST_CASE(TestClearDoesNotAffectOtherEntities) {
     BOOST_CHECK_EQUAL(EntityDataManager::Instance().getEntityCount(EntityKind::NPC), 1);
     BOOST_CHECK_EQUAL(EntityDataManager::Instance().getEntityCount(EntityKind::Player), 1);
 
-    // Clear NPCs
-    m_controller.clearSpawnedNPCs();
+    AIManager::Instance().destroyAllNPCsForStateTransition();
     EntityDataManager::Instance().processDestructionQueue();
 
     // NPCs should be gone, player should remain

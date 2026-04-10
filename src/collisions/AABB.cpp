@@ -5,7 +5,7 @@
 
 #include "collisions/AABB.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 
 bool AABB::intersects(const AABB& other) const {
     // Use epsilon tolerance for cross-platform floating-point consistency
@@ -30,4 +30,4 @@ Vector2D AABB::closestPoint(const Vector2D& p) const {
     return Vector2D{clampedX, clampedY};
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

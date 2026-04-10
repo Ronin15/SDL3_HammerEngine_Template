@@ -7,7 +7,7 @@
 #include <chrono>
 #include <thread>
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 #ifndef NDEBUG
 

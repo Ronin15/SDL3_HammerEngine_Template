@@ -3,10 +3,18 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-// Only compile this file for release builds - debug builds use inline definitions
-#ifndef DEBUG
-
 #include "core/Logger.hpp"
+
+namespace VoidLight {
+
+// Static member definitions - always compiled in both debug and release builds
+std::atomic<bool> Logger::s_benchmarkMode{false};
+std::mutex Logger::s_logMutex{};
+
+} // namespace VoidLight
+
+#ifndef DEBUG
+// Release builds only - file-based logging implementation
 
 #include <SDL3/SDL.h>
 
@@ -20,7 +28,7 @@
 #include <sstream>
 #include <vector>
 
-namespace HammerEngine {
+namespace VoidLight {
 namespace {
 
 // Internal file logger implementation for release builds
@@ -87,8 +95,8 @@ private:
         m_initialized = true;
 
         // Get writable directory using SDL_GetPrefPath
-        // HAMMER_APP_NAME is defined via CMake from ${PROJECT_NAME}
-        const char* prefPath = SDL_GetPrefPath("HammerForged", HAMMER_APP_NAME);
+        // VOIDLIGHT_APP_NAME is defined via CMake from ${PROJECT_NAME}
+        const char* prefPath = SDL_GetPrefPath("HammerForgedGames", VOIDLIGHT_APP_NAME);
         if (prefPath == nullptr) {
             return; // Cannot get pref path, file logging disabled
         }
@@ -117,7 +125,7 @@ private:
 #endif
 
         std::ostringstream filename;
-        filename << "hammer_" << std::put_time(&timeinfo, "%Y%m%d_%H%M%S")
+        filename << "voidlight_" << std::put_time(&timeinfo, "%Y%m%d_%H%M%S")
                  << ".log";
 
         fs::path logPath = logDir / filename.str();
@@ -125,7 +133,7 @@ private:
 
         if (m_fileStream.is_open()) {
             // Write header with app name
-            m_fileStream << "=== " << HAMMER_APP_NAME << " Log ===\n";
+            m_fileStream << "=== " << VOIDLIGHT_APP_NAME << " Log ===\n";
             m_fileStream << "Started: "
                          << std::put_time(&timeinfo, "%Y-%m-%d %H:%M:%S")
                          << "\n";
@@ -143,7 +151,7 @@ private:
         std::error_code ec;
         for (const auto& entry : fs::directory_iterator(logDir, ec)) {
             if (entry.path().extension() == ".log" &&
-                entry.path().filename().string().starts_with("hammer_")) {
+                entry.path().filename().string().starts_with("voidlight_")) {
                 logFiles.push_back(entry);
             }
         }
@@ -189,6 +197,6 @@ void Logger::Log(const char* level, const char* system, const char* message) {
     FileLogger::Instance().write(level, system, message);
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // ifndef DEBUG

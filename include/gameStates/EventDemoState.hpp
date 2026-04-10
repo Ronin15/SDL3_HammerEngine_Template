@@ -13,6 +13,7 @@
 #include "managers/ParticleManager.hpp"
 
 #include "controllers/render/NPCRenderController.hpp"
+#include "controllers/render/ProjectileRenderController.hpp"
 #include "entities/EntityHandle.hpp"
 #include "entities/Player.hpp"
 #include "utils/Camera.hpp"
@@ -26,7 +27,7 @@
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
-namespace HammerEngine {
+namespace VoidLight {
 class GPUSceneRecorder;
 }
 
@@ -41,15 +42,15 @@ public:
   bool enter() override;
   bool exit() override;
 
-  std::string getName() const override { return "EventDemoState"; }
+  GameStateId getStateId() const override { return GameStateId::EVENT_DEMO; }
 
   // GPU rendering support
-  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+  void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                          float interpolationAlpha) override;
-  void renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+  void renderGPUScene(VoidLight::GPURenderer& gpuRenderer,
                       SDL_GPURenderPass* scenePass,
                       float interpolationAlpha) override;
-  void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+  void renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                    SDL_GPURenderPass* swapchainPass) override;
   bool supportsGPURendering() const override { return true; }
 
@@ -75,15 +76,16 @@ private:
 
   // Data-driven NPC rendering (velocity-based animation)
   NPCRenderController m_npcRenderCtrl{};
+  ProjectileRenderController m_projectileRenderCtrl{};
 
   // Player entity
   PlayerPtr m_player{};
   
   // Camera for world navigation
-  std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
+  std::unique_ptr<VoidLight::Camera> m_camera{nullptr};
 
   // GPU scene recorder for coordinated scene-data recording
-  std::unique_ptr<HammerEngine::GPUSceneRecorder> m_gpuSceneRecorder{nullptr};
+  std::unique_ptr<VoidLight::GPUSceneRecorder> m_gpuSceneRecorder{nullptr};
 
   // Demo settings
   float m_worldWidth{800.0f};
@@ -127,9 +129,9 @@ private:
   bool m_showInventory{false}; // Hide inventory panel by default like GamePlayState
 
   // Resource change tracking for demonstrations
-  std::unordered_map<HammerEngine::ResourceHandle, int>
+  std::unordered_map<VoidLight::ResourceHandle, int>
       m_achievementThresholds{};
-  std::unordered_map<HammerEngine::ResourceHandle, bool>
+  std::unordered_map<VoidLight::ResourceHandle, bool>
       m_achievementsUnlocked{};
   std::vector<std::string> m_resourceLog{}; // Detailed resource change log
 
@@ -145,10 +147,10 @@ private:
   void toggleInventoryDisplay(); // Toggle inventory visibility like GamePlayState
 
   // Resource change event demonstration methods
-  void processResourceAchievements(HammerEngine::ResourceHandle handle,
+  void processResourceAchievements(VoidLight::ResourceHandle handle,
                                    int oldQty, int newQty);
-  void checkResourceWarnings(HammerEngine::ResourceHandle handle, int newQty);
-  void logResourceAnalytics(HammerEngine::ResourceHandle handle, int oldQty,
+  void checkResourceWarnings(VoidLight::ResourceHandle handle, int newQty);
+  void logResourceAnalytics(VoidLight::ResourceHandle handle, int oldQty,
                             int newQty, const std::string &source);
 
   // Camera management methods

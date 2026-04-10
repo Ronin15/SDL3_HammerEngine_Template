@@ -6,7 +6,7 @@
 
 ## Overview
 
-The SaveGameManager is a comprehensive save and load system designed for the Hammer Engine Template. It provides robust file management, binary save format with version control, and seamless integration with the engine's BinarySerializer system. The manager handles everything from slot-based saves to custom file naming, with full cross-platform compatibility.
+The SaveGameManager is a comprehensive save and load system designed for the VoidLight-Framework. It provides robust file management, binary save format with version control, and seamless integration with the engine's BinarySerializer system. The manager handles everything from slot-based saves to custom file naming, with full cross-platform compatibility.
 
 ## Table of Contents
 
@@ -662,7 +662,7 @@ void benchmarkSaveLoad() {
 
 ### Engine Integration
 
-The SaveGameManager is fully integrated into the Hammer Engine's lifecycle:
+The SaveGameManager is fully integrated into the VoidLight-Framework's lifecycle:
 
 ```cpp
 // In GameEngine.cpp - cleanup sequence
@@ -964,7 +964,7 @@ The SaveGameManager automatically handles:
 
 ## Conclusion
 
-The SaveGameManager provides a robust, high-performance save system for the Hammer Engine Template. With its binary format, comprehensive error handling, and seamless BinarySerializer integration, it offers both safety and speed for game save operations.
+The SaveGameManager provides a robust, high-performance save system for the VoidLight-Framework. With its binary format, comprehensive error handling, and seamless BinarySerializer integration, it offers both safety and speed for game save operations.
 
 Key benefits:
 - **Fast**: 10x performance improvement over text-based saves

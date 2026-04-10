@@ -22,6 +22,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/ProjectileManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -314,7 +315,7 @@ bool EventDemoState::enter() {
     initializeCamera();
 
     // Create GPU scene renderer for coordinated GPU rendering
-    m_gpuSceneRecorder = std::make_unique<HammerEngine::GPUSceneRecorder>();
+    m_gpuSceneRecorder = std::make_unique<VoidLight::GPUSceneRecorder>();
 
     // Pre-allocate status buffer to avoid per-frame allocations
     m_statusBuffer.reserve(64);
@@ -362,7 +363,7 @@ bool EventDemoState::exit() {
       m_player.reset();
 
       // Clear spawned NPCs (data-driven via NPCRenderController)
-      m_npcRenderCtrl.clearSpawnedNPCs();
+      aiMgr.destroyAllNPCsForStateTransition();
 
       // Clear controllers
       m_controllers.clear();
@@ -371,6 +372,7 @@ bool EventDemoState::exit() {
       unregisterEventHandlers();
 
       aiMgr.prepareForStateTransition();
+      ProjectileManager::Instance().prepareForStateTransition();
       bgSimMgr.prepareForStateTransition();
       worldMgr.prepareForStateTransition();
 
@@ -389,7 +391,7 @@ bool EventDemoState::exit() {
       }
 
       edm.prepareForStateTransition();
-      HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+      VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
 
       if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
         particleMgr.prepareForStateTransition();
@@ -433,7 +435,7 @@ bool EventDemoState::exit() {
     m_player.reset();
 
     // Clear spawned NPCs (data-driven via NPCRenderController)
-    m_npcRenderCtrl.clearSpawnedNPCs();
+    aiMgr.destroyAllNPCsForStateTransition();
 
     // Clear controllers
     m_controllers.clear();
@@ -442,6 +444,7 @@ bool EventDemoState::exit() {
     unregisterEventHandlers();
 
     aiMgr.prepareForStateTransition();
+    ProjectileManager::Instance().prepareForStateTransition();
     bgSimMgr.prepareForStateTransition();
     worldMgr.prepareForStateTransition();
 
@@ -461,7 +464,7 @@ bool EventDemoState::exit() {
     }
 
     edm.prepareForStateTransition();
-    HammerEngine::WorkerBudgetManager::Instance().prepareForStateTransition();
+    VoidLight::WorkerBudgetManager::Instance().prepareForStateTransition();
 
     // Simple particle cleanup - let prepareForStateTransition handle everything
     if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
@@ -506,7 +509,7 @@ void EventDemoState::unregisterEventHandlers() {
   try {
     auto &eventMgr = EventManager::Instance();
     for (const auto &tok : m_handlerTokens) {
-      (void)eventMgr.removeHandler(tok);
+      eventMgr.removeHandler(tok);
     }
     m_handlerTokens.clear();
   } catch (...) {
@@ -523,7 +526,7 @@ void EventDemoState::update(float deltaTime) {
     GAMESTATE_INFO("Transitioning to LoadingState for world generation");
 
     // Create world configuration for event demo (HUGE world)
-    HammerEngine::WorldGenerationConfig config;
+    VoidLight::WorldGenerationConfig config;
     config.width = 500; // Massive 500x500 world
     config.height = 500;
     config.seed = static_cast<int>(std::time(nullptr));
@@ -534,13 +537,13 @@ void EventDemoState::update(float deltaTime) {
 
     // Configure LoadingState and transition to it
     auto *loadingState = dynamic_cast<LoadingState *>(
-        mp_stateManager->getState("LoadingState").get());
+        mp_stateManager->getState(GameStateId::LOADING).get());
     if (loadingState) {
-      loadingState->configure("EventDemoState", config);
+      loadingState->configure(GameStateId::EVENT_DEMO, config);
       // Set flag before transitioning to preserve m_worldLoaded in exit()
       m_transitioningToLoading = true;
       // Use changeState (called from update) to properly exit and re-enter
-      mp_stateManager->changeState("LoadingState");
+      mp_stateManager->changeState(GameStateId::LOADING);
     } else {
       GAMESTATE_ERROR("LoadingState not found in GameStateManager");
     }
@@ -702,7 +705,7 @@ void EventDemoState::handleInput() {
 
   // Back to main menu
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-    mp_stateManager->changeState("MainMenuState");
+    mp_stateManager->changeState(GameStateId::MAIN_MENU);
   }
 
 }
@@ -1025,7 +1028,7 @@ void EventDemoState::onResourceChanged(const EventData &data) {
     }
 
     // Get the resource change data
-    HammerEngine::ResourceHandle handle = resourceEvent->getResourceHandle();
+    VoidLight::ResourceHandle handle = resourceEvent->getResourceHandle();
     int oldQty = resourceEvent->getOldQuantity();
     int newQty = resourceEvent->getNewQuantity();
     std::string source = resourceEvent->getChangeReason();
@@ -1067,7 +1070,7 @@ std::string EventDemoState::getCurrentWeatherString() const {
 
 void EventDemoState::cleanupSpawnedNPCs() {
   // Data-driven cleanup via NPCRenderController (handles AI unregistration and EDM destruction)
-  m_npcRenderCtrl.clearSpawnedNPCs();
+  AIManager::Instance().destroyAllNPCsForStateTransition();
 }
 
 void EventDemoState::setupResourceAchievements() {
@@ -1109,7 +1112,7 @@ void EventDemoState::setupResourceAchievements() {
 }
 
 void EventDemoState::processResourceAchievements(
-    HammerEngine::ResourceHandle handle, int oldQty, int newQty) {
+    VoidLight::ResourceHandle handle, int oldQty, int newQty) {
   auto thresholdIt = m_achievementThresholds.find(handle);
   if (thresholdIt == m_achievementThresholds.end()) {
     return; // No achievement for this resource
@@ -1135,7 +1138,7 @@ void EventDemoState::processResourceAchievements(
   }
 }
 
-void EventDemoState::checkResourceWarnings(HammerEngine::ResourceHandle handle,
+void EventDemoState::checkResourceWarnings(VoidLight::ResourceHandle handle,
                                            int newQty) {
   // Check for low resource warnings
   auto resourceTemplate =
@@ -1167,7 +1170,7 @@ void EventDemoState::checkResourceWarnings(HammerEngine::ResourceHandle handle,
   }
 }
 
-void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
+void EventDemoState::logResourceAnalytics(VoidLight::ResourceHandle handle,
                                           int oldQty, int newQty,
                                           const std::string &source) {
   auto resourceTemplate =
@@ -1205,7 +1208,7 @@ void EventDemoState::initializeCamera() {
   Vector2D playerPosition = m_player ? m_player->getPosition() : Vector2D(0, 0);
 
   // Create camera starting at player position
-  m_camera = std::make_unique<HammerEngine::Camera>(
+  m_camera = std::make_unique<VoidLight::Camera>(
       playerPosition.getX(), playerPosition.getY(), // Start at player position
       static_cast<float>(gameEngine.getLogicalWidth()),
       static_cast<float>(gameEngine.getLogicalHeight()));
@@ -1217,11 +1220,11 @@ void EventDemoState::initializeCamera() {
 
     // Set target and enable follow mode
     m_camera->setTarget(std::static_pointer_cast<Entity>(m_player));
-    m_camera->setMode(HammerEngine::Camera::Mode::Follow);
+    m_camera->setMode(VoidLight::Camera::Mode::Follow);
 
     // Set up camera configuration for fast, smooth following (match
     // GamePlayState) Using exponential smoothing for smooth, responsive follow
-    HammerEngine::Camera::Config config;
+    VoidLight::Camera::Config config;
     config.followSpeed = 5.0f;      // Speed of camera interpolation
     config.deadZoneRadius = 0.0f;   // No dead zone - always follow
     config.smoothingFactor = 0.85f; // Smoothing factor (0-1, higher = smoother)
@@ -1261,7 +1264,7 @@ void EventDemoState::toggleInventoryDisplay() {
       std::format("Inventory {}", m_showInventory ? "shown" : "hidden"));
 }
 
-void EventDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
+void EventDemoState::recordGPUVertices(VoidLight::GPURenderer &gpuRenderer,
                                        float interpolationAlpha) {
   if (!m_camera || !m_gpuSceneRecorder) { return; }
 
@@ -1274,8 +1277,9 @@ void EventDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   worldMgr.recordGPU(*ctx.spriteBatch, ctx.cameraX, ctx.cameraY,
                      ctx.viewWidth, ctx.viewHeight, ctx.zoom);
 
-  // Record NPCs to sprite batch (atlas-based)
+  // Record NPCs and projectiles to sprite batch (atlas-based)
   m_npcRenderCtrl.recordGPU(ctx);
+  m_projectileRenderCtrl.recordGPU(ctx);
 
   // End sprite batch recording (finalizes atlas-based sprites)
   m_gpuSceneRecorder->endSpriteBatch();
@@ -1322,9 +1326,9 @@ void EventDemoState::recordGPUVertices(HammerEngine::GPURenderer &gpuRenderer,
   m_gpuSceneRecorder->endRecording();
 }
 
-void EventDemoState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
+void EventDemoState::renderGPUScene(VoidLight::GPURenderer &gpuRenderer,
                                     SDL_GPURenderPass *scenePass,
-                                    [[maybe_unused]] float interpolationAlpha) {
+                                    float) {
   if (!m_camera || !m_gpuSceneRecorder) { return; }
 
   // Render previously recorded scene data into the engine-owned scene pass
@@ -1340,7 +1344,7 @@ void EventDemoState::renderGPUScene(HammerEngine::GPURenderer &gpuRenderer,
   particleMgr.renderGPU(gpuRenderer, scenePass);
 }
 
-void EventDemoState::renderGPUUI(HammerEngine::GPURenderer &gpuRenderer,
+void EventDemoState::renderGPUUI(VoidLight::GPURenderer &gpuRenderer,
                                  SDL_GPURenderPass *swapchainPass) {
   UIManager::Instance().renderGPU(gpuRenderer, swapchainPass);
 }

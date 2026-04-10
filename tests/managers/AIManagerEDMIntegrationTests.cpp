@@ -37,22 +37,17 @@
 #include <thread>
 #include <vector>
 
-namespace {
-
-struct ThreadSystemTestLifetime {
-    ThreadSystemTestLifetime() {
-        BOOST_REQUIRE_MESSAGE(HammerEngine::ThreadSystem::Instance().init(),
-                              "Failed to initialize ThreadSystem for AIManager EDM tests");
+struct ThreadSystemFixture {
+    ThreadSystemFixture() {
+        if (!VoidLight::ThreadSystem::Instance().init()) {
+            throw std::runtime_error("Failed to initialize ThreadSystem for AIManager EDM tests");
+        }
     }
-
-    ~ThreadSystemTestLifetime() {
-        HammerEngine::ThreadSystem::Instance().clean();
+    ~ThreadSystemFixture() {
+        VoidLight::ThreadSystem::Instance().clean();
     }
 };
-
-ThreadSystemTestLifetime g_threadSystemTestLifetime{};
-
-} // namespace
+BOOST_GLOBAL_FIXTURE(ThreadSystemFixture);
 
 // Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
 class AITestNPC {
@@ -100,7 +95,7 @@ private:
 // Test fixture that initializes all required managers
 struct AIManagerEDMFixture {
     AIManagerEDMFixture() {
-        EntityDataManager::Instance().init();
+        BOOST_REQUIRE(EntityDataManager::Instance().init());
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         EventManager::Instance().init();
@@ -777,9 +772,9 @@ BOOST_AUTO_TEST_CASE(StaleHigherSequenceTransitionDoesNotSuppressValidTransition
     // command with newer sequence is enqueued after it.
     Behaviors::switchBehavior(reusedIndex, BehaviorType::Attack);
 
-    HammerEngine::BehaviorConfigData staleConfig{};
+    VoidLight::BehaviorConfigData staleConfig{};
     staleConfig.type = BehaviorType::Flee;
-    HammerEngine::AICommandBus::Instance().enqueueBehaviorTransition(
+    VoidLight::AICommandBus::Instance().enqueueBehaviorTransition(
         staleHandle, reusedIndex, staleConfig);
 
     aiMgr.update(0.016f);
@@ -824,9 +819,9 @@ BOOST_AUTO_TEST_CASE(StaleTransitionSuppressionStressLoop) {
 
         Behaviors::switchBehavior(reusedIndex, BehaviorType::Attack);
 
-        HammerEngine::BehaviorConfigData staleConfig{};
+        VoidLight::BehaviorConfigData staleConfig{};
         staleConfig.type = BehaviorType::Flee;
-        HammerEngine::AICommandBus::Instance().enqueueBehaviorTransition(
+        VoidLight::AICommandBus::Instance().enqueueBehaviorTransition(
             staleHandle, reusedIndex, staleConfig);
 
         aiMgr.update(0.016f);

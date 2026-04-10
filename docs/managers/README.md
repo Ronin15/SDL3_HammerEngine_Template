@@ -10,6 +10,7 @@ This directory indexes manager-focused documentation. Some major systems live in
 - [FontManager](FontManager.md)
 - [GameStateManager](GameStateManager.md)
 - [InputManager](InputManager.md)
+- [ProjectileManager](ProjectileManager.md)
 - [PathfinderManager](PathfinderManager.md)
 - [ParticleManager](ParticleManager.md)
 - [ResourceFactory](ResourceFactory.md)

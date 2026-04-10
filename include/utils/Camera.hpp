@@ -15,7 +15,7 @@
 
 // Forward declarations
 class Entity;
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * @brief Camera utility class for 2D world navigation and rendering
@@ -488,6 +488,6 @@ private:
     void fireZoomChangedEvent(float oldZoom, float newZoom);
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // CAMERA_HPP

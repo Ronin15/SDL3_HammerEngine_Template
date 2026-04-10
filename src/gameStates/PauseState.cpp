@@ -50,13 +50,13 @@ bool PauseState::enter() {
   });
 
   ui.setOnClick("pause_mainmenu_btn", [this]() {
-      mp_stateManager->changeState("MainMenuState");
+      mp_stateManager->changeState(GameStateId::MAIN_MENU);
   });
 
   return true;
 }
 
-void PauseState::update([[maybe_unused]] float deltaTime) {
+void PauseState::update(float) {
     // Process UI input (click detection, hover states, callbacks)
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
@@ -79,9 +79,6 @@ bool PauseState::exit() {
   return true;
 }
 
-std::string PauseState::getName() const {
-  return "PauseState";
-}
 
 void PauseState::handleInput() {
   const auto& inputMgr = InputManager::Instance();
@@ -96,15 +93,15 @@ void PauseState::handleInput() {
   }
 }
 
-void PauseState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
-                                    [[maybe_unused]] float interpolationAlpha) {
+void PauseState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
+                                    float) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
         ui.recordGPUVertices(gpuRenderer);
     }
 }
 
-void PauseState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void PauseState::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                               SDL_GPURenderPass* swapchainPass) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {

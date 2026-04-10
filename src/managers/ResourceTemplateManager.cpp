@@ -11,9 +11,9 @@
 #include <algorithm>
 #include <format>
 
-using HammerEngine::JsonReader;
-using HammerEngine::JsonValue;
-using HammerEngine::ResourceFactory;
+using VoidLight::JsonReader;
+using VoidLight::JsonValue;
+using VoidLight::ResourceFactory;
 
 ResourceTemplateManager &ResourceTemplateManager::Instance() {
   static ResourceTemplateManager instance;
@@ -127,7 +127,7 @@ bool ResourceTemplateManager::registerResourceTemplate(
     return false;
   }
 
-  HammerEngine::ResourceHandle handle = resource->getHandle();
+  VoidLight::ResourceHandle handle = resource->getHandle();
   if (!handle.isValid()) {
     RESOURCE_ERROR("ResourceTemplateManager::registerResourceTemplate - "
                    "Invalid resource handle: " +
@@ -151,7 +151,7 @@ bool ResourceTemplateManager::registerResourceTemplate(
 }
 
 bool ResourceTemplateManager::removeResourceTemplate(
-    HammerEngine::ResourceHandle handle) {
+    VoidLight::ResourceHandle handle) {
   if (!handle.isValid()) {
     RESOURCE_ERROR(
         "ResourceTemplateManager::removeResourceTemplate - Invalid handle");
@@ -193,7 +193,7 @@ bool ResourceTemplateManager::removeResourceTemplate(
 bool ResourceTemplateManager::registerResourceTemplateInternal(
     const ResourcePtr &resource) {
   // This method assumes the lock is already held
-  HammerEngine::ResourceHandle handle = resource->getHandle();
+  VoidLight::ResourceHandle handle = resource->getHandle();
 
   // Check if already registered
   if (m_resourceTemplates.find(handle) != m_resourceTemplates.end()) {
@@ -243,11 +243,11 @@ bool ResourceTemplateManager::registerResourceTemplateInternal(
   }
 }
 
-HammerEngine::ResourceHandle ResourceTemplateManager::generateHandle() {
+VoidLight::ResourceHandle ResourceTemplateManager::generateHandle() {
   std::lock_guard<std::mutex> lock(m_handleMutex);
 
-  HammerEngine::ResourceHandle::HandleId id;
-  HammerEngine::ResourceHandle::Generation generation;
+  VoidLight::ResourceHandle::HandleId id;
+  VoidLight::ResourceHandle::Generation generation;
 
   // PERFORMANCE OPTIMIZATION: Prefer allocating new IDs over reusing freed ones
   // to reduce unordered_map lookups in the hot path
@@ -264,7 +264,7 @@ HammerEngine::ResourceHandle ResourceTemplateManager::generateHandle() {
 
       // Handle generation overflow (wrap around, but never use
       // 0/INVALID_GENERATION)
-      if (generation == HammerEngine::ResourceHandle::INVALID_GENERATION) {
+      if (generation == VoidLight::ResourceHandle::INVALID_GENERATION) {
         generation = 1;
       }
 
@@ -281,11 +281,11 @@ HammerEngine::ResourceHandle ResourceTemplateManager::generateHandle() {
     m_handleGenerations[id] = generation;
   }
 
-  return HammerEngine::ResourceHandle(id, generation);
+  return VoidLight::ResourceHandle(id, generation);
 }
 
 void ResourceTemplateManager::releaseHandle(
-    HammerEngine::ResourceHandle handle) {
+    VoidLight::ResourceHandle handle) {
   if (!handle.isValid()) {
     return;
   }
@@ -303,7 +303,7 @@ void ResourceTemplateManager::releaseHandle(
 }
 
 bool ResourceTemplateManager::isValidHandle(
-    HammerEngine::ResourceHandle handle) const {
+    VoidLight::ResourceHandle handle) const {
   if (!handle.isValid()) {
     return false;
   }
@@ -320,7 +320,7 @@ bool ResourceTemplateManager::isValidHandle(
 }
 
 ResourcePtr ResourceTemplateManager::getResourceTemplate(
-    HammerEngine::ResourceHandle handle) const {
+    VoidLight::ResourceHandle handle) const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
 
   auto it = m_resourceTemplates.find(handle);
@@ -409,7 +409,7 @@ ResourceTemplateManager::getResourceById(const std::string &id) const {
   return nullptr;
 }
 
-HammerEngine::ResourceHandle
+VoidLight::ResourceHandle
 ResourceTemplateManager::getHandleByName(const std::string &name) const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
 
@@ -418,10 +418,10 @@ ResourceTemplateManager::getHandleByName(const std::string &name) const {
     return nameIt->second;
   }
 
-  return HammerEngine::ResourceHandle(); // Invalid handle
+  return VoidLight::ResourceHandle(); // Invalid handle
 }
 
-HammerEngine::ResourceHandle
+VoidLight::ResourceHandle
 ResourceTemplateManager::getHandleById(const std::string &id) const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
 
@@ -430,12 +430,12 @@ ResourceTemplateManager::getHandleById(const std::string &id) const {
     return idIt->second;
   }
 
-  return HammerEngine::ResourceHandle(); // Invalid handle
+  return VoidLight::ResourceHandle(); // Invalid handle
 }
 
 ResourceStats ResourceTemplateManager::getStats() const { return m_stats; }
 ResourcePtr ResourceTemplateManager::createResource(
-    HammerEngine::ResourceHandle handle) const {
+    VoidLight::ResourceHandle handle) const {
   auto templateResource = getResourceTemplate(handle);
   if (!templateResource) {
     RESOURCE_ERROR(
@@ -566,7 +566,7 @@ size_t ResourceTemplateManager::getResourceTemplateCount() const {
 }
 
 bool ResourceTemplateManager::hasResourceTemplate(
-    HammerEngine::ResourceHandle handle) const {
+    VoidLight::ResourceHandle handle) const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
   return m_resourceTemplates.find(handle) != m_resourceTemplates.end();
 }
@@ -592,17 +592,17 @@ size_t ResourceTemplateManager::getMemoryUsage() const {
   }
 
   for (const auto &[categoryKey, resourceIds] : m_categoryIndex) {
-    totalSize += resourceIds.size() * sizeof(HammerEngine::ResourceHandle);
+    totalSize += resourceIds.size() * sizeof(VoidLight::ResourceHandle);
   }
 
   for (const auto &[typeKey, resourceIds] : m_typeIndex) {
-    totalSize += resourceIds.size() * sizeof(HammerEngine::ResourceHandle);
+    totalSize += resourceIds.size() * sizeof(VoidLight::ResourceHandle);
   }
 
   return totalSize;
 }
 
-void ResourceTemplateManager::updateIndexes(HammerEngine::ResourceHandle handle,
+void ResourceTemplateManager::updateIndexes(VoidLight::ResourceHandle handle,
                                             ResourceCategory category,
                                             ResourceType type) {
   std::lock_guard<std::mutex> lock(m_indexMutex);
@@ -615,19 +615,19 @@ void ResourceTemplateManager::updateIndexes(HammerEngine::ResourceHandle handle,
 }
 
 void ResourceTemplateManager::updateNameIndex(
-    HammerEngine::ResourceHandle handle, const std::string &name) {
+    VoidLight::ResourceHandle handle, const std::string &name) {
   std::lock_guard<std::mutex> lock(m_indexMutex);
   m_nameIndex[name] = handle;
 }
 
-void ResourceTemplateManager::updateIdIndex(HammerEngine::ResourceHandle handle,
+void ResourceTemplateManager::updateIdIndex(VoidLight::ResourceHandle handle,
                                             const std::string &id) {
   std::lock_guard<std::mutex> lock(m_indexMutex);
   m_idIndex[id] = handle;
 }
 
 void ResourceTemplateManager::removeFromIndexes(
-    HammerEngine::ResourceHandle handle) {
+    VoidLight::ResourceHandle handle) {
   std::lock_guard<std::mutex> lock(m_indexMutex);
 
   // PERFORMANCE OPTIMIZATION: Use cached properties to avoid O(n) searches
@@ -672,7 +672,7 @@ void ResourceTemplateManager::removeFromIndexes(
 
 
 bool ResourceTemplateManager::checkForDuplicateName(
-    const std::string &name, HammerEngine::ResourceHandle currentHandle) const {
+    const std::string &name, VoidLight::ResourceHandle currentHandle) const {
   // This method assumes the lock is already held by the caller
   auto nameIt = m_nameIndex.find(name);
   if (nameIt != m_nameIndex.end()) {
@@ -692,7 +692,7 @@ void ResourceTemplateManager::createDefaultResources() {
 
   try {
     // Load resources from unified JSON file
-    const std::string resourcesPath = HammerEngine::ResourcePath::resolve("res/data/resources.json");
+    const std::string resourcesPath = VoidLight::ResourcePath::resolve("res/data/resources.json");
     bool resourcesLoaded = loadResourcesFromJson(resourcesPath);
 
     RESOURCE_WARN_IF(!resourcesLoaded,
@@ -701,7 +701,7 @@ void ResourceTemplateManager::createDefaultResources() {
 
     // Apply atlas coordinates from atlas.json (following WorldManager pattern)
     JsonReader atlasReader;
-    if (atlasReader.loadFromFile(HammerEngine::ResourcePath::resolve("res/data/atlas.json"))) {
+    if (atlasReader.loadFromFile(VoidLight::ResourcePath::resolve("res/data/atlas.json"))) {
       const auto& atlasRoot = atlasReader.getRoot();
       if (atlasRoot.hasKey("regions")) {
         const auto& regions = atlasRoot["regions"].asObject();
@@ -739,7 +739,7 @@ void ResourceTemplateManager::createDefaultResources() {
 
 // Fast property access methods (cache-optimized)
 int ResourceTemplateManager::getMaxStackSize(
-    HammerEngine::ResourceHandle handle) const {
+    VoidLight::ResourceHandle handle) const {
   // PERFORMANCE OPTIMIZATION: Check validity first to avoid lock on invalid
   // handles
   if (!handle.isValid()) {
@@ -752,7 +752,7 @@ int ResourceTemplateManager::getMaxStackSize(
 }
 
 float ResourceTemplateManager::getValue(
-    HammerEngine::ResourceHandle handle) const {
+    VoidLight::ResourceHandle handle) const {
   // PERFORMANCE OPTIMIZATION: Check validity first to avoid lock on invalid
   // handles
   if (!handle.isValid()) {
@@ -765,7 +765,7 @@ float ResourceTemplateManager::getValue(
 }
 
 ResourceCategory ResourceTemplateManager::getCategory(
-    HammerEngine::ResourceHandle handle) const {
+    VoidLight::ResourceHandle handle) const {
   // PERFORMANCE OPTIMIZATION: Check validity first to avoid lock on invalid
   // handles
   if (!handle.isValid()) {
@@ -780,7 +780,7 @@ ResourceCategory ResourceTemplateManager::getCategory(
 }
 
 ResourceType
-ResourceTemplateManager::getType(HammerEngine::ResourceHandle handle) const {
+ResourceTemplateManager::getType(VoidLight::ResourceHandle handle) const {
   // PERFORMANCE OPTIMIZATION: Check validity first to avoid lock on invalid
   // handles
   if (!handle.isValid()) {
@@ -795,7 +795,7 @@ ResourceTemplateManager::getType(HammerEngine::ResourceHandle handle) const {
 
 // Cache-friendly bulk operations for better performance
 std::vector<int> ResourceTemplateManager::getMaxStackSizes(
-    const std::vector<HammerEngine::ResourceHandle> &handles) const {
+    const std::vector<VoidLight::ResourceHandle> &handles) const {
   std::vector<int> results;
   results.reserve(handles.size());
 
@@ -806,7 +806,7 @@ std::vector<int> ResourceTemplateManager::getMaxStackSizes(
 
   // PERFORMANCE OPTIMIZATION: Filter out invalid handles first to avoid lock
   // overhead
-  std::vector<HammerEngine::ResourceHandle> validHandles;
+  std::vector<VoidLight::ResourceHandle> validHandles;
   validHandles.reserve(handles.size());
 
   for (const auto &handle : handles) {
@@ -840,7 +840,7 @@ std::vector<int> ResourceTemplateManager::getMaxStackSizes(
 }
 
 std::vector<float> ResourceTemplateManager::getValues(
-    const std::vector<HammerEngine::ResourceHandle> &handles) const {
+    const std::vector<VoidLight::ResourceHandle> &handles) const {
   std::vector<float> results;
   results.reserve(handles.size());
 
@@ -865,7 +865,7 @@ std::vector<float> ResourceTemplateManager::getValues(
 }
 
 void ResourceTemplateManager::getPropertiesBatch(
-    const std::vector<HammerEngine::ResourceHandle> &handles,
+    const std::vector<VoidLight::ResourceHandle> &handles,
     std::vector<int> &maxStackSizes, std::vector<float> &values,
     std::vector<ResourceCategory> &categories,
     std::vector<ResourceType> &types) const {

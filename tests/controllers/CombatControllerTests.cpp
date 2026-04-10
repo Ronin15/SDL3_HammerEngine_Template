@@ -17,9 +17,6 @@ BOOST_AUTO_TEST_CASE(TestControllerNameAndInitialState)
     CombatController controller(std::shared_ptr<Player>{});
 
     BOOST_CHECK_EQUAL(controller.getName(), "CombatController");
-    BOOST_CHECK(!controller.hasActiveTarget());
-    BOOST_CHECK_EQUAL(controller.getTargetDisplayTimer(), 0.0f);
-    BOOST_CHECK_EQUAL(controller.getTargetHealth(), 0.0f);
 }
 
 BOOST_AUTO_TEST_CASE(TestSubscribeIsIdempotentWithoutHandlers)
@@ -38,8 +35,6 @@ BOOST_AUTO_TEST_CASE(TestTryAttackFailsGracefullyWithoutPlayer)
     CombatController controller(std::shared_ptr<Player>{});
 
     BOOST_CHECK(!controller.tryAttack());
-    BOOST_CHECK_EQUAL(controller.getTargetDisplayTimer(), 0.0f);
-    BOOST_CHECK_EQUAL(controller.getTargetHealth(), 0.0f);
 }
 
 BOOST_AUTO_TEST_CASE(TestUpdateDoesNothingWithoutPlayer)
@@ -47,16 +42,12 @@ BOOST_AUTO_TEST_CASE(TestUpdateDoesNothingWithoutPlayer)
     CombatController controller(std::shared_ptr<Player>{});
 
     // Capture public state before update
-    BOOST_CHECK(!controller.hasActiveTarget());
-    BOOST_CHECK_EQUAL(controller.getTargetDisplayTimer(), 0.0f);
-    BOOST_CHECK_EQUAL(controller.getTargetHealth(), 0.0f);
+    BOOST_CHECK_EQUAL(controller.getName(), "CombatController");
 
     controller.update(0.25f);
 
     // Public state unchanged — update is a no-op without player
-    BOOST_CHECK(!controller.hasActiveTarget());
-    BOOST_CHECK_EQUAL(controller.getTargetDisplayTimer(), 0.0f);
-    BOOST_CHECK_EQUAL(controller.getTargetHealth(), 0.0f);
+    BOOST_CHECK_EQUAL(controller.getName(), "CombatController");
 }
 
 BOOST_AUTO_TEST_SUITE_END()

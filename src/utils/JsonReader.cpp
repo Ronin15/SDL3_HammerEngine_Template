@@ -9,7 +9,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // JsonValue implementation
 JsonType JsonValue::getType() const {
@@ -699,4 +699,4 @@ void JsonReader::Parser::setError(const std::string &message) {
   m_error = std::format("Line {}, Column {}: {}", token.line, token.column, message);
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

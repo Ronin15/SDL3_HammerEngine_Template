@@ -13,7 +13,7 @@
 
 #include <SDL3_ttf/SDL_ttf.h>
 struct SDL_GPUTexture;
-namespace HammerEngine {
+namespace VoidLight {
 class GPUTexture;
 }
 
@@ -23,15 +23,15 @@ class LogoState : public GameState {
   void update(float deltaTime) override;
   void handleInput() override;
   bool exit() override;
-  std::string getName() const override;
+  GameStateId getStateId() const override { return GameStateId::LOGO; }
 
   // GPU rendering support
-  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+  void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                           float interpolationAlpha) override;
-  void renderGPUScene(HammerEngine::GPURenderer& gpuRenderer,
+  void renderGPUScene(VoidLight::GPURenderer& gpuRenderer,
                        SDL_GPURenderPass* scenePass,
                        float interpolationAlpha) override;
-  void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+  void renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                     SDL_GPURenderPass* swapchainPass) override;
   bool supportsGPURendering() const override { return true; }
 
@@ -59,7 +59,7 @@ class LogoState : public GameState {
 
   // GPU draw commands for multiple textures (scene rendering)
   struct GPUDrawCommand {
-    std::shared_ptr<HammerEngine::GPUTexture> textureOwner{};
+    std::shared_ptr<VoidLight::GPUTexture> textureOwner{};
     SDL_GPUTexture* texture{nullptr};
     TTF_ImageType imageType{TTF_IMAGE_INVALID};
     uint32_t vertexOffset{0};

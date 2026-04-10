@@ -9,7 +9,7 @@
 #include "utils/ResourcePath.hpp"
 #include <boost/test/unit_test.hpp>
 
-namespace HammerEngine {
+namespace VoidLight {
 namespace Test {
 
 /**
@@ -38,7 +38,7 @@ public:
                 s_gpuAvailable = false;
             } else {
                 s_sdlInitialized = true;
-                HammerEngine::ResourcePath::init();
+                VoidLight::ResourcePath::init();
                 // Check if GPU is available by trying to create a hidden window
                 checkGPUAvailability();
             }
@@ -129,9 +129,9 @@ protected:
 
         // Try to create a GPU device
         SDL_GPUDevice* device = SDL_CreateGPUDevice(
-            HammerEngine::GPUPlatformConfig::getRequestedShaderFormats(),
+            VoidLight::GPUPlatformConfig::getRequestedShaderFormats(),
             false,  // debug mode
-            HammerEngine::GPUPlatformConfig::getPreferredDriverName()
+            VoidLight::GPUPlatformConfig::getPreferredDriverName()
         );
 
         if (!device) {
@@ -165,6 +165,6 @@ struct GPUGlobalFixture {
 };
 
 } // namespace Test
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_TEST_FIXTURE_HPP

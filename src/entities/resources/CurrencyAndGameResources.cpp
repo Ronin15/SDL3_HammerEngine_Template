@@ -7,7 +7,7 @@
 #include <unordered_map>
 
 // Currency base class implementation
-Currency::Currency(HammerEngine::ResourceHandle handle, const std::string &id,
+Currency::Currency(VoidLight::ResourceHandle handle, const std::string &id,
                    const std::string &name, ResourceType type)
     : Resource(handle, id, name, ResourceCategory::Currency, type) {
   // Currencies are highly stackable
@@ -16,7 +16,7 @@ Currency::Currency(HammerEngine::ResourceHandle handle, const std::string &id,
 }
 
 // Gold currency implementation
-Gold::Gold(HammerEngine::ResourceHandle handle, const std::string &id,
+Gold::Gold(VoidLight::ResourceHandle handle, const std::string &id,
            const std::string &name)
     : Currency(handle, id, name, ResourceType::Gold) {
   setValue(1.0f);
@@ -24,7 +24,7 @@ Gold::Gold(HammerEngine::ResourceHandle handle, const std::string &id,
 }
 
 // Gem currency implementation
-Gem::Gem(HammerEngine::ResourceHandle handle, const std::string &id,
+Gem::Gem(VoidLight::ResourceHandle handle, const std::string &id,
          const std::string &name, GemType gemType)
     : Currency(handle, id, name, ResourceType::Gem), m_gemType(gemType) {
   // Set default values based on gem type
@@ -66,7 +66,7 @@ std::string Gem::gemTypeToString(GemType type) {
 }
 
 // FactionToken implementation
-FactionToken::FactionToken(HammerEngine::ResourceHandle handle,
+FactionToken::FactionToken(VoidLight::ResourceHandle handle,
                            const std::string &id, const std::string &name,
                            const std::string &factionId)
     : Currency(handle, id, name, ResourceType::FactionToken),
@@ -76,7 +76,7 @@ FactionToken::FactionToken(HammerEngine::ResourceHandle handle,
 }
 
 // GameResource base class implementation
-GameResource::GameResource(HammerEngine::ResourceHandle handle,
+GameResource::GameResource(VoidLight::ResourceHandle handle,
                            const std::string &id, const std::string &name,
                            ResourceType type)
     : Resource(handle, id, name, ResourceCategory::GameResource, type) {
@@ -86,7 +86,7 @@ GameResource::GameResource(HammerEngine::ResourceHandle handle,
 }
 
 // Energy implementation
-Energy::Energy(HammerEngine::ResourceHandle handle, const std::string &id,
+Energy::Energy(VoidLight::ResourceHandle handle, const std::string &id,
                const std::string &name)
     : GameResource(handle, id, name, ResourceType::Energy) {
   setValue(0.1f);
@@ -94,7 +94,7 @@ Energy::Energy(HammerEngine::ResourceHandle handle, const std::string &id,
 }
 
 // Mana implementation
-Mana::Mana(HammerEngine::ResourceHandle handle, const std::string &id,
+Mana::Mana(VoidLight::ResourceHandle handle, const std::string &id,
            const std::string &name, ManaType manaType)
     : GameResource(handle, id, name, ResourceType::Mana), m_manaType(manaType) {
   setValue(0.2f);
@@ -113,7 +113,7 @@ std::string Mana::manaTypeToString(ManaType type) {
 }
 
 // BuildingMaterial implementation
-BuildingMaterial::BuildingMaterial(HammerEngine::ResourceHandle handle,
+BuildingMaterial::BuildingMaterial(VoidLight::ResourceHandle handle,
                                    const std::string &id,
                                    const std::string &name,
                                    MaterialType materialType)
@@ -154,7 +154,7 @@ std::string BuildingMaterial::materialTypeToString(MaterialType type) {
 }
 
 // Ammunition implementation
-Ammunition::Ammunition(HammerEngine::ResourceHandle handle,
+Ammunition::Ammunition(VoidLight::ResourceHandle handle,
                        const std::string &id, const std::string &name,
                        AmmoType ammoType)
     : GameResource(handle, id, name, ResourceType::Ammunition),

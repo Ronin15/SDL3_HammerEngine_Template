@@ -106,7 +106,7 @@ struct alignas(64) EntityHotData {
     uint32_t typeLocalIndex{0};     // 4 bytes: Index into type-specific array
 
     // Collision data (only for entities that participate in collision)
-    uint16_t collisionLayers{HammerEngine::CollisionLayer::Layer_Default};  // 2 bytes: Which layer(s) this entity is on
+    uint16_t collisionLayers{VoidLight::CollisionLayer::Layer_Default};  // 2 bytes: Which layer(s) this entity is on
     uint16_t collisionMask{0xFFFF};  // 2 bytes: Which layers this entity collides with
     uint8_t collisionFlags{0};       // 1 byte: COLLISION_ENABLED, IS_TRIGGER
     uint8_t triggerTag{0};           // 1 byte: TriggerTag for trigger entities
@@ -162,7 +162,7 @@ struct alignas(64) EntityHotData {
     }
 
     [[nodiscard]] bool isEventOnlyTrigger() const noexcept {
-        return isTrigger() && triggerType == static_cast<uint8_t>(HammerEngine::TriggerType::EventOnly);
+        return isTrigger() && triggerType == static_cast<uint8_t>(VoidLight::TriggerType::EventOnly);
     }
 };
 
@@ -210,6 +210,7 @@ struct CharacterData {
     float attackRange{50.0f};
     float moveSpeed{100.0f};   // Base movement speed
     float mass{1.0f};          // Physical mass (affects knockback resistance)
+    float projectileSpeed{0.0f}; // Ranged projectile speed (px/s), 0 = melee
 
     // Identity (creature composition)
     CreatureCategory category{CreatureCategory::NPC};  // NPC, Monster, or Animal
@@ -222,6 +223,8 @@ struct CharacterData {
     uint8_t behaviorType{0};   // BehaviorType enum
     uint8_t priority{5};       // AI priority (0-9)
     uint8_t stateFlags{0};     // alive, stunned, invulnerable, etc.
+    enum CombatStyle : uint8_t { Melee = 0, Ranged = 1 };
+    uint8_t combatStyle{CombatStyle::Melee};
 
     // Inventory (for merchants and NPCs that carry items)
     uint32_t inventoryIndex{INVALID_INVENTORY_INDEX};  // EDM inventory index
@@ -251,7 +254,7 @@ struct CharacterData {
  * @brief Item data for DroppedItem entities
  */
 struct ItemData {
-    HammerEngine::ResourceHandle resourceHandle;  // Item template reference
+    VoidLight::ResourceHandle resourceHandle;  // Item template reference
     int quantity{1};
     float pickupTimer{0.5f};    // Delay before pickup allowed
     float bobTimer{0.0f};       // Visual bobbing effect
@@ -273,12 +276,22 @@ struct ProjectileData {
     float damage{10.0f};
     float lifetime{5.0f};       // Time until despawn
     float speed{200.0f};
+    float embeddedOffsetX{0.0f};
+    float embeddedOffsetY{0.0f};
     uint8_t damageType{0};      // Physical, Fire, Ice, etc.
     uint8_t flags{0};
 
     static constexpr uint8_t FLAG_PIERCING = 0x01;
     static constexpr uint8_t FLAG_HOMING = 0x02;
     static constexpr uint8_t FLAG_EXPLOSIVE = 0x04;
+    static constexpr uint8_t FLAG_EMBEDDED = 0x08;
+
+    static constexpr float EMBEDDED_LIFETIME_SECONDS = 1.25f;
+    static constexpr float EMBEDDED_FADE_SECONDS = 0.45f;
+
+    [[nodiscard]] bool isEmbedded() const noexcept {
+        return flags & FLAG_EMBEDDED;
+    }
 };
 
 /**
@@ -337,12 +350,12 @@ struct ContainerData {
  * harvestType determines duration and action verb via HarvestConfig.
  */
 struct HarvestableData {
-    HammerEngine::ResourceHandle yieldResource;
+    VoidLight::ResourceHandle yieldResource;
     int yieldMin{1};
     int yieldMax{3};
     float respawnTime{60.0f};   // Seconds until respawn
     float currentRespawn{0.0f}; // Time remaining
-    HammerEngine::HarvestType harvestType{HammerEngine::HarvestType::Gathering};
+    VoidLight::HarvestType harvestType{VoidLight::HarvestType::Gathering};
     bool isDepleted{false};
 };
 
@@ -357,12 +370,12 @@ struct HarvestableData {
  * resource identification via ResourceTemplateManager.
  */
 struct InventorySlotData {
-    HammerEngine::ResourceHandle resourceHandle;  // 8 bytes: Type-safe resource reference (6 + padding)
+    VoidLight::ResourceHandle resourceHandle;  // 8 bytes: Type-safe resource reference (6 + padding)
     int16_t quantity{0};                          // 2 bytes: Stack quantity
     int16_t _pad{0};                              // 2 bytes: Padding for alignment
 
     [[nodiscard]] bool isEmpty() const noexcept { return quantity <= 0 || !resourceHandle.isValid(); }
-    void clear() noexcept { resourceHandle = HammerEngine::ResourceHandle{}; quantity = 0; _pad = 0; }
+    void clear() noexcept { resourceHandle = VoidLight::ResourceHandle{}; quantity = 0; _pad = 0; }
 };
 
 // InventorySlotData is ~12 bytes (ResourceHandle 8 + quantity 2 + pad 2)
@@ -535,6 +548,10 @@ struct ClassInfo {
     float moveSpeedMult{1.0f};
     float attackDamageMult{1.0f};
     float attackRangeMult{1.0f};
+
+    // Combat style ("melee" or "ranged") — determines attack mode
+    std::string combatStyle{"melee"};
+    float projectileSpeed{0.0f};         // Ranged projectile speed (px/s), 0 = melee
 
     // AI hints (not auto-applied, for reference)
     std::string suggestedBehavior;
@@ -1413,7 +1430,7 @@ public:
      * @brief Initialize the entity data manager
      * @return true if initialization successful
      */
-    bool init();
+    [[nodiscard]] bool init();
 
     /**
      * @brief Check if manager is initialized
@@ -1550,7 +1567,7 @@ public:
      *       Dropped items use WRM spatial index, not collision system.
      */
     EntityHandle createDroppedItem(const Vector2D& position,
-                                   HammerEngine::ResourceHandle resourceHandle,
+                                   VoidLight::ResourceHandle resourceHandle,
                                    int quantity = 1,
                                    const std::string& worldId = "");
 
@@ -1596,12 +1613,12 @@ public:
      * Auto-registers with WorldResourceManager for both registry and spatial queries.
      */
     EntityHandle createHarvestable(const Vector2D& position,
-                                   HammerEngine::ResourceHandle yieldResource,
+                                   VoidLight::ResourceHandle yieldResource,
                                    int yieldMin = 1,
                                    int yieldMax = 3,
                                    float respawnTime = 60.0f,
                                    const std::string& worldId = "",
-                                   HammerEngine::HarvestType harvestType = HammerEngine::HarvestType::Gathering);
+                                   VoidLight::HarvestType harvestType = VoidLight::HarvestType::Gathering);
 
     // ========================================================================
     // PHASE 1: REGISTRATION OF EXISTING ENTITIES (Parallel Storage)
@@ -1633,7 +1650,7 @@ public:
      */
     EntityHandle registerDroppedItem(EntityHandle::IDType entityId,
                                      const Vector2D& position,
-                                     HammerEngine::ResourceHandle resourceHandle,
+                                     VoidLight::ResourceHandle resourceHandle,
                                      int quantity = 1);
 
     /**
@@ -1702,8 +1719,8 @@ public:
     EntityHandle createTrigger(const Vector2D& position,
                                float halfWidth,
                                float halfHeight,
-                               HammerEngine::TriggerTag tag,
-                               HammerEngine::TriggerType type);
+                               VoidLight::TriggerTag tag,
+                               VoidLight::TriggerType type);
 
     /**
      * @brief Mark an entity for destruction (processed at end of frame)
@@ -1742,7 +1759,7 @@ public:
      * The inventory index is stored in CharacterData.inventoryIndex.
      * Use this to enable trading with the NPC via SocialController.
      */
-    bool initNPCAsMerchant(EntityHandle handle, uint16_t maxSlots = 20);
+    [[nodiscard]] bool initNPCAsMerchant(EntityHandle handle, uint16_t maxSlots = 20);
 
     /**
      * @brief Check if an NPC is a merchant
@@ -1783,7 +1800,7 @@ public:
      * then fills empty slots. Respects maxStackSize from ResourceTemplateManager.
      */
     bool addToInventory(uint32_t inventoryIndex,
-                        HammerEngine::ResourceHandle handle,
+                        VoidLight::ResourceHandle handle,
                         int quantity);
 
     /**
@@ -1797,7 +1814,7 @@ public:
      * Clears empty slots for reuse.
      */
     bool removeFromInventory(uint32_t inventoryIndex,
-                             HammerEngine::ResourceHandle handle,
+                             VoidLight::ResourceHandle handle,
                              int quantity);
 
     /**
@@ -1807,7 +1824,7 @@ public:
      * @return Total quantity across all slots, or 0 if not found/invalid
      */
     [[nodiscard]] int getInventoryQuantity(uint32_t inventoryIndex,
-                                           HammerEngine::ResourceHandle handle) const;
+                                           VoidLight::ResourceHandle handle) const;
 
     /**
      * @brief Check if an inventory contains at least the specified quantity
@@ -1817,7 +1834,7 @@ public:
      * @return true if inventory contains >= quantity
      */
     [[nodiscard]] bool hasInInventory(uint32_t inventoryIndex,
-                                      HammerEngine::ResourceHandle handle,
+                                      VoidLight::ResourceHandle handle,
                                       int quantity) const;
 
     /**
@@ -1828,7 +1845,7 @@ public:
      * Iterates through all slots (inline and overflow) and sums quantities
      * by resource type. Returns empty map for invalid inventory.
      */
-    [[nodiscard]] std::unordered_map<HammerEngine::ResourceHandle, int>
+    [[nodiscard]] std::unordered_map<VoidLight::ResourceHandle, int>
     getInventoryResources(uint32_t inventoryIndex) const;
 
     /**
@@ -1998,6 +2015,8 @@ public:
 
     [[nodiscard]] ProjectileData& getProjectileData(EntityHandle handle);
     [[nodiscard]] const ProjectileData& getProjectileData(EntityHandle handle) const;
+    [[nodiscard]] ProjectileData& getProjectileData(uint32_t typeLocalIndex);
+    [[nodiscard]] const ProjectileData& getProjectileData(uint32_t typeLocalIndex) const;
 
     [[nodiscard]] ContainerData& getContainerData(EntityHandle handle);
     [[nodiscard]] const ContainerData& getContainerData(EntityHandle handle) const;
@@ -2141,15 +2160,15 @@ public:
      * @param index EDM index from getActiveIndices()
      * @return BehaviorConfigData for the entity (read-only during execution)
      */
-    [[nodiscard]] HammerEngine::BehaviorConfigData& getBehaviorConfig(size_t index);
-    [[nodiscard]] const HammerEngine::BehaviorConfigData& getBehaviorConfig(size_t index) const;
+    [[nodiscard]] VoidLight::BehaviorConfigData& getBehaviorConfig(size_t index);
+    [[nodiscard]] const VoidLight::BehaviorConfigData& getBehaviorConfig(size_t index) const;
 
     /**
      * @brief Set behavior config for an entity
      * @param index EDM index
      * @param config The behavior config to set
      */
-    void setBehaviorConfig(size_t index, const HammerEngine::BehaviorConfigData& config);
+    void setBehaviorConfig(size_t index, const VoidLight::BehaviorConfigData& config);
 
     /**
      * @brief Check if behavior data exists and is valid for an entity
@@ -2449,7 +2468,7 @@ private:
 
     // Behavior config (indexed by edmIndex, pre-allocated alongside behaviorData)
     // Config is read-only during behavior execution - set once when behavior assigned
-    std::vector<HammerEngine::BehaviorConfigData> m_behaviorConfig;
+    std::vector<VoidLight::BehaviorConfigData> m_behaviorConfig;
 
     // NPC Memory data (indexed by edmIndex, pre-allocated alongside hotData)
     // Persists across behavior changes unlike BehaviorData
@@ -2503,7 +2522,7 @@ private:
      * @note MUST be called while holding m_inventoryMutex lock
      */
     [[nodiscard]] int getInventoryQuantityLocked(uint32_t inventoryIndex,
-                                                  HammerEngine::ResourceHandle handle) const;
+                                                  VoidLight::ResourceHandle handle) const;
 
     /**
      * @brief Internal: Destroy a static resource entity (DroppedItem, Container, Harvestable)
@@ -2612,17 +2631,17 @@ inline const BehaviorData& EntityDataManager::getBehaviorData(size_t index) cons
     return m_behaviorData[index];
 }
 
-inline HammerEngine::BehaviorConfigData& EntityDataManager::getBehaviorConfig(size_t index) {
+inline VoidLight::BehaviorConfigData& EntityDataManager::getBehaviorConfig(size_t index) {
     assert(index < m_behaviorConfig.size() && "BehaviorConfig index out of bounds");
     return m_behaviorConfig[index];
 }
 
-inline const HammerEngine::BehaviorConfigData& EntityDataManager::getBehaviorConfig(size_t index) const {
+inline const VoidLight::BehaviorConfigData& EntityDataManager::getBehaviorConfig(size_t index) const {
     assert(index < m_behaviorConfig.size() && "BehaviorConfig index out of bounds");
     return m_behaviorConfig[index];
 }
 
-inline void EntityDataManager::setBehaviorConfig(size_t index, const HammerEngine::BehaviorConfigData& config) {
+inline void EntityDataManager::setBehaviorConfig(size_t index, const VoidLight::BehaviorConfigData& config) {
     assert(index < m_behaviorConfig.size() && "BehaviorConfig index out of bounds");
     m_behaviorConfig[index] = config;
 }
@@ -2757,6 +2776,17 @@ inline ContainerRenderData& EntityDataManager::getContainerRenderDataByTypeIndex
 inline const ContainerRenderData& EntityDataManager::getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
     assert(typeLocalIndex < m_containerRenderData.size() && "Container render data type index out of bounds");
     return m_containerRenderData[typeLocalIndex];
+}
+
+// Projectile data accessors by type index - O(1) access for batch processing
+inline ProjectileData& EntityDataManager::getProjectileData(uint32_t typeLocalIndex) {
+    assert(typeLocalIndex < m_projectileData.size() && "Projectile type index out of bounds");
+    return m_projectileData[typeLocalIndex];
+}
+
+inline const ProjectileData& EntityDataManager::getProjectileData(uint32_t typeLocalIndex) const {
+    assert(typeLocalIndex < m_projectileData.size() && "Projectile type index out of bounds");
+    return m_projectileData[typeLocalIndex];
 }
 
 // Container/Harvestable data accessors by type index - O(1) access for batch processing

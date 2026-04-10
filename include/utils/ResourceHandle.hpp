@@ -11,7 +11,7 @@
 #include <ostream>
 #include <string>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * @brief Type-safe, lightweight handle for referencing resources
@@ -86,19 +86,19 @@ private:
  */
 inline constexpr ResourceHandle INVALID_RESOURCE_HANDLE{};
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 // Stream output operator for debugging and logging
 inline std::ostream &operator<<(std::ostream &os,
-                                const HammerEngine::ResourceHandle &handle) {
+                                const VoidLight::ResourceHandle &handle) {
   return os << handle.toString();
 }
 
 // Hash function for std::unordered_map support
 namespace std {
-template <> struct hash<HammerEngine::ResourceHandle> {
+template <> struct hash<VoidLight::ResourceHandle> {
   std::size_t
-  operator()(const HammerEngine::ResourceHandle &handle) const noexcept {
+  operator()(const VoidLight::ResourceHandle &handle) const noexcept {
     return handle.hash();
   }
 };

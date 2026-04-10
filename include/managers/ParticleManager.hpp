@@ -36,7 +36,7 @@
 #include <vector>
 
 // Forward declarations for GPU rendering
-namespace HammerEngine {
+namespace VoidLight {
 class GPURenderer;
 }
 
@@ -81,7 +81,7 @@ constexpr bool operator!=(const AlignedAllocator<T1, A1> &,
 // Forward declarations
 class TextureManager;
 
-namespace HammerEngine {
+namespace VoidLight {
 struct WorkerBudget;
 }
 
@@ -389,7 +389,7 @@ public:
    * @param cameraY Camera Y offset for world-space rendering
    * @param interpolationAlpha Interpolation factor (0.0-1.0) for smooth rendering
    */
-  void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer, float cameraX,
+  void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer, float cameraX,
                          float cameraY, float interpolationAlpha);
 
   /**
@@ -397,7 +397,7 @@ public:
    * @param gpuRenderer GPU renderer instance
    * @param scenePass Active scene render pass
    */
-  void renderGPU(HammerEngine::GPURenderer& gpuRenderer, SDL_GPURenderPass* scenePass);
+  void renderGPU(VoidLight::GPURenderer& gpuRenderer, SDL_GPURenderPass* scenePass);
 
   /**
    * @brief Checks if ParticleManager has been shut down
@@ -617,7 +617,7 @@ public:
    * engine subsystems (AI, Particles, Events, etc.) following the engine's
    * architectural patterns. When enabled:
    *
-   * - Uses HammerEngine::calculateWorkerBudget() for fair thread distribution
+   * - Uses VoidLight::calculateWorkerBudget() for fair thread distribution
    * - Dynamically adjusts worker count based on workload and system pressure
    * - Submits tasks via ThreadSystem::enqueueTaskWithResult() for proper
    * scheduling

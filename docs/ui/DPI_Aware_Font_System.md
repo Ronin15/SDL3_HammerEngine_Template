@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Hammer Game Engine implements a comprehensive DPI-aware font rendering system that automatically detects display pixel density and scales fonts accordingly, ensuring crisp, professional text rendering across all display types - from standard monitors to 4K/Retina displays.
+The VoidLight Engine implements a comprehensive DPI-aware font rendering system that automatically detects display pixel density and scales fonts accordingly, ensuring crisp, professional text rendering across all display types - from standard monitors to 4K/Retina displays.
 
 ## System Architecture
 

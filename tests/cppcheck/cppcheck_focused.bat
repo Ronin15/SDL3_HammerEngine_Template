@@ -4,7 +4,7 @@ REM This script runs cppcheck with optimized settings to show only real issues
 
 setlocal enabledelayedexpansion
 
-echo === SDL3 HammerEngine - Focused Cppcheck Analysis ===
+echo === SDL3 VoidLight-Framework - Focused Cppcheck Analysis ===
 echo.
 
 REM Check if cppcheck is available

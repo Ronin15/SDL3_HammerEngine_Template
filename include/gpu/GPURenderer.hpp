@@ -17,7 +17,7 @@
 #include <memory>
 #include <vector>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * Main GPU renderer singleton.
@@ -37,7 +37,7 @@ public:
      * Must be called after GPUDevice::init().
      * @return true on success
      */
-    bool init();
+    [[nodiscard]] bool init();
 
     /**
      * Shutdown and release all resources.
@@ -132,12 +132,12 @@ public:
      * @param pass Active render pass
      * @param viewProjection 4x4 matrix data
      */
-    void pushViewProjection(SDL_GPURenderPass* pass, const float* viewProjection);
+    void pushViewProjection(const SDL_GPURenderPass* pass, const float* viewProjection);
 
     /**
      * Push composite uniforms.
      */
-    void pushCompositeUniforms(SDL_GPURenderPass* pass,
+    void pushCompositeUniforms(const SDL_GPURenderPass* pass,
                                 float subPixelX, float subPixelY, float zoom);
 
     /**
@@ -185,9 +185,9 @@ private:
     GPURenderer(const GPURenderer&) = delete;
     GPURenderer& operator=(const GPURenderer&) = delete;
 
-    bool loadShaders();
-    bool createPipelines();
-    bool createSceneTexture();
+    [[nodiscard]] bool loadShaders();
+    [[nodiscard]] bool createPipelines();
+    [[nodiscard]] bool createSceneTexture();
     void cleanupPartialInit();  // Clean up resources on init failure
     void resetFrameState();
 
@@ -260,6 +260,6 @@ private:
     bool m_initialized{false};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_RENDERER_HPP

@@ -5,7 +5,7 @@
 #include "core/Logger.hpp"
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 GPUBuffer::GPUBuffer(SDL_GPUDevice* device, SDL_GPUBufferUsageFlags usage, uint32_t size)
     : m_device(device)
@@ -122,4 +122,4 @@ SDL_GPUBufferRegion GPUBuffer::asRegion(uint32_t offset, uint32_t size) const
     return region;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

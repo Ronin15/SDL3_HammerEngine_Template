@@ -41,19 +41,19 @@ public:
      * @param targetStateName State to transition to after loading completes
      * @param worldConfig World generation configuration
      */
-    void configure(const std::string& targetStateName,
-                   const HammerEngine::WorldGenerationConfig& worldConfig);
+    void configure(GameStateId targetStateId,
+                   const VoidLight::WorldGenerationConfig& worldConfig);
 
     bool enter() override;
     void update(float deltaTime) override;
     void handleInput() override;
     bool exit() override;
-    std::string getName() const override;
+    GameStateId getStateId() const override { return GameStateId::LOADING; }
 
     // GPU rendering support
-    void recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
+    void recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                            float interpolationAlpha) override;
-    void renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+    void renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                      SDL_GPURenderPass* swapchainPass) override;
     bool supportsGPURendering() const override { return true; }
 
@@ -71,10 +71,10 @@ public:
 
 private:
     // Target state to transition to after loading
-    std::string m_targetStateName;
+    GameStateId m_targetStateId{GameStateId::COUNT};
 
     // World generation configuration
-    HammerEngine::WorldGenerationConfig m_worldConfig{};
+    VoidLight::WorldGenerationConfig m_worldConfig{};
 
     // Async loading state (thread-safe atomics)
     std::atomic<float> m_progress{0.0f};

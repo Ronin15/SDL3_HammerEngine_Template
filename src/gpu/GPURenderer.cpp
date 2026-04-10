@@ -9,7 +9,7 @@
 #include <cstring>
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 GPURenderer& GPURenderer::Instance() {
     static GPURenderer instance;
@@ -419,7 +419,7 @@ SDL_GPURenderPass* GPURenderer::beginSwapchainPass() {
     colorTarget.texture = m_swapchainTexture;
     colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
     colorTarget.store_op = SDL_GPU_STOREOP_STORE;
-    colorTarget.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+    colorTarget.clear_color = {.r=0.0f, .g=0.0f, .b=0.0f, .a=1.0f};
 
     auto& profiler = FrameProfiler::Instance();
     profiler.beginRender(RenderPhase::GPUSwapPass);
@@ -539,7 +539,7 @@ void GPURenderer::updateViewport(uint32_t width, uint32_t height) {
                                  width, height));
 }
 
-void GPURenderer::pushViewProjection(SDL_GPURenderPass* pass, const float* viewProjection) {
+void GPURenderer::pushViewProjection(const SDL_GPURenderPass* pass, const float* viewProjection) {
     if (!pass || !viewProjection) {
         return;
     }
@@ -547,7 +547,7 @@ void GPURenderer::pushViewProjection(SDL_GPURenderPass* pass, const float* viewP
     SDL_PushGPUVertexUniformData(m_commandBuffer, 0, viewProjection, sizeof(float) * 16);
 }
 
-void GPURenderer::pushCompositeUniforms(SDL_GPURenderPass* pass,
+void GPURenderer::pushCompositeUniforms(const SDL_GPURenderPass* pass,
                                          float subPixelX, float subPixelY, float zoom) {
     if (!pass) {
         return;
@@ -687,8 +687,6 @@ bool GPURenderer::createPipelines() {
 
     ShaderInfo colorFragInfo{};
 
-    ShaderInfo compositeVertInfo{};
-
     ShaderInfo compositeFragInfo{};
     compositeFragInfo.numSamplers = 1;
     compositeFragInfo.numUniformBuffers = 1;
@@ -760,6 +758,7 @@ bool GPURenderer::createPipelines() {
 
     // Composite pipeline (renders to swapchain)
     {
+        ShaderInfo compositeVertInfo{};
         auto config = GPUPipeline::createCompositeConfig(
             shaderMgr.getShader(compositeVert, SDL_GPU_SHADERSTAGE_VERTEX, compositeVertInfo),
             shaderMgr.getShader(compositeFrag, SDL_GPU_SHADERSTAGE_FRAGMENT, compositeFragInfo),
@@ -862,4 +861,4 @@ void GPURenderer::resetFrameState() {
     m_frameReadyForPresentation = false;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

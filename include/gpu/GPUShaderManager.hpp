@@ -10,7 +10,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * Shader resource information for creation.
@@ -56,7 +56,7 @@ public:
      * @param device GPU device
      * @return true on success
      */
-    bool init(SDL_GPUDevice* device);
+    [[nodiscard]] bool init(SDL_GPUDevice* device);
 
     /**
      * Shutdown and release all shaders.
@@ -139,6 +139,6 @@ private:
     };
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // GPU_SHADER_MANAGER_HPP

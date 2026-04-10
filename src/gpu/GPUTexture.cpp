@@ -5,7 +5,7 @@
 #include "core/Logger.hpp"
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 GPUTexture::GPUTexture(SDL_GPUDevice* device, uint32_t width, uint32_t height,
                        SDL_GPUTextureFormat format, SDL_GPUTextureUsageFlags usage,
@@ -120,4 +120,4 @@ SDL_GPUTextureSamplerBinding GPUTexture::asSamplerBinding(SDL_GPUSampler* sample
     return binding;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

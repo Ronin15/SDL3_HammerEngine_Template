@@ -170,14 +170,14 @@ BOOST_FIXTURE_TEST_CASE(EventExecution, WeatherEventFixture) {
 // New tests for region + bounds logic using biome as region
 BOOST_FIXTURE_TEST_CASE(RegionNameOnly_MismatchFails_MatchPasses, WeatherEventFixture) {
     // Generate world (must be >= 26x26 to satisfy VILLAGE_RADIUS in WorldGenerator)
-    HammerEngine::WorldGenerationConfig cfg{};
+    VoidLight::WorldGenerationConfig cfg{};
     cfg.width = 30; cfg.height = 30; cfg.seed = 1234; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
     BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(cfg));
 
     // Force tile (0,0) biome to FOREST deterministically
     auto tile = WorldManager::Instance().getTileCopyAt(0, 0);
     BOOST_REQUIRE(tile.has_value());
-    tile->biome = HammerEngine::Biome::FOREST;
+    tile->biome = VoidLight::Biome::FOREST;
     BOOST_REQUIRE(WorldManager::Instance().updateTile(0, 0, *tile));
 
     auto evt = std::make_shared<WeatherEvent>("RegionTest", WeatherType::Cloudy);
@@ -187,19 +187,19 @@ BOOST_FIXTURE_TEST_CASE(RegionNameOnly_MismatchFails_MatchPasses, WeatherEventFi
     BOOST_CHECK(evt->checkConditions());
 
     // Change biome to DESERT, now region should not match
-    tile->biome = HammerEngine::Biome::DESERT;
+    tile->biome = VoidLight::Biome::DESERT;
     BOOST_REQUIRE(WorldManager::Instance().updateTile(0, 0, *tile));
     BOOST_CHECK(!evt->checkConditions());
 }
 
 BOOST_FIXTURE_TEST_CASE(RegionAndBounds_BothMustPass, WeatherEventFixture) {
     // Generate world (must be >= 26x26 to satisfy VILLAGE_RADIUS in WorldGenerator)
-    HammerEngine::WorldGenerationConfig cfg{};
+    VoidLight::WorldGenerationConfig cfg{};
     cfg.width = 30; cfg.height = 30; cfg.seed = 5678; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
     BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(cfg));
     auto tile = WorldManager::Instance().getTileCopyAt(0, 0);
     BOOST_REQUIRE(tile.has_value());
-    tile->biome = HammerEngine::Biome::FOREST;
+    tile->biome = VoidLight::Biome::FOREST;
     BOOST_REQUIRE(WorldManager::Instance().updateTile(0, 0, *tile));
 
     auto evt = std::make_shared<WeatherEvent>("RegionBoundsTest", WeatherType::Cloudy);

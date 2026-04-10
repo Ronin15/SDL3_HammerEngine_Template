@@ -11,7 +11,7 @@
 #include <cassert>
 #include <format>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // ========== HierarchicalSpatialHash Implementation ==========
 
@@ -392,15 +392,11 @@ size_t HierarchicalSpatialHash::getTotalFineCells() const {
 }
 
 void HierarchicalSpatialHash::logStatistics() const {
-    [[maybe_unused]] size_t totalBodies = m_bodyLocations.size();
-    [[maybe_unused]] size_t activeRegions = getActiveRegionCount();
-    [[maybe_unused]] size_t totalFineCells = getTotalFineCells();
-
     COLLISION_INFO("HierarchicalSpatialHash Statistics:");
-    COLLISION_INFO(std::format("  Total Bodies: {}", totalBodies));
+    COLLISION_INFO(std::format("  Total Bodies: {}", m_bodyLocations.size()));
     COLLISION_INFO(std::format("  Total Regions: {}", m_regions.size()));
-    COLLISION_INFO(std::format("  Active Regions: {}", activeRegions));
-    COLLISION_INFO(std::format("  Total Fine Cells: {}", totalFineCells));
+    COLLISION_INFO(std::format("  Active Regions: {}", getActiveRegionCount()));
+    COLLISION_INFO(std::format("  Total Fine Cells: {}", getTotalFineCells()));
 }
 
 // ========== Private Helper Methods ==========
@@ -569,4 +565,4 @@ void HierarchicalSpatialHash::unsubdivideRegion(Region& region) {
     region.hasFineSplit = false;
 }
 
-} // namespace HammerEngine
+} // namespace VoidLight

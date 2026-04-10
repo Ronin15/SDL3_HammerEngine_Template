@@ -17,16 +17,18 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 // Global fixture: Initialize ThreadSystem once for the entire test module
 // This ensures worker threads are available for all tests that need async task execution
 struct GlobalThreadSystemFixture {
     GlobalThreadSystemFixture() {
-        HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
+        if (!VoidLight::ThreadSystem::Instance().init()) { // Auto-detect system threads
+            throw std::runtime_error("ThreadSystem::init() failed");
+        }
     }
     ~GlobalThreadSystemFixture() {
-        HammerEngine::ThreadSystem::Instance().clean();
+        VoidLight::ThreadSystem::Instance().clean();
     }
 };
 BOOST_GLOBAL_FIXTURE(GlobalThreadSystemFixture);

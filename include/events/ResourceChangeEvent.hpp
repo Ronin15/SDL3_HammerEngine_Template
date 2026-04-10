@@ -31,7 +31,7 @@ public:
    * "consumed", "traded")
    */
   ResourceChangeEvent(EntityHandle ownerHandle,
-                      HammerEngine::ResourceHandle resourceHandle,
+                      VoidLight::ResourceHandle resourceHandle,
                       int oldQuantity, int newQuantity,
                       const std::string &changeReason = "");
 
@@ -43,7 +43,7 @@ public:
   void reset() override {
     Event::resetCooldown();
     m_ownerHandle = EntityHandle{};
-    m_resourceHandle = HammerEngine::ResourceHandle{};
+    m_resourceHandle = VoidLight::ResourceHandle{};
     m_oldQuantity = 0;
     m_newQuantity = 0;
     m_changeReason.clear();
@@ -58,7 +58,7 @@ public:
 
   // Resource change data
   EntityHandle getOwnerHandle() const { return m_ownerHandle; }
-  HammerEngine::ResourceHandle getResourceHandle() const {
+  VoidLight::ResourceHandle getResourceHandle() const {
     return m_resourceHandle;
   }
   int getOldQuantity() const { return m_oldQuantity; }
@@ -77,7 +77,7 @@ public:
   }
 
   // Pooling support - set all fields for reuse
-  void set(EntityHandle ownerHandle, HammerEngine::ResourceHandle resourceHandle,
+  void set(EntityHandle ownerHandle, VoidLight::ResourceHandle resourceHandle,
            int oldQuantity, int newQuantity, const std::string &changeReason) {
     m_ownerHandle = ownerHandle;
     m_resourceHandle = resourceHandle;
@@ -88,7 +88,7 @@ public:
 
 private:
   EntityHandle m_ownerHandle; // Handle of entity that owns the inventory
-  HammerEngine::ResourceHandle
+  VoidLight::ResourceHandle
       m_resourceHandle;       // Handle of the resource that changed
   int m_oldQuantity;          // Previous quantity
   int m_newQuantity;          // New quantity

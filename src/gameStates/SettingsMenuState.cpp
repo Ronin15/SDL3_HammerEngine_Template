@@ -85,7 +85,7 @@ void SettingsMenuState::handleInput() {
 
     // ESC to go back without saving
     if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
-        mp_stateManager->changeState("MainMenuState");
+        mp_stateManager->changeState(GameStateId::MAIN_MENU);
     }
 
     // Tab switching shortcuts
@@ -100,12 +100,9 @@ void SettingsMenuState::handleInput() {
     }
 }
 
-std::string SettingsMenuState::getName() const {
-    return "SettingsMenuState";
-}
 
 void SettingsMenuState::loadCurrentSettings() {
-    using namespace HammerEngine;
+    using namespace VoidLight;
     auto& settings = SettingsManager::Instance();
 
     // Graphics
@@ -129,7 +126,7 @@ void SettingsMenuState::loadCurrentSettings() {
 }
 
 void SettingsMenuState::applySettings() {
-    using namespace HammerEngine;
+    using namespace VoidLight;
     auto& settings = SettingsManager::Instance();
     auto& gameEngine = GameEngine::Instance();
 
@@ -164,7 +161,7 @@ void SettingsMenuState::applySettings() {
     settings.set("gameplay", "autosave_interval", m_tempSettings.autosaveInterval);
 
     // Save to disk
-    settings.saveToFile(HammerEngine::ResourcePath::resolve("res/settings.json"));
+    settings.saveToFile(VoidLight::ResourcePath::resolve("res/settings.json"));
 
     GAMESTATE_INFO("Settings saved successfully");
 }
@@ -387,7 +384,7 @@ void SettingsMenuState::createActionButtons() {
         "Back");
     ui.setComponentPositioning("settings_back_btn", {UIPositionMode::BOTTOM_CENTERED, buttonWidth/2 + buttonSpacing/2, bottomOffset, buttonWidth, buttonHeight});
     ui.setOnClick("settings_back_btn", [this]() {
-        mp_stateManager->changeState("MainMenuState");
+        mp_stateManager->changeState(GameStateId::MAIN_MENU);
     });
 }
 
@@ -484,15 +481,15 @@ void SettingsMenuState::updateTabVisibility() {
     }
 }
 
-void SettingsMenuState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
-                                           [[maybe_unused]] float interpolationAlpha) {
+void SettingsMenuState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
+                                           float) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
         ui.recordGPUVertices(gpuRenderer);
     }
 }
 
-void SettingsMenuState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void SettingsMenuState::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                                      SDL_GPURenderPass* swapchainPass) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {

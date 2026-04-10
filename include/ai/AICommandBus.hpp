@@ -14,7 +14,7 @@
 #include <mutex>
 #include <vector>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 class AICommandBus {
 public:
@@ -71,6 +71,6 @@ private:
     std::atomic<uint64_t> m_nextTransitionSequence{1};
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // AI_COMMAND_BUS_HPP

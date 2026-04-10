@@ -12,7 +12,7 @@
 #include <mutex>
 #include <utility>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // Forward declaration
 class ThreadSystem;
@@ -27,7 +27,8 @@ enum class SystemType : uint8_t {
     Event = 3,
     Collision = 4,
     BackgroundSim = 5,
-    COUNT = 6
+    ProjectileSim = 6,
+    COUNT = 7
 };
 
 /**
@@ -308,6 +309,6 @@ private:
     WorkerBudget calculateBudget() const;
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // WORKER_BUDGET_HPP

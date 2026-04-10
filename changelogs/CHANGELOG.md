@@ -1,7 +1,31 @@
-# HammerEngine Resource Update Branch Changelog
+# VoidLight-Framework Changelog Index
 
-## Overview
-This changelog documents the extensive updates made in the `resource_update` branch, representing a major overhaul of the HammerEngine with focus on resource management, performance optimizations, and system stability.
+This folder contains **branch-scoped changelogs**. Prefer the most specific changelog for the work you're looking at.
+
+## Branch Changelogs
+
+- [`CHANGELOG_PROJECTILES_UPDATE.md`](CHANGELOG_PROJECTILES_UPDATE.md) — `projectiles` (2026-04-03 → 2026-04-10): ProjectileManager + HUD ownership refactor + `[[nodiscard]]`/state enum standardization.
+- [`CHANGELOG_AUDIT_REFACTOR.md`](CHANGELOG_AUDIT_REFACTOR.md) — `audit` (2026-03-30 → 2026-04-01): GPU-only audit/refactor, safety + ownership pass.
+- [`CHANGELOG_ARCHITECTURE_UPDATE.md`](CHANGELOG_ARCHITECTURE_UPDATE.md) — `architecture_update` (2025-12-26): execution model + WorkerBudget + collision architecture update.
+- [`testing_update.md`](testing_update.md) — `testing_update` (2025-12-02): expanded test coverage + fixes found by tests.
+- [`CHANGELOG_WORLD_TIME_UPDATE.md`](CHANGELOG_WORLD_TIME_UPDATE.md) — `world_time` (2025-12-14): time/calendar + controller architecture + performance.
+- [`CHANGELOG_WORLD_UPDATE_2.md`](CHANGELOG_WORLD_UPDATE_2.md) — `world_update` (2025-11-16): major engine expansion + performance overhaul.
+- [`WORLD_UPDATE_CHANGELOG.md`](WORLD_UPDATE_CHANGELOG.md) — `world_update`: earlier world-update summary.
+- [`Threading_fixes.md`](Threading_fixes.md) — `Threading_fixes`: threading/collision/AI refactor notes.
+- [`EVENT_ALIGNMENT_CHANGELOG.md`](EVENT_ALIGNMENT_CHANGELOG.md) — event system centralization/refactor notes.
+- [`COLLISIONS&PATHFINDING_UPDATE.md`](COLLISIONS&PATHFINDING_UPDATE.md) — initial collision + pathfinding stack.
+- [`CHANGELOG_EDM_DATA_ORIENTED_REFACTOR.md`](CHANGELOG_EDM_DATA_ORIENTED_REFACTOR.md) — SDL3 GPU + data-driven EDM resource refactor.
+- [`CHANGELOG_RESOURCE_SDL3_GPU_UPDATE.md`](CHANGELOG_RESOURCE_SDL3_GPU_UPDATE.md) — resource update + SDL3 GPU notes.
+- [`CHANGELOG_RESOURCE_COMBAT_UPDATES.md`](CHANGELOG_RESOURCE_COMBAT_UPDATES.md) — resource/combat follow-ups.
+
+---
+
+## Legacy: `resource_update` Branch Changelog
+
+This document originally described the `resource_update` branch directly. It is preserved below for historical context.
+
+### Overview
+This changelog documents the extensive updates made in the `resource_update` branch, representing a major overhaul of the VoidLight-Framework with focus on resource management, performance optimizations, and system stability.
 
 ## 🎯 Major Features Added
 
@@ -131,6 +155,6 @@ This changelog documents the extensive updates made in the `resource_update` bra
 ---
 
 ## Summary
-The `resource_update` branch represents a major evolution of HammerEngine, introducing a robust resource management system, significant performance improvements, and enhanced stability across all platforms. This update establishes a solid foundation for future game development with the engine.
+The `resource_update` branch represents a major evolution of VoidLight-Framework, introducing a robust resource management system, significant performance improvements, and enhanced stability across all platforms. This update establishes a solid foundation for future game development with the engine.
 
 **Total Impact**: 137 files modified, major systems rewritten, comprehensive testing added, and significant performance improvements achieved.

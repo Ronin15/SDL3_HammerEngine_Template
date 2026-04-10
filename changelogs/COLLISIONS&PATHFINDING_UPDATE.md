@@ -1,7 +1,7 @@
 # Collisions & Pathfinding Update Changelog
 
 ## Overview
-The `collisions&pathfinding_update` branch introduces HammerEngine's first dedicated collision detection and pathfinding stacks. Prior to this work the engine shipped without core collision or navigation systems, so the effort delivers the initial implementation along with supporting assets, documentation, and validation harnesses required for large-scale simulations.
+The `collisions&pathfinding_update` branch introduces VoidLight-Framework's first dedicated collision detection and pathfinding stacks. Prior to this work the engine shipped without core collision or navigation systems, so the effort delivers the initial implementation along with supporting assets, documentation, and validation harnesses required for large-scale simulations.
 
 ## 🚧 Collision System Foundations
 - Added the inaugural `CollisionManager` featuring dual spatial hashes, pooled broadphase buffers, and kinematic batch updates to keep 10K+ movers responsive at 60 FPS.
@@ -43,6 +43,6 @@ The `collisions&pathfinding_update` branch introduces HammerEngine's first dedic
 - **Files touched**: 169
 - **Lines added**: ~20,000
 - **Lines removed**: ~3,100
-- Collision and pathfinding systems, along with their documentation and tests, now exist in HammerEngine for the first time.
+- Collision and pathfinding systems, along with their documentation and tests, now exist in VoidLight-Framework for the first time.
 
-This branch establishes HammerEngine's baseline collision and navigation pillars, pairing high-performance spatial processing with testable, well-documented APIs ready for future gameplay expansion.
+This branch establishes VoidLight-Framework's baseline collision and navigation pillars, pairing high-performance spatial processing with testable, well-documented APIs ready for future gameplay expansion.

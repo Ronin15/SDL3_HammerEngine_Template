@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <string>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * @brief Frame phases for high-level profiling
@@ -35,6 +35,7 @@ enum class ManagerPhase : uint8_t {
     Pathfinder,
     Collision,
     BackgroundSim,
+    Projectile,
     COUNT
 };
 
@@ -328,12 +329,12 @@ private:
 };
 
 // Debug macros - compile to actual profiling
-#define PROFILE_FRAME_BEGIN() HammerEngine::FrameProfiler::Instance().beginFrame()
-#define PROFILE_FRAME_END() HammerEngine::FrameProfiler::Instance().endFrame()
-#define PROFILE_PHASE(p) HammerEngine::ScopedPhaseTimer _scopedPhaseTimer##__LINE__(p)
-#define PROFILE_MANAGER(m) HammerEngine::ScopedManagerTimer _scopedManagerTimer##__LINE__(m)
-#define PROFILE_RENDER(r) HammerEngine::ScopedRenderTimer _scopedRenderTimer##__LINE__(r)
-#define PROFILE_RENDER_GPU(r) HammerEngine::ScopedRenderTimerGPU _scopedRenderTimerGPU##__LINE__(r)
+#define PROFILE_FRAME_BEGIN() VoidLight::FrameProfiler::Instance().beginFrame()
+#define PROFILE_FRAME_END() VoidLight::FrameProfiler::Instance().endFrame()
+#define PROFILE_PHASE(p) VoidLight::ScopedPhaseTimer _scopedPhaseTimer##__LINE__(p)
+#define PROFILE_MANAGER(m) VoidLight::ScopedManagerTimer _scopedManagerTimer##__LINE__(m)
+#define PROFILE_RENDER(r) VoidLight::ScopedRenderTimer _scopedRenderTimer##__LINE__(r)
+#define PROFILE_RENDER_GPU(r) VoidLight::ScopedRenderTimerGPU _scopedRenderTimerGPU##__LINE__(r)
 
 #else  // NDEBUG - Release build
 
@@ -377,6 +378,6 @@ public:
 
 #endif  // NDEBUG
 
-}  // namespace HammerEngine
+}  // namespace VoidLight
 
 #endif  // FRAME_PROFILER_HPP

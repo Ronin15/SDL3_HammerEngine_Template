@@ -389,18 +389,18 @@ void OverlayDemoState::handleInput() {
 }
 
 void OverlayDemoState::handleBackButton() {
-    mp_stateManager->changeState("MainMenuState");
+    mp_stateManager->changeState(GameStateId::MAIN_MENU);
 }
 
-void OverlayDemoState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
-                                          [[maybe_unused]] float interpolationAlpha) {
+void OverlayDemoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
+                                          float) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
         ui.recordGPUVertices(gpuRenderer);
     }
 }
 
-void OverlayDemoState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void OverlayDemoState::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                                     SDL_GPURenderPass* swapchainPass) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {

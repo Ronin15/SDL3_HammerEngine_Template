@@ -5,7 +5,6 @@
 
 #include "controllers/render/NPCRenderController.hpp"
 #include "entities/EntityHandle.hpp"
-#include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "gpu/SpriteBatch.hpp"
 #include "utils/GPUSceneRecorder.hpp"
@@ -42,24 +41,7 @@ void NPCRenderController::update(float deltaTime) {
     }
 }
 
-void NPCRenderController::clearSpawnedNPCs() {
-    auto& edm = EntityDataManager::Instance();
-    auto& aiMgr = AIManager::Instance();
-
-    // Get all NPC indices
-    auto npcIndices = edm.getIndicesByKind(EntityKind::NPC);
-
-    // Unregister from AI and destroy via EDM
-    for (size_t idx : npcIndices) {
-        EntityHandle handle = edm.getHandle(idx);
-        if (handle.isValid()) {
-            aiMgr.unregisterEntity(handle);
-            edm.destroyEntity(handle);
-        }
-    }
-}
-
-void NPCRenderController::recordGPU(const HammerEngine::GPUSceneContext& ctx) {
+void NPCRenderController::recordGPU(const VoidLight::GPUSceneContext& ctx) {
     if (!ctx.spriteBatch) { return; }
 
     auto& edm = EntityDataManager::Instance();

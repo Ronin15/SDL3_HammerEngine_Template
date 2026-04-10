@@ -17,7 +17,7 @@
 #include <mutex>
 #include "utils/Vector2D.hpp"
 
-namespace HammerEngine {
+namespace VoidLight {
 
 enum class PathfindingResult : uint8_t { SUCCESS, NO_PATH_FOUND, INVALID_START, INVALID_GOAL, TIMEOUT };
 
@@ -180,6 +180,6 @@ private:
     // NodePool will be thread_local within findPath function
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // PATHFINDING_GRID_HPP

@@ -13,8 +13,8 @@
 #include "gpu/GPUVertexPool.hpp"
 #include "gpu/GPUTypes.hpp"
 
-using namespace HammerEngine;
-using namespace HammerEngine::Test;
+using namespace VoidLight;
+using namespace VoidLight::Test;
 
 // Global fixture for SDL cleanup
 BOOST_GLOBAL_FIXTURE(GPUGlobalFixture);
@@ -33,7 +33,7 @@ struct VertexPoolTestFixture : public GPUTestFixture {
 
         SDL_Window* window = getTestWindow();
         if (window) {
-            device->init(window);
+            BOOST_REQUIRE(device->init(window));
         }
     }
 
@@ -117,7 +117,7 @@ BOOST_FIXTURE_TEST_CASE(ShutdownClearsState, VertexPoolTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     GPUVertexPool pool;
-    pool.init(device->get(), sizeof(SpriteVertex));
+    BOOST_REQUIRE(pool.init(device->get(), sizeof(SpriteVertex)));
     BOOST_REQUIRE(pool.isInitialized());
 
     pool.shutdown();
@@ -144,7 +144,7 @@ BOOST_FIXTURE_TEST_CASE(BeginFrameReturnsMappedPointer, VertexPoolTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     GPUVertexPool pool;
-    pool.init(device->get(), sizeof(SpriteVertex));
+    BOOST_REQUIRE(pool.init(device->get(), sizeof(SpriteVertex)));
     BOOST_REQUIRE(pool.isInitialized());
 
     void* ptr = pool.beginFrame();
@@ -161,7 +161,7 @@ BOOST_FIXTURE_TEST_CASE(EndFrameRecordsVertexCount, VertexPoolTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     GPUVertexPool pool;
-    pool.init(device->get(), sizeof(SpriteVertex));
+    BOOST_REQUIRE(pool.init(device->get(), sizeof(SpriteVertex)));
     BOOST_REQUIRE(pool.isInitialized());
 
     pool.beginFrame();
@@ -178,7 +178,7 @@ BOOST_FIXTURE_TEST_CASE(FrameCycleAdvances, VertexPoolTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     GPUVertexPool pool;
-    pool.init(device->get(), sizeof(SpriteVertex));
+    BOOST_REQUIRE(pool.init(device->get(), sizeof(SpriteVertex)));
     BOOST_REQUIRE(pool.isInitialized());
 
     // Cycle through 3 frames
@@ -207,7 +207,7 @@ BOOST_FIXTURE_TEST_CASE(GPUBufferRotatesPerFrame, VertexPoolTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     GPUVertexPool pool;
-    pool.init(device->get(), sizeof(SpriteVertex));
+    BOOST_REQUIRE(pool.init(device->get(), sizeof(SpriteVertex)));
     BOOST_REQUIRE(pool.isInitialized());
 
     BOOST_REQUIRE(pool.beginFrame() != nullptr);
@@ -230,7 +230,7 @@ BOOST_FIXTURE_TEST_CASE(NoGPUStallWithTripleBuffering, VertexPoolTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     GPUVertexPool pool;
-    pool.init(device->get(), sizeof(SpriteVertex));
+    BOOST_REQUIRE(pool.init(device->get(), sizeof(SpriteVertex)));
     BOOST_REQUIRE(pool.isInitialized());
 
     // Simulate multiple frames - triple buffering should prevent stalls
@@ -272,7 +272,7 @@ BOOST_FIXTURE_TEST_CASE(SetWrittenVertexCount, VertexPoolTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     GPUVertexPool pool;
-    pool.init(device->get(), sizeof(SpriteVertex));
+    BOOST_REQUIRE(pool.init(device->get(), sizeof(SpriteVertex)));
     BOOST_REQUIRE(pool.isInitialized());
 
     pool.beginFrame();
@@ -291,7 +291,7 @@ BOOST_FIXTURE_TEST_CASE(VertexPoolHandlesMaxCapacity, VertexPoolTestFixture) {
 
     const size_t smallCapacity = 1000;
     GPUVertexPool pool;
-    pool.init(device->get(), sizeof(SpriteVertex), smallCapacity);
+    BOOST_REQUIRE(pool.init(device->get(), sizeof(SpriteVertex), smallCapacity));
     BOOST_REQUIRE(pool.isInitialized());
 
     pool.beginFrame();
@@ -321,7 +321,7 @@ BOOST_FIXTURE_TEST_CASE(MoveConstruction, VertexPoolTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     GPUVertexPool pool1;
-    pool1.init(device->get(), sizeof(SpriteVertex));
+    BOOST_REQUIRE(pool1.init(device->get(), sizeof(SpriteVertex)));
     BOOST_REQUIRE(pool1.isInitialized());
 
     GPUVertexPool pool2(std::move(pool1));
@@ -338,7 +338,7 @@ BOOST_FIXTURE_TEST_CASE(MoveAssignment, VertexPoolTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     GPUVertexPool pool1;
-    pool1.init(device->get(), sizeof(SpriteVertex));
+    BOOST_REQUIRE(pool1.init(device->get(), sizeof(SpriteVertex)));
     BOOST_REQUIRE(pool1.isInitialized());
 
     GPUVertexPool pool2;
@@ -364,7 +364,7 @@ BOOST_FIXTURE_TEST_CASE(GetGPUBufferValid, VertexPoolTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     GPUVertexPool pool;
-    pool.init(device->get(), sizeof(SpriteVertex));
+    BOOST_REQUIRE(pool.init(device->get(), sizeof(SpriteVertex)));
     BOOST_REQUIRE(pool.isInitialized());
 
     SDL_GPUBuffer* buffer = pool.getGPUBuffer();
@@ -378,7 +378,7 @@ BOOST_FIXTURE_TEST_CASE(GetMappedPtrNullWhenNotInFrame, VertexPoolTestFixture) {
     BOOST_REQUIRE(device->isInitialized());
 
     GPUVertexPool pool;
-    pool.init(device->get(), sizeof(SpriteVertex));
+    BOOST_REQUIRE(pool.init(device->get(), sizeof(SpriteVertex)));
     BOOST_REQUIRE(pool.isInitialized());
 
     // Before beginFrame, mapped pointer should be null

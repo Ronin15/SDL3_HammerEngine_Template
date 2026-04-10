@@ -292,15 +292,7 @@ bool SceneChangeEvent::isTimerComplete() const {
     return m_timerElapsed >= m_timerDuration;
 }
 
-void SceneChangeEvent::forceSceneChange(const std::string& sceneID, TransitionType type, float duration) {
-    // Static method that would interact with a central scene management system
-    EVENT_INFO(std::format("Forcing scene change to: {} with transition type: {} and duration: {}s", sceneID, static_cast<int>(type), duration));
-
-    // Suppress unused parameter warnings in release builds
-    (void)sceneID;
-    (void)type;
-    (void)duration;
-
+void SceneChangeEvent::forceSceneChange(const std::string&, TransitionType, float) {
     // This would typically call into a game system that manages scenes/states
 }
 

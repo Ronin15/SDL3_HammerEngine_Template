@@ -36,7 +36,7 @@ bool MainMenuState::enter() {
   }
 
   // Create title using auto-positioning
-  ui.createTitleAtTop("mainmenu_title", "Hammer Game Engine - Main Menu", 60);
+  ui.createTitleAtTop("mainmenu_title", "VoidLight Engine - Main Menu", 60);
 
   // Create menu buttons with centered positioning
   int buttonWidth = 300;
@@ -64,31 +64,31 @@ bool MainMenuState::enter() {
 
   // Set up button callbacks - capture mp_stateManager for proper architecture
   ui.setOnClick("mainmenu_start_game_btn", [this]() {
-    mp_stateManager->changeState("GamePlayState");
+    mp_stateManager->changeState(GameStateId::GAME_PLAY);
   });
 
   ui.setOnClick("mainmenu_ai_demo_btn", [this]() {
-    mp_stateManager->changeState("AIDemoState");
+    mp_stateManager->changeState(GameStateId::AI_DEMO);
   });
 
   ui.setOnClick("mainmenu_advanced_ai_demo_btn", [this]() {
-    mp_stateManager->changeState("AdvancedAIDemoState");
+    mp_stateManager->changeState(GameStateId::ADVANCED_AI_DEMO);
   });
 
   ui.setOnClick("mainmenu_event_demo_btn", [this]() {
-    mp_stateManager->changeState("EventDemoState");
+    mp_stateManager->changeState(GameStateId::EVENT_DEMO);
   });
 
   ui.setOnClick("mainmenu_ui_example_btn", [this]() {
-    mp_stateManager->changeState("UIDemoState");
+    mp_stateManager->changeState(GameStateId::UI_DEMO);
   });
 
   ui.setOnClick("mainmenu_overlay_demo_btn", [this]() {
-    mp_stateManager->changeState("OverlayDemoState");
+    mp_stateManager->changeState(GameStateId::OVERLAY_DEMO);
   });
 
   ui.setOnClick("mainmenu_settings_btn", [this]() {
-    mp_stateManager->changeState("SettingsMenuState");
+    mp_stateManager->changeState(GameStateId::SETTINGS_MENU);
   });
 
   ui.setOnClick("mainmenu_exit_btn", []() {
@@ -98,7 +98,7 @@ bool MainMenuState::enter() {
   return true;
 }
 
-void MainMenuState::update([[maybe_unused]] float deltaTime) {
+void MainMenuState::update(float) {
   // Process UI input (click detection, hover states, callbacks)
   auto& ui = UIManager::Instance();
   if (!ui.isShutdown()) {
@@ -124,27 +124,27 @@ void MainMenuState::handleInput() {
 
   // Keyboard shortcuts for quick navigation
   if (inputManager.wasKeyPressed(SDL_SCANCODE_RETURN)) {
-      mp_stateManager->changeState("GamePlayState");
+      mp_stateManager->changeState(GameStateId::GAME_PLAY);
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_A)) {
-      mp_stateManager->changeState("AIDemoState");
+      mp_stateManager->changeState(GameStateId::AI_DEMO);
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_E)) {
-      mp_stateManager->changeState("EventDemoState");
+      mp_stateManager->changeState(GameStateId::EVENT_DEMO);
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_U)) {
-      mp_stateManager->changeState("UIDemoState");
+      mp_stateManager->changeState(GameStateId::UI_DEMO);
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_O)) {
-      mp_stateManager->changeState("OverlayDemoState");
+      mp_stateManager->changeState(GameStateId::OVERLAY_DEMO);
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_S)) {
-      mp_stateManager->changeState("SettingsMenuState");
+      mp_stateManager->changeState(GameStateId::SETTINGS_MENU);
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
@@ -152,12 +152,9 @@ void MainMenuState::handleInput() {
   }
 }
 
-std::string MainMenuState::getName() const {
-  return "MainMenuState";
-}
 
-void MainMenuState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
-                                       [[maybe_unused]] float interpolationAlpha) {
+void MainMenuState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
+                                       float) {
   // MainMenuState uses UIManager for all rendering
   // UIManager records its vertices (buttons, panels, text)
   auto& ui = UIManager::Instance();
@@ -166,7 +163,7 @@ void MainMenuState::recordGPUVertices(HammerEngine::GPURenderer& gpuRenderer,
   }
 }
 
-void MainMenuState::renderGPUUI(HammerEngine::GPURenderer& gpuRenderer,
+void MainMenuState::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                                  SDL_GPURenderPass* swapchainPass) {
   // Render UIManager components to swapchain
   auto& ui = UIManager::Instance();

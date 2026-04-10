@@ -12,7 +12,7 @@
 #include "gpu/GPUPipeline.hpp"
 #include "gpu/GPUTypes.hpp"
 
-using namespace HammerEngine;
+using namespace VoidLight;
 
 // ============================================================================
 // PIPELINE CONFIG STRUCT TESTS

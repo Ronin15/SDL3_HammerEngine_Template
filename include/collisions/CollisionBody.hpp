@@ -8,7 +8,7 @@
 
 #include <cstdint>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // Body type classifications for collision physics
 enum class BodyType : uint8_t {
@@ -28,6 +28,6 @@ enum CollisionLayer : uint32_t {
     Layer_Pet         = 1u << 6,
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // COLLISION_BODY_HPP

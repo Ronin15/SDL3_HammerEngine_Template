@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace HammerEngine {
+namespace VoidLight {
 
 /**
  * ResourcePath - Resolves resource paths across different execution contexts.
@@ -103,6 +103,6 @@ private:
     static std::string getExecutablePath();
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // RESOURCEPATH_HPP

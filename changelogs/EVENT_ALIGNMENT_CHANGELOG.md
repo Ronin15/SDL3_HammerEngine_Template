@@ -94,4 +94,4 @@ Major refactoring of the event system to create a centralized, thread-safe, and 
 
 ---
 
-This update represents a major architectural improvement to the HammerEngine, establishing a robust foundation for scalable event-driven game development.
+This update represents a major architectural improvement to the VoidLight-Framework, establishing a robust foundation for scalable event-driven game development.

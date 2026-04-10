@@ -31,7 +31,7 @@
 #include <pthread.h>
 #endif
 
-namespace HammerEngine {
+namespace VoidLight {
 
 // Task priority levels
 enum class TaskPriority : uint8_t {
@@ -611,10 +611,10 @@ private:
   void workerThread(size_t threadIndex = 0) {
     std::function<void()> task;
 
-    // For statistics tracking
-    auto startTime = std::chrono::steady_clock::now();
-    size_t tasksProcessed = 0;
-    size_t highPriorityTasks = 0;
+    // Statistics tracking — compiled out in release via Logger macro
+    VOIDLIGHT_DEBUG_ONLY(auto startTime = std::chrono::steady_clock::now();)
+    VOIDLIGHT_DEBUG_ONLY(size_t tasksProcessed = 0;)
+    VOIDLIGHT_DEBUG_ONLY(size_t highPriorityTasks = 0;)
 
     // Set thread as interruptible (platform-specific if needed)
     try {
@@ -642,7 +642,7 @@ private:
           // engine/urgent tasks)
           if (taskQueue.pop(task)) {
             gotTask = true;
-            highPriorityTasks++;
+            VOIDLIGHT_DEBUG_ONLY(highPriorityTasks++;)
             lastTaskTime = std::chrono::steady_clock::now();
           }
           // All tasks go through single global queue - simple and reliable
@@ -671,17 +671,16 @@ private:
             isIdle = false;
           }
 
-          // Optimized: Only increment counter when we actually have work
-          const size_t activeCount =
-              m_activeTasks.fetch_add(1, std::memory_order_relaxed) + 1;
+          // Track active task count
+          m_activeTasks.fetch_add(1, std::memory_order_relaxed);
 
           // Track execution time for profiling
           auto taskStartTime = std::chrono::steady_clock::now();
 
           try {
-            // Execute the task and increment counter
+            // Execute the task
             task();
-            tasksProcessed++;
+            VOIDLIGHT_DEBUG_ONLY(tasksProcessed++;)
 
             // Update comprehensive statistics
             m_totalTasksProcessed.fetch_add(1, std::memory_order_relaxed);
@@ -711,9 +710,6 @@ private:
 
           // Clear task after execution to free resources
           task = nullptr;
-
-          // Unused variable warning suppression
-          (void)activeCount;
         } else {
           // No task available - only mark as idle and log if we've been without tasks long enough
           if (!isIdle) {
@@ -739,19 +735,14 @@ private:
                                      threadIndex));
     }
 
-    // Log worker thread statistics on exit
+    VOIDLIGHT_DEBUG_ONLY(
     auto endTime = std::chrono::steady_clock::now();
     auto totalDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
                              endTime - startTime)
                              .count();
-
+    )
     THREADSYSTEM_INFO(std::format("Worker {} exiting after processing {} tasks over {}ms",
                                   threadIndex, tasksProcessed, totalDuration));
-
-    // Suppress unused variable warnings in release builds
-    (void)tasksProcessed;
-    (void)totalDuration;
-    (void)highPriorityTasks;
   }
 };
 
@@ -832,7 +823,7 @@ public:
    * @param enableProfiling Enable detailed task profiling (default: false)
    * @return true if initialization succeeded, false otherwise
    */
-  bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY,
+  [[nodiscard]] bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY,
             unsigned int customThreadCount = 0, bool enableProfiling = false) {
     // If already shutdown, don't allow re-initialization
     if (m_isShutdown.load(std::memory_order_acquire)) {
@@ -1124,6 +1115,6 @@ private:
   ThreadSystem() = default;
 };
 
-} // namespace HammerEngine
+} // namespace VoidLight
 
 #endif // THREAD_SYSTEM_HPP

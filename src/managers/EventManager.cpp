@@ -29,7 +29,7 @@
 
 namespace {
 void registerBuiltInHandlers(EventManager& eventManager) {
-  eventManager.registerHandler(EventTypeId::NPCSpawn, [](const EventData &data) {
+  eventManager.registerPersistentHandler(EventTypeId::NPCSpawn, [](const EventData &data) {
     if (!data.isActive() || !data.event) return;
     auto npcEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(data.event);
     if (npcEvent) {
@@ -97,12 +97,12 @@ bool EventManager::init() {
   });
   m_resourceChangePool.setCreator([]() {
     return std::make_shared<ResourceChangeEvent>(
-        EntityHandle{}, HammerEngine::ResourceHandle{}, 0, 0, "");
+        EntityHandle{}, VoidLight::ResourceHandle{}, 0, 0, "");
   });
 
   // Hot-path event pools
   m_collisionPool.setCreator([]() {
-    HammerEngine::CollisionInfo emptyInfo{};
+    VoidLight::CollisionInfo emptyInfo{};
     return std::make_shared<CollisionEvent>(emptyInfo);
   });
   m_particleEffectPool.setCreator([]() {
@@ -189,8 +189,9 @@ void EventManager::prepareForStateTransition() {
     }
   }
 
-  // Clear all handlers
-  clearAllHandlers();
+  // Clear transient handlers (state-level). Persistent handlers (manager-level,
+  // registered via registerPersistentHandler) survive across transitions.
+  clearTransientHandlers();
 
   // Clear any deferred work queued before the next state takes over.
   clearPendingDispatchQueues();
@@ -200,9 +201,6 @@ void EventManager::prepareForStateTransition() {
 
   // Reset performance stats
   resetPerformanceStats();
-
-  // Restore built-in dispatch handlers that states depend on across transitions.
-  registerBuiltInHandlers(*this);
 
   EVENT_INFO("EventManager prepared for state transition");
 }
@@ -268,7 +266,11 @@ bool EventManager::isGloballyPaused() const {
 // ==================== Handler Registration ====================
 
 void EventManager::registerHandler(EventTypeId typeId, FastEventHandler handler) {
-  (void)registerHandlerWithToken(typeId, std::move(handler));
+  registerHandlerWithToken(typeId, std::move(handler));
+}
+
+void EventManager::registerPersistentHandler(EventTypeId typeId, FastEventHandler handler) {
+  registerPersistentHandlerWithToken(typeId, std::move(handler));
 }
 
 EventManager::HandlerToken
@@ -277,7 +279,17 @@ EventManager::registerHandlerWithToken(EventTypeId typeId, FastEventHandler hand
   const size_t idx = static_cast<size_t>(typeId);
   uint64_t id = m_nextHandlerId.fetch_add(1, std::memory_order_relaxed);
 
-  m_handlersByType[idx].emplace_back(std::move(handler), id);
+  m_handlersByType[idx].emplace_back(std::move(handler), id, false);
+  return HandlerToken{typeId, id};
+}
+
+EventManager::HandlerToken
+EventManager::registerPersistentHandlerWithToken(EventTypeId typeId, FastEventHandler handler) {
+  std::unique_lock<std::shared_mutex> lock(m_handlersMutex);
+  const size_t idx = static_cast<size_t>(typeId);
+  uint64_t id = m_nextHandlerId.fetch_add(1, std::memory_order_relaxed);
+
+  m_handlersByType[idx].emplace_back(std::move(handler), id, true);
   return HandlerToken{typeId, id};
 }
 
@@ -308,6 +320,19 @@ void EventManager::clearAllHandlers() {
     m_handlersByType[i].clear();
   }
   EVENT_INFO("All event handlers cleared");
+}
+
+void EventManager::clearTransientHandlers() {
+  std::unique_lock<std::shared_mutex> lock(m_handlersMutex);
+  size_t removedCount = 0;
+  for (size_t i = 0; i < m_handlersByType.size(); ++i) {
+    auto& handlers = m_handlersByType[i];
+    size_t before = handlers.size();
+    std::erase_if(handlers, [](const HandlerEntry& e) { return !e.persistent; });
+    removedCount += before - handlers.size();
+  }
+  EVENT_INFO(std::format("Cleared {} transient handlers (persistent handlers retained)",
+                         removedCount));
 }
 
 size_t EventManager::getHandlerCount(EventTypeId typeId) const {
@@ -415,7 +440,7 @@ bool EventManager::triggerParticleEffect(const std::string &effectName,
 }
 
 bool EventManager::triggerResourceChange(
-    EntityHandle ownerHandle, HammerEngine::ResourceHandle resourceHandle,
+    EntityHandle ownerHandle, VoidLight::ResourceHandle resourceHandle,
     int oldQuantity, int newQuantity, const std::string &changeReason,
     DispatchMode mode) const {
   auto resourceEvent = m_resourceChangePool.acquire();
@@ -436,7 +461,7 @@ bool EventManager::triggerResourceChange(
                        "triggerResourceChange");
 }
 
-bool EventManager::triggerCollision(const HammerEngine::CollisionInfo &info,
+bool EventManager::triggerCollision(const VoidLight::CollisionInfo &info,
                                     DispatchMode mode) const {
   auto collisionEvent = m_collisionPool.acquire();
   if (collisionEvent) {
@@ -964,19 +989,19 @@ void EventManager::drainDispatchQueueWithBudget() {
       (eventCount > 0 && m_localNonCombatBuffer.empty());
 
   const float cachedGameTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
-  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
   const size_t combatEventCount = m_localCombatDispatchBuffer.size();
   bool useThreading = false;
 
   if (combatEventCount > 0) {
     auto decision = budgetMgr.shouldUseThreading(
-        HammerEngine::SystemType::Event, combatEventCount);
+        VoidLight::SystemType::Event, combatEventCount);
     useThreading = decision.shouldThread;
-#ifndef NDEBUG
-    if (!m_threadingEnabled.load(std::memory_order_acquire)) {
-      useThreading = false;
-    }
-#endif
+    VOIDLIGHT_DEBUG_ONLY(
+        if (!m_threadingEnabled.load(std::memory_order_acquire)) {
+          useThreading = false;
+        }
+    )
   }
 
   m_preparedCombatBuffer.clear();
@@ -991,11 +1016,11 @@ void EventManager::drainDispatchQueueWithBudget() {
   if (combatEventCount > 0) {
     if (useThreading) {
       // Compute batch strategy (not timed — only actual work is timed)
-      auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+      auto& threadSystem = VoidLight::ThreadSystem::Instance();
       size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-          HammerEngine::SystemType::Event, combatEventCount);
+          VoidLight::SystemType::Event, combatEventCount);
       auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-          HammerEngine::SystemType::Event, combatEventCount, optimalWorkerCount);
+          VoidLight::SystemType::Event, combatEventCount, optimalWorkerCount);
 
       if (batchCount > 1) {
         actualWasThreaded = true;
@@ -1024,7 +1049,7 @@ void EventManager::drainDispatchQueueWithBudget() {
                   EVENT_ERROR("Unknown exception in combat prep batch");
                 }
               },
-              HammerEngine::TaskPriority::High, "Event_CombatPrep"));
+              VoidLight::TaskPriority::High, "Event_CombatPrep"));
         }
 
         for (auto& future : m_combatPrepFutures) {
@@ -1097,21 +1122,21 @@ void EventManager::drainDispatchQueueWithBudget() {
       combatPrepEnd - combatPrepStart).count();
 
   if (combatEventCount > 0 && combatPrepMs > 0.0) {
-    budgetMgr.reportExecution(HammerEngine::SystemType::Event, combatEventCount,
+    budgetMgr.reportExecution(VoidLight::SystemType::Event, combatEventCount,
                               actualWasThreaded, actualBatchCount,
                               combatPrepMs);
   }
 
-#ifndef NDEBUG
-  // Periodic debug logging (~35 seconds at 60fps)
-  static thread_local uint64_t logFrameCounter = 0;
-  if (++logFrameCounter % 2100 == 0 && eventCount > 0) {
-    EVENT_DEBUG(std::format("Dispatch: {} events ({} combat) [{}, {:.2f}ms prep]",
-                            eventCount, combatEventCount,
-                            actualWasThreaded ? std::format("{} batches", actualBatchCount) : "single",
-                            combatPrepMs));
-  }
-#endif
+  VOIDLIGHT_DEBUG_ONLY(
+      // Periodic debug logging (~35 seconds at 60fps)
+      static thread_local uint64_t logFrameCounter = 0;
+      if (++logFrameCounter % 2100 == 0 && eventCount > 0) {
+        EVENT_DEBUG(std::format("Dispatch: {} events ({} combat) [{}, {:.2f}ms prep]",
+                                eventCount, combatEventCount,
+                                actualWasThreaded ? std::format("{} batches", actualBatchCount) : "single",
+                                combatPrepMs));
+      }
+  )
 
   // Release pooled events back to pools (after all processing complete)
   if (allCombatEvents) {
