@@ -2350,6 +2350,11 @@ void CollisionManager::resolve(const CollisionInfo &collision) {
     if (edmIdxA == SIZE_MAX || edmIdxB == SIZE_MAX)
       return;
 
+    const auto &hotA = edm.getHotDataByIndex(edmIdxA);
+    const auto &hotB = edm.getHotDataByIndex(edmIdxB);
+    if (hotA.kind == EntityKind::Projectile || hotB.kind == EntityKind::Projectile)
+      return; // Small projectiles register hits but do not block movement.
+
     const float push = collision.penetration * 0.5f;
 
     // Both movables - split the correction
@@ -2412,6 +2417,10 @@ void CollisionManager::resolve(const CollisionInfo &collision) {
     // Index already validated in narrowphase
     if (edmIdx == SIZE_MAX)
       return;
+
+    const auto &hot = edm.getHotDataByIndex(edmIdx);
+    if (hot.kind == EntityKind::Projectile)
+      return; // Small projectiles register hits but do not block movement.
 
     // Only movable body moves - push fully away from static
     Float4 const normal =

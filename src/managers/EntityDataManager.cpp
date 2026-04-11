@@ -1383,49 +1383,16 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Initialize collision data — derive mask from owner faction hostility.
-    // Attack target selection treats any different faction as hostile, so
-    // projectile masks must include all collision layers that can represent
-    // non-owner factions.
+    // Initialize collision data.
+    // Small projectiles register hits against any non-owner gameplay body,
+    // with owner immunity enforced during collision event handling rather than
+    // layer masking. They do not participate as blocking bodies in physics
+    // resolution.
     hot.collisionLayers = VoidLight::CollisionLayer::Layer_Projectile;
-    size_t ownerIdx = getIndex(owner);
-    if (ownerIdx != SIZE_MAX)
-    {
-        const auto& ownerHot = m_hotData[ownerIdx];
-        if (EntityTraits::hasHealth(ownerHot.kind))
-        {
-            const uint8_t ownerFaction = m_characterData[ownerHot.typeLocalIndex].faction;
-            switch (ownerFaction)
-            {
-                case 0: // Friendly: hostile to Enemy + Neutral
-                    hot.collisionMask = VoidLight::CollisionLayer::Layer_Enemy |
-                                        VoidLight::CollisionLayer::Layer_Default |
-                                        VoidLight::CollisionLayer::Layer_Environment;
-                    break;
-                case 1: // Enemy: hostile to Friendly + Neutral (+Player)
-                    hot.collisionMask = VoidLight::CollisionLayer::Layer_Player |
-                                        VoidLight::CollisionLayer::Layer_Default |
-                                        VoidLight::CollisionLayer::Layer_Environment;
-                    break;
-                default: // Neutral: hostile to Friendly + Enemy (+Player)
-                    hot.collisionMask = VoidLight::CollisionLayer::Layer_Player |
-                                        VoidLight::CollisionLayer::Layer_Enemy |
-                                        VoidLight::CollisionLayer::Layer_Default |
-                                        VoidLight::CollisionLayer::Layer_Environment;
-                    break;
-            }
-        }
-        else
-        {
-            hot.collisionMask = VoidLight::CollisionLayer::Layer_Enemy |
-                                VoidLight::CollisionLayer::Layer_Environment;
-        }
-    }
-    else
-    {
-        hot.collisionMask = VoidLight::CollisionLayer::Layer_Enemy |
-                            VoidLight::CollisionLayer::Layer_Environment;
-    }
+    hot.collisionMask = VoidLight::CollisionLayer::Layer_Player |
+                        VoidLight::CollisionLayer::Layer_Enemy |
+                        VoidLight::CollisionLayer::Layer_Default |
+                        VoidLight::CollisionLayer::Layer_Environment;
     hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
     hot.triggerTag = 0;
 
@@ -1663,9 +1630,10 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Initialize collision data (Player collides with enemies, environment, triggers)
+    // Initialize collision data (Player collides with gameplay bodies, environment, triggers)
     hot.collisionLayers = VoidLight::CollisionLayer::Layer_Player;
     hot.collisionMask = VoidLight::CollisionLayer::Layer_Enemy |
+                        VoidLight::CollisionLayer::Layer_Projectile |
                         VoidLight::CollisionLayer::Layer_Environment |
                         VoidLight::CollisionLayer::Layer_Trigger |
                         VoidLight::CollisionLayer::Layer_Default;

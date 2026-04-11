@@ -291,7 +291,14 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
         return;
     }
 
-    if (edm.getProjectileData(projHot.typeLocalIndex).isEmbedded())
+    const auto& proj = edm.getProjectileData(edm.getHandle(projIdx));
+    if (proj.isEmbedded())
+    {
+        return;
+    }
+
+    EntityHandle targetHandle = edm.getHandle(targetIdx);
+    if (targetHandle == proj.owner)
     {
         return;
     }
@@ -304,10 +311,6 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
         embedProjectile(projIdx, knockbackNormal);
         return;
     }
-
-    // Get projectile data for damage info
-    const auto& proj = edm.getProjectileData(edm.getHandle(projIdx));
-    EntityHandle targetHandle = edm.getHandle(targetIdx);
 
     // Collision events are dispatched on the next frame after CollisionManager::resolve().
     // By then, resolve() may already have cancelled the projectile velocity, so fall back

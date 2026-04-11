@@ -230,7 +230,7 @@ void fireProjectile(const Vector2D& attackerPos, const Vector2D& targetPos,
     Vector2D velocity = direction * projectileSpeed;
     float lifetime = (attackRange / projectileSpeed) + 0.5f;
 
-    // Collision mask auto-detected from owner kind inside createProjectile()
+    // Projectile collision uses the owner's handle only for self-hit immunity.
     edm.createProjectile(spawnPos, velocity, attackerHandle, damage, lifetime);
 }
 

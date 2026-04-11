@@ -94,10 +94,18 @@ struct ProjectileTestFixture {
         return edm.registerPlayer(1, pos);
     }
 
+    EntityHandle createFactionedNPC(const Vector2D& pos, uint8_t faction) {
+        auto& edm = EntityDataManager::Instance();
+        return edm.createNPCWithRaceClass(pos, "Human", "Guard", Sex::Unknown, faction);
+    }
+
     // Helper: create an NPC target
     EntityHandle createNPCTarget(const Vector2D& pos = Vector2D(600.0f, 500.0f)) {
-        auto& edm = EntityDataManager::Instance();
-        return edm.createNPCWithRaceClass(pos, "Human", "Guard");
+        return createFactionedNPC(pos, 0);
+    }
+
+    EntityHandle createNeutralTarget(const Vector2D& pos = Vector2D(700.0f, 500.0f)) {
+        return createFactionedNPC(pos, 2);
     }
 };
 
@@ -155,18 +163,20 @@ BOOST_AUTO_TEST_CASE(OwnerCollisionMask)
     prepareForTest();
     auto& edm = EntityDataManager::Instance();
 
-    // Player-owned projectile should hit enemies
+    // Projectile masks are uniform; owner immunity is enforced by ProjectileManager.
     EntityHandle player = createPlayerOwner();
     EntityHandle playerProj = edm.createProjectile(
         Vector2D(100.0f, 100.0f), Vector2D(100.0f, 0.0f), player, 10.0f);
     size_t playerProjIdx = edm.getIndex(playerProj);
     BOOST_REQUIRE_NE(playerProjIdx, SIZE_MAX);
     const auto& playerProjHot = edm.getHotDataByIndex(playerProjIdx);
+    BOOST_CHECK(playerProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Player);
     BOOST_CHECK(playerProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Enemy);
+    BOOST_CHECK(playerProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Default);
     BOOST_CHECK(playerProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Environment);
-    BOOST_CHECK(!(playerProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Player));
+    BOOST_CHECK(!(playerProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Projectile));
 
-    // NPC-owned projectile should hit player
+    // NPC-owned projectiles use the same collision mask.
     EntityHandle npc = createNPCTarget(Vector2D(200.0f, 200.0f));
     EntityHandle npcProj = edm.createProjectile(
         Vector2D(200.0f, 200.0f), Vector2D(100.0f, 0.0f), npc, 10.0f);
@@ -174,8 +184,10 @@ BOOST_AUTO_TEST_CASE(OwnerCollisionMask)
     BOOST_REQUIRE_NE(npcProjIdx, SIZE_MAX);
     const auto& npcProjHot = edm.getHotDataByIndex(npcProjIdx);
     BOOST_CHECK(npcProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Player);
+    BOOST_CHECK(npcProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Enemy);
+    BOOST_CHECK(npcProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Default);
     BOOST_CHECK(npcProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Environment);
-    BOOST_CHECK(!(npcProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Enemy));
+    BOOST_CHECK(!(npcProjHot.collisionMask & VoidLight::CollisionLayer::Layer_Projectile));
 }
 
 BOOST_AUTO_TEST_CASE(StateTransitionCleanup)
@@ -430,6 +442,49 @@ BOOST_AUTO_TEST_CASE(CollisionDamageAfterVelocityCancellation)
     eventMgr.removeHandler(combatToken);
 }
 
+BOOST_AUTO_TEST_CASE(CollisionDamageToNeutralTarget)
+{
+    prepareForTest();
+    auto& edm = EntityDataManager::Instance();
+    auto& eventMgr = EventManager::Instance();
+
+    EntityHandle owner = createPlayerOwner(Vector2D(100.0f, 100.0f));
+    EntityHandle target = createNeutralTarget(Vector2D(200.0f, 100.0f));
+
+    constexpr float projDamage = 12.0f;
+    EntityHandle proj = edm.createProjectile(
+        Vector2D(190.0f, 100.0f), Vector2D(180.0f, 0.0f), owner, projDamage, 5.0f);
+
+    std::atomic<bool> damageReceived{false};
+    float receivedDamage = 0.0f;
+    auto combatToken = eventMgr.registerHandlerWithToken(
+        EventTypeId::Combat,
+        [&](const EventData& data) {
+            auto dmgEvent = std::dynamic_pointer_cast<DamageEvent>(data.event);
+            if (dmgEvent) {
+                receivedDamage = dmgEvent->getDamage();
+                damageReceived.store(true, std::memory_order_release);
+            }
+        });
+
+    VoidLight::CollisionInfo info{};
+    info.indexA = edm.getIndex(proj);
+    info.indexB = edm.getIndex(target);
+    info.normal = Vector2D(1.0f, 0.0f);
+    info.penetration = 1.0f;
+    info.isMovableMovable = true;
+
+    enqueueCollisionEvent(info);
+    eventMgr.update();
+    processDestructions();
+    eventMgr.update();
+
+    BOOST_CHECK(damageReceived.load(std::memory_order_acquire));
+    BOOST_CHECK_CLOSE(receivedDamage, projDamage, 0.01f);
+
+    eventMgr.removeHandler(combatToken);
+}
+
 BOOST_AUTO_TEST_CASE(PiercingFlag)
 {
     prepareForTest();
@@ -586,6 +641,91 @@ BOOST_AUTO_TEST_CASE(MovableStaticProjectileHitEmbedsProjectileWithoutCombatDama
     BOOST_REQUIRE(edm.isValidHandle(proj));
     BOOST_CHECK(edm.getProjectileData(proj).isEmbedded());
     BOOST_CHECK(!edm.getHotDataByIndex(edm.getIndex(proj)).hasCollision());
+
+    eventMgr.removeHandler(combatToken);
+}
+
+BOOST_AUTO_TEST_CASE(ProjectileIgnoresOwnerCollision)
+{
+    prepareForTest();
+    auto& edm = EntityDataManager::Instance();
+    auto& eventMgr = EventManager::Instance();
+
+    EntityHandle owner = createPlayerOwner(Vector2D(100.0f, 100.0f));
+    EntityHandle proj = edm.createProjectile(
+        Vector2D(100.0f, 100.0f), Vector2D(0.0f, 0.0f), owner, 15.0f, 5.0f);
+
+    std::atomic<int> combatEvents{0};
+    auto combatToken = eventMgr.registerHandlerWithToken(
+        EventTypeId::Combat,
+        [&](const EventData& data) {
+            if (std::dynamic_pointer_cast<DamageEvent>(data.event)) {
+                combatEvents.fetch_add(1, std::memory_order_release);
+            }
+        });
+
+    const Vector2D ownerStartPos = edm.getHotDataByIndex(edm.getIndex(owner)).transform.position;
+    const Vector2D projStartPos = edm.getHotDataByIndex(edm.getIndex(proj)).transform.position;
+
+    CollisionManager::Instance().update(0.0f);
+    eventMgr.update();
+    processDestructions();
+    eventMgr.update();
+
+    BOOST_CHECK_EQUAL(combatEvents.load(std::memory_order_acquire), 0);
+    BOOST_REQUIRE(edm.isValidHandle(proj));
+    BOOST_CHECK(!edm.getProjectileData(proj).isEmbedded());
+
+    const auto& ownerTransform = edm.getHotDataByIndex(edm.getIndex(owner)).transform;
+    const auto& projTransform = edm.getHotDataByIndex(edm.getIndex(proj)).transform;
+    BOOST_CHECK_CLOSE(ownerTransform.position.getX(), ownerStartPos.getX(), 0.01f);
+    BOOST_CHECK_CLOSE(ownerTransform.position.getY(), ownerStartPos.getY(), 0.01f);
+    BOOST_CHECK_CLOSE(projTransform.position.getX(), projStartPos.getX(), 0.01f);
+    BOOST_CHECK_CLOSE(projTransform.position.getY(), projStartPos.getY(), 0.01f);
+    BOOST_CHECK(edm.getHotDataByIndex(edm.getIndex(proj)).hasCollision());
+
+    eventMgr.removeHandler(combatToken);
+}
+
+BOOST_AUTO_TEST_CASE(ProjectileCollisionDoesNotDisplaceTargetMovement)
+{
+    prepareForTest();
+    auto& edm = EntityDataManager::Instance();
+    auto& eventMgr = EventManager::Instance();
+
+    EntityHandle owner = createPlayerOwner(Vector2D(100.0f, 100.0f));
+    EntityHandle target = createNPCTarget(Vector2D(190.0f, 100.0f));
+    EntityHandle proj = edm.createProjectile(
+        Vector2D(190.0f, 100.0f), Vector2D(150.0f, 0.0f), owner, 15.0f, 5.0f);
+
+    std::atomic<int> combatEvents{0};
+    auto combatToken = eventMgr.registerHandlerWithToken(
+        EventTypeId::Combat,
+        [&](const EventData& data) {
+            if (std::dynamic_pointer_cast<DamageEvent>(data.event)) {
+                combatEvents.fetch_add(1, std::memory_order_release);
+            }
+        });
+
+    const Vector2D targetStartPos = edm.getHotDataByIndex(edm.getIndex(target)).transform.position;
+    const Vector2D projStartPos = edm.getHotDataByIndex(edm.getIndex(proj)).transform.position;
+
+    CollisionManager::Instance().update(0.0f);
+
+    const auto& targetAfterCollision = edm.getHotDataByIndex(edm.getIndex(target)).transform.position;
+    const auto& projAfterCollision = edm.getHotDataByIndex(edm.getIndex(proj)).transform.position;
+    BOOST_CHECK_CLOSE(targetAfterCollision.getX(), targetStartPos.getX(), 0.01f);
+    BOOST_CHECK_CLOSE(targetAfterCollision.getY(), targetStartPos.getY(), 0.01f);
+    BOOST_CHECK_CLOSE(projAfterCollision.getX(), projStartPos.getX(), 0.01f);
+    BOOST_CHECK_CLOSE(projAfterCollision.getY(), projStartPos.getY(), 0.01f);
+
+    eventMgr.update();
+    processDestructions();
+    eventMgr.update();
+
+    BOOST_CHECK_EQUAL(combatEvents.load(std::memory_order_acquire), 1);
+    BOOST_REQUIRE(edm.isValidHandle(proj));
+    BOOST_CHECK(edm.getProjectileData(proj).isEmbedded());
 
     eventMgr.removeHandler(combatToken);
 }
