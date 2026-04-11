@@ -13,10 +13,12 @@
  *
  * Projectiles flow through the same entity pipeline as NPCs:
  * - Created via EntityDataManager::createProjectile() (Active tier, Layer_Projectile)
- * - CollisionManager detects hits via getActiveIndices() broadphase
+ * - CollisionManager detects projectile overlaps via getActiveIndices() broadphase
+ * - Small projectiles do not participate in blocking position resolution
  * - CollisionEvents dispatched through EventManager (deferred)
  * - This manager subscribes to CollisionEvents and converts projectile hits
  *   into DamageEvents via the same deferred pipeline NPC combat uses
+ * - Owner immunity is enforced here using the projectile's stored owner handle
  *
  * Threading Model (follows AIManager pattern):
  * - WorkerBudget-driven adaptive threading via SystemType::ProjectileSim

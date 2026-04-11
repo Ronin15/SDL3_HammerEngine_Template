@@ -141,7 +141,7 @@ namespace VoidLight-Framework {
 enum class BodyType {
     STATIC,     // Immovable world geometry (walls, obstacles)
     KINEMATIC,  // Movable by script/AI (NPCs, moving platforms)
-    DYNAMIC,    // Physics-driven bodies (player, projectiles)
+    DYNAMIC,    // Dynamic gameplay bodies (player, projectiles)
     TRIGGER     // Non-solid areas that generate events
 };
 ```
@@ -149,7 +149,11 @@ enum class BodyType {
 **Body Type Distinctions:**
 - **STATIC**: World obstacles, buildings, triggers (never move, handled separately)
 - **KINEMATIC**: NPCs, script-controlled entities (move via script, not physics)
-- **DYNAMIC**: Player, projectiles (physics-simulated, respond to forces)
+- **DYNAMIC**: Player and projectile bodies tracked as movable entities in broadphase
+
+Important runtime exception:
+- Small projectiles are detected as dynamic overlap bodies, but they do **not** use blocking position resolution.
+- Projectile contacts still produce `CollisionEvent`s, and projectile hit gameplay is resolved later by `ProjectileManager`.
 
 The collision system groups KINEMATIC + DYNAMIC as "movable" bodies for broadphase optimization, since both require collision detection against static geometry and each other.
 

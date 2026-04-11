@@ -312,9 +312,9 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
         return;
     }
 
-    // Collision events are dispatched on the next frame after CollisionManager::resolve().
-    // By then, resolve() may already have cancelled the projectile velocity, so fall back
-    // to the projectile's stored launch speed when deciding whether this hit should damage.
+    // Collision events are deferred, so by the time the hit is processed the
+    // projectile velocity may already be zeroed by later gameplay state
+    // changes. Fall back to the stored launch speed when computing hit force.
     const float actualSpeedSq = projHot.transform.velocity.lengthSquared();
     float effectiveSpeedSq = actualSpeedSq;
     if (effectiveSpeedSq < MIN_PROJECTILE_SPEED_SQ)
