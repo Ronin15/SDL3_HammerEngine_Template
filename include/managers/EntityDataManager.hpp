@@ -1557,6 +1557,13 @@ public:
     [[nodiscard]] const AnimalRoleInfo* getAnimalRoleInfo(const std::string& role) const;
 
     /**
+     * @brief Build a display label for a creature from its composition ids
+     * @param handle Creature entity handle
+     * @return Human-readable name such as "Human Warrior"
+     */
+    [[nodiscard]] std::string getCreatureDisplayName(EntityHandle handle) const;
+
+    /**
      * @brief Create a dropped item entity
      * @param position World position
      * @param resourceHandle Item template reference

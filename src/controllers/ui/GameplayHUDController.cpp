@@ -119,6 +119,7 @@ void GameplayHUDController::onCombatEvent(const EventData& data)
     m_targetedHandle = targetHandle;
     m_targetDisplayTimer = TARGET_DISPLAY_DURATION;
     m_cachedTargetHealth = damageEvent->getRemainingHealth();
+    m_targetLabel = edm.getCreatureDisplayName(targetHandle);
 }
 
 void GameplayHUDController::clearTarget()
@@ -126,4 +127,5 @@ void GameplayHUDController::clearTarget()
     m_targetedHandle = EntityHandle{};
     m_targetDisplayTimer = 0.0f;
     m_cachedTargetHealth = 0.0f;
+    m_targetLabel = "Target";
 }

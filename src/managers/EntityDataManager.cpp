@@ -957,6 +957,49 @@ const AnimalRoleInfo* EntityDataManager::getAnimalRoleInfo(const std::string& ro
     return (it != m_animalRoleRegistry.end()) ? &it->second : nullptr;
 }
 
+std::string EntityDataManager::getCreatureDisplayName(EntityHandle handle) const {
+    const size_t index = getIndex(handle);
+    if (index == SIZE_MAX || !handle.hasHealth()) {
+        return "Target";
+    }
+
+    const auto& charData = getCharacterDataByIndex(index);
+
+    auto lookupName = [](const std::vector<std::string>& names, uint8_t id,
+                         std::string_view fallback) -> std::string_view {
+        if (id < names.size() && !names[id].empty()) {
+            return names[id];
+        }
+        return fallback;
+    };
+
+    switch (charData.category) {
+        case CreatureCategory::NPC: {
+            const std::string_view raceName =
+                lookupName(m_raceIdToName, charData.typeId, "Unknown");
+            const std::string_view className =
+                lookupName(m_classIdToName, charData.subtypeId, "NPC");
+            return std::format("{} {}", raceName, className);
+        }
+        case CreatureCategory::Monster: {
+            const std::string_view typeName =
+                lookupName(m_monsterTypeIdToName, charData.typeId, "Unknown");
+            const std::string_view variantName =
+                lookupName(m_monsterVariantIdToName, charData.subtypeId, "Monster");
+            return std::format("{} {}", typeName, variantName);
+        }
+        case CreatureCategory::Animal: {
+            const std::string_view speciesName =
+                lookupName(m_speciesIdToName, charData.typeId, "Unknown");
+            const std::string_view roleName =
+                lookupName(m_animalRoleIdToName, charData.subtypeId, "Animal");
+            return std::format("{} {}", speciesName, roleName);
+        }
+        default:
+            return "Target";
+    }
+}
+
 EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
                                                   VoidLight::ResourceHandle resourceHandle,
                                                   int quantity,
