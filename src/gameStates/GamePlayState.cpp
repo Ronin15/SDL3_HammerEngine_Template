@@ -656,7 +656,7 @@ void GamePlayState::handleInput() {
     // Offset spawn slightly in front of player
     Vector2D spawnPos = playerPos + Vector2D(dirX * 20.0f, 0.0f);
 
-    edm.createProjectile(spawnPos, velocity, playerHandle, 10.0f, 3.0f);
+    edm.createProjectile(spawnPos, velocity, playerHandle, 15.0f, 3.0f);
   }
 #endif
 
