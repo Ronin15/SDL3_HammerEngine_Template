@@ -141,7 +141,8 @@ void ProjectileManager::queueProjectileDestroy(size_t projectileIndex)
     }
 }
 
-void ProjectileManager::embedProjectile(size_t projectileIndex, const Vector2D& impactNormal)
+void ProjectileManager::embedProjectile(size_t projectileIndex, const Vector2D& impactNormal,
+                                        EntityHandle embeddedTarget)
 {
     auto& edm = EntityDataManager::Instance();
     auto& projectileHot = edm.getHotDataByIndex(projectileIndex);
@@ -153,6 +154,7 @@ void ProjectileManager::embedProjectile(size_t projectileIndex, const Vector2D& 
     }
 
     projectile.flags |= ProjectileData::FLAG_EMBEDDED;
+    projectile.embeddedTarget = embeddedTarget;
     projectile.lifetime = ProjectileData::EMBEDDED_LIFETIME_SECONDS;
     projectile.embeddedOffsetX = impactNormal.getX() * projectileHot.halfWidth;
     projectile.embeddedOffsetY = impactNormal.getY() * projectileHot.halfHeight;
@@ -259,7 +261,7 @@ void ProjectileManager::handleProjectileCollision(const VoidLight::CollisionInfo
     if (!EntityTraits::hasHealth(targetHot.kind))
     {
         // Hit non-damageable entity — embed and stop participating in collision/damage.
-        embedProjectile(projIdx, knockbackNormal);
+        embedProjectile(projIdx, knockbackNormal, targetHandle);
         return;
     }
 
@@ -304,7 +306,7 @@ void ProjectileManager::handleProjectileCollision(const VoidLight::CollisionInfo
     // Destroy projectile (unless piercing)
     if (!(proj.flags & ProjectileData::FLAG_PIERCING))
     {
-        embedProjectile(projIdx, knockbackNormal);
+        embedProjectile(projIdx, knockbackNormal, targetHandle);
     }
 }
 

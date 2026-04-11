@@ -273,6 +273,7 @@ struct ItemData {
  */
 struct ProjectileData {
     EntityHandle owner;         // Who fired this projectile
+    EntityHandle embeddedTarget; // Dynamic target this projectile is stuck into
     float damage{10.0f};
     float lifetime{5.0f};       // Time until despawn
     float speed{200.0f};

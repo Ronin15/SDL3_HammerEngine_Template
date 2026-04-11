@@ -33,6 +33,14 @@ void ProjectileRenderController::recordGPU(const VoidLight::GPUSceneContext& ctx
 
         if (projectile.isEmbedded())
         {
+            if (edm.isValidHandle(projectile.embeddedTarget))
+            {
+                const auto& targetTransform = edm.getTransform(projectile.embeddedTarget);
+                interpX = targetTransform.previousPosition.getX() +
+                    (targetTransform.position.getX() - targetTransform.previousPosition.getX()) * alpha;
+                interpY = targetTransform.previousPosition.getY() +
+                    (targetTransform.position.getY() - targetTransform.previousPosition.getY()) * alpha;
+            }
             interpX += projectile.embeddedOffsetX;
             interpY += projectile.embeddedOffsetY;
         }
