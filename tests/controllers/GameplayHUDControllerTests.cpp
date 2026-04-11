@@ -8,7 +8,6 @@
 
 #include "controllers/ui/GameplayHUDController.hpp"
 #include "collisions/CollisionInfo.hpp"
-#include "events/CollisionEvent.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
@@ -55,14 +54,9 @@ protected:
         eventMgr.dispatchEvent(damageEvent, EventManager::DispatchMode::Immediate);
     }
 
-    void enqueueCollisionEvent(const VoidLight::CollisionInfo& info)
+    void handleProjectileCollision(const VoidLight::CollisionInfo& info)
     {
-        auto collisionEvent = std::make_shared<CollisionEvent>(info);
-        EventData collisionData;
-        collisionData.typeId = EventTypeId::Collision;
-        collisionData.setActive(true);
-        collisionData.event = collisionEvent;
-        EventManager::Instance().enqueueBatch({{EventTypeId::Collision, std::move(collisionData)}});
+        ProjectileManager::Instance().handleProjectileCollision(info);
     }
 };
 
@@ -90,6 +84,7 @@ BOOST_AUTO_TEST_CASE(TestPlayerMeleeHitSetsTargetState)
     BOOST_REQUIRE(controller.hasActiveTarget());
     BOOST_CHECK_CLOSE(controller.getTargetHealth(),
                       EntityDataManager::Instance().getCharacterData(target).health, 0.01f);
+    BOOST_CHECK_EQUAL(controller.getTargetLabel(), "Human Guard");
 }
 
 BOOST_AUTO_TEST_CASE(TestPlayerProjectileHitSetsTargetState)
@@ -115,13 +110,13 @@ BOOST_AUTO_TEST_CASE(TestPlayerProjectileHitSetsTargetState)
     info.penetration = 1.0f;
     info.isMovableMovable = true;
 
-    enqueueCollisionEvent(info);
-    EventManager::Instance().update();
+    handleProjectileCollision(info);
     EventManager::Instance().update();
 
     BOOST_REQUIRE(controller.hasActiveTarget());
     BOOST_CHECK_CLOSE(controller.getTargetHealth(),
                       EntityDataManager::Instance().getCharacterData(target).health, 0.01f);
+    BOOST_CHECK_EQUAL(controller.getTargetLabel(), "Human Guard");
 }
 
 BOOST_AUTO_TEST_CASE(TestNPCDamageToPlayerDoesNotSetTarget)
