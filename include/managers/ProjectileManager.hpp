@@ -15,9 +15,9 @@
  * - Created via EntityDataManager::createProjectile() (Active tier, Layer_Projectile)
  * - CollisionManager detects projectile overlaps via getActiveIndices() broadphase
  * - Small projectiles do not participate in blocking position resolution
- * - CollisionEvents dispatched through EventManager (deferred)
- * - This manager subscribes to CollisionEvents and converts projectile hits
- *   into DamageEvents via the same deferred pipeline NPC combat uses
+ * - CollisionManager routes projectile contacts directly to this manager
+ * - This manager converts valid projectile hits into deferred DamageEvents
+ *   via the same combat queue NPC melee/ranged combat uses
  * - Owner immunity is enforced here using the projectile's stored owner handle
  *
  * Threading Model (follows AIManager pattern):
@@ -26,6 +26,7 @@
  * - Per-batch destroy queues for thread safety
  */
 
+#include "collisions/CollisionInfo.hpp"
 #include "entities/EntityHandle.hpp"
 #include "managers/EventManager.hpp"
 #include <atomic>
@@ -59,6 +60,7 @@ public:
      * Uses WorkerBudget for adaptive threading with SIMD 4-wide movement.
      */
     void update(float deltaTime);
+    void handleProjectileCollision(const VoidLight::CollisionInfo& info);
 
     [[nodiscard]] bool isInitialized() const noexcept
     {
@@ -107,23 +109,13 @@ private:
                       float worldWidth, float worldHeight,
                       std::vector<EntityHandle>& outDestroyQueue);
 
-    // Collision event handler — converts projectile hits to DamageEvents
-    void handleCollisionEvent(const EventData& eventData);
     void queueProjectileDestroy(size_t projectileIndex);
     void embedProjectile(size_t projectileIndex, const Vector2D& impactNormal);
-
-    // Subscribe/unsubscribe collision event handler
-    void subscribeCollisionHandler();
-    void unsubscribeCollisionHandler();
 
     // State
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_isShutdown{false};
     std::atomic<bool> m_globallyPaused{false};
-
-    // Event handler token for collision subscription
-    EventManager::HandlerToken m_collisionHandlerToken{};
-    bool m_collisionHandlerRegistered{false};
 
     // Reusable buffers (avoid per-frame allocation)
     std::vector<size_t> m_activeProjectileIndices;

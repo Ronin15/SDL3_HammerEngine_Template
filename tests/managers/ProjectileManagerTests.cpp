@@ -10,7 +10,7 @@
  * Covers:
  * - Projectile creation and EDM field verification
  * - Position integration (movement, boundary, lifetime)
- * - Collision-to-damage event wiring
+ * - Direct projectile collision-to-damage wiring
  * - State transition cleanup
  * - Global pause and perf stats
  */
@@ -22,7 +22,6 @@
 #include "collisions/CollisionInfo.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
-#include "events/CollisionEvent.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -79,13 +78,8 @@ struct ProjectileTestFixture {
         EntityDataManager::Instance().processDestructionQueue();
     }
 
-    void enqueueCollisionEvent(const VoidLight::CollisionInfo& info) {
-        auto collisionEvent = std::make_shared<CollisionEvent>(info);
-        EventData collData;
-        collData.typeId = EventTypeId::Collision;
-        collData.setActive(true);
-        collData.event = collisionEvent;
-        EventManager::Instance().enqueueBatch({{EventTypeId::Collision, std::move(collData)}});
+    void handleProjectileCollision(const VoidLight::CollisionInfo& info) {
+        ProjectileManager::Instance().handleProjectileCollision(info);
     }
 
     // Helper: create a player entity to serve as projectile owner
@@ -351,7 +345,7 @@ BOOST_AUTO_TEST_CASE(CollisionDamage)
             }
         });
 
-    // Construct and dispatch a collision event between projectile and target
+    // Dispatch a direct projectile collision between projectile and target.
     VoidLight::CollisionInfo info{};
     info.indexA = projIdx;
     info.indexB = targetIdx;
@@ -359,13 +353,8 @@ BOOST_AUTO_TEST_CASE(CollisionDamage)
     info.penetration = 1.0f;
     info.isMovableMovable = true;
 
-    enqueueCollisionEvent(info);
-
-    // Process collision events — triggers ProjectileManager's handler
-    eventMgr.update();
+    handleProjectileCollision(info);
     processDestructions();
-
-    // Process combat events — triggers our damage capture handler
     eventMgr.update();
 
     BOOST_CHECK(damageReceived.load(std::memory_order_acquire));
@@ -423,13 +412,11 @@ BOOST_AUTO_TEST_CASE(CollisionDamageAfterVelocityCancellation)
     info.penetration = 1.0f;
     info.isMovableMovable = true;
 
-    enqueueCollisionEvent(info);
-
-    // Match the real frame order: CollisionManager::resolve() has already cancelled the
-    // projectile velocity before ProjectileManager sees the deferred collision event.
+    // Match the real frame order: CollisionManager::resolve() may already have
+    // cancelled the projectile velocity before queued combat is processed.
     edm.getHotDataByIndex(projIdx).transform.velocity = Vector2D(0.0f, 0.0f);
 
-    eventMgr.update();
+    handleProjectileCollision(info);
     processDestructions();
     eventMgr.update();
 
@@ -474,8 +461,7 @@ BOOST_AUTO_TEST_CASE(CollisionDamageToNeutralTarget)
     info.penetration = 1.0f;
     info.isMovableMovable = true;
 
-    enqueueCollisionEvent(info);
-    eventMgr.update();
+    handleProjectileCollision(info);
     processDestructions();
     eventMgr.update();
 
@@ -489,7 +475,6 @@ BOOST_AUTO_TEST_CASE(PiercingFlag)
 {
     prepareForTest();
     auto& edm = EntityDataManager::Instance();
-    auto& eventMgr = EventManager::Instance();
 
     EntityHandle owner = createPlayerOwner(Vector2D(100.0f, 100.0f));
     EntityHandle target = createNPCTarget(Vector2D(200.0f, 100.0f));
@@ -511,14 +496,7 @@ BOOST_AUTO_TEST_CASE(PiercingFlag)
     info.penetration = 1.0f;
     info.isMovableMovable = true;
 
-    auto collisionEvent = std::make_shared<CollisionEvent>(info);
-    EventData collData;
-    collData.typeId = EventTypeId::Collision;
-    collData.setActive(true);
-    collData.event = collisionEvent;
-
-    eventMgr.enqueueBatch({{EventTypeId::Collision, std::move(collData)}});
-    eventMgr.update();
+    handleProjectileCollision(info);
 
     // Piercing projectile should survive
     BOOST_CHECK(edm.isValidHandle(proj));
@@ -555,10 +533,8 @@ BOOST_AUTO_TEST_CASE(NonPiercingProjectileOnlyDamagesOnceAcrossDuplicateCollisio
     VoidLight::CollisionInfo secondHit = firstHit;
     secondHit.indexB = edm.getIndex(targetB);
 
-    enqueueCollisionEvent(firstHit);
-    enqueueCollisionEvent(secondHit);
-
-    eventMgr.update();
+    handleProjectileCollision(firstHit);
+    handleProjectileCollision(secondHit);
     processDestructions();
     eventMgr.update();
 
@@ -597,8 +573,7 @@ BOOST_AUTO_TEST_CASE(ProjectileAsSecondCollisionParticipantInvertsKnockback)
     info.penetration = 1.0f;
     info.isMovableMovable = true;
 
-    enqueueCollisionEvent(info);
-    eventMgr.update();
+    handleProjectileCollision(info);
     processDestructions();
     eventMgr.update();
 
@@ -633,8 +608,7 @@ BOOST_AUTO_TEST_CASE(MovableStaticProjectileHitEmbedsProjectileWithoutCombatDama
     info.penetration = 1.0f;
     info.isMovableMovable = false;
 
-    enqueueCollisionEvent(info);
-    eventMgr.update();
+    handleProjectileCollision(info);
     eventMgr.update();
 
     BOOST_CHECK_EQUAL(combatEvents.load(std::memory_order_acquire), 0);
@@ -734,7 +708,6 @@ BOOST_AUTO_TEST_CASE(TriggerCollisionDoesNotEmbedProjectile)
 {
     prepareForTest();
     auto& edm = EntityDataManager::Instance();
-    auto& eventMgr = EventManager::Instance();
 
     EntityHandle owner = createPlayerOwner(Vector2D(100.0f, 100.0f));
     EntityHandle proj = edm.createProjectile(
@@ -748,8 +721,7 @@ BOOST_AUTO_TEST_CASE(TriggerCollisionDoesNotEmbedProjectile)
     info.trigger = true;
     info.isMovableMovable = false;
 
-    enqueueCollisionEvent(info);
-    eventMgr.update();
+    handleProjectileCollision(info);
 
     BOOST_REQUIRE(edm.isValidHandle(proj));
     BOOST_CHECK(!edm.getProjectileData(proj).isEmbedded());
@@ -774,8 +746,7 @@ BOOST_AUTO_TEST_CASE(EmbeddedProjectileExpiresAfterFadeLifetime)
     info.penetration = 1.0f;
     info.isMovableMovable = true;
 
-    enqueueCollisionEvent(info);
-    eventMgr.update();
+    handleProjectileCollision(info);
     eventMgr.update();
 
     BOOST_REQUIRE(edm.isValidHandle(proj));

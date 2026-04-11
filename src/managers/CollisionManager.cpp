@@ -32,6 +32,7 @@
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/ProjectileManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "utils/SIMDMath.hpp"
 #include "world/WorldData.hpp"
@@ -72,6 +73,26 @@ struct PairHash {
   }
 };
 
+namespace {
+bool isProjectileCollision(const VoidLight::CollisionInfo &info) {
+  if (info.indexA == SIZE_MAX) {
+    return false;
+  }
+
+  const auto &edm = EntityDataManager::Instance();
+  const auto &hotA = edm.getHotDataByIndex(info.indexA);
+  if (hotA.kind == EntityKind::Projectile) {
+    return true;
+  }
+
+  if (!info.isMovableMovable || info.indexB == SIZE_MAX) {
+    return false;
+  }
+
+  return edm.getHotDataByIndex(info.indexB).kind == EntityKind::Projectile;
+}
+} // namespace
+
 bool CollisionManager::init() {
   if (m_initialized)
     return true;
@@ -97,8 +118,13 @@ bool CollisionManager::init() {
   m_currentTriggerPairsBuffer.reserve(1000); // Typical trigger count
   // Note: pools.staticIndices is reserved by CollisionPool::ensureCapacity()
 
-  // Forward collision notifications to EventManager
+  // Forward non-projectile collision notifications to EventManager.
+  // Projectile hit interpretation is handled directly by ProjectileManager.
   addCollisionCallback([](const VoidLight::CollisionInfo &info) {
+    if (isProjectileCollision(info)) {
+      return;
+    }
+
     EventManager::Instance().triggerCollision(
         info, EventManager::DispatchMode::Deferred);
   });
@@ -2261,6 +2287,14 @@ void CollisionManager::update(float) {
     for (size_t j = 0; j < 4; ++j) {
       const auto &collision = m_collisionPool.collisionBuffer[collIdx + j];
       resolve(collision);
+      if (isProjectileCollision(collision)) {
+        ProjectileManager &projectileManager = ProjectileManager::Instance();
+        if (projectileManager.isInitialized()) {
+          projectileManager.handleProjectileCollision(collision);
+        }
+        continue;
+      }
+
       for (const auto &cb : m_callbacks) {
         cb(collision);
       }
@@ -2271,6 +2305,14 @@ void CollisionManager::update(float) {
   for (; collIdx < m_collisionPool.collisionBuffer.size(); ++collIdx) {
     const auto &collision = m_collisionPool.collisionBuffer[collIdx];
     resolve(collision);
+    if (isProjectileCollision(collision)) {
+      ProjectileManager &projectileManager = ProjectileManager::Instance();
+      if (projectileManager.isInitialized()) {
+        projectileManager.handleProjectileCollision(collision);
+      }
+      continue;
+    }
+
     for (const auto &cb : m_callbacks) {
       cb(collision);
     }

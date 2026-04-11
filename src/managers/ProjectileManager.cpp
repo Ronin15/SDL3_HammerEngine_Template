@@ -7,7 +7,6 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
-#include "events/CollisionEvent.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
@@ -49,9 +48,6 @@ bool ProjectileManager::init()
     m_batchDestroyQueues.reserve(16);
     m_singleDeferredEventBatch.reserve(1);
 
-    // Subscribe to collision events for projectile-hit-to-damage conversion
-    subscribeCollisionHandler();
-
     m_initialized.store(true, std::memory_order_release);
     PROJ_INFO("ProjectileManager initialized successfully");
     return true;
@@ -76,8 +72,6 @@ void ProjectileManager::clean()
             future.wait();
         }
     }
-
-    unsubscribeCollisionHandler();
 
     // Clear buffers
     m_activeProjectileIndices.clear();
@@ -134,35 +128,6 @@ void ProjectileManager::prepareForStateTransition()
 }
 
 
-// ============================================================================
-// COLLISION EVENT HANDLER
-// ============================================================================
-
-void ProjectileManager::subscribeCollisionHandler()
-{
-    if (m_collisionHandlerRegistered)
-    {
-        return;
-    }
-
-    auto& eventMgr = EventManager::Instance();
-    m_collisionHandlerToken = eventMgr.registerPersistentHandlerWithToken(
-        EventTypeId::Collision,
-        [this](const EventData& data) { handleCollisionEvent(data); });
-    m_collisionHandlerRegistered = true;
-}
-
-void ProjectileManager::unsubscribeCollisionHandler()
-{
-    if (!m_collisionHandlerRegistered)
-    {
-        return;
-    }
-
-    EventManager::Instance().removeHandler(m_collisionHandlerToken);
-    m_collisionHandlerRegistered = false;
-}
-
 void ProjectileManager::queueProjectileDestroy(size_t projectileIndex)
 {
     auto& edm = EntityDataManager::Instance();
@@ -199,27 +164,13 @@ void ProjectileManager::embedProjectile(size_t projectileIndex, const Vector2D& 
     projectileHot.collisionMask = 0;
 }
 
-void ProjectileManager::handleCollisionEvent(const EventData& eventData)
+void ProjectileManager::handleProjectileCollision(const VoidLight::CollisionInfo& info)
 {
     if (!m_initialized.load(std::memory_order_acquire) ||
         m_isShutdown.load(std::memory_order_acquire))
     {
         return;
     }
-
-    // Extract CollisionInfo from the event
-    if (!eventData.event)
-    {
-        return;
-    }
-
-    auto collisionEvent = std::static_pointer_cast<CollisionEvent>(eventData.event);
-    if (!collisionEvent)
-    {
-        return;
-    }
-
-    const auto& info = collisionEvent->getInfo();
 
     auto& edm = EntityDataManager::Instance();
 
@@ -312,9 +263,10 @@ void ProjectileManager::handleCollisionEvent(const EventData& eventData)
         return;
     }
 
-    // Collision events are deferred, so by the time the hit is processed the
-    // projectile velocity may already be zeroed by later gameplay state
-    // changes. Fall back to the stored launch speed when computing hit force.
+    // Projectile contacts are interpreted during the collision pass, but the
+    // projectile may already have been zeroed by embed/lifetime logic before
+    // the queued DamageEvent is processed. Fall back to the stored launch
+    // speed when computing hit force.
     const float actualSpeedSq = projHot.transform.velocity.lengthSquared();
     float effectiveSpeedSq = actualSpeedSq;
     if (effectiveSpeedSq < MIN_PROJECTILE_SPEED_SQ)
