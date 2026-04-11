@@ -369,6 +369,8 @@ BOOST_AUTO_TEST_CASE(CollisionDamage)
     const auto& embeddedProjectile = edm.getProjectileData(proj);
     BOOST_CHECK(embeddedProjectile.isEmbedded());
     BOOST_CHECK(embeddedProjectile.embeddedTarget == target);
+    BOOST_CHECK_CLOSE(embeddedProjectile.embeddedOffsetX, -10.0f, 0.01f);
+    BOOST_CHECK_CLOSE(embeddedProjectile.embeddedOffsetY, 0.0f, 0.01f);
     BOOST_CHECK_SMALL(edm.getHotDataByIndex(projIdx).transform.velocity.lengthSquared(), 0.001f);
 
     eventMgr.removeHandler(combatToken);

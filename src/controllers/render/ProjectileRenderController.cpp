@@ -33,6 +33,7 @@ void ProjectileRenderController::recordGPU(const VoidLight::GPUSceneContext& ctx
 
         if (projectile.isEmbedded())
         {
+            bool anchoredToTarget = false;
             if (edm.isValidHandle(projectile.embeddedTarget))
             {
                 const auto& targetTransform = edm.getTransform(projectile.embeddedTarget);
@@ -40,9 +41,13 @@ void ProjectileRenderController::recordGPU(const VoidLight::GPUSceneContext& ctx
                     (targetTransform.position.getX() - targetTransform.previousPosition.getX()) * alpha;
                 interpY = targetTransform.previousPosition.getY() +
                     (targetTransform.position.getY() - targetTransform.previousPosition.getY()) * alpha;
+                anchoredToTarget = true;
             }
-            interpX += projectile.embeddedOffsetX;
-            interpY += projectile.embeddedOffsetY;
+            if (anchoredToTarget || !projectile.embeddedTarget.isValid())
+            {
+                interpX += projectile.embeddedOffsetX;
+                interpY += projectile.embeddedOffsetY;
+            }
         }
 
         // Destination rect (screen space, centered on position)

@@ -156,8 +156,19 @@ void ProjectileManager::embedProjectile(size_t projectileIndex, const Vector2D& 
     projectile.flags |= ProjectileData::FLAG_EMBEDDED;
     projectile.embeddedTarget = embeddedTarget;
     projectile.lifetime = ProjectileData::EMBEDDED_LIFETIME_SECONDS;
-    projectile.embeddedOffsetX = impactNormal.getX() * projectileHot.halfWidth;
-    projectile.embeddedOffsetY = impactNormal.getY() * projectileHot.halfHeight;
+    if (embeddedTarget.isValid())
+    {
+        const auto& targetTransform = edm.getTransform(embeddedTarget);
+        projectile.embeddedOffsetX =
+            projectileHot.transform.position.getX() - targetTransform.position.getX();
+        projectile.embeddedOffsetY =
+            projectileHot.transform.position.getY() - targetTransform.position.getY();
+    }
+    else
+    {
+        projectile.embeddedOffsetX = impactNormal.getX() * projectileHot.halfWidth;
+        projectile.embeddedOffsetY = impactNormal.getY() * projectileHot.halfHeight;
+    }
 
     projectileHot.transform.velocity = Vector2D(0.0f, 0.0f);
     projectileHot.transform.acceleration = Vector2D(0.0f, 0.0f);
