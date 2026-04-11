@@ -506,6 +506,7 @@ private:
             uint32_t collidesWith;
             EntityID entityId;      // Cached to avoid edm.getEntityId() in narrowphase
             bool isTrigger;         // Cached to avoid edm.getHotDataByIndex() in narrowphase
+            bool isProjectile;      // Cached so narrowphase can stamp CollisionInfo::projectileInvolved
         };
         std::vector<MovableAABB> movableAABBs;
 

@@ -573,6 +573,11 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
     std::array<size_t, 4> batchEdmIndices{};
     size_t batchCount = 0;
 
+    // Boundary-hit lanes are collected here and drained after the main loop
+    // so embedProjectile()'s cold-data writes don't pollute the SIMD flush.
+    thread_local std::vector<std::pair<size_t, Vector2D>> pendingEmbeds;
+    pendingEmbeds.clear();
+
     // Returns true if projectile hit world boundary and should embed there.
     auto updateMovementScalar = [&](TransformData& transform,
                                     const EntityHotData& hotData) -> bool
@@ -643,7 +648,7 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
                     {
                         impactNormal.setY(1.0f);
                     }
-                    embedProjectile(batchEdmIndices[lane], impactNormal);
+                    pendingEmbeds.emplace_back(batchEdmIndices[lane], impactNormal);
                 }
             }
             batchCount = 0;
@@ -729,11 +734,9 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
                 transform->velocity.setY(0.0f);
             }
 
-            // Embed projectiles that hit the world boundary
+            // Embed projectiles that hit the world boundary (deferred)
             if ((boundaryMask >> lane) & 0x1)
             {
-                const size_t projectileIndex = batchEdmIndices[lane];
-                auto& projectileHot = edm.getHotDataByIndex(projectileIndex);
                 Vector2D impactNormal(0.0f, 0.0f);
                 if ((clampXMask >> lane) & 0x1)
                 {
@@ -743,8 +746,7 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
                 {
                     impactNormal.setY((velY[lane] > 0.0f) ? 1.0f : -1.0f);
                 }
-                embedProjectile(projectileIndex, impactNormal);
-                projectileHot.transform.previousPosition = projectileHot.transform.position;
+                pendingEmbeds.emplace_back(batchEdmIndices[lane], impactNormal);
             }
         }
 
@@ -764,24 +766,20 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
 
         if (proj.lifetime <= 0.0f)
         {
-            hot.setCollisionEnabled(false);
-            hot.collisionMask = 0;
-            hot.transform.velocity = Vector2D(0.0f, 0.0f);
-            hot.transform.acceleration = Vector2D(0.0f, 0.0f);
-            EntityHandle handle = edm.getHandle(edmIdx);
-            outDestroyQueue.push_back(handle);
+            outDestroyQueue.push_back(edm.getHandle(edmIdx));
             continue;
         }
 
-        auto& transform = hot.transform;
-
-        // Store previous position for render interpolation
-        transform.previousPosition = transform.position;
-
+        // Embedded projectiles are stationary — position is invariant and
+        // previousPosition was stamped once in embedProjectile(), so skip
+        // the redundant per-frame write and SIMD batching entirely.
         if (proj.isEmbedded())
         {
             continue;
         }
+
+        auto& transform = hot.transform;
+        transform.previousPosition = transform.position;
 
         // Accumulate for SIMD batch movement
         batchTransforms[batchCount] = &transform;
@@ -797,4 +795,11 @@ void ProjectileManager::processBatch(const std::vector<size_t>& indices,
 
     // Flush remaining SIMD batch
     flushMovementBatch();
+
+    // Drain deferred boundary-embed events outside the hot SIMD loop.
+    for (const auto& [projectileIndex, impactNormal] : pendingEmbeds)
+    {
+        embedProjectile(projectileIndex, impactNormal);
+    }
+    pendingEmbeds.clear();
 }

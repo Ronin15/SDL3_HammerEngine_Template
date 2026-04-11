@@ -316,6 +316,49 @@ BOOST_AUTO_TEST_CASE(MMScaling)
 }
 
 // ---------------------------------------------------------------------------
+// Dense MM Scaling — exercises narrowphase with realistic pair counts
+// Uses tighter spacing so MM pairs grow proportionally with movable count
+// instead of staying near-constant. This is where SIMD narrowphase matters.
+// ---------------------------------------------------------------------------
+BOOST_AUTO_TEST_CASE(DenseMMScaling)
+{
+    std::cout << "--- Dense MM Scaling (narrowphase-heavy) ---\n";
+    std::cout << std::setw(10) << "Movables"
+              << std::setw(12) << "Time (ms)"
+              << std::setw(12) << "MM Pairs"
+              << std::setw(15) << "ns/pair\n";
+
+    std::vector<size_t> movableCounts = {100, 500, 1000, 2000, 5000, 10000};
+
+    for (size_t count : movableCounts) {
+        prepareForTest();
+
+        // Tight spacing: ~6x denser than the sparse MM test (100 → 40).
+        // This produces hundreds-to-thousands of MM pairs — enough that
+        // narrowphase is a meaningful fraction of frame time.
+        float worldSize = std::sqrt(static_cast<float>(count)) * 40.0f;
+        createMovables(count, worldSize);
+        setupWorld(worldSize * 2.0f);
+
+        int iterations = std::max(20, 100000 / static_cast<int>(count));
+        double avgMs = runBenchmark(iterations);
+        auto [pairs, _] = getLastStats();
+
+        double nsPerPair = (pairs > 0)
+            ? (avgMs * 1e6) / static_cast<double>(pairs)
+            : 0.0;
+
+        std::cout << std::setw(10) << count
+                  << std::setw(12) << std::fixed << std::setprecision(2) << avgMs
+                  << std::setw(12) << pairs
+                  << std::setw(12) << std::fixed << std::setprecision(1) << nsPerPair << "\n";
+
+        cleanup();
+    }
+    std::cout << std::endl;
+}
+
+// ---------------------------------------------------------------------------
 // MS Scaling (Spatial Hash)
 // ---------------------------------------------------------------------------
 BOOST_AUTO_TEST_CASE(MSScaling)

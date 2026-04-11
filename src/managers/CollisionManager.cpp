@@ -72,26 +72,6 @@ struct PairHash {
   }
 };
 
-namespace {
-bool isProjectileCollision(const VoidLight::CollisionInfo &info) {
-  if (info.indexA == SIZE_MAX) {
-    return false;
-  }
-
-  const auto &edm = EntityDataManager::Instance();
-  const auto &hotA = edm.getHotDataByIndex(info.indexA);
-  if (hotA.kind == EntityKind::Projectile) {
-    return true;
-  }
-
-  if (!info.isMovableMovable || info.indexB == SIZE_MAX) {
-    return false;
-  }
-
-  return edm.getHotDataByIndex(info.indexB).kind == EntityKind::Projectile;
-}
-} // namespace
-
 bool CollisionManager::init() {
   if (m_initialized)
     return true;
@@ -1563,6 +1543,7 @@ CollisionManager::buildActiveIndices(const CullingArea &cullingArea) const {
     aabb.entityId =
         edm.getEntityId(edmIdx);      // Cache to avoid EDM call in narrowphase
     aabb.isTrigger = hot.isTrigger(); // Cache to avoid EDM call in narrowphase
+    aabb.isProjectile = (hot.kind == EntityKind::Projectile);
     pools.movableAABBs.push_back(aabb);
   }
 
@@ -2085,100 +2066,169 @@ void CollisionManager::narrowphaseSingleThreaded(
   const auto &pools = m_collisionPool;
   const auto &movableIndices = pools.movableIndices;
   const auto &movableAABBs = pools.movableAABBs;
+  const auto &mmPairs = pools.movableMovablePairs;
+  const auto &msPairs = pools.movableStaticPairs;
+
+  const size_t mmCount = mmPairs.size();
+  const size_t msCount = msPairs.size();
 
   collisions.clear();
-  collisions.reserve(
-      (pools.movableMovablePairs.size() + pools.movableStaticPairs.size()) / 4);
+  // Worst-case reserve: every broadphase pair resolves to a collision.
+  // Over-reservation is cheap vs. mid-loop realloc.
+  collisions.reserve(mmCount + msCount);
 
   constexpr float AXIS_PREFERENCE_EPSILON = 0.01f;
 
-  // Helper lambda to create collision info from AABB overlap
-  // NOTE: Broadphase already confirmed AABB overlap - no need to re-test here
-  auto processOverlap =
-      [&collisions](float minXA, float minYA, float maxXA, float maxYA,
-                    float minXB, float minYB, float maxXB, float maxYB,
-                    EntityID entityA, EntityID entityB, bool isTriggerA,
-                    bool isTriggerB, size_t idxA, size_t idxB,
-                    bool isMovableMovable) {
-        // Compute overlap (broadphase guarantees intersection)
-        float overlapX = std::min(maxXA, maxXB) - std::max(minXA, minXB);
-        float overlapY = std::min(maxYA, maxYB) - std::max(minYA, minYB);
+  // SoA scratch for 4-wide SIMD batching.
+  alignas(16) float minXA[4], minYA[4], maxXA[4], maxYA[4];
+  alignas(16) float minXB[4], minYB[4], maxXB[4], maxYB[4];
+  alignas(16) float ox[4], oy[4];
 
-        float minPen;
-        Vector2D normal;
-
-        if (overlapX < overlapY - AXIS_PREFERENCE_EPSILON) {
-          minPen = overlapX;
-          float centerXA = (minXA + maxXA) * 0.5f;
-          float centerXB = (minXB + maxXB) * 0.5f;
-          normal = (centerXA < centerXB) ? Vector2D(1, 0) : Vector2D(-1, 0);
-        } else {
-          minPen = overlapY;
-          float centerYA = (minYA + maxYA) * 0.5f;
-          float centerYB = (minYB + maxYB) * 0.5f;
-          normal = (centerYA < centerYB) ? Vector2D(0, 1) : Vector2D(0, -1);
-        }
-
-        bool isEitherTrigger = isTriggerA || isTriggerB;
-        collisions.push_back(CollisionInfo{entityA, entityB, normal, minPen,
-                                           isEitherTrigger, idxA, idxB,
-                                           isMovableMovable});
-      };
+  // Emit one CollisionInfo from precomputed overlap values.
+  // overlapX/overlapY come from the SIMD batch; everything else is trivial.
+  auto emit = [&](float overlapX, float overlapY, const float *bA,
+                  const float *bB, EntityID entityA, EntityID entityB,
+                  bool isTriggerA, bool isTriggerB, size_t idxA, size_t idxB,
+                  bool isMovableMovable, bool involvesProjectile) {
+    float minPen;
+    Vector2D normal;
+    if (overlapX < overlapY - AXIS_PREFERENCE_EPSILON) {
+      minPen = overlapX;
+      // Skip the *0.5f: only sign of (centerA - centerB) matters.
+      float sumXA = bA[0] + bA[2];
+      float sumXB = bB[0] + bB[2];
+      normal = (sumXA < sumXB) ? Vector2D(1, 0) : Vector2D(-1, 0);
+    } else {
+      minPen = overlapY;
+      float sumYA = bA[1] + bA[3];
+      float sumYB = bB[1] + bB[3];
+      normal = (sumYA < sumYB) ? Vector2D(0, 1) : Vector2D(0, -1);
+    }
+    collisions.push_back(CollisionInfo{
+        entityA, entityB, normal, minPen, isTriggerA || isTriggerB, idxA, idxB,
+        isMovableMovable, involvesProjectile});
+  };
 
   // ========================================================================
-  // 1. MOVABLE-VS-MOVABLE: Both indices are pool indices into movableAABBs
-  // Uses cached entityId and isTrigger - no EDM calls needed
+  // 1. MOVABLE-VS-MOVABLE: 4-wide SIMD over AABB overlap math.
+  // Indices are guaranteed valid by broadphase (no bounds checks).
   // ========================================================================
-  for (const auto &[poolIdxA, poolIdxB] : pools.movableMovablePairs) {
-    if (poolIdxA >= movableAABBs.size() || poolIdxB >= movableAABBs.size())
-      continue;
+  const size_t mmSimdEnd = (mmCount / 4) * 4;
+  for (size_t i = 0; i < mmSimdEnd; i += 4) {
+    // Gather 4 pairs into SoA scratch.
+    for (size_t k = 0; k < 4; ++k) {
+      const auto &p = mmPairs[i + k];
+      const auto &aA = movableAABBs[p.first];
+      const auto &aB = movableAABBs[p.second];
+      minXA[k] = aA.minX; minYA[k] = aA.minY;
+      maxXA[k] = aA.maxX; maxYA[k] = aA.maxY;
+      minXB[k] = aB.minX; minYB[k] = aB.minY;
+      maxXB[k] = aB.maxX; maxYB[k] = aB.maxY;
+    }
 
-    const auto &aabbA = movableAABBs[poolIdxA];
-    const auto &aabbB = movableAABBs[poolIdxB];
+    // 4-wide overlap computation.
+    Float4 vMinXA = load4_aligned(minXA);
+    Float4 vMinYA = load4_aligned(minYA);
+    Float4 vMaxXA = load4_aligned(maxXA);
+    Float4 vMaxYA = load4_aligned(maxYA);
+    Float4 vMinXB = load4_aligned(minXB);
+    Float4 vMinYB = load4_aligned(minYB);
+    Float4 vMaxXB = load4_aligned(maxXB);
+    Float4 vMaxYB = load4_aligned(maxYB);
 
-    // Use cached values from MovableAABB (populated in buildActiveIndices)
-    size_t edmIdxA = movableIndices[poolIdxA];
-    size_t edmIdxB = movableIndices[poolIdxB];
+    Float4 overlapX = sub(min(vMaxXA, vMaxXB), max(vMinXA, vMinXB));
+    Float4 overlapY = sub(min(vMaxYA, vMaxYB), max(vMinYA, vMinYB));
 
-    processOverlap(aabbA.minX, aabbA.minY, aabbA.maxX, aabbA.maxY, aabbB.minX,
-                   aabbB.minY, aabbB.maxX, aabbB.maxY, aabbA.entityId,
-                   aabbB.entityId,                   // Cached in MovableAABB
-                   aabbA.isTrigger, aabbB.isTrigger, // Cached in MovableAABB
-                   edmIdxA, edmIdxB,
-                   true); // isMovableMovable = true
+    store4_aligned(ox, overlapX);
+    store4_aligned(oy, overlapY);
+
+    // Per-lane scalar emit (branches on normal direction are cheap).
+    for (size_t k = 0; k < 4; ++k) {
+      const auto &p = mmPairs[i + k];
+      const auto &aA = movableAABBs[p.first];
+      const auto &aB = movableAABBs[p.second];
+      const float bA[4] = {minXA[k], minYA[k], maxXA[k], maxYA[k]};
+      const float bB[4] = {minXB[k], minYB[k], maxXB[k], maxYB[k]};
+      emit(ox[k], oy[k], bA, bB, aA.entityId, aB.entityId, aA.isTrigger,
+           aB.isTrigger, movableIndices[p.first], movableIndices[p.second],
+           /*isMovableMovable=*/true,
+           aA.isProjectile || aB.isProjectile);
+    }
+  }
+  // Scalar tail for MM remainder (<4 pairs).
+  for (size_t i = mmSimdEnd; i < mmCount; ++i) {
+    const auto &p = mmPairs[i];
+    const auto &aA = movableAABBs[p.first];
+    const auto &aB = movableAABBs[p.second];
+    float overlapX =
+        std::min(aA.maxX, aB.maxX) - std::max(aA.minX, aB.minX);
+    float overlapY =
+        std::min(aA.maxY, aB.maxY) - std::max(aA.minY, aB.minY);
+    const float bA[4] = {aA.minX, aA.minY, aA.maxX, aA.maxY};
+    const float bB[4] = {aB.minX, aB.minY, aB.maxX, aB.maxY};
+    emit(overlapX, overlapY, bA, bB, aA.entityId, aB.entityId, aA.isTrigger,
+         aB.isTrigger, movableIndices[p.first], movableIndices[p.second],
+         /*isMovableMovable=*/true,
+         aA.isProjectile || aB.isProjectile);
   }
 
   // ========================================================================
-  // 2. MOVABLE-VS-STATIC: poolIdx into movableAABBs, storageIdx into m_storage
-  // Uses cached entityId and isTrigger for movable - no EDM calls needed
+  // 2. MOVABLE-VS-STATIC: 4-wide SIMD, static AABBs come from m_storage.hotData
   // ========================================================================
-  for (const auto &[poolIdx, storageIdx] : pools.movableStaticPairs) {
-    if (poolIdx >= movableAABBs.size() ||
-        storageIdx >= m_storage.hotData.size())
-      continue;
+  const auto &hotData = m_storage.hotData;
+  const auto &entityIds = m_storage.entityIds;
+  const size_t msSimdEnd = (msCount / 4) * 4;
+  for (size_t i = 0; i < msSimdEnd; i += 4) {
+    for (size_t k = 0; k < 4; ++k) {
+      const auto &p = msPairs[i + k];
+      const auto &mA = movableAABBs[p.first];
+      const auto &sH = hotData[p.second];
+      minXA[k] = mA.minX; minYA[k] = mA.minY;
+      maxXA[k] = mA.maxX; maxYA[k] = mA.maxY;
+      minXB[k] = sH.aabbMinX; minYB[k] = sH.aabbMinY;
+      maxXB[k] = sH.aabbMaxX; maxYB[k] = sH.aabbMaxY;
+    }
 
-    const auto &movableAABB = movableAABBs[poolIdx];
-    const auto &staticHot = m_storage.hotData[storageIdx];
-    // NOTE: No active check needed - broadphase already filtered inactive
-    // statics
+    Float4 vMinXA = load4_aligned(minXA);
+    Float4 vMinYA = load4_aligned(minYA);
+    Float4 vMaxXA = load4_aligned(maxXA);
+    Float4 vMaxYA = load4_aligned(maxYA);
+    Float4 vMinXB = load4_aligned(minXB);
+    Float4 vMinYB = load4_aligned(minYB);
+    Float4 vMaxXB = load4_aligned(maxXB);
+    Float4 vMaxYB = load4_aligned(maxYB);
 
-    // Use cached values from MovableAABB (populated in buildActiveIndices)
-    size_t edmIdx = movableIndices[poolIdx];
+    Float4 overlapX = sub(min(vMaxXA, vMaxXB), max(vMinXA, vMinXB));
+    Float4 overlapY = sub(min(vMaxYA, vMaxYB), max(vMinYA, vMinYB));
 
-    // Get EntityID from m_storage for static (already accessed for AABB)
-    EntityID entityB = (storageIdx < m_storage.entityIds.size())
-                           ? m_storage.entityIds[storageIdx]
-                           : 0;
+    store4_aligned(ox, overlapX);
+    store4_aligned(oy, overlapY);
 
-    processOverlap(
-        movableAABB.minX, movableAABB.minY, movableAABB.maxX, movableAABB.maxY,
-        staticHot.aabbMinX, staticHot.aabbMinY, staticHot.aabbMaxX,
-        staticHot.aabbMaxY, movableAABB.entityId,
-        entityB, // Movable uses cached entityId
-        movableAABB.isTrigger,
-        staticHot.isTrigger != 0, // Movable uses cached isTrigger
-        edmIdx, storageIdx,
-        false); // isMovableMovable = false (movable-static collision)
+    for (size_t k = 0; k < 4; ++k) {
+      const auto &p = msPairs[i + k];
+      const auto &mA = movableAABBs[p.first];
+      const auto &sH = hotData[p.second];
+      const float bA[4] = {minXA[k], minYA[k], maxXA[k], maxYA[k]};
+      const float bB[4] = {minXB[k], minYB[k], maxXB[k], maxYB[k]};
+      emit(ox[k], oy[k], bA, bB, mA.entityId, entityIds[p.second],
+           mA.isTrigger, sH.isTrigger != 0, movableIndices[p.first], p.second,
+           /*isMovableMovable=*/false, mA.isProjectile);
+    }
+  }
+  // Scalar tail for MS remainder.
+  for (size_t i = msSimdEnd; i < msCount; ++i) {
+    const auto &p = msPairs[i];
+    const auto &mA = movableAABBs[p.first];
+    const auto &sH = hotData[p.second];
+    float overlapX =
+        std::min(mA.maxX, sH.aabbMaxX) - std::max(mA.minX, sH.aabbMinX);
+    float overlapY =
+        std::min(mA.maxY, sH.aabbMaxY) - std::max(mA.minY, sH.aabbMinY);
+    const float bA[4] = {mA.minX, mA.minY, mA.maxX, mA.maxY};
+    const float bB[4] = {sH.aabbMinX, sH.aabbMinY, sH.aabbMaxX, sH.aabbMaxY};
+    emit(overlapX, overlapY, bA, bB, mA.entityId, entityIds[p.second],
+         mA.isTrigger, sH.isTrigger != 0, movableIndices[p.first], p.second,
+         /*isMovableMovable=*/false, mA.isProjectile);
   }
 }
 
@@ -2276,42 +2326,21 @@ void CollisionManager::update(float) {
   narrowphase(m_collisionPool.collisionBuffer);
   VOIDLIGHT_DEBUG_ONLY(auto t3 = clock::now();)
 
-  // RESOLUTION: Apply collision responses and update positions
-  // Batch resolution: Process 4 collisions at a time for cache efficiency
-  size_t collIdx = 0;
-  const size_t collSimdEnd = (m_collisionPool.collisionBuffer.size() / 4) * 4;
-
-  for (; collIdx < collSimdEnd; collIdx += 4) {
-    // Process 4 collisions in a batch
-    for (size_t j = 0; j < 4; ++j) {
-      auto &collision = m_collisionPool.collisionBuffer[collIdx + j];
+  // RESOLUTION: Apply collision responses and update positions.
+  // Skip resolve() for triggers (no position correction) and for
+  // projectile-involved collisions (projectiles register hits but do not
+  // block movement). Both bits are precomputed in narrowphase/pair generation
+  // so no EDM lookups happen here.
+  for (const auto &collision : m_collisionPool.collisionBuffer) {
+    if (!collision.trigger && !collision.projectileInvolved) {
       resolve(collision);
-      collision.projectileInvolved = isProjectileCollision(collision);
-      if (collision.projectileInvolved) {
-        if (m_projectileHitSink) {
-          m_projectileHitSink(collision);
-        }
-        continue;
-      }
-
-      for (const auto &cb : m_callbacks) {
-        cb(collision);
-      }
     }
-  }
-
-  // Scalar tail
-  for (; collIdx < m_collisionPool.collisionBuffer.size(); ++collIdx) {
-    auto &collision = m_collisionPool.collisionBuffer[collIdx];
-    resolve(collision);
-    collision.projectileInvolved = isProjectileCollision(collision);
     if (collision.projectileInvolved) {
       if (m_projectileHitSink) {
         m_projectileHitSink(collision);
       }
       continue;
     }
-
     for (const auto &cb : m_callbacks) {
       cb(collision);
     }
@@ -2372,9 +2401,7 @@ void CollisionManager::rebuildStaticSpatialHashUnlocked() {
 // directly via m_staticSpatialHash
 
 void CollisionManager::resolve(const CollisionInfo &collision) {
-  if (collision.trigger)
-    return; // Triggers don't need position resolution
-
+  // Precondition: caller filters out triggers (see update()).
   auto &edm = EntityDataManager::Instance();
 
   // EDM-CENTRIC resolution:
@@ -2390,11 +2417,6 @@ void CollisionManager::resolve(const CollisionInfo &collision) {
     // Indices already validated in narrowphase
     if (edmIdxA == SIZE_MAX || edmIdxB == SIZE_MAX)
       return;
-
-    const auto &hotA = edm.getHotDataByIndex(edmIdxA);
-    const auto &hotB = edm.getHotDataByIndex(edmIdxB);
-    if (hotA.kind == EntityKind::Projectile || hotB.kind == EntityKind::Projectile)
-      return; // Small projectiles register hits but do not block movement.
 
     const float push = collision.penetration * 0.5f;
 
@@ -2458,10 +2480,6 @@ void CollisionManager::resolve(const CollisionInfo &collision) {
     // Index already validated in narrowphase
     if (edmIdx == SIZE_MAX)
       return;
-
-    const auto &hot = edm.getHotDataByIndex(edmIdx);
-    if (hot.kind == EntityKind::Projectile)
-      return; // Small projectiles register hits but do not block movement.
 
     // Only movable body moves - push fully away from static
     Float4 const normal =
