@@ -170,6 +170,11 @@ public:
     void addCollisionCallback(CollisionCB cb);
     void onCollision(CollisionCB cb) { addCollisionCallback(std::move(cb)); }
 
+    // Projectile hit sink: registered by ProjectileManager::init(), cleared in clean().
+    // Keeps CollisionManager agnostic of the higher-layer ProjectileManager.
+    using ProjectileHitSink = std::function<void(const CollisionInfo&)>;
+    void setProjectileHitSink(ProjectileHitSink sink) { m_projectileHitSink = std::move(sink); }
+
     // Metrics
     size_t getBodyCount() const { return m_storage.size(); }
 
@@ -471,6 +476,7 @@ private:
     mutable bool m_staticQueryCacheDirty{true};
 
     std::vector<CollisionCB> m_callbacks;
+    ProjectileHitSink m_projectileHitSink;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
     std::unordered_map<uint64_t, std::pair<EntityID,EntityID>> m_activeTriggerPairs; // OnEnter/Exit filtering
     std::unordered_map<EntityID, std::chrono::steady_clock::time_point> m_triggerCooldownUntil;

@@ -26,7 +26,6 @@
  * - Per-batch destroy queues for thread safety
  */
 
-#include "collisions/CollisionInfo.hpp"
 #include "entities/EntityHandle.hpp"
 #include "managers/EventManager.hpp"
 #include <atomic>
@@ -39,6 +38,10 @@
 class EntityDataManager;
 struct EntityHotData;
 struct TransformData;
+
+namespace VoidLight {
+    struct CollisionInfo;
+}
 
 class ProjectileManager
 {

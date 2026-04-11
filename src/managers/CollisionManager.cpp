@@ -32,7 +32,6 @@
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
-#include "managers/ProjectileManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "utils/SIMDMath.hpp"
 #include "world/WorldData.hpp"
@@ -119,9 +118,9 @@ bool CollisionManager::init() {
   // Note: pools.staticIndices is reserved by CollisionPool::ensureCapacity()
 
   // Forward non-projectile collision notifications to EventManager.
-  // Projectile hit interpretation is handled directly by ProjectileManager.
+  // Projectile collisions are routed via m_projectileHitSink (set by ProjectileManager::init()).
   addCollisionCallback([](const VoidLight::CollisionInfo &info) {
-    if (isProjectileCollision(info)) {
+    if (info.projectileInvolved) {
       return;
     }
 
@@ -2285,12 +2284,12 @@ void CollisionManager::update(float) {
   for (; collIdx < collSimdEnd; collIdx += 4) {
     // Process 4 collisions in a batch
     for (size_t j = 0; j < 4; ++j) {
-      const auto &collision = m_collisionPool.collisionBuffer[collIdx + j];
+      auto &collision = m_collisionPool.collisionBuffer[collIdx + j];
       resolve(collision);
-      if (isProjectileCollision(collision)) {
-        ProjectileManager &projectileManager = ProjectileManager::Instance();
-        if (projectileManager.isInitialized()) {
-          projectileManager.handleProjectileCollision(collision);
+      collision.projectileInvolved = isProjectileCollision(collision);
+      if (collision.projectileInvolved) {
+        if (m_projectileHitSink) {
+          m_projectileHitSink(collision);
         }
         continue;
       }
@@ -2303,12 +2302,12 @@ void CollisionManager::update(float) {
 
   // Scalar tail
   for (; collIdx < m_collisionPool.collisionBuffer.size(); ++collIdx) {
-    const auto &collision = m_collisionPool.collisionBuffer[collIdx];
+    auto &collision = m_collisionPool.collisionBuffer[collIdx];
     resolve(collision);
-    if (isProjectileCollision(collision)) {
-      ProjectileManager &projectileManager = ProjectileManager::Instance();
-      if (projectileManager.isInitialized()) {
-        projectileManager.handleProjectileCollision(collision);
+    collision.projectileInvolved = isProjectileCollision(collision);
+    if (collision.projectileInvolved) {
+      if (m_projectileHitSink) {
+        m_projectileHitSink(collision);
       }
       continue;
     }

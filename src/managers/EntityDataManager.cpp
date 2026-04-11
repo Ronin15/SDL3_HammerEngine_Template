@@ -957,6 +957,20 @@ const AnimalRoleInfo* EntityDataManager::getAnimalRoleInfo(const std::string& ro
     return (it != m_animalRoleRegistry.end()) ? &it->second : nullptr;
 }
 
+std::string_view EntityDataManager::getRaceName(uint32_t id) const {
+    if (id < m_raceIdToName.size() && !m_raceIdToName[id].empty()) {
+        return m_raceIdToName[id];
+    }
+    return {};
+}
+
+std::string_view EntityDataManager::getClassName(uint32_t id) const {
+    if (id < m_classIdToName.size() && !m_classIdToName[id].empty()) {
+        return m_classIdToName[id];
+    }
+    return {};
+}
+
 std::string EntityDataManager::getCreatureDisplayName(EntityHandle handle) const {
     const size_t index = getIndex(handle);
     if (index == SIZE_MAX || !handle.hasHealth()) {

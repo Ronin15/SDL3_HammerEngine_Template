@@ -22,10 +22,12 @@ Projectiles are regular EDM entities created via `EntityDataManager::createProje
 ## Event Flow (Collision → Damage)
 
 1. `CollisionManager` detects projectile hits during broadphase/narrowphase.
-2. A `CollisionEvent` is dispatched through `EventManager` (deferred).
-3. `ProjectileManager` subscribes to `EventTypeId::Collision`, ignores owner hits, embeds on non-health targets, and converts valid health-target hits into `DamageEvent` (also deferred).
+2. After resolving each collision, `CollisionManager::update()` stamps `CollisionInfo::projectileInvolved` and invokes `m_projectileHitSink` directly (set by `ProjectileManager::init()`).
+3. `ProjectileManager::handleProjectileCollision()` receives the `CollisionInfo` directly on the main thread, applies owner immunity, embeds on non-health targets, and converts valid health-target hits into a deferred `DamageEvent` (same combat queue NPC melee/ranged combat uses).
 
-This keeps projectile hit processing consistent with NPC combat wiring while preserving the non-blocking "small projectile" gameplay rule.
+Non-projectile collisions are forwarded to `EventManager` via the existing `addCollisionCallback` path, unchanged.
+
+This keeps `CollisionManager` agnostic of higher-layer managers while preserving the non-blocking "small projectile" gameplay rule.
 
 ## Threading Model
 

@@ -1564,6 +1564,20 @@ public:
     [[nodiscard]] std::string getCreatureDisplayName(EntityHandle handle) const;
 
     /**
+     * @brief Return the display name for a race id (NPC typeId)
+     * @param id Race id as stored in CharacterData::typeId
+     * @return Race name, or empty string if id is out of range
+     */
+    [[nodiscard]] std::string_view getRaceName(uint32_t id) const;
+
+    /**
+     * @brief Return the display name for a class id (NPC subtypeId)
+     * @param id Class id as stored in CharacterData::subtypeId
+     * @return Class name, or empty string if id is out of range
+     */
+    [[nodiscard]] std::string_view getClassName(uint32_t id) const;
+
+    /**
      * @brief Create a dropped item entity
      * @param position World position
      * @param resourceHandle Item template reference

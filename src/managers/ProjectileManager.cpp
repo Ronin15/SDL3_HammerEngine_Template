@@ -4,15 +4,18 @@
  */
 
 #include "managers/ProjectileManager.hpp"
+#include "collisions/CollisionInfo.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 #include "events/EntityEvents.hpp"
+#include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "utils/SIMDMath.hpp"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <format>
 
 using namespace VoidLight::SIMD;
@@ -47,6 +50,13 @@ bool ProjectileManager::init()
     m_batchFutures.reserve(16);
     m_batchDestroyQueues.reserve(16);
     m_singleDeferredEventBatch.reserve(1);
+
+    // Register collision sink: keeps CollisionManager free of ProjectileManager dependency
+    CollisionManager::Instance().setProjectileHitSink(
+        [](const VoidLight::CollisionInfo& info)
+        {
+            ProjectileManager::Instance().handleProjectileCollision(info);
+        });
 
     m_initialized.store(true, std::memory_order_release);
     PROJ_INFO("ProjectileManager initialized successfully");
@@ -84,6 +94,9 @@ void ProjectileManager::clean()
     m_singleDeferredEventBatch.shrink_to_fit();
     m_batchDestroyQueues.clear();
     m_batchDestroyQueues.shrink_to_fit();
+
+    // Deregister collision sink so CollisionManager doesn't hold a dangling reference
+    CollisionManager::Instance().setProjectileHitSink(nullptr);
 
     m_perf = PerfStats{};
     m_initialized.store(false, std::memory_order_release);
@@ -159,10 +172,27 @@ void ProjectileManager::embedProjectile(size_t projectileIndex, const Vector2D& 
     if (embeddedTarget.isValid())
     {
         const auto& targetTransform = edm.getTransform(embeddedTarget);
-        projectile.embeddedOffsetX =
-            projectileHot.transform.position.getX() - targetTransform.position.getX();
-        projectile.embeddedOffsetY =
-            projectileHot.transform.position.getY() - targetTransform.position.getY();
+        float offsetX = projectileHot.transform.position.getX() - targetTransform.position.getX();
+        float offsetY = projectileHot.transform.position.getY() - targetTransform.position.getY();
+
+        // Clamp offset to prevent the projectile from rendering inside the target.
+        // The maximum valid offset is the sum of half-extents of both bodies.
+        const size_t targetEdmIdx = edm.getIndex(embeddedTarget);
+        if (targetEdmIdx != SIZE_MAX)
+        {
+            const auto& targetHot = edm.getHotDataByIndex(targetEdmIdx);
+            const float maxOffset = projectileHot.halfWidth + targetHot.halfWidth;
+            const float offsetLen = std::hypot(offsetX, offsetY);
+            if (offsetLen > maxOffset && offsetLen > 0.0f)
+            {
+                const float scale = maxOffset / offsetLen;
+                offsetX *= scale;
+                offsetY *= scale;
+            }
+        }
+
+        projectile.embeddedOffsetX = offsetX;
+        projectile.embeddedOffsetY = offsetY;
     }
     else
     {
@@ -187,6 +217,9 @@ void ProjectileManager::handleProjectileCollision(const VoidLight::CollisionInfo
 
     auto& edm = EntityDataManager::Instance();
 
+    // Trigger collisions for projectiles reach here when a projectile overlaps a physical
+    // trigger body. They are dispatched separately via processTriggerEvents(); this branch
+    // is a defensive guard to prevent double-processing projectile-vs-trigger contacts.
     if (info.trigger)
     {
         return;
@@ -255,7 +288,7 @@ void ProjectileManager::handleProjectileCollision(const VoidLight::CollisionInfo
         return;
     }
 
-    const auto& proj = edm.getProjectileData(edm.getHandle(projIdx));
+    const auto& proj = edm.getProjectileData(projHot.typeLocalIndex);
     if (proj.isEmbedded())
     {
         return;
@@ -313,6 +346,7 @@ void ProjectileManager::handleProjectileCollision(const VoidLight::CollisionInfo
     m_singleDeferredEventBatch.clear();
     m_singleDeferredEventBatch.push_back({EventTypeId::Combat, std::move(damageData)});
     eventMgr.enqueueBatch(std::move(m_singleDeferredEventBatch));
+    m_singleDeferredEventBatch.reserve(1); // Restore capacity lost by move
 
     // Destroy projectile (unless piercing)
     if (!(proj.flags & ProjectileData::FLAG_PIERCING))

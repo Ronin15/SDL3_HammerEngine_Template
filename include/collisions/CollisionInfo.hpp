@@ -23,6 +23,9 @@ struct CollisionInfo {
     size_t indexA{SIZE_MAX};
     size_t indexB{SIZE_MAX};
     bool isMovableMovable{true};  // false = movable-static collision
+
+    // Stamped once during resolution by CollisionManager; avoids repeated isProjectileCollision() calls.
+    bool projectileInvolved{false};
 };
 
 } // namespace VoidLight

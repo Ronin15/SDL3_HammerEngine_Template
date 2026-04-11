@@ -33,21 +33,24 @@ void ProjectileRenderController::recordGPU(const VoidLight::GPUSceneContext& ctx
 
         if (projectile.isEmbedded())
         {
-            bool anchoredToTarget = false;
             if (edm.isValidHandle(projectile.embeddedTarget))
             {
+                // Target still alive — track its interpolated position and apply stored offset.
                 const auto& targetTransform = edm.getTransform(projectile.embeddedTarget);
                 interpX = targetTransform.previousPosition.getX() +
                     (targetTransform.position.getX() - targetTransform.previousPosition.getX()) * alpha;
                 interpY = targetTransform.previousPosition.getY() +
                     (targetTransform.position.getY() - targetTransform.previousPosition.getY()) * alpha;
-                anchoredToTarget = true;
-            }
-            if (anchoredToTarget || !projectile.embeddedTarget.isValid())
-            {
                 interpX += projectile.embeddedOffsetX;
                 interpY += projectile.embeddedOffsetY;
             }
+            else if (!projectile.embeddedTarget.isValid())
+            {
+                // Embedded in world geometry (no target) — use fixed world offset.
+                interpX += projectile.embeddedOffsetX;
+                interpY += projectile.embeddedOffsetY;
+            }
+            // else: target handle was valid but entity is gone — keep last interpolated position.
         }
 
         // Destination rect (screen space, centered on position)
