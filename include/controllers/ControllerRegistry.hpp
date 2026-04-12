@@ -36,7 +36,7 @@
  *
  *     void pause() override { m_controllers.suspendAll(); }
  *     void resume() override { m_controllers.resumeAll(); }
- *     bool exit() override { m_controllers.unsubscribeAll(); return true; }
+ *     bool exit() override { m_controllers.clear(); return true; }
  * };
  * @endcode
  */

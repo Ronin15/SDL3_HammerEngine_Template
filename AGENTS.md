@@ -1,52 +1,31 @@
 # AGENTS.md — VoidLight-Framework
 
-Codex CLI instructions for the VoidLight-Framework project.
+Codex instructions for this repository. Match existing subsystem patterns, fix root causes, and keep changes aligned with production architecture.
 
-## Mission
+## Priority
 
-- Match existing subsystem patterns before changing code.
-- Fix root causes in production code.
-- Preserve architecture, performance, threading, and rendering behavior.
-- Prefer minimal direct fixes over new abstractions.
-- Keep production code and tests aligned in the same change.
-- When the user names a specific file, work on exactly that file unless they explicitly approve spillover.
-
-## Working Order
-
-Follow this priority when guidance conflicts:
+Apply guidance in this order:
 
 1. Explicit user instructions
-2. This `AGENTS.md`
+2. The nearest `AGENTS.md` or `AGENTS.override.md`
 3. Existing local subsystem patterns
 4. General style preferences
 
-Before editing:
+## Scope
 
-- Read the exact code path first.
-- Search for matching patterns in the same subsystem.
-- Never assume an implied system, owner, or hot path. Trace the actual participating systems and verify with code, tests, or benchmarks before making architecture or performance recommendations.
-- Prefer targeted edits over cleanup or opportunistic refactors.
+- This is repo-level guidance. Narrower nested `AGENTS.md` files override it for their subtree.
+- Keep this file durable, concise, and repo-specific. Move subsystem-only detail into nested agent files when needed.
+- If the user names a specific file, work in that file only unless they approve spillover.
 
-While editing:
+## Workflow
 
-- Use established helpers and systems.
-- Do not add ad-hoc implementations if the repo already has a pattern.
-- Do not add compatibility overloads, extra safety layers, or new abstractions unless the task requires them.
-- When standardizing drifting systems, unify data layout and draw semantics first.
-- When tightening APIs, complete the production and test migration in the same change.
-
-Before finishing:
-
-- Run the most targeted build or test that matches the change when feasible.
-- Prefer direct test executables over slow wrapper scripts.
-- State exactly what you verified and what you did not.
-
-## Codex CLI Guidance
-
-- Treat this as repository-level guidance. More specific nested `AGENTS.md` or `AGENTS.override.md` files may override it for narrower work areas.
-- Keep this file focused on durable project rules, commands, traps, and acceptance checks. Do not duplicate personal/global preferences that belong in `~/.codex/AGENTS.md`.
-- Keep the combined instruction size practical; Codex has a default project-document budget of 32 KiB, so move subsystem-only guidance into nested files if this file grows too large.
-- When changing this file, preserve Codex-oriented wording and avoid tool-specific instructions for other assistants.
+- Read the exact code path before editing.
+- Search the same subsystem for the established pattern before inventing one.
+- Do not assume system ownership, hot paths, or participating managers. Trace them in code first.
+- Prefer targeted fixes over cleanup or opportunistic refactors.
+- Do not add compatibility overloads, ad-hoc safety layers, or new abstractions unless the task requires them.
+- Keep production and test updates in the same change when behavior changes.
+- Before finishing, run the most targeted build or test feasible and state exactly what you verified.
 
 ## Fast Commands
 
@@ -61,7 +40,8 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release -DUSE_SDL3_GPU=ON && ninja -
 
 Sanitizers:
 
-Mutually exclusive. Remove `build/CMakeCache.txt` when switching sanitizers or build options.
+- ASan and TSan are mutually exclusive.
+- Remove `build/CMakeCache.txt` when switching sanitizers or major build options.
 
 ```bash
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address -fno-omit-frame-pointer -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF && ninja -C build
@@ -93,7 +73,7 @@ Tests:
 ./bin/debug/behavior_functionality_tests --run_test="FleeFromAttacker*"
 ```
 
-Slow comprehensive scripts:
+Slow scripts:
 
 ```bash
 ./tests/test_scripts/run_all_tests.sh --core-only --errors-only
@@ -103,255 +83,108 @@ Slow comprehensive scripts:
 Boost.Test notes:
 
 - Test names use the `BOOST_AUTO_TEST_CASE` name directly.
-- Example: `ThreadingModeComparison`, not `TestThreadingModeComparison`.
-- Suite prefix is optional.
-- Use `--list_content` to confirm exact names.
+- Suite prefixes are optional.
+- Use `--list_content` to confirm the exact test name before filtering.
 
-See `tests/TESTING.md` for deeper test docs.
+See `tests/TESTING.md` for broader test documentation.
 
 ## Repo Map
 
-- Source layout: `src/{core,managers,controllers,gameStates,entities,events,ai,collisions,utils,world,gpu}`
+- Source: `src/{core,managers,controllers,gameStates,entities,events,ai,collisions,utils,world,gpu}`
 - Headers mirror source under `include/`
 - Other important dirs: `tests/`, `res/`, `res/shaders/`
 - Dependency direction: `Core -> Managers -> GameStates -> Entities/Controllers`
+- Common architectural anchors: `GameEngine`, `ThreadSystem`, `EntityDataManager`, `AIManager`, `EventManager`, `ControllerRegistry`, `WorldRenderPipeline`, `GPURenderer`
 
-Key systems:
+## Core Rules
 
-- Core: `GameEngine`, `ThreadSystem`, `Logger`, `TimestepManager`
-- Managers: `EntityDataManager`, `AIManager`, `EventManager`, `CollisionManager`, `ParticleManager`, `PathfinderManager`, `WorldManager`, `WorldResourceManager`, `BackgroundSimulationManager`, `UIManager`, `GameTimeManager`, `InputManager`, `TextureManager`, `FontManager`, `SoundManager`
-- AI: `AIBehavior` base with Idle, Wander, Patrol, Chase, Flee, Follow, Guard, Attack
-- Controllers are state-scoped via `ControllerRegistry`
-- Utils: `Camera`, `Vector2D`, `SIMDMath`, `JsonReader`, `BinarySerializer`, `UniqueID`, `FrameProfiler`
-- GPU path: `GPUDevice`, `GPURenderer`, `GPUShaderManager`, `SpriteBatch`, `GPUVertexPool`, `GPUSceneRecorder`
-
-## Core Coding Rules
+### C++ and APIs
 
 - C++20, 4-space indent, Allman braces.
-- Use RAII and smart pointers.
-- Use `ThreadSystem`, not raw threads.
-- Prefer STL algorithms where reasonable.
+- Prefer RAII, smart pointers, forward declarations, and non-trivial logic in `.cpp`.
 - Use `const T&` for read-only non-trivial inputs, `T&` for mutation, and value for primitives.
-- Use `const std::string&` for map lookups. Avoid `string_view -> string` churn.
 - Prefer `std::span`, `std::string_view`, `std::optional`, and explicit read/mutate APIs.
-- Avoid raw arrays, raw pointer escape paths, nullable pointer-return accessors, and new legacy compatibility overloads.
-- Stored raw pointers are not acceptable for ownership or long-lived cached state. Materialize raw pointers only at the final C API submission boundary.
-- Naming: UpperCamelCase for types, lowerCamelCase for functions and variables, `m_` and `mp_` members, `ALL_CAPS` constants.
-- Use `.hpp` for C++ headers and `.h` for C headers. Prefer forward declarations. Keep non-trivial logic in `.cpp`.
+- Use `const std::string&` for map lookups. Avoid `string_view -> string` churn.
+- Avoid raw arrays, nullable pointer-return accessors, long-lived raw pointers, and new legacy compatibility overloads.
+- Materialize raw pointers only at the final C API boundary.
 - Use `std::format()` for logs. Never concatenate log strings with `+`. Use `AI_INFO_IF(cond, msg)` when only logging is conditional.
-- Use `VOIDLIGHT_DEBUG_ONLY(...)` for debug-only variables, metrics, logs, and blocks. Do not use raw `#ifdef DEBUG`.
-- Remove unused parameter names and keep the type, such as `void foo(float)`. Do not use `(void)param`, commented parameter names, or `[[maybe_unused]]` to suppress warnings. `[[maybe_unused]]` is only permitted on virtual base class empty default implementations.
-- Check critical `[[nodiscard]]` bool-returning calls such as `init()`, `load()`, and `create()`. Use `BOOST_REQUIRE()` in tests and production error handling such as `if (!init())`.
-- Copyright header:
+- Use `VOIDLIGHT_DEBUG_ONLY(...)` for debug-only code. Do not use raw `#ifdef DEBUG`.
+- Remove unused parameter names entirely, for example `void foo(float)`. Do not use `(void)param`, commented names, or `[[maybe_unused]]` except on empty virtual base defaults.
+- Check important `[[nodiscard]]` bool returns such as `init()`, `load()`, and `create()`. Use `BOOST_REQUIRE()` in tests.
+- Preserve the project copyright header:
 
 ```cpp
 /* Copyright (c) 2025 Hammer Forged Games ... MIT License */
 ```
 
-## Performance Rules
+### Performance and Threading
 
 - Avoid per-frame allocations.
-- Reuse member buffers and preserve capacity with `clear()`.
-- Always `reserve()` when size is known.
-- Use thread-local storage for RNG, reusable buffers, and spatial caches.
-- Prefer ref-based APIs for reusable buffers over return-by-value patterns that force allocations.
-- When collecting from thread-local vectors, use ref-based APIs with `clear()` to preserve capacity. Do not use `swap()` or return-by-value patterns that destroy capacity.
-
-## SIMD
-
-- Use `include/utils/SIMDMath.hpp` for cross-platform SIMD.
-- Process 4 elements per iteration plus a scalar tail.
-- Always provide a scalar fallback.
-
-## Threading and State Invariants
-
-- Main thread owns SDL events and rendering.
-- Worker threads process batches only.
-- Avoid non-`thread_local` static state in threaded code.
+- Reuse member buffers, call `reserve()` when size is known, and preserve capacity with `clear()`.
+- Prefer ref-based reusable buffer APIs over return-by-value patterns that force allocations.
+- Keep reusable scratch state thread-local when used from worker code.
+- Main thread owns SDL events and rendering. Worker threads process batches only.
+- Use `ThreadSystem`, not raw threads.
+- Use `WorkerBudget` to decide threading and batch sizing, and report execution after work completes.
 - Futures must complete before dependent operations.
-- Cache-line align hot atomics with `alignas(64)`.
-- `ThreadSystem` uses `hardware_concurrency - 1` workers and priority levels from Critical to Idle.
-- Use `enqueueTaskWithResult()` for future-based work and `batchEnqueueTasks()` for bulk submission.
-- Use `shared_mutex` for reader-writer access, `mutex` for exclusive access, `atomic<bool>` for flags, and `condition_variable` for worker wakeups.
-- `WorkerBudget` rules:
-  - `shouldUseThreading()` decides whether to thread.
-  - `getBatchStrategy()` sizes batches.
-  - `reportExecution()` feeds throughput tracking.
+- Avoid non-`thread_local` static state in threaded code.
+- Align hot atomics with `alignas(64)` when contention matters.
+- Use `include/utils/SIMDMath.hpp` for SIMD work. Process 4 elements per iteration plus a scalar tail.
 
-Canonical manager threading pattern:
+### EDM, AI, and Controllers
 
-```cpp
-auto decision = budgetMgr.shouldUseThreading(SystemType::AI, count);
-if (decision.shouldThread) {
-    for (size_t i = 0; i < decision.batchCount; ++i) {
-        m_futures.push_back(threadSystem.enqueueTaskWithResult([...] { processBatch(...); }));
-    }
-    for (auto& f : m_futures) { f.get(); }
-}
-budgetMgr.reportExecution(SystemType::AI, count, decision.shouldThread, decision.batchCount, elapsedMs);
-```
+- `EntityDataManager` is storage only.
+- AI decision logic belongs in `Behaviors::` and `BehaviorExecutors`.
+- `EDM::recordCombatEvent()` records stats and memory only. Emotion math belongs in behavior helpers.
+- `Behaviors::processWitnessedCombat()` owns witnessed-combat emotion and memory handling.
+- Emotional contagion runs in the main-thread pre-pass in `AIManager::update()`.
+- Cross-frame state such as paths and timers belongs in EDM, not local temporaries.
+- Controllers must never mutate AI behavior state directly in EDM.
+- Use `Behaviors::queueBehaviorMessage()` from the main thread and `Behaviors::deferBehaviorMessage()` from worker threads.
+- `switchBehavior()` clears behavior data before `init()`. Set new behavior state after the switch, not before.
+- EDM render data stores manager-owned texture handles as `std::shared_ptr<SDL_Texture>`. Call `.get()` only at the final draw site and avoid copying `shared_ptr` in visible-entity loops.
 
-State transition rules:
+### State Transitions and Events
 
 - Call `prepareForStateTransition()` on active managers before cleanup.
-- Current AI-heavy cleanup order when initialized:
-  - `AIManager`
-  - `ProjectileManager`
-  - `BackgroundSimulationManager`
-  - `WorldResourceManager`
-  - `EventManager`
-  - `CollisionManager`
-  - `PathfinderManager`
-  - `EntityDataManager`
-  - `WorkerBudgetManager`
-  - `ParticleManager`
-- Demo states may skip managers they do not initialize.
-- `ControllerRegistry::clear()`, not just `unsubscribeAll()`, must be called in `GamePlayState::exit()`.
-
-Event handler persistence:
-
+- In AI-heavy states, clean up in this order when initialized: `AIManager`, `ProjectileManager`, `BackgroundSimulationManager`, `WorldResourceManager`, `EventManager`, `CollisionManager`, `PathfinderManager`, `EntityDataManager`, `WorkerBudgetManager`, `ParticleManager`.
+- Demo states may skip managers they never initialized.
+- `ControllerRegistry::clear()` must be called in `GamePlayState::exit()`, not just `unsubscribeAll()`.
 - `EventManager` supports persistent and transient handlers.
-- `prepareForStateTransition()` calls `clearTransientHandlers()`. Persistent handlers survive; transient handlers are removed.
+- Persistent manager-level handlers register in `init()` with `registerPersistentHandler[WithToken]()` and survive transitions.
+- State-level handlers register in `enter()` with `registerHandler[WithToken]()` and are cleared by `clearTransientHandlers()`.
 - `clearAllHandlers()` is for shutdown only.
-- Manager-level infrastructure registers in `init()` with `registerPersistentHandler[WithToken]()` and is not manually unsubscribed or resubscribed across transitions.
-- State-level handlers register in `enter()` with `registerHandler[WithToken]()` and are cleared automatically on transition.
-- `CollisionManager` `m_callbacks` for the collision-to-`EventManager` bridge are persistent and are not cleared in `prepareForStateTransition()`. No state registers collision callbacks.
+- Collision-to-`EventManager` bridge callbacks stay persistent across transitions.
+- No game state should register collision callbacks directly.
+- Use deferred transitions: set intent in `enter()`, then transition in `update()`.
 
-## EDM, AI, and Controller Boundaries
-
-- `EntityDataManager` is pure data storage.
-- AI decision logic belongs in `Behaviors::` in `BehaviorExecutors.hpp/.cpp`.
-- `EDM::recordCombatEvent()` records stats and memory only, not emotion math.
-- `Behaviors::processCombatEvent()` applies personality-scaled emotion changes around the EDM call.
-- `Behaviors::processWitnessedCombat()` handles distance falloff, composure-scaled emotion changes, and memory via `EDM::addMemory()`.
-- Emotional contagion runs in a main-thread pre-pass in `AIManager::update()`.
-- Behaviors use pre-fetched `ctx.behaviorData` and `ctx.pathData` from `processBatch()`.
-- `switchBehavior()` calls `clearBehaviorData()`, `setBehaviorConfig()`, then `init()`. State set before switching is wiped, so set behavior state after the switch.
-
-Controller boundary:
-
-- Controllers must never directly mutate AI behavior state in EDM.
-- Use `Behaviors::queueBehaviorMessage(idx, BehaviorMessage::X)` from the main thread.
-- Use `Behaviors::deferBehaviorMessage()` from worker threads.
-
-Cross-frame data:
-
-- Data that must survive between frames, including paths and timers, belongs in EDM, not local variables.
-
-Render ownership:
-
-- EDM render data stores manager-owned texture handles, not raw `SDL_Texture*`.
-- `TextureManager` remains the owner/cache.
-- EDM retains `std::shared_ptr<SDL_Texture>` handles.
-- Call `.get()` only at the final SDL draw site.
-- Do not copy `shared_ptr` in visible-entity loops.
-
-## Rendering Rules
+### Rendering, UI, and GameState
 
 - Exactly one present per frame.
-- `GameEngine::render()` handles scene and UI rendering.
-- `GameEngine::present()` performs the actual present/end-frame step.
-- Never call `SDL_RenderClear` or `SDL_RenderPresent` inside game states.
+- `GameEngine::render()` performs scene and UI rendering. `GameEngine::present()` performs the actual present.
+- Never call `SDL_RenderClear` or `SDL_RenderPresent` inside a game state.
+- SDL renderer path uses `WorldRenderPipeline` for `prepareChunks`, `beginScene`, `renderWorld`, and `endScene`.
+- GPU flow is scene pass, composite to swapchain, then UI pass. States implement `renderGPUScene()` and `renderGPUUI()`.
+- When both SDL and GPU consume atlas-backed EDM render data, GPU atlas interpretation is authoritative.
+- For SDL3 GPU UI text, use `TTF_GetGPUTextDrawData()` only. Do not add UV flips, half-texel offsets, or shader hacks. Snap integer UI text placement to whole pixels before emitting vertices.
+- Trace camera updates, interpolation, rounding, sub-pixel offsets, and draw submission before proposing jitter or flicker fixes.
+- Do not apply speculative fixes for jitter, shimmer, or flicker.
+- `DayNightController` requires `update(dt)` every frame. The GPU path already feeds it through `GPURenderer::setDayNightParams()`.
+- Use `LoadingState` plus async `ThreadSystem` work for loading instead of blocking manual rendering.
+- Call `setComponentPositioning()` after creating UI components.
+- Prefer existing UI helpers such as `createTitleAtTop()`, `createButtonAtBottom()`, `createCenteredButton()`, and `createCenteredDialog()`.
+- Use `mp_stateManager->changeState()` for transitions. `GameEngine::Instance()` remains valid for non-transition engine access.
+- Prefer local references over cached manager or controller members. Add controllers with `m_controllers.add<T>()` in `enter()` and do not keep cached `mp_*Ctrl` members.
 
-SDL renderer path:
+### Tests, Debugging, and Traps
 
-- `WorldRenderPipeline` owns the 4-phase flow: `prepareChunks`, `beginScene`, `renderWorld`, `endScene`.
-- It wraps `SceneRenderer` for pixel-perfect zoom and sub-pixel scrolling.
-
-GPU path:
-
-- Flow is scene pass, composite to swapchain, then UI pass.
-- Game states implement `renderGPUScene()` and `renderGPUUI()`.
-- The engine ends the frame outside the state.
-- When SDL and GPU paths both consume atlas-based EDM render data, GPU atlas interpretation is the standard. SDL source rects must match GPU atlas offsets and frame stepping.
-
-SDL3 GPU UI text:
-
-- Use `TTF_GetGPUTextDrawData()` only.
-- Do not add UV flips, half-texel offsets, or shader hacks.
-- For integer UI layouts, snap final text placement to whole pixels before emitting GPU vertices.
-
-Related systems:
-
-- `DayNightController` requires `update(dt)` every frame for 30-second lighting interpolation transitions.
-- GPU path already updates this through `GPURenderer::setDayNightParams()`.
-- Use `LoadingState` with async `ThreadSystem` work, not blocking manual rendering.
-- Use deferred transitions: set a flag in `enter()`, then transition in `update()`.
-
-Rendering bug workflow:
-
-- Trace camera update, interpolation, floor/round behavior, sub-pixel offset, and draw submission before proposing a fix.
-- Do not apply speculative fixes for jitter, shimmer, or flickering.
-
-## UI and GameState Rules
-
-- Always call `setComponentPositioning()` after creating UI components.
-- Common helpers: `createTitleAtTop()`, `createButtonAtBottom()`, `createCenteredButton()`, `createCenteredDialog()`.
-- Supported positioning modes: `ABSOLUTE`, `CENTERED_H`, `CENTERED_V`, `CENTERED_BOTH`, `TOP_ALIGNED`, `TOP_RIGHT`, `BOTTOM_ALIGNED`, `BOTTOM_CENTERED`, `BOTTOM_RIGHT`, `LEFT_ALIGNED`, `RIGHT_ALIGNED`.
-
-GameState architecture:
-
-- Use `mp_stateManager->changeState()` for transitions.
-- `GameEngine::Instance()` remains valid for non-transition engine access such as pause, window sizing, or shutdown.
-- Use local references, not cached member pointers, for managers and controllers.
-- Cache at function top only when reused multiple times.
-- Add controllers with `m_controllers.add<T>()` in `enter()`.
-- Do not keep cached `mp_*Ctrl` controller members.
-- Use lazy caching for enum-to-string conversion and compute static layout positions in `enter()` when possible.
-
-## Bug-Fix Rules
-
-- Fix root causes in production code.
-- Never bypass failing tests by changing expectations unless explicitly asked.
-- For `EventManager` regressions, first distinguish missing state-owned handler wiring in tests from an actual production bug.
-- Delete dead code and unused parameters entirely. Do not comment them out.
-
-## Debug Tools
-
-- `FrameProfiler` uses F3 for the debug overlay.
-- Use RAII timers: `ScopedPhaseTimer`, `ScopedManagerTimer`, and `ScopedRenderTimer`.
-- Hitch detection starts above 20ms.
-- Profiling is a no-op in release builds.
-
-## Repo-Specific Traps
-
-- Demo states are for testing and showcasing features.
-- File and class names do not always match runtime state names.
-- `EventDemoState` registers as `EventDemo`.
-- `UIDemoState.hpp` defines `UIExampleState`.
-- `GamePlayState` is the pristine official gameplay state. Keep it clean and production-ready.
+- Prefer direct test executables over slow wrapper scripts.
+- Never relax test expectations to hide a production bug unless the user explicitly asks.
+- For `EventManager` regressions, first distinguish missing state-owned handler wiring in tests from a production defect.
+- Delete dead code and unused parameters. Do not comment them out.
+- `FrameProfiler` uses `F3`. Prefer RAII timers: `ScopedPhaseTimer`, `ScopedManagerTimer`, `ScopedRenderTimer`.
+- Profiling is a no-op in release builds. Hitch detection starts above 20 ms.
+- Demo states are test and showcase code. `GamePlayState` stays production-clean.
 - Use `SettingsMenuState` and `MainMenuState` as menu references.
 - `WorldResourceManager` is a spatial index over EDM, not a quantity store.
-- Do not wire `subscribeWorldEvents()` in `init()` because `WorldManager` fires deferred events that arrive after a new world is populated.
-
-## Task Checklists
-
-Rendering changes:
-
-- Trace the full render path before editing.
-- Preserve one-present-per-frame behavior.
-- Do not move clear/present work into game states.
-
-AI or EDM changes:
-
-- Keep EDM as storage only.
-- Keep decision logic in `Behaviors::`.
-- Store cross-frame state in EDM.
-
-Threading changes:
-
-- Use `ThreadSystem` and `WorkerBudget`.
-- Ensure futures complete before dependent work.
-- Avoid shared non-thread-local static state.
-
-UI or GameState changes:
-
-- Use existing UI helpers and positioning rules.
-- Add controllers in `enter()`.
-- Use deferred state transitions when needed.
-
-Test updates:
-
-- Prefer direct test executables.
-- Confirm exact Boost.Test names with `--list_content` when needed.
-- Keep test updates aligned with the production change.
+- Do not wire `subscribeWorldEvents()` in `init()`. Deferred `WorldManager` events can fire after a new world is populated.
