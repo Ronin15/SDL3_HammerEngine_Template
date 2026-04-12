@@ -1302,7 +1302,7 @@ find src/ include/ -type f \( -name "*.cpp" -o -name "*.hpp" \) -exec grep -L "C
 ## Quality Report Format
 
 ```markdown
-=== HAMMERENGINE QUALITY GATE REPORT ===
+=== VOIDLIGHT QUALITY GATE REPORT ===
 Generated: YYYY-MM-DD HH:MM:SS
 Branch: <current-branch>
 

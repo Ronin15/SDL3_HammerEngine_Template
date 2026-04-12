@@ -2,6 +2,7 @@
 name: quality-engineer
 description: Testing and validation specialist for SDL3 VoidLight-Framework. Runs test suites, benchmarks, static analysis, and build systems. Investigates test failures and validates performance targets. Does NOT do deep code review (that's game-systems-architect).
 model: sonnet
+tools: Bash, Read, Grep, Glob, Write
 ---
 
 # SDL3 VoidLight-Framework Testing & Validation Specialist

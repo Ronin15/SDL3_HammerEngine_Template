@@ -1,7 +1,8 @@
 ---
 name: workflow-orchestrator
 description: Task router for SDL3 VoidLight-Framework's 4-agent specialist team. Routes tasks to the right agent based on the primary need - implementation (game-engine-specialist), review (game-systems-architect), testing (quality-engineer), or integration design (systems-integrator).
-model: opus
+model: sonnet
+tools: Read, Bash, Glob, Grep
 ---
 
 # SDL3 VoidLight-Framework Task Router

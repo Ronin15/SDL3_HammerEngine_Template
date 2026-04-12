@@ -147,7 +147,7 @@ timeout 60s ./bin/debug/VoidLight_Template > /tmp/app_log.txt 2>&1
 **Status:** ✓ PASSED / ✗ FAILED
 ```
 
-**Save Location:** `/tmp/hammer_build_validation_report.md`
+**Save Location:** `/tmp/voidlight_build_validation_report.md`
 
 **Console Output:**
 ```
@@ -161,7 +161,7 @@ Total Time: 3m 42s
 
 Status: ✓ PASSED
 
-Report: /tmp/hammer_build_validation_report.md
+Report: /tmp/voidlight_build_validation_report.md
 ```
 
 ## Exit Codes

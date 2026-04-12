@@ -2,6 +2,7 @@
 name: game-engine-specialist
 description: Master C++ game engine developer for SDL3 VoidLight-Framework. Handles all code implementation, architecture design, and feature development. Writes new managers, systems, entities, and fixes bugs using C++20 best practices.
 model: sonnet
+tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
 # SDL3 VoidLight-Framework Implementation Specialist
