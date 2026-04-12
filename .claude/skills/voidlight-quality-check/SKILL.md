@@ -1148,6 +1148,124 @@ void collectDeferredEvents(std::vector<DeferredEvent>& out) {
 
 **Quality Gate:** ✓ Thread-local vectors preserve capacity via clear(), never swap/return-by-value (BLOCKING)
 
+#### 5.15 World Lifecycle Cleanup (CRITICAL)
+
+**Background:**
+Manager-local caches, spatial indices, and reverse lookups that describe world state must be cleared on **world unload**, not only on state exit. Missing this causes stale handles and cache entries to survive a world change. See `.codex/skills/architecture-guard/references/checklist.md` (World Lifecycle).
+
+**Check Commands:**
+```bash
+# Verify managers that subscribe to WorldLoaded/WorldUnloaded also clear caches
+grep -rn "WorldUnloaded\|WorldLoaded" src/managers/ --include="*.cpp"
+
+# Find spatial indices / reverse lookups that may not be world-lifecycle cleared
+grep -rn "m_.*Index\|m_.*Lookup\|m_.*Cache" include/managers/ --include="*.hpp" | grep -v "//"
+```
+
+**FORBIDDEN PATTERN:**
+```cpp
+// ✗ BAD - Spatial index populated on world load, never cleared on unload
+void SomeManager::onWorldLoaded(const EventData&) {
+    rebuildSpatialIndex();
+}
+// Missing onWorldUnloaded handler → stale entries survive world change
+
+// ✓ CORRECT - Paired handlers
+void SomeManager::onWorldLoaded(const EventData&)   { rebuildSpatialIndex(); }
+void SomeManager::onWorldUnloaded(const EventData&) { m_spatialIndex.clear(); m_reverseLookup.clear(); }
+```
+
+**Reviewer checklist** (not grep-able — eyeball during review):
+- Does every manager-local cache/index tied to world geometry have a matching unload path?
+- Do stored EntityHandles or chunk coords get invalidated when the world changes?
+- Are active-world bookkeeping counters reset?
+
+**Quality Gate:** ✓ No world-scoped caches surviving world unload (BLOCKING)
+
+#### 5.16 Second Source of Truth (WARNING)
+
+**Background:**
+Cross-frame state stored only in manager-local scratch when render, collision, save/load, or future frames depend on it creates a duplicate source of truth. That state belongs in EDM.
+
+**Check Commands:**
+```bash
+# Find manager-local vectors/maps keyed by entity that may hold cross-frame state
+grep -rn "std::unordered_map<EntityHandle\|std::unordered_map<size_t.*Entity" include/managers/ --include="*.hpp"
+
+# Find mutable per-entity state stored in manager members (not EDM)
+grep -rn "m_entity.*State\|m_per.*Entity" include/managers/ --include="*.hpp"
+```
+
+**Reviewer checklist:**
+- Does render/collision/save-load or the next frame read this state? → Move to EDM.
+- Is the manager-local copy drifting from an EDM field that already exists? → Consolidate.
+- Is the data truly transient-within-a-single-frame scratch? → Acceptable as manager-local.
+
+**Quality Gate:** ⚠ Review any per-entity cross-frame state stored outside EDM (WARNING)
+
+#### 5.17 Render Controller Lifecycle Ownership (WARNING)
+
+**Background:**
+Render controllers (HUDController, CameraRenderController, etc.) read canonical state and emit draw calls. They must not own destruction/teardown of gameplay systems. Lifecycle belongs to managers and game states.
+
+**Check Commands:**
+```bash
+# Find render controllers doing cleanup/teardown work
+grep -rn "cleanup\|destroy\|clear\|unsubscribe\|prepareForStateTransition" src/controllers/render/ --include="*.cpp"
+
+# Find render controllers mutating manager state
+grep -rn "Manager::Instance().*\(set\|remove\|delete\|clear\)" src/controllers/render/ --include="*.cpp"
+```
+
+**Reviewer checklist:**
+- Does a render controller call `prepareForStateTransition()` or `clear*()` on a manager? → Drift.
+- Does it unsubscribe handlers that were registered elsewhere? → Drift.
+- Is it only reading state + emitting draw commands? → Conforming.
+
+**Quality Gate:** ⚠ Render controllers must not own lifecycle teardown (WARNING)
+
+#### 5.18 Event Contract Bypass (WARNING)
+
+**Background:**
+Direct state mutation that skips an event other systems subscribe to (UI dirtying, log updates, collision response, achievement tracking) silently breaks downstream consumers. The contract is: if writing X has historically fired event Y, new writers must fire Y too.
+
+**Check Commands:**
+```bash
+# Find direct mutation of fields that have event-fire counterparts elsewhere
+# (manual inspection — this is a semantic check, not a syntactic one)
+
+# Find places that set common "event-bearing" state without a trigger call
+grep -rn "setHealth\|setGold\|setWeather\|setTimeOfDay" src/ --include="*.cpp" -A 3 | grep -v "trigger\|fire\|emit\|dispatch"
+```
+
+**Reviewer checklist:**
+- Does the mutated field have other writers that fire an event? → New writer must fire it too.
+- Does UI or logging depend on an event this path skips? → Drift.
+- Is the event immediate vs deferred dispatch consistent with existing writers?
+
+**Quality Gate:** ⚠ New state mutations must preserve existing event contracts (WARNING)
+
+#### 5.19 EDM Policy Creep (WARNING)
+
+**Background:**
+EDM stores persistent per-entity *state*. Thresholds, decision weights, AI tuning constants, and policy belong in the behavior layer, config, or manager — not EDM. New EDM fields should describe what the entity *is*, not how it *decides*.
+
+**Check Commands:**
+```bash
+# Find recently-added EDM fields that look like policy/thresholds
+grep -rn "Threshold\|Weight\|Multiplier\|Tuning\|Decision" include/managers/EntityDataManager.hpp
+
+# Find constants in EDM that belong in config/behavior layer
+grep -rn "constexpr.*=" include/managers/EntityDataManager.hpp | grep -iE "threshold|weight|factor|multiplier"
+```
+
+**Reviewer checklist:**
+- Does the field describe *what the entity is* (position, health, emotion state)? → EDM is correct.
+- Does it describe *how a behavior decides* (flee threshold, aggression weight)? → Behavior layer.
+- Does it vary per-entity based on personality? → State (EDM) derived from config (behavior layer).
+
+**Quality Gate:** ⚠ EDM must remain pure state, not policy (WARNING)
+
 ### 6. Copyright & Legal Compliance
 
 **Check Command:**
@@ -1250,6 +1368,16 @@ Branch: <current-branch>
   <missing manager transitions in exit paths - BLOCKING>
 ✓/✗ Thread-Local Capacity: <PASSED/FAILED>
   <thread_local vectors losing capacity via swap/return - BLOCKING>
+✓/✗ World Lifecycle Cleanup: <PASSED/FAILED>
+  <world-scoped caches surviving unload - BLOCKING>
+⚠ Second Source of Truth: <REVIEW>
+  <per-entity cross-frame state outside EDM - WARNING>
+⚠ Render Controller Lifecycle: <REVIEW>
+  <render controllers owning teardown - WARNING>
+⚠ Event Contract Bypass: <REVIEW>
+  <direct mutation skipping established events - WARNING>
+⚠ EDM Policy Creep: <REVIEW>
+  <policy/thresholds in EDM instead of behavior layer - WARNING>
 
 ## Legal Compliance
 ✓/✗ Copyright Headers: <PASSED/FAILED>
@@ -1499,8 +1627,13 @@ Use this Skill:
 - Controller directly mutating AI behavior state in EDM (use behavior messages)
 - Missing manager in state transition exit paths (especially BackgroundSimulationManager)
 - Thread-local vector capacity destroyed by swap/return-by-value (use ref+clear)
+- World-scoped manager caches/indices surviving world unload (missing unload handler)
 
 **WARNING (Should Fix):**
+- Per-entity cross-frame state stored in manager-local scratch instead of EDM (second source of truth)
+- Render controllers owning lifecycle/teardown work (should only read + draw)
+- Direct state mutation bypassing established event contracts (UI/log/collision consumers break silently)
+- Policy/thresholds/decision weights added to EDM instead of behavior layer (EDM policy creep)
 - Compilation warnings
 - cppcheck warnings
 - High clang-tidy issues (performance-*, modernize-use-override)
