@@ -27,15 +27,15 @@ TILE_TEXTURES=(
     "biome_haunted"
     "biome_mountain"
     "biome_ocean"
+    "biome_plains"
     "biome_swamp"
     "building_cityhall"
     "building_house"
     "building_hut"
     "building_large"
-    "obstacle_building_solid"
-    "obstacle_rock"
+    "bush"
+    "obstacle_grass"
     "obstacle_tree"
-    "obstacle_water"
 )
 
 # Track generated files

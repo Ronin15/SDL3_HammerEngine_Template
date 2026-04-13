@@ -689,9 +689,11 @@ def collect_expected_texture_ids(paths: dict) -> dict:
             items_found = []
             materials_found = []
             currency_found = []
+            seen_tex_ids = set()
             for resource in data.get('resources', []):
                 tex_id = resource.get('textureId')
-                if tex_id:
+                if tex_id and tex_id not in seen_tex_ids:
+                    seen_tex_ids.add(tex_id)
                     entry = {
                         'id': tex_id,
                         'name': resource.get('name', tex_id),
@@ -763,12 +765,20 @@ def collect_expected_texture_ids(paths: dict) -> dict:
             for subcat in ['biomes', 'obstacles', 'decorations', 'buildings']:
                 if subcat in data:
                     found = []
+                    seen_tex_ids = set()
                     for key, obj in data[subcat].items():
                         tex_id = obj.get('textureId')
-                        if tex_id:
+                        if tex_id and tex_id not in seen_tex_ids:
+                            seen_tex_ids.add(tex_id)
                             is_seasonal = obj.get('seasonal', False)
+                            # Always include base texture ID
+                            found.append({
+                                'id': tex_id,
+                                'name': obj.get('name', key),
+                                'source': 'world_objects.json'
+                            })
                             if is_seasonal:
-                                # Generate all 4 seasonal variants (prefix pattern: season_base)
+                                # Also generate all 4 seasonal variants
                                 for season in seasons:
                                     found.append({
                                         'id': f"{season}_{tex_id}",
@@ -777,12 +787,6 @@ def collect_expected_texture_ids(paths: dict) -> dict:
                                         'seasonal': True,
                                         'baseName': obj.get('name', key)
                                     })
-                            else:
-                                found.append({
-                                    'id': tex_id,
-                                    'name': obj.get('name', key),
-                                    'source': 'world_objects.json'
-                                })
                     if found:
                         categories[subcat.title()] = found
         except Exception:
@@ -791,15 +795,18 @@ def collect_expected_texture_ids(paths: dict) -> dict:
     return categories
 
 
-def scan_for_texture_ids(data, source: str, parent_name: str = None) -> list:
-    """Recursively scan data structure for texture ID fields."""
+def scan_for_texture_ids(data, source: str, parent_name: str = None,
+                         _seen: set = None) -> list:
+    """Recursively scan data structure for unique texture ID fields."""
+    if _seen is None:
+        _seen = set()
     found = []
-    texture_keys = ('textureId', 'worldTextureId')  # Icons share world coords
+    texture_keys = ('textureId', 'worldTextureId')
 
     if isinstance(data, dict):
-        # Check if this dict has a texture ID
         for key in texture_keys:
-            if key in data and data[key]:
+            if key in data and data[key] and data[key] not in _seen:
+                _seen.add(data[key])
                 name = data.get('name') or data.get('id') or parent_name or data[key]
                 found.append({
                     'id': data[key],
@@ -807,13 +814,12 @@ def scan_for_texture_ids(data, source: str, parent_name: str = None) -> list:
                     'source': source
                 })
 
-        # Recurse into values
         for k, v in data.items():
-            found.extend(scan_for_texture_ids(v, source, k))
+            found.extend(scan_for_texture_ids(v, source, k, _seen))
 
     elif isinstance(data, list):
         for item in data:
-            found.extend(scan_for_texture_ids(item, source, parent_name))
+            found.extend(scan_for_texture_ids(item, source, parent_name, _seen))
 
     return found
 
@@ -823,7 +829,6 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
     sprites_json = json.dumps(sprites)
     ids_json = json.dumps(expected_ids)
     missing_json = json.dumps(missing_ids or {})
-    sprites_dir = str(paths['sprites_dir'])
 
     return f'''<!DOCTYPE html>
 <html>
@@ -846,7 +851,12 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
 
         .container {{ display: flex; height: calc(100vh - 56px); }}
 
-        .sprites-panel {{ flex: 1; overflow-y: auto; padding: 15px; background: #0f0f1a; }}
+        .sprites-panel {{ flex: 1; overflow-y: auto; padding: 15px; background: #0f0f1a; display: flex; flex-direction: column; }}
+        .sprites-filter {{ padding: 8px; margin-bottom: 8px; display: flex; gap: 8px; flex-shrink: 0; }}
+        .sprites-filter input {{ flex: 1; padding: 8px; background: #1a1a2e; border: 1px solid #333; color: #eee; border-radius: 4px; }}
+        .sprites-filter input:focus {{ border-color: #0f9; outline: none; }}
+        .sprites-filter select {{ padding: 8px; background: #1a1a2e; border: 1px solid #333; color: #eee; border-radius: 4px; }}
+        .sprites-grid-wrapper {{ flex: 1; overflow-y: auto; }}
         .sprites-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }}
 
         .sprite-card {{ background: #1a1a2e; border: 2px solid #333; border-radius: 6px; padding: 6px; cursor: pointer; text-align: center; }}
@@ -908,7 +918,17 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
 
     <div class="container">
         <div class="sprites-panel">
-            <div class="sprites-grid" id="spritesGrid"></div>
+            <div class="sprites-filter">
+                <input type="text" id="spriteSearch" placeholder="Search sprites..." oninput="render()">
+                <select id="spriteFilter" onchange="render()">
+                    <option value="all">All</option>
+                    <option value="unmapped">Unmapped</option>
+                    <option value="mapped">Mapped</option>
+                </select>
+            </div>
+            <div class="sprites-grid-wrapper">
+                <div class="sprites-grid" id="spritesGrid"></div>
+            </div>
         </div>
 
         <div class="ids-panel">
@@ -917,25 +937,7 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
             </div>
 
             <div class="custom-input">
-                <input type="text" id="customId" placeholder="Texture ID (e.g. my_sword_world)">
-                <input type="text" id="customName" placeholder="Name (e.g. My Sword)" style="margin-top:5px;">
-                <select id="customCategory" style="margin-top:5px; width:100%; padding:8px; background:#1a1a2e; border:1px solid #333; color:#eee; border-radius:4px;">
-                    <option value="Custom">Custom (no category)</option>
-                    <option value="Items">Items</option>
-                    <option value="Materials">Materials</option>
-                    <option value="Currency & Resources">Currency & Resources</option>
-                    <option value="Races">Races</option>
-                    <option value="Monsters">Monsters</option>
-                    <option value="Animals">Animals</option>
-                    <option value="Biomes">Biomes</option>
-                    <option value="Obstacles">Obstacles</option>
-                    <option value="Decorations">Decorations</option>
-                    <option value="Buildings">Buildings</option>
-                </select>
-                <div style="display:flex; gap:5px; margin-top:5px;">
-                    <button class="btn" style="flex:1; background:#2a4a2a; color:#0f9;" onclick="addCustomIdOnly()">Add to List</button>
-                    <button class="btn" style="flex:1; background:#0f9; color:#000;" onclick="assignCustomId()">Assign</button>
-                </div>
+                <input type="text" id="idSearch" placeholder="Filter texture IDs..." oninput="render()">
             </div>
 
             <div class="missing-section" id="missingSection"></div>
@@ -947,11 +949,9 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
         const sprites = {sprites_json};
         const expectedIds = {ids_json};
         const missingIds = {missing_json};
-        const spritesDir = "{sprites_dir}";
 
         let selectedSprite = null;
         let mappings = {{}};  // filename -> textureId
-        let customIds = [];   // user-added custom texture IDs (objects with id and name)
 
         // Initialize mappings from already-named sprites
         sprites.forEach(s => {{
@@ -1050,14 +1050,31 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
             const grid = document.getElementById('spritesGrid');
             grid.innerHTML = '';
 
-            sprites.forEach(sprite => {{
+            const search = (document.getElementById('spriteSearch')?.value || '').toLowerCase();
+            const filter = document.getElementById('spriteFilter')?.value || 'all';
+
+            // Sort: mapped sprites first, then unmapped
+            const sorted = [...sprites].sort((a, b) => {{
+                const aM = mappings[a.filename] ? 0 : 1;
+                const bM = mappings[b.filename] ? 0 : 1;
+                return aM - bM;
+            }});
+
+            sorted.forEach(sprite => {{
+                const isMapped = !!mappings[sprite.filename];
+                if (filter === 'unmapped' && isMapped) return;
+                if (filter === 'mapped' && !isMapped) return;
+
+                const displayName = mappings[sprite.filename] || sprite.filename;
+                if (search && !displayName.toLowerCase().includes(search) &&
+                    !sprite.filename.toLowerCase().includes(search)) return;
+
                 const card = document.createElement('div');
                 card.className = 'sprite-card' +
                     (selectedSprite === sprite.filename ? ' selected' : '') +
-                    (mappings[sprite.filename] ? ' mapped' : '');
+                    (isMapped ? ' mapped' : '');
 
-                const displayName = mappings[sprite.filename] || sprite.filename;
-                const guessHtml = !mappings[sprite.filename] && sprite.suggestedCategory ?
+                const guessHtml = !isMapped && sprite.suggestedCategory ?
                     `<div class="guess">${{sprite.suggestedCategory}}</div>` : '';
                 card.innerHTML = `
                     <img src="${{sprite.dataUrl}}" alt="${{sprite.filename}}">
@@ -1074,6 +1091,7 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
             list.innerHTML = '';
 
             const usedIds = new Set(Object.values(mappings));
+            const idSearch = (document.getElementById('idSearch')?.value || '').toLowerCase();
 
             // Build set of missing IDs dynamically
             const currentMissing = getMissingIds();
@@ -1083,28 +1101,20 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
             const selectedSpriteData = sprites.find(s => s.filename === selectedSprite);
             const suggestedCat = selectedSpriteData?.suggestedCategory;
 
-            // Merge custom IDs into their categories
+            // Categories from data files
             const allCategories = {{}};
-
-            // Start with expected IDs
             Object.entries(expectedIds).forEach(([cat, ids]) => {{
                 allCategories[cat] = [...ids];
             }});
 
-            // Add custom IDs to their categories
-            customIds.forEach(item => {{
-                if (item.category === 'Custom') {{
-                    if (!allCategories['Custom']) allCategories['Custom'] = [];
-                    allCategories['Custom'].push({{id: item.id, name: item.name, isCustom: true}});
-                }} else {{
-                    if (!allCategories[item.category]) allCategories[item.category] = [];
-                    allCategories[item.category].push({{id: item.id, name: item.name, isCustom: true}});
-                }}
-            }});
+            // Helper: check if item matches ID search
+            const matchesSearch = (item) => !idSearch ||
+                item.id.toLowerCase().includes(idSearch) ||
+                (item.name && item.name.toLowerCase().includes(idSearch));
 
             // Show suggested matches first if we have a suggestion
             if (suggestedCat && suggestedCat !== 'Unknown' && allCategories[suggestedCat]) {{
-                const suggestedIds = allCategories[suggestedCat].filter(x => !usedIds.has(x.id));
+                const suggestedIds = allCategories[suggestedCat].filter(x => !usedIds.has(x.id) && matchesSearch(x));
                 if (suggestedIds.length > 0) {{
                     const suggestCat = document.createElement('div');
                     suggestCat.className = 'id-category';
@@ -1115,11 +1125,10 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
                         const isMissing = missingIdSet.has(item.id);
                         div.className = 'id-item' + (isMissing ? ' missing' : '');
                         div.style.borderLeftColor = '#f90';
-                        const customBadge = item.isCustom ? ' <span style="color:#2a4a2a;background:#0f9;padding:1px 4px;border-radius:3px;font-size:9px;">NEW</span>' : '';
                         const missingBadge = isMissing ? ' <span style="color:#fff;background:#e94560;padding:1px 4px;border-radius:3px;font-size:9px;">NO SPRITE</span>' : '';
-                        const hasSpriteBadge = !isMissing && !item.isCustom ? ' <span style="color:#fff;background:#2a6a2a;padding:1px 4px;border-radius:3px;font-size:9px;">✓</span>' : '';
+                        const hasSpriteBadge = !isMissing ? ' <span style="color:#fff;background:#2a6a2a;padding:1px 4px;border-radius:3px;font-size:9px;">✓</span>' : '';
                         div.innerHTML = `
-                            <div class="id-name">${{item.id}}${{customBadge}}${{missingBadge}}${{hasSpriteBadge}}</div>
+                            <div class="id-name">${{item.id}}${{missingBadge}}${{hasSpriteBadge}}</div>
                             <div class="id-desc">${{item.name}}</div>
                         `;
                         div.onclick = () => assignId(item.id);
@@ -1130,31 +1139,29 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
                 }}
             }}
 
-            // Define category order (includes all creature types)
-            const categoryOrder = ['Items', 'Materials', 'Currency & Resources', 'Races', 'Monsters', 'Animals', 'Biomes', 'Obstacles', 'Decorations', 'Buildings', 'Custom'];
+            const categoryOrder = ['Items', 'Materials', 'Currency & Resources', 'Races', 'Monsters', 'Animals', 'Biomes', 'Obstacles', 'Decorations', 'Buildings'];
 
-            // Render categories in order
             categoryOrder.forEach(categoryName => {{
                 const ids = allCategories[categoryName];
                 if (!ids || ids.length === 0) return;
 
+                const filteredIds = idSearch ? ids.filter(matchesSearch) : ids;
+                if (filteredIds.length === 0) return;
+
                 const cat = document.createElement('div');
                 cat.className = 'id-category';
-                const missingCount = ids.filter(x => missingIdSet.has(x.id)).length;
-                const hasSpritesCount = ids.length - missingCount;
-                const headerStyle = categoryName === 'Custom' ? ' style="background:#2a4a2a;"' : '';
+                const missingCount = filteredIds.filter(x => missingIdSet.has(x.id)).length;
                 const missingIndicator = missingCount > 0 ? ` <span style="color:#e94560;">⚠️ ${{missingCount}} need sprites</span>` : '';
-                cat.innerHTML = `<div class="id-category-header"${{headerStyle}}>${{categoryName}} (${{ids.length}})${{missingIndicator}}</div>`;
+                cat.innerHTML = `<div class="id-category-header">${{categoryName}} (${{filteredIds.length}})${{missingIndicator}}</div>`;
 
-                ids.forEach(item => {{
+                filteredIds.forEach(item => {{
                     const div = document.createElement('div');
                     const isMissing = missingIdSet.has(item.id);
                     div.className = 'id-item' + (usedIds.has(item.id) ? ' used' : '') + (isMissing ? ' missing' : '');
-                    const customBadge = item.isCustom ? ' <span style="color:#2a4a2a;background:#0f9;padding:1px 4px;border-radius:3px;font-size:9px;">NEW</span>' : '';
                     const missingBadge = isMissing ? ' <span style="color:#fff;background:#e94560;padding:1px 4px;border-radius:3px;font-size:9px;">NO SPRITE</span>' : '';
-                    const hasSpriteBadge = !isMissing && !item.isCustom ? ' <span style="color:#fff;background:#2a6a2a;padding:1px 4px;border-radius:3px;font-size:9px;">✓</span>' : '';
+                    const hasSpriteBadge = !isMissing ? ' <span style="color:#fff;background:#2a6a2a;padding:1px 4px;border-radius:3px;font-size:9px;">✓</span>' : '';
                     div.innerHTML = `
-                        <div class="id-name">${{item.id}}${{customBadge}}${{missingBadge}}${{hasSpriteBadge}}</div>
+                        <div class="id-name">${{item.id}}${{missingBadge}}${{hasSpriteBadge}}</div>
                         <div class="id-desc">${{item.name}}</div>
                     `;
                     div.onclick = () => assignId(item.id);
@@ -1180,11 +1187,6 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
                 <div class="label">Mapped to:</div>
                 <div class="value">${{mappings[filename] || '(unmapped)'}}</div>
             `;
-
-            // Pre-select the suggested category in dropdown
-            if (sprite.suggestedCategory && sprite.suggestedCategory !== 'Unknown') {{
-                document.getElementById('customCategory').value = sprite.suggestedCategory;
-            }}
 
             render();
         }}
@@ -1215,45 +1217,6 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
             render();
         }}
 
-        function assignCustomId() {{
-            const idInput = document.getElementById('customId');
-            const nameInput = document.getElementById('customName');
-            const catSelect = document.getElementById('customCategory');
-            const id = idInput.value.trim();
-            const name = nameInput.value.trim() || id;
-            const category = catSelect.value;
-            if (id) {{
-                // Check if this is a new custom ID (not in expected lists)
-                const allExpectedIds = Object.values(expectedIds).flat().map(x => x.id);
-                const existingCustom = customIds.find(x => x.id === id);
-                if (!allExpectedIds.includes(id) && !existingCustom) {{
-                    customIds.push({{id, name, category}});
-                }}
-                assignId(id);
-                idInput.value = '';
-                nameInput.value = '';
-            }}
-        }}
-
-        function addCustomIdOnly() {{
-            const idInput = document.getElementById('customId');
-            const nameInput = document.getElementById('customName');
-            const catSelect = document.getElementById('customCategory');
-            const id = idInput.value.trim();
-            const name = nameInput.value.trim() || id;
-            const category = catSelect.value;
-            if (id) {{
-                const allExpectedIds = Object.values(expectedIds).flat().map(x => x.id);
-                const existingCustom = customIds.find(x => x.id === id);
-                if (!allExpectedIds.includes(id) && !existingCustom) {{
-                    customIds.push({{id, name, category}});
-                    render();
-                }}
-                idInput.value = '';
-                nameInput.value = '';
-            }}
-        }}
-
         function updateStats() {{
             const total = sprites.length;
             const mapped = Object.keys(mappings).length;
@@ -1276,7 +1239,10 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
                 return;
             }}
 
-            // Apply renames immediately via server
+            if (!confirm(`Rename ${{renames.length}} sprite(s)?\\n\\n${{renames.map(([o,n]) => o + ' → ' + n).join('\\n')}}`)) {{
+                return;
+            }}
+
             fetch('/save-mappings', {{
                 method: 'POST',
                 headers: {{'Content-Type': 'application/json'}},
@@ -1285,9 +1251,21 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
             .then(response => response.json())
             .then(data => {{
                 if (data.renamed && data.renamed.length > 0) {{
-                    const names = data.renamed.map(r => `${{r.old}} -> ${{r.new}}`).join('\\n');
-                    alert(`Renamed ${{data.renamed.length}} sprites:\\n\\n${{names}}\\n\\nPage will reload to show changes.`);
-                    location.reload();
+                    // Update in-memory state to reflect renames
+                    data.renamed.forEach(r => {{
+                        const sprite = sprites.find(s => s.filename === r.old);
+                        if (sprite) {{
+                            sprite.filename = r.new;
+                            sprite.mapped = true;
+                        }}
+                        // Update mappings: remove old key, set new as self-mapped
+                        delete mappings[r.old];
+                        mappings[r.new] = r.new;
+                        // Update selection if renamed
+                        if (selectedSprite === r.old) selectedSprite = r.new;
+                    }});
+                    render();
+                    alert(`Renamed ${{data.renamed.length}} sprites. Ready for next batch or pack.`);
                 }} else {{
                     alert('No renames were applied.');
                 }}
@@ -1295,14 +1273,17 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
             .catch(err => alert('Error: ' + err));
         }}
 
-        // Keyboard navigation
+        // Keyboard navigation (skip when typing in inputs)
         document.addEventListener('keydown', e => {{
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
             if (!selectedSprite) return;
             const idx = sprites.findIndex(s => s.filename === selectedSprite);
 
             if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {{
+                e.preventDefault();
                 selectSprite(sprites[(idx + 1) % sprites.length].filename);
             }} else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {{
+                e.preventDefault();
                 selectSprite(sprites[(idx - 1 + sprites.length) % sprites.length].filename);
             }}
         }});
