@@ -7,7 +7,7 @@ Tools for managing sprite atlases and texture mappings.
 The atlas tool manages the complete sprite atlas lifecycle:
 
 ```
-atlas.png → EXTRACT → res/sprites/ → MAP → rename → PACK → atlas.png + all JSON files
+atlas.png → EXTRACT → res/sprites/ → MAP → rename → PACK → atlas.png + atlas.json
 ```
 
 ### Quick Start
@@ -19,13 +19,13 @@ python3 tools/atlas_tool.py extract
 # 2. Map sprites to texture IDs (opens browser with local server)
 python3 tools/atlas_tool.py map
 # → Click sprite, click texture ID, repeat
-# → Click "Save Mappings" → saves directly to res/sprites/mappings.json
+# → Click "Save Mappings" → renames sprite files immediately
 # → Press Ctrl+C to stop server
 
-# 3. Pack and export all JSON files
+# 3. Pack sprites and update atlas
 python3 tools/atlas_tool.py pack
-# → Applies renames from mappings.json (handles circular renames safely)
-# → Packs atlas and updates all JSON files
+# → Packs sprites into atlas.png
+# → Updates atlas.json (single source of truth for coordinates)
 # → Cleans up sprite files from res/sprites/
 ```
 
@@ -36,7 +36,7 @@ python3 tools/atlas_tool.py pack
 | `extract` | Extract sprites from atlas.png → res/sprites/ |
 | `extract-from` | Extract sprites from any source image → res/sprites/ |
 | `map` | Visual tool to assign texture IDs to sprites |
-| `pack` | Pack sprites into atlas.png + export all JSON |
+| `pack` | Pack sprites into atlas.png + update atlas.json |
 | `list` | Show current sprites status |
 
 ### Workflow Details
@@ -45,8 +45,8 @@ python3 tools/atlas_tool.py pack
 ```bash
 python3 tools/atlas_tool.py extract
 ```
+- Clears res/sprites/ and extracts fresh from atlas.png
 - Auto-detects sprite regions in atlas.png
-- Extracts to res/sprites/ as individual PNGs
 - Uses existing atlas.json names if available
 - Unnamed sprites get `sprite_001.png`, `sprite_002.png`, etc.
 
@@ -81,33 +81,26 @@ python3 tools/atlas_tool.py map
 - Right panel: expected texture IDs from JSON files
 - Click sprite → click ID to assign
 - Arrow keys to navigate sprites
-- "Save Mappings" saves directly to `res/sprites/mappings.json`
+- "Save Mappings" applies renames immediately (two-phase rename for circular deps)
 - Press Ctrl+C in terminal to stop server when done
 
-**3. PACK** - Build atlas and export JSON
+**3. PACK** - Build atlas and update atlas.json
 ```bash
 python3 tools/atlas_tool.py pack
 ```
-- If `mappings.json` exists, applies renames first (two-phase rename handles circular dependencies)
 - Packs all sprites into new atlas.png
-- Creates atlas.json with all regions
-- Updates items.json, materials.json, races.json, world_objects.json
-- Adds atlasX, atlasY, atlasW, atlasH to matching entries
+- Creates atlas.json with all region coordinates
+- Deduplicates sprites (named sprites take priority over unnamed)
 - Cleans up sprite files from res/sprites/ after successful pack
 
 ### File Locations
 
-**Input/Output:**
 - `res/img/atlas.png` - Sprite atlas image
 - `res/sprites/` - Individual sprite files (temporary working directory)
-- `res/sprites/mappings.json` - Rename mappings (created by map, consumed by pack)
-- `res/data/atlas.json` - Atlas region definitions
-
-**Output:**
 - `res/data/atlas.json` - Atlas region coordinates (single source of truth)
 
-Note: Data files (`resources.json`, `races.json`, etc.) define `textureId` but NOT atlas coordinates.
-C++ code looks up coordinates from `atlas.json` at runtime using the `textureId`.
+Data files (`resources.json`, `races.json`, etc.) define `textureId`. C++ looks up
+coordinates from `atlas.json` at runtime using the `textureId`.
 
 ### Adding New Sprites
 
@@ -115,7 +108,7 @@ C++ code looks up coordinates from `atlas.json` at runtime using the `textureId`
 1. Add PNG to `res/sprites/` with the texture ID as filename
    - e.g., `res/sprites/new_item_world.png`
 2. Run `python3 tools/atlas_tool.py pack`
-3. Atlas rebuilt, JSON files updated automatically
+3. Atlas rebuilt, atlas.json updated automatically
 
 **Option B: From external sprite sheet**
 1. Extract sprites from source image:
@@ -142,12 +135,22 @@ sudo apt-get install python3-pil
 
 ---
 
-## Texture Mapper (Legacy)
+## Seasonal Texture Generator
 
-For mapping entities to textures without atlas workflow:
+`generate_seasonal_textures.sh` generates spring/summer/fall/winter color variants
+of tile textures using ImageMagick.
 
 ```bash
-python3 tools/texture_mapper.py
+# 1. Extract sprites from atlas
+python3 tools/atlas_tool.py extract
+
+# 2. Run seasonal generator on extracted sprites
+bash tools/generate_seasonal_textures.sh
+
+# 3. Re-pack atlas with seasonal variants
+python3 tools/atlas_tool.py pack
 ```
 
-Opens a visual browser showing all textures organized by category (biomes, obstacles, buildings, etc.) and allows mapping to items, materials, NPCs, and world objects.
+**Requirements:** ImageMagick (`convert` command)
+
+**Textures affected:** biome_\*, building_\*, obstacle_\* tiles (16 base textures x 4 seasons = 64 variants)

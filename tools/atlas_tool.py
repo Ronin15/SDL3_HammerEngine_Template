@@ -7,12 +7,12 @@ Coherent workflow for managing sprite atlases:
 1. EXTRACT  - Extract sprites from atlas.png → res/sprites/
 2. EDIT     - Add/modify sprites in res/sprites/ (manual step)
 3. MAP      - Assign texture IDs to sprites (visual tool)
-4. PACK     - Pack sprites into atlas.png + export all JSON files
+4. PACK     - Pack sprites into atlas.png + update atlas.json
 
 Usage:
     python3 tools/atlas_tool.py extract    # Extract sprites from atlas.png
     python3 tools/atlas_tool.py map        # Open visual mapper to assign IDs
-    python3 tools/atlas_tool.py pack       # Pack and export all JSON files
+    python3 tools/atlas_tool.py pack       # Pack sprites and update atlas.json
     python3 tools/atlas_tool.py list       # List current sprites
 
 Requires: pip install pillow
@@ -43,11 +43,6 @@ def get_paths():
         'sprites_dir': project_root / "res" / "sprites",
         'atlas_png': project_root / "res" / "img" / "atlas.png",
         'atlas_json': project_root / "res" / "data" / "atlas.json",
-        'resources_json': project_root / "res" / "data" / "resources.json",
-        'races_json': project_root / "res" / "data" / "races.json",
-        'monster_types_json': project_root / "res" / "data" / "monster_types.json",
-        'species_json': project_root / "res" / "data" / "species.json",
-        'world_objects_json': project_root / "res" / "data" / "world_objects.json",
         'mapper_session': script_dir / "atlas_mapper_session.html",
     }
 
@@ -578,13 +573,6 @@ def cmd_map(paths: dict):
     if not sprite_files:
         print(f"Error: No sprites found in {sprites_dir}")
         return False
-
-    # Load manifest if exists
-    manifest_path = sprites_dir / "_manifest.json"
-    manifest = {}
-    if manifest_path.exists():
-        with open(manifest_path, 'r') as f:
-            manifest = json.load(f)
 
     # Load manifest for position info
     manifest_path = sprites_dir / "_manifest.json"
@@ -1326,53 +1314,11 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
 
 
 # =============================================================================
-# Sprite Rename Helper
-# =============================================================================
-
-def apply_sprite_renames(sprites_dir: Path, mappings_file: Path):
-    """Apply sprite renames using two-phase approach to handle circular dependencies."""
-    with open(mappings_file) as f:
-        mappings = json.load(f)
-
-    # Filter to only renames (old != new)
-    renames = {old: new for old, new in mappings.items() if old != new}
-
-    if not renames:
-        print("  No renames needed")
-        mappings_file.unlink()
-        return
-
-    print(f"  Renaming {len(renames)} sprites...")
-
-    # Phase 1: Move all source files to temporary names
-    temp_files = {}
-    for old_name in renames.keys():
-        src = sprites_dir / f"{old_name}.png"
-        if src.exists():
-            tmp = sprites_dir / f"_tmp_{old_name}.png"
-            src.rename(tmp)
-            temp_files[old_name] = tmp
-            print(f"    {old_name}.png -> _tmp_{old_name}.png")
-
-    # Phase 2: Move temporary files to final names
-    for old_name, new_name in renames.items():
-        if old_name in temp_files:
-            tmp = temp_files[old_name]
-            dst = sprites_dir / f"{new_name}.png"
-            tmp.rename(dst)
-            print(f"    _tmp_{old_name}.png -> {new_name}.png")
-
-    # Clean up mappings file
-    mappings_file.unlink()
-    print("  Renames complete, removed mappings.json")
-
-
-# =============================================================================
-# PACK - Pack sprites into atlas and export all JSON files
+# PACK - Pack sprites into atlas and update atlas.json
 # =============================================================================
 
 def cmd_pack(paths: dict):
-    """Pack sprites into atlas.png and export all JSON files."""
+    """Pack sprites into atlas.png and update atlas.json."""
     sprites_dir = paths['sprites_dir']
     atlas_png = paths['atlas_png']
     atlas_json_path = paths['atlas_json']
@@ -1380,12 +1326,6 @@ def cmd_pack(paths: dict):
     if not sprites_dir.exists():
         print(f"Error: Sprites directory not found: {sprites_dir}")
         return False
-
-    # Apply pending renames from mappings.json (if exists)
-    mappings_file = sprites_dir / 'mappings.json'
-    if mappings_file.exists():
-        print("Found mappings.json - applying sprite renames...")
-        apply_sprite_renames(sprites_dir, mappings_file)
 
     # Collect all PNG files (excluding manifest and temp files)
     sprite_files = [f for f in sorted(sprites_dir.glob("*.png")) if not f.name.startswith('_')]
@@ -1519,9 +1459,7 @@ def cmd_pack(paths: dict):
         json.dump(atlas_data, f, indent=2)
     print(f"Saved: {atlas_json_path} ({len(regions)} regions)")
 
-    # Export to all JSON files
-    print("\nUpdating JSON files...")
-    export_to_json_files(paths, regions)
+    print("\n  Atlas coordinates stored in atlas.json only (data files unchanged)")
 
     # Clean up sprite files after successful pack
     current_sprites = [f for f in sprites_dir.glob("*.png") if not f.name.startswith('_')]
@@ -1532,29 +1470,6 @@ def cmd_pack(paths: dict):
         print("  Sprites removed (now in atlas)")
 
     return True
-
-
-def export_to_json_files(paths: dict, regions: dict):
-    """Export atlas coordinates - only updates atlas.json now.
-
-    Atlas coordinates are no longer written to data files (resources.json,
-    races.json, etc.). The C++ code now reads textureId from data files and
-    looks up coordinates from atlas.json at runtime. This provides a single
-    source of truth for sprite coordinates.
-    """
-    # Atlas.json is already saved in cmd_pack() before this function is called
-    print("  Atlas coordinates stored in atlas.json only (data files unchanged)")
-    print("  C++ code looks up coords via textureId -> atlas.json at runtime")
-
-
-# NOTE: The following functions are deprecated and no longer used.
-# Atlas coordinates are now only stored in atlas.json. The C++ code reads
-# textureId from data files and looks up coordinates from atlas.json at runtime.
-# These functions are kept for reference but can be removed in a future cleanup.
-#
-# def update_resources_json(json_path: Path, regions: dict, texture_key: str) -> int:
-# def update_creature_json(json_path: Path, regions: dict, array_key: str) -> int:
-# def update_world_objects_json(json_path: Path, regions: dict) -> int:
 
 
 # =============================================================================
@@ -1609,12 +1524,12 @@ def main():
 Workflow:
   1. extract  - Extract sprites from atlas.png
   2. map      - Assign texture IDs to sprites (visual tool)
-  3. pack     - Pack sprites and export all JSON files
+  3. pack     - Pack sprites and update atlas.json
 
 Example:
   python3 tools/atlas_tool.py extract
   python3 tools/atlas_tool.py map
-  # (assign IDs in browser, download rename script, run it)
+  # (assign IDs in browser, save to apply renames)
   python3 tools/atlas_tool.py pack
 ''')
 
@@ -1632,7 +1547,7 @@ Example:
     extract_from_parser.add_argument('--max-size', type=int, default=64,
         help='Split regions larger than this (default: 64)')
     subparsers.add_parser('map', help='Visual tool to assign texture IDs')
-    subparsers.add_parser('pack', help='Pack sprites and export JSON files')
+    subparsers.add_parser('pack', help='Pack sprites into atlas.png and update atlas.json')
     subparsers.add_parser('list', help='List current sprites')
 
     args = parser.parse_args()
