@@ -644,6 +644,9 @@ BOOST_AUTO_TEST_CASE(TestAICollisionPerformanceUnderLoad) {
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+    // Rebuild static spatial hash to ensure consistent state after prior tests
+    CollisionManager::Instance().rebuildStaticFromWorld();
+
     std::cout << "Entities created. Starting performance test..." << std::endl;
 
     // Run simulation for 60 frames (1 second at 60 FPS)
@@ -653,6 +656,10 @@ BOOST_AUTO_TEST_CASE(TestAICollisionPerformanceUnderLoad) {
 
     for (int frame = 0; frame < TEST_FRAMES; ++frame) {
         auto frameStart = std::chrono::high_resolution_clock::now();
+
+        // Update simulation tiers first (required for collision to find Active entities)
+        Vector2D referencePoint(WORLD_SIZE / 2.0f, WORLD_SIZE / 2.0f);
+        BackgroundSimulationManager::Instance().update(referencePoint, 0.016f);
 
         // Update AI
         AIManager::Instance().update(0.016f);

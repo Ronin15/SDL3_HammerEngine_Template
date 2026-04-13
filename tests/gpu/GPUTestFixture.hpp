@@ -25,13 +25,30 @@ namespace Test {
     } while (0)
 
 /**
+ * Skip macro for tests requiring swapchain availability.
+ * Prevents frame cycle tests from hanging when the compositor
+ * cannot provide a swapchain (headless, minimized, etc.).
+ */
+#define SKIP_IF_NO_SWAPCHAIN() \
+    do { \
+        if (!GPUTestFixture::isSwapchainAvailable()) { \
+            BOOST_TEST_MESSAGE("Skipping test: Swapchain not available"); \
+            return; \
+        } \
+    } while (0)
+
+/**
  * Common test fixture for GPU tests.
  * Handles SDL initialization and GPU device availability detection.
+ *
+ * GPU availability is checked by creating a temporary device (no window
+ * claim). Swapchain availability is set by RendererTestFixture after it
+ * initializes the real device and probes the swapchain — this avoids
+ * creating throwaway devices that claim the shared test window.
  */
 class GPUTestFixture {
 public:
     GPUTestFixture() {
-        // Initialize SDL video subsystem for GPU tests
         if (!s_sdlInitialized) {
             if (!SDL_Init(SDL_INIT_VIDEO)) {
                 BOOST_TEST_MESSAGE("SDL video initialization failed: " << SDL_GetError());
@@ -39,7 +56,6 @@ public:
             } else {
                 s_sdlInitialized = true;
                 VoidLight::ResourcePath::init();
-                // Check if GPU is available by trying to create a hidden window
                 checkGPUAvailability();
             }
         }
@@ -49,12 +65,20 @@ public:
         // SDL cleanup handled by global fixture
     }
 
-    /**
-     * Check if GPU is available for testing.
-     * Returns false in headless environments or when GPU init fails.
-     */
     static bool isGPUAvailable() {
         return s_gpuAvailable;
+    }
+
+    static bool isSwapchainAvailable() {
+        return s_swapchainAvailable;
+    }
+
+    /**
+     * Set swapchain availability. Called by RendererTestFixture after
+     * probing with the real device — never by the base fixture.
+     */
+    static void setSwapchainAvailable(bool available) {
+        s_swapchainAvailable = available;
     }
 
     /**
@@ -76,28 +100,6 @@ public:
     }
 
     /**
-     * Show the test window for frame cycle tests that need a visible swapchain.
-     * Call this before tests that require beginFrame() to fully execute.
-     */
-    static void showTestWindow() {
-        if (s_testWindow) {
-            SDL_ShowWindow(s_testWindow);
-            // Process events to ensure window is visible
-            SDL_Event event;
-            while (SDL_PollEvent(&event)) {}
-        }
-    }
-
-    /**
-     * Hide the test window after frame cycle tests.
-     */
-    static void hideTestWindow() {
-        if (s_testWindow) {
-            SDL_HideWindow(s_testWindow);
-        }
-    }
-
-    /**
      * Clean up test resources.
      */
     static void cleanup() {
@@ -110,47 +112,35 @@ public:
             s_sdlInitialized = false;
         }
         s_gpuAvailable = false;
+        s_swapchainAvailable = false;
     }
 
 protected:
+    /**
+     * Check if a GPU device can be created on this system.
+     * Creates a temporary device (no window claim) and destroys it.
+     */
     static void checkGPUAvailability() {
-        // Try to create a test window to verify GPU capability
-        SDL_Window* testWin = SDL_CreateWindow(
-            "GPU Test",
-            64, 64,
-            SDL_WINDOW_HIDDEN
-        );
-
-        if (!testWin) {
-            BOOST_TEST_MESSAGE("Cannot create window for GPU test: " << SDL_GetError());
-            s_gpuAvailable = false;
-            return;
-        }
-
-        // Try to create a GPU device
         SDL_GPUDevice* device = SDL_CreateGPUDevice(
             VoidLight::GPUPlatformConfig::getRequestedShaderFormats(),
-            false,  // debug mode
+            false,
             VoidLight::GPUPlatformConfig::getPreferredDriverName()
         );
 
         if (!device) {
             BOOST_TEST_MESSAGE("Cannot create GPU device: " << SDL_GetError());
-            SDL_DestroyWindow(testWin);
             s_gpuAvailable = false;
             return;
         }
 
-        // GPU is available - clean up test resources
         SDL_DestroyGPUDevice(device);
-        SDL_DestroyWindow(testWin);
         s_gpuAvailable = true;
         BOOST_TEST_MESSAGE("GPU is available for testing");
     }
 
-    // Static state shared across fixtures
     static inline bool s_sdlInitialized = false;
     static inline bool s_gpuAvailable = false;
+    static inline bool s_swapchainAvailable = false;
     static inline SDL_Window* s_testWindow = nullptr;
 };
 
