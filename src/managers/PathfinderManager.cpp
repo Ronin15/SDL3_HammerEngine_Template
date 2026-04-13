@@ -505,7 +505,7 @@ uint64_t PathfinderManager::requestPathToEDM(
         }
 
         std::lock_guard<std::mutex> lock(m_pathCompletionMutex);
-        m_pendingPathCompletions.emplace_back(std::move(completion));
+        m_pendingPathCompletions.emplace_back(completion);
 
     };
 

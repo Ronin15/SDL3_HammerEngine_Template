@@ -131,7 +131,7 @@ SDL_GPUShader* GPUShaderManager::loadShader(const std::string& basePath,
     }
 
     if (shader) {
-        m_shaders.emplace(std::move(key), shader);
+        m_shaders.emplace(key, shader);
         GAMEENGINE_DEBUG(std::format("Loaded shader: {}", resolvedPath));
     }
 

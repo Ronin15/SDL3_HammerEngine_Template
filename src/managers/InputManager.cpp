@@ -247,7 +247,7 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
   GamepadState& gamepadState = m_gamepads[whichOne];
 
   // Get axis name for debug messages
-  const char* axisName = "Unknown";
+  const char* axisName;
   switch (event.gaxis.axis)
   {
     case SDL_GAMEPAD_AXIS_LEFTX: axisName = "Left Stick X"; break;
@@ -299,7 +299,7 @@ void InputManager::onGamepadButtonDown(const SDL_Event& event) {
   gamepadState.buttonStates[event.gbutton.button] = true;
 
   // Get button name for debug message
-  const char* buttonName = "Unknown";
+  const char* buttonName;
   switch (event.gbutton.button) {
     case 0: buttonName = "A or CROSS"; break;
     case 1: buttonName = "B or CIRCLE"; break;
