@@ -98,7 +98,7 @@ class MapperRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(response.encode('utf-8'))
 
             if renamed:
-                print(f"\nRenamed {len(renamed)} sprites. Refresh browser to see changes.")
+                print(f"\nRenamed {len(renamed)} sprites.")
             else:
                 print("\nNo renames needed - all mappings already match filenames.")
         else:
@@ -651,7 +651,7 @@ def cmd_map(paths: dict):
     print(f"\nStarting mapper server on http://localhost:8000")
     print("\nWorkflow:")
     print("  1. Click a sprite on the left")
-    print("  2. Click a texture ID on the right (or type custom)")
+    print("  2. Click a texture ID on the right to assign")
     print("  3. Repeat for all unmapped sprites")
     print("  4. Click 'Save Mappings'")
     print("\nPress Ctrl+C to stop server when done")
@@ -871,9 +871,9 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
         .ids-panel {{ width: 320px; background: #16213e; border-left: 2px solid #0f3460; display: flex; flex-direction: column; }}
         .ids-panel h3 {{ padding: 10px; background: #0f3460; font-size: 0.9em; }}
 
-        .custom-input {{ padding: 10px; border-bottom: 1px solid #333; }}
-        .custom-input input {{ width: 100%; padding: 8px; background: #1a1a2e; border: 1px solid #333; color: #eee; border-radius: 4px; }}
-        .custom-input input:focus {{ border-color: #0f9; outline: none; }}
+        .id-search {{ padding: 10px; border-bottom: 1px solid #333; }}
+        .id-search input {{ width: 100%; padding: 8px; background: #1a1a2e; border: 1px solid #333; color: #eee; border-radius: 4px; }}
+        .id-search input:focus {{ border-color: #0f9; outline: none; }}
 
         .id-list {{ flex: 1; overflow-y: auto; }}
         .id-category {{ border-bottom: 1px solid #333; }}
@@ -936,7 +936,7 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
                 <div style="color: #666; text-align: center;">Select a sprite</div>
             </div>
 
-            <div class="custom-input">
+            <div class="id-search">
                 <input type="text" id="idSearch" placeholder="Filter texture IDs..." oninput="render()">
             </div>
 
