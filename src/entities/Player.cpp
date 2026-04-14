@@ -164,6 +164,18 @@ void Player::update(float deltaTime) {
   // getPosition()/getVelocity() to read from EntityDataManager (single source
   // of truth)
   Vector2D currentVel = getVelocity();
+
+  // Apply knockback impulse (decays over multiple frames)
+  auto& hotData = EntityDataManager::Instance().getHotData(m_handle);
+  if (hotData.knockbackFrames > 0) {
+    currentVel.setX(currentVel.getX() + hotData.knockbackImpulseX);
+    currentVel.setY(currentVel.getY() + hotData.knockbackImpulseY);
+    constexpr float KNOCKBACK_DECAY = 0.7f;
+    hotData.knockbackImpulseX *= KNOCKBACK_DECAY;
+    hotData.knockbackImpulseY *= KNOCKBACK_DECAY;
+    --hotData.knockbackFrames;
+  }
+
   Vector2D newPos = getPosition() + (currentVel * deltaTime);
 
   // WORLD BOUNDS CONSTRAINT: Clamp player position to stay within world

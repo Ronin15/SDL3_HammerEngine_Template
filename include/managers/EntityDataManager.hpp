@@ -111,7 +111,9 @@ struct alignas(64) EntityHotData {
     uint8_t collisionFlags{0};       // 1 byte: COLLISION_ENABLED, IS_TRIGGER
     uint8_t triggerTag{0};           // 1 byte: TriggerTag for trigger entities
     uint8_t triggerType{0};          // 1 byte: TriggerType (EventOnly, Physical)
-    uint8_t _padding[9]{};           // 9 bytes: Pad to 64-byte cache line
+    uint8_t knockbackFrames{0};      // 1 byte: remaining frames of knockback impulse
+    float knockbackImpulseX{0.0f};   // 4 bytes: knockback impulse X component
+    float knockbackImpulseY{0.0f};   // 4 bytes: knockback impulse Y component
 
     // Entity flag constants
     static constexpr uint8_t FLAG_ALIVE = 0x01;
@@ -279,6 +281,7 @@ struct ProjectileData {
     float speed{200.0f};
     float embeddedOffsetX{0.0f};
     float embeddedOffsetY{0.0f};
+    float embeddedAngle{0.0f};  // Flight angle (radians) preserved at embed time
     uint8_t damageType{0};      // Physical, Fire, Ice, etc.
     uint8_t flags{0};
 

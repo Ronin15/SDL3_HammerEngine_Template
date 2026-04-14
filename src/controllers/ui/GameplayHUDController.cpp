@@ -46,7 +46,11 @@ void GameplayHUDController::update(float deltaTime)
         return;
     }
 
-    m_cachedTargetHealth = edm.getCharacterDataByIndex(targetIdx).health;
+    const auto& charData = edm.getCharacterDataByIndex(targetIdx);
+    m_cachedTargetMaxHealth = charData.maxHealth;
+    m_cachedTargetHealth = (charData.maxHealth > 0.0f)
+        ? (charData.health / charData.maxHealth) * 100.0f
+        : 0.0f;
 }
 
 bool GameplayHUDController::hasActiveTarget() const
@@ -73,14 +77,7 @@ float GameplayHUDController::getTargetHealth() const
         return 0.0f;
     }
 
-    auto& edm = EntityDataManager::Instance();
-    const size_t targetIdx = edm.getIndex(m_targetedHandle);
-    if (targetIdx == SIZE_MAX)
-    {
-        return m_cachedTargetHealth;
-    }
-
-    return edm.getCharacterDataByIndex(targetIdx).health;
+    return m_cachedTargetHealth;
 }
 
 void GameplayHUDController::onCombatEvent(const EventData& data)
@@ -118,7 +115,11 @@ void GameplayHUDController::onCombatEvent(const EventData& data)
 
     m_targetedHandle = targetHandle;
     m_targetDisplayTimer = TARGET_DISPLAY_DURATION;
-    m_cachedTargetHealth = damageEvent->getRemainingHealth();
+    const float maxHealth = edm.getCharacterDataByIndex(targetIdx).maxHealth;
+    m_cachedTargetMaxHealth = maxHealth;
+    m_cachedTargetHealth = (maxHealth > 0.0f)
+        ? (damageEvent->getRemainingHealth() / maxHealth) * 100.0f
+        : 0.0f;
     if (targetHandle != m_lastLabeledHandle)
     {
         m_targetLabel = edm.getCreatureDisplayName(targetHandle);

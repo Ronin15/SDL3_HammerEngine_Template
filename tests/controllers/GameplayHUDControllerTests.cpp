@@ -82,8 +82,9 @@ BOOST_AUTO_TEST_CASE(TestPlayerMeleeHitSetsTargetState)
     dispatchDamage(player, target, 25.0f);
 
     BOOST_REQUIRE(controller.hasActiveTarget());
-    BOOST_CHECK_CLOSE(controller.getTargetHealth(),
-                      EntityDataManager::Instance().getCharacterData(target).health, 0.01f);
+    const auto& charData = EntityDataManager::Instance().getCharacterData(target);
+    const float expectedPercent = (charData.health / charData.maxHealth) * 100.0f;
+    BOOST_CHECK_CLOSE(controller.getTargetHealth(), expectedPercent, 0.01f);
     BOOST_CHECK_EQUAL(controller.getTargetLabel(), "Human Guard");
 }
 
@@ -114,8 +115,9 @@ BOOST_AUTO_TEST_CASE(TestPlayerProjectileHitSetsTargetState)
     EventManager::Instance().update();
 
     BOOST_REQUIRE(controller.hasActiveTarget());
-    BOOST_CHECK_CLOSE(controller.getTargetHealth(),
-                      EntityDataManager::Instance().getCharacterData(target).health, 0.01f);
+    const auto& targetCharData = EntityDataManager::Instance().getCharacterData(target);
+    const float expectedPct = (targetCharData.health / targetCharData.maxHealth) * 100.0f;
+    BOOST_CHECK_CLOSE(controller.getTargetHealth(), expectedPct, 0.01f);
     BOOST_CHECK_EQUAL(controller.getTargetLabel(), "Human Guard");
 }
 

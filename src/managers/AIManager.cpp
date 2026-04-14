@@ -1538,6 +1538,16 @@ void AIManager::processBatch(
         0.0f, 0.0f, worldWidth, worldHeight, true, gameTime);
     Behaviors::execute(ctx, config);
 
+    // Apply knockback impulse to velocity (decays over multiple frames)
+    if (edmHotData.knockbackFrames > 0) {
+      transform.velocity.setX(transform.velocity.getX() + edmHotData.knockbackImpulseX);
+      transform.velocity.setY(transform.velocity.getY() + edmHotData.knockbackImpulseY);
+      constexpr float KNOCKBACK_DECAY = 0.7f;
+      edmHotData.knockbackImpulseX *= KNOCKBACK_DECAY;
+      edmHotData.knockbackImpulseY *= KNOCKBACK_DECAY;
+      --edmHotData.knockbackFrames;
+    }
+
     batchTransforms[batchCount] = &transform;
     batchHotData[batchCount] = &edmHotData;
     ++batchCount;

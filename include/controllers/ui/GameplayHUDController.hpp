@@ -52,6 +52,7 @@ private:
     EntityHandle m_lastLabeledHandle{};
     float m_targetDisplayTimer{0.0f};
     float m_cachedTargetHealth{0.0f};
+    float m_cachedTargetMaxHealth{100.0f};
     std::string m_targetLabel{"Target"};
 };
 
