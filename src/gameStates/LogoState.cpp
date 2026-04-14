@@ -11,6 +11,7 @@
 #include "managers/TextureManager.hpp"
 #include "managers/GameStateManager.hpp"
 #include <algorithm>
+#include <cmath>
 
 #include "gpu/GPURenderer.hpp"
 #include "gpu/GPUTypes.hpp"
@@ -192,8 +193,8 @@ void LogoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
       return;
     }
 
-    float dstX = static_cast<float>(x) - textWidth / 2.0f;
-    float dstY = static_cast<float>(y) - textHeight / 2.0f;
+    float dstX = std::round(static_cast<float>(x) - textWidth / 2.0f);
+    float dstY = std::round(static_cast<float>(y) - textHeight / 2.0f);
 
     TTF_GPUAtlasDrawSequence* drawSequence = fontMgr.getGPUTextDrawData(key);
     if (!drawSequence) {
