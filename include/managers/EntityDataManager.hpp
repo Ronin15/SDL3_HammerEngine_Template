@@ -1324,7 +1324,7 @@ struct alignas(64) NPCMemoryData {
     EntityHandle lastTarget;         // 12 bytes: Most recent attack target
     float totalDamageReceived{0.0f}; // 4 bytes: Sum of damage received (session)
     float totalDamageDealt{0.0f};    // 4 bytes: Sum of damage dealt (session)
-    float lastCombatTime{999.0f};    // 4 bytes: Elapsed since last combat (delta semantics, starts above timeout)
+    float lastCombatTime{NO_COMBAT_HISTORY};  // 4 bytes: Elapsed since last combat (delta semantics)
 
     // Metadata
     uint32_t overflowId{0};          // 4 bytes: ID into overflow map (0 = none)
@@ -1340,6 +1340,7 @@ struct alignas(64) NPCMemoryData {
     static constexpr uint8_t FLAG_VALID = 0x01;
     static constexpr uint8_t FLAG_HAS_OVERFLOW = 0x02;
     static constexpr float COMBAT_TIMEOUT = 5.0f;
+    static constexpr float NO_COMBAT_HISTORY = 999.0f;
 
     [[nodiscard]] bool isValid() const noexcept { return flags & FLAG_VALID; }
     [[nodiscard]] bool hasOverflow() const noexcept { return flags & FLAG_HAS_OVERFLOW; }
@@ -1359,7 +1360,7 @@ struct alignas(64) NPCMemoryData {
         lastTarget = EntityHandle{};
         totalDamageReceived = 0.0f;
         totalDamageDealt = 0.0f;
-        lastCombatTime = 999.0f;
+        lastCombatTime = NO_COMBAT_HISTORY;
         overflowId = 0;
         memoryCount = 0;
         locationCount = 0;
