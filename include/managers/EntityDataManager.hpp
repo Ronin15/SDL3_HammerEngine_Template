@@ -234,17 +234,10 @@ struct CharacterData {
     // Emotional resilience from class (affects emotion changes)
     float emotionalResilience{0.5f};
 
-    static constexpr uint8_t STATE_ALIVE = 0x01;
-    static constexpr uint8_t STATE_STUNNED = 0x02;
-    static constexpr uint8_t STATE_INVULNERABLE = 0x04;
-    static constexpr uint8_t STATE_MERCHANT = 0x08;    // Can trade with player
-
-    [[nodiscard]] bool isCharacterAlive() const noexcept {
-        return stateFlags & STATE_ALIVE;
-    }
+    static constexpr uint8_t FLAG_MERCHANT = 0x08;    // Can trade with player
 
     [[nodiscard]] bool isMerchant() const noexcept {
-        return (stateFlags & STATE_MERCHANT) != 0;
+        return (stateFlags & FLAG_MERCHANT) != 0;
     }
 
     [[nodiscard]] bool hasInventory() const noexcept {
@@ -1174,7 +1167,6 @@ struct MemoryEntry {
     uint8_t _pad;              // 1 byte: Alignment padding
 
     static constexpr uint8_t FLAG_VALID = 0x01;
-    static constexpr uint8_t FLAG_FADING = 0x02;  // Memory is decaying
 
     [[nodiscard]] bool isValid() const noexcept { return flags & FLAG_VALID; }
 
@@ -1332,7 +1324,7 @@ struct alignas(64) NPCMemoryData {
     EntityHandle lastTarget;         // 12 bytes: Most recent attack target
     float totalDamageReceived{0.0f}; // 4 bytes: Sum of damage received (session)
     float totalDamageDealt{0.0f};    // 4 bytes: Sum of damage dealt (session)
-    float lastCombatTime{0.0f};      // 4 bytes: When last combat occurred
+    float lastCombatTime{999.0f};    // 4 bytes: Elapsed since last combat (delta semantics, starts above timeout)
 
     // Metadata
     uint32_t overflowId{0};          // 4 bytes: ID into overflow map (0 = none)
@@ -1347,11 +1339,11 @@ struct alignas(64) NPCMemoryData {
     // Flags
     static constexpr uint8_t FLAG_VALID = 0x01;
     static constexpr uint8_t FLAG_HAS_OVERFLOW = 0x02;
-    static constexpr uint8_t FLAG_IN_COMBAT = 0x04;
+    static constexpr float COMBAT_TIMEOUT = 5.0f;
 
     [[nodiscard]] bool isValid() const noexcept { return flags & FLAG_VALID; }
     [[nodiscard]] bool hasOverflow() const noexcept { return flags & FLAG_HAS_OVERFLOW; }
-    [[nodiscard]] bool isInCombat() const noexcept { return flags & FLAG_IN_COMBAT; }
+    [[nodiscard]] bool isInCombat() const noexcept { return lastCombatTime < COMBAT_TIMEOUT; }
 
     void setValid(bool v) noexcept {
         if (v) flags |= FLAG_VALID;
@@ -1367,7 +1359,7 @@ struct alignas(64) NPCMemoryData {
         lastTarget = EntityHandle{};
         totalDamageReceived = 0.0f;
         totalDamageDealt = 0.0f;
-        lastCombatTime = 0.0f;
+        lastCombatTime = 999.0f;
         overflowId = 0;
         memoryCount = 0;
         locationCount = 0;
@@ -1780,7 +1772,7 @@ public:
      * @param maxSlots Maximum inventory slots (default 20)
      * @return true if successfully initialized, false on failure
      *
-     * Creates an inventory for the NPC and sets the STATE_MERCHANT flag.
+     * Creates an inventory for the NPC and sets the FLAG_MERCHANT flag.
      * The inventory index is stored in CharacterData.inventoryIndex.
      * Use this to enable trading with the NPC via SocialController.
      */
@@ -2433,6 +2425,7 @@ private:
     size_t allocateSlot();
     void freeSlot(size_t index);
     uint32_t nextGeneration(size_t index);
+    void clearAllEntityStorage();
     void rebuildTierIndicesFromHotData();
 
     /**
@@ -2727,10 +2720,6 @@ inline void EntityDataManager::updateEmotionalDecay(size_t index, float deltaTim
     data.emotions.decay(decayRate, deltaTime);
     data.lastDecayTime += deltaTime;
     data.lastCombatTime += deltaTime;
-    constexpr float COMBAT_TIMEOUT = 5.0f;
-    if ((data.flags & NPCMemoryData::FLAG_IN_COMBAT) && data.lastCombatTime > COMBAT_TIMEOUT) {
-        data.flags &= ~NPCMemoryData::FLAG_IN_COMBAT;
-    }
 }
 
 inline MemoryOverflow* EntityDataManager::getMemoryOverflow(uint32_t overflowId) {

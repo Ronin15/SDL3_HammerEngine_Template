@@ -165,6 +165,73 @@ bool EntityDataManager::init() {
     }
 }
 
+void EntityDataManager::clearAllEntityStorage() {
+    // Dynamic entity storage
+    m_hotData.clear();
+    m_entityIds.clear();
+    m_generations.clear();
+    m_idToIndex.clear();
+    m_behaviorConfig.clear();
+
+    // Static entity storage
+    m_staticHotData.clear();
+    m_staticEntityIds.clear();
+    m_staticGenerations.clear();
+    m_staticIdToIndex.clear();
+    m_freeStaticSlots.clear();
+
+    // Type-specific data
+    m_characterData.clear();
+    m_npcRenderData.clear();
+    m_itemData.clear();
+    m_itemRenderData.clear();
+    m_projectileData.clear();
+    m_containerData.clear();
+    m_containerRenderData.clear();
+    m_harvestableData.clear();
+    m_areaEffectData.clear();
+    m_pathData.clear();
+    m_waypointSlots.clear();
+    m_behaviorData.clear();
+    m_memoryData.clear();
+    m_memoryOverflow.clear();
+    m_nextMemoryOverflowId = 1;
+
+    // Type-specific free-lists
+    m_freeCharacterSlots.clear();
+    m_freeItemSlots.clear();
+    m_freeProjectileSlots.clear();
+    m_freeContainerSlots.clear();
+    m_freeHarvestableSlots.clear();
+    m_freeAreaEffectSlots.clear();
+
+    // Inventory storage
+    m_inventoryData.clear();
+    m_inventoryOverflow.clear();
+    m_freeInventorySlots.clear();
+    m_nextOverflowId = 1;
+
+    // Tier and kind indices
+    m_activeIndices.clear();
+    m_backgroundIndices.clear();
+    m_hibernatedIndices.clear();
+
+    for (auto& kindVec : m_kindIndices) {
+        kindVec.clear();
+    }
+
+    m_freeSlots.clear();
+
+    // Entity counts
+    m_totalEntityCount.store(0, std::memory_order_relaxed);
+    for (auto& count : m_countByKind) {
+        count.store(0, std::memory_order_relaxed);
+    }
+    for (auto& count : m_countByTier) {
+        count.store(0, std::memory_order_relaxed);
+    }
+}
+
 void EntityDataManager::clean() {
     if (!m_initialized.load(std::memory_order_acquire)) {
         return;
@@ -174,58 +241,7 @@ void EntityDataManager::clean() {
 
     m_initialized.store(false, std::memory_order_release);
 
-    // Clear all entity data (main thread only - no lock needed)
-    m_hotData.clear();
-    m_entityIds.clear();
-    m_generations.clear();
-    m_idToIndex.clear();
-
-    // Clear static entity storage
-    m_staticHotData.clear();
-    m_staticEntityIds.clear();
-    m_staticGenerations.clear();
-    m_staticIdToIndex.clear();
-    m_freeStaticSlots.clear();
-
-    m_characterData.clear();
-    m_npcRenderData.clear();
-    m_itemData.clear();
-    m_itemRenderData.clear();
-    m_projectileData.clear();
-    m_containerData.clear();
-    m_containerRenderData.clear();
-    m_harvestableData.clear();
-    m_areaEffectData.clear();
-    m_pathData.clear();
-    m_waypointSlots.clear();  // Clear per-entity waypoint slots
-    m_behaviorData.clear();
-    m_memoryData.clear();
-    m_memoryOverflow.clear();
-    m_nextMemoryOverflowId = 1;
-
-    // Clear type-specific free-lists
-    m_freeCharacterSlots.clear();
-    m_freeItemSlots.clear();
-    m_freeProjectileSlots.clear();
-    m_freeContainerSlots.clear();
-    m_freeHarvestableSlots.clear();
-    m_freeAreaEffectSlots.clear();
-
-    // Clear inventory storage
-    m_inventoryData.clear();
-    m_inventoryOverflow.clear();
-    m_freeInventorySlots.clear();
-    m_nextOverflowId = 1;
-
-    m_activeIndices.clear();
-    m_backgroundIndices.clear();
-    m_hibernatedIndices.clear();
-
-    for (auto& kindVec : m_kindIndices) {
-        kindVec.clear();
-    }
-
-    m_freeSlots.clear();
+    clearAllEntityStorage();
 
     {
         std::lock_guard<std::mutex> lock(m_destructionMutex);
@@ -233,94 +249,25 @@ void EntityDataManager::clean() {
     }
     m_destroyBuffer.clear();
 
-    m_totalEntityCount.store(0, std::memory_order_relaxed);
-    for (auto& count : m_countByKind) {
-        count.store(0, std::memory_order_relaxed);
-    }
-    for (auto& count : m_countByTier) {
-        count.store(0, std::memory_order_relaxed);
-    }
-
     ENTITY_INFO("EntityDataManager shutdown complete");
 }
 
 void EntityDataManager::prepareForStateTransition() {
     ENTITY_INFO("Preparing EntityDataManager for state transition...");
 
-    // Process any pending destructions first
     processDestructionQueue();
 
-    // Clear all entity data (main thread only - no lock needed)
-    m_hotData.clear();
-    m_entityIds.clear();
-    m_generations.clear();
-    m_idToIndex.clear();
-    m_behaviorConfig.clear();
+    clearAllEntityStorage();
 
-    // Clear static entity storage
-    m_staticHotData.clear();
-    m_staticEntityIds.clear();
-    m_staticGenerations.clear();
-    m_staticIdToIndex.clear();
-    m_freeStaticSlots.clear();
-
-    m_characterData.clear();
-    m_npcRenderData.clear();
-    m_itemData.clear();
-    m_itemRenderData.clear();
-    m_projectileData.clear();
-    m_containerData.clear();
-    m_containerRenderData.clear();
-    m_harvestableData.clear();
-    m_areaEffectData.clear();
-    m_pathData.clear();
-    m_waypointSlots.clear();  // Clear per-entity waypoint slots
-    m_behaviorData.clear();
-    m_memoryData.clear();
-    m_memoryOverflow.clear();
-    m_nextMemoryOverflowId = 1;
-
-    // Clear type-specific free-lists
-    m_freeCharacterSlots.clear();
-    m_freeItemSlots.clear();
-    m_freeProjectileSlots.clear();
-    m_freeContainerSlots.clear();
-    m_freeHarvestableSlots.clear();
-    m_freeAreaEffectSlots.clear();
-
-    // Clear inventory storage
-    m_inventoryData.clear();
-    m_inventoryOverflow.clear();
-    m_freeInventorySlots.clear();
-    m_nextOverflowId = 1;
-
-    m_activeIndices.clear();
-    m_backgroundIndices.clear();
-    m_hibernatedIndices.clear();
-
-    // CRITICAL: Clear ALL cached indices to prevent stale access
-    // Each cached index vector can cause crashes if not cleared
+    // Invalidate cached indices to prevent stale access
     m_activeCollisionIndices.clear();
     m_activeCollisionDirty = true;
 
     m_triggerDetectionIndices.clear();
     m_triggerDetectionDirty = true;
 
-    for (auto& kindVec : m_kindIndices) {
-        kindVec.clear();
-    }
-
-    m_freeSlots.clear();
     m_tierIndicesDirty = true;
     markAllKindsDirty();
-
-    m_totalEntityCount.store(0, std::memory_order_relaxed);
-    for (auto& count : m_countByKind) {
-        count.store(0, std::memory_order_relaxed);
-    }
-    for (auto& count : m_countByTier) {
-        count.store(0, std::memory_order_relaxed);
-    }
 
     ENTITY_INFO("EntityDataManager prepared for state transition");
 }
@@ -508,7 +455,7 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
 
     // Allocate character data first (needed for faction-based collision setup)
     uint32_t charIndex = allocateCharacterSlot();
-    m_characterData[charIndex].stateFlags = CharacterData::STATE_ALIVE;
+    m_characterData[charIndex].stateFlags = 0;
     // faction defaults to 0 (Friendly) in CharacterData
 
     // All NPCs get an inventory (20 slots, not world-tracked)
@@ -660,7 +607,7 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
 
     // Set merchant flag based on class
     if (classInfo.isMerchant) {
-        charData.stateFlags |= CharacterData::STATE_MERCHANT;
+        charData.stateFlags |= CharacterData::FLAG_MERCHANT;
     }
 
     // Add starting items from class definition
@@ -1708,7 +1655,7 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
     charData.maxStamina = 100.0f;
     charData.attackDamage = 25.0f;
     charData.attackRange = 50.0f;
-    charData.stateFlags = CharacterData::STATE_ALIVE;
+    charData.stateFlags = 0;
     hot.typeLocalIndex = charIndex;
 
     // Store ID and mapping
@@ -2071,7 +2018,7 @@ bool EntityDataManager::initNPCAsMerchant(EntityHandle handle, uint16_t maxSlots
 
     // Store inventory index and set merchant flag
     charData.inventoryIndex = invIdx;
-    charData.stateFlags |= CharacterData::STATE_MERCHANT;
+    charData.stateFlags |= CharacterData::FLAG_MERCHANT;
 
     ENTITY_INFO(std::format("NPC {} initialized as merchant with {} slots",
                             handle.getId(), maxSlots));
@@ -2980,7 +2927,6 @@ void EntityDataManager::recordCombatEvent(size_t index, EntityHandle attacker,
 
     memData.lastCombatTime = 0.0f;  // Delta semantics: starts at 0, incremented by updateEmotionalDecay
     memData.combatEncounters++;
-    memData.flags |= NPCMemoryData::FLAG_IN_COMBAT;
 
     // Create memory entry
     MemoryEntry mem;

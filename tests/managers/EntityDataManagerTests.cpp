@@ -182,7 +182,7 @@ BOOST_AUTO_TEST_CASE(TestCreatePlayer) {
     const auto& charData = edm->getCharacterData(handle);
     BOOST_CHECK(approxEqual(charData.health, 100.0f));
     BOOST_CHECK(approxEqual(charData.maxHealth, 100.0f));
-    BOOST_CHECK(charData.isCharacterAlive());
+    BOOST_CHECK(edm->isValidHandle(handle));
 }
 
 BOOST_AUTO_TEST_CASE(TestCreateDroppedItem) {
@@ -601,7 +601,7 @@ BOOST_AUTO_TEST_CASE(TestGetCharacterData) {
     EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
 
     auto& charData = edm->getCharacterData(handle);
-    BOOST_CHECK(charData.isCharacterAlive());
+    BOOST_CHECK(edm->isValidHandle(handle));
 
     // Modify health
     charData.health = 50.0f;
@@ -613,8 +613,8 @@ BOOST_AUTO_TEST_CASE(TestGetCharacterDataByIndex) {
     EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     size_t index = edm->getIndex(handle);
 
-    const auto& charData = edm->getCharacterDataByIndex(index);
-    BOOST_CHECK(charData.isCharacterAlive());
+    edm->getCharacterDataByIndex(index);  // Verify accessor doesn't throw
+    BOOST_CHECK(edm->isValidHandle(handle));
 }
 
 BOOST_AUTO_TEST_CASE(TestGetItemData) {
@@ -909,10 +909,10 @@ BOOST_AUTO_TEST_CASE(TestTypeSpecificSlotReuse) {
     BOOST_CHECK(edm->isValidHandle(npc3));
 
     // Verify character data is accessible
-    const auto& charData2 = edm->getCharacterData(npc2);
-    const auto& charData3 = edm->getCharacterData(npc3);
-    BOOST_CHECK(charData2.isCharacterAlive());
-    BOOST_CHECK(charData3.isCharacterAlive());
+    edm->getCharacterData(npc2);
+    edm->getCharacterData(npc3);
+    BOOST_CHECK(edm->isValidHandle(npc2));
+    BOOST_CHECK(edm->isValidHandle(npc3));
 }
 
 BOOST_AUTO_TEST_CASE(TestMassCreationAndDestruction) {

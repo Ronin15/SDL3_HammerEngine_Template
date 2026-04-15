@@ -1623,7 +1623,7 @@ BOOST_AUTO_TEST_CASE(TestRecordCombatEventUpdatesMemory) {
 
     BOOST_CHECK_GT(memData.combatEncounters, initialEncounters);
     BOOST_CHECK(memData.lastAttacker == attackerHandle);
-    BOOST_CHECK(memData.flags & NPCMemoryData::FLAG_IN_COMBAT);
+    BOOST_CHECK(memData.isInCombat());
 
     BOOST_TEST_MESSAGE("recordCombatEvent encounters: " << memData.combatEncounters);
 }
