@@ -451,11 +451,13 @@ void EntityDataManager::freeSlot(size_t index) {
     markKindDirty(kind);  // Only mark the freed entity's kind dirty
 }
 
-uint8_t EntityDataManager::nextGeneration(size_t index) {
+uint32_t EntityDataManager::nextGeneration(size_t index) {
     if (index >= m_generations.size()) {
         return 1;
     }
-    return static_cast<uint8_t>((m_generations[index] + 1) % 256);
+    return (m_generations[index] == std::numeric_limits<uint32_t>::max())
+        ? static_cast<uint32_t>(1)
+        : m_generations[index] + 1;
 }
 
 uint32_t EntityDataManager::allocateCharacterSlot() {
@@ -488,7 +490,7 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
 
     size_t index = allocateSlot();
     EntityHandle::IDType id = VoidLight::UniqueID::generate();
-    uint8_t generation = nextGeneration(index);
+    uint32_t generation = nextGeneration(index);
 
     // Initialize hot data
     auto& hot = m_hotData[index];
@@ -502,7 +504,7 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     markKindDirty(EntityKind::NPC);
     hot.tier = SimulationTier::Active;
     hot.flags = EntityHotData::FLAG_ALIVE;
-    hot.generation = generation;
+
 
     // Allocate character data first (needed for faction-based collision setup)
     uint32_t charIndex = allocateCharacterSlot();
@@ -1053,7 +1055,7 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     }
 
     EntityHandle::IDType id = VoidLight::UniqueID::generate();
-    uint8_t generation = ++m_staticGenerations[index];
+    uint32_t generation = ++m_staticGenerations[index];
 
     // Initialize hot data in STATIC pool
     auto& hot = m_staticHotData[index];
@@ -1066,7 +1068,7 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     hot.kind = EntityKind::DroppedItem;
     markKindDirty(EntityKind::DroppedItem);
     hot.flags = EntityHotData::FLAG_ALIVE;
-    hot.generation = generation;
+
 
     // DroppedItems use WRM spatial index for pickup detection, not collision system
     hot.collisionLayers = 0;  // No collision layers
@@ -1192,7 +1194,7 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
     }
 
     EntityHandle::IDType id = VoidLight::UniqueID::generate();
-    uint8_t generation = ++m_staticGenerations[index];
+    uint32_t generation = ++m_staticGenerations[index];
 
     // Initialize hot data in STATIC pool
     auto& hot = m_staticHotData[index];
@@ -1205,7 +1207,7 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
     hot.kind = EntityKind::Container;
     markKindDirty(EntityKind::Container);
     hot.flags = EntityHotData::FLAG_ALIVE;
-    hot.generation = generation;
+
 
     // Container - no collision (use WRM spatial queries for interaction)
     hot.collisionLayers = 0;
@@ -1351,7 +1353,7 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     }
 
     EntityHandle::IDType id = VoidLight::UniqueID::generate();
-    uint8_t generation = ++m_staticGenerations[index];
+    uint32_t generation = ++m_staticGenerations[index];
 
     // Initialize hot data in STATIC pool
     auto& hot = m_staticHotData[index];
@@ -1364,7 +1366,7 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     hot.kind = EntityKind::Harvestable;
     markKindDirty(EntityKind::Harvestable);
     hot.flags = EntityHotData::FLAG_ALIVE;
-    hot.generation = generation;
+
 
     // Harvestable - no collision (use WRM spatial queries for interaction)
     hot.collisionLayers = 0;
@@ -1424,7 +1426,7 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
 
     size_t index = allocateSlot();
     EntityHandle::IDType id = VoidLight::UniqueID::generate();
-    uint8_t generation = nextGeneration(index);
+    uint32_t generation = nextGeneration(index);
 
     // Initialize hot data
     auto& hot = m_hotData[index];
@@ -1438,7 +1440,7 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
     markKindDirty(EntityKind::Projectile);
     hot.tier = SimulationTier::Active;  // Projectiles always active
     hot.flags = EntityHotData::FLAG_ALIVE;
-    hot.generation = generation;
+
 
     // Initialize collision data.
     // Small projectiles register hits against any non-owner gameplay body,
@@ -1496,7 +1498,7 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
 
     size_t index = allocateSlot();
     EntityHandle::IDType id = VoidLight::UniqueID::generate();
-    uint8_t generation = nextGeneration(index);
+    uint32_t generation = nextGeneration(index);
 
     // Initialize hot data
     auto& hot = m_hotData[index];
@@ -1510,7 +1512,7 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
     markKindDirty(EntityKind::AreaEffect);
     hot.tier = SimulationTier::Active;
     hot.flags = EntityHotData::FLAG_ALIVE;
-    hot.generation = generation;
+
 
     // Allocate area effect data (reuse freed slot if available)
     uint32_t effectIndex;
@@ -1566,7 +1568,7 @@ EntityHandle EntityDataManager::createStaticBody(const Vector2D& position,
     }
 
     EntityHandle::IDType id = VoidLight::UniqueID::generate();
-    uint8_t generation = ++m_staticGenerations[index];
+    uint32_t generation = ++m_staticGenerations[index];
 
     // Initialize static hot data
     auto& hot = m_staticHotData[index];
@@ -1579,7 +1581,7 @@ EntityHandle EntityDataManager::createStaticBody(const Vector2D& position,
     hot.kind = EntityKind::StaticObstacle;
     markKindDirty(EntityKind::StaticObstacle);
     hot.flags = EntityHotData::FLAG_ALIVE;
-    hot.generation = generation;
+
     hot.typeLocalIndex = 0;
 
     // Store ID and mapping (separate from dynamic entities)
@@ -1614,7 +1616,7 @@ EntityHandle EntityDataManager::createTrigger(const Vector2D& position,
     }
 
     EntityHandle::IDType id = VoidLight::UniqueID::generate();
-    uint8_t generation = ++m_staticGenerations[index];
+    uint32_t generation = ++m_staticGenerations[index];
 
     // Initialize trigger hot data
     auto& hot = m_staticHotData[index];
@@ -1627,7 +1629,7 @@ EntityHandle EntityDataManager::createTrigger(const Vector2D& position,
     hot.kind = EntityKind::Trigger;
     markKindDirty(EntityKind::Trigger);
     hot.flags = EntityHotData::FLAG_ALIVE;
-    hot.generation = generation;
+
     hot.typeLocalIndex = 0;
 
     // Set collision data for trigger
@@ -1671,7 +1673,7 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
     }
 
     size_t index = allocateSlot();
-    uint8_t generation = nextGeneration(index);
+    uint32_t generation = nextGeneration(index);
 
     // Initialize hot data
     auto& hot = m_hotData[index];
@@ -1685,7 +1687,7 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
     markKindDirty(EntityKind::Player);
     hot.tier = SimulationTier::Active;  // Player always active
     hot.flags = EntityHotData::FLAG_ALIVE;
-    hot.generation = generation;
+
 
     // Initialize collision data (Player collides with gameplay bodies, environment, triggers)
     hot.collisionLayers = VoidLight::CollisionLayer::Layer_Player;
@@ -1754,11 +1756,11 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
         m_staticGenerations.push_back(0);
     }
 
-    const uint8_t previousGeneration = m_staticGenerations[index];
-    const uint8_t generation =
-        (previousGeneration == std::numeric_limits<uint8_t>::max())
-            ? static_cast<uint8_t>(1)
-            : static_cast<uint8_t>(previousGeneration + 1);
+    const uint32_t previousGeneration = m_staticGenerations[index];
+    const uint32_t generation =
+        (previousGeneration == std::numeric_limits<uint32_t>::max())
+            ? static_cast<uint32_t>(1)
+            : previousGeneration + 1;
     m_staticGenerations[index] = generation;
 
     // Initialize hot data in static pool
@@ -1772,7 +1774,7 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
     hot.kind = EntityKind::DroppedItem;
     hot.tier = SimulationTier::Active;  // Not used for static, but set for consistency
     hot.flags = EntityHotData::FLAG_ALIVE;
-    hot.generation = generation;
+
 
     // Allocate item data and render data (reuse freed slot if available)
     uint32_t itemIndex;
@@ -2555,7 +2557,7 @@ EntityHandle EntityDataManager::getStaticHandle(size_t staticIndex) const {
     return EntityHandle{
         m_staticEntityIds[staticIndex],
         hot.kind,
-        hot.generation
+        m_staticGenerations[staticIndex]
     };
 }
 
@@ -3260,7 +3262,7 @@ void EntityDataManager::queryEntitiesInRadius(const Vector2D& center,
         float distSq = dx * dx + dy * dy;
 
         if (distSq <= radiusSq) {
-            outHandles.emplace_back(m_entityIds[i], hot.kind, hot.generation);
+            outHandles.emplace_back(m_entityIds[i], hot.kind, m_generations[i]);
         }
     }
 }
@@ -3298,7 +3300,7 @@ EntityHandle EntityDataManager::getHandle(size_t index) const {
     return EntityHandle{
         m_entityIds[index],
         m_hotData[index].kind,
-        m_hotData[index].generation
+        m_generations[index]
     };
 }
 

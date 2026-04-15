@@ -102,7 +102,7 @@ struct alignas(64) EntityHotData {
     EntityKind kind{EntityKind::NPC};           // 1 byte
     SimulationTier tier{SimulationTier::Active}; // 1 byte
     uint8_t flags{0};               // 1 byte: alive, dirty, etc.
-    uint8_t generation{0};          // 1 byte: Handle generation
+    uint8_t reserved{0};           // 1 byte: padding (generation lives in m_generations vector)
     uint32_t typeLocalIndex{0};     // 4 bytes: Index into type-specific array
 
     // Collision data (only for entities that participate in collision)
@@ -2432,7 +2432,7 @@ private:
     // Internal allocation helpers
     size_t allocateSlot();
     void freeSlot(size_t index);
-    uint8_t nextGeneration(size_t index);
+    uint32_t nextGeneration(size_t index);
     void rebuildTierIndicesFromHotData();
 
     /**
@@ -2565,8 +2565,8 @@ private:
     std::vector<size_t> m_freeStaticSlots;
 
     // Generation counters per slot (for stale handle detection)
-    std::vector<uint8_t> m_generations;
-    std::vector<uint8_t> m_staticGenerations;
+    std::vector<uint32_t> m_generations;
+    std::vector<uint32_t> m_staticGenerations;
 
     // Thread safety for entity operations
     std::mutex m_destructionMutex;  // Protects destruction queue

@@ -394,7 +394,7 @@ BOOST_AUTO_TEST_CASE(TestDestroyInvalidHandle) {
 BOOST_AUTO_TEST_CASE(TestGenerationIncrementAfterDestruction) {
     // Create and destroy, then create again - should get different generation
     EntityHandle handle1 = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
-    [[maybe_unused]] uint8_t gen1 = handle1.generation;
+    [[maybe_unused]] uint32_t gen1 = handle1.generation;
 
     edm->destroyEntity(handle1);
     edm->processDestructionQueue();
