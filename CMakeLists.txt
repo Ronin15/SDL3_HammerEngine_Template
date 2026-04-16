@@ -88,10 +88,10 @@ option(USE_MOLD_LINKER "Use mold linker if available" ON)
 
 if(USE_MOLD_LINKER)
     find_program(MOLD_LINKER mold)
-    
+
     if(MOLD_LINKER)
         message(STATUS "Using mold linker")
-        
+
         if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.29")
             set(CMAKE_LINKER_TYPE MOLD)
         else()
@@ -101,6 +101,22 @@ if(USE_MOLD_LINKER)
         endif()
     else()
         message(WARNING "mold linker requested but not found")
+    endif()
+endif()
+
+# Use ccache as a compiler launcher when available to speed up rebuilds.
+# Applies to our code and FetchContent dependencies (SDL3, SDL3_ttf, SDL3_mixer).
+option(USE_CCACHE "Use ccache compiler launcher if available" ON)
+
+if(USE_CCACHE)
+    find_program(CCACHE_PROGRAM ccache)
+
+    if(CCACHE_PROGRAM)
+        message(STATUS "Using ccache: ${CCACHE_PROGRAM}")
+        set(CMAKE_C_COMPILER_LAUNCHER   "${CCACHE_PROGRAM}")
+        set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    else()
+        message(STATUS "ccache not found - compiling without ccache")
     endif()
 endif()
 
