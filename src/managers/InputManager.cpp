@@ -6,14 +6,17 @@
 #include "managers/InputManager.hpp"
 #include "core/Logger.hpp"
 #include "core/GameEngine.hpp"
+#include "utils/JsonReader.hpp"
 #include "SDL3/SDL_gamepad.h"
 #include "SDL3/SDL_joystick.h"
 #include "utils/Vector2D.hpp"
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <fstream>
 #include <memory>
 #include <optional>
+#include <span>
 
 // Removed global pointer - now managed as member variable
 
@@ -51,6 +54,13 @@ bool InputManager::init() {
   }
 
   m_pressedThisFrame.clear();
+  m_currentDown.fill(false);
+  m_previousDown.fill(false);
+  m_prevMouseButtonStates.fill(false);
+  m_rebindCommand = Command::COUNT;
+
+  loadDefaultBindings();
+
   m_isInitialized = true;
   m_isShutdown = false;
   INPUT_INFO("InputManager initialized successfully");
@@ -172,10 +182,688 @@ void InputManager::clearFrameInput() {
 
 
 
-void InputManager::update() {
-  // SDL event polling moved to GameEngine::handleEvents()
-  // Keep this method for API consistency with other managers
-  clearFrameInput();
+// =============================================================================
+// Command-layer — sampling
+// =============================================================================
+
+bool InputManager::sampleBinding(const InputBinding& b) const
+{
+    switch (b.source) {
+        case InputSource::Keyboard:
+            return isKeyDown(static_cast<SDL_Scancode>(b.code));
+
+        case InputSource::MouseButton:
+            return getMouseButtonState(b.code);
+
+        case InputSource::GamepadButton:
+            return getButtonState(0, b.code);
+
+        case InputSource::GamepadAxisPositive:
+            // Map SDL_GamepadAxis to the correct getAxisX/Y call
+            switch (static_cast<SDL_GamepadAxis>(b.code)) {
+                case SDL_GAMEPAD_AXIS_LEFTX:  return getAxisX(0, 1) >  0.3f;
+                case SDL_GAMEPAD_AXIS_LEFTY:  return getAxisY(0, 1) >  0.3f;
+                case SDL_GAMEPAD_AXIS_RIGHTX: return getAxisX(0, 2) >  0.3f;
+                case SDL_GAMEPAD_AXIS_RIGHTY: return getAxisY(0, 2) >  0.3f;
+                default: return false;
+            }
+
+        case InputSource::GamepadAxisNegative:
+            switch (static_cast<SDL_GamepadAxis>(b.code)) {
+                case SDL_GAMEPAD_AXIS_LEFTX:  return getAxisX(0, 1) < -0.3f;
+                case SDL_GAMEPAD_AXIS_LEFTY:  return getAxisY(0, 1) < -0.3f;
+                case SDL_GAMEPAD_AXIS_RIGHTX: return getAxisX(0, 2) < -0.3f;
+                case SDL_GAMEPAD_AXIS_RIGHTY: return getAxisY(0, 2) < -0.3f;
+                default: return false;
+            }
+    }
+    return false;
+}
+
+void InputManager::refreshCommandState()
+{
+    // Rebind capture takes priority: when active, no normal sampling occurs and
+    // all command queries return false (guarded in isCommandDown/Pressed/Released).
+    if (m_rebindCommand != Command::COUNT) {
+        captureRebind();
+        return;
+    }
+
+    m_previousDown = m_currentDown;
+    for (size_t i = 0; i < kCommandCount; ++i) {
+        bool down = false;
+        for (const auto& binding : m_bindings[i]) {
+            if (sampleBinding(binding)) {
+                down = true;
+                break;
+            }
+        }
+        m_currentDown[i] = down;
+    }
+}
+
+void InputManager::captureRebind()
+{
+    // DESIGN: m_prevMouse/Gamepad* arrays are primed by startRebinding() so any
+    // input already held at rebind-start is invisible to the rising-edge checks.
+    // At the END of this function (no-capture path) the arrays are refreshed so
+    // subsequent calls require a genuine release-then-press to capture.
+
+    const size_t cmdIdx = static_cast<size_t>(m_rebindCommand);
+
+    // ESC cancels (keyboard: m_pressedThisFrame is already rising-edge-only)
+    if (!m_pressedThisFrame.empty()) {
+        for (SDL_Scancode sc : m_pressedThisFrame) {
+            if (sc == SDL_SCANCODE_ESCAPE) {
+                INPUT_INFO("Rebind cancelled by ESC");
+                m_rebindCommand = Command::COUNT;
+                return;
+            }
+        }
+        // Capture the first non-ESC key
+        SDL_Scancode captured = m_pressedThisFrame.front();
+        InputBinding newBinding{InputSource::Keyboard, static_cast<int>(captured)};
+
+        if (m_rebindSlot < m_bindings[cmdIdx].size()) {
+            m_bindings[cmdIdx][m_rebindSlot] = newBinding;
+        } else {
+            m_bindings[cmdIdx].push_back(newBinding);
+        }
+
+        const char* name = SDL_GetScancodeName(captured);
+        INPUT_INFO(std::format("Rebound '{}' slot {} to keyboard '{}'",
+            commandDisplayName(m_rebindCommand), m_rebindSlot,
+            name ? name : "Unknown"));
+        m_rebindCommand = Command::COUNT;
+        return;
+    }
+
+    // Mouse button rising edge
+    for (int btn = 0; btn < 3; ++btn) {
+        bool cur = getMouseButtonState(btn);
+        bool prev = m_prevMouseButtonStates[static_cast<size_t>(btn)];
+        if (cur && !prev) {
+            InputBinding newBinding{InputSource::MouseButton, btn};
+            if (m_rebindSlot < m_bindings[cmdIdx].size()) {
+                m_bindings[cmdIdx][m_rebindSlot] = newBinding;
+            } else {
+                m_bindings[cmdIdx].push_back(newBinding);
+            }
+            static constexpr std::array<const char*, 3> kBtnNames{"left", "middle", "right"};
+            INPUT_INFO(std::format("Rebound '{}' slot {} to mouse button '{}'",
+                commandDisplayName(m_rebindCommand), m_rebindSlot, kBtnNames[static_cast<size_t>(btn)]));
+            m_rebindCommand = Command::COUNT;
+            return;
+        }
+    }
+
+    // Gamepad button rising edge — requires release-then-press for any button
+    // held at startRebinding() time (prev-arrays were primed there).
+    if (!m_gamepads.empty()) {
+        const GamepadState& gp = m_gamepads[0];
+        const bool havePrevBtn = !m_prevGamepadButtonStates.empty() &&
+                                  m_prevGamepadButtonStates[0].size() == gp.buttonStates.size();
+
+        for (int btn = 0; btn < static_cast<int>(gp.buttonStates.size()); ++btn) {
+            bool cur = gp.buttonStates[static_cast<size_t>(btn)];
+            bool prev = havePrevBtn && m_prevGamepadButtonStates[0][static_cast<size_t>(btn)];
+            if (cur && !prev) {
+                InputBinding newBinding{InputSource::GamepadButton, btn};
+                if (m_rebindSlot < m_bindings[cmdIdx].size()) {
+                    m_bindings[cmdIdx][m_rebindSlot] = newBinding;
+                } else {
+                    m_bindings[cmdIdx].push_back(newBinding);
+                }
+                const char* btnStr = SDL_GetGamepadStringForButton(static_cast<SDL_GamepadButton>(btn));
+                INPUT_INFO(std::format("Rebound '{}' slot {} to gamepad button '{}'",
+                    commandDisplayName(m_rebindCommand), m_rebindSlot,
+                    btnStr ? btnStr : "unknown"));
+                m_rebindCommand = Command::COUNT;
+                return;
+            }
+        }
+
+        // Gamepad axis rising edge — requires deflection to cross threshold from below
+        const bool havePrevAxis = !m_prevGamepadAxisPos.empty();
+        struct AxisEntry { SDL_GamepadAxis axis; float val; size_t idx; };
+        AxisEntry axes[] = {
+            {SDL_GAMEPAD_AXIS_LEFTX,  getAxisX(0, 1), 0},
+            {SDL_GAMEPAD_AXIS_LEFTY,  getAxisY(0, 1), 1},
+            {SDL_GAMEPAD_AXIS_RIGHTX, getAxisX(0, 2), 2},
+            {SDL_GAMEPAD_AXIS_RIGHTY, getAxisY(0, 2), 3},
+        };
+        for (auto [axis, val, idx] : axes) {
+            if (val > 0.5f) {
+                bool prev = havePrevAxis && m_prevGamepadAxisPos[0][idx];
+                if (!prev) {
+                    InputBinding newBinding{InputSource::GamepadAxisPositive, static_cast<int>(axis)};
+                    if (m_rebindSlot < m_bindings[cmdIdx].size()) {
+                        m_bindings[cmdIdx][m_rebindSlot] = newBinding;
+                    } else {
+                        m_bindings[cmdIdx].push_back(newBinding);
+                    }
+                    INPUT_INFO(std::format("Rebound '{}' slot {} to gamepad axis {} positive",
+                        commandDisplayName(m_rebindCommand), m_rebindSlot, static_cast<int>(axis)));
+                    m_rebindCommand = Command::COUNT;
+                    return;
+                }
+            }
+            if (val < -0.5f) {
+                bool prev = havePrevAxis && m_prevGamepadAxisNeg[0][idx];
+                if (!prev) {
+                    InputBinding newBinding{InputSource::GamepadAxisNegative, static_cast<int>(axis)};
+                    if (m_rebindSlot < m_bindings[cmdIdx].size()) {
+                        m_bindings[cmdIdx][m_rebindSlot] = newBinding;
+                    } else {
+                        m_bindings[cmdIdx].push_back(newBinding);
+                    }
+                    INPUT_INFO(std::format("Rebound '{}' slot {} to gamepad axis {} negative",
+                        commandDisplayName(m_rebindCommand), m_rebindSlot, static_cast<int>(axis)));
+                    m_rebindCommand = Command::COUNT;
+                    return;
+                }
+            }
+        }
+    }
+
+    // No capture this frame — update prev-arrays so the next call detects real edges.
+    for (size_t i = 0; i < 3; ++i) {
+        m_prevMouseButtonStates[i] = getMouseButtonState(static_cast<int>(i));
+    }
+    if (!m_gamepads.empty() && !m_prevGamepadButtonStates.empty()) {
+        const GamepadState& gp = m_gamepads[0];
+        const size_t btnCount = gp.buttonStates.size();
+        if (m_prevGamepadButtonStates[0].size() == btnCount) {
+            for (size_t b = 0; b < btnCount; ++b) {
+                m_prevGamepadButtonStates[0][b] = gp.buttonStates[b];
+            }
+        }
+        if (!m_prevGamepadAxisPos.empty()) {
+            m_prevGamepadAxisPos[0][0] = getAxisX(0, 1) >  0.5f;
+            m_prevGamepadAxisPos[0][1] = getAxisY(0, 1) >  0.5f;
+            m_prevGamepadAxisPos[0][2] = getAxisX(0, 2) >  0.5f;
+            m_prevGamepadAxisPos[0][3] = getAxisY(0, 2) >  0.5f;
+            m_prevGamepadAxisNeg[0][0] = getAxisX(0, 1) < -0.5f;
+            m_prevGamepadAxisNeg[0][1] = getAxisY(0, 1) < -0.5f;
+            m_prevGamepadAxisNeg[0][2] = getAxisX(0, 2) < -0.5f;
+            m_prevGamepadAxisNeg[0][3] = getAxisY(0, 2) < -0.5f;
+        }
+    }
+}
+
+// =============================================================================
+// Command-layer — query
+// =============================================================================
+
+bool InputManager::isCommandDown(Command c) const
+{
+    if (m_rebindCommand != Command::COUNT) {
+        return false;
+    }
+    return m_currentDown[static_cast<size_t>(c)];
+}
+
+bool InputManager::isCommandPressed(Command c) const
+{
+    if (m_rebindCommand != Command::COUNT) {
+        return false;
+    }
+    const size_t i = static_cast<size_t>(c);
+    return m_currentDown[i] && !m_previousDown[i];
+}
+
+bool InputManager::isCommandReleased(Command c) const
+{
+    if (m_rebindCommand != Command::COUNT) {
+        return false;
+    }
+    const size_t i = static_cast<size_t>(c);
+    return !m_currentDown[i] && m_previousDown[i];
+}
+
+// =============================================================================
+// Command-layer — binding management
+// =============================================================================
+
+void InputManager::addBinding(Command c, InputBinding b)
+{
+    m_bindings[static_cast<size_t>(c)].push_back(b);
+}
+
+void InputManager::clearBindings(Command c)
+{
+    m_bindings[static_cast<size_t>(c)].clear();
+}
+
+std::span<const InputManager::InputBinding> InputManager::getBindings(Command c) const
+{
+    return m_bindings[static_cast<size_t>(c)];
+}
+
+void InputManager::loadDefaultBindings()
+{
+    for (auto& v : m_bindings) {
+        v.clear();
+    }
+
+    using S = InputSource;
+    using C = Command;
+
+    auto add = [this](C cmd, S src, int code) {
+        m_bindings[static_cast<size_t>(cmd)].push_back({src, code});
+    };
+
+    add(C::MoveUp,        S::Keyboard,            SDL_SCANCODE_W);
+    add(C::MoveUp,        S::GamepadAxisNegative,  SDL_GAMEPAD_AXIS_LEFTY);
+    add(C::MoveDown,      S::Keyboard,            SDL_SCANCODE_S);
+    add(C::MoveDown,      S::GamepadAxisPositive,  SDL_GAMEPAD_AXIS_LEFTY);
+    add(C::MoveLeft,      S::Keyboard,            SDL_SCANCODE_A);
+    add(C::MoveLeft,      S::GamepadAxisNegative,  SDL_GAMEPAD_AXIS_LEFTX);
+    add(C::MoveRight,     S::Keyboard,            SDL_SCANCODE_D);
+    add(C::MoveRight,     S::GamepadAxisPositive,  SDL_GAMEPAD_AXIS_LEFTX);
+    add(C::AttackLight,   S::Keyboard,            SDL_SCANCODE_F);
+    add(C::AttackLight,   S::GamepadButton,        SDL_GAMEPAD_BUTTON_WEST);
+    add(C::Interact,      S::Keyboard,            SDL_SCANCODE_E);
+    add(C::Interact,      S::GamepadButton,        SDL_GAMEPAD_BUTTON_SOUTH);
+    add(C::OpenInventory, S::Keyboard,            SDL_SCANCODE_I);
+    add(C::Pause,         S::Keyboard,            SDL_SCANCODE_P);
+    add(C::WorldInteract, S::MouseButton,          LEFT);
+    add(C::ZoomIn,        S::Keyboard,            SDL_SCANCODE_RIGHTBRACKET);
+    add(C::ZoomOut,       S::Keyboard,            SDL_SCANCODE_LEFTBRACKET);
+}
+
+void InputManager::resetBindingsToDefaults()
+{
+    loadDefaultBindings();
+    INPUT_INFO("Input bindings reset to defaults");
+}
+
+// =============================================================================
+// Command-layer — rebind capture control
+// =============================================================================
+
+void InputManager::startRebinding(Command c, size_t slot)
+{
+    m_rebindCommand = c;
+    m_rebindSlot = slot;
+
+    // Prime prev-mouse so the click that opened the rebind UI is not captured
+    for (size_t i = 0; i < 3; ++i) {
+        m_prevMouseButtonStates[i] = getMouseButtonState(static_cast<int>(i));
+    }
+
+    // Prime prev-gamepad arrays from current state so any held input at rebind
+    // start requires a release-then-press cycle before it can be captured.
+    m_prevGamepadButtonStates.clear();
+    m_prevGamepadAxisPos.clear();
+    m_prevGamepadAxisNeg.clear();
+
+    for (const auto& gp : m_gamepads) {
+        m_prevGamepadButtonStates.push_back(gp.buttonStates);
+    }
+
+    if (!m_gamepads.empty()) {
+        m_prevGamepadAxisPos.push_back({
+            getAxisX(0, 1) >  0.5f,
+            getAxisY(0, 1) >  0.5f,
+            getAxisX(0, 2) >  0.5f,
+            getAxisY(0, 2) >  0.5f,
+        });
+        m_prevGamepadAxisNeg.push_back({
+            getAxisX(0, 1) < -0.5f,
+            getAxisY(0, 1) < -0.5f,
+            getAxisX(0, 2) < -0.5f,
+            getAxisY(0, 2) < -0.5f,
+        });
+    }
+
+    INPUT_INFO(std::format("Waiting for input to rebind '{}' slot {}",
+        commandDisplayName(c), slot));
+}
+
+void InputManager::cancelRebinding()
+{
+    m_rebindCommand = Command::COUNT;
+}
+
+bool InputManager::isRebinding() const
+{
+    return m_rebindCommand != Command::COUNT;
+}
+
+InputManager::Command InputManager::getRebindingCommand() const
+{
+    return m_rebindCommand;
+}
+
+// =============================================================================
+// Command-layer — persistence
+// =============================================================================
+
+namespace
+{
+    // Maps a command to its JSON key string
+    const char* commandJsonKey(InputManager::Command c)
+    {
+        using C = InputManager::Command;
+        switch (c) {
+            case C::MoveUp:        return "move_up";
+            case C::MoveDown:      return "move_down";
+            case C::MoveLeft:      return "move_left";
+            case C::MoveRight:     return "move_right";
+            case C::AttackLight:   return "attack_light";
+            case C::Interact:      return "interact";
+            case C::OpenInventory: return "open_inventory";
+            case C::Pause:         return "pause";
+            case C::WorldInteract: return "world_interact";
+            case C::ZoomIn:        return "zoom_in";
+            case C::ZoomOut:       return "zoom_out";
+            case C::MenuConfirm:   return "menu_confirm";
+            case C::MenuCancel:    return "menu_cancel";
+            case C::MenuUp:        return "menu_up";
+            case C::MenuDown:      return "menu_down";
+            case C::COUNT:         return nullptr;
+        }
+        return nullptr;
+    }
+
+    // Maps JSON key string to Command
+    std::optional<InputManager::Command> jsonKeyToCommand(const std::string& key)
+    {
+        using C = InputManager::Command;
+        static constexpr size_t kCount = static_cast<size_t>(C::COUNT);
+        for (size_t i = 0; i < kCount; ++i) {
+            const char* k = commandJsonKey(static_cast<C>(i));
+            if (k && key == k) {
+                return static_cast<C>(i);
+            }
+        }
+        return std::nullopt;
+    }
+
+    const char* sourceJsonKey(InputManager::InputSource src)
+    {
+        using S = InputManager::InputSource;
+        switch (src) {
+            case S::Keyboard:            return "keyboard";
+            case S::MouseButton:         return "mouse_button";
+            case S::GamepadButton:       return "gamepad_button";
+            case S::GamepadAxisPositive: return "gamepad_axis_pos";
+            case S::GamepadAxisNegative: return "gamepad_axis_neg";
+        }
+        return "keyboard";
+    }
+
+    std::optional<InputManager::InputSource> jsonKeyToSource(const std::string& key)
+    {
+        using S = InputManager::InputSource;
+        if (key == "keyboard")            return S::Keyboard;
+        if (key == "mouse_button")        return S::MouseButton;
+        if (key == "gamepad_button")      return S::GamepadButton;
+        if (key == "gamepad_axis_pos")    return S::GamepadAxisPositive;
+        if (key == "gamepad_axis_neg")    return S::GamepadAxisNegative;
+        return std::nullopt;
+    }
+
+    // Encode a binding code to its string representation
+    std::string encodeBindingCode(InputManager::InputSource src, int code)
+    {
+        using S = InputManager::InputSource;
+        switch (src) {
+            case S::Keyboard: {
+                const char* name = SDL_GetScancodeName(static_cast<SDL_Scancode>(code));
+                return name ? name : "Unknown";
+            }
+            case S::MouseButton:
+                switch (code) {
+                    case 0:  return "left";
+                    case 1:  return "middle";
+                    case 2:  return "right";
+                    default: return "left";
+                }
+            case S::GamepadButton: {
+                const char* name = SDL_GetGamepadStringForButton(static_cast<SDL_GamepadButton>(code));
+                return name ? name : "unknown";
+            }
+            case S::GamepadAxisPositive:
+            case S::GamepadAxisNegative:
+                switch (static_cast<SDL_GamepadAxis>(code)) {
+                    case SDL_GAMEPAD_AXIS_LEFTX:         return "leftx";
+                    case SDL_GAMEPAD_AXIS_LEFTY:         return "lefty";
+                    case SDL_GAMEPAD_AXIS_RIGHTX:        return "rightx";
+                    case SDL_GAMEPAD_AXIS_RIGHTY:        return "righty";
+                    case SDL_GAMEPAD_AXIS_LEFT_TRIGGER:  return "ltrigger";
+                    case SDL_GAMEPAD_AXIS_RIGHT_TRIGGER: return "rtrigger";
+                    default: return "leftx";
+                }
+        }
+        return "unknown";
+    }
+
+    // Decode a binding code string to int for a given source
+    std::optional<int> decodeBindingCode(InputManager::InputSource src, const std::string& codeStr)
+    {
+        using S = InputManager::InputSource;
+        switch (src) {
+            case S::Keyboard: {
+                SDL_Scancode sc = SDL_GetScancodeFromName(codeStr.c_str());
+                if (sc == SDL_SCANCODE_UNKNOWN) {
+                    return std::nullopt;
+                }
+                return static_cast<int>(sc);
+            }
+            case S::MouseButton:
+                if (codeStr == "left")   return 0;
+                if (codeStr == "middle") return 1;
+                if (codeStr == "right")  return 2;
+                return std::nullopt;
+            case S::GamepadButton: {
+                SDL_GamepadButton btn = SDL_GetGamepadButtonFromString(codeStr.c_str());
+                if (btn == SDL_GAMEPAD_BUTTON_INVALID) {
+                    return std::nullopt;
+                }
+                return static_cast<int>(btn);
+            }
+            case S::GamepadAxisPositive:
+            case S::GamepadAxisNegative: {
+                if (codeStr == "leftx")   return SDL_GAMEPAD_AXIS_LEFTX;
+                if (codeStr == "lefty")   return SDL_GAMEPAD_AXIS_LEFTY;
+                if (codeStr == "rightx")  return SDL_GAMEPAD_AXIS_RIGHTX;
+                if (codeStr == "righty")  return SDL_GAMEPAD_AXIS_RIGHTY;
+                if (codeStr == "ltrigger") return SDL_GAMEPAD_AXIS_LEFT_TRIGGER;
+                if (codeStr == "rtrigger") return SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
+                return std::nullopt;
+            }
+        }
+        return std::nullopt;
+    }
+} // anonymous namespace
+
+bool InputManager::loadBindingsFromFile(const std::string& path)
+{
+    VoidLight::JsonReader reader;
+    if (!reader.loadFromFile(path)) {
+        INPUT_WARN(std::format("Failed to load input bindings from '{}': {}",
+            path, reader.getLastError()));
+        return false;
+    }
+
+    const VoidLight::JsonValue& root = reader.getRoot();
+    if (!root.isObject()) {
+        INPUT_WARN(std::format("Input bindings file '{}' has invalid root type", path));
+        return false;
+    }
+
+    // Validate schema version before processing to guard against future format changes
+    if (!root.hasKey("schema_version") ||
+        !root["schema_version"].isNumber() ||
+        root["schema_version"].asInt() != 1)
+    {
+        INPUT_WARN(std::format("Unsupported or missing schema_version in '{}'", path));
+        return false;
+    }
+
+    if (!root.hasKey("commands")) {
+        INPUT_WARN(std::format("Input bindings file '{}' missing 'commands' key", path));
+        return false;
+    }
+
+    const VoidLight::JsonValue& commands = root["commands"];
+    if (!commands.isObject()) {
+        INPUT_WARN(std::format("Input bindings file '{}': 'commands' is not an object", path));
+        return false;
+    }
+
+    // Reset to defaults first, then overlay with file data
+    loadDefaultBindings();
+
+    const VoidLight::JsonObject& cmdObj = commands.asObject();
+    for (const auto& [cmdKey, bindingsVal] : cmdObj) {
+        auto cmd = jsonKeyToCommand(cmdKey);
+        if (!cmd.has_value()) {
+            INPUT_WARN(std::format("Unknown command key '{}' in bindings file — skipping", cmdKey));
+            continue;
+        }
+
+        if (!bindingsVal.isArray()) {
+            INPUT_WARN(std::format("Bindings for '{}' is not an array — skipping", cmdKey));
+            continue;
+        }
+
+        m_bindings[static_cast<size_t>(*cmd)].clear();
+
+        const VoidLight::JsonArray& arr = bindingsVal.asArray();
+        for (const auto& entry : arr) {
+            if (!entry.isObject()) {
+                INPUT_WARN(std::format("Binding entry for '{}' is not an object — skipping", cmdKey));
+                continue;
+            }
+            if (!entry.hasKey("source") || !entry.hasKey("code")) {
+                INPUT_WARN(std::format("Binding entry for '{}' missing source/code — skipping", cmdKey));
+                continue;
+            }
+
+            auto srcStr = entry["source"].tryAsString();
+            auto codeStr = entry["code"].tryAsString();
+            if (!srcStr.has_value() || !codeStr.has_value()) {
+                INPUT_WARN(std::format("Binding entry for '{}' has non-string source/code — skipping", cmdKey));
+                continue;
+            }
+
+            auto src = jsonKeyToSource(*srcStr);
+            if (!src.has_value()) {
+                INPUT_WARN(std::format("Unknown source '{}' in binding for '{}' — skipping", *srcStr, cmdKey));
+                continue;
+            }
+
+            auto code = decodeBindingCode(*src, *codeStr);
+            if (!code.has_value()) {
+                INPUT_WARN(std::format("Unknown code '{}' for source '{}' in binding for '{}' — skipping",
+                    *codeStr, *srcStr, cmdKey));
+                continue;
+            }
+
+            m_bindings[static_cast<size_t>(*cmd)].push_back({*src, *code});
+        }
+    }
+
+    INPUT_INFO(std::format("Loaded input bindings from '{}'", path));
+    return true;
+}
+
+bool InputManager::saveBindingsToFile(const std::string& path) const
+{
+    VoidLight::JsonObject commandsObj;
+    for (size_t i = 0; i < kCommandCount; ++i) {
+        const char* key = commandJsonKey(static_cast<Command>(i));
+        if (!key || m_bindings[i].empty()) {
+            continue;
+        }
+
+        VoidLight::JsonArray bindingsArr;
+        for (const auto& b : m_bindings[i]) {
+            VoidLight::JsonObject entry;
+            entry["source"] = VoidLight::JsonValue(std::string(sourceJsonKey(b.source)));
+            entry["code"]   = VoidLight::JsonValue(encodeBindingCode(b.source, b.code));
+            bindingsArr.push_back(VoidLight::JsonValue(std::move(entry)));
+        }
+        commandsObj[key] = VoidLight::JsonValue(std::move(bindingsArr));
+    }
+
+    VoidLight::JsonObject rootObj;
+    rootObj["schema_version"] = VoidLight::JsonValue(1);
+    rootObj["commands"]       = VoidLight::JsonValue(std::move(commandsObj));
+    VoidLight::JsonValue root(std::move(rootObj));
+
+    std::ofstream file(path);
+    if (!file.is_open()) {
+        INPUT_ERROR(std::format("Failed to open '{}' for writing input bindings", path));
+        return false;
+    }
+
+    file << root.toString() << '\n';
+
+    INPUT_INFO(std::format("Saved input bindings to '{}'", path));
+    return true;
+}
+
+// =============================================================================
+// Command-layer — UI helpers
+// =============================================================================
+
+std::string InputManager::describeBinding(InputBinding b) const
+{
+    using S = InputSource;
+    switch (b.source) {
+        case S::Keyboard: {
+            const char* name = SDL_GetScancodeName(static_cast<SDL_Scancode>(b.code));
+            return name ? name : "Unknown Key";
+        }
+        case S::MouseButton:
+            switch (b.code) {
+                case 0:  return "Left Mouse";
+                case 1:  return "Middle Mouse";
+                case 2:  return "Right Mouse";
+                default: return "Mouse";
+            }
+        case S::GamepadButton: {
+            const char* name = SDL_GetGamepadStringForButton(static_cast<SDL_GamepadButton>(b.code));
+            return name ? std::format("Gamepad {}", name) : "Gamepad Btn";
+        }
+        case S::GamepadAxisPositive: {
+            std::string axis = encodeBindingCode(b.source, b.code);
+            return std::format("Stick {} +", axis);
+        }
+        case S::GamepadAxisNegative: {
+            std::string axis = encodeBindingCode(b.source, b.code);
+            return std::format("Stick {} -", axis);
+        }
+    }
+    return "Unknown";
+}
+
+std::string InputManager::commandDisplayName(Command c) const
+{
+    using C = Command;
+    switch (c) {
+        case C::MoveUp:        return "Move Up";
+        case C::MoveDown:      return "Move Down";
+        case C::MoveLeft:      return "Move Left";
+        case C::MoveRight:     return "Move Right";
+        case C::AttackLight:   return "Attack (Light)";
+        case C::Interact:      return "Interact";
+        case C::OpenInventory: return "Open Inventory";
+        case C::Pause:         return "Pause";
+        case C::WorldInteract: return "World Interact";
+        case C::ZoomIn:        return "Zoom In";
+        case C::ZoomOut:       return "Zoom Out";
+        case C::MenuConfirm:   return "Menu Confirm";
+        case C::MenuCancel:    return "Menu Cancel";
+        case C::MenuUp:        return "Menu Up";
+        case C::MenuDown:      return "Menu Down";
+        case C::COUNT:         return "Unknown";
+    }
+    return "Unknown";
 }
 
 void InputManager::onKeyDown(const SDL_Event& event) {

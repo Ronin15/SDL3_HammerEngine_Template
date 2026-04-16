@@ -7,6 +7,7 @@
 #define SETTINGS_MENU_STATE_HPP
 
 #include "gameStates/GameState.hpp"
+#include "managers/InputManager.hpp"
 #include <string>
 
 /**
@@ -61,9 +62,13 @@ private:
     enum class SettingsTab {
         Graphics,
         Audio,
-        Gameplay
+        Gameplay,
+        Controls
     };
     SettingsTab m_currentTab = SettingsTab::Graphics;
+
+    // Track the command whose binding label we need to refresh after capture
+    InputManager::Command m_pendingRefreshCommand{InputManager::Command::COUNT};
 
     /**
      * @brief Load current settings from SettingsManager into temp storage
@@ -97,6 +102,16 @@ private:
     void createGameplayUI();
 
     /**
+     * @brief Create controls (key-binding) settings UI
+     */
+    void createControlsUI();
+
+    /**
+     * @brief Refresh the button labels for a single command row on the Controls tab
+     */
+    void refreshBindingLabels(InputManager::Command c);
+
+    /**
      * @brief Switch to a different settings tab
      */
     void switchTab(SettingsTab tab);
@@ -110,6 +125,9 @@ private:
      * @brief Create common buttons (Apply, Cancel, Back)
      */
     void createActionButtons();
+
+    // Returns the stable UI component ID for a binding button
+    static std::string bindingButtonId(InputManager::Command c, size_t slot);
 };
 
 #endif  // SETTINGS_MENU_STATE_HPP

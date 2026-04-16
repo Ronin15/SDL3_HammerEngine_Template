@@ -22,6 +22,8 @@
 bool SettingsMenuState::enter() {
     GAMESTATE_INFO("Entering SETTINGS MENU State");
 
+    m_pendingRefreshCommand = InputManager::Command::COUNT;
+
     // Pause all game managers to reduce power draw while in settings
     GameEngine::Instance().setGlobalPause(true);
 
@@ -50,6 +52,7 @@ bool SettingsMenuState::enter() {
     createGraphicsUI();
     createAudioUI();
     createGameplayUI();
+    createControlsUI();
 
     // Create action buttons (Apply, Cancel, Back)
     createActionButtons();
@@ -65,6 +68,14 @@ void SettingsMenuState::update(float deltaTime) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
         ui.update(deltaTime);
+    }
+
+    // After rebind capture completes, refresh the affected binding button labels
+    auto& inputMgr = InputManager::Instance();
+    if (m_pendingRefreshCommand != InputManager::Command::COUNT &&
+        !inputMgr.isRebinding()) {
+        refreshBindingLabels(m_pendingRefreshCommand);
+        m_pendingRefreshCommand = InputManager::Command::COUNT;
     }
 }
 
@@ -97,6 +108,9 @@ void SettingsMenuState::handleInput() {
     }
     if (inputManager.wasKeyPressed(SDL_SCANCODE_3)) {
         switchTab(SettingsTab::Gameplay);
+    }
+    if (inputManager.wasKeyPressed(SDL_SCANCODE_4)) {
+        switchTab(SettingsTab::Controls);
     }
 }
 
@@ -163,6 +177,12 @@ void SettingsMenuState::applySettings() {
     // Save to disk
     settings.saveToFile(VoidLight::ResourcePath::resolve("res/settings.json"));
 
+    // Save input bindings alongside other settings; log on failure but don't abort apply
+    if (!InputManager::Instance().saveBindingsToFile(
+            VoidLight::ResourcePath::resolve("res/input_bindings.json"))) {
+        GAMESTATE_WARN("Failed to save input bindings to disk");
+    }
+
     GAMESTATE_INFO("Settings saved successfully");
 }
 
@@ -170,32 +190,50 @@ void SettingsMenuState::applySettings() {
 void SettingsMenuState::createTabButtons() {
     auto& ui = UIManager::Instance();
 
-    int tabWidth = 200;
-    int tabHeight = 40;
-    int tabSpacing = 10;
-    int startX = ui.getLogicalWidth() / 2 - (3 * tabWidth + 2 * tabSpacing) / 2;
-    int tabY = 80;
+    // Four tabs: Graphics, Audio, Gameplay, Controls — placed symmetrically around center.
+    // With 4 tabs: offsets are -3/2, -1/2, +1/2, +3/2 of (tabWidth + tabSpacing).
+    constexpr int tabWidth = 180;
+    constexpr int tabHeight = 40;
+    constexpr int tabSpacing = 10;
+    constexpr int tabY = 80;
+    const int step = tabWidth + tabSpacing;
+    // Centre of 4 tabs: [-3/2 * step, -1/2 * step, +1/2 * step, +3/2 * step]
+    const int offset0 = -(3 * step / 2);
+    const int offset1 = -(step / 2);
+    const int offset2 =  (step / 2);
+    const int offset3 =  (3 * step / 2);
 
-    ui.createButton("settings_tab_graphics", {startX, tabY, tabWidth, tabHeight}, "Graphics (1)");
-    ui.setComponentPositioning("settings_tab_graphics", {UIPositionMode::CENTERED_H, -(tabWidth + tabSpacing), tabY, tabWidth, tabHeight});
+    ui.createButton("settings_tab_graphics",
+        {ui.getLogicalWidth() / 2 + offset0, tabY, tabWidth, tabHeight}, "Graphics (1)");
+    ui.setComponentPositioning("settings_tab_graphics",
+        {UIPositionMode::CENTERED_H, offset0, tabY, tabWidth, tabHeight});
 
-    ui.createButton("settings_tab_audio", {startX + tabWidth + tabSpacing, tabY, tabWidth, tabHeight}, "Audio (2)");
-    ui.setComponentPositioning("settings_tab_audio", {UIPositionMode::CENTERED_H, 0, tabY, tabWidth, tabHeight});
+    ui.createButton("settings_tab_audio",
+        {ui.getLogicalWidth() / 2 + offset1, tabY, tabWidth, tabHeight}, "Audio (2)");
+    ui.setComponentPositioning("settings_tab_audio",
+        {UIPositionMode::CENTERED_H, offset1, tabY, tabWidth, tabHeight});
 
-    ui.createButton("settings_tab_gameplay", {startX + 2 * (tabWidth + tabSpacing), tabY, tabWidth, tabHeight}, "Gameplay (3)");
-    ui.setComponentPositioning("settings_tab_gameplay", {UIPositionMode::CENTERED_H, tabWidth + tabSpacing, tabY, tabWidth, tabHeight});
+    ui.createButton("settings_tab_gameplay",
+        {ui.getLogicalWidth() / 2 + offset2, tabY, tabWidth, tabHeight}, "Gameplay (3)");
+    ui.setComponentPositioning("settings_tab_gameplay",
+        {UIPositionMode::CENTERED_H, offset2, tabY, tabWidth, tabHeight});
 
-    // Tab callbacks
+    ui.createButton("settings_tab_controls",
+        {ui.getLogicalWidth() / 2 + offset3, tabY, tabWidth, tabHeight}, "Controls (4)");
+    ui.setComponentPositioning("settings_tab_controls",
+        {UIPositionMode::CENTERED_H, offset3, tabY, tabWidth, tabHeight});
+
     ui.setOnClick("settings_tab_graphics", [this]() {
         switchTab(SettingsTab::Graphics);
     });
-
     ui.setOnClick("settings_tab_audio", [this]() {
         switchTab(SettingsTab::Audio);
     });
-
     ui.setOnClick("settings_tab_gameplay", [this]() {
         switchTab(SettingsTab::Gameplay);
+    });
+    ui.setOnClick("settings_tab_controls", [this]() {
+        switchTab(SettingsTab::Controls);
     });
 }
 
@@ -399,8 +437,9 @@ void SettingsMenuState::switchTab(SettingsTab tab) {
     ui.applyThemeToComponent("settings_tab_graphics", UIComponentType::BUTTON);
     ui.applyThemeToComponent("settings_tab_audio", UIComponentType::BUTTON);
     ui.applyThemeToComponent("settings_tab_gameplay", UIComponentType::BUTTON);
+    ui.applyThemeToComponent("settings_tab_controls", UIComponentType::BUTTON);
 
-    // Highlight active tab (using pressed color)
+    // Highlight active tab
     switch (m_currentTab) {
         case SettingsTab::Graphics:
             ui.applyThemeToComponent("settings_tab_graphics", UIComponentType::BUTTON_SUCCESS);
@@ -411,13 +450,28 @@ void SettingsMenuState::switchTab(SettingsTab tab) {
         case SettingsTab::Gameplay:
             ui.applyThemeToComponent("settings_tab_gameplay", UIComponentType::BUTTON_SUCCESS);
             break;
+        case SettingsTab::Controls:
+            ui.applyThemeToComponent("settings_tab_controls", UIComponentType::BUTTON_SUCCESS);
+            break;
     }
 }
 
 void SettingsMenuState::updateTabVisibility() {
     auto& ui = UIManager::Instance();
 
-    // Hide all tabs first
+    // Helper to set visibility on all controls-tab components
+    auto setControlsTabVisible = [&](bool visible) {
+        constexpr size_t kCount = static_cast<size_t>(InputManager::Command::COUNT);
+        for (size_t i = 0; i < kCount; ++i) {
+            auto cmd = static_cast<InputManager::Command>(i);
+            ui.setComponentVisible(std::format("settings_ctrl_label_{}", i), visible);
+            ui.setComponentVisible(bindingButtonId(cmd, 0), visible);
+            ui.setComponentVisible(bindingButtonId(cmd, 1), visible);
+        }
+        ui.setComponentVisible("settings_ctrl_reset_btn", visible);
+    };
+
+    // Hide all tab content first
     // Graphics
     ui.setComponentVisible("settings_vsync_label", false);
     ui.setComponentVisible("settings_vsync_checkbox", false);
@@ -446,7 +500,10 @@ void SettingsMenuState::updateTabVisibility() {
     ui.setComponentVisible("settings_autosave_checkbox", false);
     ui.setComponentVisible("settings_autosave_interval_label", false);
 
-    // Show only active tab
+    // Controls
+    setControlsTabVisible(false);
+
+    // Show only active tab content
     switch (m_currentTab) {
         case SettingsTab::Graphics:
             ui.setComponentVisible("settings_vsync_label", true);
@@ -478,7 +535,124 @@ void SettingsMenuState::updateTabVisibility() {
             ui.setComponentVisible("settings_autosave_checkbox", true);
             ui.setComponentVisible("settings_autosave_interval_label", true);
             break;
+
+        case SettingsTab::Controls:
+            setControlsTabVisible(true);
+            break;
     }
+}
+
+// static helper — stable component ID for a binding slot button
+std::string SettingsMenuState::bindingButtonId(InputManager::Command c, size_t slot)
+{
+    using C = InputManager::Command;
+    struct Entry { C cmd; const char* key; };
+    static constexpr Entry kTable[] = {
+        {C::MoveUp,        "move_up"},
+        {C::MoveDown,      "move_down"},
+        {C::MoveLeft,      "move_left"},
+        {C::MoveRight,     "move_right"},
+        {C::AttackLight,   "attack_light"},
+        {C::Interact,      "interact"},
+        {C::OpenInventory, "open_inventory"},
+        {C::Pause,         "pause"},
+        {C::WorldInteract, "world_interact"},
+        {C::ZoomIn,        "zoom_in"},
+        {C::ZoomOut,       "zoom_out"},
+        {C::MenuConfirm,   "menu_confirm"},
+        {C::MenuCancel,    "menu_cancel"},
+        {C::MenuUp,        "menu_up"},
+        {C::MenuDown,      "menu_down"},
+    };
+    for (const auto& e : kTable) {
+        if (e.cmd == c) {
+            return std::format("settings_ctrl_{}_{}", e.key, slot);
+        }
+    }
+    return std::format("settings_ctrl_unknown_{}", slot);
+}
+
+void SettingsMenuState::refreshBindingLabels(InputManager::Command c)
+{
+    auto& ui = UIManager::Instance();
+    auto& inputMgr = InputManager::Instance();
+    auto bindings = inputMgr.getBindings(c);
+
+    for (size_t slot = 0; slot < 2; ++slot) {
+        const std::string btnId = bindingButtonId(c, slot);
+        if (slot < bindings.size()) {
+            ui.setText(btnId, inputMgr.describeBinding(bindings[slot]));
+        } else {
+            ui.setText(btnId, "(unbound)");
+        }
+    }
+}
+
+void SettingsMenuState::createControlsUI()
+{
+    auto& ui = UIManager::Instance();
+    auto& inputMgr = InputManager::Instance();
+
+    constexpr int leftX = 100;
+    constexpr int labelW = 200;
+    constexpr int btnW = 180;
+    constexpr int btnH = 36;
+    constexpr int btnSpacing = 10;
+    constexpr int rowH = 50;
+    constexpr int startY = 155;
+
+    // Iterate over all rebindable commands (skip COUNT)
+    constexpr size_t kCount = static_cast<size_t>(InputManager::Command::COUNT);
+    for (size_t i = 0; i < kCount; ++i) {
+        auto cmd = static_cast<InputManager::Command>(i);
+        const int y = startY + static_cast<int>(i) * rowH;
+
+        // Label
+        const std::string labelId = std::format("settings_ctrl_label_{}", i);
+        ui.createLabel(labelId, {leftX, y, labelW, btnH}, inputMgr.commandDisplayName(cmd));
+        ui.setComponentPositioning(labelId, {UIPositionMode::TOP_ALIGNED, leftX, y, labelW, btnH});
+
+        // Primary and secondary binding buttons
+        for (size_t slot = 0; slot < 2; ++slot) {
+            const std::string btnId = bindingButtonId(cmd, slot);
+            auto bindings = inputMgr.getBindings(cmd);
+            const std::string label = (slot < bindings.size())
+                ? inputMgr.describeBinding(bindings[slot])
+                : "(unbound)";
+
+            const int btnX = leftX + labelW + static_cast<int>(slot) * (btnW + btnSpacing);
+            ui.createButton(btnId, {btnX, y, btnW, btnH}, label);
+            ui.setComponentPositioning(btnId, {UIPositionMode::TOP_ALIGNED, btnX, y, btnW, btnH});
+
+            // Capture cmd and slot by value so the lambda remains correct after loop iteration
+            ui.setOnClick(btnId, [this, cmd, slot, btnId]() {
+                InputManager::Instance().startRebinding(cmd, slot);
+                UIManager::Instance().setText(btnId, "Press any key...");
+                m_pendingRefreshCommand = cmd;
+            });
+        }
+
+        // Start hidden; shown only when Controls tab is active
+        ui.setComponentVisible(labelId, false);
+        ui.setComponentVisible(bindingButtonId(cmd, 0), false);
+        ui.setComponentVisible(bindingButtonId(cmd, 1), false);
+    }
+
+    // "Reset to Defaults" button
+    ui.createButton("settings_ctrl_reset_btn",
+        {leftX, startY + static_cast<int>(kCount) * rowH + 10, 260, btnH}, "Reset Controls to Defaults");
+    ui.setComponentPositioning("settings_ctrl_reset_btn",
+        {UIPositionMode::TOP_ALIGNED, leftX,
+         startY + static_cast<int>(kCount) * rowH + 10, 260, btnH});
+    ui.setOnClick("settings_ctrl_reset_btn", [this]() {
+        InputManager::Instance().resetBindingsToDefaults();
+        // Refresh all command rows
+        constexpr size_t cnt = static_cast<size_t>(InputManager::Command::COUNT);
+        for (size_t i = 0; i < cnt; ++i) {
+            refreshBindingLabels(static_cast<InputManager::Command>(i));
+        }
+    });
+    ui.setComponentVisible("settings_ctrl_reset_btn", false);
 }
 
 void SettingsMenuState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,

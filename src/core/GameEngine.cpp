@@ -472,6 +472,11 @@ bool GameEngine::init(std::string_view title) {
               return false;
             }
             inputMgr.initializeGamePad();
+            // Load user-customized bindings; fall back to defaults on failure
+            if (!inputMgr.loadBindingsFromFile(
+                    VoidLight::ResourcePath::resolve("res/input_bindings.json"))) {
+              GAMEENGINE_WARN("Input bindings file not found or invalid — using defaults");
+            }
             return true;
           }));
 
@@ -965,6 +970,10 @@ void GameEngine::handleEvents() {
       break;
     }
   }
+
+  // Resolve semantic command state from raw SDL state now that all events
+  // for this frame are in. Must run before game states read commands.
+  inputMgr.refreshCommandState();
 
   // Global fullscreen toggle (F1 key) - processed before state input
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_F1)) {

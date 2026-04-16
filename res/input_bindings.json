@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "commands": {
+    "move_up":       [{"source": "keyboard",         "code": "W"},
+                     {"source": "gamepad_axis_neg",  "code": "lefty"}],
+    "move_down":     [{"source": "keyboard",         "code": "S"},
+                     {"source": "gamepad_axis_pos",  "code": "lefty"}],
+    "move_left":     [{"source": "keyboard",         "code": "A"},
+                     {"source": "gamepad_axis_neg",  "code": "leftx"}],
+    "move_right":    [{"source": "keyboard",         "code": "D"},
+                     {"source": "gamepad_axis_pos",  "code": "leftx"}],
+    "attack_light":  [{"source": "keyboard",         "code": "F"},
+                     {"source": "gamepad_button",    "code": "west"}],
+    "interact":      [{"source": "keyboard",         "code": "E"},
+                     {"source": "gamepad_button",    "code": "south"}],
+    "open_inventory":[{"source": "keyboard",         "code": "I"}],
+    "pause":         [{"source": "keyboard",         "code": "P"}],
+    "world_interact":[{"source": "mouse_button",     "code": "left"}],
+    "zoom_in":       [{"source": "keyboard",         "code": "RightBracket"}],
+    "zoom_out":      [{"source": "keyboard",         "code": "LeftBracket"}]
+  }
+}

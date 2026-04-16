@@ -593,8 +593,7 @@ void GamePlayState::handleInput() {
   GameTimeManager &gameTimeMgr = GameTimeManager::Instance();
   GameEngine &gameEngine = GameEngine::Instance();
 
-  // Use InputManager's new event-driven key press detection
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_P)) {
+  if (inputMgr.isCommandPressed(InputManager::Command::Pause)) {
     // Create PauseState if it doesn't exist
     if (!mp_stateManager->hasState(GameStateId::PAUSE)) {
       mp_stateManager->addState(std::make_unique<PauseState>());
@@ -613,7 +612,7 @@ void GamePlayState::handleInput() {
   }
 
   // Inventory toggle
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_I)) {
+  if (inputMgr.isCommandPressed(InputManager::Command::OpenInventory)) {
     toggleInventoryDisplay();
   }
 
@@ -623,8 +622,8 @@ void GamePlayState::handleInput() {
     ui.setComponentVisible("gameplay_fps", m_fpsVisible);
   }
 
-  // Combat - F for melee attack
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_F) && mp_Player) {
+  // Combat — attack command (default: F, rebindable via Controls settings)
+  if (inputMgr.isCommandPressed(InputManager::Command::AttackLight) && mp_Player) {
     m_controllers.get<CombatController>()->tryAttack();
   }
 
@@ -660,8 +659,8 @@ void GamePlayState::handleInput() {
   }
 #endif
 
-  // Interaction - E to trade/pickup/harvest
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_E) && mp_Player) {
+  // Interaction — trade/pickup/harvest command (default: E, rebindable)
+  if (inputMgr.isCommandPressed(InputManager::Command::Interact) && mp_Player) {
     auto& socialCtrl = *m_controllers.get<SocialController>();
 
     // If already trading, close the trade UI
@@ -705,12 +704,12 @@ void GamePlayState::handleInput() {
   // Note: HarvestController handles movement cancellation automatically in update()
   // via position-based detection (MOVEMENT_CANCEL_THRESHOLD)
 
-  // Camera zoom controls
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_LEFTBRACKET) && m_camera) {
-    m_camera->zoomIn(); // [ key = zoom in (objects larger)
+  // Camera zoom controls (rebindable via Controls settings)
+  if (inputMgr.isCommandPressed(InputManager::Command::ZoomIn) && m_camera) {
+    m_camera->zoomIn();
   }
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_RIGHTBRACKET) && m_camera) {
-    m_camera->zoomOut(); // ] key = zoom out (objects smaller)
+  if (inputMgr.isCommandPressed(InputManager::Command::ZoomOut) && m_camera) {
+    m_camera->zoomOut();
   }
 
 #ifndef NDEBUG

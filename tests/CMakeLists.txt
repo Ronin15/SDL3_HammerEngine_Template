@@ -42,6 +42,7 @@ set(ALL_TESTS
     pathfinder_manager_tests
     camera_tests
     input_manager_tests
+    input_manager_command_tests
     simd_correctness_tests
     simd_performance_benchmark
     buffer_reuse_tests
@@ -159,6 +160,8 @@ foreach(test_name ${ALL_TESTS})
         set(test_source "CameraTests.cpp")
     elseif(${test_name} STREQUAL "input_manager_tests")
         set(test_source "InputManagerTests.cpp")
+    elseif(${test_name} STREQUAL "input_manager_command_tests")
+        set(test_source "InputManagerCommandTests.cpp")
     elseif(${test_name} STREQUAL "simd_correctness_tests")
         set(test_source "SIMDCorrectnessTests.cpp")
     elseif(${test_name} STREQUAL "simd_performance_benchmark")
