@@ -613,7 +613,7 @@ BOOST_AUTO_TEST_CASE(TestGetCharacterDataByIndex) {
     EntityHandle handle = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
     size_t index = edm->getIndex(handle);
 
-    edm->getCharacterDataByIndex(index);  // Verify accessor doesn't throw
+    BOOST_CHECK_NO_THROW(static_cast<void>(edm->getCharacterDataByIndex(index)));
     BOOST_CHECK(edm->isValidHandle(handle));
 }
 
@@ -909,8 +909,8 @@ BOOST_AUTO_TEST_CASE(TestTypeSpecificSlotReuse) {
     BOOST_CHECK(edm->isValidHandle(npc3));
 
     // Verify character data is accessible
-    edm->getCharacterData(npc2);
-    edm->getCharacterData(npc3);
+    BOOST_CHECK_NO_THROW(static_cast<void>(edm->getCharacterData(npc2)));
+    BOOST_CHECK_NO_THROW(static_cast<void>(edm->getCharacterData(npc3)));
     BOOST_CHECK(edm->isValidHandle(npc2));
     BOOST_CHECK(edm->isValidHandle(npc3));
 }
