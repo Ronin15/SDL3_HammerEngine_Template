@@ -46,6 +46,21 @@ class InputManager {
         GamepadAxisNegative,  // code = SDL_GamepadAxis, active when axis < -0.3
     };
 
+    // Device grouping used by the Controls UI and by rebind capture filtering.
+    // Keyboard + mouse share one category; all gamepad inputs share the other.
+    enum class DeviceCategory : uint8_t
+    {
+        KeyboardMouse = 0,
+        Controller    = 1,
+    };
+
+    static constexpr DeviceCategory categoryOf(InputSource s) noexcept
+    {
+        return (s == InputSource::Keyboard || s == InputSource::MouseButton)
+                   ? DeviceCategory::KeyboardMouse
+                   : DeviceCategory::Controller;
+    }
+
     struct InputBinding
     {
         InputSource source;
@@ -68,15 +83,22 @@ class InputManager {
     void addBinding(Command c, InputBinding b);
     void clearBindings(Command c);
     std::span<const InputBinding> getBindings(Command c) const;
+    // Returns the first binding for this command whose source belongs to the
+    // given device category, or std::nullopt if none exists.
+    std::optional<InputBinding> getBindingForCategory(Command c, DeviceCategory cat) const;
     void resetBindingsToDefaults();
 
     // -------------------------------------------------------------------------
     // Rebind capture ("press any key" UX)
     // -------------------------------------------------------------------------
-    void startRebinding(Command c, size_t slot); // slot 0 = primary, 1 = secondary
+    // Rebinds the binding for command `c` in device category `cat`. During
+    // capture, inputs from the opposite category are ignored; on successful
+    // capture, any existing binding in that category is replaced.
+    void startRebinding(Command c, DeviceCategory cat);
     void cancelRebinding();
     bool isRebinding() const;
     Command getRebindingCommand() const;
+    DeviceCategory getRebindingCategory() const;
 
     // -------------------------------------------------------------------------
     // Persistence
@@ -160,7 +182,7 @@ class InputManager {
     std::array<bool, kCommandCount> m_previousDown{};
 
     Command m_rebindCommand{Command::COUNT};   // COUNT = none
-    size_t m_rebindSlot{0};
+    DeviceCategory m_rebindCategory{DeviceCategory::KeyboardMouse};
 
     bool sampleBinding(const InputBinding& b) const;
     void captureRebind();          // called from refreshCommandState() while rebinding

@@ -122,11 +122,16 @@ bool MainMenuState::exit() {
 void MainMenuState::handleInput() {
   const auto& inputManager = InputManager::Instance();
 
-  // Keyboard shortcuts for quick navigation
-  if (inputManager.wasKeyPressed(SDL_SCANCODE_RETURN)) {
+  // Menu navigation via rebindable commands (default: Enter / A for confirm,
+  // Esc / B for cancel-quit).
+  if (inputManager.isCommandPressed(InputManager::Command::MenuConfirm)) {
       mp_stateManager->changeState(GameStateId::GAME_PLAY);
   }
+  if (inputManager.isCommandPressed(InputManager::Command::MenuCancel)) {
+      GameEngine::Instance().setRunning(false);
+  }
 
+  // Developer debug shortcuts for demo states — intentionally not rebindable.
   if (inputManager.wasKeyPressed(SDL_SCANCODE_A)) {
       mp_stateManager->changeState(GameStateId::AI_DEMO);
   }
@@ -145,10 +150,6 @@ void MainMenuState::handleInput() {
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_S)) {
       mp_stateManager->changeState(GameStateId::SETTINGS_MENU);
-  }
-
-  if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
-      GameEngine::Instance().setRunning(false);
   }
 }
 

@@ -83,13 +83,14 @@ bool PauseState::exit() {
 void PauseState::handleInput() {
   const auto& inputMgr = InputManager::Instance();
 
-  // Use InputManager's new event-driven key press detection
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_R)) {
+  // MenuCancel resumes gameplay (default: Esc / B).
+  if (inputMgr.isCommandPressed(InputManager::Command::MenuCancel)) {
       mp_stateManager->popState();
   }
 
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
-      GameEngine::Instance().setRunning(false);
+  // Developer debug shortcut — R also resumes. Intentionally not rebindable.
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_R)) {
+      mp_stateManager->popState();
   }
 }
 

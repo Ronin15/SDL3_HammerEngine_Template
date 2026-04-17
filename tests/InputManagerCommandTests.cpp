@@ -291,8 +291,9 @@ BOOST_AUTO_TEST_CASE(CaptureNewKeyBinding)
     mgr.addBinding(InputManager::Command::AttackLight,
                    {InputManager::InputSource::Keyboard, SDL_SCANCODE_F});
 
-    // Start rebinding slot 0
-    mgr.startRebinding(InputManager::Command::AttackLight, 0);
+    // Start rebinding the keyboard/mouse slot
+    mgr.startRebinding(InputManager::Command::AttackLight,
+                       InputManager::DeviceCategory::KeyboardMouse);
     BOOST_CHECK(mgr.isRebinding());
     BOOST_CHECK(mgr.getRebindingCommand() == InputManager::Command::AttackLight);
 
@@ -318,7 +319,8 @@ BOOST_AUTO_TEST_CASE(EscCancelsRebind)
     TestHelpers::resetState();
     auto& mgr = InputManager::Instance();
 
-    mgr.startRebinding(InputManager::Command::Pause, 0);
+    mgr.startRebinding(InputManager::Command::Pause,
+                       InputManager::DeviceCategory::KeyboardMouse);
     BOOST_CHECK(mgr.isRebinding());
 
     // Inject ESC — captureRebind() is driven via refreshCommandState() inside processFrame()
@@ -327,16 +329,16 @@ BOOST_AUTO_TEST_CASE(EscCancelsRebind)
 
     BOOST_CHECK(!mgr.isRebinding());
 
-    // Binding should be unchanged (still has default P binding)
+    // Binding should be unchanged (still has default ESC keyboard binding)
     auto bindings = mgr.getBindings(InputManager::Command::Pause);
-    bool hasP = false;
+    bool hasEsc = false;
     for (const auto& b : bindings) {
         if (b.source == InputManager::InputSource::Keyboard &&
-            b.code == static_cast<int>(SDL_SCANCODE_P)) {
-            hasP = true;
+            b.code == static_cast<int>(SDL_SCANCODE_ESCAPE)) {
+            hasEsc = true;
         }
     }
-    BOOST_CHECK(hasP);
+    BOOST_CHECK(hasEsc);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -488,7 +490,8 @@ BOOST_AUTO_TEST_CASE(HeldGamepadButtonNotCapturedAtRebindStart)
         mgr.onGamepadButtonDown(e);
     }
 
-    mgr.startRebinding(InputManager::Command::Pause, 0);
+    mgr.startRebinding(InputManager::Command::Pause,
+                       InputManager::DeviceCategory::Controller);
     BOOST_CHECK(mgr.isRebinding());
 
     // One frame with no keyboard/mouse input and no new gamepad rising edge

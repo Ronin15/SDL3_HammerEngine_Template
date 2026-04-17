@@ -94,12 +94,12 @@ bool SettingsMenuState::exit() {
 void SettingsMenuState::handleInput() {
     const auto& inputManager = InputManager::Instance();
 
-    // ESC to go back without saving
-    if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
+    // MenuCancel to go back without saving (default: ESC/B)
+    if (inputManager.isCommandPressed(InputManager::Command::MenuCancel)) {
         mp_stateManager->changeState(GameStateId::MAIN_MENU);
     }
 
-    // Tab switching shortcuts
+    // Tab switching shortcuts (raw scancodes — debug shortcut, not rebindable)
     if (inputManager.wasKeyPressed(SDL_SCANCODE_1)) {
         switchTab(SettingsTab::Graphics);
     }
@@ -461,13 +461,16 @@ void SettingsMenuState::updateTabVisibility() {
 
     // Helper to set visibility on all controls-tab components
     auto setControlsTabVisible = [&](bool visible) {
+        using DC = InputManager::DeviceCategory;
         constexpr size_t kCount = static_cast<size_t>(InputManager::Command::COUNT);
         for (size_t i = 0; i < kCount; ++i) {
             auto cmd = static_cast<InputManager::Command>(i);
             ui.setComponentVisible(std::format("settings_ctrl_label_{}", i), visible);
-            ui.setComponentVisible(bindingButtonId(cmd, 0), visible);
-            ui.setComponentVisible(bindingButtonId(cmd, 1), visible);
+            ui.setComponentVisible(bindingButtonId(cmd, DC::KeyboardMouse), visible);
+            ui.setComponentVisible(bindingButtonId(cmd, DC::Controller), visible);
         }
+        ui.setComponentVisible("settings_ctrl_header_kbd", visible);
+        ui.setComponentVisible("settings_ctrl_header_ctrl", visible);
         ui.setComponentVisible("settings_ctrl_reset_btn", visible);
     };
 
@@ -543,9 +546,11 @@ void SettingsMenuState::updateTabVisibility() {
 }
 
 // static helper — stable component ID for a binding slot button
-std::string SettingsMenuState::bindingButtonId(InputManager::Command c, size_t slot)
+std::string SettingsMenuState::bindingButtonId(InputManager::Command c,
+                                               InputManager::DeviceCategory cat)
 {
     using C = InputManager::Command;
+    using DC = InputManager::DeviceCategory;
     struct Entry { C cmd; const char* key; };
     static constexpr Entry kTable[] = {
         {C::MoveUp,        "move_up"},
@@ -564,89 +569,108 @@ std::string SettingsMenuState::bindingButtonId(InputManager::Command c, size_t s
         {C::MenuUp,        "menu_up"},
         {C::MenuDown,      "menu_down"},
     };
+    const char* catSuffix = (cat == DC::KeyboardMouse) ? "kbd" : "ctrl";
     for (const auto& e : kTable) {
         if (e.cmd == c) {
-            return std::format("settings_ctrl_{}_{}", e.key, slot);
+            return std::format("settings_ctrl_{}_{}", e.key, catSuffix);
         }
     }
-    return std::format("settings_ctrl_unknown_{}", slot);
+    return std::format("settings_ctrl_unknown_{}", catSuffix);
 }
 
 void SettingsMenuState::refreshBindingLabels(InputManager::Command c)
 {
+    using DC = InputManager::DeviceCategory;
     auto& ui = UIManager::Instance();
     auto& inputMgr = InputManager::Instance();
-    auto bindings = inputMgr.getBindings(c);
 
-    for (size_t slot = 0; slot < 2; ++slot) {
-        const std::string btnId = bindingButtonId(c, slot);
-        if (slot < bindings.size()) {
-            ui.setText(btnId, inputMgr.describeBinding(bindings[slot]));
-        } else {
-            ui.setText(btnId, "(unbound)");
-        }
+    for (DC cat : {DC::KeyboardMouse, DC::Controller}) {
+        const std::string btnId = bindingButtonId(c, cat);
+        auto binding = inputMgr.getBindingForCategory(c, cat);
+        ui.setText(btnId, binding ? inputMgr.describeBinding(*binding) : "(unbound)");
     }
 }
 
 void SettingsMenuState::createControlsUI()
 {
+    using DC = InputManager::DeviceCategory;
     auto& ui = UIManager::Instance();
     auto& inputMgr = InputManager::Instance();
 
+    // Two device-typed columns: Keyboard & Mouse and Controller. Column
+    // width is wide enough for "Gamepad rightshoulder"; the UIManager
+    // auto-sizing fallback will grow the button further if needed.
     constexpr int leftX = 100;
     constexpr int labelW = 200;
-    constexpr int btnW = 180;
+    constexpr int colW = 260;
+    constexpr int colGap = 24;
     constexpr int btnH = 36;
-    constexpr int btnSpacing = 10;
     constexpr int rowH = 50;
     constexpr int startY = 155;
+    constexpr int headerY = startY - 36;
 
-    // Iterate over all rebindable commands (skip COUNT)
+    const int colKbdX = leftX + labelW;
+    const int colCtrlX = leftX + labelW + colW + colGap;
+
+    // Column headers
+    ui.createLabel("settings_ctrl_header_kbd",
+        {colKbdX, headerY, colW, btnH}, "Keyboard & Mouse");
+    ui.setComponentPositioning("settings_ctrl_header_kbd",
+        {UIPositionMode::TOP_ALIGNED, colKbdX, headerY, colW, btnH});
+
+    ui.createLabel("settings_ctrl_header_ctrl",
+        {colCtrlX, headerY, colW, btnH}, "Controller");
+    ui.setComponentPositioning("settings_ctrl_header_ctrl",
+        {UIPositionMode::TOP_ALIGNED, colCtrlX, headerY, colW, btnH});
+
     constexpr size_t kCount = static_cast<size_t>(InputManager::Command::COUNT);
     for (size_t i = 0; i < kCount; ++i) {
         auto cmd = static_cast<InputManager::Command>(i);
         const int y = startY + static_cast<int>(i) * rowH;
 
-        // Label
+        // Row label
         const std::string labelId = std::format("settings_ctrl_label_{}", i);
         ui.createLabel(labelId, {leftX, y, labelW, btnH}, inputMgr.commandDisplayName(cmd));
         ui.setComponentPositioning(labelId, {UIPositionMode::TOP_ALIGNED, leftX, y, labelW, btnH});
 
-        // Primary and secondary binding buttons
-        for (size_t slot = 0; slot < 2; ++slot) {
-            const std::string btnId = bindingButtonId(cmd, slot);
-            auto bindings = inputMgr.getBindings(cmd);
-            const std::string label = (slot < bindings.size())
-                ? inputMgr.describeBinding(bindings[slot])
-                : "(unbound)";
+        // One binding button per category, in column order
+        struct ColumnSpec { DC cat; int x; };
+        const ColumnSpec cols[] = {
+            {DC::KeyboardMouse, colKbdX},
+            {DC::Controller,    colCtrlX},
+        };
+        for (const auto& col : cols) {
+            const std::string btnId = bindingButtonId(cmd, col.cat);
+            auto binding = inputMgr.getBindingForCategory(cmd, col.cat);
+            const std::string label = binding ? inputMgr.describeBinding(*binding) : "(unbound)";
 
-            const int btnX = leftX + labelW + static_cast<int>(slot) * (btnW + btnSpacing);
-            ui.createButton(btnId, {btnX, y, btnW, btnH}, label);
-            ui.setComponentPositioning(btnId, {UIPositionMode::TOP_ALIGNED, btnX, y, btnW, btnH});
+            ui.createButton(btnId, {col.x, y, colW, btnH}, label);
+            ui.setComponentPositioning(btnId, {UIPositionMode::TOP_ALIGNED, col.x, y, colW, btnH});
 
-            // Capture cmd and slot by value so the lambda remains correct after loop iteration
-            ui.setOnClick(btnId, [this, cmd, slot, btnId]() {
-                InputManager::Instance().startRebinding(cmd, slot);
+            const DC cat = col.cat;
+            ui.setOnClick(btnId, [this, cmd, cat, btnId]() {
+                InputManager::Instance().startRebinding(cmd, cat);
                 UIManager::Instance().setText(btnId, "Press any key...");
                 m_pendingRefreshCommand = cmd;
             });
         }
 
-        // Start hidden; shown only when Controls tab is active
         ui.setComponentVisible(labelId, false);
-        ui.setComponentVisible(bindingButtonId(cmd, 0), false);
-        ui.setComponentVisible(bindingButtonId(cmd, 1), false);
+        ui.setComponentVisible(bindingButtonId(cmd, DC::KeyboardMouse), false);
+        ui.setComponentVisible(bindingButtonId(cmd, DC::Controller), false);
     }
 
-    // "Reset to Defaults" button
+    ui.setComponentVisible("settings_ctrl_header_kbd", false);
+    ui.setComponentVisible("settings_ctrl_header_ctrl", false);
+
+    // Reset button
+    const int resetY = startY + static_cast<int>(kCount) * rowH + 10;
     ui.createButton("settings_ctrl_reset_btn",
-        {leftX, startY + static_cast<int>(kCount) * rowH + 10, 260, btnH}, "Reset Controls to Defaults");
+        {leftX, resetY, 300, btnH}, "Reset Controls to Defaults");
     ui.setComponentPositioning("settings_ctrl_reset_btn",
-        {UIPositionMode::TOP_ALIGNED, leftX,
-         startY + static_cast<int>(kCount) * rowH + 10, 260, btnH});
+        {UIPositionMode::TOP_ALIGNED, leftX, resetY, 300, btnH});
     ui.setOnClick("settings_ctrl_reset_btn", [this]() {
         InputManager::Instance().resetBindingsToDefaults();
-        // Refresh all command rows
         constexpr size_t cnt = static_cast<size_t>(InputManager::Command::COUNT);
         for (size_t i = 0; i < cnt; ++i) {
             refreshBindingLabels(static_cast<InputManager::Command>(i));

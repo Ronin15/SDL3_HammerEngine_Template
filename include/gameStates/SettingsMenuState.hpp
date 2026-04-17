@@ -127,7 +127,8 @@ private:
     void createActionButtons();
 
     // Returns the stable UI component ID for a binding button
-    static std::string bindingButtonId(InputManager::Command c, size_t slot);
+    static std::string bindingButtonId(InputManager::Command c,
+                                       InputManager::DeviceCategory cat);
 };
 
 #endif  // SETTINGS_MENU_STATE_HPP

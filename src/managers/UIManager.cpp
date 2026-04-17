@@ -202,7 +202,14 @@ void UIManager::createButton(const std::string &id, const UIRect &bounds,
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
+  // Caller-supplied size is the floor; auto-sizing only grows the button to fit text
+  component->m_minBounds.width = component->m_bounds.width;
+  component->m_minBounds.height = component->m_bounds.height;
+
   m_components[id] = component;
+
+  // Grow to fit text so long labels never overflow the button bounds
+  calculateOptimalSize(component);
   invalidateComponentCache();
 }
 
@@ -217,7 +224,12 @@ void UIManager::createButtonDanger(const std::string &id, const UIRect &bounds,
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_DANGER);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
+  component->m_minBounds.width = component->m_bounds.width;
+  component->m_minBounds.height = component->m_bounds.height;
+
   m_components[id] = component;
+
+  calculateOptimalSize(component);
   invalidateComponentCache();
 }
 
@@ -232,7 +244,12 @@ void UIManager::createButtonSuccess(const std::string &id, const UIRect &bounds,
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_SUCCESS);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
+  component->m_minBounds.width = component->m_bounds.width;
+  component->m_minBounds.height = component->m_bounds.height;
+
   m_components[id] = component;
+
+  calculateOptimalSize(component);
   invalidateComponentCache();
 }
 
@@ -247,7 +264,12 @@ void UIManager::createButtonWarning(const std::string &id, const UIRect &bounds,
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_WARNING);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
+  component->m_minBounds.width = component->m_bounds.width;
+  component->m_minBounds.height = component->m_bounds.height;
+
   m_components[id] = component;
+
+  calculateOptimalSize(component);
   invalidateComponentCache();
 }
 
@@ -543,6 +565,9 @@ void UIManager::setText(const std::string &id, const std::string &text) {
   if (component) {
     component->m_text = text;
     m_textCache[id] = text; // Update cache
+    // Re-run auto-sizing so the component grows/shrinks to fit the new text.
+    // calculateOptimalSize() is a no-op when m_autoSize is false.
+    calculateOptimalSize(component);
   }
 }
 

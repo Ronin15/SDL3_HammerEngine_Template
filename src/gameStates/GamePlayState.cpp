@@ -591,7 +591,6 @@ void GamePlayState::handleInput() {
   const InputManager &inputMgr = InputManager::Instance();
   auto &ui = UIManager::Instance();
   GameTimeManager &gameTimeMgr = GameTimeManager::Instance();
-  GameEngine &gameEngine = GameEngine::Instance();
 
   if (inputMgr.isCommandPressed(InputManager::Command::Pause)) {
     // Create PauseState if it doesn't exist
@@ -602,13 +601,9 @@ void GamePlayState::handleInput() {
     mp_stateManager->pushState(GameStateId::PAUSE);
   }
 
+  // Developer debug shortcut — return to main menu. Intentionally not rebindable.
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
     mp_stateManager->changeState(GameStateId::MAIN_MENU);
-  }
-
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
-    // gameEngine already cached at top of function
-    gameEngine.setRunning(false);
   }
 
   // Inventory toggle
