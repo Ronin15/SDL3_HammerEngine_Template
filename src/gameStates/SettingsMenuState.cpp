@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <format>
 #include <thread>
 #include <chrono>
@@ -89,6 +90,10 @@ void SettingsMenuState::update(float deltaTime) {
         refreshBindingLabels(m_pendingRefreshCommand);
         m_pendingRefreshCommand = InputManager::Command::COUNT;
     }
+
+    // Re-apply the controller-focus highlight each frame so gamepad
+    // hotplug naturally clears/restores the selection.
+    VoidLight::MenuNavigation::applySelection(m_navOrder, m_selectedIndex);
 }
 
 bool SettingsMenuState::exit() {
@@ -114,20 +119,6 @@ void SettingsMenuState::handleInput() {
             mp_stateManager->changeState(GameStateId::MAIN_MENU);
         }
     }
-
-    // Tab switching shortcuts (raw scancodes — debug shortcut, not rebindable)
-    if (inputManager.wasKeyPressed(SDL_SCANCODE_1)) {
-        switchTab(SettingsTab::Graphics);
-    }
-    if (inputManager.wasKeyPressed(SDL_SCANCODE_2)) {
-        switchTab(SettingsTab::Audio);
-    }
-    if (inputManager.wasKeyPressed(SDL_SCANCODE_3)) {
-        switchTab(SettingsTab::Gameplay);
-    }
-    if (inputManager.wasKeyPressed(SDL_SCANCODE_4)) {
-        switchTab(SettingsTab::Controls);
-    }
 }
 
 namespace {
@@ -150,13 +141,17 @@ void SettingsMenuState::handleSliderAdjust() {
     if (!isSliderId(selected)) return;
 
     const auto& inputMgr = InputManager::Instance();
+    const bool left  = inputMgr.isCommandPressed(InputManager::Command::MenuLeft);
+    const bool right = inputMgr.isCommandPressed(InputManager::Command::MenuRight);
+    if (!left && !right) return;
+
     auto& ui = UIManager::Instance();
     const std::string sid(selected);
     constexpr float kStep = 0.05f; // 5% of the [0..1] slider range per press
-    if (inputMgr.isCommandPressed(InputManager::Command::MenuLeft)) {
+    if (left) {
         ui.setValue(sid, std::max(0.0f, ui.getValue(sid) - kStep));
     }
-    if (inputMgr.isCommandPressed(InputManager::Command::MenuRight)) {
+    if (right) {
         ui.setValue(sid, std::min(1.0f, ui.getValue(sid) + kStep));
     }
 }
@@ -171,13 +166,22 @@ void SettingsMenuState::rebuildNavOrder() {
     m_navBacking.clear();
     m_navOrder.clear();
 
+    // INVARIANT: m_navBacking capacity must never be exceeded while m_navOrder
+    // holds string_views into it — any reallocation invalidates every view.
+    // Reserve unconditionally so future additions can't silently grow capacity
+    // mid-fill.
+    constexpr size_t kBackingCapacity = kCmdCount * 2;
+    m_navBacking.reserve(kBackingCapacity);
+
     if (m_currentTab == SettingsTab::Controls) {
-        m_navBacking.reserve(kCmdCount * 2);
         for (size_t i = 0; i < kCmdCount; ++i) {
             auto cmd = static_cast<InputManager::Command>(i);
             m_navBacking.push_back(bindingButtonId(cmd, DC::KeyboardMouse));
             m_navBacking.push_back(bindingButtonId(cmd, DC::Controller));
         }
+        assert(m_navBacking.size() == kBackingCapacity &&
+               "m_navBacking overran its reserved capacity — string_views "
+               "in m_navOrder may have been invalidated");
     }
 
     // Tab row is always reachable.
@@ -406,6 +410,8 @@ void SettingsMenuState::createAudioUI() {
     ui.createLabel("settings_master_volume_value", {sliderX + sliderWidth + 10, startY, 80, 40},
                    std::format("{}%", static_cast<int>(m_tempSettings.masterVolume * 100)));
     ui.setComponentPositioning("settings_master_volume_value", {UIPositionMode::TOP_ALIGNED, sliderX + sliderWidth + 10, startY, 80, 40});
+    // Fixed 80px width fits any "nnn%" — skip per-setText font metrics during slider drag.
+    ui.enableAutoSizing("settings_master_volume_value", false);
 
     // Music Volume slider
     ui.createLabel("settings_music_volume_label", {leftColumnX, startY + rowHeight, labelWidth, 40}, "Music Volume:");
@@ -420,6 +426,7 @@ void SettingsMenuState::createAudioUI() {
     ui.createLabel("settings_music_volume_value", {sliderX + sliderWidth + 10, startY + rowHeight, 80, 40},
                    std::format("{}%", static_cast<int>(m_tempSettings.musicVolume * 100)));
     ui.setComponentPositioning("settings_music_volume_value", {UIPositionMode::TOP_ALIGNED, sliderX + sliderWidth + 10, startY + rowHeight, 80, 40});
+    ui.enableAutoSizing("settings_music_volume_value", false);
 
     // SFX Volume slider
     ui.createLabel("settings_sfx_volume_label", {leftColumnX, startY + 2 * rowHeight, labelWidth, 40}, "SFX Volume:");
@@ -434,6 +441,7 @@ void SettingsMenuState::createAudioUI() {
     ui.createLabel("settings_sfx_volume_value", {sliderX + sliderWidth + 10, startY + 2 * rowHeight, 80, 40},
                    std::format("{}%", static_cast<int>(m_tempSettings.sfxVolume * 100)));
     ui.setComponentPositioning("settings_sfx_volume_value", {UIPositionMode::TOP_ALIGNED, sliderX + sliderWidth + 10, startY + 2 * rowHeight, 80, 40});
+    ui.enableAutoSizing("settings_sfx_volume_value", false);
 
     // Mute checkbox
     ui.createLabel("settings_mute_label", {leftColumnX, startY + 3 * rowHeight, labelWidth, 40}, "Mute All:");

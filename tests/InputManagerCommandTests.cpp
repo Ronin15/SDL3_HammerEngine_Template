@@ -341,6 +341,47 @@ BOOST_AUTO_TEST_CASE(EscCancelsRebind)
     BOOST_CHECK(hasEsc);
 }
 
+// Captures the core commitBinding() invariant: rebinding one device category
+// must leave the other category's binding untouched. Regression guard for a
+// class of bugs where "replace-in-category" silently clobbers cross-category
+// bindings.
+BOOST_AUTO_TEST_CASE(KeyboardRebindPreservesControllerBinding)
+{
+    TestHelpers::resetState();
+    auto& mgr = InputManager::Instance();
+
+    using C  = InputManager::Command;
+    using DC = InputManager::DeviceCategory;
+
+    // AttackLight has defaults in both categories (keyboard + GamepadButton WEST).
+    auto controllerBefore = mgr.getBindingForCategory(C::AttackLight, DC::Controller);
+    BOOST_REQUIRE(controllerBefore.has_value());
+    BOOST_REQUIRE(mgr.getBindingForCategory(C::AttackLight, DC::KeyboardMouse).has_value());
+
+    // Rebind the keyboard slot to a new scancode.
+    mgr.startRebinding(C::AttackLight, DC::KeyboardMouse);
+    BOOST_REQUIRE(mgr.isRebinding());
+
+    TestHelpers::injectKeyDown(SDL_SCANCODE_K);
+    TestHelpers::processFrame();
+
+    BOOST_CHECK(!mgr.isRebinding());
+
+    // Keyboard slot updated to the new key.
+    auto kbdAfter = mgr.getBindingForCategory(C::AttackLight, DC::KeyboardMouse);
+    BOOST_REQUIRE(kbdAfter.has_value());
+    BOOST_CHECK(kbdAfter->source == InputManager::InputSource::Keyboard);
+    BOOST_CHECK_EQUAL(kbdAfter->code, static_cast<int>(SDL_SCANCODE_K));
+
+    // Controller slot must be unchanged.
+    auto controllerAfter = mgr.getBindingForCategory(C::AttackLight, DC::Controller);
+    BOOST_REQUIRE(controllerAfter.has_value());
+    BOOST_CHECK(controllerAfter->source == controllerBefore->source);
+    BOOST_CHECK_EQUAL(controllerAfter->code, controllerBefore->code);
+
+    mgr.resetBindingsToDefaults();
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 // =============================================================================

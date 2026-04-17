@@ -108,6 +108,9 @@ void MainMenuState::update(float) {
   if (!ui.isShutdown()) {
     ui.update(0.0f);
   }
+  // Re-apply the controller-focus highlight each frame so gamepad
+  // hotplug naturally clears/restores the selection.
+  VoidLight::MenuNavigation::applySelection(kNavOrder, m_selectedIndex);
 }
 
 bool MainMenuState::exit() {
@@ -132,26 +135,24 @@ void MainMenuState::handleInput() {
       GameEngine::Instance().setRunning(false);
   }
 
-  // Developer debug shortcuts for demo states — intentionally not rebindable.
-  if (inputManager.wasKeyPressed(SDL_SCANCODE_A)) {
-      mp_stateManager->changeState(GameStateId::AI_DEMO);
-  }
-
-  if (inputManager.wasKeyPressed(SDL_SCANCODE_E)) {
-      mp_stateManager->changeState(GameStateId::EVENT_DEMO);
-  }
-
-  if (inputManager.wasKeyPressed(SDL_SCANCODE_U)) {
-      mp_stateManager->changeState(GameStateId::UI_DEMO);
-  }
-
-  if (inputManager.wasKeyPressed(SDL_SCANCODE_O)) {
-      mp_stateManager->changeState(GameStateId::OVERLAY_DEMO);
-  }
-
-  if (inputManager.wasKeyPressed(SDL_SCANCODE_S)) {
-      mp_stateManager->changeState(GameStateId::SETTINGS_MENU);
-  }
+  // Developer debug shortcuts for demo states — Debug builds only.
+  VOIDLIGHT_DEBUG_ONLY(
+    if (inputManager.wasKeyPressed(SDL_SCANCODE_A)) {
+        mp_stateManager->changeState(GameStateId::AI_DEMO);
+    }
+    if (inputManager.wasKeyPressed(SDL_SCANCODE_E)) {
+        mp_stateManager->changeState(GameStateId::EVENT_DEMO);
+    }
+    if (inputManager.wasKeyPressed(SDL_SCANCODE_U)) {
+        mp_stateManager->changeState(GameStateId::UI_DEMO);
+    }
+    if (inputManager.wasKeyPressed(SDL_SCANCODE_O)) {
+        mp_stateManager->changeState(GameStateId::OVERLAY_DEMO);
+    }
+    if (inputManager.wasKeyPressed(SDL_SCANCODE_S)) {
+        mp_stateManager->changeState(GameStateId::SETTINGS_MENU);
+    }
+  )
 }
 
 

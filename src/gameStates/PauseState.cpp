@@ -66,6 +66,9 @@ void PauseState::update(float) {
     if (!ui.isShutdown()) {
         ui.update(0.0f);
     }
+    // Re-apply the controller-focus highlight each frame so gamepad
+    // hotplug naturally clears/restores the selection.
+    VoidLight::MenuNavigation::applySelection(kNavOrder, m_selectedIndex);
 }
 
 bool PauseState::exit() {
