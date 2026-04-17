@@ -20,7 +20,12 @@ void MenuNavigation::applySelection(std::span<const std::string_view> navOrder,
   if (index >= navOrder.size()) {
     index = 0;
   }
-  UIManager::Instance().setKeyboardSelection(std::string(navOrder[index]));
+  auto &ui = UIManager::Instance();
+  if (!InputManager::Instance().isGamepadConnected()) {
+    ui.clearKeyboardSelection();
+    return;
+  }
+  ui.setKeyboardSelection(std::string(navOrder[index]));
 }
 
 void MenuNavigation::step(std::span<const std::string_view> navOrder,
@@ -41,16 +46,19 @@ bool MenuNavigation::readInputs(std::span<const std::string_view> navOrder,
     return false;
   }
   const auto &input = InputManager::Instance();
-  if (input.isCommandPressed(InputManager::Command::MenuUp)) {
-    step(navOrder, index, -1);
-  }
-  if (input.isCommandPressed(InputManager::Command::MenuDown)) {
-    step(navOrder, index, +1);
-  }
-  if (input.isCommandPressed(InputManager::Command::MenuConfirm)) {
-    if (index < navOrder.size()) {
-      UIManager::Instance().simulateClick(std::string(navOrder[index]));
-      return true;
+  const bool controllerActive = input.isGamepadConnected();
+  if (controllerActive) {
+    if (input.isCommandPressed(InputManager::Command::MenuUp)) {
+      step(navOrder, index, -1);
+    }
+    if (input.isCommandPressed(InputManager::Command::MenuDown)) {
+      step(navOrder, index, +1);
+    }
+    if (input.isCommandPressed(InputManager::Command::MenuConfirm)) {
+      if (index < navOrder.size()) {
+        UIManager::Instance().simulateClick(std::string(navOrder[index]));
+        return true;
+      }
     }
   }
   return false;

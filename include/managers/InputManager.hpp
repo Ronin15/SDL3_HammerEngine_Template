@@ -138,6 +138,10 @@ class InputManager {
     bool wasKeyPressed(SDL_Scancode key) const;
     void clearFrameInput();
 
+    // True while at least one gamepad is currently connected and opened.
+    // Used by menu navigation to gate UI-focus highlighting to controller users.
+    bool isGamepadConnected() const noexcept { return !m_gamepads.empty(); }
+
     float getAxisX(int joy, int stick) const;
     float getAxisY(int joy, int stick) const;
     bool getButtonState(int joy, int buttonNumber) const;
