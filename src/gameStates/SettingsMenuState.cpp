@@ -60,7 +60,22 @@ bool SettingsMenuState::enter() {
     // Show Graphics tab by default
     switchTab(SettingsTab::Graphics);
 
+    m_selectedIndex = 0;
+    applyKeyboardSelection();
+
     return true;
+}
+
+void SettingsMenuState::applyKeyboardSelection() const {
+    UIManager::Instance().setKeyboardSelection(std::string(kNavOrder[m_selectedIndex]));
+}
+
+void SettingsMenuState::stepSelection(int delta) {
+    const int n = static_cast<int>(kNavOrder.size());
+    int idx = static_cast<int>(m_selectedIndex) + delta;
+    idx = ((idx % n) + n) % n;
+    m_selectedIndex = static_cast<size_t>(idx);
+    applyKeyboardSelection();
 }
 
 void SettingsMenuState::update(float deltaTime) {
@@ -94,9 +109,20 @@ bool SettingsMenuState::exit() {
 void SettingsMenuState::handleInput() {
     const auto& inputManager = InputManager::Instance();
 
-    // MenuCancel to go back without saving (default: ESC/B)
-    if (inputManager.isCommandPressed(InputManager::Command::MenuCancel)) {
-        mp_stateManager->changeState(GameStateId::MAIN_MENU);
+    // Don't steal menu input while the user is capturing a rebind.
+    if (!inputManager.isRebinding()) {
+        if (inputManager.isCommandPressed(InputManager::Command::MenuUp)) {
+            stepSelection(-1);
+        }
+        if (inputManager.isCommandPressed(InputManager::Command::MenuDown)) {
+            stepSelection(+1);
+        }
+        if (inputManager.isCommandPressed(InputManager::Command::MenuConfirm)) {
+            UIManager::Instance().simulateClick(std::string(kNavOrder[m_selectedIndex]));
+        }
+        if (inputManager.isCommandPressed(InputManager::Command::MenuCancel)) {
+            mp_stateManager->changeState(GameStateId::MAIN_MENU);
+        }
     }
 
     // Tab switching shortcuts (raw scancodes — debug shortcut, not rebindable)

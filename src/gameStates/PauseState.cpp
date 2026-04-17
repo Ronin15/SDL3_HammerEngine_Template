@@ -53,7 +53,22 @@ bool PauseState::enter() {
       mp_stateManager->changeState(GameStateId::MAIN_MENU);
   });
 
+  m_selectedIndex = 0;
+  applyKeyboardSelection();
+
   return true;
+}
+
+void PauseState::applyKeyboardSelection() const {
+  UIManager::Instance().setKeyboardSelection(std::string(kNavOrder[m_selectedIndex]));
+}
+
+void PauseState::stepSelection(int delta) {
+  const int n = static_cast<int>(kNavOrder.size());
+  int idx = static_cast<int>(m_selectedIndex) + delta;
+  idx = ((idx % n) + n) % n;
+  m_selectedIndex = static_cast<size_t>(idx);
+  applyKeyboardSelection();
 }
 
 void PauseState::update(float) {
@@ -71,6 +86,7 @@ bool PauseState::exit() {
   // Only clean up PauseState-specific UI components
   // Do NOT use prepareForStateTransition() as it would clear GamePlayState's preserved UI
   auto& ui = UIManager::Instance();
+  ui.clearKeyboardSelection();
   ui.removeComponent("pause_title");
   ui.removeComponent("pause_resume_btn");
   ui.removeComponent("pause_mainmenu_btn");
@@ -83,6 +99,15 @@ bool PauseState::exit() {
 void PauseState::handleInput() {
   const auto& inputMgr = InputManager::Instance();
 
+  if (inputMgr.isCommandPressed(InputManager::Command::MenuUp)) {
+      stepSelection(-1);
+  }
+  if (inputMgr.isCommandPressed(InputManager::Command::MenuDown)) {
+      stepSelection(+1);
+  }
+  if (inputMgr.isCommandPressed(InputManager::Command::MenuConfirm)) {
+      UIManager::Instance().simulateClick(std::string(kNavOrder[m_selectedIndex]));
+  }
   // MenuCancel resumes gameplay (default: Esc / B).
   if (inputMgr.isCommandPressed(InputManager::Command::MenuCancel)) {
       mp_stateManager->popState();

@@ -368,6 +368,18 @@ public:
   bool isButtonHovered(const std::string &id) const;
   bool isComponentFocused(const std::string &id) const;
 
+  // Keyboard/gamepad selection — game states use this to highlight a button
+  // when driving menus with MenuUp/MenuDown instead of the mouse. When set,
+  // the selected component renders in HOVERED state provided the mouse is not
+  // over any other interactive component. Mouse hover always wins.
+  void setKeyboardSelection(const std::string &id);
+  void clearKeyboardSelection();
+  const std::string &getKeyboardSelection() const { return m_keyboardSelection; }
+
+  // Synthesizes a click on the named component — queues its onClick callback
+  // just like a mouse click would. Used by MenuConfirm keyboard/gamepad input.
+  void simulateClick(const std::string &id);
+
   // Callback setters
   void setOnClick(const std::string &id, std::function<void()> callback);
   void setOnValueChanged(const std::string &id,
@@ -569,6 +581,7 @@ private:
   std::vector<std::string> m_clickedButtons{};
   std::vector<std::string> m_hoveredComponents{};
   std::string m_focusedComponent{};
+  std::string m_keyboardSelection{};
   std::string m_hoveredTooltip{};
   float m_tooltipTimer{0.0f};
 

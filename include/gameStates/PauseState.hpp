@@ -8,6 +8,10 @@
 
 #include "gameStates/GameState.hpp"
 
+#include <array>
+#include <cstddef>
+#include <string_view>
+
 class PauseState : public GameState {
  public:
   bool enter() override;
@@ -24,6 +28,14 @@ class PauseState : public GameState {
   bool supportsGPURendering() const override { return true; }
 
  private:
+  static constexpr std::array<std::string_view, 2> kNavOrder{
+      "pause_resume_btn",
+      "pause_mainmenu_btn",
+  };
+  size_t m_selectedIndex{0};
+
+  void applyKeyboardSelection() const;
+  void stepSelection(int delta);
 };
 
 #endif  // PAUSE_STATE_HPP

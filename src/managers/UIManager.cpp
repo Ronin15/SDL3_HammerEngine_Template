@@ -733,6 +733,22 @@ bool UIManager::isComponentFocused(const std::string &id) const {
   return m_focusedComponent == id;
 }
 
+void UIManager::setKeyboardSelection(const std::string &id) {
+  m_keyboardSelection = id;
+}
+
+void UIManager::clearKeyboardSelection() {
+  m_keyboardSelection.clear();
+}
+
+void UIManager::simulateClick(const std::string &id) {
+  auto component = getComponent(id);
+  if (component && component->m_onClick) {
+    m_deferredCallbacks.push_back(component->m_onClick);
+    m_clickedButtons.push_back(id);
+  }
+}
+
 // Callback setters
 void UIManager::setOnClick(const std::string &id,
                            std::function<void()> callback) {
@@ -1692,6 +1708,7 @@ void UIManager::cleanupForStateTransition() {
   m_clickedButtons.clear();
   m_hoveredComponents.clear();
   m_focusedComponent.clear();
+  m_keyboardSelection.clear();
   m_hoveredTooltip.clear();
   m_tooltipTimer = 0.0f;
 
@@ -1927,6 +1944,18 @@ void UIManager::handleInput() {
       }
     }
     m_focusedComponent.clear();
+  }
+
+  // Keyboard/gamepad selection: if the mouse isn't hovering anything this
+  // frame, project the keyboard selection onto the render pipeline by putting
+  // that component into HOVERED state. Mouse hover always wins (we only run
+  // this when m_hoveredComponents is empty).
+  if (!m_keyboardSelection.empty() && m_hoveredComponents.empty()) {
+    auto selected = getComponent(m_keyboardSelection);
+    if (selected && selected->m_state != UIState::PRESSED) {
+      selected->m_state = UIState::HOVERED;
+      m_hoveredComponents.push_back(m_keyboardSelection);
+    }
   }
 }
 

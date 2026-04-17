@@ -95,7 +95,22 @@ bool MainMenuState::enter() {
     GameEngine::Instance().setRunning(false);
   });
 
+  m_selectedIndex = 0;
+  applyKeyboardSelection();
+
   return true;
+}
+
+void MainMenuState::applyKeyboardSelection() const {
+  UIManager::Instance().setKeyboardSelection(std::string(kNavOrder[m_selectedIndex]));
+}
+
+void MainMenuState::stepSelection(int delta) {
+  const int n = static_cast<int>(kNavOrder.size());
+  int idx = static_cast<int>(m_selectedIndex) + delta;
+  idx = ((idx % n) + n) % n; // positive modulo for wrap-around
+  m_selectedIndex = static_cast<size_t>(idx);
+  applyKeyboardSelection();
 }
 
 void MainMenuState::update(float) {
@@ -122,11 +137,17 @@ bool MainMenuState::exit() {
 void MainMenuState::handleInput() {
   const auto& inputManager = InputManager::Instance();
 
-  // Menu navigation via rebindable commands (default: Enter / A for confirm,
-  // Esc / B for cancel-quit).
-  if (inputManager.isCommandPressed(InputManager::Command::MenuConfirm)) {
-      mp_stateManager->changeState(GameStateId::GAME_PLAY);
+  // Menu navigation via rebindable commands.
+  if (inputManager.isCommandPressed(InputManager::Command::MenuUp)) {
+      stepSelection(-1);
   }
+  if (inputManager.isCommandPressed(InputManager::Command::MenuDown)) {
+      stepSelection(+1);
+  }
+  if (inputManager.isCommandPressed(InputManager::Command::MenuConfirm)) {
+      UIManager::Instance().simulateClick(std::string(kNavOrder[m_selectedIndex]));
+  }
+  // MenuCancel on the main menu quits the app (matches the previous Esc shortcut).
   if (inputManager.isCommandPressed(InputManager::Command::MenuCancel)) {
       GameEngine::Instance().setRunning(false);
   }

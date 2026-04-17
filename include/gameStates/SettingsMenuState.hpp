@@ -8,7 +8,11 @@
 
 #include "gameStates/GameState.hpp"
 #include "managers/InputManager.hpp"
+
+#include <array>
+#include <cstddef>
 #include <string>
+#include <string_view>
 
 /**
  * @brief Settings menu state for editing game settings
@@ -129,6 +133,21 @@ private:
     // Returns the stable UI component ID for a binding button
     static std::string bindingButtonId(InputManager::Command c,
                                        InputManager::DeviceCategory cat);
+
+    // Keyboard/gamepad navigation — focus ring covers the tab row and the
+    // Apply/Back action buttons. Settings body controls (sliders, checkboxes,
+    // rebind buttons) remain mouse-only for this pass.
+    static constexpr std::array<std::string_view, 6> kNavOrder{
+        "settings_tab_graphics",
+        "settings_tab_audio",
+        "settings_tab_gameplay",
+        "settings_tab_controls",
+        "settings_apply_btn",
+        "settings_back_btn",
+    };
+    size_t m_selectedIndex{0};
+    void applyKeyboardSelection() const;
+    void stepSelection(int delta);
 };
 
 #endif  // SETTINGS_MENU_STATE_HPP
