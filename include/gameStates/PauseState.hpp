@@ -33,9 +33,6 @@ class PauseState : public GameState {
       "pause_mainmenu_btn",
   };
   size_t m_selectedIndex{0};
-
-  void applyKeyboardSelection() const;
-  void stepSelection(int delta);
 };
 
 #endif  // PAUSE_STATE_HPP

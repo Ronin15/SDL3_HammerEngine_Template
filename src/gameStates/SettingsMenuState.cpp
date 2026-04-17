@@ -11,10 +11,13 @@
 #include "managers/GameStateManager.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
+#include "utils/MenuNavigation.hpp"
 #include "utils/ResourcePath.hpp"
 
 #include "gpu/GPURenderer.hpp"
 
+#include <algorithm>
+#include <array>
 #include <format>
 #include <thread>
 #include <chrono>
@@ -57,38 +60,32 @@ bool SettingsMenuState::enter() {
     // Create action buttons (Apply, Cancel, Back)
     createActionButtons();
 
-    // Show Graphics tab by default
+    // Show Graphics tab by default — switchTab() rebuilds the focus ring.
     switchTab(SettingsTab::Graphics);
-
-    m_selectedIndex = 0;
-    applyKeyboardSelection();
 
     return true;
 }
 
-void SettingsMenuState::applyKeyboardSelection() const {
-    UIManager::Instance().setKeyboardSelection(std::string(kNavOrder[m_selectedIndex]));
-}
-
-void SettingsMenuState::stepSelection(int delta) {
-    const int n = static_cast<int>(kNavOrder.size());
-    int idx = static_cast<int>(m_selectedIndex) + delta;
-    idx = ((idx % n) + n) % n;
-    m_selectedIndex = static_cast<size_t>(idx);
-    applyKeyboardSelection();
-}
-
 void SettingsMenuState::update(float deltaTime) {
-    // Process UI input (click detection, hover states, callbacks)
     auto& ui = UIManager::Instance();
-    if (!ui.isShutdown()) {
+    auto& inputMgr = InputManager::Instance();
+
+    // Skip UIManager input processing while a rebind is in flight AND on the
+    // frame it completes. Otherwise the mouse-button press that finalizes the
+    // rebind capture is also seen by ui.update() as a click on the binding
+    // button, which re-fires its onClick and starts a fresh rebind. Using
+    // m_pendingRefreshCommand as the in-flight marker avoids adding a
+    // dedicated flag — it's set on rebind start and cleared below.
+    const bool rebindJustFinished =
+        m_pendingRefreshCommand != InputManager::Command::COUNT &&
+        !inputMgr.isRebinding();
+    const bool suppressUI = inputMgr.isRebinding() || rebindJustFinished;
+
+    if (!ui.isShutdown() && !suppressUI) {
         ui.update(deltaTime);
     }
 
-    // After rebind capture completes, refresh the affected binding button labels
-    auto& inputMgr = InputManager::Instance();
-    if (m_pendingRefreshCommand != InputManager::Command::COUNT &&
-        !inputMgr.isRebinding()) {
+    if (rebindJustFinished) {
         refreshBindingLabels(m_pendingRefreshCommand);
         m_pendingRefreshCommand = InputManager::Command::COUNT;
     }
@@ -111,15 +108,8 @@ void SettingsMenuState::handleInput() {
 
     // Don't steal menu input while the user is capturing a rebind.
     if (!inputManager.isRebinding()) {
-        if (inputManager.isCommandPressed(InputManager::Command::MenuUp)) {
-            stepSelection(-1);
-        }
-        if (inputManager.isCommandPressed(InputManager::Command::MenuDown)) {
-            stepSelection(+1);
-        }
-        if (inputManager.isCommandPressed(InputManager::Command::MenuConfirm)) {
-            UIManager::Instance().simulateClick(std::string(kNavOrder[m_selectedIndex]));
-        }
+        VoidLight::MenuNavigation::readInputs(m_navOrder, m_selectedIndex);
+        handleSliderAdjust();
         if (inputManager.isCommandPressed(InputManager::Command::MenuCancel)) {
             mp_stateManager->changeState(GameStateId::MAIN_MENU);
         }
@@ -138,6 +128,90 @@ void SettingsMenuState::handleInput() {
     if (inputManager.wasKeyPressed(SDL_SCANCODE_4)) {
         switchTab(SettingsTab::Controls);
     }
+}
+
+namespace {
+// Slider IDs are the only components that consume MenuLeft/MenuRight.
+constexpr std::array<std::string_view, 3> kSliderIds{
+    "settings_master_volume_slider",
+    "settings_music_volume_slider",
+    "settings_sfx_volume_slider",
+};
+
+bool isSliderId(std::string_view id) {
+    return std::any_of(kSliderIds.begin(), kSliderIds.end(),
+                       [&](std::string_view s) { return s == id; });
+}
+} // namespace
+
+void SettingsMenuState::handleSliderAdjust() {
+    if (m_selectedIndex >= m_navOrder.size()) return;
+    const std::string_view selected = m_navOrder[m_selectedIndex];
+    if (!isSliderId(selected)) return;
+
+    const auto& inputMgr = InputManager::Instance();
+    auto& ui = UIManager::Instance();
+    const std::string sid(selected);
+    constexpr float kStep = 0.05f; // 5% of the [0..1] slider range per press
+    if (inputMgr.isCommandPressed(InputManager::Command::MenuLeft)) {
+        ui.setValue(sid, std::max(0.0f, ui.getValue(sid) - kStep));
+    }
+    if (inputMgr.isCommandPressed(InputManager::Command::MenuRight)) {
+        ui.setValue(sid, std::min(1.0f, ui.getValue(sid) + kStep));
+    }
+}
+
+void SettingsMenuState::rebuildNavOrder() {
+    // Populate m_navBacking first (owning dynamic strings), then build
+    // m_navOrder as a view list. Reserving up-front prevents reallocation
+    // so the string_views remain valid for the state's lifetime.
+    using DC = InputManager::DeviceCategory;
+    constexpr size_t kCmdCount = static_cast<size_t>(InputManager::Command::COUNT);
+
+    m_navBacking.clear();
+    m_navOrder.clear();
+
+    if (m_currentTab == SettingsTab::Controls) {
+        m_navBacking.reserve(kCmdCount * 2);
+        for (size_t i = 0; i < kCmdCount; ++i) {
+            auto cmd = static_cast<InputManager::Command>(i);
+            m_navBacking.push_back(bindingButtonId(cmd, DC::KeyboardMouse));
+            m_navBacking.push_back(bindingButtonId(cmd, DC::Controller));
+        }
+    }
+
+    // Tab row is always reachable.
+    m_navOrder.emplace_back("settings_tab_graphics");
+    m_navOrder.emplace_back("settings_tab_audio");
+    m_navOrder.emplace_back("settings_tab_gameplay");
+    m_navOrder.emplace_back("settings_tab_controls");
+
+    // Body of the current tab.
+    switch (m_currentTab) {
+    case SettingsTab::Graphics:
+        m_navOrder.emplace_back("settings_vsync_checkbox");
+        m_navOrder.emplace_back("settings_fullscreen_checkbox");
+        m_navOrder.emplace_back("settings_showfps_checkbox");
+        break;
+    case SettingsTab::Audio:
+        m_navOrder.emplace_back("settings_master_volume_slider");
+        m_navOrder.emplace_back("settings_music_volume_slider");
+        m_navOrder.emplace_back("settings_sfx_volume_slider");
+        m_navOrder.emplace_back("settings_mute_checkbox");
+        break;
+    case SettingsTab::Gameplay:
+        m_navOrder.emplace_back("settings_autosave_checkbox");
+        break;
+    case SettingsTab::Controls:
+        for (const auto& s : m_navBacking) {
+            m_navOrder.emplace_back(s);
+        }
+        m_navOrder.emplace_back("settings_ctrl_reset_btn");
+        break;
+    }
+
+    m_navOrder.emplace_back("settings_apply_btn");
+    m_navOrder.emplace_back("settings_back_btn");
 }
 
 
@@ -480,6 +554,12 @@ void SettingsMenuState::switchTab(SettingsTab tab) {
             ui.applyThemeToComponent("settings_tab_controls", UIComponentType::BUTTON_SUCCESS);
             break;
     }
+
+    // Rebuild the keyboard focus ring for the new tab and park the selection
+    // on the tab button the user just activated so they can step into the body.
+    rebuildNavOrder();
+    m_selectedIndex = static_cast<size_t>(tab); // tabs are the first four entries
+    VoidLight::MenuNavigation::applySelection(m_navOrder, m_selectedIndex);
 }
 
 void SettingsMenuState::updateTabVisibility() {
@@ -594,6 +674,8 @@ std::string SettingsMenuState::bindingButtonId(InputManager::Command c,
         {C::MenuCancel,    "menu_cancel"},
         {C::MenuUp,        "menu_up"},
         {C::MenuDown,      "menu_down"},
+        {C::MenuLeft,      "menu_left"},
+        {C::MenuRight,     "menu_right"},
     };
     const char* catSuffix = (cat == DC::KeyboardMouse) ? "kbd" : "ctrl";
     for (const auto& e : kTable) {
@@ -631,7 +713,9 @@ void SettingsMenuState::createControlsUI()
     constexpr int colW = 260;
     constexpr int colGap = 24;
     constexpr int btnH = 36;
-    constexpr int rowH = 50;
+    // rowH tuned to fit all 17 rebindable commands above the Apply/Back row.
+    // 17 * 42 + header + reset button leaves ~80px before the bottom action bar.
+    constexpr int rowH = 42;
     constexpr int startY = 155;
     constexpr int headerY = startY - 36;
 

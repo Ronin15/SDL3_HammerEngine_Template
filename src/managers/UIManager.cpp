@@ -743,7 +743,16 @@ void UIManager::clearKeyboardSelection() {
 
 void UIManager::simulateClick(const std::string &id) {
   auto component = getComponent(id);
-  if (component && component->m_onClick) {
+  if (!component) {
+    return;
+  }
+  // Mirror the type-specific effects of a mouse click (see update()):
+  // checkboxes toggle their state before firing onClick so the callback reads
+  // the new checked value. Buttons just fire the callback.
+  if (component->m_type == UIComponentType::CHECKBOX) {
+    component->m_checked = !component->m_checked;
+  }
+  if (component->m_onClick) {
     m_deferredCallbacks.push_back(component->m_onClick);
     m_clickedButtons.push_back(id);
   }
@@ -3068,6 +3077,14 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
 
       case UIComponentType::SLIDER:
         {
+          // When the slider is the keyboard-selected component (HOVERED state
+          // in our selection model), draw a highlight border around the full
+          // slider bounds so the player gets visual feedback. Sliders always
+          // render their handle in hoverColor, so the state alone isn't visible.
+          if (component->m_state == UIState::HOVERED) {
+            addBorder(component->m_bounds, component->m_style.hoverColor, 2);
+          }
+
           // Draw track
           UIRect trackRect = {
               component->m_bounds.x,

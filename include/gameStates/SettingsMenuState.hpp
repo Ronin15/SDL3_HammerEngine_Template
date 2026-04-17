@@ -9,10 +9,10 @@
 #include "gameStates/GameState.hpp"
 #include "managers/InputManager.hpp"
 
-#include <array>
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <vector>
 
 /**
  * @brief Settings menu state for editing game settings
@@ -134,20 +134,21 @@ private:
     static std::string bindingButtonId(InputManager::Command c,
                                        InputManager::DeviceCategory cat);
 
-    // Keyboard/gamepad navigation — focus ring covers the tab row and the
-    // Apply/Back action buttons. Settings body controls (sliders, checkboxes,
-    // rebind buttons) remain mouse-only for this pass.
-    static constexpr std::array<std::string_view, 6> kNavOrder{
-        "settings_tab_graphics",
-        "settings_tab_audio",
-        "settings_tab_gameplay",
-        "settings_tab_controls",
-        "settings_apply_btn",
-        "settings_back_btn",
-    };
+    // Keyboard/gamepad navigation — the focus ring is rebuilt per-tab in
+    // rebuildNavOrder() so body controls (checkboxes, sliders, binding rows)
+    // are reachable via MenuUp/MenuDown. Sliders accept MenuLeft/MenuRight.
+    //
+    // m_navBacking owns the Controls-tab binding-button IDs that are generated
+    // dynamically (bindingButtonId returns a std::string). m_navOrder holds
+    // string_views into either string literals (static tabs/apply/back IDs) or
+    // into m_navBacking's entries. Rebuilt atomically on tab switch.
+    std::vector<std::string> m_navBacking{};
+    std::vector<std::string_view> m_navOrder{};
     size_t m_selectedIndex{0};
-    void applyKeyboardSelection() const;
-    void stepSelection(int delta);
+    void rebuildNavOrder();
+    // Reads MenuLeft/MenuRight when the selected component is a slider and
+    // nudges its value by the given delta fraction of the slider's range.
+    void handleSliderAdjust();
 };
 
 #endif  // SETTINGS_MENU_STATE_HPP

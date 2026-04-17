@@ -41,9 +41,6 @@ class MainMenuState : public GameState {
       "mainmenu_exit_btn",
   };
   size_t m_selectedIndex{0};
-
-  void applyKeyboardSelection() const;
-  void stepSelection(int delta);
 };
 
 #endif  // MAIN_MENU_STATE_HPP

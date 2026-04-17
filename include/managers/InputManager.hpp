@@ -33,7 +33,7 @@ class InputManager {
         WorldInteract,   // LMB world click (mouse pos read from getMousePosition())
         ZoomIn, ZoomOut,
         // Menu
-        MenuConfirm, MenuCancel, MenuUp, MenuDown,
+        MenuConfirm, MenuCancel, MenuUp, MenuDown, MenuLeft, MenuRight,
         COUNT
     };
 

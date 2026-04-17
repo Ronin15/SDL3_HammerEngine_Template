@@ -9,6 +9,7 @@
 #include "managers/UIConstants.hpp"
 #include "managers/GameStateManager.hpp"
 #include "core/GameEngine.hpp"
+#include "utils/MenuNavigation.hpp"
 
 #include "gpu/GPURenderer.hpp"
 
@@ -54,21 +55,9 @@ bool PauseState::enter() {
   });
 
   m_selectedIndex = 0;
-  applyKeyboardSelection();
+  VoidLight::MenuNavigation::applySelection(kNavOrder, m_selectedIndex);
 
   return true;
-}
-
-void PauseState::applyKeyboardSelection() const {
-  UIManager::Instance().setKeyboardSelection(std::string(kNavOrder[m_selectedIndex]));
-}
-
-void PauseState::stepSelection(int delta) {
-  const int n = static_cast<int>(kNavOrder.size());
-  int idx = static_cast<int>(m_selectedIndex) + delta;
-  idx = ((idx % n) + n) % n;
-  m_selectedIndex = static_cast<size_t>(idx);
-  applyKeyboardSelection();
 }
 
 void PauseState::update(float) {
@@ -99,15 +88,7 @@ bool PauseState::exit() {
 void PauseState::handleInput() {
   const auto& inputMgr = InputManager::Instance();
 
-  if (inputMgr.isCommandPressed(InputManager::Command::MenuUp)) {
-      stepSelection(-1);
-  }
-  if (inputMgr.isCommandPressed(InputManager::Command::MenuDown)) {
-      stepSelection(+1);
-  }
-  if (inputMgr.isCommandPressed(InputManager::Command::MenuConfirm)) {
-      UIManager::Instance().simulateClick(std::string(kNavOrder[m_selectedIndex]));
-  }
+  VoidLight::MenuNavigation::readInputs(kNavOrder, m_selectedIndex);
   // MenuCancel resumes gameplay (default: Esc / B).
   if (inputMgr.isCommandPressed(InputManager::Command::MenuCancel)) {
       mp_stateManager->popState();

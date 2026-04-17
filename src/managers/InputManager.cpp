@@ -484,14 +484,18 @@ void InputManager::loadDefaultBindings()
     add(C::ZoomOut,       S::Keyboard,            SDL_SCANCODE_LEFTBRACKET);
     add(C::ZoomOut,       S::GamepadButton,       SDL_GAMEPAD_BUTTON_DPAD_DOWN);
 
+    // Menu confirm/cancel keep keyboard defaults (Enter/Esc) because they're
+    // universal single-key shortcuts that work independently of an on-screen
+    // selection cursor. The four directional Menu commands are gamepad-only:
+    // keyboard+mouse users drive menu focus with the cursor, not arrow keys.
     add(C::MenuConfirm,   S::Keyboard,            SDL_SCANCODE_RETURN);
     add(C::MenuConfirm,   S::GamepadButton,       SDL_GAMEPAD_BUTTON_SOUTH);           // A/Cross
     add(C::MenuCancel,    S::Keyboard,            SDL_SCANCODE_ESCAPE);
     add(C::MenuCancel,    S::GamepadButton,       SDL_GAMEPAD_BUTTON_EAST);            // B/Circle
-    add(C::MenuUp,        S::Keyboard,            SDL_SCANCODE_UP);
     add(C::MenuUp,        S::GamepadButton,       SDL_GAMEPAD_BUTTON_DPAD_UP);
-    add(C::MenuDown,      S::Keyboard,            SDL_SCANCODE_DOWN);
     add(C::MenuDown,      S::GamepadButton,       SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    add(C::MenuLeft,      S::GamepadButton,       SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+    add(C::MenuRight,     S::GamepadButton,       SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
 }
 
 void InputManager::resetBindingsToDefaults()
@@ -590,6 +594,8 @@ namespace
             case C::MenuCancel:    return "menu_cancel";
             case C::MenuUp:        return "menu_up";
             case C::MenuDown:      return "menu_down";
+            case C::MenuLeft:      return "menu_left";
+            case C::MenuRight:     return "menu_right";
             case C::COUNT:         return nullptr;
         }
         return nullptr;
@@ -913,6 +919,8 @@ std::string InputManager::commandDisplayName(Command c) const
         case C::MenuCancel:    return "Menu Cancel";
         case C::MenuUp:        return "Menu Up";
         case C::MenuDown:      return "Menu Down";
+        case C::MenuLeft:      return "Menu Left";
+        case C::MenuRight:     return "Menu Right";
         case C::COUNT:         return "Unknown";
     }
     return "Unknown";
