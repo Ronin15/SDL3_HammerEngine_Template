@@ -64,4 +64,22 @@ bool MenuNavigation::readInputs(std::span<const std::string_view> navOrder,
   return false;
 }
 
+bool MenuNavigation::cancelPressed() {
+  const auto &input = InputManager::Instance();
+  return input.isGamepadConnected() &&
+         input.isCommandPressed(InputManager::Command::MenuCancel);
+}
+
+bool MenuNavigation::leftPressed() {
+  const auto &input = InputManager::Instance();
+  return input.isGamepadConnected() &&
+         input.isCommandPressed(InputManager::Command::MenuLeft);
+}
+
+bool MenuNavigation::rightPressed() {
+  const auto &input = InputManager::Instance();
+  return input.isGamepadConnected() &&
+         input.isCommandPressed(InputManager::Command::MenuRight);
+}
+
 } // namespace VoidLight

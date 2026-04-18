@@ -423,7 +423,7 @@ BOOST_AUTO_TEST_CASE(TestRecordCombatEventReceived) {
     BOOST_CHECK(memData.lastAttacker == attacker);
     BOOST_CHECK(approxEqual(memData.totalDamageReceived, 25.0f));
     BOOST_CHECK_EQUAL(memData.combatEncounters, 1);
-    BOOST_CHECK(memData.isInCombat());
+    BOOST_CHECK(memData.lastCombatTime < Behaviors::COMBAT_TIMEOUT_SECONDS);
 }
 
 BOOST_AUTO_TEST_CASE(TestRecordCombatEventDealt) {

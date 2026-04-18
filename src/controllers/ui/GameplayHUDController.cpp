@@ -47,7 +47,6 @@ void GameplayHUDController::update(float deltaTime)
     }
 
     const auto& charData = edm.getCharacterDataByIndex(targetIdx);
-    m_cachedTargetMaxHealth = charData.maxHealth;
     m_cachedTargetHealth = (charData.maxHealth > 0.0f)
         ? (charData.health / charData.maxHealth) * 100.0f
         : 0.0f;
@@ -116,7 +115,6 @@ void GameplayHUDController::onCombatEvent(const EventData& data)
     m_targetedHandle = targetHandle;
     m_targetDisplayTimer = TARGET_DISPLAY_DURATION;
     const float maxHealth = edm.getCharacterDataByIndex(targetIdx).maxHealth;
-    m_cachedTargetMaxHealth = maxHealth;
     m_cachedTargetHealth = (maxHealth > 0.0f)
         ? (damageEvent->getRemainingHealth() / maxHealth) * 100.0f
         : 0.0f;

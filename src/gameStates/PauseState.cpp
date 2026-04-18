@@ -92,8 +92,9 @@ void PauseState::handleInput() {
   const auto& inputMgr = InputManager::Instance();
 
   VoidLight::MenuNavigation::readInputs(kNavOrder, m_selectedIndex);
-  // MenuCancel resumes gameplay (default: Esc / B).
-  if (inputMgr.isCommandPressed(InputManager::Command::MenuCancel)) {
+  // MenuCancel resumes gameplay. Gamepad-only by design;
+  // keyboard+mouse users click the Resume button.
+  if (VoidLight::MenuNavigation::cancelPressed()) {
       mp_stateManager->popState();
   }
 

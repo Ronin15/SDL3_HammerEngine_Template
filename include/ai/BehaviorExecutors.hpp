@@ -107,6 +107,16 @@ namespace BehaviorMessage {
 namespace Behaviors {
 
 // ============================================================================
+// BEHAVIOR TUNING CONSTANTS
+// ============================================================================
+
+// Seconds since the most recent combat event before an NPC is no longer
+// considered "in combat" for behavior-layer decisions (pathfinding priority,
+// alertness, etc.). Lives here, not on NPCMemoryData: EDM holds state
+// (`lastCombatTime`), policy decisions live in the behavior layer.
+constexpr float COMBAT_TIMEOUT_SECONDS = 5.0f;
+
+// ============================================================================
 // EXECUTION FUNCTIONS (one per behavior type)
 // ============================================================================
 

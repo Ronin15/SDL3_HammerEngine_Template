@@ -115,7 +115,8 @@ void SettingsMenuState::handleInput() {
     if (!inputManager.isRebinding()) {
         VoidLight::MenuNavigation::readInputs(m_navOrder, m_selectedIndex);
         handleSliderAdjust();
-        if (inputManager.isCommandPressed(InputManager::Command::MenuCancel)) {
+        // Gamepad-only; keyboard+mouse users click the Back button.
+        if (VoidLight::MenuNavigation::cancelPressed()) {
             mp_stateManager->changeState(GameStateId::MAIN_MENU);
         }
     }
@@ -140,9 +141,9 @@ void SettingsMenuState::handleSliderAdjust() {
     const std::string_view selected = m_navOrder[m_selectedIndex];
     if (!isSliderId(selected)) return;
 
-    const auto& inputMgr = InputManager::Instance();
-    const bool left  = inputMgr.isCommandPressed(InputManager::Command::MenuLeft);
-    const bool right = inputMgr.isCommandPressed(InputManager::Command::MenuRight);
+    // Gamepad-only slider adjust; keyboard+mouse users drag the slider handle.
+    const bool left  = VoidLight::MenuNavigation::leftPressed();
+    const bool right = VoidLight::MenuNavigation::rightPressed();
     if (!left && !right) return;
 
     auto& ui = UIManager::Instance();

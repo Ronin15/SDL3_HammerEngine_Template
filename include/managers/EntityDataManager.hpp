@@ -1339,12 +1339,13 @@ struct alignas(64) NPCMemoryData {
     // Flags
     static constexpr uint8_t FLAG_VALID = 0x01;
     static constexpr uint8_t FLAG_HAS_OVERFLOW = 0x02;
-    static constexpr float COMBAT_TIMEOUT = 5.0f;
+    // Sentinel value — "no combat has ever occurred for this NPC".
+    // Not a threshold: data convention only. The "recently in combat" policy
+    // lives in Behaviors::COMBAT_TIMEOUT_SECONDS (BehaviorExecutors.hpp).
     static constexpr float NO_COMBAT_HISTORY = 999.0f;
 
     [[nodiscard]] bool isValid() const noexcept { return flags & FLAG_VALID; }
     [[nodiscard]] bool hasOverflow() const noexcept { return flags & FLAG_HAS_OVERFLOW; }
-    [[nodiscard]] bool isInCombat() const noexcept { return lastCombatTime < COMBAT_TIMEOUT; }
 
     void setValid(bool v) noexcept {
         if (v) flags |= FLAG_VALID;

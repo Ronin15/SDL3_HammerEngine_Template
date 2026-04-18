@@ -31,6 +31,19 @@ public:
   // controller is attached.
   static bool readInputs(std::span<const std::string_view> navOrder,
                          size_t &index, bool enabled = true);
+
+  // Returns true this frame if MenuCancel was pressed AND a gamepad is
+  // connected. Menu commands are controller-only by design; keyboard+mouse
+  // users navigate menus via mouse clicks.
+  [[nodiscard]] static bool cancelPressed();
+
+  // Returns true this frame if MenuLeft was pressed AND a gamepad is
+  // connected. Controller-only — see cancelPressed() for the rationale.
+  [[nodiscard]] static bool leftPressed();
+
+  // Returns true this frame if MenuRight was pressed AND a gamepad is
+  // connected. Controller-only — see cancelPressed() for the rationale.
+  [[nodiscard]] static bool rightPressed();
 };
 
 } // namespace VoidLight

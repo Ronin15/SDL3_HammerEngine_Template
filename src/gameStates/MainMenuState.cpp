@@ -130,8 +130,9 @@ void MainMenuState::handleInput() {
   const auto& inputManager = InputManager::Instance();
 
   VoidLight::MenuNavigation::readInputs(kNavOrder, m_selectedIndex);
-  // MenuCancel on the main menu quits the app (matches the previous Esc shortcut).
-  if (inputManager.isCommandPressed(InputManager::Command::MenuCancel)) {
+  // MenuCancel on the main menu quits the app. Gamepad-only by design;
+  // keyboard+mouse users click the Exit button.
+  if (VoidLight::MenuNavigation::cancelPressed()) {
       GameEngine::Instance().setRunning(false);
   }
 
