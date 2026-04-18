@@ -1955,13 +1955,26 @@ void UIManager::handleInput() {
     m_focusedComponent.clear();
   }
 
-  // Keyboard/gamepad selection: if the mouse isn't hovering anything this
-  // frame, project the keyboard selection onto the render pipeline by putting
-  // that component into HOVERED state. Mouse hover always wins (we only run
-  // this when m_hoveredComponents is empty).
-  if (!m_keyboardSelection.empty() && m_hoveredComponents.empty()) {
+  // Gamepad/keyboard selection wins over mouse hover when active.
+  // MenuNavigation::applySelection() only sets m_keyboardSelection when a
+  // gamepad is connected, so a non-empty value implies gamepad-driven menu
+  // navigation. In that mode the mouse cursor is typically stale (user isn't
+  // moving it), and letting a stale mouse hover suppress the gamepad highlight
+  // means the selected component has no visible highlight.
+  if (!m_keyboardSelection.empty()) {
+    // Clear any HOVERED state the mouse-hover loop just set on other
+    // components so we render exactly one highlight (the gamepad target).
+    for (const auto &id : m_hoveredComponents) {
+      auto other = getComponent(id);
+      if (other && other->m_state == UIState::HOVERED) {
+        other->m_state = UIState::NORMAL;
+      }
+    }
+    m_hoveredComponents.clear();
+
     auto selected = getComponent(m_keyboardSelection);
-    if (selected && selected->m_state != UIState::PRESSED) {
+    if (selected && selected->m_visible && selected->m_enabled &&
+        selected->m_state != UIState::PRESSED) {
       selected->m_state = UIState::HOVERED;
       m_hoveredComponents.push_back(m_keyboardSelection);
     }
