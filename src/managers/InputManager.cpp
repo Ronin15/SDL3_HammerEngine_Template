@@ -224,9 +224,13 @@ void InputManager::refreshCommandState()
 {
     // Rebind capture takes priority: when active, no normal sampling occurs and
     // all command queries return false (guarded in isCommandDown/Pressed/Released).
+    bool rebindJustCompleted = false;
     if (m_rebindCommand != Command::COUNT) {
         captureRebind();
-        return;
+        rebindJustCompleted = (m_rebindCommand == Command::COUNT);
+        if (!rebindJustCompleted) {
+            return;
+        }
     }
 
     m_previousDown = m_currentDown;
@@ -239,6 +243,16 @@ void InputManager::refreshCommandState()
             }
         }
         m_currentDown[i] = down;
+    }
+
+    // Rebind just finalized this frame: consume the input that captured the
+    // binding by freezing previousDown = currentDown. Without this, the A
+    // press that captures a gamepad binding would also look like a fresh
+    // rising edge for MenuConfirm on the next frame — re-firing simulateClick
+    // on the binding row and reopening the just-closed dialog (flash + a
+    // third press needed to finally bind).
+    if (rebindJustCompleted) {
+        m_previousDown = m_currentDown;
     }
 }
 
