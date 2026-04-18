@@ -715,8 +715,9 @@ void SettingsMenuState::createControlsUI()
     auto& inputMgr = InputManager::Instance();
 
     // Two device-typed columns: Keyboard & Mouse and Controller. Column
-    // width is wide enough for "Gamepad rightshoulder"; the UIManager
-    // auto-sizing fallback will grow the button further if needed.
+    // width fits the longest dual-annotated label ("Start / Options",
+    // "D-Pad Right"); UIManager auto-sizing grows the button if a user
+    // rebinds to something longer.
     constexpr int leftX = 100;
     constexpr int labelW = 200;
     constexpr int colW = 260;

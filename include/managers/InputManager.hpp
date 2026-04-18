@@ -109,8 +109,21 @@ class InputManager {
     // -------------------------------------------------------------------------
     // UI helpers
     // -------------------------------------------------------------------------
-    std::string describeBinding(InputBinding b) const;   // "F", "Left Mouse", "Gamepad A"
+    std::string describeBinding(InputBinding b) const;   // "F", "Left Mouse", "A", "Cross"
     std::string commandDisplayName(Command c) const;     // "Attack (Light)"
+
+    // Controller family for vendor-specific button labels. Detected from
+    // SDL_GetGamepadType on the primary connected gamepad. Generic covers
+    // unknown/standard pads modeled after Xbox (which is SDL's internal
+    // convention) — labels default to Xbox-style. We don't ship
+    // Nintendo-specific labels; Switch pads fall through to Generic.
+    enum class GamepadVendor : uint8_t {
+        Xbox,
+        PlayStation,
+        Generic,
+    };
+
+    [[nodiscard]] GamepadVendor getGamepadVendor() const noexcept;
 
     // -------------------------------------------------------------------------
     // Existing interface

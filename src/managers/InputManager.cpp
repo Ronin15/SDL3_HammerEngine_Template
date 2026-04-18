@@ -869,6 +869,95 @@ bool InputManager::saveBindingsToFile(const std::string& path) const
 // Command-layer — UI helpers
 // =============================================================================
 
+// ---------------------------------------------------------------------------
+// Gamepad label policy
+// ---------------------------------------------------------------------------
+// Face buttons (SOUTH/EAST/WEST/NORTH) go through SDL_GetGamepadButtonLabel,
+// which returns the vendor-specific SDL_GamepadButtonLabel enum (A/B/X/Y for
+// Xbox, CROSS/CIRCLE/SQUARE/TRIANGLE for PlayStation). SDL3 handles the vendor
+// detection natively here — we just translate its enum to a display string.
+//
+// For non-face buttons SDL does not expose a vendor-label API, so we branch on
+// our own getGamepadVendor():
+//   * Different printed labels → vendor-specific string (LB vs L1, LT vs L2).
+//   * Same printed label → single universal string (D-Pad, Guide/PS excluded).
+//   * Functionally-universal buttons → single string regardless of print
+//     (START → "Start" — it is the pause button on both platforms even though
+//     PS prints "OPTIONS" on the cap).
+//   * Functionally-different buttons → vendor-specific even when the button
+//     position matches (BACK → "Back" on Xbox for the secondary menu, "Share"
+//     on PS for screenshot/capture — not interchangeable).
+
+static const char* faceButtonLabel(SDL_GamepadButtonLabel label)
+{
+    switch (label) {
+        case SDL_GAMEPAD_BUTTON_LABEL_A:        return "A";
+        case SDL_GAMEPAD_BUTTON_LABEL_B:        return "B";
+        case SDL_GAMEPAD_BUTTON_LABEL_X:        return "X";
+        case SDL_GAMEPAD_BUTTON_LABEL_Y:        return "Y";
+        case SDL_GAMEPAD_BUTTON_LABEL_CROSS:    return "Cross";
+        case SDL_GAMEPAD_BUTTON_LABEL_CIRCLE:   return "Circle";
+        case SDL_GAMEPAD_BUTTON_LABEL_SQUARE:   return "Square";
+        case SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE: return "Triangle";
+        case SDL_GAMEPAD_BUTTON_LABEL_UNKNOWN:  return nullptr;
+    }
+    return nullptr;
+}
+
+// Non-face buttons. SDL has no built-in label API here, so we branch.
+// Returns nullptr for unmapped buttons; caller falls back to SDL's raw name.
+static const char* nonFaceButtonLabel(SDL_GamepadButton btn,
+                                      InputManager::GamepadVendor vendor)
+{
+    using V = InputManager::GamepadVendor;
+    const bool isPS = (vendor == V::PlayStation);
+    switch (btn) {
+        case SDL_GAMEPAD_BUTTON_BACK:           return isPS ? "Share"   : "Back";
+        case SDL_GAMEPAD_BUTTON_GUIDE:          return isPS ? "PS"      : "Guide";
+        case SDL_GAMEPAD_BUTTON_START:          return "Start";  // universal (pause)
+        case SDL_GAMEPAD_BUTTON_LEFT_STICK:     return isPS ? "L3"      : "L-Stick";
+        case SDL_GAMEPAD_BUTTON_RIGHT_STICK:    return isPS ? "R3"      : "R-Stick";
+        case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:  return isPS ? "L1"      : "LB";
+        case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: return isPS ? "R1"      : "RB";
+        case SDL_GAMEPAD_BUTTON_DPAD_UP:        return "D-Pad Up";
+        case SDL_GAMEPAD_BUTTON_DPAD_DOWN:      return "D-Pad Down";
+        case SDL_GAMEPAD_BUTTON_DPAD_LEFT:      return "D-Pad Left";
+        case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:     return "D-Pad Right";
+        default:                                return nullptr;
+    }
+}
+
+// Trigger label (triggers are axes in SDL, not buttons). Xbox and Generic
+// share the LT/RT convention; PlayStation uses L2/R2.
+static const char* gamepadTriggerLabel(SDL_GamepadAxis axis,
+                                       InputManager::GamepadVendor vendor)
+{
+    const bool isPS = (vendor == InputManager::GamepadVendor::PlayStation);
+    switch (axis) {
+        case SDL_GAMEPAD_AXIS_LEFT_TRIGGER:  return isPS ? "L2" : "LT";
+        case SDL_GAMEPAD_AXIS_RIGHT_TRIGGER: return isPS ? "R2" : "RT";
+        default:                             return nullptr;
+    }
+}
+
+InputManager::GamepadVendor InputManager::getGamepadVendor() const noexcept
+{
+    if (m_gamepads.empty() || !m_gamepads[0].pGamepad) {
+        return GamepadVendor::Generic;
+    }
+    switch (SDL_GetGamepadType(m_gamepads[0].pGamepad)) {
+        case SDL_GAMEPAD_TYPE_XBOX360:
+        case SDL_GAMEPAD_TYPE_XBOXONE:
+            return GamepadVendor::Xbox;
+        case SDL_GAMEPAD_TYPE_PS3:
+        case SDL_GAMEPAD_TYPE_PS4:
+        case SDL_GAMEPAD_TYPE_PS5:
+            return GamepadVendor::PlayStation;
+        default:
+            return GamepadVendor::Generic;
+    }
+}
+
 std::string InputManager::describeBinding(InputBinding b) const
 {
     using S = InputSource;
@@ -885,16 +974,47 @@ std::string InputManager::describeBinding(InputBinding b) const
                 default: return "Mouse";
             }
         case S::GamepadButton: {
-            const char* name = SDL_GetGamepadStringForButton(static_cast<SDL_GamepadButton>(b.code));
-            return name ? std::format("Gamepad {}", name) : "Gamepad Btn";
+            const auto btn = static_cast<SDL_GamepadButton>(b.code);
+            // Face buttons: let SDL3 resolve the vendor label (A/B/X/Y or
+            // Cross/Circle/Square/Triangle) from the connected controller.
+            if (btn == SDL_GAMEPAD_BUTTON_SOUTH || btn == SDL_GAMEPAD_BUTTON_EAST ||
+                btn == SDL_GAMEPAD_BUTTON_WEST  || btn == SDL_GAMEPAD_BUTTON_NORTH)
+            {
+                SDL_Gamepad* pad = m_gamepads.empty() ? nullptr : m_gamepads[0].pGamepad;
+                const SDL_GamepadButtonLabel sdlLabel =
+                    pad ? SDL_GetGamepadButtonLabel(pad, btn)
+                        : SDL_GetGamepadButtonLabelForType(SDL_GAMEPAD_TYPE_XBOXONE, btn);
+                if (const char* faceLabel = faceButtonLabel(sdlLabel)) {
+                    return faceLabel;
+                }
+            }
+            // All other buttons: our own vendor policy.
+            if (const char* label = nonFaceButtonLabel(btn, getGamepadVendor())) {
+                return label;
+            }
+            // Fallback for any new SDL button SDL3 adds later.
+            const char* sdlName = SDL_GetGamepadStringForButton(btn);
+            return sdlName ? std::format("Gamepad {}", sdlName) : "Gamepad Btn";
         }
-        case S::GamepadAxisPositive: {
-            std::string axis = encodeBindingCode(b.source, b.code);
-            return std::format("Stick {} +", axis);
-        }
+        case S::GamepadAxisPositive:
         case S::GamepadAxisNegative: {
-            std::string axis = encodeBindingCode(b.source, b.code);
-            return std::format("Stick {} -", axis);
+            const auto axis = static_cast<SDL_GamepadAxis>(b.code);
+            const GamepadVendor vendor = getGamepadVendor();
+            if (const char* triggerLabel = gamepadTriggerLabel(axis, vendor)) {
+                return triggerLabel;
+            }
+            // Stick axis: direction matters.
+            const char* axisName = [&] {
+                switch (axis) {
+                    case SDL_GAMEPAD_AXIS_LEFTX:  return "L-Stick X";
+                    case SDL_GAMEPAD_AXIS_LEFTY:  return "L-Stick Y";
+                    case SDL_GAMEPAD_AXIS_RIGHTX: return "R-Stick X";
+                    case SDL_GAMEPAD_AXIS_RIGHTY: return "R-Stick Y";
+                    default:                      return "Stick";
+                }
+            }();
+            const char* sign = (b.source == S::GamepadAxisPositive) ? "+" : "-";
+            return std::format("{} {}", axisName, sign);
         }
     }
     return "Unknown";
