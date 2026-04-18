@@ -113,13 +113,22 @@ size_t JsonValue::size() const {
   return 0;
 }
 
-std::string JsonValue::toString() const {
+std::string JsonValue::toString(bool pretty) const {
   std::ostringstream oss;
-  writeToStream(oss);
+  writeToStream(oss, pretty ? 0 : -1);
   return oss.str();
 }
 
-void JsonValue::writeToStream(std::ostream &stream) const {
+namespace {
+void writeIndent(std::ostream &stream, int depth) {
+  for (int i = 0; i < depth; ++i) {
+    stream << "  ";
+  }
+}
+} // namespace
+
+void JsonValue::writeToStream(std::ostream &stream, int depth) const {
+  const bool pretty = depth >= 0;
   switch (getType()) {
   case JsonType::Null:
     stream << "null";
@@ -140,26 +149,52 @@ void JsonValue::writeToStream(std::ostream &stream) const {
     stream << "\"" << asString() << "\"";
     break;
   case JsonType::Array: {
-    stream << "[";
     const auto &arr = asArray();
+    if (arr.empty()) {
+      stream << "[]";
+      break;
+    }
+    stream << "[";
     for (size_t i = 0; i < arr.size(); ++i) {
       if (i > 0)
-        stream << ",";
-      arr[i].writeToStream(stream);
+        stream << (pretty ? "," : ",");
+      if (pretty) {
+        stream << "\n";
+        writeIndent(stream, depth + 1);
+      }
+      arr[i].writeToStream(stream, pretty ? depth + 1 : -1);
+    }
+    if (pretty) {
+      stream << "\n";
+      writeIndent(stream, depth);
     }
     stream << "]";
     break;
   }
   case JsonType::Object: {
-    stream << "{";
     const auto &obj = asObject();
+    if (obj.empty()) {
+      stream << "{}";
+      break;
+    }
+    stream << "{";
     bool first = true;
     for (const auto &[key, value] : obj) {
       if (!first)
         stream << ",";
       first = false;
+      if (pretty) {
+        stream << "\n";
+        writeIndent(stream, depth + 1);
+      }
       stream << "\"" << key << "\":";
-      value.writeToStream(stream);
+      if (pretty)
+        stream << " ";
+      value.writeToStream(stream, pretty ? depth + 1 : -1);
+    }
+    if (pretty) {
+      stream << "\n";
+      writeIndent(stream, depth);
     }
     stream << "}";
     break;

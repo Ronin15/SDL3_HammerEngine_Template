@@ -169,6 +169,9 @@ bool GamePlayState::enter() {
     ui.createLabel("gameplay_fps", {labelPadding, 6, 120, barHeight - 12},
                    "FPS: --");
     ui.setComponentVisible("gameplay_fps", false);
+    // Fixed 120px width fits any "FPS: nnn.n" — skip per-setText font metrics
+    // since this updates whenever FPS crosses the 0.05 delta threshold.
+    ui.enableAutoSizing("gameplay_fps", false);
     UIPositioning fpsPos;
     fpsPos.mode = UIPositionMode::TOP_ALIGNED;
     fpsPos.offsetX = labelPadding;

@@ -859,7 +859,7 @@ bool InputManager::saveBindingsToFile(const std::string& path) const
         return false;
     }
 
-    file << root.toString() << '\n';
+    file << root.toString(/*pretty=*/true) << '\n';
 
     INPUT_INFO(std::format("Saved input bindings to '{}'", path));
     return true;

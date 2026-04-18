@@ -326,33 +326,22 @@ void FrameProfiler::createOverlayComponents()
 
     constexpr int BASE_OFFSET = H + M - PAD;  // 150 + 10 - 8 = 152
 
-    ui.createLabelAtBottomRight("profiler_frame", "Frame: --", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 1*LINE_H);
-    ui.setStyle("profiler_frame", labelStyle);
-    ui.setComponentZOrder("profiler_frame", UIConstants::PROFILER_ZORDER_LABEL);
+    // Fixed LABEL_W x LINE_H bounds fit any timing string — skip per-setText
+    // font-metrics work since these labels update every frame.
+    auto addProfilerLabel = [&](const char* id, const char* initial, int row) {
+        ui.createLabelAtBottomRight(id, initial, LABEL_W, LINE_H, M + PAD, BASE_OFFSET - row*LINE_H);
+        ui.setStyle(id, labelStyle);
+        ui.setComponentZOrder(id, UIConstants::PROFILER_ZORDER_LABEL);
+        ui.enableAutoSizing(id, false);
+    };
 
-    ui.createLabelAtBottomRight("profiler_present", "Present: --", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 2*LINE_H);
-    ui.setStyle("profiler_present", labelStyle);
-    ui.setComponentZOrder("profiler_present", UIConstants::PROFILER_ZORDER_LABEL);
-
-    ui.createLabelAtBottomRight("profiler_render", "Render: --", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 3*LINE_H);
-    ui.setStyle("profiler_render", labelStyle);
-    ui.setComponentZOrder("profiler_render", UIConstants::PROFILER_ZORDER_LABEL);
-
-    ui.createLabelAtBottomRight("profiler_update", "Update: --", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 4*LINE_H);
-    ui.setStyle("profiler_update", labelStyle);
-    ui.setComponentZOrder("profiler_update", UIConstants::PROFILER_ZORDER_LABEL);
-
-    ui.createLabelAtBottomRight("profiler_events", "Events: --", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 5*LINE_H);
-    ui.setStyle("profiler_events", labelStyle);
-    ui.setComponentZOrder("profiler_events", UIConstants::PROFILER_ZORDER_LABEL);
-
-    ui.createLabelAtBottomRight("profiler_threshold", "Threshold: --", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 6*LINE_H);
-    ui.setStyle("profiler_threshold", labelStyle);
-    ui.setComponentZOrder("profiler_threshold", UIConstants::PROFILER_ZORDER_LABEL);
-
-    ui.createLabelAtBottomRight("profiler_hitch", "", LABEL_W, LINE_H, M + PAD, BASE_OFFSET - 7*LINE_H);
-    ui.setStyle("profiler_hitch", labelStyle);
-    ui.setComponentZOrder("profiler_hitch", UIConstants::PROFILER_ZORDER_LABEL);
+    addProfilerLabel("profiler_frame",     "Frame: --",     1);
+    addProfilerLabel("profiler_present",   "Present: --",   2);
+    addProfilerLabel("profiler_render",    "Render: --",    3);
+    addProfilerLabel("profiler_update",    "Update: --",    4);
+    addProfilerLabel("profiler_events",    "Events: --",    5);
+    addProfilerLabel("profiler_threshold", "Threshold: --", 6);
+    addProfilerLabel("profiler_hitch",     "",              7);
 }
 
 void FrameProfiler::destroyOverlayComponents()
