@@ -153,6 +153,10 @@ bool GamePlayState::enter() {
     // Right-align the text within the label
     ui.setLabelAlignment("gameplay_time_label", UIAlignment::CENTER_RIGHT);
 
+    // Full-width label driven by setComponentPositioning — disable auto-sizing
+    // so setText() updates don't shrink bounds back to content width.
+    ui.enableAutoSizing("gameplay_time_label", false);
+
     // Full-width positioning for resize handling
     UIPositioning labelPos;
     labelPos.mode = UIPositionMode::TOP_ALIGNED;
