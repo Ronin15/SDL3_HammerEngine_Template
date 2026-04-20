@@ -125,6 +125,29 @@ void writeIndent(std::ostream &stream, int depth) {
     stream << "  ";
   }
 }
+
+void writeEscapedString(std::ostream &stream, std::string_view s) {
+  stream << '"';
+  for (unsigned char c : s) {
+    switch (c) {
+    case '"':  stream << "\\\""; break;
+    case '\\': stream << "\\\\"; break;
+    case '\b': stream << "\\b";  break;
+    case '\f': stream << "\\f";  break;
+    case '\n': stream << "\\n";  break;
+    case '\r': stream << "\\r";  break;
+    case '\t': stream << "\\t";  break;
+    default:
+      if (c < 0x20) {
+        stream << std::format("\\u{:04x}", static_cast<unsigned int>(c));
+      } else {
+        stream << static_cast<char>(c);
+      }
+      break;
+    }
+  }
+  stream << '"';
+}
 } // namespace
 
 void JsonValue::writeToStream(std::ostream &stream, int depth) const {
@@ -146,7 +169,7 @@ void JsonValue::writeToStream(std::ostream &stream, int depth) const {
     break;
   }
   case JsonType::String:
-    stream << "\"" << asString() << "\"";
+    writeEscapedString(stream, asString());
     break;
   case JsonType::Array: {
     const auto &arr = asArray();
@@ -187,7 +210,8 @@ void JsonValue::writeToStream(std::ostream &stream, int depth) const {
         stream << "\n";
         writeIndent(stream, depth + 1);
       }
-      stream << "\"" << key << "\":";
+      writeEscapedString(stream, key);
+      stream << ":";
       if (pretty)
         stream << " ";
       value.writeToStream(stream, pretty ? depth + 1 : -1);

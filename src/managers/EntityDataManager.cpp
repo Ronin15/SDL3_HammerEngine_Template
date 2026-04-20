@@ -461,7 +461,6 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     hot.tier = SimulationTier::Active;
     hot.flags = EntityHotData::FLAG_ALIVE;
 
-
     // Allocate character data first (needed for faction-based collision setup)
     uint32_t charIndex = allocateCharacterSlot();
     m_characterData[charIndex].stateFlags = 0;
@@ -1026,7 +1025,6 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     markKindDirty(EntityKind::DroppedItem);
     hot.flags = EntityHotData::FLAG_ALIVE;
 
-
     // DroppedItems use WRM spatial index for pickup detection, not collision system
     hot.collisionLayers = 0;  // No collision layers
     hot.collisionMask = 0;    // No collision mask
@@ -1165,7 +1163,6 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
     hot.kind = EntityKind::Container;
     markKindDirty(EntityKind::Container);
     hot.flags = EntityHotData::FLAG_ALIVE;
-
 
     // Container - no collision (use WRM spatial queries for interaction)
     hot.collisionLayers = 0;
@@ -1326,7 +1323,6 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     markKindDirty(EntityKind::Harvestable);
     hot.flags = EntityHotData::FLAG_ALIVE;
 
-
     // Harvestable - no collision (use WRM spatial queries for interaction)
     hot.collisionLayers = 0;
     hot.collisionMask = 0;
@@ -1400,7 +1396,6 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
     hot.tier = SimulationTier::Active;  // Projectiles always active
     hot.flags = EntityHotData::FLAG_ALIVE;
 
-
     // Initialize collision data.
     // Small projectiles register hits against any non-owner gameplay body,
     // with owner immunity enforced during collision event handling rather than
@@ -1471,7 +1466,6 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
     markKindDirty(EntityKind::AreaEffect);
     hot.tier = SimulationTier::Active;
     hot.flags = EntityHotData::FLAG_ALIVE;
-
 
     // Allocate area effect data (reuse freed slot if available)
     uint32_t effectIndex;
@@ -1649,7 +1643,6 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
     hot.tier = SimulationTier::Active;  // Player always active
     hot.flags = EntityHotData::FLAG_ALIVE;
 
-
     // Initialize collision data (Player collides with gameplay bodies, environment, triggers)
     hot.collisionLayers = VoidLight::CollisionLayer::Layer_Player;
     hot.collisionMask = VoidLight::CollisionLayer::Layer_Enemy |
@@ -1731,7 +1724,6 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
     hot.kind = EntityKind::DroppedItem;
     hot.tier = SimulationTier::Active;  // Not used for static, but set for consistency
     hot.flags = EntityHotData::FLAG_ALIVE;
-
 
     // Allocate item data and render data (reuse freed slot if available)
     uint32_t itemIndex;

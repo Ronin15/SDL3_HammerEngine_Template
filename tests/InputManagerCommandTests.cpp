@@ -502,13 +502,16 @@ BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(GamepadRebindEdgeDetection)
 
-BOOST_AUTO_TEST_CASE(HeldGamepadButtonNotCapturedAtRebindStart)
+BOOST_AUTO_TEST_CASE(StartRebindingPrimesPrevStateWithoutSpuriousCapture)
 {
-    // This test verifies Fix 2: a gamepad button held when startRebinding() is
-    // called must not be captured on the very next refreshCommandState() call.
-    // We drive the InputManager entirely through its public API without real
-    // hardware; onGamepadButtonDown() sets the internal buttonStates vector which
-    // captureRebind() reads, so we can reproduce the held-at-start scenario.
+    // Without a real gamepad open (m_gamepads is empty in headless), we cannot
+    // drive the actual held-button path; injecting SDL_EVENT_GAMEPAD_BUTTON_DOWN
+    // with which=0 is a no-op because onGamepadButtonDown() filters on open
+    // gamepads. What this test DOES verify: startRebinding() primes the prev-
+    // state arrays and a subsequent refreshCommandState() (→ captureRebind())
+    // does not spuriously complete the rebind when no rising edge occurred.
+    // For real held-button coverage, a fixture that opens a mock SDL_Gamepad
+    // is required — see voidlight-test-suite-generator TODO.
 
     TestHelpers::resetState();
     auto& mgr = InputManager::Instance();
