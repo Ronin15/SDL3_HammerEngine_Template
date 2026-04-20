@@ -289,7 +289,7 @@ void FrameProfiler::createOverlayComponents()
 {
     auto& ui = UIManager::Instance();
 
-    if (ui.getLogicalWidth() <= 0 || ui.getLogicalHeight() <= 0) {
+    if (ui.getWidthInPixels() <= 0 || ui.getHeightInPixels() <= 0) {
         return;
     }
 

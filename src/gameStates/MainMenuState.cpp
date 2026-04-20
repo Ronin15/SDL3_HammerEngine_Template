@@ -60,7 +60,7 @@ bool MainMenuState::enter() {
   ui.createCenteredButton("mainmenu_settings_btn", firstButtonOffset + 6 * buttonStep, buttonWidth, buttonHeight, "Settings");
 
   // Exit button uses danger style (manual creation + positioning)
-  ui.createButtonDanger("mainmenu_exit_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + 7 * buttonStep, buttonWidth, buttonHeight}, "Exit");
+  ui.createButtonDanger("mainmenu_exit_btn", {ui.getWidthInPixels()/2 - buttonWidth/2, ui.getHeightInPixels()/2 + firstButtonOffset + 7 * buttonStep, buttonWidth, buttonHeight}, "Exit");
   ui.setComponentPositioning("mainmenu_exit_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + 7 * buttonStep, buttonWidth, buttonHeight});
 
   // Set up button callbacks - capture mp_stateManager for proper architecture

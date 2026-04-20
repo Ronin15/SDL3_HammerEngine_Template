@@ -41,8 +41,8 @@ bool LogoState::enter() {
 void LogoState::recalculateLayout() {
   // Cache layout calculations
   const GameEngine& gameEngine = GameEngine::Instance();
-  m_windowWidth = gameEngine.getLogicalWidth();
-  m_windowHeight = gameEngine.getLogicalHeight();
+  m_windowWidth = gameEngine.getWidthInPixels();
+  m_windowHeight = gameEngine.getHeightInPixels();
 
   // Calculate scale factor for resolution-aware sizing (1920x1080 baseline)
   // Cap at 1.0 to prevent logos from scaling larger than original at high resolutions
@@ -99,8 +99,8 @@ void LogoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                                   float) {
   // Check if window dimensions changed
   GameEngine& gameEngine = GameEngine::Instance();
-  int currentWidth = gameEngine.getLogicalWidth();
-  int currentHeight = gameEngine.getLogicalHeight();
+  int currentWidth = gameEngine.getWidthInPixels();
+  int currentHeight = gameEngine.getHeightInPixels();
   if (currentWidth != m_windowWidth || currentHeight != m_windowHeight) {
     recalculateLayout();
   }

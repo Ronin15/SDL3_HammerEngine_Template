@@ -1652,7 +1652,7 @@ ParticleEffectDefinition ParticleManager::createRainEffect() {
   const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition rain("Rain", ParticleEffectType::Rain);
   rain.layer = UnifiedParticle::RenderLayer::Background;
-  rain.emitterConfig.spread = static_cast<float>(gameEngine.getLogicalWidth());
+  rain.emitterConfig.spread = static_cast<float>(gameEngine.getWidthInPixels());
   rain.emitterConfig.emissionRate =
       300.0f; // Reduced emission for better performance while maintaining
               // coverage
@@ -1684,7 +1684,7 @@ ParticleEffectDefinition ParticleManager::createHeavyRainEffect() {
                                      ParticleEffectType::HeavyRain);
   heavyRain.layer = UnifiedParticle::RenderLayer::Background;
   heavyRain.emitterConfig.spread =
-      static_cast<float>(gameEngine.getLogicalWidth());
+      static_cast<float>(gameEngine.getWidthInPixels());
   heavyRain.emitterConfig.emissionRate =
       500.0f; // Reduced emission while maintaining storm intensity
   heavyRain.emitterConfig.minSpeed =
@@ -1715,7 +1715,7 @@ ParticleEffectDefinition ParticleManager::createSnowEffect() {
   ParticleEffectDefinition snow("Snow", ParticleEffectType::Snow);
   snow.layer = UnifiedParticle::RenderLayer::Background;
   snow.emitterConfig.spread =
-      static_cast<float>(gameEngine.getLogicalWidth()); // Moderate spread for
+      static_cast<float>(gameEngine.getWidthInPixels()); // Moderate spread for
                                                         // gentle snow drift
   snow.emitterConfig.emissionRate =
       180.0f; // Further reduced emission for optimal density
@@ -1747,7 +1747,7 @@ ParticleEffectDefinition ParticleManager::createHeavySnowEffect() {
                                      ParticleEffectType::HeavySnow);
   heavySnow.layer = UnifiedParticle::RenderLayer::Background;
   heavySnow.emitterConfig.spread =
-      static_cast<float>(gameEngine.getLogicalWidth());
+      static_cast<float>(gameEngine.getWidthInPixels());
   heavySnow.emitterConfig.emissionRate =
       350.0f; // Further reduced emission for realistic blizzard
   heavySnow.emitterConfig.minSpeed = 25.0f; // Much faster in heavy blizzard
@@ -1778,7 +1778,7 @@ ParticleEffectDefinition ParticleManager::createFogEffect() {
   ParticleEffectDefinition fog("Fog", ParticleEffectType::Fog);
   fog.layer = UnifiedParticle::RenderLayer::Foreground;
   fog.emitterConfig.spread =
-      static_cast<float>(gameEngine.getLogicalWidth()); // Very wide spread to
+      static_cast<float>(gameEngine.getWidthInPixels()); // Very wide spread to
                                                         // cover entire screen
   fog.emitterConfig.emissionRate =
       38.0f;                          // Increased emission rate for denser fog
@@ -1808,7 +1808,7 @@ ParticleEffectDefinition ParticleManager::createCloudyEffect() {
   cloudy.emitterConfig.direction = Vector2D(
       1.0f, 0.0f); // Horizontal movement for clouds sweeping across sky
   cloudy.emitterConfig.spread =
-      static_cast<float>(gameEngine.getLogicalWidth());
+      static_cast<float>(gameEngine.getWidthInPixels());
   cloudy.emitterConfig.emissionRate =
       1.2f; // Further reduced for less dense cloud effect
   cloudy.emitterConfig.minSpeed =
@@ -1839,7 +1839,7 @@ ParticleEffectDefinition ParticleManager::createWindyEffect() {
   ParticleEffectDefinition windy("Windy", ParticleEffectType::Windy);
   windy.layer = UnifiedParticle::RenderLayer::Background;
   windy.emitterConfig.spread =
-      static_cast<float>(gameEngine.getLogicalHeight());  // Screen height for vertical spread
+      static_cast<float>(gameEngine.getHeightInPixels());  // Screen height for vertical spread
   windy.emitterConfig.emissionRate = 80.0f;   // Sparse streaks
   windy.emitterConfig.minSpeed = 600.0f;      // Very fast horizontal
   windy.emitterConfig.maxSpeed = 900.0f;
@@ -1864,7 +1864,7 @@ ParticleEffectDefinition ParticleManager::createWindyDustEffect() {
   ParticleEffectDefinition dust("WindyDust", ParticleEffectType::WindyDust);
   dust.layer = UnifiedParticle::RenderLayer::Background;
   dust.emitterConfig.spread =
-      static_cast<float>(gameEngine.getLogicalHeight());  // Screen height for vertical spread
+      static_cast<float>(gameEngine.getHeightInPixels());  // Screen height for vertical spread
   dust.emitterConfig.emissionRate = 150.0f;   // More particles for dust clouds
   dust.emitterConfig.minSpeed = 300.0f;
   dust.emitterConfig.maxSpeed = 500.0f;
@@ -1889,7 +1889,7 @@ ParticleEffectDefinition ParticleManager::createWindyStormEffect() {
   ParticleEffectDefinition storm("WindyStorm", ParticleEffectType::WindyStorm);
   storm.layer = UnifiedParticle::RenderLayer::Background;
   storm.emitterConfig.spread =
-      static_cast<float>(gameEngine.getLogicalHeight());  // Screen height for vertical spread
+      static_cast<float>(gameEngine.getHeightInPixels());  // Screen height for vertical spread
   storm.emitterConfig.emissionRate = 100.0f;
   storm.emitterConfig.minSpeed = 200.0f;
   storm.emitterConfig.maxSpeed = 400.0f;
@@ -1916,7 +1916,7 @@ ParticleEffectDefinition ParticleManager::createAmbientDustEffect() {
 
   // Subtle dust motes floating in the air - visible during daytime
   dust.emitterConfig.spread =
-      static_cast<float>(gameEngine.getLogicalWidth());  // Screen-wide
+      static_cast<float>(gameEngine.getWidthInPixels());  // Screen-wide
   dust.emitterConfig.emissionRate = 8.0f;   // Very sparse for subtle effect
   dust.emitterConfig.minSpeed = 5.0f;       // Very slow drift
   dust.emitterConfig.maxSpeed = 15.0f;
@@ -1943,7 +1943,7 @@ ParticleEffectDefinition ParticleManager::createAmbientFireflyEffect() {
 
   // Glowing fireflies at night - bright additive particles
   firefly.emitterConfig.spread =
-      static_cast<float>(gameEngine.getLogicalWidth());  // Screen-wide
+      static_cast<float>(gameEngine.getWidthInPixels());  // Screen-wide
   firefly.emitterConfig.emissionRate = 3.0f;  // Very sparse - fireflies are special
   firefly.emitterConfig.minSpeed = 10.0f;     // Lazy floating
   firefly.emitterConfig.maxSpeed = 30.0f;
@@ -2512,23 +2512,23 @@ void ParticleManager::createParticleForEffect(
   if (!config.useWorldSpace) {
     // Screen-space effect (like weather) - spawn relative to camera position
     const auto &gameEngine = GameEngine::Instance();
-    int logicalWidth = gameEngine.getLogicalWidth();
-    int logicalHeight = gameEngine.getLogicalHeight();
+    int widthInPixels = gameEngine.getWidthInPixels();
+    int heightInPixels = gameEngine.getHeightInPixels();
 
     // Guard against uninitialized GameEngine (default to viewport size or sensible fallback)
-    if (logicalWidth <= 0) {
-      logicalWidth = static_cast<int>(m_viewport.width > 0 ? m_viewport.width : 1920);
+    if (widthInPixels <= 0) {
+      widthInPixels = static_cast<int>(m_viewport.width > 0 ? m_viewport.width : 1920);
     }
-    if (logicalHeight <= 0) {
-      logicalHeight = static_cast<int>(m_viewport.height > 0 ? m_viewport.height : 1080);
+    if (heightInPixels <= 0) {
+      heightInPixels = static_cast<int>(m_viewport.height > 0 ? m_viewport.height : 1080);
     }
 
     float const spawnX = m_viewport.x +
-        static_cast<float>(fast_rand() % logicalWidth);
+        static_cast<float>(fast_rand() % widthInPixels);
     float spawnY;
     if (config.fullScreenSpawn) {
       // Spawn across full screen height (weather, ambient effects)
-      spawnY = m_viewport.y + static_cast<float>(fast_rand() % logicalHeight);
+      spawnY = m_viewport.y + static_cast<float>(fast_rand() % heightInPixels);
     } else {
       // Spawn at configured Y position
       spawnY = m_viewport.y + config.position.getY();

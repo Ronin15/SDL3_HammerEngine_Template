@@ -22,8 +22,8 @@ bool PauseState::enter() {
   gameEngine.setGlobalPause(true);
 
   // Create pause state UI
-  int windowWidth = gameEngine.getLogicalWidth();
-  int windowHeight = gameEngine.getLogicalHeight();
+  int windowWidth = gameEngine.getWidthInPixels();
+  int windowHeight = gameEngine.getHeightInPixels();
 
   // Create overlay background to dim the game behind the pause menu
   ui.createOverlay(windowWidth, windowHeight);

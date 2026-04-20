@@ -292,7 +292,7 @@ public:
   void renderGPU(VoidLight::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass);
 
   // Window resize notification (called by InputManager on SDL_EVENT_WINDOW_RESIZED)
-  void onWindowResize(int newLogicalWidth, int newLogicalHeight);
+  void onWindowResize(int newWidthInPixels, int newHeightInPixels);
 
   // UI Component creation methods
   void createButton(const std::string &id, const UIRect &bounds,
@@ -503,8 +503,8 @@ public:
                            const UIRect &maxBounds); // Set size constraints
 
   // Auto-detection and convenience methods
-  int getLogicalWidth() const;  // Auto-detect logical width from GameEngine
-  int getLogicalHeight() const; // Auto-detect logical height from GameEngine
+  int getWidthInPixels() const;   // Auto-detect width in pixels from GameEngine
+  int getHeightInPixels() const;  // Auto-detect height in pixels from GameEngine
   void createTitleAtTop(const std::string &id, const std::string &text,
                         int height = UIConstants::DEFAULT_TITLE_HEIGHT);
   void createButtonAtBottom(const std::string &id, const std::string &text,
@@ -605,8 +605,8 @@ private:
   bool m_isShutdown{false};
 
   // Window resize tracking for auto-repositioning
-  int m_currentLogicalWidth{0};
-  int m_currentLogicalHeight{0};
+  int m_currentWidthInPixels{0};
+  int m_currentHeightInPixels{0};
 
   // Input state
   Vector2D m_lastMousePosition{};

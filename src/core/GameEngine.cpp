@@ -222,6 +222,8 @@ bool GameEngine::init(std::string_view title) {
     return false;
   }
 
+  SDL_SetWindowMinimumSize(mp_window.get(), 1280, 720);
+
   GAMEENGINE_DEBUG("Window creation system online");
 
   // macOS Game Mode is triggered by Info.plist (LSApplicationCategoryType=games + LSSupportsGameMode)
@@ -369,8 +371,8 @@ bool GameEngine::init(std::string_view title) {
   // Store actual dimensions for UI positioning
   int const actualWidth = pixelWidth;
   int const actualHeight = pixelHeight;
-  m_logicalWidth = actualWidth;
-  m_logicalHeight = actualHeight;
+  m_widthInPixels = actualWidth;
+  m_heightInPixels = actualHeight;
 
   GAMEENGINE_INFO(
       std::format("GPU rendering at native resolution: {}x{}",
@@ -767,7 +769,7 @@ bool GameEngine::init(std::string_view title) {
   // Configure tier radii based on logical screen size (dynamic for different
   // devices)
   BackgroundSimulationManager::Instance().configureForScreenSize(
-      m_logicalWidth, m_logicalHeight);
+      m_widthInPixels, m_heightInPixels);
   GAMEENGINE_INFO(std::format(
       "Background Simulation Manager initialized (activeRadius: {:.0f}, "
       "backgroundRadius: {:.0f})",
@@ -1560,7 +1562,7 @@ void GameEngine::refreshWindowMetrics(std::string_view reason) {
       displayScale));
 
   setWindowSize(logicalWidth, logicalHeight);
-  setLogicalSize(pixelWidth, pixelHeight);
+  setSizeInPixels(pixelWidth, pixelHeight);
   setDPIScale(displayScale);
   updateDisplayRefreshRate();
 
@@ -1585,7 +1587,7 @@ void GameEngine::refreshWindowMetrics(std::string_view reason) {
       GAMEENGINE_INFO("Font system reinitialized successfully after window/display update");
     }
 
-    uiManager.onWindowResize(getLogicalWidth(), getLogicalHeight());
+    uiManager.onWindowResize(getWidthInPixels(), getHeightInPixels());
     GAMEENGINE_INFO("UIManager notified for UI component repositioning");
   } catch (const std::exception &e) {
     GAMEENGINE_ERROR(std::format(

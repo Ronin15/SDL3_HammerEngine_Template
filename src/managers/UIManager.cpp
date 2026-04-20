@@ -53,17 +53,17 @@ bool UIManager::init() {
   m_mousePressed = false;
   m_mouseReleased = false;
 
-  // Initialize current logical dimensions from GameEngine
+  // Initialize current pixel dimensions from GameEngine
   const auto& gameEngine = GameEngine::Instance();
-  m_currentLogicalWidth = gameEngine.getLogicalWidth();
-  m_currentLogicalHeight = gameEngine.getLogicalHeight();
-  UI_INFO(std::format("Initialized logical dimensions: {}x{}",
-                      m_currentLogicalWidth, m_currentLogicalHeight));
+  m_currentWidthInPixels = gameEngine.getWidthInPixels();
+  m_currentHeightInPixels = gameEngine.getHeightInPixels();
+  UI_INFO(std::format("Initialized pixel dimensions: {}x{}",
+                      m_currentWidthInPixels, m_currentHeightInPixels));
 
   // Calculate and set resolution-aware UI scale (1920x1080 baseline, capped at 1.0)
-  m_globalScale = calculateOptimalScale(m_currentLogicalWidth, m_currentLogicalHeight);
+  m_globalScale = calculateOptimalScale(m_currentWidthInPixels, m_currentHeightInPixels);
   UI_INFO(std::format("UI scale set to {} for resolution {}x{}",
-                      m_globalScale, m_currentLogicalWidth, m_currentLogicalHeight));
+                      m_globalScale, m_currentWidthInPixels, m_currentHeightInPixels));
 
   // Reserve GPU command buffers to avoid per-frame reallocations
   m_gpuPrimitiveCommands.reserve(GPU_PRIMITIVE_COMMAND_CAPACITY);
@@ -1089,7 +1089,7 @@ void UIManager::setTitleAlignment(const std::string &titleID,
     if (alignment == UIAlignment::CENTER_CENTER && component->m_autoSize &&
         component->m_autoWidth) {
       const auto &gameEngine = GameEngine::Instance();
-      int windowWidth = gameEngine.getLogicalWidth();
+      int windowWidth = gameEngine.getWidthInPixels();
       component->m_bounds.x = (windowWidth - component->m_bounds.width) / 2;
     }
   }
@@ -2191,9 +2191,9 @@ void UIManager::calculateOptimalSize(std::shared_ptr<UIComponent> component) {
         component->m_bounds.width != oldWidth &&
         (component->m_type == UIComponentType::TITLE ||
          component->m_type == UIComponentType::LABEL)) {
-      // Get logical width for centering calculation
+      // Get pixel width for centering calculation
       const auto &gameEngine = GameEngine::Instance();
-      int windowWidth = gameEngine.getLogicalWidth();
+      int windowWidth = gameEngine.getWidthInPixels();
       component->m_bounds.x = (windowWidth - component->m_bounds.width) / 2;
     }
   }
@@ -2370,14 +2370,14 @@ void UIManager::setAutoSizingConstraints(const std::string &id,
 }
 
 // Auto-detection methods
-int UIManager::getLogicalWidth() const {
+int UIManager::getWidthInPixels() const {
   const auto &gameEngine = GameEngine::Instance();
-  return gameEngine.getLogicalWidth();
+  return gameEngine.getWidthInPixels();
 }
 
-int UIManager::getLogicalHeight() const {
+int UIManager::getHeightInPixels() const {
   const auto &gameEngine = GameEngine::Instance();
-  return gameEngine.getLogicalHeight();
+  return gameEngine.getHeightInPixels();
 }
 
 // Auto-detecting overlay creation
@@ -2480,11 +2480,18 @@ void UIManager::createCombatHUD() {
   // Combat HUD layout constants (top-left positioning)
   constexpr int hudMarginLeft = 20;
   constexpr int hudMarginTop = 40;
-  constexpr int labelWidth = 30;
+  constexpr int labelWidth = 50;
   constexpr int barWidth = 150;
-  constexpr int barHeight = 20;
-  constexpr int rowSpacing = 35;
-  constexpr int labelBarGap = 15;
+  constexpr int barHeight = 28;
+  constexpr int rowSpacing = 40;
+  constexpr int labelBarGap = 12;
+
+  UIStyle hudLabelStyle;
+  hudLabelStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=140};
+  hudLabelStyle.textColor = {.r=255, .g=255, .b=255, .a=255};
+  hudLabelStyle.textAlign = UIAlignment::CENTER_CENTER;
+  hudLabelStyle.fontID = UIConstants::FONT_UI;
+  hudLabelStyle.useTextBackground = false;
 
   // Row positions
   int healthRowY = hudMarginTop;
@@ -2494,6 +2501,7 @@ void UIManager::createCombatHUD() {
   // --- Player Health Bar ---
   createLabel("hud_health_label",
               {hudMarginLeft, healthRowY, labelWidth, barHeight}, "HP");
+  setStyle("hud_health_label", hudLabelStyle);
   setComponentPositioning("hud_health_label",
                           {UIPositionMode::TOP_ALIGNED, hudMarginLeft, healthRowY,
                            labelWidth, barHeight});
@@ -2517,6 +2525,7 @@ void UIManager::createCombatHUD() {
   // --- Player Stamina Bar ---
   createLabel("hud_stamina_label",
               {hudMarginLeft, staminaRowY, labelWidth, barHeight}, "SP");
+  setStyle("hud_stamina_label", hudLabelStyle);
   setComponentPositioning("hud_stamina_label",
                           {UIPositionMode::TOP_ALIGNED, hudMarginLeft, staminaRowY,
                            labelWidth, barHeight});
@@ -2567,6 +2576,7 @@ void UIManager::createCombatHUD() {
   // Add "HP" label for target health bar to match player bars
   createLabel("hud_target_hp_label",
               {hudMarginLeft, targetRowY + rowSpacing, labelWidth, barHeight}, "HP");
+  setStyle("hud_target_hp_label", hudLabelStyle);
   setComponentPositioning("hud_target_hp_label",
                           {UIPositionMode::TOP_ALIGNED, hudMarginLeft,
                            targetRowY + rowSpacing, labelWidth, barHeight});
@@ -2603,19 +2613,19 @@ void UIManager::destroyCombatHUD() {
 }
 
 // Auto-repositioning system implementation
-void UIManager::onWindowResize(int newLogicalWidth, int newLogicalHeight) {
+void UIManager::onWindowResize(int newWidthInPixels, int newHeightInPixels) {
 
   UI_DEBUG(std::format("Window resized: {}x{} - auto-repositioning UI components",
-                       newLogicalWidth, newLogicalHeight));
+                       newWidthInPixels, newHeightInPixels));
 
   // Recalculate UI scale for new resolution (1920x1080 baseline, capped at 1.0)
-  m_globalScale = calculateOptimalScale(newLogicalWidth, newLogicalHeight);
+  m_globalScale = calculateOptimalScale(newWidthInPixels, newHeightInPixels);
   UI_INFO(std::format("UI scale updated to {} for new resolution {}x{}",
-                      m_globalScale, newLogicalWidth, newLogicalHeight));
+                      m_globalScale, newWidthInPixels, newHeightInPixels));
 
-  repositionAllComponents(newLogicalWidth, newLogicalHeight);
-  m_currentLogicalWidth = newLogicalWidth;
-  m_currentLogicalHeight = newLogicalHeight;
+  repositionAllComponents(newWidthInPixels, newHeightInPixels);
+  m_currentWidthInPixels = newWidthInPixels;
+  m_currentHeightInPixels = newHeightInPixels;
 }
 
 void UIManager::repositionAllComponents(int width, int height) {
@@ -2738,7 +2748,7 @@ void UIManager::setComponentPositioning(const std::string &id,
   if (component) {
     component->m_positioning = positioning;
     // Immediately apply the new positioning
-    applyPositioning(component, m_currentLogicalWidth, m_currentLogicalHeight);
+    applyPositioning(component, m_currentWidthInPixels, m_currentHeightInPixels);
   }
 }
 
@@ -2852,17 +2862,11 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
 
     // Draw background rectangle if enabled (added to primitive commands, renders before text)
     if (useBackground && bgColor.a > 0) {
-      // Scale-compensate padding: text doesn't scale but UI gaps do, so use less
-      // padding when scale < 1.0 to prevent background from extending into adjacent elements
-      int effectivePadding = bgPadding;
-      if (m_globalScale < 1.0f) {
-        effectivePadding = static_cast<int>(bgPadding * m_globalScale);
-      }
       UIRect bgRect;
-      bgRect.x = static_cast<int>(dstX) - effectivePadding;
-      bgRect.y = static_cast<int>(dstY) - effectivePadding;
-      bgRect.width = static_cast<int>(dstW) + (effectivePadding * 2);
-      bgRect.height = static_cast<int>(dstH) + (effectivePadding * 2);
+      bgRect.x = static_cast<int>(dstX) - bgPadding;
+      bgRect.y = static_cast<int>(dstY) - bgPadding;
+      bgRect.width = static_cast<int>(dstW) + (bgPadding * 2);
+      bgRect.height = static_cast<int>(dstH) + (bgPadding * 2);
       addFilledRect(bgRect, bgColor);
     }
 
@@ -2969,6 +2973,9 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
 
       case UIComponentType::LABEL:
       case UIComponentType::TITLE:
+        if (component->m_style.backgroundColor.a > 0) {
+          addFilledRect(component->m_bounds, component->m_style.backgroundColor);
+        }
         if (!component->m_text.empty()) {
           int textX, textY, alignment;
           int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
@@ -3303,8 +3310,8 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
         int tooltipY = static_cast<int>(m_lastMousePosition.getY()) - tooltipHeight - scaledMouseOffset;
 
         // Clamp tooltip to screen bounds
-        if (tooltipX + tooltipWidth > m_currentLogicalWidth) {
-          tooltipX = m_currentLogicalWidth - tooltipWidth;
+        if (tooltipX + tooltipWidth > m_currentWidthInPixels) {
+          tooltipX = m_currentWidthInPixels - tooltipWidth;
         }
         if (tooltipY < 0) {
           tooltipY = static_cast<int>(m_lastMousePosition.getY()) + scaledMouseOffset * 2;

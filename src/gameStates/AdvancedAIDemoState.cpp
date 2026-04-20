@@ -193,8 +193,8 @@ bool AdvancedAIDemoState::enter() {
                                  m_worldWidth, m_worldHeight));
     } else {
       // Fallback to screen dimensions if world bounds unavailable
-      m_worldWidth = gameEngine.getLogicalWidth();
-      m_worldHeight = gameEngine.getLogicalHeight();
+      m_worldWidth = gameEngine.getWidthInPixels();
+      m_worldHeight = gameEngine.getHeightInPixels();
     }
 
     // Create player first (required for flee/follow/attack behaviors)
@@ -243,7 +243,7 @@ bool AdvancedAIDemoState::enter() {
     auto &ui = UIManager::Instance();
     ui.createTitle("advanced_ai_title",
                    {0, UIConstants::TITLE_TOP_OFFSET,
-                    gameEngine.getLogicalWidth(),
+                    gameEngine.getWidthInPixels(),
                     UIConstants::DEFAULT_TITLE_HEIGHT},
                    "Advanced AI Demo State");
     ui.setTitleAlignment("advanced_ai_title", UIAlignment::CENTER_CENTER);
@@ -256,7 +256,7 @@ bool AdvancedAIDemoState::enter() {
     // Create centered instruction labels
     ui.createLabel(
         "advanced_ai_instructions_line1",
-        {0, UIConstants::INFO_FIRST_LINE_Y, gameEngine.getLogicalWidth(),
+        {0, UIConstants::INFO_FIRST_LINE_Y, gameEngine.getWidthInPixels(),
          UIConstants::INFO_LABEL_HEIGHT},
         "[B] Exit | [SPACE] Pause/Resume | [1] Idle | [2] Flee | [3] Follow");
     ui.setLabelAlignment("advanced_ai_instructions_line1", UIAlignment::CENTER_CENTER);
@@ -270,7 +270,7 @@ bool AdvancedAIDemoState::enter() {
                        UIConstants::INFO_LINE_SPACING;
     ui.createLabel(
         "advanced_ai_instructions_line2",
-        {0, line2Y, gameEngine.getLogicalWidth(), UIConstants::INFO_LABEL_HEIGHT},
+        {0, line2Y, gameEngine.getWidthInPixels(), UIConstants::INFO_LABEL_HEIGHT},
         "[F] Player Attack | [4] Guard | [5] Attack NPCs");
     ui.setLabelAlignment("advanced_ai_instructions_line2", UIAlignment::CENTER_CENTER);
     ui.setComponentPositioning("advanced_ai_instructions_line2",
@@ -281,7 +281,7 @@ bool AdvancedAIDemoState::enter() {
                         UIConstants::INFO_LINE_SPACING +
                         UIConstants::INFO_STATUS_SPACING;
     ui.createLabel("advanced_ai_status",
-                   {0, statusY, gameEngine.getLogicalWidth(),
+                   {0, statusY, gameEngine.getWidthInPixels(),
                     UIConstants::INFO_LABEL_HEIGHT},
                    "FPS: -- | NPCs: -- | AI: RUNNING | Combat: ON");
     ui.setLabelAlignment("advanced_ai_status", UIAlignment::CENTER_CENTER);
@@ -701,8 +701,8 @@ void AdvancedAIDemoState::initializeCamera() {
   // Create camera starting at player position
   m_camera = std::make_unique<VoidLight::Camera>(
       playerPosition.getX(), playerPosition.getY(), // Start at player position
-      static_cast<float>(gameEngine.getLogicalWidth()),
-      static_cast<float>(gameEngine.getLogicalHeight()));
+      static_cast<float>(gameEngine.getWidthInPixels()),
+      static_cast<float>(gameEngine.getHeightInPixels()));
 
   // Configure camera to follow player
   if (m_player) {

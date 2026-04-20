@@ -87,8 +87,8 @@ bool GamePlayState::enter() {
     mp_Player->initializeInventory();
 
     // Position player at screen center
-    Vector2D const screenCenter(gameEngine.getLogicalWidth() / 2.0,
-                                gameEngine.getLogicalHeight() / 2.0);
+    Vector2D const screenCenter(gameEngine.getWidthInPixels() / 2.0,
+                                gameEngine.getHeightInPixels() / 2.0);
     mp_Player->setPosition(screenCenter);
 
     // Set player handle in AIManager for collision culling reference point
@@ -132,7 +132,7 @@ bool GamePlayState::enter() {
 
     // Create event log for time/weather messages
     ui.createEventLog("gameplay_event_log",
-                      {10, ui.getLogicalHeight() - 200, 730, 180}, 7);
+                      {10, ui.getHeightInPixels() - 200, 730, 180}, 7);
     UIPositioning eventLogPos;
     eventLogPos.mode = UIPositionMode::BOTTOM_ALIGNED;
     eventLogPos.offsetX = 10;
@@ -146,7 +146,7 @@ bool GamePlayState::enter() {
     int labelPadding = UIConstants::STATUS_BAR_LABEL_PADDING;
 
     ui.createLabel("gameplay_time_label",
-                   {labelPadding, 6, ui.getLogicalWidth() - 2 * labelPadding,
+                   {labelPadding, 6, ui.getWidthInPixels() - 2 * labelPadding,
                     barHeight - 12},
                    "");
 
@@ -757,7 +757,7 @@ void GamePlayState::handleInput() {
 void GamePlayState::initializeInventoryUI() {
   auto &ui = UIManager::Instance();
   const auto &gameEngine = GameEngine::Instance();
-  int const windowWidth = gameEngine.getLogicalWidth();
+  int const windowWidth = gameEngine.getWidthInPixels();
 
   // Create inventory panel (initially hidden) matching EventDemoState layout
   // Using TOP_RIGHT positioning - UIManager handles all resize repositioning
@@ -996,8 +996,8 @@ void GamePlayState::updateAmbientParticles(TimePeriod period) {
   }
 
   const auto &gameEngine = GameEngine::Instance();
-  Vector2D screenCenter(gameEngine.getLogicalWidth() / 2.0f,
-                        gameEngine.getLogicalHeight() / 2.0f);
+  Vector2D screenCenter(gameEngine.getWidthInPixels() / 2.0f,
+                        gameEngine.getHeightInPixels() / 2.0f);
 
   // Stop existing ambient particles only when period changed
   if (m_ambientParticlesActive) {

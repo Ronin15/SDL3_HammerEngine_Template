@@ -309,22 +309,22 @@ void SettingsMenuState::createTabButtons() {
     const int offset3 =  (3 * step / 2);
 
     ui.createButton("settings_tab_graphics",
-        {ui.getLogicalWidth() / 2 + offset0, tabY, tabWidth, tabHeight}, "Graphics (1)");
+        {ui.getWidthInPixels() / 2 + offset0, tabY, tabWidth, tabHeight}, "Graphics (1)");
     ui.setComponentPositioning("settings_tab_graphics",
         {UIPositionMode::CENTERED_H, offset0, tabY, tabWidth, tabHeight});
 
     ui.createButton("settings_tab_audio",
-        {ui.getLogicalWidth() / 2 + offset1, tabY, tabWidth, tabHeight}, "Audio (2)");
+        {ui.getWidthInPixels() / 2 + offset1, tabY, tabWidth, tabHeight}, "Audio (2)");
     ui.setComponentPositioning("settings_tab_audio",
         {UIPositionMode::CENTERED_H, offset1, tabY, tabWidth, tabHeight});
 
     ui.createButton("settings_tab_gameplay",
-        {ui.getLogicalWidth() / 2 + offset2, tabY, tabWidth, tabHeight}, "Gameplay (3)");
+        {ui.getWidthInPixels() / 2 + offset2, tabY, tabWidth, tabHeight}, "Gameplay (3)");
     ui.setComponentPositioning("settings_tab_gameplay",
         {UIPositionMode::CENTERED_H, offset2, tabY, tabWidth, tabHeight});
 
     ui.createButton("settings_tab_controls",
-        {ui.getLogicalWidth() / 2 + offset3, tabY, tabWidth, tabHeight}, "Controls (4)");
+        {ui.getWidthInPixels() / 2 + offset3, tabY, tabWidth, tabHeight}, "Controls (4)");
     ui.setComponentPositioning("settings_tab_controls",
         {UIPositionMode::CENTERED_H, offset3, tabY, tabWidth, tabHeight});
 
@@ -511,8 +511,8 @@ void SettingsMenuState::createActionButtons() {
     int buttonHeight = 50;
     int buttonSpacing = 20;
     int bottomOffset = 80;  // Distance from bottom edge
-    int centerX = ui.getLogicalWidth() / 2;
-    int bottomY = ui.getLogicalHeight() - bottomOffset;
+    int centerX = ui.getWidthInPixels() / 2;
+    int bottomY = ui.getHeightInPixels() - bottomOffset;
 
     // Apply button (Success green) - left of center, bottom centered
     int applyX = centerX - buttonWidth - buttonSpacing/2;
