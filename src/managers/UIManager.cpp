@@ -2493,10 +2493,15 @@ void UIManager::createCombatHUD() {
   hudLabelStyle.fontID = UIConstants::FONT_UI;
   hudLabelStyle.useTextBackground = false;
 
+  // Gap between target NAME label and its HP bar — larger than bar-to-bar
+  // gap because text→bar transition needs more visual separation.
+  constexpr int targetNameToBarGap = 16;
+
   // Row positions
   int healthRowY = hudMarginTop;
   int staminaRowY = hudMarginTop + rowSpacing;
   int targetRowY = hudMarginTop + rowSpacing * 2 + 10;
+  int targetBarY = targetRowY + barHeight + targetNameToBarGap;
 
   // --- Player Health Bar ---
   createLabel("hud_health_label",
@@ -2557,12 +2562,12 @@ void UIManager::createCombatHUD() {
   setComponentVisible("hud_target_name", false);
 
   createProgressBar("hud_target_health",
-                    {hudMarginLeft + labelWidth + labelBarGap, targetRowY + rowSpacing,
+                    {hudMarginLeft + labelWidth + labelBarGap, targetBarY,
                      targetBarWidth, barHeight},
                     0.0f, 100.0f);
   setComponentPositioning("hud_target_health",
                           {UIPositionMode::TOP_ALIGNED,
-                           hudMarginLeft + labelWidth + labelBarGap, targetRowY + rowSpacing,
+                           hudMarginLeft + labelWidth + labelBarGap, targetBarY,
                            targetBarWidth, barHeight});
   setComponentVisible("hud_target_health", false);
 
@@ -2575,11 +2580,11 @@ void UIManager::createCombatHUD() {
 
   // Add "HP" label for target health bar to match player bars
   createLabel("hud_target_hp_label",
-              {hudMarginLeft, targetRowY + rowSpacing, labelWidth, barHeight}, "HP");
+              {hudMarginLeft, targetBarY, labelWidth, barHeight}, "HP");
   setStyle("hud_target_hp_label", hudLabelStyle);
   setComponentPositioning("hud_target_hp_label",
                           {UIPositionMode::TOP_ALIGNED, hudMarginLeft,
-                           targetRowY + rowSpacing, labelWidth, barHeight});
+                           targetBarY, labelWidth, barHeight});
   setComponentVisible("hud_target_hp_label", false);
 
   UI_INFO("Combat HUD created");
