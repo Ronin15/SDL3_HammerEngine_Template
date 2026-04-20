@@ -4,6 +4,7 @@
  */
 
 #include "managers/EventManager.hpp"
+#include "ai/BehaviorExecutors.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
@@ -905,7 +906,7 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
   const float knockbackScale = 1.0f / std::max(0.1f, charData.mass);
   hotData.knockbackImpulseX = knockback.getX() * knockbackScale;
   hotData.knockbackImpulseY = knockback.getY() * knockbackScale;
-  hotData.knockbackFrames = 8;
+  hotData.knockbackFrames = static_cast<uint8_t>(Knockback::FRAMES);
 
   if (attackerHandle.isValid() && targetIsNPC) {
     edm.recordCombatEvent(targetIdx, attackerHandle, targetHandle,

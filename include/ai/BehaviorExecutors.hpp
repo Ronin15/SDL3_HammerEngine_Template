@@ -104,6 +104,18 @@ namespace BehaviorMessage {
     constexpr uint8_t RAISE_ALERT = 22;      // Guard/civilian under attack — force HOSTILE
 }
 
+// ============================================================================
+// KNOCKBACK TUNING CONSTANTS
+// ============================================================================
+
+namespace Knockback {
+    // Number of fixed-timestep frames a knockback impulse is applied.
+    // This is a frame count, not seconds — see EntityHotData::knockbackFrames.
+    inline constexpr int FRAMES = 8;
+    // Per-frame decay factor applied to the knockback impulse components.
+    inline constexpr float DECAY = 0.7f;
+}
+
 namespace Behaviors {
 
 // ============================================================================

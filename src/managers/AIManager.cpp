@@ -10,7 +10,6 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
-#include "events/EntityEvents.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
@@ -1542,9 +1541,8 @@ void AIManager::processBatch(
     if (edmHotData.knockbackFrames > 0) {
       transform.velocity.setX(transform.velocity.getX() + edmHotData.knockbackImpulseX);
       transform.velocity.setY(transform.velocity.getY() + edmHotData.knockbackImpulseY);
-      constexpr float KNOCKBACK_DECAY = 0.7f;
-      edmHotData.knockbackImpulseX *= KNOCKBACK_DECAY;
-      edmHotData.knockbackImpulseY *= KNOCKBACK_DECAY;
+      edmHotData.knockbackImpulseX *= Knockback::DECAY;
+      edmHotData.knockbackImpulseY *= Knockback::DECAY;
       --edmHotData.knockbackFrames;
     }
 

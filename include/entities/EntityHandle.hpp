@@ -248,8 +248,8 @@ struct EntityHandle {
 };
 
 // Static assertion to verify handle size
-// Note: Due to 8-byte alignment of uint64_t id, actual size is 16 bytes:
-// - id (8 bytes) + kind (1) + generation (1) + padding (2) + 4 bytes end padding = 16
+// Layout: id (8) + kind (1) + padding (3) + generation (4) = 16 bytes
+// generation widened to uint32_t for safer slot-reuse headroom (see commit c4a29432).
 static_assert(sizeof(EntityHandle) == 16, "EntityHandle should be 16 bytes (8-byte aligned)");
 
 /**

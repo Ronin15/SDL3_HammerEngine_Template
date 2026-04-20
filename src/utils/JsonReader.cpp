@@ -157,7 +157,7 @@ void JsonValue::writeToStream(std::ostream &stream, int depth) const {
     stream << "[";
     for (size_t i = 0; i < arr.size(); ++i) {
       if (i > 0)
-        stream << (pretty ? "," : ",");
+        stream << ",";
       if (pretty) {
         stream << "\n";
         writeIndent(stream, depth + 1);

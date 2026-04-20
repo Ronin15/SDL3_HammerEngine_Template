@@ -25,7 +25,11 @@ void MenuNavigation::applySelection(std::span<const std::string_view> navOrder,
     ui.clearKeyboardSelection();
     return;
   }
-  ui.setKeyboardSelection(std::string(navOrder[index]));
+  const std::string_view target = navOrder[index];
+  if (ui.getKeyboardSelection() == target) {
+    return;
+  }
+  ui.setKeyboardSelection(std::string(target));
 }
 
 void MenuNavigation::step(std::span<const std::string_view> navOrder,

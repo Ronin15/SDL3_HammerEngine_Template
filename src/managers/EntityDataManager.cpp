@@ -407,6 +407,15 @@ uint32_t EntityDataManager::nextGeneration(size_t index) {
         : m_generations[index] + 1;
 }
 
+uint32_t EntityDataManager::nextStaticGeneration(size_t index) {
+    if (index >= m_staticGenerations.size()) {
+        return 1;
+    }
+    return (m_staticGenerations[index] == std::numeric_limits<uint32_t>::max())
+        ? static_cast<uint32_t>(1)
+        : m_staticGenerations[index] + 1;
+}
+
 uint32_t EntityDataManager::allocateCharacterSlot() {
     uint32_t charIndex;
     if (!m_freeCharacterSlots.empty()) {
@@ -1002,7 +1011,8 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     }
 
     EntityHandle::IDType id = VoidLight::UniqueID::generate();
-    uint32_t generation = ++m_staticGenerations[index];
+    uint32_t generation = nextStaticGeneration(index);
+    m_staticGenerations[index] = generation;
 
     // Initialize hot data in STATIC pool
     auto& hot = m_staticHotData[index];
@@ -1141,7 +1151,8 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
     }
 
     EntityHandle::IDType id = VoidLight::UniqueID::generate();
-    uint32_t generation = ++m_staticGenerations[index];
+    uint32_t generation = nextStaticGeneration(index);
+    m_staticGenerations[index] = generation;
 
     // Initialize hot data in STATIC pool
     auto& hot = m_staticHotData[index];
@@ -1300,7 +1311,8 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     }
 
     EntityHandle::IDType id = VoidLight::UniqueID::generate();
-    uint32_t generation = ++m_staticGenerations[index];
+    uint32_t generation = nextStaticGeneration(index);
+    m_staticGenerations[index] = generation;
 
     // Initialize hot data in STATIC pool
     auto& hot = m_staticHotData[index];
@@ -1515,7 +1527,8 @@ EntityHandle EntityDataManager::createStaticBody(const Vector2D& position,
     }
 
     EntityHandle::IDType id = VoidLight::UniqueID::generate();
-    uint32_t generation = ++m_staticGenerations[index];
+    uint32_t generation = nextStaticGeneration(index);
+    m_staticGenerations[index] = generation;
 
     // Initialize static hot data
     auto& hot = m_staticHotData[index];
@@ -1563,7 +1576,8 @@ EntityHandle EntityDataManager::createTrigger(const Vector2D& position,
     }
 
     EntityHandle::IDType id = VoidLight::UniqueID::generate();
-    uint32_t generation = ++m_staticGenerations[index];
+    uint32_t generation = nextStaticGeneration(index);
+    m_staticGenerations[index] = generation;
 
     // Initialize trigger hot data
     auto& hot = m_staticHotData[index];
@@ -1703,11 +1717,7 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
         m_staticGenerations.push_back(0);
     }
 
-    const uint32_t previousGeneration = m_staticGenerations[index];
-    const uint32_t generation =
-        (previousGeneration == std::numeric_limits<uint32_t>::max())
-            ? static_cast<uint32_t>(1)
-            : previousGeneration + 1;
+    uint32_t generation = nextStaticGeneration(index);
     m_staticGenerations[index] = generation;
 
     // Initialize hot data in static pool

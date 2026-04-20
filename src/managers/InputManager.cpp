@@ -498,10 +498,13 @@ void InputManager::loadDefaultBindings()
     add(C::ZoomOut,       S::Keyboard,            SDL_SCANCODE_LEFTBRACKET);
     add(C::ZoomOut,       S::GamepadButton,       SDL_GAMEPAD_BUTTON_DPAD_DOWN);
 
-    // Menu confirm/cancel keep keyboard defaults (Enter/Esc) because they're
-    // universal single-key shortcuts that work independently of an on-screen
-    // selection cursor. The four directional Menu commands are gamepad-only:
-    // keyboard+mouse users drive menu focus with the cursor, not arrow keys.
+    // MenuConfirm/MenuCancel keyboard defaults (Enter/Esc) exist so the
+    // Controls-tab rebind UI shows a populated Keyboard & Mouse row rather than
+    // "(unbound)". They are intentionally unreachable at runtime: MenuNavigation
+    // gates all menu commands on isGamepadConnected(), so only the gamepad
+    // bindings below are ever exercised. The four directional Menu commands are
+    // likewise gamepad-only — keyboard+mouse users drive menu focus with the
+    // cursor, not arrow keys.
     add(C::MenuConfirm,   S::Keyboard,            SDL_SCANCODE_RETURN);
     add(C::MenuConfirm,   S::GamepadButton,       SDL_GAMEPAD_BUTTON_SOUTH);           // A/Cross
     add(C::MenuCancel,    S::Keyboard,            SDL_SCANCODE_ESCAPE);
@@ -731,7 +734,7 @@ bool InputManager::loadBindingsFromFile(const std::string& path)
 {
     VoidLight::JsonReader reader;
     if (!reader.loadFromFile(path)) {
-        INPUT_WARN(std::format("Failed to load input bindings from '{}': {}",
+        INPUT_DEBUG(std::format("Failed to load input bindings from '{}': {}",
             path, reader.getLastError()));
         return false;
     }

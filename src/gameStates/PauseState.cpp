@@ -92,9 +92,12 @@ void PauseState::handleInput() {
   const auto& inputMgr = InputManager::Instance();
 
   VoidLight::MenuNavigation::readInputs(kNavOrder, m_selectedIndex);
-  // MenuCancel resumes gameplay. Gamepad-only by design;
-  // keyboard+mouse users click the Resume button.
-  if (VoidLight::MenuNavigation::cancelPressed()) {
+  // MenuCancel (B/Circle) or Pause (START) both resume gameplay — symmetric
+  // with GamePlayState which uses Command::Pause to enter PauseState.
+  // Both checks use isCommandPressed (rising-edge) to avoid re-pausing on the
+  // same frame. Gamepad-only by design; keyboard+mouse users click Resume.
+  if (VoidLight::MenuNavigation::cancelPressed() ||
+      inputMgr.isCommandPressed(InputManager::Command::Pause)) {
       mp_stateManager->popState();
   }
 

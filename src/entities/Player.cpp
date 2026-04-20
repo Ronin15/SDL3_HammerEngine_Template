@@ -4,6 +4,7 @@
  */
 
 #include "entities/Player.hpp"
+#include "ai/BehaviorExecutors.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "entities/playerStates/PlayerAttackingState.hpp"
@@ -22,7 +23,6 @@
 #include "gpu/GPUTypes.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <format>
 
 Player::Player() : Entity() {
@@ -170,9 +170,8 @@ void Player::update(float deltaTime) {
   if (hotData.knockbackFrames > 0) {
     currentVel.setX(currentVel.getX() + hotData.knockbackImpulseX);
     currentVel.setY(currentVel.getY() + hotData.knockbackImpulseY);
-    constexpr float KNOCKBACK_DECAY = 0.7f;
-    hotData.knockbackImpulseX *= KNOCKBACK_DECAY;
-    hotData.knockbackImpulseY *= KNOCKBACK_DECAY;
+    hotData.knockbackImpulseX *= Knockback::DECAY;
+    hotData.knockbackImpulseY *= Knockback::DECAY;
     --hotData.knockbackFrames;
   }
 

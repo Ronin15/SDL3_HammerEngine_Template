@@ -48,7 +48,6 @@
 #include <cassert>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <mutex>
 #include <random>
 #include <span>
@@ -111,6 +110,7 @@ struct alignas(64) EntityHotData {
     uint8_t collisionFlags{0};       // 1 byte: COLLISION_ENABLED, IS_TRIGGER
     uint8_t triggerTag{0};           // 1 byte: TriggerTag for trigger entities
     uint8_t triggerType{0};          // 1 byte: TriggerType (EventOnly, Physical)
+    // Frame count (not seconds): relies on fixed-timestep; do not convert to dt*rate without revisiting Knockback::DECAY.
     uint8_t knockbackFrames{0};      // 1 byte: remaining frames of knockback impulse
     float knockbackImpulseX{0.0f};   // 4 bytes: knockback impulse X component
     float knockbackImpulseY{0.0f};   // 4 bytes: knockback impulse Y component
@@ -2427,6 +2427,7 @@ private:
     size_t allocateSlot();
     void freeSlot(size_t index);
     uint32_t nextGeneration(size_t index);
+    uint32_t nextStaticGeneration(size_t index);
     void clearAllEntityStorage();
     void rebuildTierIndicesFromHotData();
 
