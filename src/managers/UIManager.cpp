@@ -190,9 +190,46 @@ void UIManager::invalidateComponentCache() {
   m_sortedComponentsDirty = true;
 }
 
+// Parent/child linkage — called from every create* method after the
+// component is in m_components. Registers with parent, computes backdrop
+// inheritance, and suppresses the child's default text-background when the
+// parent already provides one (PANEL/DIALOG or any descendant of one).
+void UIManager::linkToParent(const std::shared_ptr<UIComponent> &component,
+                             const std::string &parentId) {
+  if (!component || parentId.empty()) {
+    return;
+  }
+
+  auto parent = getComponent(parentId);
+  if (!parent) {
+    UI_WARN("linkToParent: parent '" + parentId + "' not found for child '" +
+            component->m_id + "'");
+    return;
+  }
+
+  component->m_parentId = parentId;
+  parent->m_childIds.push_back(component->m_id);
+
+  const bool parentProvidesBackdrop =
+      parent->m_type == UIComponentType::PANEL ||
+      parent->m_type == UIComponentType::DIALOG ||
+      parent->m_hasBackdropAncestor;
+
+  component->m_hasBackdropAncestor = parentProvidesBackdrop;
+  if (parentProvidesBackdrop) {
+    component->m_style.useTextBackground = false;
+  }
+
+  // Ensure child renders on top of its parent regardless of theme defaults
+  if (component->m_zOrder <= parent->m_zOrder) {
+    component->m_zOrder = parent->m_zOrder + 1;
+  }
+}
+
 // Component creation methods
 void UIManager::createButton(const std::string &id, const UIRect &bounds,
-                             const std::string &text) {
+                             const std::string &text,
+                             const std::string &parentId) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::BUTTON;
@@ -207,6 +244,7 @@ void UIManager::createButton(const std::string &id, const UIRect &bounds,
   component->m_minBounds.height = component->m_bounds.height;
 
   m_components[id] = component;
+  linkToParent(component, parentId);
 
   // Grow to fit text so long labels never overflow the button bounds
   calculateOptimalSize(component);
@@ -214,7 +252,8 @@ void UIManager::createButton(const std::string &id, const UIRect &bounds,
 }
 
 void UIManager::createButtonDanger(const std::string &id, const UIRect &bounds,
-                                   const std::string &text) {
+                                   const std::string &text,
+                                   const std::string &parentId) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::BUTTON_DANGER;
@@ -228,13 +267,15 @@ void UIManager::createButtonDanger(const std::string &id, const UIRect &bounds,
   component->m_minBounds.height = component->m_bounds.height;
 
   m_components[id] = component;
+  linkToParent(component, parentId);
 
   calculateOptimalSize(component);
   invalidateComponentCache();
 }
 
 void UIManager::createButtonSuccess(const std::string &id, const UIRect &bounds,
-                                    const std::string &text) {
+                                    const std::string &text,
+                                    const std::string &parentId) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::BUTTON_SUCCESS;
@@ -248,13 +289,15 @@ void UIManager::createButtonSuccess(const std::string &id, const UIRect &bounds,
   component->m_minBounds.height = component->m_bounds.height;
 
   m_components[id] = component;
+  linkToParent(component, parentId);
 
   calculateOptimalSize(component);
   invalidateComponentCache();
 }
 
 void UIManager::createButtonWarning(const std::string &id, const UIRect &bounds,
-                                    const std::string &text) {
+                                    const std::string &text,
+                                    const std::string &parentId) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::BUTTON_WARNING;
@@ -268,13 +311,15 @@ void UIManager::createButtonWarning(const std::string &id, const UIRect &bounds,
   component->m_minBounds.height = component->m_bounds.height;
 
   m_components[id] = component;
+  linkToParent(component, parentId);
 
   calculateOptimalSize(component);
   invalidateComponentCache();
 }
 
 void UIManager::createLabel(const std::string &id, const UIRect &bounds,
-                            const std::string &text) {
+                            const std::string &text,
+                            const std::string &parentId) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::LABEL;
@@ -285,13 +330,15 @@ void UIManager::createLabel(const std::string &id, const UIRect &bounds,
   component->m_zOrder = UIConstants::ZORDER_LABEL; // Text on top
 
   m_components[id] = component;
+  linkToParent(component, parentId);
 
   // Apply auto-sizing after creation
   calculateOptimalSize(component);
 }
 
 void UIManager::createTitle(const std::string &id, const UIRect &bounds,
-                            const std::string &text) {
+                            const std::string &text,
+                            const std::string &parentId) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::TITLE;
@@ -302,12 +349,14 @@ void UIManager::createTitle(const std::string &id, const UIRect &bounds,
   component->m_zOrder = UIConstants::ZORDER_TITLE; // Titles on top
 
   m_components[id] = component;
+  linkToParent(component, parentId);
 
   // Apply auto-sizing after creation
   calculateOptimalSize(component);
 }
 
-void UIManager::createPanel(const std::string &id, const UIRect &bounds) {
+void UIManager::createPanel(const std::string &id, const UIRect &bounds,
+                            const std::string &parentId) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::PANEL;
@@ -317,10 +366,12 @@ void UIManager::createPanel(const std::string &id, const UIRect &bounds) {
   component->m_zOrder = UIConstants::ZORDER_PANEL; // Background panels
 
   m_components[id] = component;
+  linkToParent(component, parentId);
 }
 
 void UIManager::createProgressBar(const std::string &id, const UIRect &bounds,
-                                  float minVal, float maxVal) {
+                                  float minVal, float maxVal,
+                                  const std::string &parentId) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::PROGRESS_BAR;
@@ -333,10 +384,12 @@ void UIManager::createProgressBar(const std::string &id, const UIRect &bounds,
   component->m_zOrder = UIConstants::ZORDER_PROGRESS_BAR; // UI elements
 
   m_components[id] = component;
+  linkToParent(component, parentId);
 }
 
 void UIManager::createInputField(const std::string &id, const UIRect &bounds,
-                                 const std::string &placeholder) {
+                                 const std::string &placeholder,
+                                 const std::string &parentId) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::INPUT_FIELD;
@@ -347,10 +400,12 @@ void UIManager::createInputField(const std::string &id, const UIRect &bounds,
   component->m_zOrder = UIConstants::ZORDER_INPUT_FIELD; // Interactive elements
 
   m_components[id] = component;
+  linkToParent(component, parentId);
 }
 
 void UIManager::createImage(const std::string &id, const UIRect &bounds,
-                            const std::string &textureID) {
+                            const std::string &textureID,
+                            const std::string &parentId) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::IMAGE;
@@ -361,10 +416,12 @@ void UIManager::createImage(const std::string &id, const UIRect &bounds,
   component->m_zOrder = UIConstants::ZORDER_IMAGE; // Background images
 
   m_components[id] = component;
+  linkToParent(component, parentId);
 }
 
 void UIManager::createSlider(const std::string &id, const UIRect &bounds,
-                             float minVal, float maxVal) {
+                             float minVal, float maxVal,
+                             const std::string &parentId) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::SLIDER;
@@ -377,10 +434,12 @@ void UIManager::createSlider(const std::string &id, const UIRect &bounds,
   component->m_zOrder = UIConstants::ZORDER_SLIDER; // Interactive elements
 
   m_components[id] = component;
+  linkToParent(component, parentId);
 }
 
 void UIManager::createCheckbox(const std::string &id, const UIRect &bounds,
-                               const std::string &text) {
+                               const std::string &text,
+                               const std::string &parentId) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::CHECKBOX;
@@ -392,9 +451,11 @@ void UIManager::createCheckbox(const std::string &id, const UIRect &bounds,
   component->m_zOrder = UIConstants::ZORDER_CHECKBOX; // Interactive elements
 
   m_components[id] = component;
+  linkToParent(component, parentId);
 }
 
-void UIManager::createList(const std::string &id, const UIRect &bounds) {
+void UIManager::createList(const std::string &id, const UIRect &bounds,
+                           const std::string &parentId) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::LIST;
@@ -405,6 +466,7 @@ void UIManager::createList(const std::string &id, const UIRect &bounds) {
   component->m_zOrder = UIConstants::ZORDER_LIST; // UI elements
 
   m_components[id] = component;
+  linkToParent(component, parentId);
 
   // Enable auto-sizing for dynamic content-based sizing
   calculateOptimalSize(component);
@@ -438,7 +500,8 @@ void UIManager::createEventLog(const std::string &id, const UIRect &bounds,
   invalidateComponentCache();
 }
 
-void UIManager::createDialog(const std::string &id, const UIRect &bounds) {
+void UIManager::createDialog(const std::string &id, const UIRect &bounds,
+                             const std::string &parentId) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::DIALOG;
@@ -448,6 +511,7 @@ void UIManager::createDialog(const std::string &id, const UIRect &bounds) {
   component->m_zOrder = UIConstants::ZORDER_DIALOG; // Render behind other elements by default
 
   m_components[id] = component;
+  linkToParent(component, parentId);
 }
 
 void UIManager::createModal(const std::string &dialogId, const UIRect &bounds,
@@ -481,20 +545,42 @@ void UIManager::refreshAllComponentThemes() const {
 // Component manipulation
 void UIManager::removeComponent(const std::string &id) {
 
-  // BUGFIX: Decrement binding count if component has active bindings
-  // This prevents m_activeBindingCount from drifting when bound components are removed
   auto it = m_components.find(id);
-  if (it != m_components.end() && it->second) {
-    if (it->second->m_textBinding) {
-      --m_activeBindingCount;
-    }
-    if (it->second->m_listBinding) {
-      --m_activeBindingCount;
-    }
+  if (it == m_components.end() || !it->second) {
+    return;
   }
 
-  m_components.erase(id);
+  // Snapshot parent/children before erasing — iterators invalidate on erase
+  // and recursive removeComponent() calls below will modify the same map.
+  const std::string parentId = it->second->m_parentId;
+  const std::vector<std::string> childIds = it->second->m_childIds;
+
+  // Decrement binding count if component has active bindings. Prevents
+  // m_activeBindingCount from drifting when bound components are removed.
+  if (it->second->m_textBinding) {
+    --m_activeBindingCount;
+  }
+  if (it->second->m_listBinding) {
+    --m_activeBindingCount;
+  }
+
+  m_components.erase(it);
   invalidateComponentCache();
+
+  // Cascade removal to children so parent destruction takes its subtree
+  // with it (no dangling child ids referring to a removed parent).
+  for (const auto &childId : childIds) {
+    removeComponent(childId);
+  }
+
+  // Unlink from parent's child list
+  if (!parentId.empty()) {
+    if (auto parent = getComponent(parentId)) {
+      auto &siblings = parent->m_childIds;
+      siblings.erase(std::remove(siblings.begin(), siblings.end(), id),
+                     siblings.end());
+    }
+  }
 
   // Clear from value/text caches
   m_valueCache.erase(id);
@@ -519,8 +605,14 @@ bool UIManager::hasComponent(const std::string &id) const {
 
 void UIManager::setComponentVisible(const std::string &id, bool visible) {
   auto component = getComponent(id);
-  if (component) {
-    component->m_visible = visible;
+  if (!component) {
+    return;
+  }
+  component->m_visible = visible;
+  // Cascade to children — callers toggle a single container and all child
+  // labels/lists/bars follow. Eliminates per-component visibility boilerplate.
+  for (const auto &childId : component->m_childIds) {
+    setComponentVisible(childId, visible);
   }
 }
 
@@ -1081,17 +1173,27 @@ void UIManager::setEventLogMaxEntries(const std::string &logID,
 void UIManager::setTitleAlignment(const std::string &titleID,
                                   UIAlignment alignment) {
   auto component = getComponent(titleID);
-  if (component && component->m_type == UIComponentType::TITLE) {
-    component->m_style.textAlign = alignment;
+  if (!component || component->m_type != UIComponentType::TITLE) {
+    return;
+  }
+  component->m_style.textAlign = alignment;
 
-    // If setting to CENTER_CENTER and auto-sizing is enabled, recalculate
-    // position
-    if (alignment == UIAlignment::CENTER_CENTER && component->m_autoSize &&
-        component->m_autoWidth) {
-      const auto &gameEngine = GameEngine::Instance();
-      int windowWidth = gameEngine.getWidthInPixels();
-      component->m_bounds.x = (windowWidth - component->m_bounds.width) / 2;
-    }
+  // Titles with their text-align set to CENTER_CENTER should also recenter
+  // themselves against the surrounding container. If the title has a parent
+  // (panel/dialog), center within the parent's bounds; otherwise fall back
+  // to window-centering. Only reposition when auto-sizing owns the width —
+  // callers who set an explicit width are assumed to have positioned them.
+  if (alignment != UIAlignment::CENTER_CENTER ||
+      !component->m_autoSize || !component->m_autoWidth) {
+    return;
+  }
+
+  if (auto parent = getComponent(component->m_parentId)) {
+    component->m_bounds.x = parent->m_bounds.x +
+        (parent->m_bounds.width - component->m_bounds.width) / 2;
+  } else {
+    const int windowWidth = GameEngine::Instance().getWidthInPixels();
+    component->m_bounds.x = (windowWidth - component->m_bounds.width) / 2;
   }
 }
 
@@ -2827,7 +2929,7 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
                      const std::string& fontID, int x, int y,
                      const SDL_Color& color, int alignment,
                      bool useBackground = false, const SDL_Color& bgColor = {.r=0, .g=0, .b=0, .a=0},
-                     int bgPadding = 0) {
+                     int bgPadding = 0, const UIRect* clampBounds = nullptr) {
     if (text.empty()) return;
 
     int textWidth = 0;
@@ -2872,7 +2974,23 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
       bgRect.y = static_cast<int>(dstY) - bgPadding;
       bgRect.width = static_cast<int>(dstW) + (bgPadding * 2);
       bgRect.height = static_cast<int>(dstH) + (bgPadding * 2);
-      addFilledRect(bgRect, bgColor);
+      // Safety net: clamp the text-bg to the source component's declared
+      // bounds so a glyph wider than the container can never paint past the
+      // component's edge (e.g. small-scale resolutions where the font is
+      // floored at MIN_UI_FONT_SIZE but bounds are scaled).
+      if (clampBounds && bgRect.width > 0 && bgRect.height > 0) {
+        const int right = std::min(bgRect.x + bgRect.width,
+                                   clampBounds->x + clampBounds->width);
+        const int bottom = std::min(bgRect.y + bgRect.height,
+                                    clampBounds->y + clampBounds->height);
+        bgRect.x = std::max(bgRect.x, clampBounds->x);
+        bgRect.y = std::max(bgRect.y, clampBounds->y);
+        bgRect.width = std::max(0, right - bgRect.x);
+        bgRect.height = std::max(0, bottom - bgRect.y);
+      }
+      if (bgRect.width > 0 && bgRect.height > 0) {
+        addFilledRect(bgRect, bgColor);
+      }
     }
 
     // Raster UI text should land on whole pixels to avoid linear-filter
@@ -3032,7 +3150,7 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
           addText(component->m_id, component->m_text, component->m_style.fontID,
                   textX, textY, component->m_style.textColor, alignment,
                   needsBackground, component->m_style.textBackgroundColor,
-                  scaledTextBgPadding);
+                  scaledTextBgPadding, &component->m_bounds);
         }
         break;
 

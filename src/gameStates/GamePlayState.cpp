@@ -541,12 +541,9 @@ void GamePlayState::pause() {
   ui.setComponentVisible("hud_target_hp_label", false);
   ui.setComponentVisible("hud_target_health", false);
 
-  // Also hide inventory components if visible
+  // Hide the inventory panel — visibility cascades to child title/status/list
   if (m_inventoryVisible) {
     ui.setComponentVisible("gameplay_inventory_panel", false);
-    ui.setComponentVisible("gameplay_inventory_title", false);
-    ui.setComponentVisible("gameplay_inventory_status", false);
-    ui.setComponentVisible("gameplay_inventory_list", false);
   }
 
   // Stop player movement to prevent drift during pause
@@ -579,12 +576,9 @@ void GamePlayState::resume() {
   // Target frame visibility controlled by updateCombatHUD() based on
   // hasActiveTarget()
 
-  // Restore inventory visibility state
+  // Restore inventory visibility — cascades to all children
   if (m_inventoryVisible) {
     ui.setComponentVisible("gameplay_inventory_panel", true);
-    ui.setComponentVisible("gameplay_inventory_title", true);
-    ui.setComponentVisible("gameplay_inventory_status", true);
-    ui.setComponentVisible("gameplay_inventory_list", true);
   }
 
   // Resume all controllers (re-subscribe to events after pause)
@@ -783,18 +777,19 @@ void GamePlayState::initializeInventoryUI() {
   int inventoryX = windowWidth - inventoryWidth - panelMarginRight;
   int inventoryY = panelMarginTop;
 
-  ui.createPanel("gameplay_inventory_panel",
+  const std::string panelId = "gameplay_inventory_panel";
+  ui.createPanel(panelId,
                  {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
-  ui.setComponentVisible("gameplay_inventory_panel", false);
-  ui.setComponentPositioning("gameplay_inventory_panel",
+  ui.setComponentPositioning(panelId,
                              {UIPositionMode::TOP_RIGHT, panelMarginRight,
                               panelMarginTop, inventoryWidth, inventoryHeight});
 
-  // Title: 25px below panel top, inset by 10px
+  // Title: 25px below panel top, inset by 10px. Parented to the panel so
+  // the panel's backdrop suppresses the redundant glyph text-background.
   ui.createTitle("gameplay_inventory_title",
                  {inventoryX + childInset, inventoryY + 25, childWidth, 35},
-                 "Player Inventory");
-  ui.setComponentVisible("gameplay_inventory_title", false);
+                 "Player Inventory", panelId);
+  ui.setTitleAlignment("gameplay_inventory_title", UIAlignment::CENTER_CENTER);
   ui.setComponentPositioning("gameplay_inventory_title",
                              {UIPositionMode::TOP_RIGHT,
                               panelMarginRight + childInset,
@@ -803,8 +798,7 @@ void GamePlayState::initializeInventoryUI() {
   // Status label: 75px below panel top
   ui.createLabel("gameplay_inventory_status",
                  {inventoryX + childInset, inventoryY + 75, childWidth, 25},
-                 "Capacity: 0/20");
-  ui.setComponentVisible("gameplay_inventory_status", false);
+                 "Capacity: 0/20", panelId);
   ui.setComponentPositioning("gameplay_inventory_status",
                              {UIPositionMode::TOP_RIGHT,
                               panelMarginRight + childInset,
@@ -812,12 +806,15 @@ void GamePlayState::initializeInventoryUI() {
 
   // Inventory list: 110px below panel top, height based on slot count
   ui.createList("gameplay_inventory_list",
-                {inventoryX + childInset, inventoryY + 110, childWidth, listHeight});
-  ui.setComponentVisible("gameplay_inventory_list", false);
+                {inventoryX + childInset, inventoryY + 110, childWidth, listHeight},
+                panelId);
   ui.setComponentPositioning("gameplay_inventory_list",
                              {UIPositionMode::TOP_RIGHT,
                               panelMarginRight + childInset,
                               panelMarginTop + 110, childWidth, listHeight});
+
+  // Single call hides the panel and cascades to every child
+  ui.setComponentVisible(panelId, false);
 
   // --- DATA BINDING SETUP ---
   // Bind the inventory capacity label to a function that gets the data
@@ -885,11 +882,8 @@ void GamePlayState::initializeInventoryUI() {
 void GamePlayState::toggleInventoryDisplay() {
   auto &ui = UIManager::Instance();
   m_inventoryVisible = !m_inventoryVisible;
-
+  // Panel cascades visibility to child title/status/list
   ui.setComponentVisible("gameplay_inventory_panel", m_inventoryVisible);
-  ui.setComponentVisible("gameplay_inventory_title", m_inventoryVisible);
-  ui.setComponentVisible("gameplay_inventory_status", m_inventoryVisible);
-  ui.setComponentVisible("gameplay_inventory_list", m_inventoryVisible);
 }
 
 void GamePlayState::initializeCamera() {

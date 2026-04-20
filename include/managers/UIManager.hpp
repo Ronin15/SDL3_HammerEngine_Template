@@ -216,6 +216,14 @@ struct UIComponent {
   std::function<void()>
       m_onContentChanged{}; // Called when content changes and resize is needed
 
+  // Parent/child relationship — parents are PANEL/DIALOG containers that
+  // provide a backdrop. Children inherit that backdrop so default glyph
+  // text-backgrounds (redundant over a parent backdrop) are suppressed.
+  // Empty parent id means top-level component.
+  std::string m_parentId{};
+  std::vector<std::string> m_childIds{};
+  bool m_hasBackdropAncestor{false};
+
   virtual ~UIComponent() = default;
 };
 
@@ -294,35 +302,53 @@ public:
   // Window resize notification (called by InputManager on SDL_EVENT_WINDOW_RESIZED)
   void onWindowResize(int newWidthInPixels, int newHeightInPixels);
 
-  // UI Component creation methods
+  // UI Component creation methods. The optional `parentId` attaches the new
+  // component to a parent container (typically a PANEL or DIALOG) so that
+  // visibility cascades and the child inherits the parent's backdrop —
+  // suppressing redundant text-backgrounds that would otherwise bleed past
+  // the parent's edges at small scale.
   void createButton(const std::string &id, const UIRect &bounds,
-                    const std::string &text = "");
+                    const std::string &text = "",
+                    const std::string &parentId = "");
   void createButtonDanger(const std::string &id, const UIRect &bounds,
-                          const std::string &text = "");
+                          const std::string &text = "",
+                          const std::string &parentId = "");
   void createButtonSuccess(const std::string &id, const UIRect &bounds,
-                           const std::string &text = "");
+                           const std::string &text = "",
+                           const std::string &parentId = "");
   void createButtonWarning(const std::string &id, const UIRect &bounds,
-                           const std::string &text = "");
+                           const std::string &text = "",
+                           const std::string &parentId = "");
   void createLabel(const std::string &id, const UIRect &bounds,
-                   const std::string &text = "");
+                   const std::string &text = "",
+                   const std::string &parentId = "");
   void createTitle(const std::string &id, const UIRect &bounds,
-                   const std::string &text);
-  void createPanel(const std::string &id, const UIRect &bounds);
+                   const std::string &text,
+                   const std::string &parentId = "");
+  void createPanel(const std::string &id, const UIRect &bounds,
+                   const std::string &parentId = "");
   void createProgressBar(const std::string &id, const UIRect &bounds,
-                         float minVal = 0.0f, float maxVal = 1.0f);
+                         float minVal = 0.0f, float maxVal = 1.0f,
+                         const std::string &parentId = "");
   void createInputField(const std::string &id, const UIRect &bounds,
-                        const std::string &placeholder = "");
+                        const std::string &placeholder = "",
+                        const std::string &parentId = "");
   void createImage(const std::string &id, const UIRect &bounds,
-                   const std::string &textureID = "");
+                   const std::string &textureID = "",
+                   const std::string &parentId = "");
   void createSlider(const std::string &id, const UIRect &bounds,
-                    float minVal = 0.0f, float maxVal = 1.0f);
+                    float minVal = 0.0f, float maxVal = 1.0f,
+                    const std::string &parentId = "");
   void createCheckbox(const std::string &id, const UIRect &bounds,
-                      const std::string &text = "");
-  void createList(const std::string &id, const UIRect &bounds);
+                      const std::string &text = "",
+                      const std::string &parentId = "");
+  void createList(const std::string &id, const UIRect &bounds,
+                  const std::string &parentId = "");
   void createTooltip(const std::string &id, const std::string &text = "");
   void createEventLog(const std::string &id, const UIRect &bounds,
                       int maxEntries = UIConstants::DEFAULT_EVENT_LOG_MAX_ENTRIES);
-  void createDialog(const std::string &id, const UIRect &bounds);
+  void createDialog(const std::string &id, const UIRect &bounds,
+                    const std::string &parentId = "");
 
   // Modal creation helper - combines theme + overlay + dialog
   void createModal(const std::string &dialogId, const UIRect &bounds,
@@ -625,6 +651,14 @@ private:
   std::shared_ptr<UIComponent> getComponent(const std::string &id);
   std::shared_ptr<const UIComponent> getComponent(const std::string &id) const;
   std::shared_ptr<UILayout> getLayout(const std::string &id);
+
+  // Parent/child linkage — called from every create* method after the
+  // component is fully initialized. Registers the child with the parent,
+  // computes backdrop inheritance, and suppresses the child's default
+  // text-background when the parent already provides one (PANEL/DIALOG or
+  // any descendant of one).
+  void linkToParent(const std::shared_ptr<UIComponent> &component,
+                    const std::string &parentId);
 
   // Auto-repositioning system (private helpers)
   void repositionAllComponents(int width, int height);
