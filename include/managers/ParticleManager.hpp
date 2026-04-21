@@ -462,6 +462,11 @@ public:
   /**
    * @brief Gets all active independent effect IDs
    * @return Vector of active independent effect IDs
+   * @note Diagnostic/test API. Allocates a fresh vector per call — not for
+   *       per-frame use. If a gameplay system ever needs to poll active
+   *       effects each frame, add a `void fill(std::vector<uint32_t>& out)`
+   *       overload that reuses a caller-owned buffer (same pattern as
+   *       CollisionManager::queryRegion).
    */
   std::vector<uint32_t> getActiveIndependentEffects() const;
 
@@ -469,6 +474,8 @@ public:
    * @brief Gets all active independent effect IDs with a specific group tag
    * @param groupTag Group tag to filter by
    * @return Vector of active independent effect IDs
+   * @note Diagnostic/test API. See `getActiveIndependentEffects()` for the
+   *       per-frame caveat.
    */
   std::vector<uint32_t>
   getActiveIndependentEffectsByGroup(const std::string &groupTag) const;

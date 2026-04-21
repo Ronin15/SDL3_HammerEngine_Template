@@ -1448,11 +1448,13 @@ CollisionManager::buildActiveIndices(const CullingArea &cullingArea) const {
       // via spatial query
       pools.staticAABBs.reserve(pools.staticIndices.size());
 
-      // Filter indices and build AABBs for physics bodies only
-      std::vector<size_t> physicsIndices;
-      physicsIndices.reserve(pools.staticIndices.size());
-
-      for (size_t storageIdx : pools.staticIndices) {
+      // Filter indices and build AABBs for physics bodies only.
+      // In-place compaction: writeIdx ≤ readIdx always, so we can overwrite
+      // pools.staticIndices as we iterate and shrink at the end. Avoids a
+      // per-frame scratch vector allocation each time the culling area moves.
+      size_t writeIdx = 0;
+      for (size_t readIdx = 0; readIdx < pools.staticIndices.size(); ++readIdx) {
+        const size_t storageIdx = pools.staticIndices[readIdx];
         const auto &staticHot = m_storage.hotData[storageIdx];
 
         // Skip inactive statics at cache time - avoids per-frame active checks
@@ -1468,7 +1470,7 @@ CollisionManager::buildActiveIndices(const CullingArea &cullingArea) const {
         }
 
         // Physical bodies (obstacles, physical triggers) go to broadphase
-        physicsIndices.push_back(storageIdx);
+        pools.staticIndices[writeIdx++] = storageIdx;
         CollisionPool::StaticAABB aabb;
         aabb.minX = staticHot.aabbMinX;
         aabb.minY = staticHot.aabbMinY;
@@ -1478,9 +1480,7 @@ CollisionManager::buildActiveIndices(const CullingArea &cullingArea) const {
         aabb.active = staticHot.active;
         pools.staticAABBs.push_back(aabb);
       }
-
-      // Replace staticIndices with filtered physics-only indices
-      pools.staticIndices = std::move(physicsIndices);
+      pools.staticIndices.resize(writeIdx);
 
       // PERF: Sort static pool indices by minX for SAP (Sweep-and-Prune)
       // This enables O(n + k) movable-vs-static instead of O(n × spatial_query)
