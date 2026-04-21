@@ -115,8 +115,18 @@ bool EntityDataManager::init() {
         // Behavior data (indexed by edmIndex, pre-allocated alongside hotData)
         m_behaviorData.reserve(CHARACTER_CAPACITY);
 
-        // Behavior config (indexed by edmIndex, pre-allocated alongside behaviorData)
-        m_behaviorConfig.reserve(CHARACTER_CAPACITY);
+        // Archetype behavior config refs (one per entity slot)
+        m_behaviorConfigRef.reserve(CHARACTER_CAPACITY);
+
+        // Per-variant dense pools — pre-reserved to avoid hot-path allocation
+        m_idleConfigs.reserve(CHARACTER_CAPACITY);   m_idleOwners.reserve(CHARACTER_CAPACITY);
+        m_wanderConfigs.reserve(CHARACTER_CAPACITY); m_wanderOwners.reserve(CHARACTER_CAPACITY);
+        m_chaseConfigs.reserve(CHARACTER_CAPACITY);  m_chaseOwners.reserve(CHARACTER_CAPACITY);
+        m_patrolConfigs.reserve(CHARACTER_CAPACITY); m_patrolOwners.reserve(CHARACTER_CAPACITY);
+        m_fleeConfigs.reserve(CHARACTER_CAPACITY);   m_fleeOwners.reserve(CHARACTER_CAPACITY);
+        m_followConfigs.reserve(CHARACTER_CAPACITY); m_followOwners.reserve(CHARACTER_CAPACITY);
+        m_guardConfigs.reserve(CHARACTER_CAPACITY);  m_guardOwners.reserve(CHARACTER_CAPACITY);
+        m_attackConfigs.reserve(CHARACTER_CAPACITY); m_attackOwners.reserve(CHARACTER_CAPACITY);
 
         // NPC Memory data (indexed by edmIndex, pre-allocated alongside hotData)
         m_memoryData.reserve(CHARACTER_CAPACITY);
@@ -171,7 +181,15 @@ void EntityDataManager::clearAllEntityStorage() {
     m_entityIds.clear();
     m_generations.clear();
     m_idToIndex.clear();
-    m_behaviorConfig.clear();
+    m_behaviorConfigRef.clear();
+    m_idleConfigs.clear();   m_idleOwners.clear();
+    m_wanderConfigs.clear(); m_wanderOwners.clear();
+    m_chaseConfigs.clear();  m_chaseOwners.clear();
+    m_patrolConfigs.clear(); m_patrolOwners.clear();
+    m_fleeConfigs.clear();   m_fleeOwners.clear();
+    m_followConfigs.clear(); m_followOwners.clear();
+    m_guardConfigs.clear();  m_guardOwners.clear();
+    m_attackConfigs.clear(); m_attackOwners.clear();
 
     // Static entity storage
     m_staticHotData.clear();
@@ -291,11 +309,12 @@ size_t EntityDataManager::allocateSlot() {
         m_hotData.emplace_back();
         m_entityIds.emplace_back(0);
         m_generations.emplace_back(0);
-        // Pre-allocate PathData, WaypointSlot, BehaviorData, BehaviorConfig, MemoryData to match - avoids concurrent resize during AI processing
+        // Pre-allocate PathData, WaypointSlot, BehaviorData, BehaviorConfigRef, MemoryData to match - avoids concurrent resize during AI processing
         m_pathData.emplace_back();
         m_waypointSlots.emplace_back();  // Per-entity waypoint slot (256 bytes)
         m_behaviorData.emplace_back();
-        m_behaviorConfig.emplace_back(); // Behavior config (read-only during execution)
+        // New entity starts with no active behavior config — ref is {None, UINT32_MAX}
+        m_behaviorConfigRef.emplace_back(BehaviorConfigRef{BehaviorType::None, {0, 0, 0}, std::numeric_limits<uint32_t>::max()});
         m_memoryData.emplace_back();     // NPC memory data
     }
 
@@ -2744,6 +2763,118 @@ void EntityDataManager::clearBehaviorData(size_t index) {
     if (index < m_behaviorData.size()) {
         m_behaviorData[index].clear();
     }
+}
+
+// ============================================================================
+// ARCHETYPE BEHAVIOR CONFIG MANAGEMENT
+// ============================================================================
+
+void EntityDataManager::clearBehaviorConfig(size_t edmIdx) {
+    if (edmIdx >= m_behaviorConfigRef.size()) {
+        return;
+    }
+
+    auto& ref = m_behaviorConfigRef[edmIdx];
+    if (ref.type == BehaviorType::None || ref.index == std::numeric_limits<uint32_t>::max()) {
+        // Nothing in any pool — just ensure ref is clean
+        ref.type  = BehaviorType::None;
+        ref.index = std::numeric_limits<uint32_t>::max();
+        return;
+    }
+
+    // Macro: swap-with-back removal + patch displaced owner's ref.index
+    // Pulled out as a lambda to avoid code repetition across 8 variants.
+    auto popFromPool = [&](auto& configs, auto& owners, uint32_t slotIdx) {
+        assert(slotIdx < configs.size() && "Pool slot index out of bounds");
+        const size_t lastPos = configs.size() - 1;
+        if (static_cast<size_t>(slotIdx) != lastPos) {
+            // Move last element into the vacated slot
+            configs[slotIdx] = std::move(configs[lastPos]);
+            owners[slotIdx]  = owners[lastPos];
+            // Patch the displaced entity's ref to point at the new position
+            size_t movedOwner = owners[slotIdx];
+            if (movedOwner < m_behaviorConfigRef.size()) {
+                m_behaviorConfigRef[movedOwner].index = slotIdx;
+            }
+        }
+        configs.pop_back();
+        owners.pop_back();
+    };
+
+    switch (ref.type) {
+        case BehaviorType::Idle:   popFromPool(m_idleConfigs,   m_idleOwners,   ref.index); break;
+        case BehaviorType::Wander: popFromPool(m_wanderConfigs, m_wanderOwners, ref.index); break;
+        case BehaviorType::Chase:  popFromPool(m_chaseConfigs,  m_chaseOwners,  ref.index); break;
+        case BehaviorType::Patrol: popFromPool(m_patrolConfigs, m_patrolOwners, ref.index); break;
+        case BehaviorType::Flee:   popFromPool(m_fleeConfigs,   m_fleeOwners,   ref.index); break;
+        case BehaviorType::Follow: popFromPool(m_followConfigs, m_followOwners, ref.index); break;
+        case BehaviorType::Guard:  popFromPool(m_guardConfigs,  m_guardOwners,  ref.index); break;
+        case BehaviorType::Attack: popFromPool(m_attackConfigs, m_attackOwners, ref.index); break;
+        default: break; // Custom/None/COUNT — no pool slot to remove
+    }
+
+    ref.type  = BehaviorType::None;
+    ref.index = std::numeric_limits<uint32_t>::max();
+}
+
+void EntityDataManager::reassignBehaviorConfig(size_t edmIdx, const VoidLight::BehaviorConfigData& newConfig) {
+    assert(newConfig.type != BehaviorType::None && "reassignBehaviorConfig: type must not be None");
+    assert(edmIdx < m_behaviorConfigRef.size() && "reassignBehaviorConfig: edmIdx out of bounds");
+
+    // Pop old slot first (no-op if entity had no prior config)
+    clearBehaviorConfig(edmIdx);
+
+    // Push into the correct variant pool and record owner
+    auto& ref = m_behaviorConfigRef[edmIdx];
+
+    switch (newConfig.type) {
+        case BehaviorType::Idle:
+            ref.index = static_cast<uint32_t>(m_idleConfigs.size());
+            m_idleConfigs.push_back(newConfig.params.idle);
+            m_idleOwners.push_back(edmIdx);
+            break;
+        case BehaviorType::Wander:
+            ref.index = static_cast<uint32_t>(m_wanderConfigs.size());
+            m_wanderConfigs.push_back(newConfig.params.wander);
+            m_wanderOwners.push_back(edmIdx);
+            break;
+        case BehaviorType::Chase:
+            ref.index = static_cast<uint32_t>(m_chaseConfigs.size());
+            m_chaseConfigs.push_back(newConfig.params.chase);
+            m_chaseOwners.push_back(edmIdx);
+            break;
+        case BehaviorType::Patrol:
+            ref.index = static_cast<uint32_t>(m_patrolConfigs.size());
+            m_patrolConfigs.push_back(newConfig.params.patrol);
+            m_patrolOwners.push_back(edmIdx);
+            break;
+        case BehaviorType::Flee:
+            ref.index = static_cast<uint32_t>(m_fleeConfigs.size());
+            m_fleeConfigs.push_back(newConfig.params.flee);
+            m_fleeOwners.push_back(edmIdx);
+            break;
+        case BehaviorType::Follow:
+            ref.index = static_cast<uint32_t>(m_followConfigs.size());
+            m_followConfigs.push_back(newConfig.params.follow);
+            m_followOwners.push_back(edmIdx);
+            break;
+        case BehaviorType::Guard:
+            ref.index = static_cast<uint32_t>(m_guardConfigs.size());
+            m_guardConfigs.push_back(newConfig.params.guard);
+            m_guardOwners.push_back(edmIdx);
+            break;
+        case BehaviorType::Attack:
+            ref.index = static_cast<uint32_t>(m_attackConfigs.size());
+            m_attackConfigs.push_back(newConfig.params.attack);
+            m_attackOwners.push_back(edmIdx);
+            break;
+        default:
+            // Custom/COUNT — no pool; type is stored only in the ref for the execute switch
+            ref.index = std::numeric_limits<uint32_t>::max();
+            break;
+    }
+
+    ref.type = newConfig.type;
 }
 
 // ============================================================================

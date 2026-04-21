@@ -65,6 +65,21 @@
 static constexpr uint32_t INVALID_INVENTORY_INDEX = std::numeric_limits<uint32_t>::max();
 
 /**
+ * @brief Per-entity archetype reference for behavior config storage (8 bytes)
+ *
+ * Replaces the old 388-byte BehaviorConfigData per-entity slot.
+ * Points into one of the per-variant dense pools owned by EDM.
+ * index == UINT32_MAX when type == BehaviorType::None (no active config).
+ */
+struct BehaviorConfigRef
+{
+    BehaviorType type{BehaviorType::None}; // 1 byte
+    uint8_t _pad[3]{};                     // 3 bytes alignment
+    uint32_t index{std::numeric_limits<uint32_t>::max()}; // 4 bytes
+};
+static_assert(sizeof(BehaviorConfigRef) == 8, "BehaviorConfigRef must be exactly 8 bytes");
+
+/**
  * @brief Transform data for entity movement (32 bytes)
  */
 struct TransformData {
@@ -2175,19 +2190,44 @@ public:
     [[nodiscard]] const BehaviorData& getBehaviorData(size_t index) const;
 
     /**
-     * @brief Get behavior config by EDM index
-     * @param index EDM index from getActiveIndices()
-     * @return BehaviorConfigData for the entity (read-only during execution)
+     * @brief Get the archetype reference for an entity's behavior config
+     * @param edmIdx EDM index from getActiveIndices()
+     * @return BehaviorConfigRef with type tag and pool index (read-only)
      */
-    [[nodiscard]] VoidLight::BehaviorConfigData& getBehaviorConfig(size_t index);
-    [[nodiscard]] const VoidLight::BehaviorConfigData& getBehaviorConfig(size_t index) const;
+    [[nodiscard]] BehaviorConfigRef getBehaviorConfigRef(size_t edmIdx) const;
 
     /**
-     * @brief Set behavior config for an entity
-     * @param index EDM index
-     * @param config The behavior config to set
+     * @brief Reassign an entity's behavior config to a new variant pool slot
+     *
+     * Pops the old pool slot (swap-with-back + patch displaced owner ref),
+     * pushes into the correct variant pool, and updates the entity's ref.
+     * Main-thread only. O(1) after init() warmup (no allocation if pool reserved).
+     *
+     * @param edmIdx  EDM index of the entity being updated
+     * @param newConfig  New config to store (type must not be None)
      */
-    void setBehaviorConfig(size_t index, const VoidLight::BehaviorConfigData& config);
+    void reassignBehaviorConfig(size_t edmIdx, const VoidLight::BehaviorConfigData& newConfig);
+
+    /**
+     * @brief Clear an entity's behavior config pool slot and reset its ref
+     *
+     * Pops the old slot if present (swap-with-back + owner patch), resets
+     * the entity's ref to {None, UINT32_MAX}. Used by unregistration paths.
+     * Main-thread only.
+     *
+     * @param edmIdx EDM index of the entity being cleared
+     */
+    void clearBehaviorConfig(size_t edmIdx);
+
+    // Per-variant dense read accessors — all return const& (no copy)
+    [[nodiscard]] const VoidLight::IdleBehaviorConfig&   getIdleConfig(uint32_t poolIndex) const;
+    [[nodiscard]] const VoidLight::WanderBehaviorConfig& getWanderConfig(uint32_t poolIndex) const;
+    [[nodiscard]] const VoidLight::ChaseBehaviorConfig&  getChaseConfig(uint32_t poolIndex) const;
+    [[nodiscard]] const VoidLight::PatrolBehaviorConfig& getPatrolConfig(uint32_t poolIndex) const;
+    [[nodiscard]] const VoidLight::FleeBehaviorConfig&   getFleeConfig(uint32_t poolIndex) const;
+    [[nodiscard]] const VoidLight::FollowBehaviorConfig& getFollowConfig(uint32_t poolIndex) const;
+    [[nodiscard]] const VoidLight::GuardBehaviorConfig&  getGuardConfig(uint32_t poolIndex) const;
+    [[nodiscard]] const VoidLight::AttackBehaviorConfig& getAttackConfig(uint32_t poolIndex) const;
 
     /**
      * @brief Check if behavior data exists and is valid for an entity
@@ -2487,9 +2527,33 @@ private:
     // Behavior data (indexed by edmIndex, pre-allocated alongside hotData)
     std::vector<BehaviorData> m_behaviorData;
 
-    // Behavior config (indexed by edmIndex, pre-allocated alongside behaviorData)
-    // Config is read-only during behavior execution - set once when behavior assigned
-    std::vector<VoidLight::BehaviorConfigData> m_behaviorConfig;
+    // Archetype behavior config storage.
+    // m_behaviorConfigRef[edmIndex] holds a {type, poolIndex} pair pointing into
+    // one of the per-variant dense pools below.  index == UINT32_MAX means no config.
+    std::vector<BehaviorConfigRef> m_behaviorConfigRef;
+
+    // Dense per-variant config pools.  Only entities that actually use a given
+    // behavior type occupy space here — dramatically cheaper than the old 388-byte
+    // union for every entity regardless of type.
+    std::vector<VoidLight::IdleBehaviorConfig>   m_idleConfigs;
+    std::vector<VoidLight::WanderBehaviorConfig> m_wanderConfigs;
+    std::vector<VoidLight::ChaseBehaviorConfig>  m_chaseConfigs;
+    std::vector<VoidLight::PatrolBehaviorConfig> m_patrolConfigs;
+    std::vector<VoidLight::FleeBehaviorConfig>   m_fleeConfigs;
+    std::vector<VoidLight::FollowBehaviorConfig> m_followConfigs;
+    std::vector<VoidLight::GuardBehaviorConfig>  m_guardConfigs;
+    std::vector<VoidLight::AttackBehaviorConfig> m_attackConfigs;
+
+    // Parallel owner vectors — m_*Owners[i] == edmIndex that owns m_*Configs[i].
+    // Required so swap-with-back removal can patch the displaced entity's ref.
+    std::vector<size_t> m_idleOwners;
+    std::vector<size_t> m_wanderOwners;
+    std::vector<size_t> m_chaseOwners;
+    std::vector<size_t> m_patrolOwners;
+    std::vector<size_t> m_fleeOwners;
+    std::vector<size_t> m_followOwners;
+    std::vector<size_t> m_guardOwners;
+    std::vector<size_t> m_attackOwners;
 
     // NPC Memory data (indexed by edmIndex, pre-allocated alongside hotData)
     // Persists across behavior changes unlike BehaviorData
@@ -2652,19 +2716,49 @@ inline const BehaviorData& EntityDataManager::getBehaviorData(size_t index) cons
     return m_behaviorData[index];
 }
 
-inline VoidLight::BehaviorConfigData& EntityDataManager::getBehaviorConfig(size_t index) {
-    assert(index < m_behaviorConfig.size() && "BehaviorConfig index out of bounds");
-    return m_behaviorConfig[index];
+inline BehaviorConfigRef EntityDataManager::getBehaviorConfigRef(size_t edmIdx) const {
+    assert(edmIdx < m_behaviorConfigRef.size() && "BehaviorConfigRef index out of bounds");
+    return m_behaviorConfigRef[edmIdx];
 }
 
-inline const VoidLight::BehaviorConfigData& EntityDataManager::getBehaviorConfig(size_t index) const {
-    assert(index < m_behaviorConfig.size() && "BehaviorConfig index out of bounds");
-    return m_behaviorConfig[index];
+inline const VoidLight::IdleBehaviorConfig& EntityDataManager::getIdleConfig(uint32_t poolIndex) const {
+    assert(poolIndex < m_idleConfigs.size() && "Idle config pool index out of bounds");
+    return m_idleConfigs[poolIndex];
 }
 
-inline void EntityDataManager::setBehaviorConfig(size_t index, const VoidLight::BehaviorConfigData& config) {
-    assert(index < m_behaviorConfig.size() && "BehaviorConfig index out of bounds");
-    m_behaviorConfig[index] = config;
+inline const VoidLight::WanderBehaviorConfig& EntityDataManager::getWanderConfig(uint32_t poolIndex) const {
+    assert(poolIndex < m_wanderConfigs.size() && "Wander config pool index out of bounds");
+    return m_wanderConfigs[poolIndex];
+}
+
+inline const VoidLight::ChaseBehaviorConfig& EntityDataManager::getChaseConfig(uint32_t poolIndex) const {
+    assert(poolIndex < m_chaseConfigs.size() && "Chase config pool index out of bounds");
+    return m_chaseConfigs[poolIndex];
+}
+
+inline const VoidLight::PatrolBehaviorConfig& EntityDataManager::getPatrolConfig(uint32_t poolIndex) const {
+    assert(poolIndex < m_patrolConfigs.size() && "Patrol config pool index out of bounds");
+    return m_patrolConfigs[poolIndex];
+}
+
+inline const VoidLight::FleeBehaviorConfig& EntityDataManager::getFleeConfig(uint32_t poolIndex) const {
+    assert(poolIndex < m_fleeConfigs.size() && "Flee config pool index out of bounds");
+    return m_fleeConfigs[poolIndex];
+}
+
+inline const VoidLight::FollowBehaviorConfig& EntityDataManager::getFollowConfig(uint32_t poolIndex) const {
+    assert(poolIndex < m_followConfigs.size() && "Follow config pool index out of bounds");
+    return m_followConfigs[poolIndex];
+}
+
+inline const VoidLight::GuardBehaviorConfig& EntityDataManager::getGuardConfig(uint32_t poolIndex) const {
+    assert(poolIndex < m_guardConfigs.size() && "Guard config pool index out of bounds");
+    return m_guardConfigs[poolIndex];
+}
+
+inline const VoidLight::AttackBehaviorConfig& EntityDataManager::getAttackConfig(uint32_t poolIndex) const {
+    assert(poolIndex < m_attackConfigs.size() && "Attack config pool index out of bounds");
+    return m_attackConfigs[poolIndex];
 }
 
 inline PathData& EntityDataManager::getPathData(size_t index) {

@@ -253,14 +253,14 @@ void initFollow(size_t edmIndex, const VoidLight::FollowBehaviorConfig& config);
 // ============================================================================
 
 /**
- * @brief Execute behavior based on config type (switch dispatch)
+ * @brief Execute behavior based on archetype ref (switch dispatch)
  * @param ctx Pre-populated BehaviorContext with EDM references
- * @param configData Behavior configuration with type tag
+ * @param ref  Archetype reference returned by EDM::getBehaviorConfigRef()
  *
- * This is the main entry point for behavior execution. It dispatches to
- * the appropriate execute function based on the behavior type.
+ * Reads the correct per-variant dense pool via EntityDataManager and
+ * dispatches to the appropriate execute function based on the behavior type.
  */
-void execute(BehaviorContext& ctx, const VoidLight::BehaviorConfigData& configData);
+void execute(BehaviorContext& ctx, BehaviorConfigRef ref);
 
 /**
  * @brief Initialize behavior state based on config type (switch dispatch)

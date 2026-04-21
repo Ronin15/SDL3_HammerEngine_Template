@@ -739,7 +739,7 @@ BOOST_AUTO_TEST_CASE(StaleHigherSequenceTransitionDoesNotSuppressValidTransition
     BOOST_REQUIRE(reusedIndex != SIZE_MAX);
 
     aiMgr.assignBehavior(staleHandle, "Idle");
-    BOOST_REQUIRE(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Idle);
+    BOOST_REQUIRE(edm.getBehaviorConfigRef(reusedIndex).type == BehaviorType::Idle);
 
     aiMgr.unregisterEntity(staleHandle);
     edm.destroyEntity(staleHandle);
@@ -766,7 +766,7 @@ BOOST_AUTO_TEST_CASE(StaleHigherSequenceTransitionDoesNotSuppressValidTransition
     BOOST_REQUIRE(edm.getIndex(currentHandle) == reusedIndex);
 
     aiMgr.assignBehavior(currentHandle, "Idle");
-    BOOST_REQUIRE(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Idle);
+    BOOST_REQUIRE(edm.getBehaviorConfigRef(reusedIndex).type == BehaviorType::Idle);
 
     // Valid transition first (older sequence): should still apply even if a stale
     // command with newer sequence is enqueued after it.
@@ -778,7 +778,7 @@ BOOST_AUTO_TEST_CASE(StaleHigherSequenceTransitionDoesNotSuppressValidTransition
         staleHandle, reusedIndex, staleConfig);
 
     aiMgr.update(0.016f);
-    BOOST_CHECK(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Attack);
+    BOOST_CHECK(edm.getBehaviorConfigRef(reusedIndex).type == BehaviorType::Attack);
 }
 
 BOOST_AUTO_TEST_CASE(StaleTransitionSuppressionStressLoop) {
@@ -792,7 +792,7 @@ BOOST_AUTO_TEST_CASE(StaleTransitionSuppressionStressLoop) {
         BOOST_REQUIRE(reusedIndex != SIZE_MAX);
 
         aiMgr.assignBehavior(staleHandle, "Idle");
-        BOOST_REQUIRE(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Idle);
+        BOOST_REQUIRE(edm.getBehaviorConfigRef(reusedIndex).type == BehaviorType::Idle);
 
         aiMgr.unregisterEntity(staleHandle);
         edm.destroyEntity(staleHandle);
@@ -815,7 +815,7 @@ BOOST_AUTO_TEST_CASE(StaleTransitionSuppressionStressLoop) {
         BOOST_REQUIRE(slotReused);
 
         aiMgr.assignBehavior(currentHandle, "Idle");
-        BOOST_REQUIRE(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Idle);
+        BOOST_REQUIRE(edm.getBehaviorConfigRef(reusedIndex).type == BehaviorType::Idle);
 
         Behaviors::switchBehavior(reusedIndex, BehaviorType::Attack);
 
@@ -825,7 +825,7 @@ BOOST_AUTO_TEST_CASE(StaleTransitionSuppressionStressLoop) {
             staleHandle, reusedIndex, staleConfig);
 
         aiMgr.update(0.016f);
-        BOOST_CHECK(edm.getBehaviorConfig(reusedIndex).type == BehaviorType::Attack);
+        BOOST_CHECK(edm.getBehaviorConfigRef(reusedIndex).type == BehaviorType::Attack);
     }
 }
 

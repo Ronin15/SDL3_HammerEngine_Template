@@ -75,7 +75,7 @@ Flow: scene pass → composite to swapchain → UI pass. Platform-native shaders
 
 ### AI Behavior Switching
 
-`switchBehavior()` calls `clearBehaviorData()` → `setBehaviorConfig()` → `init()`. State set before the switch is wiped — always set state after. Full controller/AI boundary rules in **EDM Patterns**.
+`switchBehavior()` calls `clearBehaviorData()` → `reassignBehaviorConfig()` → `init()`. State set before the switch is wiped — always set state after. Behavior configs live in per-variant dense pools on EDM; access via `getBehaviorConfigRef(idx)` + `get<Variant>Config(ref.index)`. Full controller/AI boundary rules in **EDM Patterns**.
 
 ### State Transitions
 

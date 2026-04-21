@@ -614,7 +614,7 @@ void AIManager::assignBehavior(EntityHandle handle,
     // Update existing entity — remove old indices before overwriting config
     size_t index = indexIt->second;
     if (index < m_storage.size()) {
-      BehaviorType oldType = edm.getBehaviorConfig(edmIndex).type;
+      BehaviorType oldType = edm.getBehaviorConfigRef(edmIndex).type;
       removeFromIndices(edmIndex, oldType);
 
       if (!m_storage.hotData[index].active) {
@@ -656,7 +656,7 @@ void AIManager::assignBehavior(EntityHandle handle,
   }
 
   // Set config in EDM and initialize state (after old indices removed)
-  edm.setBehaviorConfig(edmIndex, config);
+  edm.reassignBehaviorConfig(edmIndex, config);
   Behaviors::init(edmIndex, config);
 
   // Add to guard/faction indices for the new behavior
@@ -696,7 +696,7 @@ void AIManager::assignBehavior(EntityHandle handle,
     // Update existing entity — remove old indices before overwriting config
     size_t index = indexIt->second;
     if (index < m_storage.size()) {
-      BehaviorType oldType = edm.getBehaviorConfig(edmIndex).type;
+      BehaviorType oldType = edm.getBehaviorConfigRef(edmIndex).type;
       removeFromIndices(edmIndex, oldType);
 
       if (!m_storage.hotData[index].active) {
@@ -736,7 +736,7 @@ void AIManager::assignBehavior(EntityHandle handle,
   }
 
   // Set config in EDM and initialize state (after old indices removed)
-  edm.setBehaviorConfig(edmIndex, config);
+  edm.reassignBehaviorConfig(edmIndex, config);
   Behaviors::init(edmIndex, config);
 
   // Add to guard/faction indices for the new behavior
@@ -762,9 +762,9 @@ void AIManager::unassignBehavior(EntityHandle handle) {
       size_t edmIndex = m_storage.edmIndices[index];
       if (edmIndex != SIZE_MAX) {
         auto& edm = EntityDataManager::Instance();
-        BehaviorType oldType = edm.getBehaviorConfig(edmIndex).type;
+        BehaviorType oldType = edm.getBehaviorConfigRef(edmIndex).type;
         removeFromIndices(edmIndex, oldType);
-        edm.setBehaviorConfig(edmIndex, VoidLight::BehaviorConfigData{});
+        edm.clearBehaviorConfig(edmIndex);
 
         if (edmIndex < m_edmToStorageIndex.size()) {
           m_edmToStorageIndex[edmIndex] = SIZE_MAX;
@@ -788,8 +788,7 @@ bool AIManager::hasBehavior(EntityHandle handle) const {
     size_t edmIndex = m_storage.edmIndices[it->second];
     if (edmIndex != SIZE_MAX) {
       const auto& edm = EntityDataManager::Instance();
-      const auto& config = edm.getBehaviorConfig(edmIndex);
-      return config.type != BehaviorType::None;
+      return edm.getBehaviorConfigRef(edmIndex).type != BehaviorType::None;
     }
   }
 
@@ -837,9 +836,9 @@ void AIManager::unregisterEntity(EntityHandle handle) {
     size_t edmIndex = m_storage.edmIndices[it->second];
     if (edmIndex != SIZE_MAX) {
       auto& edm = EntityDataManager::Instance();
-      BehaviorType oldType = edm.getBehaviorConfig(edmIndex).type;
+      BehaviorType oldType = edm.getBehaviorConfigRef(edmIndex).type;
       removeFromIndices(edmIndex, oldType);
-      edm.setBehaviorConfig(edmIndex, VoidLight::BehaviorConfigData{});
+      edm.clearBehaviorConfig(edmIndex);
 
       if (edmIndex < m_edmToStorageIndex.size()) {
         m_edmToStorageIndex[edmIndex] = SIZE_MAX;
@@ -1280,11 +1279,11 @@ void AIManager::commitQueuedBehaviorTransitions() {
       continue;
     }
 
-    const auto oldConfig = edm.getBehaviorConfig(edmIndex);
-    removeFromIndices(edmIndex, oldConfig.type);
+    const auto oldRef = edm.getBehaviorConfigRef(edmIndex);
+    removeFromIndices(edmIndex, oldRef.type);
 
     edm.clearBehaviorData(edmIndex);
-    edm.setBehaviorConfig(edmIndex, cmd.config);
+    edm.reassignBehaviorConfig(edmIndex, cmd.config);
     Behaviors::init(edmIndex, cmd.config);
 
     addToIndices(edmIndex, cmd.config.type);
@@ -1522,8 +1521,8 @@ void AIManager::processBatch(
 
     const CharacterData &characterData = edm.getCharacterDataByIndex(edmIdx);
 
-    const auto& config = edm.getBehaviorConfig(edmIdx);
-    if (config.type == BehaviorType::None) {
+    const auto ref = edm.getBehaviorConfigRef(edmIdx);
+    if (ref.type == BehaviorType::None) {
       continue;
     }
 
@@ -1535,7 +1534,7 @@ void AIManager::processBatch(
         deltaTime, playerHandle, playerPos, playerVel, playerValid,
         behaviorData, pathData, memoryData, characterData,
         0.0f, 0.0f, worldWidth, worldHeight, true, gameTime);
-    Behaviors::execute(ctx, config);
+    Behaviors::execute(ctx, ref);
 
     // Apply knockback impulse to velocity (decays over multiple frames)
     if (edmHotData.knockbackFrames > 0) {

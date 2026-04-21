@@ -18,37 +18,22 @@ namespace Behaviors {
 // MAIN DISPATCHER
 // ============================================================================
 
-void execute(BehaviorContext& ctx, const VoidLight::BehaviorConfigData& configData) {
-    switch (configData.type) {
-        case BehaviorType::Idle:
-            executeIdle(ctx, configData.params.idle);
-            break;
-        case BehaviorType::Wander:
-            executeWander(ctx, configData.params.wander);
-            break;
-        case BehaviorType::Chase:
-            executeChase(ctx, configData.params.chase);
-            break;
-        case BehaviorType::Patrol:
-            executePatrol(ctx, configData.params.patrol);
-            break;
-        case BehaviorType::Guard:
-            executeGuard(ctx, configData.params.guard);
-            break;
-        case BehaviorType::Attack:
-            executeAttack(ctx, configData.params.attack);
-            break;
-        case BehaviorType::Flee:
-            executeFlee(ctx, configData.params.flee);
-            break;
-        case BehaviorType::Follow:
-            executeFollow(ctx, configData.params.follow);
-            break;
+void execute(BehaviorContext& ctx, BehaviorConfigRef ref) {
+    auto& edm = EntityDataManager::Instance();
+    switch (ref.type) {
+        case BehaviorType::Idle:   executeIdle(ctx,   edm.getIdleConfig(ref.index));   break;
+        case BehaviorType::Wander: executeWander(ctx, edm.getWanderConfig(ref.index)); break;
+        case BehaviorType::Chase:  executeChase(ctx,  edm.getChaseConfig(ref.index));  break;
+        case BehaviorType::Patrol: executePatrol(ctx, edm.getPatrolConfig(ref.index)); break;
+        case BehaviorType::Guard:  executeGuard(ctx,  edm.getGuardConfig(ref.index));  break;
+        case BehaviorType::Attack: executeAttack(ctx, edm.getAttackConfig(ref.index)); break;
+        case BehaviorType::Flee:   executeFlee(ctx,   edm.getFleeConfig(ref.index));   break;
+        case BehaviorType::Follow: executeFollow(ctx, edm.getFollowConfig(ref.index)); break;
         case BehaviorType::Custom:
         case BehaviorType::COUNT:
         case BehaviorType::None:
         default:
-            // No-op for unknown behavior types
+            // No-op for unknown/unassigned behavior types
             break;
     }
 }
