@@ -342,9 +342,9 @@ private:
   void commitQueuedBehaviorMessages();
   void commitQueuedBehaviorTransitions();
 
-  // Process batch of Active tier entities using EDM indices directly
-  // No tier check needed - getActiveIndices() already filters to Active tier
-  // Collects deferred events from this batch's thread-local buffer into outEvents
+  // Process batch of Active tier entities using EDM indices directly.
+  // Runs emotional decay and behavior dispatch in a single fused pass.
+  // Collects deferred events from this batch's thread-local buffer into outEvents.
   void processBatch(const std::vector<size_t>& activeIndices,
                     size_t start, size_t end,
                     float deltaTime,

@@ -105,6 +105,8 @@ bool AIManager::init() {
     // indices)
     m_edmToStorageIndex.reserve(INITIAL_CAPACITY);
 
+    m_activeIndicesBuffer.reserve(INITIAL_CAPACITY);
+
     m_initialized.store(true, std::memory_order_release);
     m_globallyPaused.store(false, std::memory_order_release);
     m_isShutdown = false;
@@ -307,155 +309,119 @@ void AIManager::update(float deltaTime) {
         ? edm.getIndex(m_playerHandle)
         : SIZE_MAX;
 
-    // Determine threading strategy using adaptive threshold from WorkerBudget
-    // WorkerBudget is the AUTHORITATIVE source for production decisions
+    // WorkerBudget manager — used per-type bucket below.
     auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
-    auto decision = budgetMgr.shouldUseThreading(
-        VoidLight::SystemType::AI, entityCount);
-    bool useThreading = decision.shouldThread;
+    auto& threadSystem = VoidLight::ThreadSystem::Instance();
 
+    // Collect all deferred events across batches.
+    m_allDamageEvents.clear();
+
+    // Frame-level threading decision. WorkerBudget is the authoritative source:
+    // one decision per frame so EMA / threshold learning sees the full workload.
+    const auto frameDecision = budgetMgr.shouldUseThreading(
+        VoidLight::SystemType::AI, entityCount);
+    bool frameShouldThread = frameDecision.shouldThread;
     VOIDLIGHT_DEBUG_ONLY(
-        // Debug override: enableThreading(false) forces single-threaded for benchmarks
         if (!m_useThreading.load(std::memory_order_acquire)) {
-          useThreading = false;
+            frameShouldThread = false;
         }
     )
 
-    // Track what actually happened (not just what was planned)
-    bool actualWasThreaded = false;
-    size_t actualBatchCount = 1;
+    const size_t optimalWorkerCount = frameShouldThread
+        ? budgetMgr.getOptimalWorkers(VoidLight::SystemType::AI, entityCount)
+        : 0;
 
+    // Frame-level batch execution timing.
+    auto frameBatchStart = std::chrono::steady_clock::now();
+
+    size_t totalBatchCount = 0;
     VOIDLIGHT_DEBUG_ONLY(
-        // Track threading decision for interval logging (local vars, no storage
-        // overhead) - only needed for debug logging
-        size_t logBatchCount = 1;
         bool logWasThreaded = false;
     )
 
-    // startTime/endTime set per code path — timing captures ONLY actual processing work.
-    // Single-threaded timing feeds threshold learning; batch timing feeds hill-climbing.
-    std::chrono::steady_clock::time_point startTime;
-    std::chrono::steady_clock::time_point endTime;
+    if (!frameShouldThread) {
+        // Unified single-pass: one call covering all entities. Emotional decay
+        // + behavior dispatch fused into the same loop inside processBatch.
+        m_singleBatchEvents.clear();
+        processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
+                     worldWidth, worldHeight, cachedPlayerHandle,
+                     cachedPlayerPosition, cachedPlayerVelocity,
+                     cachedPlayerValid, cachedGameTime,
+                     m_singleBatchEvents);
+        if (!m_singleBatchEvents.empty()) {
+            m_allDamageEvents.insert(m_allDamageEvents.end(),
+                std::make_move_iterator(m_singleBatchEvents.begin()),
+                std::make_move_iterator(m_singleBatchEvents.end()));
+        }
+        totalBatchCount = 1;
+    } else {
+        VOIDLIGHT_DEBUG_ONLY(logWasThreaded = true;)
 
-    if (useThreading) {
-      auto &threadSystem = VoidLight::ThreadSystem::Instance();
+        // Single global batch strategy against the full workload.
+        auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+            VoidLight::SystemType::AI, entityCount, optimalWorkerCount);
+        if (batchCount == 0) batchCount = 1;
+        if (batchSize == 0) batchSize = 1;
 
-      // Get optimal worker count - WorkerBudget handles queue pressure internally
-      // (returns 1 worker under critical pressure, triggering single-batch path)
-      size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-          VoidLight::SystemType::AI, entityCount);
+        const size_t entitiesPerBatch = entityCount / batchCount;
+        const size_t remainder        = entityCount % batchCount;
+        totalBatchCount = batchCount;
 
-      // Get adaptive batch strategy (maximizes parallelism, fine-tunes based
-      // on timing). WorkerBudget determines everything dynamically.
-      auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-          VoidLight::SystemType::AI, entityCount, optimalWorkerCount);
-
-        VOIDLIGHT_DEBUG_ONLY(
-            // Track for interval logging at end of function
-            logBatchCount = batchCount;
-            logWasThreaded = (batchCount > 1);
-        )
-
-        // Single batch optimization: avoid thread overhead
-        if (batchCount <= 1) {
-          actualWasThreaded = false;
-          actualBatchCount = 1;
-          m_singleBatchEvents.clear();
-          startTime = std::chrono::steady_clock::now();
-          processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
-                       worldWidth, worldHeight, cachedPlayerHandle,
-                       cachedPlayerPosition, cachedPlayerVelocity,
-                       cachedPlayerValid, cachedGameTime, m_singleBatchEvents);
-          endTime = std::chrono::steady_clock::now();
-
-          if (!m_singleBatchEvents.empty()) {
-            EventManager::Instance().enqueueBatch(std::move(m_singleBatchEvents));
-          }
-        } else {
-          actualWasThreaded = true;
-          actualBatchCount = batchCount;
-          size_t entitiesPerBatch = entityCount / batchCount;
-          size_t remainingEntities = entityCount % batchCount;
-
-          startTime = std::chrono::steady_clock::now();
-
-          m_batchFutures.clear();
-          m_batchFutures.reserve(batchCount);
-
-          // Ensure per-batch event buffers are sized and cleared
-          if (m_batchEventBuffers.size() < batchCount) {
-            m_batchEventBuffers.resize(batchCount);
-          }
-          for (size_t i = 0; i < batchCount; ++i) {
+        if (m_batchEventBuffers.size() < totalBatchCount) {
+            m_batchEventBuffers.resize(totalBatchCount);
+        }
+        for (size_t i = 0; i < totalBatchCount; ++i) {
             m_batchEventBuffers[i].clear();
-          }
+        }
 
-          for (size_t i = 0; i < batchCount; ++i) {
-            size_t start = i * entitiesPerBatch;
-            size_t end = start + entitiesPerBatch;
+        m_batchFutures.clear();
+        m_batchFutures.reserve(totalBatchCount);
 
-            if (i == batchCount - 1) {
-              end += remainingEntities;
-            }
-
+        for (size_t i = 0; i < totalBatchCount; ++i) {
+            const size_t bStart = i * entitiesPerBatch;
+            const size_t bEnd   = bStart + entitiesPerBatch
+                                 + (i == totalBatchCount - 1 ? remainder : 0);
             m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
-                [this, i, start, end, deltaTime, worldWidth, worldHeight,
+                [this, i, bStart, bEnd, deltaTime, worldWidth, worldHeight,
                  cachedPlayerHandle, cachedPlayerPosition, cachedPlayerVelocity,
                  cachedPlayerValid, cachedGameTime]() {
-                  processBatch(m_activeIndicesBuffer, start, end, deltaTime,
-                               worldWidth, worldHeight, cachedPlayerHandle,
-                               cachedPlayerPosition, cachedPlayerVelocity,
-                               cachedPlayerValid, cachedGameTime,
-                               m_batchEventBuffers[i]);
+                    processBatch(m_activeIndicesBuffer, bStart, bEnd, deltaTime,
+                                 worldWidth, worldHeight, cachedPlayerHandle,
+                                 cachedPlayerPosition, cachedPlayerVelocity,
+                                 cachedPlayerValid, cachedGameTime,
+                                 m_batchEventBuffers[i]);
                 },
                 VoidLight::TaskPriority::High, "AI_Batch"));
-          }
-
-          // Wait for all batches and collect deferred events
-          for (auto& future : m_batchFutures) {
-            if (future.valid()) {
-              future.get();
-            }
-          }
-          m_allDamageEvents.clear();
-          for (size_t i = 0; i < batchCount; ++i) {
-            if (!m_batchEventBuffers[i].empty()) {
-              m_allDamageEvents.insert(m_allDamageEvents.end(),
-                                     std::make_move_iterator(m_batchEventBuffers[i].begin()),
-                                     std::make_move_iterator(m_batchEventBuffers[i].end()));
-            }
-          }
-          endTime = std::chrono::steady_clock::now();
-
-          if (!m_allDamageEvents.empty()) {
-            EventManager::Instance().enqueueBatch(std::move(m_allDamageEvents));
-          }
         }
-    } else {
-      // Single-threaded processing — timing feeds threshold learning
-      actualWasThreaded = false;
-      actualBatchCount = 1;
-      m_singleBatchEvents.clear();
-      startTime = std::chrono::steady_clock::now();
-      processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth,
-                   worldHeight, cachedPlayerHandle, cachedPlayerPosition,
-                   cachedPlayerVelocity, cachedPlayerValid, cachedGameTime,
-                   m_singleBatchEvents);
-      endTime = std::chrono::steady_clock::now();
 
-      if (!m_singleBatchEvents.empty()) {
-        EventManager::Instance().enqueueBatch(std::move(m_singleBatchEvents));
-      }
-    }
-    double totalUpdateTime =
-        std::chrono::duration<double, std::milli>(endTime - startTime).count();
+        for (auto& future : m_batchFutures) {
+            if (future.valid()) {
+                future.get();
+            }
+        }
 
-    // Report results for unified adaptive tuning - report what actually happened
-    if (entityCount > 0) {
-      budgetMgr.reportExecution(VoidLight::SystemType::AI,
-                                entityCount, actualWasThreaded, actualBatchCount,
-                                totalUpdateTime);
+        for (size_t i = 0; i < totalBatchCount; ++i) {
+            if (!m_batchEventBuffers[i].empty()) {
+                m_allDamageEvents.insert(m_allDamageEvents.end(),
+                    std::make_move_iterator(m_batchEventBuffers[i].begin()),
+                    std::make_move_iterator(m_batchEventBuffers[i].end()));
+            }
+        }
     }
+
+    // Deliver all deferred events collected across all type passes.
+    if (!m_allDamageEvents.empty()) {
+        EventManager::Instance().enqueueBatch(std::move(m_allDamageEvents));
+    }
+
+    auto frameBatchEnd = std::chrono::steady_clock::now();
+    double totalUpdateTime = std::chrono::duration<double, std::milli>(
+        frameBatchEnd - frameBatchStart).count();
+
+    // Single frame-level reportExecution — matches the contract WorkerBudget's
+    // EMA / threshold-learning assume (one sample per frame per system).
+    budgetMgr.reportExecution(VoidLight::SystemType::AI,
+        entityCount, frameShouldThread, totalBatchCount, totalUpdateTime);
 
     // Commit commands emitted by worker threads during this frame's batches.
     commitQueuedBehaviorTransitions();
@@ -463,44 +429,43 @@ void AIManager::update(float deltaTime) {
 
     m_frameCounter.fetch_add(1, std::memory_order_relaxed);
 
-#ifndef NDEBUG
-    // Interval stats logging - zero overhead in release (entire block compiles out)
-    static thread_local uint64_t logFrameCounter = 0;
-    if (++logFrameCounter % 1800 == 0 && entityCount > 0) {  // ~30 seconds at 60fps
-      // Only calculate expensive stats when actually logging
-      double entitiesPerSecond =
-          totalUpdateTime > 0 ? (entityCount * 1000.0 / totalUpdateTime) : 0.0;
-      const auto crowdStats = AIInternal::GetCrowdStats();
-      double crowdHitRate =
-          crowdStats.queryCount > 0
-              ? (100.0 * static_cast<double>(crowdStats.cacheHits) /
-                 static_cast<double>(crowdStats.queryCount))
-              : 0.0;
-      PathfinderManager::PathfinderStats pathStats{};
-      if (mp_pathfinderManager) {
-        pathStats = mp_pathfinderManager->getStats();
-      }
-      double pathHitRate = pathStats.cacheHitRate * 100.0;
-      if (logWasThreaded) {
-        AI_DEBUG(std::format(
-            "AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
-            "[Threaded: {} batches, {}/batch] Crowd[q:{} hit:{:.0f}% res:{}] "
-            "Path[rps:{:.1f} hit:{:.0f}% cache:{}]",
-            entityCount, totalUpdateTime, entitiesPerSecond, logBatchCount,
-            entityCount / logBatchCount, crowdStats.queryCount, crowdHitRate,
-            crowdStats.resultsCount, pathStats.requestsPerSecond, pathHitRate,
-            pathStats.cacheSize));
-      } else {
-        AI_DEBUG(std::format(
-            "AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
-            "[Single-threaded] Crowd[q:{} hit:{:.0f}% res:{}] "
-            "Path[rps:{:.1f} hit:{:.0f}% cache:{}]",
-            entityCount, totalUpdateTime, entitiesPerSecond,
-            crowdStats.queryCount, crowdHitRate, crowdStats.resultsCount,
-            pathStats.requestsPerSecond, pathHitRate, pathStats.cacheSize));
-      }
-    }
-#endif
+    VOIDLIGHT_DEBUG_ONLY(
+        // Interval stats logging
+        static thread_local uint64_t logFrameCounter = 0;
+        if (++logFrameCounter % 1800 == 0 && entityCount > 0) {  // ~30 seconds at 60fps
+            double entitiesPerSecond =
+                totalUpdateTime > 0 ? (entityCount * 1000.0 / totalUpdateTime) : 0.0;
+            const auto crowdStats = AIInternal::GetCrowdStats();
+            double crowdHitRate =
+                crowdStats.queryCount > 0
+                    ? (100.0 * static_cast<double>(crowdStats.cacheHits) /
+                       static_cast<double>(crowdStats.queryCount))
+                    : 0.0;
+            PathfinderManager::PathfinderStats pathStats{};
+            if (mp_pathfinderManager) {
+                pathStats = mp_pathfinderManager->getStats();
+            }
+            double pathHitRate = pathStats.cacheHitRate * 100.0;
+            if (logWasThreaded) {
+                AI_DEBUG(std::format(
+                    "AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
+                    "[Threaded: {} total-batches] Crowd[q:{} hit:{:.0f}% res:{}] "
+                    "Path[rps:{:.1f} hit:{:.0f}% cache:{}]",
+                    entityCount, totalUpdateTime, entitiesPerSecond, totalBatchCount,
+                    crowdStats.queryCount, crowdHitRate,
+                    crowdStats.resultsCount, pathStats.requestsPerSecond, pathHitRate,
+                    pathStats.cacheSize));
+            } else {
+                AI_DEBUG(std::format(
+                    "AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
+                    "[Single-threaded] Crowd[q:{} hit:{:.0f}% res:{}] "
+                    "Path[rps:{:.1f} hit:{:.0f}% cache:{}]",
+                    entityCount, totalUpdateTime, entitiesPerSecond,
+                    crowdStats.queryCount, crowdHitRate, crowdStats.resultsCount,
+                    pathStats.requestsPerSecond, pathHitRate, pathStats.cacheSize));
+            }
+        }
+    )
 
   } catch (const std::exception &e) {
     AI_ERROR(std::format("Exception in AIManager::update: {}", e.what()));
@@ -1347,8 +1312,9 @@ void AIManager::processBatch(
                              const Vector2D &playerVel, bool playerValid,
                              float gameTime,
                              std::vector<EventManager::DeferredEvent> &outEvents) {
-  // Process batch of Active tier entities using EDM indices directly
-  // No tier check needed - getActiveIndices() already filters to Active tier
+  // Process batch of Active tier entities using EDM indices directly.
+  // Emotional decay and behavior dispatch are fused into a single pass so Debug
+  // builds touch each entity's hot data once per frame.
   size_t batchExecutions = 0;
   auto &edm = EntityDataManager::Instance();
 
@@ -1479,14 +1445,13 @@ void AIManager::processBatch(
     batchCount = 0;
   };
 
-  // Pre-pass: update emotional decay for all active entities in a tight loop
-  // Better cache locality than interleaving with behavior execution
-  for (size_t i = start; i < end && i < activeIndices.size(); ++i) {
-    edm.updateEmotionalDecay(activeIndices[i], deltaTime);
-  }
-
+  // Unified single pass: emotional decay + behavior dispatch + SIMD movement
+  // accumulation fused into one traversal of activeIndices[start, end). Each
+  // entity's hot data is touched exactly once per frame.
   for (size_t i = start; i < end && i < activeIndices.size(); ++i) {
     size_t edmIdx = activeIndices[i];
+
+    edm.updateEmotionalDecay(edmIdx, deltaTime);
 
     // Get storage index from reverse mapping - O(1) lookup, no atomic overhead
     if (edmIdx >= m_edmToStorageIndex.size()) {
@@ -1500,20 +1465,17 @@ void AIManager::processBatch(
       continue; // Entity marked inactive
     }
 
-    auto &edmHotData = edm.getHotDataByIndex(edmIdx);
-    auto &transform =
-        edmHotData
-            .transform; // Direct access, avoid redundant getTransformByIndex()
-
     if (!edm.hasBehaviorData(edmIdx)) {
       continue;
     }
-    auto &behaviorData = edm.getBehaviorData(edmIdx);
     const auto ref = edm.getBehaviorConfigRef(edmIdx);
-    if (ref.type == BehaviorType::None ||
-        ref.type == BehaviorType::COUNT) {
+    if (ref.type == BehaviorType::None || ref.type == BehaviorType::COUNT) {
       continue;
     }
+
+    auto &edmHotData = edm.getHotDataByIndex(edmIdx);
+    auto &transform = edmHotData.transform;
+    auto &behaviorData = edm.getBehaviorData(edmIdx);
     PathData *pathData = &edm.getPathData(edmIdx);
 
     assert(edm.hasMemoryData(edmIdx) &&
@@ -1530,7 +1492,35 @@ void AIManager::processBatch(
         deltaTime, playerHandle, playerPos, playerVel, playerValid,
         behaviorData, pathData, memoryData, characterData,
         0.0f, 0.0f, worldWidth, worldHeight, true, gameTime);
-    Behaviors::execute(ctx, ref);
+
+    switch (ref.type) {
+      case BehaviorType::Idle:
+        Behaviors::executeIdle(ctx, edm.getIdleConfig(ref.index), edm.getIdleState(ref.index));
+        break;
+      case BehaviorType::Wander:
+        Behaviors::executeWander(ctx, edm.getWanderConfig(ref.index), edm.getWanderState(ref.index));
+        break;
+      case BehaviorType::Chase:
+        Behaviors::executeChase(ctx, edm.getChaseConfig(ref.index), edm.getChaseState(ref.index));
+        break;
+      case BehaviorType::Patrol:
+        Behaviors::executePatrol(ctx, edm.getPatrolConfig(ref.index), edm.getPatrolState(ref.index));
+        break;
+      case BehaviorType::Guard:
+        Behaviors::executeGuard(ctx, edm.getGuardConfig(ref.index), edm.getGuardState(ref.index));
+        break;
+      case BehaviorType::Attack:
+        Behaviors::executeAttack(ctx, edm.getAttackConfig(ref.index), edm.getAttackState(ref.index));
+        break;
+      case BehaviorType::Flee:
+        Behaviors::executeFlee(ctx, edm.getFleeConfig(ref.index), edm.getFleeState(ref.index));
+        break;
+      case BehaviorType::Follow:
+        Behaviors::executeFollow(ctx, edm.getFollowConfig(ref.index), edm.getFollowState(ref.index));
+        break;
+      default:
+        break;
+    }
 
     // Apply knockback impulse to velocity (decays over multiple frames)
     if (edmHotData.knockbackFrames > 0) {

@@ -276,6 +276,7 @@ void initFollow(size_t edmIndex, const VoidLight::FollowBehaviorConfig& config, 
  *
  * Reads the correct per-variant dense pool via EntityDataManager and
  * dispatches to the appropriate execute function based on the behavior type.
+ * Use for single-entity dispatch outside the hot batch path (tests, debug tools).
  */
 void execute(BehaviorContext& ctx, BehaviorConfigRef ref);
 
