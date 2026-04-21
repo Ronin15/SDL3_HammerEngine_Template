@@ -49,6 +49,7 @@
 #include <atomic>
 #include <cassert>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <mutex>
 #include <random>
@@ -2427,6 +2428,13 @@ private:
     // resizeSparse() called at every m_hotData growth site (allocateSlot new-slot path).
     // removeAllFor() called from freeSlot() to clean up on entity destruction.
     SparseSidecar<KnockbackData> m_knockback;
+
+    // Sidecar coordination hooks — registered once in init(). Each sidecar pushes its
+    // three lambdas here so allocateSlot / freeSlot / clearAllEntityStorage dispatch
+    // to all sidecars without per-sidecar edits at each call site.
+    std::vector<std::function<void(size_t /*newCapacity*/)>> m_sidecarGrowHooks;
+    std::vector<std::function<void(uint32_t /*edmIdx*/)>>    m_sidecarPerEntityHooks;
+    std::vector<std::function<void()>>                       m_sidecarResetHooks;
 
     // Path data (indexed by edmIndex, sparse - grows lazily for AI entities)
     std::vector<PathData> m_pathData;

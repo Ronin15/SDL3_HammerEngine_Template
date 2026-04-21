@@ -165,6 +165,15 @@ bool EntityDataManager::init() {
             count.store(0, std::memory_order_relaxed);
         }
 
+        // Sidecar coordination registration — each sidecar registers its grow,
+        // per-entity cleanup, and full reset behavior here once.
+        m_sidecarGrowHooks.emplace_back(
+            [this](size_t n) { m_knockback.resizeSparse(n); });
+        m_sidecarPerEntityHooks.emplace_back(
+            [this](uint32_t i) { m_knockback.removeAllFor(i); });
+        m_sidecarResetHooks.emplace_back(
+            [this]() { m_knockback = SparseSidecar<KnockbackData>{}; });
+
         m_initialized.store(true, std::memory_order_release);
         ENTITY_INFO("EntityDataManager initialized successfully");
         return true;
@@ -216,9 +225,7 @@ void EntityDataManager::clearAllEntityStorage() {
     m_nextMemoryOverflowId = 1;
 
     // Transient state sidecars — must be reset alongside m_hotData.
-    // Replacing with default-constructed instances clears all three internal vectors
-    // (sparse, dense, denseToEdm) and releases their capacity.
-    m_knockback = SparseSidecar<KnockbackData>{};
+    for (auto& hook : m_sidecarResetHooks) hook();
 
     // Type-specific free-lists
     m_freeCharacterSlots.clear();
@@ -272,6 +279,10 @@ void EntityDataManager::clean() {
     }
     m_destroyBuffer.clear();
 
+    m_sidecarGrowHooks.clear();
+    m_sidecarPerEntityHooks.clear();
+    m_sidecarResetHooks.clear();
+
     ENTITY_INFO("EntityDataManager shutdown complete");
 }
 
@@ -321,8 +332,7 @@ size_t EntityDataManager::allocateSlot() {
         // New entity starts with no active behavior config — ref is {None, UINT32_MAX}
         m_behaviorConfigRef.emplace_back(BehaviorConfigRef{BehaviorType::None, {0, 0, 0}, std::numeric_limits<uint32_t>::max()});
         m_memoryData.emplace_back();     // NPC memory data
-        // Grow knockback sparse in lockstep with m_hotData so edmIdx is always a valid sparse index.
-        m_knockback.resizeSparse(m_hotData.size());
+        for (auto& hook : m_sidecarGrowHooks) hook(m_hotData.size());
     }
 
     m_tierIndicesDirty = true;
@@ -347,7 +357,7 @@ void EntityDataManager::freeSlot(size_t index) {
     clearMemoryData(index);
 
     // Clear transient sidecar state — must be cleared before the slot is reused.
-    m_knockback.removeAllFor(static_cast<uint32_t>(index));
+    for (auto& hook : m_sidecarPerEntityHooks) hook(static_cast<uint32_t>(index));
 
     // Clear the slot
     m_hotData[index] = EntityHotData{};
