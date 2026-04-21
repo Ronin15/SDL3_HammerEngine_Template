@@ -265,9 +265,6 @@ void SettingsMenuState::applySettings() {
         GAMESTATE_INFO("Fullscreen setting applied - UI will update via SDL resize event");
     }
 
-    // Apply VSync setting to GameEngine (also saves to SettingsManager internally)
-    gameEngine.setVSyncEnabled(m_tempSettings.vsync);
-
     // Audio
     settings.set("audio", "master_volume", m_tempSettings.masterVolume);
     settings.set("audio", "music_volume", m_tempSettings.musicVolume);
@@ -279,8 +276,10 @@ void SettingsMenuState::applySettings() {
     settings.set("gameplay", "autosave_enabled", m_tempSettings.autosaveEnabled);
     settings.set("gameplay", "autosave_interval", m_tempSettings.autosaveInterval);
 
-    // Save to disk
-    settings.saveToFile(VoidLight::ResourcePath::resolve("res/settings.json"));
+    // Apply VSync last — this persists the full settings file to disk, so it
+    // must run after every settings.set() above. A separate saveToFile() would
+    // duplicate the save (and its log line).
+    gameEngine.setVSyncEnabled(m_tempSettings.vsync);
 
     // Save input bindings alongside other settings; log on failure but don't abort apply
     if (!InputManager::Instance().saveBindingsToFile(
