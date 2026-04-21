@@ -636,17 +636,17 @@ BOOST_AUTO_TEST_CASE(TestAttackBehaviorRespectsAuthoredRangeWhenClosing) {
     for (int i = 0; i < 80; ++i) {
         updateAI(0.1f, Vector2D(360.0f, 330.0f));
 
-        const auto& shortData = edm.getBehaviorData(shortAttackerIdx);
+        const auto shortRef = edm.getBehaviorConfigRef(shortAttackerIdx);
         if (shortAttackDistance < 0.0f &&
-            shortData.behaviorType == BehaviorType::Attack &&
-            shortData.state.attack.currentState == 3) {
+            shortRef.type == BehaviorType::Attack &&
+            edm.getAttackState(shortRef.index).currentState == 3) {
             shortAttackDistance = (shortAttacker->getPosition() - shortTarget->getPosition()).length();
         }
 
-        const auto& longData = edm.getBehaviorData(longAttackerIdx);
+        const auto longRef = edm.getBehaviorConfigRef(longAttackerIdx);
         if (longAttackDistance < 0.0f &&
-            longData.behaviorType == BehaviorType::Attack &&
-            longData.state.attack.currentState == 3) {
+            longRef.type == BehaviorType::Attack &&
+            edm.getAttackState(longRef.index).currentState == 3) {
             longAttackDistance = (longAttacker->getPosition() - longTarget->getPosition()).length();
         }
 
@@ -736,10 +736,10 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueBasicOperations) {
 
     // Commit + process on AI update
     updateAI(0.016f);
-    const auto& afterUpdate = edm.getBehaviorData(idx);
-    bool processedRetreat = (afterUpdate.behaviorType == BehaviorType::Flee) ||
-                            (afterUpdate.behaviorType == BehaviorType::Attack &&
-                             afterUpdate.state.attack.isRetreating);
+    const auto afterRef = edm.getBehaviorConfigRef(idx);
+    bool processedRetreat = (afterRef.type == BehaviorType::Flee) ||
+                            (afterRef.type == BehaviorType::Attack &&
+                             edm.getAttackState(afterRef.index).isRetreating);
     BOOST_CHECK(processedRetreat);
 
     // Clear messages
@@ -768,7 +768,7 @@ BOOST_AUTO_TEST_CASE(TestDeferredPipelineEndToEnd) {
     updateAI(0.016f);
 
     // Guard starts CALM
-    BOOST_CHECK(edm.getBehaviorData(guardIdx).state.guard.currentAlertLevel == 0);
+    BOOST_CHECK(edm.getGuardState(edm.getBehaviorConfigRef(guardIdx).index).currentAlertLevel == 0);
 
     // Simulate what a behavior does during batch: defer a message
     Behaviors::deferBehaviorMessage(guardIdx, BehaviorMessage::RAISE_ALERT);
@@ -777,7 +777,7 @@ BOOST_AUTO_TEST_CASE(TestDeferredPipelineEndToEnd) {
     updateAI(0.016f);
 
     // Verify guard is now HOSTILE and queue is drained by behavior handler
-    BOOST_CHECK(edm.getBehaviorData(guardIdx).state.guard.currentAlertLevel == 3);
+    BOOST_CHECK(edm.getGuardState(edm.getBehaviorConfigRef(guardIdx).index).currentAlertLevel == 3);
     BOOST_CHECK(edm.getBehaviorData(guardIdx).pendingMessageCount == 0);
 
     BOOST_TEST_MESSAGE("Deferred command-bus pipeline verified: "
@@ -804,7 +804,7 @@ BOOST_AUTO_TEST_CASE(TestCivilianAttacked_NearbyGuardGoesHostile) {
     updateAI(0.016f);
 
     // Guard starts CALM
-    BOOST_CHECK(edm.getBehaviorData(guardIdx).state.guard.currentAlertLevel == 0);
+    BOOST_CHECK(edm.getGuardState(edm.getBehaviorConfigRef(guardIdx).index).currentAlertLevel == 0);
 
     // Simulate centralized witness notification: damage handler sends RAISE_ALERT
     // directly to same-faction nearby allies (replaces old behavior-level deferral)
@@ -813,7 +813,7 @@ BOOST_AUTO_TEST_CASE(TestCivilianAttacked_NearbyGuardGoesHostile) {
     // Guard processes RAISE_ALERT → alertLevel = 3
     updateAI(0.016f);
 
-    BOOST_CHECK_MESSAGE(edm.getBehaviorData(guardIdx).state.guard.currentAlertLevel == 3,
+    BOOST_CHECK_MESSAGE(edm.getGuardState(edm.getBehaviorConfigRef(guardIdx).index).currentAlertLevel == 3,
         "Guard should be HOSTILE after nearby civilian was attacked");
 
     BOOST_TEST_MESSAGE("Civilian cry for help → guard goes hostile verified");
@@ -842,8 +842,8 @@ BOOST_AUTO_TEST_CASE(TestGuardCallsForHelp_NearbyGuardGoesHostile) {
     updateAI(0.016f);
 
     // Both guards start CALM
-    BOOST_CHECK(edm.getBehaviorData(guard1Idx).state.guard.currentAlertLevel == 0);
-    BOOST_CHECK(edm.getBehaviorData(guard2Idx).state.guard.currentAlertLevel == 0);
+    BOOST_CHECK(edm.getGuardState(edm.getBehaviorConfigRef(guard1Idx).index).currentAlertLevel == 0);
+    BOOST_CHECK(edm.getGuardState(edm.getBehaviorConfigRef(guard2Idx).index).currentAlertLevel == 0);
 
     // Guard1 receives RAISE_ALERT (simulating threat detection)
     Behaviors::queueBehaviorMessage(guard1Idx, BehaviorMessage::RAISE_ALERT);
@@ -851,8 +851,8 @@ BOOST_AUTO_TEST_CASE(TestGuardCallsForHelp_NearbyGuardGoesHostile) {
     // Frame 1: Guard1 processes RAISE_ALERT → HOSTILE (3) → helpCalled →
     // defers RAISE_ALERT to nearby same-faction allies (guard2)
     updateAI(0.016f);
-    BOOST_CHECK(edm.getBehaviorData(guard1Idx).state.guard.currentAlertLevel == 3);
-    BOOST_CHECK(edm.getBehaviorData(guard1Idx).state.guard.helpCalled == true);
+    BOOST_CHECK(edm.getGuardState(edm.getBehaviorConfigRef(guard1Idx).index).currentAlertLevel == 3);
+    BOOST_CHECK(edm.getGuardState(edm.getBehaviorConfigRef(guard1Idx).index).helpCalled == true);
 
     // EventManager delivers deferred RAISE_ALERT to guard2's queue
     eventMgr.update();
@@ -860,7 +860,7 @@ BOOST_AUTO_TEST_CASE(TestGuardCallsForHelp_NearbyGuardGoesHostile) {
     // Frame 2: Guard2 processes RAISE_ALERT → HOSTILE (3)
     updateAI(0.016f);
 
-    BOOST_CHECK_MESSAGE(edm.getBehaviorData(guard2Idx).state.guard.currentAlertLevel == 3,
+    BOOST_CHECK_MESSAGE(edm.getGuardState(edm.getBehaviorConfigRef(guard2Idx).index).currentAlertLevel == 3,
         "Nearby guard should go HOSTILE when ally guard calls for help");
 
     BOOST_TEST_MESSAGE("Guard calls for help → nearby guard goes hostile verified");
@@ -885,7 +885,7 @@ BOOST_AUTO_TEST_CASE(TestRaiseAlert_CowardFleesOnAlert) {
     aiMgr.assignBehavior(cowardHandle, "Wander");
     updateAI(0.016f);
 
-    BOOST_CHECK(edm.getBehaviorData(cowardIdx).behaviorType == BehaviorType::Wander);
+    BOOST_CHECK(edm.getBehaviorConfigRef(cowardIdx).type == BehaviorType::Wander);
 
     // Simulate centralized witness notification: damage handler sends RAISE_ALERT
     // directly to same-faction nearby witnesses (replaces old behavior-level deferral)
@@ -894,7 +894,7 @@ BOOST_AUTO_TEST_CASE(TestRaiseAlert_CowardFleesOnAlert) {
     // Coward processes RAISE_ALERT → bravery 0.2 < 0.4 → switches to Flee
     updateAI(0.016f);
 
-    BOOST_CHECK_MESSAGE(edm.getBehaviorData(cowardIdx).behaviorType == BehaviorType::Flee,
+    BOOST_CHECK_MESSAGE(edm.getBehaviorConfigRef(cowardIdx).type == BehaviorType::Flee,
         "Low-bravery NPC should flee when receiving RAISE_ALERT");
 
     BOOST_TEST_MESSAGE("Coward flees on RAISE_ALERT verified");
@@ -918,7 +918,7 @@ BOOST_AUTO_TEST_CASE(TestRaiseAlert_BraveNPCStands) {
     aiMgr.assignBehavior(braveHandle, "Wander");
     updateAI(0.016f);
 
-    BOOST_CHECK(edm.getBehaviorData(braveIdx).behaviorType == BehaviorType::Wander);
+    BOOST_CHECK(edm.getBehaviorConfigRef(braveIdx).type == BehaviorType::Wander);
 
     // Simulate centralized witness notification: damage handler sends RAISE_ALERT
     Behaviors::queueBehaviorMessage(braveIdx, BehaviorMessage::RAISE_ALERT);
@@ -927,7 +927,7 @@ BOOST_AUTO_TEST_CASE(TestRaiseAlert_BraveNPCStands) {
     updateAI(0.016f);
 
     // Brave NPC should NOT flee (bravery 0.8 >= 0.4)
-    BOOST_CHECK_MESSAGE(edm.getBehaviorData(braveIdx).behaviorType != BehaviorType::Flee,
+    BOOST_CHECK_MESSAGE(edm.getBehaviorConfigRef(braveIdx).type != BehaviorType::Flee,
         "High-bravery NPC should not flee from RAISE_ALERT");
 
     BOOST_TEST_MESSAGE("Brave NPC ignores RAISE_ALERT verified");
@@ -956,7 +956,7 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueOverflow) {
 
     // Messages should be consumed and guard should escalate to HOSTILE
     BOOST_CHECK(edm.getBehaviorData(idx).pendingMessageCount == 0);
-    BOOST_CHECK(edm.getBehaviorData(idx).state.guard.currentAlertLevel == 3);
+    BOOST_CHECK(edm.getGuardState(edm.getBehaviorConfigRef(idx).index).currentAlertLevel == 3);
 
     BOOST_TEST_MESSAGE("Message queue overflow handling verified");
     aiMgr.unassignBehavior(handle);
@@ -985,7 +985,7 @@ BOOST_AUTO_TEST_CASE(TestCommandBusMergesWithExistingPendingInbox) {
 
     updateAI(0.016f);
 
-    BOOST_CHECK_MESSAGE(edm.getBehaviorData(idx).state.attack.isRetreating,
+    BOOST_CHECK_MESSAGE(edm.getAttackState(edm.getBehaviorConfigRef(idx).index).isRetreating,
         "New command-bus RETREAT message should survive even when the previous frame left a full inbox");
     BOOST_CHECK(edm.getBehaviorData(idx).pendingMessageCount == 0);
 
@@ -1015,7 +1015,7 @@ BOOST_AUTO_TEST_CASE(TestClearPendingMessages) {
 
     // Verify guard state unchanged after update (messages were cleared pre-commit)
     updateAI(0.016f);
-    BOOST_CHECK(edm.getBehaviorData(idx).state.guard.currentAlertLevel == 0); // Still CALM
+    BOOST_CHECK(edm.getGuardState(edm.getBehaviorConfigRef(idx).index).currentAlertLevel == 0); // Still CALM
 
     BOOST_TEST_MESSAGE("Clear pending messages verified");
     aiMgr.unassignBehavior(handle);
@@ -1424,7 +1424,7 @@ BOOST_AUTO_TEST_CASE(TestWanderSwitchesToFleeWhenAttacked) {
     aiMgr.assignBehavior(entityHandle, "Wander");
 
     // Verify starting behavior is Wander (direct access, no cached reference across updateAI)
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Wander);
+    BOOST_CHECK(edm.getBehaviorConfigRef(entityIdx).type == BehaviorType::Wander);
 
     // Simulate being attacked - set lastCombatTime=0 to indicate "just happened"
     // (delta-based semantics: starts at 0, increments each frame via emotional decay)
@@ -1440,7 +1440,7 @@ BOOST_AUTO_TEST_CASE(TestWanderSwitchesToFleeWhenAttacked) {
 
     // Should have switched to a combat response behavior (re-fetch after updateAI to avoid stale ref)
     // Guards are brave+aggressive → retaliate (Chase). Cowardly NPCs → Flee.
-    auto responseType = edm.getBehaviorData(entityIdx).behaviorType;
+    auto responseType = edm.getBehaviorConfigRef(entityIdx).type;
     BOOST_CHECK(responseType == BehaviorType::Chase || responseType == BehaviorType::Flee);
 
     BOOST_TEST_MESSAGE("Wander -> combat response on attack verified (type="
@@ -1467,7 +1467,7 @@ BOOST_AUTO_TEST_CASE(TestIdleSwitchesToFleeWhenAttacked) {
     aiMgr.assignBehavior(entityHandle, "Idle");
 
     // Verify starting behavior is Idle (direct access, no cached reference across updateAI)
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Idle);
+    BOOST_CHECK(edm.getBehaviorConfigRef(entityIdx).type == BehaviorType::Idle);
 
     // Simulate being attacked - set lastCombatTime=0 to indicate "just happened"
     // (delta-based semantics: starts at 0, increments each frame via emotional decay)
@@ -1483,7 +1483,7 @@ BOOST_AUTO_TEST_CASE(TestIdleSwitchesToFleeWhenAttacked) {
 
     // Should have switched to a combat response behavior (re-fetch after updateAI to avoid stale ref)
     // Guards are brave+aggressive → retaliate (Chase). Cowardly NPCs → Flee.
-    auto responseType = edm.getBehaviorData(entityIdx).behaviorType;
+    auto responseType = edm.getBehaviorConfigRef(entityIdx).type;
     BOOST_CHECK(responseType == BehaviorType::Chase || responseType == BehaviorType::Flee);
 
     BOOST_TEST_MESSAGE("Idle -> combat response on attack verified (type="
@@ -1654,14 +1654,14 @@ BOOST_AUTO_TEST_CASE(TestChasePanicSwitchesToFlee) {
     memData.lastTarget = target->getHandle();
     updateAI(0.016f);
 
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Chase);
+    BOOST_CHECK(edm.getBehaviorConfigRef(entityIdx).type == BehaviorType::Chase);
 
     // Queue PANIC message
     Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::PANIC);
     updateAI(0.016f);
 
     // Should switch to Flee
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Flee);
+    BOOST_CHECK(edm.getBehaviorConfigRef(entityIdx).type == BehaviorType::Flee);
     BOOST_TEST_MESSAGE("Chase -> Flee on PANIC verified");
     aiMgr.unassignBehavior(entityHandle);
 }
@@ -1686,7 +1686,7 @@ BOOST_AUTO_TEST_CASE(TestChaseRetreatSwitchesToFlee) {
     Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::RETREAT);
     updateAI(0.016f);
 
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Flee);
+    BOOST_CHECK(edm.getBehaviorConfigRef(entityIdx).type == BehaviorType::Flee);
     BOOST_TEST_MESSAGE("Chase -> Flee on RETREAT verified");
     aiMgr.unassignBehavior(entityHandle);
 }
@@ -1714,10 +1714,10 @@ BOOST_AUTO_TEST_CASE(TestChaseAttackTargetRedirects) {
     updateAI(0.016f);
 
     // Should still be chasing but with explicit target set to target2
-    auto& chaseData = edm.getBehaviorData(entityIdx);
-    BOOST_CHECK(chaseData.behaviorType == BehaviorType::Chase);
-    BOOST_CHECK(chaseData.state.chase.hasExplicitTarget == true);
-    BOOST_CHECK(chaseData.state.chase.explicitTarget == target2->getHandle());
+    const auto chaseRef = edm.getBehaviorConfigRef(entityIdx);
+    BOOST_CHECK(chaseRef.type == BehaviorType::Chase);
+    BOOST_CHECK(edm.getChaseState(chaseRef.index).hasExplicitTarget == true);
+    BOOST_CHECK(edm.getChaseState(chaseRef.index).explicitTarget == target2->getHandle());
     BOOST_TEST_MESSAGE("Chase ATTACK_TARGET redirected to lastAttacker");
     aiMgr.unassignBehavior(entityHandle);
 }
@@ -1733,12 +1733,12 @@ BOOST_AUTO_TEST_CASE(TestPatrolPanicSwitchesToFlee) {
 
     aiMgr.assignBehavior(entityHandle, "Patrol");
     updateAI(0.016f);
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Patrol);
+    BOOST_CHECK(edm.getBehaviorConfigRef(entityIdx).type == BehaviorType::Patrol);
 
     Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::PANIC);
     updateAI(0.016f);
 
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Flee);
+    BOOST_CHECK(edm.getBehaviorConfigRef(entityIdx).type == BehaviorType::Flee);
     BOOST_TEST_MESSAGE("Patrol -> Flee on PANIC verified");
     aiMgr.unassignBehavior(entityHandle);
 }
@@ -1779,12 +1779,12 @@ BOOST_AUTO_TEST_CASE(TestFollowPanicSwitchesToFlee) {
 
     aiMgr.assignBehavior(entityHandle, "Follow");
     updateAI(0.016f);
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Follow);
+    BOOST_CHECK(edm.getBehaviorConfigRef(entityIdx).type == BehaviorType::Follow);
 
     Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::PANIC);
     updateAI(0.016f);
 
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Flee);
+    BOOST_CHECK(edm.getBehaviorConfigRef(entityIdx).type == BehaviorType::Flee);
     BOOST_TEST_MESSAGE("Follow -> Flee on PANIC verified");
     aiMgr.unassignBehavior(entityHandle);
 }
@@ -1807,7 +1807,7 @@ BOOST_AUTO_TEST_CASE(TestFollowRaiseAlertCowardFlees) {
     Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::RAISE_ALERT);
     updateAI(0.016f);
 
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Flee);
+    BOOST_CHECK(edm.getBehaviorConfigRef(entityIdx).type == BehaviorType::Flee);
     BOOST_TEST_MESSAGE("Follow -> Flee on RAISE_ALERT (coward) verified");
     aiMgr.unassignBehavior(entityHandle);
 }
@@ -1830,7 +1830,7 @@ BOOST_AUTO_TEST_CASE(TestFollowRaiseAlertBraveStands) {
     Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::RAISE_ALERT);
     updateAI(0.016f);
 
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Follow);
+    BOOST_CHECK(edm.getBehaviorConfigRef(entityIdx).type == BehaviorType::Follow);
     BOOST_TEST_MESSAGE("Follow stays on RAISE_ALERT (brave) verified");
     aiMgr.unassignBehavior(entityHandle);
 }
@@ -1853,12 +1853,12 @@ BOOST_AUTO_TEST_CASE(TestGuardCalmDownDecaysAlert) {
     // Force HOSTILE alert via RAISE_ALERT
     Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::RAISE_ALERT);
     updateAI(0.016f);
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).state.guard.currentAlertLevel == 3);
+    BOOST_CHECK(edm.getGuardState(edm.getBehaviorConfigRef(entityIdx).index).currentAlertLevel == 3);
 
     // Send CALM_DOWN — should decay by 1
     Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::CALM_DOWN);
     updateAI(0.016f);
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).state.guard.currentAlertLevel == 2);
+    BOOST_CHECK(edm.getGuardState(edm.getBehaviorConfigRef(entityIdx).index).currentAlertLevel == 2);
 
     BOOST_TEST_MESSAGE("Guard CALM_DOWN decayed alert: 3 -> 2");
     aiMgr.unassignBehavior(entityHandle);
@@ -1877,12 +1877,12 @@ BOOST_AUTO_TEST_CASE(TestGuardPanicEscalatesToHostile) {
     updateAI(0.016f);
 
     // Guard starts CALM
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).state.guard.currentAlertLevel == 0);
+    BOOST_CHECK(edm.getGuardState(edm.getBehaviorConfigRef(entityIdx).index).currentAlertLevel == 0);
 
     // PANIC escalates to HOSTILE (guards don't flee, they fight)
     Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::PANIC);
     updateAI(0.016f);
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).state.guard.currentAlertLevel == 3);
+    BOOST_CHECK(edm.getGuardState(edm.getBehaviorConfigRef(entityIdx).index).currentAlertLevel == 3);
 
     BOOST_TEST_MESSAGE("Guard PANIC escalated to HOSTILE (not Flee) verified");
     aiMgr.unassignBehavior(entityHandle);
@@ -1914,7 +1914,7 @@ BOOST_AUTO_TEST_CASE(TestGuardDoesNotInheritOtherEntityCombatState) {
 
     const auto& guardMemData = edm.getMemoryData(guardIdx);
     BOOST_CHECK(!guardMemData.lastTarget.isValid());
-    BOOST_CHECK_EQUAL(edm.getBehaviorData(guardIdx).state.guard.currentAlertLevel, 0);
+    BOOST_CHECK_EQUAL(edm.getGuardState(edm.getBehaviorConfigRef(guardIdx).index).currentAlertLevel, 0);
 
     aiMgr.unassignBehavior(guardHandle);
 }
@@ -1939,7 +1939,7 @@ BOOST_AUTO_TEST_CASE(TestGuardFleesWhenOverwhelmed) {
     updateAI(0.016f);
 
     // Guard should flee due to overwhelming fear + low bravery
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Flee);
+    BOOST_CHECK(edm.getBehaviorConfigRef(entityIdx).type == BehaviorType::Flee);
     BOOST_TEST_MESSAGE("Guard -> Flee when overwhelmed (bravery=0.1, fear=0.8) verified");
     aiMgr.unassignBehavior(entityHandle);
 }
@@ -1963,7 +1963,7 @@ BOOST_AUTO_TEST_CASE(TestGuardStandsWhenBrave) {
     updateAI(0.016f);
 
     // Guard should stand (brave enough despite fear)
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).behaviorType == BehaviorType::Guard);
+    BOOST_CHECK(edm.getBehaviorConfigRef(entityIdx).type == BehaviorType::Guard);
     BOOST_TEST_MESSAGE("Guard stands when brave (bravery=0.5, fear=0.8) verified");
     aiMgr.unassignBehavior(entityHandle);
 }
@@ -1992,10 +1992,10 @@ BOOST_AUTO_TEST_CASE(TestAttackPanicForcesRetreat) {
     Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::PANIC);
     updateAI(0.016f);
 
-    auto& attackData = edm.getBehaviorData(entityIdx);
+    const auto attackRef = edm.getBehaviorConfigRef(entityIdx);
     // May have switched to Flee or be in RETREATING state (attack still active)
-    bool retreatingOrFled = (attackData.behaviorType == BehaviorType::Flee) ||
-                            (attackData.behaviorType == BehaviorType::Attack && attackData.state.attack.isRetreating);
+    bool retreatingOrFled = (attackRef.type == BehaviorType::Flee) ||
+                            (attackRef.type == BehaviorType::Attack && edm.getAttackState(attackRef.index).isRetreating);
     BOOST_CHECK(retreatingOrFled);
     BOOST_TEST_MESSAGE("Attack PANIC forced retreat/flee verified");
     aiMgr.unassignBehavior(entityHandle);
@@ -2011,15 +2011,19 @@ BOOST_AUTO_TEST_CASE(TestSpecialAttackReadyAfterCooldown) {
     BOOST_REQUIRE(entityIdx != SIZE_MAX);
 
     aiMgr.assignBehavior(entityHandle, "Attack");
-    auto& behaviorData = edm.getBehaviorData(entityIdx);
 
-    // Starts not ready
-    BOOST_CHECK(behaviorData.state.attack.specialAttackReady == false);
+    {
+        const auto attackRef = edm.getBehaviorConfigRef(entityIdx);
+        auto& attackState = edm.getAttackState(attackRef.index);
 
-    // Simulate cooldown→next-state transition by manually setting state
-    behaviorData.state.attack.currentState = 6; // COOLDOWN
-    behaviorData.state.attack.stateChangeTimer = 10.0f; // Exceed cooldown time
-    behaviorData.state.attack.hasTarget = true;
+        // Starts not ready
+        BOOST_CHECK(attackState.specialAttackReady == false);
+
+        // Simulate cooldown→next-state transition by manually setting state
+        attackState.currentState = 6; // COOLDOWN
+        attackState.stateChangeTimer = 10.0f; // Exceed cooldown time
+        attackState.hasTarget = true;
+    }
 
     // Set a target so attack has something to do
     auto& memData = edm.getMemoryData(entityIdx);
@@ -2030,7 +2034,7 @@ BOOST_AUTO_TEST_CASE(TestSpecialAttackReadyAfterCooldown) {
     updateAI(0.016f);
 
     // After cooldown transition, specialAttackReady should be true
-    BOOST_CHECK(edm.getBehaviorData(entityIdx).state.attack.specialAttackReady == true);
+    BOOST_CHECK(edm.getAttackState(edm.getBehaviorConfigRef(entityIdx).index).specialAttackReady == true);
     BOOST_TEST_MESSAGE("specialAttackReady set to true after cooldown transition");
     aiMgr.unassignBehavior(entityHandle);
 }

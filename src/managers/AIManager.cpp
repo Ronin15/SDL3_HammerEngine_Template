@@ -1509,8 +1509,9 @@ void AIManager::processBatch(
       continue;
     }
     auto &behaviorData = edm.getBehaviorData(edmIdx);
-    if (behaviorData.behaviorType == BehaviorType::None ||
-        behaviorData.behaviorType == BehaviorType::COUNT) {
+    const auto ref = edm.getBehaviorConfigRef(edmIdx);
+    if (ref.type == BehaviorType::None ||
+        ref.type == BehaviorType::COUNT) {
       continue;
     }
     PathData *pathData = &edm.getPathData(edmIdx);
@@ -1520,11 +1521,6 @@ void AIManager::processBatch(
     auto &memoryData = edm.getMemoryData(edmIdx);
 
     const CharacterData &characterData = edm.getCharacterDataByIndex(edmIdx);
-
-    const auto ref = edm.getBehaviorConfigRef(edmIdx);
-    if (ref.type == BehaviorType::None) {
-      continue;
-    }
 
     // Store previous position for interpolation
     transform.previousPosition = transform.position;

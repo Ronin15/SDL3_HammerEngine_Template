@@ -96,29 +96,50 @@ struct PathData {
 };
 ```
 
-### BehaviorData
+### BehaviorData (shared header)
 
-Behavior-specific state using tagged union:
+Slimmed, per-entity shared state. Behavior type lives in `BehaviorConfigRef`; variant-specific state lives in per-variant archetype pools (see below):
 
 ```cpp
 struct BehaviorData {
-    BehaviorType behaviorType;      // Which behavior is active
     uint8_t flags;                  // Valid, initialized
-
-    // Common separation state
+    float moveSpeed;                // Cached from CharacterData
     float separationTimer;
     Vector2D lastSepVelocity;
-
-    // Behavior-specific union (only ONE active at a time)
-    union StateUnion {
-        WanderState wander;         // ~64 bytes
-        IdleState idle;             // ~48 bytes
-        GuardState guard;           // ~112 bytes
-        ChaseState chase;           // ~64 bytes
-        AttackState attack;         // ~140 bytes
-        // ... etc
-    } state;
+    float lastCrowdAnalysis;
+    int cachedNearbyCount;
+    Vector2D cachedClusterCenter;
+    uint8_t pendingMessages[8];     // 4 {id, param} pairs
+    uint8_t pendingMessageCount;
 };
+```
+
+### Behavior archetype pools
+
+Config and state for each variant live in dense per-variant vectors. A per-entity `BehaviorConfigRef` (8 bytes) names the active variant and the pool index:
+
+```cpp
+struct BehaviorConfigRef {
+    BehaviorType type;              // which variant pool
+    uint32_t index;                 // slot index in that pool
+};
+
+// EDM holds one pair per variant (Idle, Wander, Chase, Patrol, Flee, Follow, Guard, Attack).
+// Config and state pools share the same index by invariant (managed lockstep by
+// reassignBehaviorConfig / clearBehaviorConfig).
+std::vector<WanderBehaviorConfig> m_wanderConfigs;
+std::vector<WanderStateData>      m_wanderStates;
+std::vector<size_t>               m_wanderOwners;   // owner edmIndex per slot
+// ... repeated for each of the 8 variants.
+```
+
+Access:
+```cpp
+auto ref = edm.getBehaviorConfigRef(edmIdx);
+if (ref.type == BehaviorType::Wander) {
+    const auto& cfg   = edm.getWanderConfig(ref.index);
+    auto&       state = edm.getWanderState(ref.index);
+}
 ```
 
 ## Simulation Tiers

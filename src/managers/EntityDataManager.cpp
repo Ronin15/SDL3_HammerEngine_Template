@@ -119,14 +119,14 @@ bool EntityDataManager::init() {
         m_behaviorConfigRef.reserve(CHARACTER_CAPACITY);
 
         // Per-variant dense pools — pre-reserved to avoid hot-path allocation
-        m_idleConfigs.reserve(CHARACTER_CAPACITY);   m_idleOwners.reserve(CHARACTER_CAPACITY);
-        m_wanderConfigs.reserve(CHARACTER_CAPACITY); m_wanderOwners.reserve(CHARACTER_CAPACITY);
-        m_chaseConfigs.reserve(CHARACTER_CAPACITY);  m_chaseOwners.reserve(CHARACTER_CAPACITY);
-        m_patrolConfigs.reserve(CHARACTER_CAPACITY); m_patrolOwners.reserve(CHARACTER_CAPACITY);
-        m_fleeConfigs.reserve(CHARACTER_CAPACITY);   m_fleeOwners.reserve(CHARACTER_CAPACITY);
-        m_followConfigs.reserve(CHARACTER_CAPACITY); m_followOwners.reserve(CHARACTER_CAPACITY);
-        m_guardConfigs.reserve(CHARACTER_CAPACITY);  m_guardOwners.reserve(CHARACTER_CAPACITY);
-        m_attackConfigs.reserve(CHARACTER_CAPACITY); m_attackOwners.reserve(CHARACTER_CAPACITY);
+        m_idleConfigs.reserve(CHARACTER_CAPACITY);   m_idleOwners.reserve(CHARACTER_CAPACITY);   m_idleStates.reserve(CHARACTER_CAPACITY);
+        m_wanderConfigs.reserve(CHARACTER_CAPACITY); m_wanderOwners.reserve(CHARACTER_CAPACITY); m_wanderStates.reserve(CHARACTER_CAPACITY);
+        m_chaseConfigs.reserve(CHARACTER_CAPACITY);  m_chaseOwners.reserve(CHARACTER_CAPACITY);  m_chaseStates.reserve(CHARACTER_CAPACITY);
+        m_patrolConfigs.reserve(CHARACTER_CAPACITY); m_patrolOwners.reserve(CHARACTER_CAPACITY); m_patrolStates.reserve(CHARACTER_CAPACITY);
+        m_fleeConfigs.reserve(CHARACTER_CAPACITY);   m_fleeOwners.reserve(CHARACTER_CAPACITY);   m_fleeStates.reserve(CHARACTER_CAPACITY);
+        m_followConfigs.reserve(CHARACTER_CAPACITY); m_followOwners.reserve(CHARACTER_CAPACITY); m_followStates.reserve(CHARACTER_CAPACITY);
+        m_guardConfigs.reserve(CHARACTER_CAPACITY);  m_guardOwners.reserve(CHARACTER_CAPACITY);  m_guardStates.reserve(CHARACTER_CAPACITY);
+        m_attackConfigs.reserve(CHARACTER_CAPACITY); m_attackOwners.reserve(CHARACTER_CAPACITY); m_attackStates.reserve(CHARACTER_CAPACITY);
 
         // NPC Memory data (indexed by edmIndex, pre-allocated alongside hotData)
         m_memoryData.reserve(CHARACTER_CAPACITY);
@@ -2751,11 +2751,12 @@ void EntityDataManager::advanceWaypointWithCache(size_t index) {
 
 // getBehaviorData() is now inline in EntityDataManager.hpp
 
-void EntityDataManager::initBehaviorData(size_t index, BehaviorType behaviorType) {
+void EntityDataManager::initBehaviorData(size_t index, BehaviorType) {
+    // BehaviorType parameter is retained in the signature for backward-compatible call sites
+    // but the type now lives exclusively in BehaviorConfigRef — not in BehaviorData.
     assert(index < m_behaviorData.size() && "BehaviorData index out of bounds");
     auto& data = m_behaviorData[index];
     data.clear();
-    data.behaviorType = behaviorType;
     data.setValid(true);
 }
 
@@ -2782,14 +2783,16 @@ void EntityDataManager::clearBehaviorConfig(size_t edmIdx) {
         return;
     }
 
-    // Macro: swap-with-back removal + patch displaced owner's ref.index
-    // Pulled out as a lambda to avoid code repetition across 8 variants.
-    auto popFromPool = [&](auto& configs, auto& owners, uint32_t slotIdx) {
+    // Lockstep swap-with-back removal for both config and state pools.
+    // The owner patch applies to the displaced entity's ref (config and state share
+    // the same index, so patching once is sufficient).
+    auto popFromPool = [&](auto& configs, auto& states, auto& owners, uint32_t slotIdx) {
         assert(slotIdx < configs.size() && "Pool slot index out of bounds");
         const size_t lastPos = configs.size() - 1;
         if (static_cast<size_t>(slotIdx) != lastPos) {
-            // Move last element into the vacated slot
+            // Move last elements into the vacated slot (lockstep)
             configs[slotIdx] = std::move(configs[lastPos]);
+            states[slotIdx]  = std::move(states[lastPos]);
             owners[slotIdx]  = owners[lastPos];
             // Patch the displaced entity's ref to point at the new position
             size_t movedOwner = owners[slotIdx];
@@ -2798,18 +2801,19 @@ void EntityDataManager::clearBehaviorConfig(size_t edmIdx) {
             }
         }
         configs.pop_back();
+        states.pop_back();
         owners.pop_back();
     };
 
     switch (ref.type) {
-        case BehaviorType::Idle:   popFromPool(m_idleConfigs,   m_idleOwners,   ref.index); break;
-        case BehaviorType::Wander: popFromPool(m_wanderConfigs, m_wanderOwners, ref.index); break;
-        case BehaviorType::Chase:  popFromPool(m_chaseConfigs,  m_chaseOwners,  ref.index); break;
-        case BehaviorType::Patrol: popFromPool(m_patrolConfigs, m_patrolOwners, ref.index); break;
-        case BehaviorType::Flee:   popFromPool(m_fleeConfigs,   m_fleeOwners,   ref.index); break;
-        case BehaviorType::Follow: popFromPool(m_followConfigs, m_followOwners, ref.index); break;
-        case BehaviorType::Guard:  popFromPool(m_guardConfigs,  m_guardOwners,  ref.index); break;
-        case BehaviorType::Attack: popFromPool(m_attackConfigs, m_attackOwners, ref.index); break;
+        case BehaviorType::Idle:   popFromPool(m_idleConfigs,   m_idleStates,   m_idleOwners,   ref.index); break;
+        case BehaviorType::Wander: popFromPool(m_wanderConfigs, m_wanderStates, m_wanderOwners, ref.index); break;
+        case BehaviorType::Chase:  popFromPool(m_chaseConfigs,  m_chaseStates,  m_chaseOwners,  ref.index); break;
+        case BehaviorType::Patrol: popFromPool(m_patrolConfigs, m_patrolStates, m_patrolOwners, ref.index); break;
+        case BehaviorType::Flee:   popFromPool(m_fleeConfigs,   m_fleeStates,   m_fleeOwners,   ref.index); break;
+        case BehaviorType::Follow: popFromPool(m_followConfigs, m_followStates, m_followOwners, ref.index); break;
+        case BehaviorType::Guard:  popFromPool(m_guardConfigs,  m_guardStates,  m_guardOwners,  ref.index); break;
+        case BehaviorType::Attack: popFromPool(m_attackConfigs, m_attackStates, m_attackOwners, ref.index); break;
         default: break; // Custom/None/COUNT — no pool slot to remove
     }
 
@@ -2827,45 +2831,55 @@ void EntityDataManager::reassignBehaviorConfig(size_t edmIdx, const VoidLight::B
     // Push into the correct variant pool and record owner
     auto& ref = m_behaviorConfigRef[edmIdx];
 
+    // Push config + default-constructed state into the matching pools (lockstep invariant).
+    // Behaviors::init*() will populate the state slot immediately after this call.
     switch (newConfig.type) {
         case BehaviorType::Idle:
             ref.index = static_cast<uint32_t>(m_idleConfigs.size());
             m_idleConfigs.push_back(newConfig.params.idle);
+            m_idleStates.emplace_back();
             m_idleOwners.push_back(edmIdx);
             break;
         case BehaviorType::Wander:
             ref.index = static_cast<uint32_t>(m_wanderConfigs.size());
             m_wanderConfigs.push_back(newConfig.params.wander);
+            m_wanderStates.emplace_back();
             m_wanderOwners.push_back(edmIdx);
             break;
         case BehaviorType::Chase:
             ref.index = static_cast<uint32_t>(m_chaseConfigs.size());
             m_chaseConfigs.push_back(newConfig.params.chase);
+            m_chaseStates.emplace_back();
             m_chaseOwners.push_back(edmIdx);
             break;
         case BehaviorType::Patrol:
             ref.index = static_cast<uint32_t>(m_patrolConfigs.size());
             m_patrolConfigs.push_back(newConfig.params.patrol);
+            m_patrolStates.emplace_back();
             m_patrolOwners.push_back(edmIdx);
             break;
         case BehaviorType::Flee:
             ref.index = static_cast<uint32_t>(m_fleeConfigs.size());
             m_fleeConfigs.push_back(newConfig.params.flee);
+            m_fleeStates.emplace_back();
             m_fleeOwners.push_back(edmIdx);
             break;
         case BehaviorType::Follow:
             ref.index = static_cast<uint32_t>(m_followConfigs.size());
             m_followConfigs.push_back(newConfig.params.follow);
+            m_followStates.emplace_back();
             m_followOwners.push_back(edmIdx);
             break;
         case BehaviorType::Guard:
             ref.index = static_cast<uint32_t>(m_guardConfigs.size());
             m_guardConfigs.push_back(newConfig.params.guard);
+            m_guardStates.emplace_back();
             m_guardOwners.push_back(edmIdx);
             break;
         case BehaviorType::Attack:
             ref.index = static_cast<uint32_t>(m_attackConfigs.size());
             m_attackConfigs.push_back(newConfig.params.attack);
+            m_attackStates.emplace_back();
             m_attackOwners.push_back(edmIdx);
             break;
         default:

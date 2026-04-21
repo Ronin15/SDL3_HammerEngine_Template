@@ -21,14 +21,30 @@ namespace Behaviors {
 void execute(BehaviorContext& ctx, BehaviorConfigRef ref) {
     auto& edm = EntityDataManager::Instance();
     switch (ref.type) {
-        case BehaviorType::Idle:   executeIdle(ctx,   edm.getIdleConfig(ref.index));   break;
-        case BehaviorType::Wander: executeWander(ctx, edm.getWanderConfig(ref.index)); break;
-        case BehaviorType::Chase:  executeChase(ctx,  edm.getChaseConfig(ref.index));  break;
-        case BehaviorType::Patrol: executePatrol(ctx, edm.getPatrolConfig(ref.index)); break;
-        case BehaviorType::Guard:  executeGuard(ctx,  edm.getGuardConfig(ref.index));  break;
-        case BehaviorType::Attack: executeAttack(ctx, edm.getAttackConfig(ref.index)); break;
-        case BehaviorType::Flee:   executeFlee(ctx,   edm.getFleeConfig(ref.index));   break;
-        case BehaviorType::Follow: executeFollow(ctx, edm.getFollowConfig(ref.index)); break;
+        case BehaviorType::Idle:
+            executeIdle(ctx,   edm.getIdleConfig(ref.index),   edm.getIdleState(ref.index));
+            break;
+        case BehaviorType::Wander:
+            executeWander(ctx, edm.getWanderConfig(ref.index), edm.getWanderState(ref.index));
+            break;
+        case BehaviorType::Chase:
+            executeChase(ctx,  edm.getChaseConfig(ref.index),  edm.getChaseState(ref.index));
+            break;
+        case BehaviorType::Patrol:
+            executePatrol(ctx, edm.getPatrolConfig(ref.index), edm.getPatrolState(ref.index));
+            break;
+        case BehaviorType::Guard:
+            executeGuard(ctx,  edm.getGuardConfig(ref.index),  edm.getGuardState(ref.index));
+            break;
+        case BehaviorType::Attack:
+            executeAttack(ctx, edm.getAttackConfig(ref.index), edm.getAttackState(ref.index));
+            break;
+        case BehaviorType::Flee:
+            executeFlee(ctx,   edm.getFleeConfig(ref.index),   edm.getFleeState(ref.index));
+            break;
+        case BehaviorType::Follow:
+            executeFollow(ctx, edm.getFollowConfig(ref.index), edm.getFollowState(ref.index));
+            break;
         case BehaviorType::Custom:
         case BehaviorType::COUNT:
         case BehaviorType::None:
@@ -39,30 +55,32 @@ void execute(BehaviorContext& ctx, BehaviorConfigRef ref) {
 }
 
 void init(size_t edmIndex, const VoidLight::BehaviorConfigData& configData) {
+    auto& edm = EntityDataManager::Instance();
+    const auto ref = edm.getBehaviorConfigRef(edmIndex);
     switch (configData.type) {
         case BehaviorType::Idle:
-            initIdle(edmIndex, configData.params.idle);
+            initIdle(edmIndex, configData.params.idle, edm.getIdleState(ref.index));
             break;
         case BehaviorType::Wander:
-            initWander(edmIndex, configData.params.wander);
+            initWander(edmIndex, configData.params.wander, edm.getWanderState(ref.index));
             break;
         case BehaviorType::Chase:
-            initChase(edmIndex, configData.params.chase);
+            initChase(edmIndex, configData.params.chase, edm.getChaseState(ref.index));
             break;
         case BehaviorType::Patrol:
-            initPatrol(edmIndex, configData.params.patrol);
+            initPatrol(edmIndex, configData.params.patrol, edm.getPatrolState(ref.index));
             break;
         case BehaviorType::Guard:
-            initGuard(edmIndex, configData.params.guard);
+            initGuard(edmIndex, configData.params.guard, edm.getGuardState(ref.index));
             break;
         case BehaviorType::Attack:
-            initAttack(edmIndex, configData.params.attack);
+            initAttack(edmIndex, configData.params.attack, edm.getAttackState(ref.index));
             break;
         case BehaviorType::Flee:
-            initFlee(edmIndex, configData.params.flee);
+            initFlee(edmIndex, configData.params.flee, edm.getFleeState(ref.index));
             break;
         case BehaviorType::Follow:
-            initFollow(edmIndex, configData.params.follow);
+            initFollow(edmIndex, configData.params.follow, edm.getFollowState(ref.index));
             break;
         case BehaviorType::Custom:
         case BehaviorType::COUNT:
@@ -138,7 +156,7 @@ bool shouldFleeFromFear(const BehaviorContext& ctx) {
     float bravery = ctx.memoryData.personality.bravery;
 
     // Crowd courage: nearby allies boost effective bravery
-    int nearbyCount = ctx.behaviorData.cachedNearbyCount;
+    int nearbyCount = ctx.sharedState.cachedNearbyCount;
     float crowdBoost = std::min(0.3f, nearbyCount * 0.05f);  // Up to +0.3 from 6+ allies
     bravery = std::min(1.0f, bravery + crowdBoost);
 
@@ -164,7 +182,7 @@ bool shouldRetaliate(const BehaviorContext& ctx) {
     float aggression = ctx.memoryData.emotions.aggression + ctx.memoryData.personality.aggression;
 
     // Crowd courage: nearby allies boost effective bravery
-    float crowdBoost = std::min(0.3f, ctx.behaviorData.cachedNearbyCount * 0.05f);
+    float crowdBoost = std::min(0.3f, ctx.sharedState.cachedNearbyCount * 0.05f);
     bravery = std::min(1.0f, bravery + crowdBoost);
 
     // Fight response: brave + aggressive NPCs retaliate

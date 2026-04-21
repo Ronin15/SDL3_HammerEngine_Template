@@ -37,6 +37,7 @@
  */
 
 #include "ai/BehaviorConfig.hpp"
+#include "ai/BehaviorStateData.hpp"
 #include "collisions/CollisionBody.hpp"
 #include "collisions/TriggerTag.hpp"
 #include "entities/Entity.hpp"
@@ -890,10 +891,10 @@ struct PathData {
  * Each thread accesses distinct edmIndex ranges.
  */
 struct BehaviorData {
-    // Common header (all behaviors)
-    BehaviorType behaviorType{BehaviorType::None};
+    // Common header (all behaviors) — shared state that persists across frame ticks.
+    // Variant-specific state has moved to per-type dense pools (see m_*States in EDM).
     uint8_t flags{0};
-    uint8_t _pad[2]{};
+    uint8_t _pad[3]{};
 
     // Cached from CharacterData at init (avoids typeLocalIndex indirection every frame)
     float moveSpeed{0.0f};  // 0 = uninitialized, set from CharacterData in initXxx()
@@ -920,187 +921,10 @@ struct BehaviorData {
     static constexpr uint8_t FLAG_VALID = 0x01;
     static constexpr uint8_t FLAG_INITIALIZED = 0x02;
 
-    // Behavior-specific state union (largest is AttackState ~140 bytes)
-    // Note: Union requires explicit constructor due to non-trivial Vector2D
-    union StateUnion {
-        // Default constructor initializes raw bytes to zero
-        StateUnion() : raw{} {}
-        struct { // WanderState (~68 bytes)
-            Vector2D currentDirection;
-            Vector2D previousVelocity;
-            Vector2D lastStallPosition;
-            float directionChangeTimer;
-            float lastDirectionFlip;
-            float startDelay;
-            float stallTimer;
-            float stallPositionVariance;
-            float unstickTimer;
-            float movementUpdateTimer;  // Throttle heavy logic to run every ~5s
-            bool movementStarted;
-            uint8_t _pad[3];
-        } wander;
-
-        struct { // IdleState (~48 bytes)
-            Vector2D originalPosition;
-            Vector2D currentOffset;
-            float movementTimer;
-            float turnTimer;
-            float movementInterval;
-            float turnInterval;
-            float currentAngle;
-            bool initialized;
-            uint8_t _pad[3];
-        } idle;
-
-        struct { // GuardState (~176 bytes with patrol waypoints)
-            Vector2D assignedPosition;
-            Vector2D lastKnownThreatPosition;
-            Vector2D investigationTarget;
-            Vector2D currentPatrolTarget;
-            Vector2D roamTarget;
-            float threatSightingTimer;
-            float alertTimer;
-            float investigationTimer;
-            float positionCheckTimer;
-            float patrolMoveTimer;
-            float alertDecayTimer;
-            float currentHeading;
-            float roamTimer;
-            float escalationMultiplier{1.0f};  // Suspicion-based threshold multiplier (lower = faster)
-            float cachedDetectionRange{0.0f};  // Cached detection range (recomputed on mode change)
-            float hostileTimer{0.0f};          // Time spent at alert level HOSTILE (3) for ALARM escalation
-            float patrolThrottleTimer{0.0f};   // Throttle timer for PatrolBehavior update interval
-            uint32_t currentPatrolIndex;
-            uint8_t currentAlertLevel;  // 0=Calm, 1=Suspicious, 2=Alert, 3=Combat
-            uint8_t currentMode;
-            uint8_t lastCachedMode{255};       // Track mode for cache invalidation
-            bool hasActiveThreat;
-            bool isInvestigating;
-            bool returningToPost;
-            bool onDuty;
-            bool alertRaised;
-            bool helpCalled;
-
-            // Patrol waypoint system (64 bytes for 8 waypoints)
-            // Note: MAX_PATROL_WAYPOINTS = 8 (defined as global constant)
-            Vector2D patrolWaypoints[8];
-            uint8_t patrolWaypointCount{0};
-            uint8_t currentPatrolWaypointIndex{0};
-            bool reversePatrol{false};       // Ping-pong patrol (A->B->A instead of A->B->A->B)
-            bool patrolForward{true};        // Current direction in ping-pong mode
-            uint8_t _guardPad[4];            // Padding for alignment
-        } guard;
-
-        struct { // FollowState (~72 bytes)
-            Vector2D lastTargetPosition;
-            Vector2D currentVelocity;
-            Vector2D desiredPosition;
-            Vector2D formationOffset;
-            Vector2D lastSepForce;
-            float currentSpeed;
-            float currentHeading;
-            float backoffTimer;
-            int formationSlot;
-            bool isFollowing;
-            bool targetMoving;
-            bool inFormation;
-            bool isStopped;
-        } follow;
-
-        struct { // FleeState (~136 bytes with safe zones)
-            Vector2D lastThreatPosition;
-            Vector2D fleeDirection;
-            Vector2D lastKnownSafeDirection;
-            float fleeTimer;
-            float directionChangeTimer;
-            float panicTimer;
-            float currentStamina;
-            float zigzagTimer;
-            float navRadius;
-            float backoffTimer;
-            float fearBoost{0.0f};        // Cached from emotions each frame for speed modifier
-            int zigzagDirection;
-            bool isFleeing;
-            bool isInPanic;
-            bool hasValidThreat;
-            uint8_t _pad;
-
-            // Safe zone system (48 bytes for 4 safe zones + count)
-            // Each zone: center (8 bytes) + radius (4 bytes) + active (1 byte) = ~13 bytes
-            // MAX_SAFE_ZONES = 4, stored inline
-            Vector2D safeZoneCenters[4];      // 32 bytes: Center positions of safe zones
-            float safeZoneRadii[4];           // 16 bytes: Radii of safe zones
-            uint8_t safeZoneCount{0};         // Number of active safe zones (0-4)
-            uint8_t _fleePad[7];              // Padding for alignment
-        } flee;
-
-        struct { // ChaseState (~80 bytes)
-            Vector2D lastKnownTargetPos;      // Last known target position
-            Vector2D currentDirection;         // Current movement direction
-            Vector2D lastStallPosition;        // Position when stall was detected
-            float timeWithoutSight;            // Time since last line of sight
-            float stallPositionVariance;       // Variance for stall detection
-            float unstickTimer;                // Timer for unstick behavior
-            float crowdCheckTimer;             // Throttle crowd detection
-            float pathRequestCooldown;         // Cooldown between path requests
-            float stallRecoveryCooldown;       // Cooldown after stall recovery
-            float behaviorChangeCooldown;      // Cooldown for behavior state changes
-            int recalcCounter;                 // Path recalculation counter
-            int cachedChaserCount;             // Cached number of chasers nearby
-            bool isChasing;                    // Currently in chase mode
-            bool hasLineOfSight;               // Has line of sight to target
-            bool hasExplicitTarget;            // NPC-vs-NPC chase: explicit target set
-            uint8_t _pad[1];                   // Padding for alignment
-            EntityHandle explicitTarget;       // NPC-vs-NPC chase: overrides player targeting
-        } chase;
-
-        struct { // AttackState (~140 bytes)
-            Vector2D lastTargetPosition;
-            Vector2D attackPosition;
-            Vector2D retreatPosition;
-            Vector2D strafeVector;
-            float attackTimer;
-            float stateChangeTimer;
-            float damageTimer;
-            float comboTimer;
-            float strafeTimer;
-            float currentHealth;
-            float maxHealth;
-            float currentStamina;
-            float targetDistance;
-            float attackChargeTime;
-            float recoveryTimer;
-            float scanCooldown;
-            float preferredAttackAngle;
-            int currentCombo;
-            int attacksInCombo;
-            int strafeDirectionInt;
-            uint8_t currentState;  // 0=Seeking, 1=Approaching, 2=Attacking, 3=Recovering, 4=Retreating, 5=Circling
-            uint8_t attackMode;    // 0=Melee, 1=Ranged, 2=Charge, 3=Ambush, 4=Coordinated, 5=HitAndRun, 6=Berserker
-            bool inCombat;
-            bool hasTarget;
-            bool isCharging;
-            bool isRetreating;
-            bool canAttack;
-            bool lastAttackHit;
-            bool specialAttackReady;
-            bool circleStrafing;
-            bool flanking;
-            bool hasExplicitTarget;    // NPC-vs-NPC combat: explicit target set
-            bool comboEnabled;         // Whether combo attacks are enabled
-            EntityHandle explicitTarget;  // NPC-vs-NPC combat: overrides player targeting
-        } attack;
-
-        uint8_t raw[192]; // Ensure union is large enough (guard state grew for patrol waypoints)
-    };
-
-    StateUnion state;
-
     // Default constructor
     BehaviorData() = default;
 
     void clear() noexcept {
-        behaviorType = BehaviorType::None;
         flags = 0;
         moveSpeed = 0.0f;
         separationTimer = 0.0f;
@@ -1109,17 +933,16 @@ struct BehaviorData {
         cachedNearbyCount = 0;
         cachedClusterCenter = Vector2D{};
         pendingMessageCount = 0;
-        state = StateUnion{};
     }
 
-    [[nodiscard]] bool isValid() const noexcept { return flags & FLAG_VALID; }
+    [[nodiscard]] bool isValid() const noexcept { return (flags & FLAG_VALID) != 0; }
 
     void setValid(bool v) noexcept {
         if (v) flags |= FLAG_VALID;
         else flags &= ~FLAG_VALID;
     }
 
-    [[nodiscard]] bool isInitialized() const noexcept { return flags & FLAG_INITIALIZED; }
+    [[nodiscard]] bool isInitialized() const noexcept { return (flags & FLAG_INITIALIZED) != 0; }
 
     void setInitialized(bool v) noexcept {
         if (v) flags |= FLAG_INITIALIZED;
@@ -1127,8 +950,10 @@ struct BehaviorData {
     }
 };
 
-// Ensure BehaviorData fits in ~256 bytes (4 cache lines) - grew for patrol waypoints
-static_assert(sizeof(BehaviorData) <= 256, "BehaviorData exceeds 256 bytes");
+// Slimmed BehaviorData: shared header only (~48 bytes). Variant state lives in
+// per-type dense pools (m_idleStates, m_wanderStates, etc.) indexed by the same
+// pool index as the config pools.
+static_assert(sizeof(BehaviorData) <= 64, "BehaviorData shared header exceeds 64 bytes");
 
 // ============================================================================
 // NPC MEMORY SYSTEM
@@ -2219,7 +2044,7 @@ public:
      */
     void clearBehaviorConfig(size_t edmIdx);
 
-    // Per-variant dense read accessors — all return const& (no copy)
+    // Per-variant dense config accessors — const& (no copy)
     [[nodiscard]] const VoidLight::IdleBehaviorConfig&   getIdleConfig(uint32_t poolIndex) const;
     [[nodiscard]] const VoidLight::WanderBehaviorConfig& getWanderConfig(uint32_t poolIndex) const;
     [[nodiscard]] const VoidLight::ChaseBehaviorConfig&  getChaseConfig(uint32_t poolIndex) const;
@@ -2228,6 +2053,27 @@ public:
     [[nodiscard]] const VoidLight::FollowBehaviorConfig& getFollowConfig(uint32_t poolIndex) const;
     [[nodiscard]] const VoidLight::GuardBehaviorConfig&  getGuardConfig(uint32_t poolIndex) const;
     [[nodiscard]] const VoidLight::AttackBehaviorConfig& getAttackConfig(uint32_t poolIndex) const;
+
+    // Per-variant dense state accessors — mutable& for frame-by-frame writes in execute().
+    // Indexed by the same pool index as the corresponding config pool.
+    [[nodiscard]] VoidLight::IdleStateData&   getIdleState(uint32_t poolIndex);
+    [[nodiscard]] VoidLight::WanderStateData& getWanderState(uint32_t poolIndex);
+    [[nodiscard]] VoidLight::ChaseStateData&  getChaseState(uint32_t poolIndex);
+    [[nodiscard]] VoidLight::PatrolStateData& getPatrolState(uint32_t poolIndex);
+    [[nodiscard]] VoidLight::FleeStateData&   getFleeState(uint32_t poolIndex);
+    [[nodiscard]] VoidLight::FollowStateData& getFollowState(uint32_t poolIndex);
+    [[nodiscard]] VoidLight::GuardStateData&  getGuardState(uint32_t poolIndex);
+    [[nodiscard]] VoidLight::AttackStateData& getAttackState(uint32_t poolIndex);
+
+    // Const overloads for diagnostics / tests
+    [[nodiscard]] const VoidLight::IdleStateData&   getIdleState(uint32_t poolIndex) const;
+    [[nodiscard]] const VoidLight::WanderStateData& getWanderState(uint32_t poolIndex) const;
+    [[nodiscard]] const VoidLight::ChaseStateData&  getChaseState(uint32_t poolIndex) const;
+    [[nodiscard]] const VoidLight::PatrolStateData& getPatrolState(uint32_t poolIndex) const;
+    [[nodiscard]] const VoidLight::FleeStateData&   getFleeState(uint32_t poolIndex) const;
+    [[nodiscard]] const VoidLight::FollowStateData& getFollowState(uint32_t poolIndex) const;
+    [[nodiscard]] const VoidLight::GuardStateData&  getGuardState(uint32_t poolIndex) const;
+    [[nodiscard]] const VoidLight::AttackStateData& getAttackState(uint32_t poolIndex) const;
 
     /**
      * @brief Check if behavior data exists and is valid for an entity
@@ -2544,7 +2390,8 @@ private:
     std::vector<VoidLight::GuardBehaviorConfig>  m_guardConfigs;
     std::vector<VoidLight::AttackBehaviorConfig> m_attackConfigs;
 
-    // Parallel owner vectors — m_*Owners[i] == edmIndex that owns m_*Configs[i].
+    // Parallel owner vectors — m_*Owners[i] == edmIndex that owns m_*Configs[i]
+    // AND m_*States[i]. Config and state pools share the same owner vector by invariant.
     // Required so swap-with-back removal can patch the displaced entity's ref.
     std::vector<size_t> m_idleOwners;
     std::vector<size_t> m_wanderOwners;
@@ -2554,6 +2401,18 @@ private:
     std::vector<size_t> m_followOwners;
     std::vector<size_t> m_guardOwners;
     std::vector<size_t> m_attackOwners;
+
+    // Dense per-variant state pools — lockstep with config pools (same index, same owner).
+    // Populated with a default-constructed slot in reassignBehaviorConfig; filled by
+    // Behaviors::init*() afterward. Popped together with the config in clearBehaviorConfig.
+    std::vector<VoidLight::IdleStateData>   m_idleStates;
+    std::vector<VoidLight::WanderStateData> m_wanderStates;
+    std::vector<VoidLight::ChaseStateData>  m_chaseStates;
+    std::vector<VoidLight::PatrolStateData> m_patrolStates;
+    std::vector<VoidLight::FleeStateData>   m_fleeStates;
+    std::vector<VoidLight::FollowStateData> m_followStates;
+    std::vector<VoidLight::GuardStateData>  m_guardStates;
+    std::vector<VoidLight::AttackStateData> m_attackStates;
 
     // NPC Memory data (indexed by edmIndex, pre-allocated alongside hotData)
     // Persists across behavior changes unlike BehaviorData
@@ -2759,6 +2618,82 @@ inline const VoidLight::GuardBehaviorConfig& EntityDataManager::getGuardConfig(u
 inline const VoidLight::AttackBehaviorConfig& EntityDataManager::getAttackConfig(uint32_t poolIndex) const {
     assert(poolIndex < m_attackConfigs.size() && "Attack config pool index out of bounds");
     return m_attackConfigs[poolIndex];
+}
+
+// ============================================================================
+// BEHAVIOR STATE POOL ACCESSORS (inline hot-path)
+// ============================================================================
+
+inline VoidLight::IdleStateData& EntityDataManager::getIdleState(uint32_t poolIndex) {
+    assert(poolIndex < m_idleStates.size() && "Idle state pool index out of bounds");
+    return m_idleStates[poolIndex];
+}
+inline const VoidLight::IdleStateData& EntityDataManager::getIdleState(uint32_t poolIndex) const {
+    assert(poolIndex < m_idleStates.size() && "Idle state pool index out of bounds");
+    return m_idleStates[poolIndex];
+}
+
+inline VoidLight::WanderStateData& EntityDataManager::getWanderState(uint32_t poolIndex) {
+    assert(poolIndex < m_wanderStates.size() && "Wander state pool index out of bounds");
+    return m_wanderStates[poolIndex];
+}
+inline const VoidLight::WanderStateData& EntityDataManager::getWanderState(uint32_t poolIndex) const {
+    assert(poolIndex < m_wanderStates.size() && "Wander state pool index out of bounds");
+    return m_wanderStates[poolIndex];
+}
+
+inline VoidLight::ChaseStateData& EntityDataManager::getChaseState(uint32_t poolIndex) {
+    assert(poolIndex < m_chaseStates.size() && "Chase state pool index out of bounds");
+    return m_chaseStates[poolIndex];
+}
+inline const VoidLight::ChaseStateData& EntityDataManager::getChaseState(uint32_t poolIndex) const {
+    assert(poolIndex < m_chaseStates.size() && "Chase state pool index out of bounds");
+    return m_chaseStates[poolIndex];
+}
+
+inline VoidLight::PatrolStateData& EntityDataManager::getPatrolState(uint32_t poolIndex) {
+    assert(poolIndex < m_patrolStates.size() && "Patrol state pool index out of bounds");
+    return m_patrolStates[poolIndex];
+}
+inline const VoidLight::PatrolStateData& EntityDataManager::getPatrolState(uint32_t poolIndex) const {
+    assert(poolIndex < m_patrolStates.size() && "Patrol state pool index out of bounds");
+    return m_patrolStates[poolIndex];
+}
+
+inline VoidLight::FleeStateData& EntityDataManager::getFleeState(uint32_t poolIndex) {
+    assert(poolIndex < m_fleeStates.size() && "Flee state pool index out of bounds");
+    return m_fleeStates[poolIndex];
+}
+inline const VoidLight::FleeStateData& EntityDataManager::getFleeState(uint32_t poolIndex) const {
+    assert(poolIndex < m_fleeStates.size() && "Flee state pool index out of bounds");
+    return m_fleeStates[poolIndex];
+}
+
+inline VoidLight::FollowStateData& EntityDataManager::getFollowState(uint32_t poolIndex) {
+    assert(poolIndex < m_followStates.size() && "Follow state pool index out of bounds");
+    return m_followStates[poolIndex];
+}
+inline const VoidLight::FollowStateData& EntityDataManager::getFollowState(uint32_t poolIndex) const {
+    assert(poolIndex < m_followStates.size() && "Follow state pool index out of bounds");
+    return m_followStates[poolIndex];
+}
+
+inline VoidLight::GuardStateData& EntityDataManager::getGuardState(uint32_t poolIndex) {
+    assert(poolIndex < m_guardStates.size() && "Guard state pool index out of bounds");
+    return m_guardStates[poolIndex];
+}
+inline const VoidLight::GuardStateData& EntityDataManager::getGuardState(uint32_t poolIndex) const {
+    assert(poolIndex < m_guardStates.size() && "Guard state pool index out of bounds");
+    return m_guardStates[poolIndex];
+}
+
+inline VoidLight::AttackStateData& EntityDataManager::getAttackState(uint32_t poolIndex) {
+    assert(poolIndex < m_attackStates.size() && "Attack state pool index out of bounds");
+    return m_attackStates[poolIndex];
+}
+inline const VoidLight::AttackStateData& EntityDataManager::getAttackState(uint32_t poolIndex) const {
+    assert(poolIndex < m_attackStates.size() && "Attack state pool index out of bounds");
+    return m_attackStates[poolIndex];
 }
 
 inline PathData& EntityDataManager::getPathData(size_t index) {

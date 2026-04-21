@@ -24,6 +24,7 @@
  */
 
 #include "ai/BehaviorConfig.hpp"
+#include "ai/BehaviorStateData.hpp"
 #include "managers/EntityDataManager.hpp"  // For BehaviorType, BehaviorData, PathData, etc.
 #include "managers/EventManager.hpp"       // For EventManager::DeferredEvent
 #include <vector>
@@ -48,7 +49,7 @@ struct BehaviorContext {
     bool playerValid{false};       // Whether player is valid this frame
 
     // Pre-fetched EDM data - avoids repeated Instance() calls in behaviors
-    BehaviorData& behaviorData;      // Guaranteed valid for behavior execution
+    BehaviorData& sharedState;       // Slimmed shared header (flags, moveSpeed, crowd cache, message queue)
     PathData* pathData{nullptr};     // Optional: some behaviors support direct movement fallback
     NPCMemoryData& memoryData;       // Guaranteed valid for NPC behavior execution
     const CharacterData& characterData;  // Guaranteed valid for behavior execution
@@ -73,7 +74,7 @@ struct BehaviorContext {
                     float gTime)
         : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt),
           playerHandle(pHandle), playerPosition(pPos), playerVelocity(pVel), playerValid(pValid),
-          behaviorData(bData), pathData(pData), memoryData(mData), characterData(cData),
+          sharedState(bData), pathData(pData), memoryData(mData), characterData(cData),
           worldMinX(wMinX), worldMinY(wMinY), worldMaxX(wMaxX), worldMaxY(wMaxY),
           worldBoundsValid(wBoundsValid), gameTime(gTime) {}
 };
@@ -136,57 +137,65 @@ constexpr float COMBAT_TIMEOUT_SECONDS = 5.0f;
  * @brief Execute Idle behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Idle behavior configuration
+ * @param state Mutable idle variant state from the dense state pool
  */
-void executeIdle(BehaviorContext& ctx, const VoidLight::IdleBehaviorConfig& config);
+void executeIdle(BehaviorContext& ctx, const VoidLight::IdleBehaviorConfig& config, VoidLight::IdleStateData& state);
 
 /**
  * @brief Execute Wander behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Wander behavior configuration
+ * @param state Mutable wander variant state from the dense state pool
  */
-void executeWander(BehaviorContext& ctx, const VoidLight::WanderBehaviorConfig& config);
+void executeWander(BehaviorContext& ctx, const VoidLight::WanderBehaviorConfig& config, VoidLight::WanderStateData& state);
 
 /**
  * @brief Execute Chase behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Chase behavior configuration
+ * @param state Mutable chase variant state from the dense state pool
  */
-void executeChase(BehaviorContext& ctx, const VoidLight::ChaseBehaviorConfig& config);
+void executeChase(BehaviorContext& ctx, const VoidLight::ChaseBehaviorConfig& config, VoidLight::ChaseStateData& state);
 
 /**
  * @brief Execute Patrol behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Patrol behavior configuration
+ * @param state Mutable patrol variant state from the dense state pool
  */
-void executePatrol(BehaviorContext& ctx, const VoidLight::PatrolBehaviorConfig& config);
+void executePatrol(BehaviorContext& ctx, const VoidLight::PatrolBehaviorConfig& config, VoidLight::PatrolStateData& state);
 
 /**
  * @brief Execute Guard behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Guard behavior configuration
+ * @param state Mutable guard variant state from the dense state pool
  */
-void executeGuard(BehaviorContext& ctx, const VoidLight::GuardBehaviorConfig& config);
+void executeGuard(BehaviorContext& ctx, const VoidLight::GuardBehaviorConfig& config, VoidLight::GuardStateData& state);
 
 /**
  * @brief Execute Attack behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Attack behavior configuration
+ * @param state Mutable attack variant state from the dense state pool
  */
-void executeAttack(BehaviorContext& ctx, const VoidLight::AttackBehaviorConfig& config);
+void executeAttack(BehaviorContext& ctx, const VoidLight::AttackBehaviorConfig& config, VoidLight::AttackStateData& state);
 
 /**
  * @brief Execute Flee behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Flee behavior configuration
+ * @param state Mutable flee variant state from the dense state pool
  */
-void executeFlee(BehaviorContext& ctx, const VoidLight::FleeBehaviorConfig& config);
+void executeFlee(BehaviorContext& ctx, const VoidLight::FleeBehaviorConfig& config, VoidLight::FleeStateData& state);
 
 /**
  * @brief Execute Follow behavior logic
  * @param ctx Pre-populated BehaviorContext with EDM references
  * @param config Follow behavior configuration
+ * @param state Mutable follow variant state from the dense state pool
  */
-void executeFollow(BehaviorContext& ctx, const VoidLight::FollowBehaviorConfig& config);
+void executeFollow(BehaviorContext& ctx, const VoidLight::FollowBehaviorConfig& config, VoidLight::FollowStateData& state);
 
 // ============================================================================
 // INITIALIZATION FUNCTIONS (called when behavior assigned)
@@ -196,57 +205,65 @@ void executeFollow(BehaviorContext& ctx, const VoidLight::FollowBehaviorConfig& 
  * @brief Initialize Idle behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Idle behavior configuration
+ * @param state Mutable idle state slot from the dense pool (already pushed by reassignBehaviorConfig)
  */
-void initIdle(size_t edmIndex, const VoidLight::IdleBehaviorConfig& config);
+void initIdle(size_t edmIndex, const VoidLight::IdleBehaviorConfig& config, VoidLight::IdleStateData& state);
 
 /**
  * @brief Initialize Wander behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Wander behavior configuration
+ * @param state Mutable wander state slot from the dense pool
  */
-void initWander(size_t edmIndex, const VoidLight::WanderBehaviorConfig& config);
+void initWander(size_t edmIndex, const VoidLight::WanderBehaviorConfig& config, VoidLight::WanderStateData& state);
 
 /**
  * @brief Initialize Chase behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Chase behavior configuration
+ * @param state Mutable chase state slot from the dense pool
  */
-void initChase(size_t edmIndex, const VoidLight::ChaseBehaviorConfig& config);
+void initChase(size_t edmIndex, const VoidLight::ChaseBehaviorConfig& config, VoidLight::ChaseStateData& state);
 
 /**
  * @brief Initialize Patrol behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Patrol behavior configuration
+ * @param state Mutable patrol state slot from the dense pool
  */
-void initPatrol(size_t edmIndex, const VoidLight::PatrolBehaviorConfig& config);
+void initPatrol(size_t edmIndex, const VoidLight::PatrolBehaviorConfig& config, VoidLight::PatrolStateData& state);
 
 /**
  * @brief Initialize Guard behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Guard behavior configuration
+ * @param state Mutable guard state slot from the dense pool
  */
-void initGuard(size_t edmIndex, const VoidLight::GuardBehaviorConfig& config);
+void initGuard(size_t edmIndex, const VoidLight::GuardBehaviorConfig& config, VoidLight::GuardStateData& state);
 
 /**
  * @brief Initialize Attack behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Attack behavior configuration
+ * @param state Mutable attack state slot from the dense pool
  */
-void initAttack(size_t edmIndex, const VoidLight::AttackBehaviorConfig& config);
+void initAttack(size_t edmIndex, const VoidLight::AttackBehaviorConfig& config, VoidLight::AttackStateData& state);
 
 /**
  * @brief Initialize Flee behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Flee behavior configuration
+ * @param state Mutable flee state slot from the dense pool
  */
-void initFlee(size_t edmIndex, const VoidLight::FleeBehaviorConfig& config);
+void initFlee(size_t edmIndex, const VoidLight::FleeBehaviorConfig& config, VoidLight::FleeStateData& state);
 
 /**
  * @brief Initialize Follow behavior state in EDM
  * @param edmIndex Entity's index in EDM
  * @param config Follow behavior configuration
+ * @param state Mutable follow state slot from the dense pool
  */
-void initFollow(size_t edmIndex, const VoidLight::FollowBehaviorConfig& config);
+void initFollow(size_t edmIndex, const VoidLight::FollowBehaviorConfig& config, VoidLight::FollowStateData& state);
 
 // ============================================================================
 // MAIN DISPATCHER
