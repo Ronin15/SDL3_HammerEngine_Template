@@ -96,6 +96,8 @@ set(ALL_TESTS
     pathfinder_manager_edm_integration_tests
     resource_integration_tests
     resource_architecture_tests
+    sparse_sidecar_tests
+    knockback_sidecar_tests
 )
 
 # Create all test executables
@@ -266,6 +268,10 @@ foreach(test_name ${ALL_TESTS})
         set(test_source "managers/AIManagerEDMIntegrationTests.cpp")
     elseif(${test_name} STREQUAL "pathfinder_manager_edm_integration_tests")
         set(test_source "managers/PathfinderManagerEDMIntegrationTests.cpp")
+    elseif(${test_name} STREQUAL "sparse_sidecar_tests")
+        set(test_source "managers/SparseSidecarTest.cpp")
+    elseif(${test_name} STREQUAL "knockback_sidecar_tests")
+        set(test_source "integration/KnockbackSidecarTest.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})

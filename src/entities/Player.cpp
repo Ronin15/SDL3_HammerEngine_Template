@@ -165,14 +165,23 @@ void Player::update(float deltaTime) {
   // of truth)
   Vector2D currentVel = getVelocity();
 
-  // Apply knockback impulse (decays over multiple frames)
-  auto& hotData = EntityDataManager::Instance().getHotData(m_handle);
-  if (hotData.knockbackFrames > 0) {
-    currentVel.setX(currentVel.getX() + hotData.knockbackImpulseX);
-    currentVel.setY(currentVel.getY() + hotData.knockbackImpulseY);
-    hotData.knockbackImpulseX *= Knockback::DECAY;
-    hotData.knockbackImpulseY *= Knockback::DECAY;
-    --hotData.knockbackFrames;
+  // Apply knockback impulse (decays over multiple frames).
+  // Main-thread: can call EDM directly without going through BehaviorContext.
+  auto& edm = EntityDataManager::Instance();
+  const size_t playerIdx = edm.getIndex(m_handle);
+  if (playerIdx != SIZE_MAX)
+  {
+    if (auto* kb = edm.getKnockback(playerIdx))
+    {
+      currentVel.setX(currentVel.getX() + kb->impulseX);
+      currentVel.setY(currentVel.getY() + kb->impulseY);
+      kb->impulseX *= Knockback::DECAY;
+      kb->impulseY *= Knockback::DECAY;
+      if (--kb->framesRemaining == 0)
+      {
+        edm.clearKnockback(playerIdx);
+      }
+    }
   }
 
   Vector2D newPos = getPosition() + (currentVel * deltaTime);

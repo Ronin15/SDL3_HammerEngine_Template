@@ -42,6 +42,7 @@
 #include "collisions/TriggerTag.hpp"
 #include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
+#include "managers/SparseSidecar.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include "world/HarvestType.hpp"
@@ -93,6 +94,19 @@ struct TransformData {
 static_assert(sizeof(TransformData) == 32, "TransformData should be 32 bytes");
 
 /**
+ * @brief Per-entity transient knockback state — stored in SparseSidecar<KnockbackData>.
+ *
+ * Only entities that are currently being knocked back occupy space in the dense array.
+ * framesRemaining is a fixed-timestep frame count (see Knockback::FRAMES / DECAY).
+ */
+struct KnockbackData
+{
+    float   impulseX{0.0f};         // 4 bytes: knockback impulse X component
+    float   impulseY{0.0f};         // 4 bytes: knockback impulse Y component
+    uint8_t framesRemaining{0};     // 1 byte:  remaining fixed-timestep frames
+};
+
+/**
  * @brief Hot data accessed every frame (64 bytes, one cache line)
  *
  * Packed for sequential access during batch processing.
@@ -126,10 +140,11 @@ struct alignas(64) EntityHotData {
     uint8_t collisionFlags{0};       // 1 byte: COLLISION_ENABLED, IS_TRIGGER
     uint8_t triggerTag{0};           // 1 byte: TriggerTag for trigger entities
     uint8_t triggerType{0};          // 1 byte: TriggerType (EventOnly, Physical)
-    // Frame count (not seconds): relies on fixed-timestep; do not convert to dt*rate without revisiting Knockback::DECAY.
-    uint8_t knockbackFrames{0};      // 1 byte: remaining frames of knockback impulse
-    float knockbackImpulseX{0.0f};   // 4 bytes: knockback impulse X component
-    float knockbackImpulseY{0.0f};   // 4 bytes: knockback impulse Y component
+    // 9 bytes freed by moving knockback to SparseSidecar<KnockbackData> m_knockback on EDM.
+    // KnockbackData (impulseX 4B + impulseY 4B + framesRemaining 1B = 9B) was removed from
+    // the hot line because only a small fraction of entities are knocked back at any time.
+    // Explicit padding preserves the 64-byte cache-line size and makes the removal visible in diffs.
+    uint8_t _knockbackPad[9]{};      // 9 bytes: reserved — formerly knockback inline fields
 
     // Entity flag constants
     static constexpr uint8_t FLAG_ALIVE = 0x01;
@@ -1832,6 +1847,50 @@ public:
      */
     [[nodiscard]] std::span<const EntityHotData> getHotDataArray() const;
 
+    // ========================================================================
+    // KNOCKBACK SIDECAR ACCESS (SparseSidecar<KnockbackData>)
+    // ========================================================================
+
+    /**
+     * @brief Apply (or retrieve existing) knockback state for an entity.
+     *        Returns a mutable ref so the caller can fill impulseX/Y/framesRemaining.
+     *        Main-thread only.
+     */
+    [[nodiscard]] KnockbackData& applyKnockback(size_t edmIdx);
+
+    /**
+     * @brief Get mutable knockback state, nullptr if entity has no active knockback.
+     */
+    [[nodiscard]] KnockbackData* getKnockback(size_t edmIdx) noexcept;
+
+    /**
+     * @brief Get const knockback state, nullptr if entity has no active knockback.
+     */
+    [[nodiscard]] const KnockbackData* getKnockback(size_t edmIdx) const noexcept;
+
+    /**
+     * @brief True if the entity currently has active knockback.
+     */
+    [[nodiscard]] bool hasKnockback(size_t edmIdx) const noexcept;
+
+    /**
+     * @brief Clear knockback state for an entity (called when framesRemaining reaches 0
+     *        or entity is destroyed).
+     */
+    void clearKnockback(size_t edmIdx) noexcept;
+
+    /**
+     * @brief Count of entities currently under knockback (for tests and diagnostics).
+     */
+    [[nodiscard]] size_t knockbackActiveCount() const noexcept;
+
+    /**
+     * @brief Direct access to the knockback sidecar (for BehaviorContext pre-fetch).
+     *        Worker threads hold a pointer to this and access via SparseSidecar::get().
+     */
+    [[nodiscard]] SparseSidecar<KnockbackData>& knockbackSidecar() noexcept;
+    [[nodiscard]] const SparseSidecar<KnockbackData>& knockbackSidecar() const noexcept;
+
     /**
      * @brief Get read-only span of static hot data (for collision system)
      */
@@ -2363,6 +2422,11 @@ private:
     std::vector<uint32_t> m_freeInventorySlots;                           // Free-list for inventory reuse
     uint32_t m_nextOverflowId{1};                                         // Next overflow ID (0 = none)
     mutable std::mutex m_inventoryMutex;                                  // Thread safety for inventory ops
+
+    // Transient knockback state — sparse/dense; only entities under knockback occupy space.
+    // resizeSparse() called at every m_hotData growth site (allocateSlot new-slot path).
+    // removeAllFor() called from freeSlot() to clean up on entity destruction.
+    SparseSidecar<KnockbackData> m_knockback;
 
     // Path data (indexed by edmIndex, sparse - grows lazily for AI entities)
     std::vector<PathData> m_pathData;

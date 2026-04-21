@@ -66,17 +66,23 @@ struct BehaviorContext {
     // for systems that need absolute time (e.g., MemoryEntry timestamps).
     float gameTime{0.0f};
 
+    // Pre-fetched knockback sidecar — worker threads call knockback->get(edmIndex) for O(1)
+    // presence check without touching EntityDataManager::Instance().
+    // Declared last so the initializer list order matches declaration order.
+    SparseSidecar<KnockbackData>* knockback{nullptr};
+
     BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt,
                     EntityHandle pHandle, const Vector2D& pPos, const Vector2D& pVel, bool pValid,
                     BehaviorData& bData, PathData* pData, NPCMemoryData& mData,
                     const CharacterData& cData,
                     float wMinX, float wMinY, float wMaxX, float wMaxY, bool wBoundsValid,
-                    float gTime)
+                    float gTime,
+                    SparseSidecar<KnockbackData>* kbSidecar = nullptr)
         : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt),
           playerHandle(pHandle), playerPosition(pPos), playerVelocity(pVel), playerValid(pValid),
           sharedState(bData), pathData(pData), memoryData(mData), characterData(cData),
           worldMinX(wMinX), worldMinY(wMinY), worldMaxX(wMaxX), worldMaxY(wMaxY),
-          worldBoundsValid(wBoundsValid), gameTime(gTime) {}
+          worldBoundsValid(wBoundsValid), gameTime(gTime), knockback(kbSidecar) {}
 };
 
 // ============================================================================

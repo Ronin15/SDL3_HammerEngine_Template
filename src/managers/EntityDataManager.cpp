@@ -215,6 +215,11 @@ void EntityDataManager::clearAllEntityStorage() {
     m_memoryOverflow.clear();
     m_nextMemoryOverflowId = 1;
 
+    // Transient state sidecars — must be reset alongside m_hotData.
+    // Replacing with default-constructed instances clears all three internal vectors
+    // (sparse, dense, denseToEdm) and releases their capacity.
+    m_knockback = SparseSidecar<KnockbackData>{};
+
     // Type-specific free-lists
     m_freeCharacterSlots.clear();
     m_freeItemSlots.clear();
@@ -316,6 +321,8 @@ size_t EntityDataManager::allocateSlot() {
         // New entity starts with no active behavior config — ref is {None, UINT32_MAX}
         m_behaviorConfigRef.emplace_back(BehaviorConfigRef{BehaviorType::None, {0, 0, 0}, std::numeric_limits<uint32_t>::max()});
         m_memoryData.emplace_back();     // NPC memory data
+        // Grow knockback sparse in lockstep with m_hotData so edmIdx is always a valid sparse index.
+        m_knockback.resizeSparse(m_hotData.size());
     }
 
     m_tierIndicesDirty = true;
@@ -338,6 +345,9 @@ void EntityDataManager::freeSlot(size_t index) {
     clearPathData(index);
     clearBehaviorData(index);
     clearMemoryData(index);
+
+    // Clear transient sidecar state — must be cleared before the slot is reused.
+    m_knockback.removeAllFor(static_cast<uint32_t>(index));
 
     // Clear the slot
     m_hotData[index] = EntityHotData{};
@@ -2495,6 +2505,50 @@ std::span<const EntityHotData> EntityDataManager::getStaticHotDataArray() const 
 const EntityHotData& EntityDataManager::getStaticHotDataByIndex(size_t index) const {
     assert(index < m_staticHotData.size() && "Static index out of bounds");
     return m_staticHotData[index];
+}
+
+// ============================================================================
+// KNOCKBACK SIDECAR ACCESS
+// ============================================================================
+
+KnockbackData& EntityDataManager::applyKnockback(size_t edmIdx)
+{
+    return m_knockback.apply(static_cast<uint32_t>(edmIdx));
+}
+
+KnockbackData* EntityDataManager::getKnockback(size_t edmIdx) noexcept
+{
+    return m_knockback.get(static_cast<uint32_t>(edmIdx));
+}
+
+const KnockbackData* EntityDataManager::getKnockback(size_t edmIdx) const noexcept
+{
+    return m_knockback.get(static_cast<uint32_t>(edmIdx));
+}
+
+bool EntityDataManager::hasKnockback(size_t edmIdx) const noexcept
+{
+    return m_knockback.has(static_cast<uint32_t>(edmIdx));
+}
+
+void EntityDataManager::clearKnockback(size_t edmIdx) noexcept
+{
+    m_knockback.remove(static_cast<uint32_t>(edmIdx));
+}
+
+size_t EntityDataManager::knockbackActiveCount() const noexcept
+{
+    return m_knockback.activeCount();
+}
+
+SparseSidecar<KnockbackData>& EntityDataManager::knockbackSidecar() noexcept
+{
+    return m_knockback;
+}
+
+const SparseSidecar<KnockbackData>& EntityDataManager::knockbackSidecar() const noexcept
+{
+    return m_knockback;
 }
 
 size_t EntityDataManager::getStaticIndex(EntityHandle handle) const {

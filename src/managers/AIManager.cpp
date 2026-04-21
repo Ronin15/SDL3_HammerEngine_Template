@@ -1491,7 +1491,8 @@ void AIManager::processBatch(
         transform, edmHotData, m_storage.handles[storageIdx].getId(), edmIdx,
         deltaTime, playerHandle, playerPos, playerVel, playerValid,
         behaviorData, pathData, memoryData, characterData,
-        0.0f, 0.0f, worldWidth, worldHeight, true, gameTime);
+        0.0f, 0.0f, worldWidth, worldHeight, true, gameTime,
+        &edm.knockbackSidecar());
 
     switch (ref.type) {
       case BehaviorType::Idle:
@@ -1522,13 +1523,18 @@ void AIManager::processBatch(
         break;
     }
 
-    // Apply knockback impulse to velocity (decays over multiple frames)
-    if (edmHotData.knockbackFrames > 0) {
-      transform.velocity.setX(transform.velocity.getX() + edmHotData.knockbackImpulseX);
-      transform.velocity.setY(transform.velocity.getY() + edmHotData.knockbackImpulseY);
-      edmHotData.knockbackImpulseX *= Knockback::DECAY;
-      edmHotData.knockbackImpulseY *= Knockback::DECAY;
-      --edmHotData.knockbackFrames;
+    // Apply knockback impulse to velocity (decays over multiple frames).
+    // Gated by a single sparse-array load — entities without knockback pay nothing.
+    if (auto* kb = ctx.knockback->get(static_cast<uint32_t>(edmIdx)))
+    {
+      transform.velocity.setX(transform.velocity.getX() + kb->impulseX);
+      transform.velocity.setY(transform.velocity.getY() + kb->impulseY);
+      kb->impulseX *= Knockback::DECAY;
+      kb->impulseY *= Knockback::DECAY;
+      if (--kb->framesRemaining == 0)
+      {
+        edm.clearKnockback(edmIdx);
+      }
     }
 
     batchTransforms[batchCount] = &transform;
