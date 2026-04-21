@@ -123,67 +123,6 @@ enum class ParticleBlendMode : uint8_t {
 };
 
 /**
- * @brief Cache-efficient particle data using Structure of Arrays (SoA)
- * Hot data (frequently accessed) is separated from cold data for better cache
- * performance Optimized for 32-byte cache line alignment
- */
-struct alignas(16) ParticleData {
-  // Hot data - accessed every frame (32 bytes)
-  Vector2D position;     // Current position (8 bytes)
-  Vector2D velocity;     // Velocity vector (8 bytes)
-  float life;            // Current life (4 bytes)
-  float maxLife;         // Maximum life (4 bytes)
-  uint32_t color;        // RGBA color packed (4 bytes)
-  uint8_t flags;         // Active, visible, etc. (1 byte)
-  uint8_t generationId;  // Generation/wave ID for batch clearing (1 byte)
-
-  // Flags bit definitions
-  static constexpr uint8_t FLAG_ACTIVE = 1 << 0;
-  static constexpr uint8_t FLAG_VISIBLE = 1 << 1;
-  static constexpr uint8_t FLAG_GRAVITY = 1 << 2;
-  static constexpr uint8_t FLAG_COLLISION = 1 << 3;
-  static constexpr uint8_t FLAG_WEATHER = 1 << 4; // Mark as weather particle
-  static constexpr uint8_t FLAG_FADE_OUT =
-      1 << 5; // Particle is in fade-out phase
-  static constexpr uint8_t FLAG_RECENTLY_DEACTIVATED =
-      1 << 6; // Marks particle for pool collection (single-thread)
-
-  ParticleData()
-      : position(0, 0), velocity(0, 0), life(0.0f), maxLife(1.0f),
-        color(0xFFFFFFFF), flags(0), generationId(0) {}
-
-  bool isActive() const;
-  void setActive(bool active);
-
-  bool isVisible() const;
-  void setVisible(bool visible);
-
-  bool isWeatherParticle() const;
-  void setWeatherParticle(bool weather);
-
-  bool isFadingOut() const;
-  void setFadingOut(bool fading);
-
-  float getLifeRatio() const;
-};
-
-/**
- * @brief Cold particle data - accessed less frequently
- */
-struct ParticleColdData {
-  Vector2D acceleration; // Acceleration vector
-  float size;            // Particle size
-  float rotation;        // Current rotation
-  float angularVelocity; // Angular velocity
-  float fadeInTime;      // Fade in duration
-  float fadeOutTime;     // Fade out duration
-
-  ParticleColdData()
-      : acceleration(0, 0), size(1.0f), rotation(0.0f), angularVelocity(0.0f),
-        fadeInTime(0.1f), fadeOutTime(0.3f) {}
-};
-
-/**
  * @brief Particle emitter configuration
  */
 struct ParticleEmitterConfig {
@@ -1042,9 +981,6 @@ private:
                      const ParticleEffectDefinition &definition,
                      float deltaTime);
   void updateEffectInstance(EffectInstance &effect, float deltaTime);
-  void updateParticle(ParticleData &particle, float deltaTime);
-  bool isParticleVisible(const ParticleData &particle, float cameraX,
-                         float cameraY) const;
   void swapBuffers();
   void cleanupInactiveParticles();
   void updateEffectInstances(float deltaTime);
@@ -1065,9 +1001,6 @@ private:
   void
   batchProcessParticleColors(LockFreeParticleStorage::ParticleSoA &particles,
                              size_t startIdx, size_t endIdx);
-  void updateParticleWithColdData(ParticleData &particle,
-                                  const ParticleColdData &coldData,
-                                  float deltaTime);
   void updateUnifiedParticle(UnifiedParticle &particle, float deltaTime);
   void createParticleForEffect(const ParticleEffectDefinition &effectDef,
                                const Vector2D &position,

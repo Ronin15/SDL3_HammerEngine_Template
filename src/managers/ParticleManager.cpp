@@ -41,55 +41,6 @@ inline int fast_rand() {
 // Static mutex for update serialization
 // Remove static mutex - GameEngine handles synchronization
 
-// ParticleData method implementations
-bool ParticleData::isActive() const {
-    return flags & FLAG_ACTIVE;
-}
-
-void ParticleData::setActive(bool active) {
-    if (active)
-        flags |= FLAG_ACTIVE;
-    else
-        flags &= ~FLAG_ACTIVE;
-}
-
-bool ParticleData::isVisible() const {
-    return flags & FLAG_VISIBLE;
-}
-
-void ParticleData::setVisible(bool visible) {
-    if (visible)
-        flags |= FLAG_VISIBLE;
-    else
-        flags &= ~FLAG_VISIBLE;
-}
-
-bool ParticleData::isWeatherParticle() const {
-    return flags & FLAG_WEATHER;
-}
-
-void ParticleData::setWeatherParticle(bool weather) {
-    if (weather)
-        flags |= FLAG_WEATHER;
-    else
-        flags &= ~FLAG_WEATHER;
-}
-
-bool ParticleData::isFadingOut() const {
-    return flags & FLAG_FADE_OUT;
-}
-
-void ParticleData::setFadingOut(bool fading) {
-    if (fading)
-        flags |= FLAG_FADE_OUT;
-    else
-        flags &= ~FLAG_FADE_OUT;
-}
-
-float ParticleData::getLifeRatio() const {
-    return maxLife > 0 ? life / maxLife : 0.0f;
-}
-
 // UnifiedParticle method implementations
 bool UnifiedParticle::isActive() const {
     return flags & FLAG_ACTIVE;
