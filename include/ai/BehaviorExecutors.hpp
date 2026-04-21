@@ -66,10 +66,12 @@ struct BehaviorContext {
     // for systems that need absolute time (e.g., MemoryEntry timestamps).
     float gameTime{0.0f};
 
-    // Pre-fetched knockback sidecar — worker threads call knockback->get(edmIndex) for O(1)
+    // Pre-fetched knockback sidecar — worker threads call knockback.get(edmIndex) for O(1)
     // presence check without touching EntityDataManager::Instance().
+    // Reference (not pointer) because a BehaviorContext is always constructed with the
+    // process-wide sidecar — null has no meaning here and CLAUDE.md forbids nullable accessors.
     // Declared last so the initializer list order matches declaration order.
-    SparseSidecar<KnockbackData>* knockback{nullptr};
+    SparseSidecar<KnockbackData>& knockback;
 
     BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt,
                     EntityHandle pHandle, const Vector2D& pPos, const Vector2D& pVel, bool pValid,
@@ -77,7 +79,7 @@ struct BehaviorContext {
                     const CharacterData& cData,
                     float wMinX, float wMinY, float wMaxX, float wMaxY, bool wBoundsValid,
                     float gTime,
-                    SparseSidecar<KnockbackData>* kbSidecar = nullptr)
+                    SparseSidecar<KnockbackData>& kbSidecar)
         : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt),
           playerHandle(pHandle), playerPosition(pPos), playerVelocity(pVel), playerValid(pValid),
           sharedState(bData), pathData(pData), memoryData(mData), characterData(cData),
@@ -274,17 +276,6 @@ void initFollow(size_t edmIndex, const VoidLight::FollowBehaviorConfig& config, 
 // ============================================================================
 // MAIN DISPATCHER
 // ============================================================================
-
-/**
- * @brief Execute behavior based on archetype ref (switch dispatch)
- * @param ctx Pre-populated BehaviorContext with EDM references
- * @param ref  Archetype reference returned by EDM::getBehaviorConfigRef()
- *
- * Reads the correct per-variant dense pool via EntityDataManager and
- * dispatches to the appropriate execute function based on the behavior type.
- * Use for single-entity dispatch outside the hot batch path (tests, debug tools).
- */
-void execute(BehaviorContext& ctx, BehaviorConfigRef ref);
 
 /**
  * @brief Initialize behavior state based on config type (switch dispatch)

@@ -14,46 +14,6 @@
 
 namespace Behaviors {
 
-// ============================================================================
-// MAIN DISPATCHER
-// ============================================================================
-
-void execute(BehaviorContext& ctx, BehaviorConfigRef ref) {
-    auto& edm = EntityDataManager::Instance();
-    switch (ref.type) {
-        case BehaviorType::Idle:
-            executeIdle(ctx,   edm.getIdleConfig(ref.index),   edm.getIdleState(ref.index));
-            break;
-        case BehaviorType::Wander:
-            executeWander(ctx, edm.getWanderConfig(ref.index), edm.getWanderState(ref.index));
-            break;
-        case BehaviorType::Chase:
-            executeChase(ctx,  edm.getChaseConfig(ref.index),  edm.getChaseState(ref.index));
-            break;
-        case BehaviorType::Patrol:
-            executePatrol(ctx, edm.getPatrolConfig(ref.index), edm.getPatrolState(ref.index));
-            break;
-        case BehaviorType::Guard:
-            executeGuard(ctx,  edm.getGuardConfig(ref.index),  edm.getGuardState(ref.index));
-            break;
-        case BehaviorType::Attack:
-            executeAttack(ctx, edm.getAttackConfig(ref.index), edm.getAttackState(ref.index));
-            break;
-        case BehaviorType::Flee:
-            executeFlee(ctx,   edm.getFleeConfig(ref.index),   edm.getFleeState(ref.index));
-            break;
-        case BehaviorType::Follow:
-            executeFollow(ctx, edm.getFollowConfig(ref.index), edm.getFollowState(ref.index));
-            break;
-        case BehaviorType::Custom:
-        case BehaviorType::COUNT:
-        case BehaviorType::None:
-        default:
-            // No-op for unknown/unassigned behavior types
-            break;
-    }
-}
-
 void init(size_t edmIndex, const VoidLight::BehaviorConfigData& configData) {
     auto& edm = EntityDataManager::Instance();
     const auto ref = edm.getBehaviorConfigRef(edmIndex);

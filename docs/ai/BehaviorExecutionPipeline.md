@@ -27,7 +27,6 @@ The goal is to avoid repeated singleton lookups and scattered map access during 
 ## Dispatch and Initialization
 
 - The hot path is `Behaviors::executeIdle / executeWander / ...`, called directly from `AIManager::processBatch`'s per-entity switch. Each typed executor receives the per-variant config and state from EDM's dense pools via `BehaviorConfigRef`.
-- `Behaviors::execute(ctx, ref)` is retained as a single-entity fallback dispatcher (used by tests and non-batched call sites); the batched hot path no longer uses it.
 - `Behaviors::init(edmIndex, configData)` initializes EDM-backed state when a behavior is assigned.
 
 Behavior switching must preserve EDM state correctly; see the transition tests in `tests/BehaviorFunctionalityTest.cpp`.

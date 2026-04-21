@@ -276,10 +276,11 @@ void SettingsMenuState::applySettings() {
     settings.set("gameplay", "autosave_enabled", m_tempSettings.autosaveEnabled);
     settings.set("gameplay", "autosave_interval", m_tempSettings.autosaveInterval);
 
-    // Apply VSync last — this persists the full settings file to disk, so it
-    // must run after every settings.set() above. A separate saveToFile() would
-    // duplicate the save (and its log line).
+    // Apply VSync (pure mode switch — writes graphics.vsync to in-memory settings).
     gameEngine.setVSyncEnabled(m_tempSettings.vsync);
+
+    // Single explicit persist for the whole settings file.
+    settings.saveToFile(VoidLight::ResourcePath::resolve("res/settings.json"));
 
     // Save input bindings alongside other settings; log on failure but don't abort apply
     if (!InputManager::Instance().saveBindingsToFile(

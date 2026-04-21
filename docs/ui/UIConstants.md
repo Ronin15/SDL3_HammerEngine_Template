@@ -423,8 +423,8 @@ constexpr int DEFAULT_BUTTON_HEIGHT = 40;      // Standard button height
 
 ```cpp
 auto& ui = UIManager::Instance();
-int windowWidth = gameEngine.getLogicalWidth();
-int windowHeight = gameEngine.getLogicalHeight();
+int windowWidth = gameEngine.getWidthInPixels();
+int windowHeight = gameEngine.getHeightInPixels();
 
 // Positioned title (top with offset)
 ui.createTitle("header",

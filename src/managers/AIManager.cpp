@@ -343,11 +343,13 @@ void AIManager::update(float deltaTime) {
         // Unified single-pass: one call covering all entities. Emotional decay
         // + behavior dispatch fused into the same loop inside processBatch.
         m_singleBatchEvents.clear();
+        m_singleBatchKnockbackClears.clear();
         processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime,
                      worldWidth, worldHeight, cachedPlayerHandle,
                      cachedPlayerPosition, cachedPlayerVelocity,
                      cachedPlayerValid, cachedGameTime,
-                     m_singleBatchEvents);
+                     m_singleBatchEvents,
+                     m_singleBatchKnockbackClears);
         if (!m_singleBatchEvents.empty()) {
             m_allDamageEvents.insert(m_allDamageEvents.end(),
                 std::make_move_iterator(m_singleBatchEvents.begin()),
@@ -370,8 +372,12 @@ void AIManager::update(float deltaTime) {
         if (m_batchEventBuffers.size() < totalBatchCount) {
             m_batchEventBuffers.resize(totalBatchCount);
         }
+        if (m_batchKnockbackClears.size() < totalBatchCount) {
+            m_batchKnockbackClears.resize(totalBatchCount);
+        }
         for (size_t i = 0; i < totalBatchCount; ++i) {
             m_batchEventBuffers[i].clear();
+            m_batchKnockbackClears[i].clear();
         }
 
         m_batchFutures.clear();
@@ -389,7 +395,8 @@ void AIManager::update(float deltaTime) {
                                  worldWidth, worldHeight, cachedPlayerHandle,
                                  cachedPlayerPosition, cachedPlayerVelocity,
                                  cachedPlayerValid, cachedGameTime,
-                                 m_batchEventBuffers[i]);
+                                 m_batchEventBuffers[i],
+                                 m_batchKnockbackClears[i]);
                 },
                 VoidLight::TaskPriority::High, "AI_Batch"));
         }
@@ -405,6 +412,22 @@ void AIManager::update(float deltaTime) {
                 m_allDamageEvents.insert(m_allDamageEvents.end(),
                     std::make_move_iterator(m_batchEventBuffers[i].begin()),
                     std::make_move_iterator(m_batchEventBuffers[i].end()));
+            }
+        }
+    }
+
+    // Drain knockback-expiry queues on the main thread. SparseSidecar::remove()
+    // mutates shared m_dense/m_sparse via swap-pop and cannot be called from
+    // worker threads. Workers enqueued edmIdx values during processBatch.
+    {
+        auto& edmDrain = EntityDataManager::Instance();
+        for (uint32_t edmIdx : m_singleBatchKnockbackClears) {
+            edmDrain.clearKnockback(edmIdx);
+        }
+        m_singleBatchKnockbackClears.clear();
+        for (size_t i = 0; i < totalBatchCount && i < m_batchKnockbackClears.size(); ++i) {
+            for (uint32_t edmIdx : m_batchKnockbackClears[i]) {
+                edmDrain.clearKnockback(edmIdx);
             }
         }
     }
@@ -1311,7 +1334,8 @@ void AIManager::processBatch(
                              const Vector2D &playerPos,
                              const Vector2D &playerVel, bool playerValid,
                              float gameTime,
-                             std::vector<EventManager::DeferredEvent> &outEvents) {
+                             std::vector<EventManager::DeferredEvent> &outEvents,
+                             std::vector<uint32_t> &outKnockbackClears) {
   // Process batch of Active tier entities using EDM indices directly.
   // Emotional decay and behavior dispatch are fused into a single pass so Debug
   // builds touch each entity's hot data once per frame.
@@ -1492,7 +1516,7 @@ void AIManager::processBatch(
         deltaTime, playerHandle, playerPos, playerVel, playerValid,
         behaviorData, pathData, memoryData, characterData,
         0.0f, 0.0f, worldWidth, worldHeight, true, gameTime,
-        &edm.knockbackSidecar());
+        edm.knockbackSidecar());
 
     switch (ref.type) {
       case BehaviorType::Idle:
@@ -1525,7 +1549,10 @@ void AIManager::processBatch(
 
     // Apply knockback impulse to velocity (decays over multiple frames).
     // Gated by a single sparse-array load — entities without knockback pay nothing.
-    if (auto* kb = ctx.knockback->get(static_cast<uint32_t>(edmIdx)))
+    // Expiry is deferred to the main thread via outKnockbackClears: SparseSidecar::remove()
+    // performs swap-pop on shared vectors and patches the displaced entity's m_sparse slot,
+    // so it is not race-safe across worker threads.
+    if (auto* kb = ctx.knockback.get(static_cast<uint32_t>(edmIdx)))
     {
       transform.velocity.setX(transform.velocity.getX() + kb->impulseX);
       transform.velocity.setY(transform.velocity.getY() + kb->impulseY);
@@ -1533,7 +1560,7 @@ void AIManager::processBatch(
       kb->impulseY *= Knockback::DECAY;
       if (--kb->framesRemaining == 0)
       {
-        edm.clearKnockback(edmIdx);
+        outKnockbackClears.push_back(static_cast<uint32_t>(edmIdx));
       }
     }
 

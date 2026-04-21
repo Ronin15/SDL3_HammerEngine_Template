@@ -318,6 +318,12 @@ private:
   // Reusable buffer for single-threaded path deferred events (avoids per-call allocation)
   std::vector<EventManager::DeferredEvent> m_singleBatchEvents;
 
+  // Per-batch knockback-expiry queues. Workers enqueue edmIdx when framesRemaining
+  // hits zero; main thread drains after futures join. Keeps SparseSidecar::remove()
+  // off worker threads — its pop_back / cross-entity m_sparse patch is not race-safe.
+  std::vector<std::vector<uint32_t>> m_batchKnockbackClears;
+  std::vector<uint32_t> m_singleBatchKnockbackClears;
+
   // Reusable buffer for Active tier EDM indices (avoids per-frame allocation)
   std::vector<size_t> m_activeIndicesBuffer;
 
@@ -352,7 +358,8 @@ private:
                     EntityHandle playerHandle, const Vector2D& playerPos,
                     const Vector2D& playerVel, bool playerValid,
                     float gameTime,
-                    std::vector<EventManager::DeferredEvent>& outEvents);
+                    std::vector<EventManager::DeferredEvent>& outEvents,
+                    std::vector<uint32_t>& outKnockbackClears);
 
   // Shutdown state
   bool m_isShutdown{false};

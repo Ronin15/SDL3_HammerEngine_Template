@@ -1321,9 +1321,10 @@ bool GameEngine::setVSyncEnabled(bool enable) {
                                 committedVSync ? "VSYNC" : "MAILBOX"));
   }
 
-  auto &settings = VoidLight::SettingsManager::Instance();
-  settings.set("graphics", "vsync", committedVSync);
-  settings.saveToFile(VoidLight::ResourcePath::resolve("res/settings.json"));
+  // Pure mode switch: update in-memory VSync and frame-pacing state only.
+  // Persistence is the caller's responsibility (SettingsMenuState::applySettings
+  // issues a single explicit saveToFile for the whole settings file).
+  VoidLight::SettingsManager::Instance().set("graphics", "vsync", committedVSync);
 
   return success;
 }

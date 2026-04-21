@@ -202,8 +202,8 @@ void UIManager::linkToParent(const std::shared_ptr<UIComponent> &component,
 
   auto parent = getComponent(parentId);
   if (!parent) {
-    UI_WARN("linkToParent: parent '" + parentId + "' not found for child '" +
-            component->m_id + "'");
+    UI_WARN(std::format("linkToParent: parent '{}' not found for child '{}'",
+                        parentId, component->m_id));
     return;
   }
 
@@ -2599,10 +2599,14 @@ void UIManager::createCombatHUD() {
   // gap because text→bar transition needs more visual separation.
   constexpr int targetNameToBarGap = 16;
 
+  // Extra vertical breathing room above the target block so it is visually
+  // separated from the player stamina row.
+  constexpr int targetBlockTopPad = 10;
+
   // Row positions
   int healthRowY = hudMarginTop;
   int staminaRowY = hudMarginTop + rowSpacing;
-  int targetRowY = hudMarginTop + rowSpacing * 2 + 10;
+  int targetRowY = hudMarginTop + rowSpacing * 2 + targetBlockTopPad;
   int targetBarY = targetRowY + barHeight + targetNameToBarGap;
 
   // --- Player Health Bar ---

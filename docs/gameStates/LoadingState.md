@@ -297,8 +297,8 @@ worldManager.loadNewWorld(config, [this](float percent, const std::string& statu
 void LoadingState::initializeUI() {
     auto& ui = UIManager::Instance();
     auto& gameEngine = GameEngine::Instance();
-    int windowWidth = gameEngine.getLogicalWidth();
-    int windowHeight = gameEngine.getLogicalHeight();
+    int windowWidth = gameEngine.getWidthInPixels();
+    int windowHeight = gameEngine.getHeightInPixels();
 
     // Create loading overlay (semi-transparent background)
     ui.createOverlay();
