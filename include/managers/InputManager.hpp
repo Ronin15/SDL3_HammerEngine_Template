@@ -43,7 +43,7 @@ class InputManager {
         MouseButton,          // code = 0/1/2 (LEFT/MIDDLE/RIGHT)
         GamepadButton,        // code = SDL_GamepadButton
         GamepadAxisPositive,  // code = SDL_GamepadAxis, active when axis > +0.3
-        GamepadAxisNegative,  // code = SDL_GamepadAxis, active when axis < -0.3
+        GamepadAxisNegative,  // code = SDL_GamepadAxis, stick axes only, active when axis < -0.3
     };
 
     // Device grouping used by the Controls UI and by rebind capture filtering.
@@ -187,6 +187,8 @@ class InputManager {
         SDL_Gamepad* pGamepad{nullptr};
         Vector2D leftStick{0.0f, 0.0f};
         Vector2D rightStick{0.0f, 0.0f};
+        float leftTrigger{0.0f};
+        float rightTrigger{0.0f};
         std::vector<bool> buttonStates{};
     };
 
@@ -219,8 +221,8 @@ class InputManager {
     // Previous input states for rebind-capture edge detection (primed by startRebinding())
     std::array<bool, 3> m_prevMouseButtonStates{};
     std::vector<std::vector<bool>> m_prevGamepadButtonStates;    // parallel to m_gamepads
-    std::vector<std::array<bool, 4>> m_prevGamepadAxisPos;       // LEFTX/LEFTY/RIGHTX/RIGHTY positive threshold
-    std::vector<std::array<bool, 4>> m_prevGamepadAxisNeg;       // same, negative threshold
+    std::vector<std::array<bool, 6>> m_prevGamepadAxisPos;       // sticks + triggers positive threshold
+    std::vector<std::array<bool, 4>> m_prevGamepadAxisNeg;       // stick axes negative threshold
     Vector2D m_mousePosition{0.0f, 0.0f};
 
     bool m_isInitialized{false};
@@ -234,6 +236,7 @@ class InputManager {
     void closeGamepad(SDL_JoystickID instanceId);
     void updateMousePositionFromWindowCoords(float x, float y);
     void clearGamepadState();
+    float getGamepadAxisValue(int joy, SDL_GamepadAxis axis) const;
     static float normalizeGamepadAxisValue(Sint16 value, int deadZone);
 
     InputManager();

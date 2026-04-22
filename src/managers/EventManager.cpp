@@ -905,8 +905,8 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
       : damageEvent->getKnockback();
   const float knockbackScale = 1.0f / std::max(0.1f, charData.mass);
   auto& kb = edm.applyKnockback(targetIdx);
-  kb.impulseX = knockback.getX() * knockbackScale;
-  kb.impulseY = knockback.getY() * knockbackScale;
+  kb.impulseX += knockback.getX() * knockbackScale;
+  kb.impulseY += knockback.getY() * knockbackScale;
   kb.framesRemaining = static_cast<uint8_t>(Knockback::FRAMES);
 
   if (attackerHandle.isValid() && targetIsNPC) {

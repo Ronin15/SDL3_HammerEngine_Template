@@ -60,6 +60,7 @@ class MapperRequestHandler(SimpleHTTPRequestHandler):
     """HTTP handler for the sprite mapper with save endpoint."""
 
     sprites_dir = None  # Set by cmd_map
+    paths = None        # Set by cmd_map
 
     def do_POST(self):
         if self.path == '/save-mappings':
@@ -67,29 +68,16 @@ class MapperRequestHandler(SimpleHTTPRequestHandler):
             post_data = self.rfile.read(content_length)
             mappings = json.loads(post_data.decode('utf-8'))
 
-            # Apply renames immediately (two-phase to handle circular deps)
             sprites_dir = MapperRequestHandler.sprites_dir
-            renames = {old: new for old, new in mappings.items() if old != new}
-            renamed = []
-
-            if renames:
-                # Phase 1: Move to temp names
-                temp_files = {}
-                for old_name in renames.keys():
-                    src = sprites_dir / f"{old_name}.png"
-                    if src.exists():
-                        tmp = sprites_dir / f"_tmp_{old_name}.png"
-                        src.rename(tmp)
-                        temp_files[old_name] = tmp
-
-                # Phase 2: Move to final names
-                for old_name, new_name in renames.items():
-                    if old_name in temp_files:
-                        tmp = temp_files[old_name]
-                        dst = sprites_dir / f"{new_name}.png"
-                        tmp.rename(dst)
-                        renamed.append({'old': old_name, 'new': new_name})
-                        print(f"  Renamed: {old_name}.png -> {new_name}.png")
+            try:
+                renamed = apply_sprite_renames(sprites_dir, mappings)
+            except ValueError as exc:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                response = json.dumps({'status': 'error', 'error': str(exc)})
+                self.wfile.write(response.encode('utf-8'))
+                return
 
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -104,6 +92,25 @@ class MapperRequestHandler(SimpleHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
+
+    def do_GET(self):
+        if self.path == '/mapper-state':
+            if MapperRequestHandler.paths is None:
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                response = json.dumps({'status': 'error', 'error': 'Mapper paths not configured'})
+                self.wfile.write(response.encode('utf-8'))
+                return
+
+            state = build_mapper_state(MapperRequestHandler.paths)
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(state).encode('utf-8'))
+            return
+
+        super().do_GET()
 
     def log_message(self, format, *args):
         pass  # Suppress request logging
@@ -557,10 +564,124 @@ def guess_category(width: int, height: int, atlas_y: int) -> str:
     return 'Unknown'
 
 
-def cmd_map(paths: dict):
-    """Open visual mapper to assign texture IDs to sprites."""
+def build_mapper_state(paths: dict) -> dict:
+    """Collect current sprite mapper state from disk."""
     import base64
 
+    sprites_dir = paths['sprites_dir']
+
+    # Load manifest for position info
+    manifest_path = sprites_dir / "_manifest.json"
+    manifest_sprites = {}
+    if manifest_path.exists():
+        with open(manifest_path, 'r') as f:
+            mdata = json.load(f)
+        for s in mdata.get('sprites', []):
+            manifest_sprites[s['name']] = s
+
+    sprite_data = []
+    for png_file in sorted(sprites_dir.glob("*.png")):
+        if png_file.name.startswith('_'):
+            continue
+
+        with Image.open(png_file) as img:
+            width = img.width
+            height = img.height
+
+        with open(png_file, 'rb') as f:
+            b64 = base64.b64encode(f.read()).decode('utf-8')
+
+        minfo = manifest_sprites.get(png_file.stem, {})
+        atlas_y = minfo.get('y', 0)
+        suggested_category = guess_category(width, height, atlas_y)
+
+        sprite_data.append({
+            'filename': png_file.stem,
+            'dataUrl': f'data:image/png;base64,{b64}',
+            'width': width,
+            'height': height,
+            'atlasY': atlas_y,
+            'mapped': not png_file.stem.startswith('sprite_'),
+            'suggestedCategory': suggested_category
+        })
+
+    expected_ids = collect_expected_texture_ids(paths)
+    sprite_names = {s['filename'] for s in sprite_data}
+    missing_by_category = {}
+
+    for category, ids in expected_ids.items():
+        missing = []
+        for item in ids:
+            if item['id'] not in sprite_names:
+                missing.append(item)
+        if missing:
+            missing_by_category[category] = missing
+
+    return {
+        'sprites': sprite_data,
+        'expectedIds': expected_ids,
+        'missingIds': missing_by_category,
+    }
+
+
+def apply_sprite_renames(sprites_dir: Path, mappings: dict) -> list:
+    """Apply mapper renames using temp files so swaps and cycles are correct."""
+    renames = {old: new for old, new in mappings.items() if old != new}
+    if not renames:
+        return []
+
+    targets = list(renames.values())
+    duplicate_targets = sorted({name for name in targets if targets.count(name) > 1})
+    if duplicate_targets:
+        raise ValueError(f"Multiple sprites map to the same target: {', '.join(duplicate_targets)}")
+
+    source_names = set(renames.keys())
+    existing_names = {
+        path.stem for path in sprites_dir.glob("*.png")
+        if not path.name.startswith('_')
+    }
+    conflicts = sorted(
+        new_name for new_name in targets
+        if new_name in existing_names and new_name not in source_names
+    )
+    if conflicts:
+        raise ValueError(f"Target sprite already exists: {', '.join(conflicts)}")
+
+    temp_files = {}
+    pid = os.getpid()
+
+    for index, old_name in enumerate(renames.keys()):
+        src = sprites_dir / f"{old_name}.png"
+        if not src.exists():
+            continue
+
+        suffix = 0
+        while True:
+            tmp_name = f"__atlas_tmp_{pid}_{index}_{suffix}_{old_name}.png"
+            tmp = sprites_dir / tmp_name
+            if not tmp.exists():
+                break
+            suffix += 1
+
+        src.rename(tmp)
+        temp_files[old_name] = tmp
+
+    renamed = []
+    for old_name, new_name in renames.items():
+        tmp = temp_files.get(old_name)
+        if tmp is None:
+            continue
+
+        dst = sprites_dir / f"{new_name}.png"
+        tmp.rename(dst)
+        renamed.append({'old': old_name, 'new': new_name})
+        print(f"  Renamed: {old_name}.png -> {new_name}.png")
+
+    return renamed
+
+
+def cmd_map(paths: dict):
+    """Open visual mapper to assign texture IDs to sprites."""
     sprites_dir = paths['sprites_dir']
     output_html = paths['mapper_session']
 
@@ -574,59 +695,17 @@ def cmd_map(paths: dict):
         print(f"Error: No sprites found in {sprites_dir}")
         return False
 
-    # Load manifest for position info
-    manifest_path = sprites_dir / "_manifest.json"
-    manifest_sprites = {}
-    if manifest_path.exists():
-        with open(manifest_path, 'r') as f:
-            mdata = json.load(f)
-        for s in mdata.get('sprites', []):
-            manifest_sprites[s['name']] = s
-
-    # Build sprite data with base64 images
-    sprite_data = []
-    for png_file in sprite_files:
-        if png_file.name.startswith('_'):
-            continue
-
-        img = Image.open(png_file)
-        with open(png_file, 'rb') as f:
-            b64 = base64.b64encode(f.read()).decode('utf-8')
-
-        # Get position from manifest
-        minfo = manifest_sprites.get(png_file.stem, {})
-        atlas_y = minfo.get('y', 0)
-
-        # Guess category based on size and position
-        suggested_category = guess_category(img.width, img.height, atlas_y)
-
-        sprite_data.append({
-            'filename': png_file.stem,
-            'dataUrl': f'data:image/png;base64,{b64}',
-            'width': img.width,
-            'height': img.height,
-            'atlasY': atlas_y,
-            'mapped': not png_file.stem.startswith('sprite_'),
-            'suggestedCategory': suggested_category
-        })
-
-    # Load expected texture IDs from JSON files
-    expected_ids = collect_expected_texture_ids(paths)
-
-    # Find which texture IDs have matching sprites vs missing
+    mapper_state = build_mapper_state(paths)
+    sprite_data = mapper_state['sprites']
+    expected_ids = mapper_state['expectedIds']
+    missing_by_category = mapper_state['missingIds']
     sprite_names = {s['filename'] for s in sprite_data}
-    missing_by_category = {}
-    mapped_count = 0
-
-    for category, ids in expected_ids.items():
-        missing = []
-        for item in ids:
-            if item['id'] in sprite_names:
-                mapped_count += 1
-            else:
-                missing.append(item)
-        if missing:
-            missing_by_category[category] = missing
+    mapped_count = sum(
+        1
+        for ids in expected_ids.values()
+        for item in ids
+        if item['id'] in sprite_names
+    )
 
     total_ids = sum(len(v) for v in expected_ids.values())
     total_missing = sum(len(v) for v in missing_by_category.values())
@@ -658,6 +737,7 @@ def cmd_map(paths: dict):
 
     # Set up HTTP server
     MapperRequestHandler.sprites_dir = sprites_dir
+    MapperRequestHandler.paths = paths
     original_dir = os.getcwd()
     os.chdir(output_html.parent)
 
@@ -946,17 +1026,21 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
     </div>
 
     <script>
-        const sprites = {sprites_json};
-        const expectedIds = {ids_json};
-        const missingIds = {missing_json};
+        let sprites = {sprites_json};
+        let expectedIds = {ids_json};
+        let missingIds = {missing_json};
 
         let selectedSprite = null;
         let mappings = {{}};  // filename -> textureId
 
-        // Initialize mappings from already-named sprites
-        sprites.forEach(s => {{
-            if (s.mapped) mappings[s.filename] = s.filename;
-        }});
+        function rebuildMappingsFromSprites() {{
+            mappings = {{}};
+            sprites.forEach(s => {{
+                if (s.mapped) mappings[s.filename] = s.filename;
+            }});
+        }}
+
+        rebuildMappingsFromSprites();
 
         function render() {{
             // Save scroll positions before re-rendering
@@ -1231,6 +1315,36 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
             }}
         }}
 
+        function loadMapperState(previousSelection) {{
+            return fetch('/mapper-state', {{cache: 'no-store'}})
+                .then(response => {{
+                    if (!response.ok) {{
+                        return response.json().then(data => {{
+                            throw new Error(data.error || 'Failed to load mapper state');
+                        }});
+                    }}
+                    return response.json();
+                }})
+                .then(state => {{
+                    sprites = state.sprites || [];
+                    expectedIds = state.expectedIds || {{}};
+                    missingIds = state.missingIds || {{}};
+                    rebuildMappingsFromSprites();
+
+                    selectedSprite = sprites.some(s => s.filename === previousSelection)
+                        ? previousSelection
+                        : null;
+
+                    if (selectedSprite) {{
+                        selectSprite(selectedSprite);
+                    }} else {{
+                        document.getElementById('selectedInfo').innerHTML =
+                            '<div style="color: #666; text-align: center;">Select a sprite</div>';
+                        render();
+                    }}
+                }});
+        }}
+
         function saveMappings() {{
             const renames = Object.entries(mappings).filter(([old, newN]) => old !== newN);
 
@@ -1248,24 +1362,20 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
                 headers: {{'Content-Type': 'application/json'}},
                 body: JSON.stringify(mappings, null, 2)
             }})
-            .then(response => response.json())
+            .then(response => {{
+                if (!response.ok) {{
+                    return response.json().then(data => {{
+                        throw new Error(data.error || 'Save failed');
+                    }});
+                }}
+                return response.json();
+            }})
             .then(data => {{
                 if (data.renamed && data.renamed.length > 0) {{
-                    // Update in-memory state to reflect renames
-                    data.renamed.forEach(r => {{
-                        const sprite = sprites.find(s => s.filename === r.old);
-                        if (sprite) {{
-                            sprite.filename = r.new;
-                            sprite.mapped = true;
-                        }}
-                        // Update mappings: remove old key, set new as self-mapped
-                        delete mappings[r.old];
-                        mappings[r.new] = r.new;
-                        // Update selection if renamed
-                        if (selectedSprite === r.old) selectedSprite = r.new;
+                    const previousSelection = selectedSprite;
+                    return loadMapperState(previousSelection).then(() => {{
+                        alert(`Renamed ${{data.renamed.length}} sprites. Ready for next batch or pack.`);
                     }});
-                    render();
-                    alert(`Renamed ${{data.renamed.length}} sprites. Ready for next batch or pack.`);
                 }} else {{
                     alert('No renames were applied.');
                 }}

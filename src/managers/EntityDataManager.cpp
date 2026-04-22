@@ -191,14 +191,14 @@ void EntityDataManager::clearAllEntityStorage() {
     m_generations.clear();
     m_idToIndex.clear();
     m_behaviorConfigRef.clear();
-    m_idleConfigs.clear();   m_idleOwners.clear();
-    m_wanderConfigs.clear(); m_wanderOwners.clear();
-    m_chaseConfigs.clear();  m_chaseOwners.clear();
-    m_patrolConfigs.clear(); m_patrolOwners.clear();
-    m_fleeConfigs.clear();   m_fleeOwners.clear();
-    m_followConfigs.clear(); m_followOwners.clear();
-    m_guardConfigs.clear();  m_guardOwners.clear();
-    m_attackConfigs.clear(); m_attackOwners.clear();
+    m_idleConfigs.clear();   m_idleOwners.clear();   m_idleStates.clear();
+    m_wanderConfigs.clear(); m_wanderOwners.clear(); m_wanderStates.clear();
+    m_chaseConfigs.clear();  m_chaseOwners.clear();  m_chaseStates.clear();
+    m_patrolConfigs.clear(); m_patrolOwners.clear(); m_patrolStates.clear();
+    m_fleeConfigs.clear();   m_fleeOwners.clear();   m_fleeStates.clear();
+    m_followConfigs.clear(); m_followOwners.clear(); m_followStates.clear();
+    m_guardConfigs.clear();  m_guardOwners.clear();  m_guardStates.clear();
+    m_attackConfigs.clear(); m_attackOwners.clear(); m_attackStates.clear();
 
     // Static entity storage
     m_staticHotData.clear();
@@ -353,6 +353,7 @@ void EntityDataManager::freeSlot(size_t index) {
 
     // Clear path, behavior, and memory data for AI entities
     clearPathData(index);
+    clearBehaviorConfig(index);
     clearBehaviorData(index);
     clearMemoryData(index);
 
@@ -1823,6 +1824,11 @@ void EntityDataManager::unregisterEntity(EntityHandle::IDType entityId) {
 
     EntityKind kind = m_hotData[index].kind;
     SimulationTier tier = m_hotData[index].tier;
+    const EntityHandle handle{entityId, kind, m_generations[index]};
+
+    if (EntityTraits::hasAI(kind) && AIManager::Instance().isInitialized()) {
+        AIManager::Instance().unregisterEntity(handle);
+    }
 
     // Update counters
     m_totalEntityCount.fetch_sub(1, std::memory_order_relaxed);
@@ -1940,6 +1946,10 @@ void EntityDataManager::processDestructionQueue() {
 
         EntityKind kind = m_hotData[index].kind;
         SimulationTier tier = m_hotData[index].tier;
+
+        if (EntityTraits::hasAI(kind) && AIManager::Instance().isInitialized()) {
+            AIManager::Instance().unregisterEntity(handle);
+        }
 
         // Update counters
         m_totalEntityCount.fetch_sub(1, std::memory_order_relaxed);

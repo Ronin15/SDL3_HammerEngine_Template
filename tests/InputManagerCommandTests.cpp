@@ -23,7 +23,7 @@ struct CommandTestFixture
     CommandTestFixture()
     {
         setenv("SDL_VIDEODRIVER", "offscreen", 1);
-        if (!SDL_Init(SDL_INIT_VIDEO)) {
+        if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD)) {
             throw std::runtime_error(
                 std::string("SDL_Init failed: ") + SDL_GetError());
         }
@@ -74,6 +74,12 @@ namespace TestHelpers
                 case SDL_EVENT_KEY_UP:        mgr.onKeyUp(event);            break;
                 case SDL_EVENT_MOUSE_BUTTON_DOWN: mgr.onMouseButtonDown(event); break;
                 case SDL_EVENT_MOUSE_BUTTON_UP:   mgr.onMouseButtonUp(event);   break;
+                case SDL_EVENT_GAMEPAD_AXIS_MOTION: mgr.onGamepadAxisMove(event); break;
+                case SDL_EVENT_GAMEPAD_BUTTON_DOWN: mgr.onGamepadButtonDown(event); break;
+                case SDL_EVENT_GAMEPAD_BUTTON_UP:   mgr.onGamepadButtonUp(event);   break;
+                case SDL_EVENT_GAMEPAD_ADDED:       mgr.onGamepadAdded(event);      break;
+                case SDL_EVENT_GAMEPAD_REMOVED:     mgr.onGamepadRemoved(event);    break;
+                case SDL_EVENT_GAMEPAD_REMAPPED:    mgr.onGamepadRemapped(event);   break;
                 default: break;
             }
         }
@@ -99,6 +105,72 @@ namespace TestHelpers
         e.key.scancode = sc;
         SDL_PushEvent(&e);
     }
+
+    void injectGamepadDeviceEvent(SDL_EventType eventType, SDL_JoystickID instanceId)
+    {
+        SDL_Event e;
+        SDL_zero(e);
+        e.type = eventType;
+        e.gdevice.which = instanceId;
+        SDL_PushEvent(&e);
+    }
+
+    void injectGamepadAxisMotion(SDL_JoystickID instanceId, SDL_GamepadAxis axis, Sint16 value)
+    {
+        SDL_Event e;
+        SDL_zero(e);
+        e.type = SDL_EVENT_GAMEPAD_AXIS_MOTION;
+        e.gaxis.which = instanceId;
+        e.gaxis.axis = axis;
+        e.gaxis.value = value;
+        SDL_PushEvent(&e);
+    }
+
+    SDL_JoystickID attachVirtualGamepad()
+    {
+        SDL_VirtualJoystickDesc desc;
+        SDL_INIT_INTERFACE(&desc);
+        desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+        desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
+        desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+        desc.axis_mask =
+            (1u << SDL_GAMEPAD_AXIS_LEFTX) |
+            (1u << SDL_GAMEPAD_AXIS_LEFTY) |
+            (1u << SDL_GAMEPAD_AXIS_RIGHTX) |
+            (1u << SDL_GAMEPAD_AXIS_RIGHTY) |
+            (1u << SDL_GAMEPAD_AXIS_LEFT_TRIGGER) |
+            (1u << SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
+        desc.button_mask = 0xFFFFFFFFu;
+        desc.name = "Command Test Virtual Gamepad";
+        return SDL_AttachVirtualJoystick(&desc);
+    }
+
+    struct ScopedVirtualGamepad
+    {
+        SDL_JoystickID instanceId{0};
+
+        ScopedVirtualGamepad()
+            : instanceId(attachVirtualGamepad())
+        {
+            if (instanceId != 0) {
+                injectGamepadDeviceEvent(SDL_EVENT_GAMEPAD_ADDED, instanceId);
+                processFrame();
+            }
+        }
+
+        ~ScopedVirtualGamepad()
+        {
+            if (instanceId != 0) {
+                injectGamepadDeviceEvent(SDL_EVENT_GAMEPAD_REMOVED, instanceId);
+                processFrame();
+                SDL_DetachVirtualJoystick(instanceId);
+                clearEventQueue();
+            }
+        }
+
+        ScopedVirtualGamepad(const ScopedVirtualGamepad&) = delete;
+        ScopedVirtualGamepad& operator=(const ScopedVirtualGamepad&) = delete;
+    };
 
     // Resets bindings to defaults and clears any queued events for a clean test state
     void resetState()
@@ -549,6 +621,69 @@ BOOST_AUTO_TEST_CASE(StartRebindingPrimesPrevStateWithoutSpuriousCapture)
     // Cleanup: cancel and verify
     mgr.cancelRebinding();
     BOOST_CHECK(!mgr.isRebinding());
+
+    mgr.resetBindingsToDefaults();
+}
+
+BOOST_AUTO_TEST_CASE(TriggerAxisPositiveBindingActivatesCommand)
+{
+    TestHelpers::resetState();
+    auto& mgr = InputManager::Instance();
+
+    TestHelpers::ScopedVirtualGamepad gamepad;
+    BOOST_REQUIRE_NE(gamepad.instanceId, 0u);
+    BOOST_REQUIRE(mgr.isGamepadConnected());
+
+    using C = InputManager::Command;
+    using S = InputManager::InputSource;
+
+    mgr.clearBindings(C::AttackLight);
+    mgr.addBinding(C::AttackLight,
+                   {S::GamepadAxisPositive, SDL_GAMEPAD_AXIS_LEFT_TRIGGER});
+
+    TestHelpers::injectGamepadAxisMotion(
+        gamepad.instanceId, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_JOYSTICK_AXIS_MAX);
+    TestHelpers::processFrame();
+
+    BOOST_CHECK(mgr.isCommandPressed(C::AttackLight));
+    BOOST_CHECK(mgr.isCommandDown(C::AttackLight));
+
+    mgr.clearBindings(C::AttackLight);
+    mgr.addBinding(C::AttackLight,
+                   {S::GamepadAxisNegative, SDL_GAMEPAD_AXIS_LEFT_TRIGGER});
+    TestHelpers::processFrame();
+
+    BOOST_CHECK(!mgr.isCommandDown(C::AttackLight));
+
+    mgr.resetBindingsToDefaults();
+}
+
+BOOST_AUTO_TEST_CASE(TriggerAxisCanBeCapturedForControllerRebind)
+{
+    TestHelpers::resetState();
+    auto& mgr = InputManager::Instance();
+
+    TestHelpers::ScopedVirtualGamepad gamepad;
+    BOOST_REQUIRE_NE(gamepad.instanceId, 0u);
+    BOOST_REQUIRE(mgr.isGamepadConnected());
+
+    using C = InputManager::Command;
+    using DC = InputManager::DeviceCategory;
+    using S = InputManager::InputSource;
+
+    mgr.startRebinding(C::WorldInteract, DC::Controller);
+    BOOST_REQUIRE(mgr.isRebinding());
+
+    TestHelpers::injectGamepadAxisMotion(
+        gamepad.instanceId, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, SDL_JOYSTICK_AXIS_MAX);
+    TestHelpers::processFrame();
+
+    BOOST_CHECK(!mgr.isRebinding());
+
+    auto binding = mgr.getBindingForCategory(C::WorldInteract, DC::Controller);
+    BOOST_REQUIRE(binding.has_value());
+    BOOST_CHECK(binding->source == S::GamepadAxisPositive);
+    BOOST_CHECK_EQUAL(binding->code, static_cast<int>(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER));
 
     mgr.resetBindingsToDefaults();
 }

@@ -17,6 +17,7 @@
 #include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <cmath>
+#include <limits>
 #include <vector>
 
 // Test tolerance for floating-point comparisons
@@ -135,6 +136,63 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransition) {
 
     // Manager should still be initialized
     BOOST_CHECK(edm->isInitialized());
+}
+
+BOOST_AUTO_TEST_CASE(TestDirectDestroyClearsBehaviorConfigForSlotReuse) {
+    EntityHandle npc = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    BOOST_REQUIRE(npc.isValid());
+
+    const size_t npcIdx = edm->getIndex(npc);
+    BOOST_REQUIRE(npcIdx != SIZE_MAX);
+
+    const BehaviorConfigRef initialRef = edm->getBehaviorConfigRef(npcIdx);
+    BOOST_REQUIRE(initialRef.type == BehaviorType::Guard);
+    BOOST_REQUIRE(initialRef.index != std::numeric_limits<uint32_t>::max());
+
+    edm->destroyEntity(npc);
+    edm->processDestructionQueue();
+
+    const BehaviorConfigRef destroyedRef = edm->getBehaviorConfigRef(npcIdx);
+    BOOST_CHECK(destroyedRef.type == BehaviorType::None);
+    BOOST_CHECK_EQUAL(destroyedRef.index, std::numeric_limits<uint32_t>::max());
+    BOOST_CHECK(!AIManager::Instance().hasBehavior(npc));
+
+    EntityHandle player = edm->registerPlayer(1, Vector2D(200.0f, 200.0f));
+    BOOST_REQUIRE(player.isValid());
+
+    const size_t playerIdx = edm->getIndex(player);
+    BOOST_REQUIRE_EQUAL(playerIdx, npcIdx);
+
+    const BehaviorConfigRef playerRef = edm->getBehaviorConfigRef(playerIdx);
+    BOOST_CHECK(playerRef.type == BehaviorType::None);
+    BOOST_CHECK_EQUAL(playerRef.index, std::numeric_limits<uint32_t>::max());
+}
+
+BOOST_AUTO_TEST_CASE(TestStateTransitionClearsBehaviorStatePools) {
+    EntityHandle firstGuard = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    BOOST_REQUIRE(firstGuard.isValid());
+
+    const size_t firstIdx = edm->getIndex(firstGuard);
+    BOOST_REQUIRE(firstIdx != SIZE_MAX);
+
+    const BehaviorConfigRef firstRef = edm->getBehaviorConfigRef(firstIdx);
+    BOOST_REQUIRE(firstRef.type == BehaviorType::Guard);
+    edm->getGuardState(firstRef.index).currentAlertLevel = 3;
+
+    AIManager::Instance().prepareForStateTransition();
+    edm->prepareForStateTransition();
+    BOOST_REQUIRE_EQUAL(edm->getEntityCount(), 0);
+
+    EntityHandle secondGuard = edm->createNPCWithRaceClass(Vector2D(200.0f, 200.0f), "Human", "Guard");
+    BOOST_REQUIRE(secondGuard.isValid());
+
+    const size_t secondIdx = edm->getIndex(secondGuard);
+    BOOST_REQUIRE(secondIdx != SIZE_MAX);
+
+    const BehaviorConfigRef secondRef = edm->getBehaviorConfigRef(secondIdx);
+    BOOST_REQUIRE(secondRef.type == BehaviorType::Guard);
+    BOOST_CHECK_EQUAL(secondRef.index, 0u);
+    BOOST_CHECK_EQUAL(edm->getGuardState(secondRef.index).currentAlertLevel, 0);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

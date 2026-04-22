@@ -31,8 +31,10 @@
 #include "managers/EventManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "entities/EntityHandle.hpp"
+#include "events/EntityEvents.hpp"
 #include "utils/Vector2D.hpp"
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 // ============================================================================
@@ -369,6 +371,56 @@ BOOST_AUTO_TEST_CASE(ClearKnockbackRemovesEntry)
     BOOST_CHECK_EQUAL(edm.knockbackActiveCount(), 0u);
     BOOST_CHECK(!edm.hasKnockback(idx));
     BOOST_CHECK(edm.getKnockback(idx) == nullptr);
+}
+
+BOOST_AUTO_TEST_CASE(DamageEventsAccumulateKnockbackAndRefreshFrames)
+{
+    auto& edm = EntityDataManager::Instance();
+
+    EntityHandle playerHandle = edm.registerPlayer(9901, Vector2D(75.0f, 75.0f));
+    BOOST_REQUIRE(playerHandle.isValid());
+
+    auto& playerData = edm.getCharacterData(playerHandle);
+    playerData.maxHealth = 100.0f;
+    playerData.health = 100.0f;
+    playerData.mass = 2.0f;
+
+    const size_t idx = edm.getIndex(playerHandle);
+    BOOST_REQUIRE(idx != SIZE_MAX);
+
+    auto firstHit = std::make_shared<DamageEvent>(
+        EntityEventType::DamageIntent,
+        EntityHandle{},
+        playerHandle,
+        1.0f,
+        Vector2D(10.0f, -4.0f));
+
+    BOOST_CHECK(EventManager::Instance().dispatchEvent(
+        firstHit, EventManager::DispatchMode::Immediate));
+
+    KnockbackData* kb = edm.getKnockback(idx);
+    BOOST_REQUIRE(kb != nullptr);
+    BOOST_CHECK_CLOSE(kb->impulseX, 5.0f, 0.001f);
+    BOOST_CHECK_CLOSE(kb->impulseY, -2.0f, 0.001f);
+    BOOST_CHECK_EQUAL(kb->framesRemaining, static_cast<uint8_t>(Knockback::FRAMES));
+
+    kb->framesRemaining = 1;
+
+    auto secondHit = std::make_shared<DamageEvent>(
+        EntityEventType::DamageIntent,
+        EntityHandle{},
+        playerHandle,
+        1.0f,
+        Vector2D(6.0f, 8.0f));
+
+    BOOST_CHECK(EventManager::Instance().dispatchEvent(
+        secondHit, EventManager::DispatchMode::Immediate));
+
+    kb = edm.getKnockback(idx);
+    BOOST_REQUIRE(kb != nullptr);
+    BOOST_CHECK_CLOSE(kb->impulseX, 8.0f, 0.001f);
+    BOOST_CHECK_CLOSE(kb->impulseY, 2.0f, 0.001f);
+    BOOST_CHECK_EQUAL(kb->framesRemaining, static_cast<uint8_t>(Knockback::FRAMES));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

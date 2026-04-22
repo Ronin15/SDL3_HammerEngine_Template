@@ -145,6 +145,30 @@ float InputManager::getAxisY(int joy, int stick) const {
   return 0;
 }
 
+float InputManager::getGamepadAxisValue(int joy, SDL_GamepadAxis axis) const {
+  if (joy < 0 || joy >= static_cast<int>(m_gamepads.size())) {
+    return 0.0f;
+  }
+
+  const GamepadState& gamepad = m_gamepads[static_cast<size_t>(joy)];
+  switch (axis) {
+    case SDL_GAMEPAD_AXIS_LEFTX:
+      return gamepad.leftStick.getX();
+    case SDL_GAMEPAD_AXIS_LEFTY:
+      return gamepad.leftStick.getY();
+    case SDL_GAMEPAD_AXIS_RIGHTX:
+      return gamepad.rightStick.getX();
+    case SDL_GAMEPAD_AXIS_RIGHTY:
+      return gamepad.rightStick.getY();
+    case SDL_GAMEPAD_AXIS_LEFT_TRIGGER:
+      return gamepad.leftTrigger;
+    case SDL_GAMEPAD_AXIS_RIGHT_TRIGGER:
+      return gamepad.rightTrigger;
+    default:
+      return 0.0f;
+  }
+}
+
 bool InputManager::getButtonState(int joy, int buttonNumber) const {
   if (joy < 0 || joy >= static_cast<int>(m_gamepads.size()) ||
       buttonNumber < 0 ||
@@ -199,21 +223,15 @@ bool InputManager::sampleBinding(const InputBinding& b) const
             return getButtonState(0, b.code);
 
         case InputSource::GamepadAxisPositive:
-            // Map SDL_GamepadAxis to the correct getAxisX/Y call
-            switch (static_cast<SDL_GamepadAxis>(b.code)) {
-                case SDL_GAMEPAD_AXIS_LEFTX:  return getAxisX(0, 1) >  0.3f;
-                case SDL_GAMEPAD_AXIS_LEFTY:  return getAxisY(0, 1) >  0.3f;
-                case SDL_GAMEPAD_AXIS_RIGHTX: return getAxisX(0, 2) >  0.3f;
-                case SDL_GAMEPAD_AXIS_RIGHTY: return getAxisY(0, 2) >  0.3f;
-                default: return false;
-            }
+            return getGamepadAxisValue(0, static_cast<SDL_GamepadAxis>(b.code)) > 0.3f;
 
         case InputSource::GamepadAxisNegative:
             switch (static_cast<SDL_GamepadAxis>(b.code)) {
-                case SDL_GAMEPAD_AXIS_LEFTX:  return getAxisX(0, 1) < -0.3f;
-                case SDL_GAMEPAD_AXIS_LEFTY:  return getAxisY(0, 1) < -0.3f;
-                case SDL_GAMEPAD_AXIS_RIGHTX: return getAxisX(0, 2) < -0.3f;
-                case SDL_GAMEPAD_AXIS_RIGHTY: return getAxisY(0, 2) < -0.3f;
+                case SDL_GAMEPAD_AXIS_LEFTX:
+                case SDL_GAMEPAD_AXIS_LEFTY:
+                case SDL_GAMEPAD_AXIS_RIGHTX:
+                case SDL_GAMEPAD_AXIS_RIGHTY:
+                    return getGamepadAxisValue(0, static_cast<SDL_GamepadAxis>(b.code)) < -0.3f;
                 default: return false;
             }
     }
@@ -337,18 +355,27 @@ void InputManager::captureRebind()
             }
         }
 
-        // Gamepad axis rising edge — requires deflection to cross threshold from below
+        // Gamepad axis rising edge — requires deflection to cross threshold from below.
+        // Triggers are positive-only axes.
         const bool havePrevAxis = !m_prevGamepadAxisPos.empty();
-        struct AxisEntry { SDL_GamepadAxis axis; float val; size_t idx; };
-        AxisEntry axes[] = {
-            {SDL_GAMEPAD_AXIS_LEFTX,  getAxisX(0, 1), 0},
-            {SDL_GAMEPAD_AXIS_LEFTY,  getAxisY(0, 1), 1},
-            {SDL_GAMEPAD_AXIS_RIGHTX, getAxisX(0, 2), 2},
-            {SDL_GAMEPAD_AXIS_RIGHTY, getAxisY(0, 2), 3},
+        struct AxisEntry {
+            SDL_GamepadAxis axis;
+            size_t positiveIdx;
+            bool supportsNegative;
+            size_t negativeIdx;
         };
-        for (auto [axis, val, idx] : axes) {
+        AxisEntry axes[] = {
+            {SDL_GAMEPAD_AXIS_LEFTX,         0, true,  0},
+            {SDL_GAMEPAD_AXIS_LEFTY,         1, true,  1},
+            {SDL_GAMEPAD_AXIS_RIGHTX,        2, true,  2},
+            {SDL_GAMEPAD_AXIS_RIGHTY,        3, true,  3},
+            {SDL_GAMEPAD_AXIS_LEFT_TRIGGER,  4, false, 0},
+            {SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, 5, false, 0},
+        };
+        for (auto [axis, positiveIdx, supportsNegative, negativeIdx] : axes) {
+            const float val = getGamepadAxisValue(0, axis);
             if (val > 0.5f) {
-                bool prev = havePrevAxis && m_prevGamepadAxisPos[0][idx];
+                bool prev = havePrevAxis && m_prevGamepadAxisPos[0][positiveIdx];
                 if (!prev) {
                     INPUT_INFO(std::format("Rebound '{}' controller slot to gamepad axis {} positive",
                         commandDisplayName(m_rebindCommand), static_cast<int>(axis)));
@@ -356,8 +383,8 @@ void InputManager::captureRebind()
                     return;
                 }
             }
-            if (val < -0.5f) {
-                bool prev = havePrevAxis && m_prevGamepadAxisNeg[0][idx];
+            if (supportsNegative && val < -0.5f) {
+                bool prev = havePrevAxis && m_prevGamepadAxisNeg[0][negativeIdx];
                 if (!prev) {
                     INPUT_INFO(std::format("Rebound '{}' controller slot to gamepad axis {} negative",
                         commandDisplayName(m_rebindCommand), static_cast<int>(axis)));
@@ -381,14 +408,16 @@ void InputManager::captureRebind()
             }
         }
         if (!m_prevGamepadAxisPos.empty()) {
-            m_prevGamepadAxisPos[0][0] = getAxisX(0, 1) >  0.5f;
-            m_prevGamepadAxisPos[0][1] = getAxisY(0, 1) >  0.5f;
-            m_prevGamepadAxisPos[0][2] = getAxisX(0, 2) >  0.5f;
-            m_prevGamepadAxisPos[0][3] = getAxisY(0, 2) >  0.5f;
-            m_prevGamepadAxisNeg[0][0] = getAxisX(0, 1) < -0.5f;
-            m_prevGamepadAxisNeg[0][1] = getAxisY(0, 1) < -0.5f;
-            m_prevGamepadAxisNeg[0][2] = getAxisX(0, 2) < -0.5f;
-            m_prevGamepadAxisNeg[0][3] = getAxisY(0, 2) < -0.5f;
+            m_prevGamepadAxisPos[0][0] = getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_LEFTX) > 0.5f;
+            m_prevGamepadAxisPos[0][1] = getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_LEFTY) > 0.5f;
+            m_prevGamepadAxisPos[0][2] = getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_RIGHTX) > 0.5f;
+            m_prevGamepadAxisPos[0][3] = getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_RIGHTY) > 0.5f;
+            m_prevGamepadAxisPos[0][4] = getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 0.5f;
+            m_prevGamepadAxisPos[0][5] = getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 0.5f;
+            m_prevGamepadAxisNeg[0][0] = getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_LEFTX) < -0.5f;
+            m_prevGamepadAxisNeg[0][1] = getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_LEFTY) < -0.5f;
+            m_prevGamepadAxisNeg[0][2] = getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_RIGHTX) < -0.5f;
+            m_prevGamepadAxisNeg[0][3] = getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_RIGHTY) < -0.5f;
         }
     }
 }
@@ -547,16 +576,18 @@ void InputManager::startRebinding(Command c, DeviceCategory cat)
 
     if (!m_gamepads.empty()) {
         m_prevGamepadAxisPos.push_back({
-            getAxisX(0, 1) >  0.5f,
-            getAxisY(0, 1) >  0.5f,
-            getAxisX(0, 2) >  0.5f,
-            getAxisY(0, 2) >  0.5f,
+            getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_LEFTX) > 0.5f,
+            getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_LEFTY) > 0.5f,
+            getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_RIGHTX) > 0.5f,
+            getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_RIGHTY) > 0.5f,
+            getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 0.5f,
+            getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 0.5f,
         });
         m_prevGamepadAxisNeg.push_back({
-            getAxisX(0, 1) < -0.5f,
-            getAxisY(0, 1) < -0.5f,
-            getAxisX(0, 2) < -0.5f,
-            getAxisY(0, 2) < -0.5f,
+            getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_LEFTX) < -0.5f,
+            getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_LEFTY) < -0.5f,
+            getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_RIGHTX) < -0.5f,
+            getGamepadAxisValue(0, SDL_GAMEPAD_AXIS_RIGHTY) < -0.5f,
         });
     }
 
@@ -1159,12 +1190,16 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
 
   // Process left trigger (L2/LT)
   if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER) {
+    gamepadState.leftTrigger = std::max(
+        0.0f, normalizeGamepadAxisValue(event.gaxis.value, m_joystickDeadZone));
     INPUT_DEBUG_IF(event.gaxis.value > m_joystickDeadZone,
         std::format("Gamepad {} - {} pressed: {}", whichOne, axisName, event.gaxis.value));
   }
 
   // Process right trigger (R2/RT)
   if (event.gaxis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) {
+    gamepadState.rightTrigger = std::max(
+        0.0f, normalizeGamepadAxisValue(event.gaxis.value, m_joystickDeadZone));
     INPUT_DEBUG_IF(event.gaxis.value > m_joystickDeadZone,
         std::format("Gamepad {} - {} pressed: {}", whichOne, axisName, event.gaxis.value));
   }
@@ -1363,6 +1398,8 @@ void InputManager::clearGamepadState() {
   for (auto& gamepadState : m_gamepads) {
     gamepadState.leftStick = Vector2D(0.0f, 0.0f);
     gamepadState.rightStick = Vector2D(0.0f, 0.0f);
+    gamepadState.leftTrigger = 0.0f;
+    gamepadState.rightTrigger = 0.0f;
     std::fill(gamepadState.buttonStates.begin(), gamepadState.buttonStates.end(),
               false);
   }
