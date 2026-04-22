@@ -32,7 +32,7 @@ export TSAN_OPTIONS="suppressions=$(pwd)/tests/tsan_suppressions.txt"
 
 ## Testing
 
-Boost.Test, 69 executables. See `tests/TESTING.md`. Prefer direct executables over wrapper scripts.
+Boost.Test executables. See `tests/TESTING.md`. Prefer direct executables over wrapper scripts.
 
 ```bash
 ./bin/debug/<test_executable>                         # all tests
@@ -59,15 +59,15 @@ C++20 SDL3 engine, CMake/Ninja, data-oriented, 10K+ entities at 60+ FPS.
 - **AI**: AIBehavior base → 9 behaviors (Idle, Wander, Patrol, Chase, Flee, Follow, Guard, Attack, Custom). Lock-free EDM access via `BehaviorContext`.
 - **Controllers**: State-scoped via ControllerRegistry. `controllers/{combat,social,world,render}/`
 - **Utils**: Camera | Vector2D | SIMDMath (SSE2/NEON/AVX2) | JsonReader | BinarySerializer | UniqueID | FrameProfiler
-- **GPU**: GPUDevice | GPURenderer | GPUShaderManager (SPIR-V/Metal) | SpriteBatch (50K) | GPUVertexPool (triple-buffered). Shaders in `res/shaders/`.
+- **GPU**: GPUDevice | GPURenderer | GPUSceneRecorder | GPUShaderManager (SPIR-V/Metal) | SpriteBatch (50K) | GPUVertexPool (triple-buffered). Shaders in `res/shaders/`.
 
 ### Rendering
 
-Flow: scene pass → composite to swapchain → UI pass. Platform-native shaders (Metal/macOS, DXIL/Windows, SPIR-V/Linux). Game states implement `renderGPUScene()` and `renderGPUUI()`; the engine ends the frame.
+Flow: `beginFrame()` → state `recordGPUVertices()` → scene pass → composite to swapchain → UI pass → `endFrame()` from `GameEngine::present()`. Platform-native shaders (Metal/macOS, DXIL/Windows, SPIR-V/Linux). Game states implement `recordGPUVertices()`, `renderGPUScene()`, and `renderGPUUI()`; the engine owns frame lifetime.
 
 - Scene texture = viewport dimensions (1x). Zoom lives in the composite shader, not tile scaling. Composite uses LINEAR sampler: `uv = fragTexCoord / zoom + subPixelOffset`.
 - **One present per frame**: `GameEngine::render()` handles scene+UI; `GameEngine::present()` ends the GPU frame. NEVER end the frame, submit command buffers, or present from a GameState.
-- **Render ownership**: EDM stores manager-owned `std::shared_ptr<SDL_Texture>` (TextureManager owns/caches). Call `.get()` only at the draw site. NEVER copy `shared_ptr` in visible-entity loops (atomic overhead).
+- **Render ownership**: EDM render data stores atlas coordinates and frame metadata, not texture ownership. Resolve manager-owned GPU textures at render submission and call `.get()` only at the final GPU API boundary.
 - **GPU UI text**: `TTF_GetGPUTextDrawData()` only — no UV flips, half-texel offsets, or shader hacks. Snap text to whole pixels for integer UI layouts.
 - **DayNightController**: Needs `update(dt)` each frame (30s lighting transitions). `GPURenderer::setDayNightParams()` does this automatically.
 - **Loading**: Use `LoadingState` with async ThreadSystem ops, not blocking manual rendering.
@@ -75,16 +75,16 @@ Flow: scene pass → composite to swapchain → UI pass. Platform-native shaders
 
 ### AI Behavior Switching
 
-`switchBehavior()` calls `clearBehaviorData()` → `reassignBehaviorConfig()` → `init()`. State set before the switch is wiped — always set state after. Behavior configs live in per-variant dense pools on EDM; access via `getBehaviorConfigRef(idx)` + `get<Variant>Config(ref.index)`. Full controller/AI boundary rules in **EDM Patterns**.
+`Behaviors::switchBehavior()` enqueues a transition. `AIManager::commitQueuedBehaviorTransitions()` performs `clearBehaviorData()` → `reassignBehaviorConfig()` → `init()`. State set before the transition commit is wiped — always set new behavior state after the switch. Behavior configs live in per-variant dense pools on EDM; access via `getBehaviorConfigRef(idx)` + `get<Variant>Config(ref.index)`. Full controller/AI boundary rules in **EDM Patterns**.
 
 ### State Transitions
 
 AI-heavy cleanup order:
-`AIManager → ProjectileManager → BackgroundSimulationManager → WorldResourceManager → EventManager → CollisionManager → PathfinderManager → EntityDataManager → WorkerBudgetManager → ParticleManager`
+`AIManager → ProjectileManager → BackgroundSimulationManager → WorldManager → WorldResourceManager → EventManager → CollisionManager → PathfinderManager → EntityDataManager → WorkerBudgetManager → ParticleManager`
 
 - Call `prepareForStateTransition()` before cleanup (pauses work, drains queues, waits for batches).
 - `ControllerRegistry::clear()` (not just `unsubscribeAll()`) must be called in `GamePlayState::exit()`.
-- **World lifecycle**: Manager-local caches, spatial indices, and reverse lookups tied to world geometry must be cleared on world unload. Every `WorldLoaded` subscriber needs a paired `WorldUnloaded` handler.
+- **World lifecycle**: Manager-local caches, spatial indices, and reverse lookups tied to world geometry must be cleared by transition cleanup or unload handling. Do not rely only on deferred `WorldUnloaded` after transition cleanup has begun.
 
 ### Event Handler Persistence
 
@@ -110,7 +110,7 @@ Never manually unsubscribe/resubscribe manager handlers across transitions.
 
 **Logging**: `std::format()`, never `+` concatenation. Use `AI_INFO_IF(cond, msg)` when the condition only gates logging. Use `VOIDLIGHT_DEBUG_ONLY(...)` for debug-only blocks — never raw `#ifdef DEBUG`. Defined in `Logger.hpp`.
 
-**Unused parameters**: Drop the name, keep the type: `void foo(float)`. Never `(void)param;`, `[[maybe_unused]]`, or commented names to suppress warnings — fix the root cause. `[[maybe_unused]]` is permitted only on virtual base class empty defaults (e.g., `GameState.hpp`).
+**Unused parameters**: Drop the name, keep the type: `void foo(float)`. Never `(void)param;` or commented names to suppress warnings. Avoid `[[maybe_unused]]` in production except on empty virtual base defaults; in tests prefer real assertions over unused probes.
 
 **`[[nodiscard]]`**: Required on critical bool-returning functions (`init()`, `load()`, `create()`). Check with `BOOST_REQUIRE()` in tests, `if (!init())` in production.
 
@@ -154,7 +154,7 @@ class Manager {
 
 - **State, not policy**: EDM fields describe what the entity *is* (position, health, timers, emotion state). Thresholds, weights, tuning, and decision policy belong in the behavior layer or config — never EDM.
 - **BehaviorContext access**: `ctx.behaviorData` (state), `ctx.pathData` (navigation), `ctx.memoryData` (combat/emotions) — all pre-fetched in `processBatch()`.
-- **Combat/emotion split**: `EDM::recordCombatEvent()` records stats/memory only. `Behaviors::processCombatEvent()` applies personality-scaled emotion changes. `Behaviors::processWitnessedCombat()` handles distance falloff, composure scaling, and `EDM::addMemory()`. Emotional contagion is a main-thread pre-pass in `AIManager::update()`.
+- **Combat/emotion split**: `EDM::recordCombatEvent()` records stats/memory only. Emotion math belongs outside EDM in AI/behavior code. Witnessed combat/death memories are behavior-consumed state; EDM stores memory records only. `AIManager::update()` commits command-bus changes and caches world/player data on the main thread before worker batches; behavior execution and emotional decay run in the AI batch path.
 - **Controller → AI boundary**: Controllers MUST NEVER directly mutate AI behavior state in EDM. Main thread: `Behaviors::queueBehaviorMessage(idx, BehaviorMessage::X)`. Worker threads: `Behaviors::deferBehaviorMessage()`.
 - **Cross-frame state** (paths, timers): MUST live in EDM, never local variables — temporaries die each frame, causing infinite recomputation.
 
@@ -189,14 +189,14 @@ m_controllers.get<WeatherController>()->getCurrentWeather();    // single use �
 
 ## Debug Tools
 
-**FrameProfiler** (F3): Three-tier timing (Frame → Manager → Render). RAII timers: `ScopedPhaseTimer`, `ScopedManagerTimer`, `ScopedRenderTimer`. Hitch detection >20 ms. No-op in Release.
+**FrameProfiler** (F3): Three-tier timing (Frame → Manager → Render). RAII timers: `ScopedPhaseTimer`, `ScopedManagerTimer`, `ScopedRenderTimer`, `ScopedRenderTimerGPU`. Hitch detection >20 ms. No-op in Release.
 
 ## Repo Traps
 
 - `GamePlayState` is the pristine official gameplay state — keep it clean and production-ready. Demo-suffixed states (`EventDemoState`, `UIDemoState`, `AIDemoState`, `AdvancedAIDemoState`, `OverlayDemoState`) are for testing/showcasing.
 - Reference menu patterns: `SettingsMenuState`, `MainMenuState`.
 - `WorldResourceManager` is a spatial index over EDM, not a quantity store.
-- Do NOT wire `subscribeWorldEvents()` in `init()` — `WorldManager` fires deferred events that arrive after the new world is populated.
+- `CollisionManager::subscribeWorldEvents()` is persistent manager infrastructure registered from `init()`; do not rewire it during state transitions.
 
 ## Working Principles
 

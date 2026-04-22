@@ -54,13 +54,13 @@ public:
      * This method MUST clear ALL collision bodies (both dynamic and static) during state transitions.
      *
      * WHY THIS IS NECESSARY:
-     * prepareForStateTransition() is called BEFORE state exit, which unregisters event handlers.
-     * This means WorldUnloadedEvent handlers will NOT fire after state transition begins.
+     * State transition cleanup can discard or outrun deferred WorldUnloadedEvent delivery.
+     * Collision storage must not depend on later world-event timing.
      *
      * Previous "smart" logic tried to keep static bodies when a world was active, expecting
      * WorldUnloadedEvent to clean them up. This was BROKEN because:
-     * 1. prepareForStateTransition() unregisters event handlers first
-     * 2. WorldUnloadedEvent handler never fires
+     * 1. WorldUnloadedEvent is deferred
+     * 2. State cleanup can clear pending deferred events before delivery
      * 3. Static bodies from old world persist into new world
      *
      * CONSEQUENCES OF NOT CLEARING ALL BODIES:
@@ -74,7 +74,7 @@ public:
      * and the new state will rebuild static bodies when it loads its world via WorldLoadedEvent.
      *
      * @note This is called automatically by GameStateManager before state transitions
-     * @note Event handlers are unregistered AFTER this method completes
+     * @note Persistent manager event handlers stay registered across transitions
      * @see GameStateManager::changeState()
      */
     void prepareForStateTransition();

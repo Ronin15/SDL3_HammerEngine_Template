@@ -150,9 +150,9 @@ void CollisionManager::prepareForStateTransition() {
   /* IMPORTANT: Clear ALL collision bodies during state transitions
    *
    * Previous logic tried to be "smart" by keeping static bodies when a world
-   * was active, expecting WorldUnloadedEvent to clean them up. This was BROKEN
-   * because prepareForStateTransition() unregisters event handlers (line 138),
-   * so the WorldUnloadedEvent handler never fires!
+   * was active, expecting WorldUnloadedEvent to clean them up. This was broken
+   * because WorldUnloadedEvent is deferred and state cleanup can clear pending
+   * deferred events before delivery.
    *
    * Result: Static bodies from old world persisted into new world, causing:
    * - Duplicate/stale collision bodies
