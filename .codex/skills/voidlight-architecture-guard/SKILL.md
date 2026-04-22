@@ -1,9 +1,9 @@
 ---
-name: architecture-guard
+name: voidlight-architecture-guard
 description: Review or fix VoidLight-Framework changes for architectural coherence, with emphasis on EDM ownership, manager vs controller boundaries, state-transition cleanup, event contracts, and world-lifecycle correctness. Use when the user wants an architecture check, wants to prevent subsystem drift, or wants help enforcing where new gameplay features should live.
 ---
 
-# Architecture Guard
+# VoidLight Architecture Guard
 
 ## Use This Skill For
 

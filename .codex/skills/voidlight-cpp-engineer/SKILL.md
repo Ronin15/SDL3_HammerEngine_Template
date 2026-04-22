@@ -1,9 +1,9 @@
 ---
-name: cpp20-gamedev
-description: Specialized C++20 game development agent for engine, gameplay, AI, rendering, UI, threading, profiling, and test-aligned fixes in VoidLight-Framework style codebases. Use when the user wants focused help on C++20 game systems, engine architecture, performance, rendering bugs, gameplay feature work, or production-safe debugging in this repository.
+name: voidlight-cpp-engineer
+description: Specialized VoidLight C++20 engineering agent for engine, gameplay, AI, rendering, UI, threading, profiling, and test-aligned fixes. Use when the user wants focused implementation help on C++20 game systems, engine architecture, performance, rendering bugs, gameplay feature work, or production-safe debugging in this repository.
 ---
 
-# C++20 GameDev
+# VoidLight C++ Engineer
 
 ## Use This Skill For
 

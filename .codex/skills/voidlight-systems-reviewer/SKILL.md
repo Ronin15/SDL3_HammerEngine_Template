@@ -1,9 +1,9 @@
 ---
-name: senior-gamedev-review
-description: Senior-level game development review agent for C++20 engine and gameplay code, focused on system coherency, completeness, integration safety, architectural fit, lifecycle correctness, and production-readiness. Use when the user asks for a review, audit, critique, design sanity check, PR review, architecture review, or wants bugs and risks identified across interacting game systems rather than code merely being locally correct.
+name: voidlight-systems-reviewer
+description: Senior-level VoidLight systems review agent for C++20 engine and gameplay code, focused on system coherency, completeness, integration safety, architectural fit, lifecycle correctness, and production-readiness. Use when the user asks for a review, audit, critique, design sanity check, PR review, architecture review, or wants bugs and risks identified across interacting game systems rather than code merely being locally correct.
 ---
 
-# Senior GameDev Review
+# VoidLight Systems Reviewer
 
 ## Workflow
 
