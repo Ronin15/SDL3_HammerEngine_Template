@@ -990,6 +990,7 @@ private:
   void updateEffectInstance(EffectInstance &effect, float deltaTime);
   void swapBuffers();
   void cleanupInactiveParticles();
+  void compactInactiveEffectInstances();
   void updateEffectInstances(float deltaTime);
   void updateParticlesThreaded(float deltaTime, size_t traversedParticleCount,
                                ParticleThreadingInfo& outThreadingInfo);

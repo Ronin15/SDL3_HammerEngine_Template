@@ -1565,6 +1565,26 @@ uint32_t ParticleManager::generateEffectId() {
   return m_nextEffectId.fetch_add(1, std::memory_order_relaxed);
 }
 
+void ParticleManager::compactInactiveEffectInstances() {
+  const auto oldSize = m_effectInstances.size();
+  auto newEnd = std::remove_if(
+      m_effectInstances.begin(), m_effectInstances.end(),
+      [](const EffectInstance &effect) { return !effect.active; });
+
+  if (newEnd == m_effectInstances.end()) {
+    return;
+  }
+
+  m_effectInstances.erase(newEnd, m_effectInstances.end());
+  m_effectIdToIndex.clear();
+  for (size_t i = 0; i < m_effectInstances.size(); ++i) {
+    m_effectIdToIndex[m_effectInstances[i].id] = i;
+  }
+
+  PARTICLE_DEBUG(std::format("Compacted {} inactive particle effect instances",
+                             oldSize - m_effectInstances.size()));
+}
+
 void ParticleManager::registerBuiltInEffects() {
   PARTICLE_INFO("*** REGISTERING BUILT-IN EFFECTS");
 
@@ -2054,11 +2074,13 @@ size_t ParticleManager::countActiveParticles() const {
 void ParticleManager::updateEffectInstances(float deltaTime) {
   std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
 
+  bool hasInactiveEffects = false;
   auto it = m_effectInstances.begin();
   while (it != m_effectInstances.end()) {
     auto &instance = *it;
 
     if (!instance.active) {
+      hasInactiveEffects = true;
       ++it;
       continue;
     }
@@ -2070,6 +2092,7 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
     if (instance.maxDuration > 0.0f &&
         instance.durationTimer >= instance.maxDuration) {
       instance.active = false;
+      hasInactiveEffects = true;
       ++it;
       continue;
     }
@@ -2094,6 +2117,10 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
     }
 
     ++it;
+  }
+
+  if (hasInactiveEffects) {
+    compactInactiveEffectInstances();
   }
 }
 void ParticleManager::updateParticlesThreaded(float deltaTime,
