@@ -1547,10 +1547,13 @@ void AIManager::processBatch(
         break;
     }
 
-    // Apply knockback after behavior execution so combat impulses can override
-    // steering for a few frames. Adding knockback on top of chase/attack
-    // velocity made projectile hits on NPCs read like "no knockback" because
-    // active AI motion could cancel most or all of the shove.
+    // Frame 1 (first tick after the hit): REPLACE behavior velocity with the
+    // impulse scaled by KICK_MULTIPLIER so chase/attack velocity can't swallow
+    // the shove — a pure `+=` at the base 30 px/s impulse reads as "no knockback"
+    // against ~100 px/s chase. Frames 2..N: ADD the decayed impulse on top of
+    // the behavior-produced velocity so the NPC resumes chasing immediately and
+    // the tail stays invisible — a pure `=` drained velocity to ~0 over 8 frames
+    // and read as a slow slide.
     //
     // Gated by a single sparse-array load — entities without knockback pay nothing.
     // Expiry is deferred to the main thread via outKnockbackClears: SparseSidecar::remove()
@@ -1558,8 +1561,31 @@ void AIManager::processBatch(
     // so it is not race-safe across worker threads.
     if (auto* kb = ctx.knockback.get(static_cast<uint32_t>(edmIdx)))
     {
-      transform.velocity.setX(kb->impulseX);
-      transform.velocity.setY(kb->impulseY);
+      constexpr float KICK_MULTIPLIER = 6.0f;
+      // Cap frame-1 velocity so a fast projectile, a low-mass NPC, or an
+      // accumulated restrike can't shove the target across the screen. The
+      // impulse direction is preserved; only the magnitude is clamped.
+      constexpr float MAX_KICK_SPEED = 250.0f;
+      constexpr float MAX_KICK_SPEED_SQ = MAX_KICK_SPEED * MAX_KICK_SPEED;
+      if (kb->framesRemaining == static_cast<uint8_t>(Knockback::FRAMES))
+      {
+        float kickX = kb->impulseX * KICK_MULTIPLIER;
+        float kickY = kb->impulseY * KICK_MULTIPLIER;
+        const float magSq = kickX * kickX + kickY * kickY;
+        if (magSq > MAX_KICK_SPEED_SQ)
+        {
+          const float scale = MAX_KICK_SPEED / std::sqrt(magSq);
+          kickX *= scale;
+          kickY *= scale;
+        }
+        transform.velocity.setX(kickX);
+        transform.velocity.setY(kickY);
+      }
+      else
+      {
+        transform.velocity.setX(transform.velocity.getX() + kb->impulseX);
+        transform.velocity.setY(transform.velocity.getY() + kb->impulseY);
+      }
       kb->impulseX *= Knockback::DECAY;
       kb->impulseY *= Knockback::DECAY;
       if (--kb->framesRemaining == 0)
