@@ -7,10 +7,10 @@
 #include "entities/Player.hpp"
 #include "controllers/combat/CombatController.hpp"
 #include "controllers/ui/GameplayHUDController.hpp"
+#include "controllers/ui/InventoryController.hpp"
 #include "controllers/social/SocialController.hpp"
 #include "controllers/world/DayNightController.hpp"
 #include "controllers/world/HarvestController.hpp"
-#include "controllers/world/ItemController.hpp"
 #include "controllers/world/WeatherController.hpp"
 #include "controllers/render/ResourceRenderController.hpp"
 #include "core/GameEngine.hpp"
@@ -29,7 +29,6 @@
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIConstants.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -38,7 +37,6 @@
 #include "core/WorkerBudget.hpp"
 #include "utils/Camera.hpp"
 #include "world/WorldData.hpp"
-#include <algorithm>
 #include <cmath>
 #include <format>
 
@@ -49,7 +47,7 @@
 // Constructor/destructor defined here where GPUSceneRecorder is complete (for unique_ptr)
 GamePlayState::GamePlayState()
     : m_transitioningToLoading{false}, m_transitioningToGameOver{false},
-      mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false},
+      mp_Player{nullptr}, m_initialized{false},
       m_dayNightEventToken{}, m_weatherEventToken{}, m_harvestEventToken{} {}
 
 GamePlayState::~GamePlayState() = default;
@@ -94,9 +92,6 @@ bool GamePlayState::enter() {
     // Set player handle in AIManager for collision culling reference point
     AIManager::Instance().setPlayerHandle(mp_Player->getHandle());
 
-    // Initialize the inventory UI
-    initializeInventoryUI();
-
     // Initialize camera (world already loaded)
     initializeCamera();
 
@@ -108,7 +103,7 @@ bool GamePlayState::enter() {
     m_controllers.add<DayNightController>();
     m_controllers.add<CombatController>(mp_Player);
     m_controllers.add<GameplayHUDController>(mp_Player->getHandle());
-    m_controllers.add<ItemController>(mp_Player);
+    auto& inventoryCtrl = m_controllers.add<InventoryController>(mp_Player);
     m_controllers.add<HarvestController>(mp_Player);
     m_controllers.add<ResourceRenderController>();
 
@@ -183,6 +178,8 @@ bool GamePlayState::enter() {
     fpsPos.fixedWidth = 120;
     fpsPos.fixedHeight = barHeight - 12;
     ui.setComponentPositioning("gameplay_fps", fpsPos);
+
+    inventoryCtrl.initializeInventoryUI();
 
     // Subscribe all controllers at once
     m_controllers.subscribeAll();
@@ -308,7 +305,7 @@ void GamePlayState::update(float deltaTime) {
     ui.update(deltaTime);
   }
 
-  // Inventory display is now updated automatically via data binding.
+  // Inventory display is refreshed by InventoryController on resource changes.
 }
 
 bool GamePlayState::exit() {
@@ -541,9 +538,9 @@ void GamePlayState::pause() {
   ui.setComponentVisible("hud_target_hp_label", false);
   ui.setComponentVisible("hud_target_health", false);
 
-  // Hide the inventory panel — visibility cascades to child title/status/list
-  if (m_inventoryVisible) {
-    ui.setComponentVisible("gameplay_inventory_panel", false);
+  if (auto* inventoryCtrl = m_controllers.get<InventoryController>();
+      inventoryCtrl && inventoryCtrl->isInventoryVisible()) {
+    ui.setComponentVisible(InventoryController::INVENTORY_PANEL_ID, false);
   }
 
   // Stop player movement to prevent drift during pause
@@ -576,9 +573,9 @@ void GamePlayState::resume() {
   // Target frame visibility controlled by updateCombatHUD() based on
   // hasActiveTarget()
 
-  // Restore inventory visibility — cascades to all children
-  if (m_inventoryVisible) {
-    ui.setComponentVisible("gameplay_inventory_panel", true);
+  if (auto* inventoryCtrl = m_controllers.get<InventoryController>();
+      inventoryCtrl && inventoryCtrl->isInventoryVisible()) {
+    inventoryCtrl->setInventoryVisible(true);
   }
 
   // Resume all controllers (re-subscribe to events after pause)
@@ -688,8 +685,8 @@ void GamePlayState::handleInput() {
 
       // If no merchant found, try pickup/harvest
       if (!openedTrade) {
-        auto& itemCtrl = *m_controllers.get<ItemController>();
-        if (!itemCtrl.attemptPickup()) {
+        auto& inventoryCtrl = *m_controllers.get<InventoryController>();
+        if (!inventoryCtrl.attemptPickup()) {
           // Try to start progress-based harvesting
           auto& harvestCtrl = *m_controllers.get<HarvestController>();
           harvestCtrl.startHarvest();
@@ -748,142 +745,10 @@ void GamePlayState::handleInput() {
   }
 }
 
-void GamePlayState::initializeInventoryUI() {
-  auto &ui = UIManager::Instance();
-  const auto &gameEngine = GameEngine::Instance();
-  int const windowWidth = gameEngine.getWidthInPixels();
-
-  // Create inventory panel (initially hidden) matching EventDemoState layout
-  // Using TOP_RIGHT positioning - UIManager handles all resize repositioning
-  constexpr int inventoryWidth = 280;
-  constexpr int panelMarginRight = 20; // 20px from right edge
-  constexpr int panelMarginTop = 170;  // 170px from top
-  constexpr int childInset = 10;       // Children are 10px inside panel
-  constexpr int childWidth = inventoryWidth - (childInset * 2); // 260px
-  constexpr int headerHeight = 110;    // Title + status label area
-  constexpr int itemHeight = 20;       // Height per inventory item row
-  constexpr int bottomPadding = 15;    // Padding below list
-
-  // Calculate inventory panel size based on slot count
-  uint32_t invIdx = mp_Player->getInventoryIndex();
-  const auto& invData = EntityDataManager::Instance().getInventoryData(invIdx);
-  int slotCount = static_cast<int>(invData.maxSlots);
-
-  // Calculate list and panel heights dynamically
-  int listHeight = slotCount * itemHeight;
-  int inventoryHeight = headerHeight + listHeight + bottomPadding;
-
-  // Initial position (will be auto-repositioned by UIManager)
-  int inventoryX = windowWidth - inventoryWidth - panelMarginRight;
-  int inventoryY = panelMarginTop;
-
-  const std::string panelId = "gameplay_inventory_panel";
-  ui.createPanel(panelId,
-                 {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
-  ui.setComponentPositioning(panelId,
-                             {UIPositionMode::TOP_RIGHT, panelMarginRight,
-                              panelMarginTop, inventoryWidth, inventoryHeight});
-
-  // Title: 25px below panel top, inset by 10px. Parented to the panel so
-  // the panel's backdrop suppresses the redundant glyph text-background.
-  ui.createTitle("gameplay_inventory_title",
-                 {inventoryX + childInset, inventoryY + 25, childWidth, 35},
-                 "Player Inventory", panelId);
-  ui.setTitleAlignment("gameplay_inventory_title", UIAlignment::CENTER_CENTER);
-  ui.setComponentPositioning("gameplay_inventory_title",
-                             {UIPositionMode::TOP_RIGHT,
-                              panelMarginRight + childInset,
-                              panelMarginTop + 25, childWidth, 35});
-
-  // Status label: 75px below panel top
-  ui.createLabel("gameplay_inventory_status",
-                 {inventoryX + childInset, inventoryY + 75, childWidth, 25},
-                 "Capacity: 0/20", panelId);
-  ui.setComponentPositioning("gameplay_inventory_status",
-                             {UIPositionMode::TOP_RIGHT,
-                              panelMarginRight + childInset,
-                              panelMarginTop + 75, childWidth, 25});
-
-  // Inventory list: 110px below panel top, height based on slot count
-  ui.createList("gameplay_inventory_list",
-                {inventoryX + childInset, inventoryY + 110, childWidth, listHeight},
-                panelId);
-  ui.setComponentPositioning("gameplay_inventory_list",
-                             {UIPositionMode::TOP_RIGHT,
-                              panelMarginRight + childInset,
-                              panelMarginTop + 110, childWidth, listHeight});
-
-  // Single call hides the panel and cascades to every child
-  ui.setComponentVisible(panelId, false);
-
-  // --- DATA BINDING SETUP ---
-  // Bind the inventory capacity label to a function that gets the data
-  ui.bindText("gameplay_inventory_status", [this]() -> std::string {
-    if (!mp_Player) {
-      return "Capacity: 0/0";
-    }
-    uint32_t invIdx = mp_Player->getInventoryIndex();
-    if (invIdx == INVALID_INVENTORY_INDEX) {
-      return "Capacity: 0/0";
-    }
-    const auto& inv = EntityDataManager::Instance().getInventoryData(invIdx);
-    return std::format("Capacity: {}/{}", inv.usedSlots, inv.maxSlots);
-  });
-
-  // Bind the inventory list - populates provided buffers (zero-allocation
-  // pattern)
-  ui.bindList(
-      "gameplay_inventory_list",
-      [this](std::vector<std::string> &items,
-             std::vector<std::pair<std::string, int>> &sortedResources) {
-        if (!mp_Player) {
-          items.push_back("(Empty)");
-          return;
-        }
-
-        uint32_t invIdx = mp_Player->getInventoryIndex();
-        if (invIdx == INVALID_INVENTORY_INDEX) {
-          items.push_back("(Empty)");
-          return;
-        }
-
-        auto allResources = EntityDataManager::Instance().getInventoryResources(invIdx);
-
-        if (allResources.empty()) {
-          items.push_back("(Empty)");
-          return;
-        }
-
-        // Build sorted list using reusable buffer provided by UIManager
-        sortedResources.reserve(allResources.size());
-        for (const auto &[resourceHandle, quantity] : allResources) {
-          if (quantity > 0) {
-            auto resourceTemplate =
-                ResourceTemplateManager::Instance().getResourceTemplate(
-                    resourceHandle);
-            std::string resourceName =
-                resourceTemplate ? resourceTemplate->getName() : "Unknown";
-            sortedResources.emplace_back(std::move(resourceName), quantity);
-          }
-        }
-        std::sort(sortedResources.begin(), sortedResources.end());
-
-        items.reserve(sortedResources.size());
-        for (const auto &[resourceId, quantity] : sortedResources) {
-          items.push_back(std::format("{} x{}", resourceId, quantity));
-        }
-
-        if (items.empty()) {
-          items.push_back("(Empty)");
-        }
-      });
-}
-
 void GamePlayState::toggleInventoryDisplay() {
-  auto &ui = UIManager::Instance();
-  m_inventoryVisible = !m_inventoryVisible;
-  // Panel cascades visibility to child title/status/list
-  ui.setComponentVisible("gameplay_inventory_panel", m_inventoryVisible);
+  if (auto* inventoryCtrl = m_controllers.get<InventoryController>()) {
+    inventoryCtrl->toggleInventoryDisplay();
+  }
 }
 
 void GamePlayState::initializeCamera() {

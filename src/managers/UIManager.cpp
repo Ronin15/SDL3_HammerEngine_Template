@@ -9,6 +9,7 @@
 #include "core/Logger.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/InputManager.hpp"
+#include "managers/TextureManager.hpp"
 #include <algorithm>
 #include <cmath>
 #include <format>
@@ -188,6 +189,12 @@ const std::vector<std::shared_ptr<UIComponent>>& UIManager::getSortedComponents(
 // Performance optimization helper - centralized cache invalidation
 void UIManager::invalidateComponentCache() {
   m_sortedComponentsDirty = true;
+}
+
+void UIManager::clearGPUCommandBuffers() {
+  m_gpuPrimitiveCommands.clear();
+  m_gpuTextCommands.clear();
+  m_gpuImageCommands.clear();
 }
 
 // Parent/child linkage — called from every create* method after the
@@ -417,6 +424,26 @@ void UIManager::createImage(const std::string &id, const UIRect &bounds,
 
   m_components[id] = component;
   linkToParent(component, parentId);
+  invalidateComponentCache();
+}
+
+void UIManager::createAtlasImage(const std::string &id, const UIRect &bounds,
+                                 const std::string &textureID,
+                                 const UIRect &sourceRect,
+                                 const std::string &parentId) {
+  auto component = std::make_shared<UIComponent>();
+  component->m_id = id;
+  component->m_type = UIComponentType::IMAGE;
+  component->m_bounds = scaleRect(bounds);
+  component->m_textureID = textureID;
+  component->m_imageSourceRect = sourceRect;
+  component->m_useImageSourceRect = true;
+  component->m_style = m_currentTheme.getStyle(UIComponentType::IMAGE);
+  component->m_zOrder = UIConstants::ZORDER_IMAGE;
+
+  m_components[id] = component;
+  linkToParent(component, parentId);
+  invalidateComponentCache();
 }
 
 void UIManager::createSlider(const std::string &id, const UIRect &bounds,
@@ -671,6 +698,15 @@ void UIManager::setTexture(const std::string &id,
   }
 }
 
+void UIManager::setImageSourceRect(const std::string &id,
+                                   const UIRect &sourceRect) {
+  auto component = getComponent(id);
+  if (component) {
+    component->m_imageSourceRect = sourceRect;
+    component->m_useImageSourceRect = true;
+  }
+}
+
 void UIManager::setValue(const std::string &id, float value) {
   // Performance optimization: Check cache first to avoid mutex lock + hash lookup when value unchanged
   auto cacheIt = m_valueCache.find(id);
@@ -783,6 +819,16 @@ void UIManager::setTextBackgroundPadding(const std::string &id, int padding) {
 std::string UIManager::getText(const std::string &id) const {
   auto component = getComponent(id);
   return component ? component->m_text : "";
+}
+
+std::string UIManager::getTexture(const std::string &id) const {
+  auto component = getComponent(id);
+  return component ? component->m_textureID : "";
+}
+
+UIRect UIManager::getImageSourceRect(const std::string &id) const {
+  auto component = getComponent(id);
+  return component ? component->m_imageSourceRect : UIRect{};
 }
 
 float UIManager::getValue(const std::string &id) const {
@@ -1811,9 +1857,7 @@ void UIManager::cleanupForStateTransition() {
   // Clear any queued callbacks and cached GPU draw commands so no UI-owned GPU
   // resources survive past explicit shutdown.
   m_deferredCallbacks.clear();
-  m_gpuPrimitiveCommands.clear();
-  m_gpuTextCommands.clear();
-  m_gpuImageCommands.clear();
+  clearGPUCommandBuffers();
 
   // Clear all interaction state
   m_clickedButtons.clear();
@@ -2864,12 +2908,11 @@ void UIManager::setComponentPositioning(const std::string &id,
 }
 
 void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
+  clearGPUCommandBuffers();
+
   if (m_components.empty()) {
     return;
   }
-
-  m_gpuPrimitiveCommands.clear();
-  m_gpuTextCommands.clear();
 
   auto& primPool = gpuRenderer.getPrimitiveVertexPool();
   auto& uiPool = gpuRenderer.getUIVertexPool();
@@ -2925,6 +2968,60 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
     addFilledRect({rect.x, rect.y + width, width, rect.height - 2 * width}, color);
     // Right
     addFilledRect({rect.x + rect.width - width, rect.y + width, width, rect.height - 2 * width}, color);
+  };
+
+  auto addImage = [&](const std::shared_ptr<UIComponent>& component) {
+    if (!component || component->m_textureID.empty()) {
+      return;
+    }
+
+    auto textureData =
+        TextureManager::Instance().getGPUTextureData(component->m_textureID);
+    if (!textureData || !textureData->texture || !textureData->texture->get()) {
+      return;
+    }
+
+    UIRect srcRect = component->m_useImageSourceRect
+                         ? component->m_imageSourceRect
+                         : UIRect{0, 0,
+                                  static_cast<int>(textureData->width),
+                                  static_cast<int>(textureData->height)};
+    if (srcRect.width <= 0 || srcRect.height <= 0 ||
+        component->m_bounds.width <= 0 || component->m_bounds.height <= 0 ||
+        uiOffset + 6 > GPU_UI_VERTEX_LIMIT) {
+      return;
+    }
+
+    const float textureWidth = textureData->width > 0.0f ? textureData->width : 1.0f;
+    const float textureHeight = textureData->height > 0.0f ? textureData->height : 1.0f;
+    const float u0 = static_cast<float>(srcRect.x) / textureWidth;
+    const float v0 = static_cast<float>(srcRect.y) / textureHeight;
+    const float u1 = static_cast<float>(srcRect.x + srcRect.width) / textureWidth;
+    const float v1 = static_cast<float>(srcRect.y + srcRect.height) / textureHeight;
+
+    const float x = static_cast<float>(component->m_bounds.x);
+    const float y = static_cast<float>(component->m_bounds.y);
+    const float w = static_cast<float>(component->m_bounds.width);
+    const float h = static_cast<float>(component->m_bounds.height);
+    const float top = viewportHeight - y;
+    const float bottom = top - h;
+
+    VoidLight::SpriteVertex* v = uiBase + uiOffset;
+    v[0] = {.x=x,     .y=top,    .u=u0, .v=v0, .r=255, .g=255, .b=255, .a=255};
+    v[1] = {.x=x + w, .y=top,    .u=u1, .v=v0, .r=255, .g=255, .b=255, .a=255};
+    v[2] = {.x=x + w, .y=bottom, .u=u1, .v=v1, .r=255, .g=255, .b=255, .a=255};
+    v[3] = {.x=x,     .y=top,    .u=u0, .v=v0, .r=255, .g=255, .b=255, .a=255};
+    v[4] = {.x=x + w, .y=bottom, .u=u1, .v=v1, .r=255, .g=255, .b=255, .a=255};
+    v[5] = {.x=x,     .y=bottom, .u=u0, .v=v1, .r=255, .g=255, .b=255, .a=255};
+
+    UIGPUDrawCommand cmd;
+    cmd.type = UIGPUDrawCommand::Type::Image;
+    cmd.textureOwner = textureData->texture;
+    cmd.texture = textureData->texture->get();
+    cmd.vertexOffset = uiOffset;
+    cmd.vertexCount = 6;
+    m_gpuImageCommands.push_back(cmd);
+    uiOffset += 6;
   };
 
   // Helper to add text with optional background
@@ -3397,8 +3494,7 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
         break;
 
       case UIComponentType::IMAGE:
-        // Images require TextureManager GPU integration - placeholder for now
-        // The TextureManager would need to provide GPUTexture* for the texture ID
+        addImage(component);
         break;
 
       case UIComponentType::TOOLTIP:
@@ -3493,6 +3589,30 @@ void UIManager::renderGPU(VoidLight::GPURenderer& gpuRenderer, SDL_GPURenderPass
         [](uint32_t sum, const auto& cmd) { return sum + cmd.vertexCount; });
     if (totalVertices > 0) {
       SDL_DrawGPUPrimitives(pass, totalVertices, 1, 0, 0);
+    }
+  }
+
+  if (!m_gpuImageCommands.empty()) {
+    SDL_GPUBufferBinding vertexBinding{};
+    vertexBinding.buffer = gpuRenderer.getUIVertexPool().getGPUBuffer();
+    vertexBinding.offset = 0;
+    SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
+    SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUISpritePipeline());
+    gpuRenderer.pushViewProjection(pass, orthoMatrix);
+
+    for (const auto& cmd : m_gpuImageCommands) {
+      SDL_GPUTexture* imageTexture =
+          cmd.textureOwner ? cmd.textureOwner->get() : cmd.texture;
+      if (!imageTexture) {
+        continue;
+      }
+
+      SDL_GPUTextureSamplerBinding texSampler{};
+      texSampler.texture = imageTexture;
+      texSampler.sampler = gpuRenderer.getNearestSampler();
+      SDL_BindGPUFragmentSamplers(pass, 0, &texSampler, 1);
+
+      SDL_DrawGPUPrimitives(pass, cmd.vertexCount, 1, cmd.vertexOffset, 0);
     }
   }
 

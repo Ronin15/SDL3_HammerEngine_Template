@@ -818,6 +818,29 @@ BOOST_FIXTURE_TEST_CASE(TestStopIndependentEffect, ParticleManagerCoreFixture) {
               activeEffects.end());
 }
 
+BOOST_FIXTURE_TEST_CASE(TestStoppedIndependentEffectsAreCompactedOnUpdate,
+                        ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  constexpr int EFFECT_CYCLES = 32;
+  for (int i = 0; i < EFFECT_CYCLES; ++i) {
+    uint32_t effectId = manager->playIndependentEffect(
+        ParticleEffectType::AmbientDust, {100.0f, 100.0f}, 1.0f, -1.0f,
+        "ambient");
+    BOOST_REQUIRE_NE(effectId, 0);
+    BOOST_CHECK(manager->isIndependentEffect(effectId));
+
+    manager->stopIndependentEffect(effectId);
+    manager->update(0.016f);
+
+    BOOST_CHECK(!manager->isEffectPlaying(effectId));
+    BOOST_CHECK(!manager->isIndependentEffect(effectId));
+  }
+
+  BOOST_CHECK(manager->getActiveIndependentEffects().empty());
+}
+
 // Test stopping all independent effects
 BOOST_FIXTURE_TEST_CASE(TestStopAllIndependentEffects, ParticleManagerCoreFixture) {
   manager->init();

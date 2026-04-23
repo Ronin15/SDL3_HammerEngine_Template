@@ -177,8 +177,8 @@ void GamePlayState::render() {
 // CombatController needs player reference
 m_controllers.add<CombatController>(mp_player);
 
-// ItemController needs a player reference
-m_controllers.add<ItemController>(mp_player);
+// InventoryController needs a player reference
+m_controllers.add<InventoryController>(mp_player);
 
 // ResourceRenderController has no constructor arguments
 m_controllers.add<ResourceRenderController>();

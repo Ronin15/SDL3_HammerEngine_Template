@@ -4,16 +4,16 @@
  */
 
 /**
- * @file ItemControllerTests.cpp
- * @brief Tests for ItemController
+ * @file InventoryControllerTests.cpp
+ * @brief Tests for InventoryController
  *
- * Tests item pickup and inventory UI synchronization.
+ * Tests inventory pickup and UI synchronization.
  */
 
-#define BOOST_TEST_MODULE ItemControllerTests
+#define BOOST_TEST_MODULE InventoryControllerTests
 #include <boost/test/unit_test.hpp>
 
-#include "controllers/world/ItemController.hpp"
+#include "controllers/ui/InventoryController.hpp"
 #include "entities/Player.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -37,9 +37,9 @@ VoidLight::ResourceHandle getResourceHandleById(const std::string& id) {
 
 } // namespace
 
-class ItemControllerTestFixture {
+class InventoryControllerTestFixture {
 public:
-    ItemControllerTestFixture() {
+    InventoryControllerTestFixture() {
         // Reset EventManager to clean state
         EventManagerTestAccess::reset();
         EventManager::Instance().init();
@@ -61,7 +61,7 @@ public:
         BOOST_REQUIRE(goldHandle.isValid());
     }
 
-    ~ItemControllerTestFixture() {
+    ~InventoryControllerTestFixture() {
         WorldResourceManager::Instance().clean();
         UIManager::Instance().clean();
         EntityDataManager::Instance().clean();
@@ -70,8 +70,8 @@ public:
     }
 
     // Non-copyable
-    ItemControllerTestFixture(const ItemControllerTestFixture&) = delete;
-    ItemControllerTestFixture& operator=(const ItemControllerTestFixture&) = delete;
+    InventoryControllerTestFixture(const InventoryControllerTestFixture&) = delete;
+    InventoryControllerTestFixture& operator=(const InventoryControllerTestFixture&) = delete;
 
 protected:
     std::shared_ptr<Player> player;
@@ -82,17 +82,17 @@ protected:
 // Basic State Tests
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(ItemControllerStateTests, ItemControllerTestFixture)
+BOOST_FIXTURE_TEST_SUITE(InventoryControllerStateTests, InventoryControllerTestFixture)
 
-BOOST_AUTO_TEST_CASE(TestItemControllerName) {
+BOOST_AUTO_TEST_CASE(TestInventoryControllerName) {
     // Create with nullptr player
-    ItemController controller(nullptr);
+    InventoryController controller(nullptr);
 
-    BOOST_CHECK_EQUAL(controller.getName(), "ItemController");
+    BOOST_CHECK_EQUAL(controller.getName(), "InventoryController");
 }
 
 BOOST_AUTO_TEST_CASE(TestAttemptPickupWithoutPlayer) {
-    ItemController controller(nullptr);
+    InventoryController controller(nullptr);
 
     // Should fail gracefully without player
     bool result = controller.attemptPickup();
@@ -100,7 +100,7 @@ BOOST_AUTO_TEST_CASE(TestAttemptPickupWithoutPlayer) {
 }
 
 BOOST_AUTO_TEST_CASE(TestSubscribeWithoutPlayer) {
-    ItemController controller(nullptr);
+    InventoryController controller(nullptr);
 
     // Subscribe should not crash
     controller.subscribe();
@@ -111,35 +111,57 @@ BOOST_AUTO_TEST_CASE(TestSubscribeWithoutPlayer) {
 
 BOOST_AUTO_TEST_CASE(TestConstants) {
     // Verify constants are reasonable
-    BOOST_CHECK_GT(ItemController::PICKUP_RADIUS, 0.0f);
-    BOOST_CHECK_LT(ItemController::PICKUP_RADIUS, 100.0f);
+    BOOST_CHECK_GT(InventoryController::PICKUP_RADIUS, 0.0f);
+    BOOST_CHECK_LT(InventoryController::PICKUP_RADIUS, 100.0f);
 
     // Check UI component IDs are not empty
-    BOOST_CHECK(ItemController::INVENTORY_STATUS_ID != nullptr);
-    BOOST_CHECK(ItemController::INVENTORY_LIST_ID != nullptr);
-    BOOST_CHECK(ItemController::EVENT_LOG_ID != nullptr);
+    BOOST_CHECK(InventoryController::INVENTORY_PANEL_ID != nullptr);
+    BOOST_CHECK(InventoryController::INVENTORY_STATUS_ID != nullptr);
+    BOOST_CHECK(InventoryController::EVENT_LOG_ID != nullptr);
+}
+
+BOOST_AUTO_TEST_CASE(TestInitializeInventoryUICreatesReusableGrid) {
+    InventoryController controller(player);
+
+    controller.initializeInventoryUI();
+
+    auto& ui = UIManager::Instance();
+    BOOST_CHECK(ui.hasComponent(InventoryController::INVENTORY_PANEL_ID));
+    BOOST_CHECK(ui.hasComponent(InventoryController::INVENTORY_STATUS_ID));
+    BOOST_CHECK(ui.hasComponent("gameplay_inventory_slot_0"));
+    BOOST_CHECK(ui.hasComponent("gameplay_inventory_icon_0"));
+    BOOST_CHECK(ui.hasComponent("gameplay_inventory_count_0"));
+    BOOST_CHECK(ui.hasComponent("gameplay_inventory_slot_19"));
+    BOOST_CHECK(ui.hasComponent("gameplay_inventory_icon_19"));
+    BOOST_CHECK(ui.hasComponent("gameplay_inventory_count_19"));
+
+    controller.setInventoryVisible(true);
+    BOOST_CHECK(controller.isInventoryVisible());
+
+    controller.setInventoryVisible(false);
+    BOOST_CHECK(!controller.isInventoryVisible());
 }
 
 BOOST_AUTO_TEST_CASE(TestMoveConstructor) {
-    ItemController controller(nullptr);
+    InventoryController controller(nullptr);
     controller.subscribe();
 
     // Move construct
-    ItemController moved(std::move(controller));
+    InventoryController moved(std::move(controller));
 
-    BOOST_CHECK_EQUAL(moved.getName(), "ItemController");
+    BOOST_CHECK_EQUAL(moved.getName(), "InventoryController");
 }
 
 BOOST_AUTO_TEST_CASE(TestMoveAssignment) {
-    ItemController controller1(nullptr);
+    InventoryController controller1(nullptr);
     controller1.subscribe();
 
-    ItemController controller2(nullptr);
+    InventoryController controller2(nullptr);
 
     // Move assign
     controller2 = std::move(controller1);
 
-    BOOST_CHECK_EQUAL(controller2.getName(), "ItemController");
+    BOOST_CHECK_EQUAL(controller2.getName(), "InventoryController");
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -148,10 +170,10 @@ BOOST_AUTO_TEST_SUITE_END()
 // Event Subscription Tests
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(ItemControllerEventTests, ItemControllerTestFixture)
+BOOST_FIXTURE_TEST_SUITE(InventoryControllerEventTests, InventoryControllerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestDoubleSubscribe) {
-    ItemController controller(nullptr);
+    InventoryController controller(nullptr);
 
     // First subscribe
     controller.subscribe();
@@ -163,7 +185,7 @@ BOOST_AUTO_TEST_CASE(TestDoubleSubscribe) {
 }
 
 BOOST_AUTO_TEST_CASE(TestUnsubscribe) {
-    ItemController controller(nullptr);
+    InventoryController controller(nullptr);
 
     // Subscribe first
     controller.subscribe();
@@ -196,7 +218,7 @@ BOOST_AUTO_TEST_CASE(TestAttemptPickupDispatchesResourceChangeEvent) {
         player->getPosition(), goldHandle, 7, "test_world");
     BOOST_REQUIRE(droppedItem.isValid());
 
-    ItemController controller(player);
+    InventoryController controller(player);
     controller.subscribe();
 
     BOOST_REQUIRE(controller.attemptPickup());
@@ -217,7 +239,7 @@ BOOST_AUTO_TEST_CASE(TestAttemptPickupFailureDoesNotDispatchResourceChangeEvent)
             resourceChangeEvents.fetch_add(1, std::memory_order_relaxed);
         });
 
-    ItemController controller(player);
+    InventoryController controller(player);
     controller.subscribe();
 
     BOOST_CHECK(!controller.attemptPickup());

@@ -194,6 +194,8 @@ struct UIComponent {
   std::function<std::string()> m_textBinding{}; // For data-bound text
   bool m_bindingDirty{true}; // Skip binding callbacks when false (perf optimization)
   std::string m_textureID{};
+  UIRect m_imageSourceRect{};
+  bool m_useImageSourceRect{false};
   float m_value{0.0f};
   float m_minValue{0.0f};
   float m_maxValue{1.0f};
@@ -336,6 +338,10 @@ public:
   void createImage(const std::string &id, const UIRect &bounds,
                    const std::string &textureID = "",
                    const std::string &parentId = "");
+  void createAtlasImage(const std::string &id, const UIRect &bounds,
+                        const std::string &textureID,
+                        const UIRect &sourceRect,
+                        const std::string &parentId = "");
   void createSlider(const std::string &id, const UIRect &bounds,
                     float minVal = 0.0f, float maxVal = 1.0f,
                     const std::string &parentId = "");
@@ -370,6 +376,7 @@ public:
   // Component property setters
   void setText(const std::string &id, const std::string &text);
   void setTexture(const std::string &id, const std::string &textureID);
+  void setImageSourceRect(const std::string &id, const UIRect &sourceRect);
   void setValue(const std::string &id, float value);
   void setChecked(const std::string &id, bool checked);
   void setStyle(const std::string &id, const UIStyle &style);
@@ -383,6 +390,8 @@ public:
 
   // Component property getters
   std::string getText(const std::string &id) const;
+  std::string getTexture(const std::string &id) const;
+  UIRect getImageSourceRect(const std::string &id) const;
   float getValue(const std::string &id) const;
   bool getChecked(const std::string &id) const;
   UIRect getBounds(const std::string &id) const;
@@ -673,6 +682,7 @@ private:
 
   // Performance optimization helper
   void invalidateComponentCache();
+  void clearGPUCommandBuffers();
 
   // Layout helpers
   void applyAbsoluteLayout(const std::shared_ptr<UILayout> &layout);

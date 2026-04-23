@@ -70,6 +70,52 @@ int countPatternInFile(const std::string& filepath, const std::string& pattern) 
     return count;
 }
 
+// Helper to search for a pattern inside one function body (ignoring comments)
+bool functionContainsPattern(const std::string& filepath,
+                             const std::string& functionSignature,
+                             const std::string& pattern) {
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    bool inFunction = false;
+    int braceDepth = 0;
+    std::string line;
+    while (std::getline(file, line)) {
+        size_t commentPos = line.find("//");
+        std::string codeOnly = (commentPos != std::string::npos) ? line.substr(0, commentPos) : line;
+
+        size_t blockCommentPos = codeOnly.find("/*");
+        if (blockCommentPos != std::string::npos) {
+            codeOnly = codeOnly.substr(0, blockCommentPos);
+        }
+
+        if (!inFunction && codeOnly.find(functionSignature) != std::string::npos) {
+            inFunction = true;
+        }
+
+        if (inFunction && codeOnly.find(pattern) != std::string::npos) {
+            return true;
+        }
+
+        if (inFunction) {
+            for (char c : codeOnly) {
+                if (c == '{') {
+                    ++braceDepth;
+                } else if (c == '}') {
+                    --braceDepth;
+                }
+            }
+
+            if (braceDepth <= 0 && codeOnly.find('}') != std::string::npos) {
+                return false;
+            }
+        }
+    }
+    return false;
+}
+
 // ============================================================================
 // TEST SUITE: GPURenderPipelineComplianceTests
 // ============================================================================
@@ -381,6 +427,26 @@ BOOST_AUTO_TEST_CASE(TestRenderStateIsolation) {
 
     bool hasPresent = fileContainsPattern(gameEngineFile, "GPURenderer::Instance().endFrame()");
     BOOST_CHECK_MESSAGE(hasPresent, "GameEngine::present() must end the GPU frame");
+}
+
+BOOST_AUTO_TEST_CASE(TestUIRecordClearsPerFrameGPUCommands) {
+    const std::string uiManagerFile = "src/managers/UIManager.cpp";
+    const std::string recordFunction = "void UIManager::recordGPUVertices";
+    const std::string clearFunction = "void UIManager::clearGPUCommandBuffers";
+
+    BOOST_CHECK_MESSAGE(
+        functionContainsPattern(uiManagerFile, recordFunction, "clearGPUCommandBuffers()"),
+        "UIManager::recordGPUVertices() must clear frame-local draw commands each frame");
+
+    BOOST_CHECK_MESSAGE(
+        functionContainsPattern(uiManagerFile, clearFunction, "m_gpuPrimitiveCommands.clear()"),
+        "UIManager GPU command clearing must include primitive draw commands");
+    BOOST_CHECK_MESSAGE(
+        functionContainsPattern(uiManagerFile, clearFunction, "m_gpuTextCommands.clear()"),
+        "UIManager GPU command clearing must include text draw commands");
+    BOOST_CHECK_MESSAGE(
+        functionContainsPattern(uiManagerFile, clearFunction, "m_gpuImageCommands.clear()"),
+        "UIManager GPU command clearing must include image draw commands");
 }
 
 // ----------------------------------------------------------------------------

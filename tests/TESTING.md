@@ -73,7 +73,7 @@ The VoidLight Engine has the following test suites:
    - WeatherController Tests: Weather event coordination and state transitions
    - DayNightController Tests: Time period tracking and visual transitions
    - HarvestController Tests: Resource harvest coordination and guard behavior
-   - ItemController Tests: Item interaction behavior and event wiring
+   - InventoryController Tests: Inventory UI, item interaction behavior, and event wiring
    - NPCRenderController Tests: Animation state, row/frame selection, and facing behavior
    - CombatController Tests: Controller basics and null-player guard behavior
    - ResourceRenderController Tests: Resource render-controller lifecycle and update behavior
@@ -1018,7 +1018,7 @@ Located in `tests/controllers/`, these tests validate the state-scoped controlle
 
 4. **Additional Controller Targets**:
    - `HarvestControllerTests.cpp`
-   - `ItemControllerTests.cpp`
+   - `InventoryControllerTests.cpp`
    - `NPCRenderControllerTests.cpp`
    - `CombatControllerTests.cpp`
    - `ResourceRenderControllerTests.cpp`

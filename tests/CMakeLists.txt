@@ -87,7 +87,7 @@ set(ALL_TESTS
     controller_registry_tests
     npc_render_controller_tests
     harvest_controller_tests
-    item_controller_tests
+    inventory_controller_tests
     combat_controller_tests
     gameplay_hud_controller_tests
     social_controller_tests
@@ -256,8 +256,8 @@ foreach(test_name ${ALL_TESTS})
         set(test_source "controllers/NPCRenderControllerTests.cpp")
     elseif(${test_name} STREQUAL "harvest_controller_tests")
         set(test_source "controllers/HarvestControllerTests.cpp")
-    elseif(${test_name} STREQUAL "item_controller_tests")
-        set(test_source "controllers/ItemControllerTests.cpp")
+    elseif(${test_name} STREQUAL "inventory_controller_tests")
+        set(test_source "controllers/InventoryControllerTests.cpp")
     elseif(${test_name} STREQUAL "combat_controller_tests")
         set(test_source "controllers/CombatControllerTests.cpp")
     elseif(${test_name} STREQUAL "gameplay_hud_controller_tests")
@@ -285,7 +285,7 @@ set(EVENT_ACCESS_TESTS
     event_manager_behavior_tests
     weather_event_tests
     harvest_controller_tests
-    item_controller_tests
+    inventory_controller_tests
     gameplay_hud_controller_tests
     social_controller_tests
     resource_render_controller_tests

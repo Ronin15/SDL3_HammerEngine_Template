@@ -450,6 +450,40 @@ BOOST_AUTO_TEST_CASE(TestCreateInputField) {
     ui.removeComponent("input1");
 }
 
+BOOST_AUTO_TEST_CASE(TestCreateAtlasImage) {
+    auto& ui = UIManager::Instance();
+
+    const UIRect sourceRect{16, 32, 24, 24};
+    ui.createPanel("image_parent", UIRect{80, 80, 80, 80});
+    ui.createAtlasImage("atlas_image", UIRect{100, 100, 32, 32},
+                        "atlas", sourceRect, "image_parent");
+
+    BOOST_CHECK(ui.hasComponent("atlas_image"));
+    BOOST_CHECK_EQUAL(ui.getTexture("atlas_image"), "atlas");
+    const UIRect storedRect = ui.getImageSourceRect("atlas_image");
+    BOOST_CHECK_EQUAL(storedRect.x, sourceRect.x);
+    BOOST_CHECK_EQUAL(storedRect.y, sourceRect.y);
+    BOOST_CHECK_EQUAL(storedRect.width, sourceRect.width);
+    BOOST_CHECK_EQUAL(storedRect.height, sourceRect.height);
+
+    const UIRect updatedRect{48, 64, 16, 16};
+    ui.setImageSourceRect("atlas_image", updatedRect);
+    const UIRect newRect = ui.getImageSourceRect("atlas_image");
+    BOOST_CHECK_EQUAL(newRect.x, updatedRect.x);
+    BOOST_CHECK_EQUAL(newRect.y, updatedRect.y);
+    BOOST_CHECK_EQUAL(newRect.width, updatedRect.width);
+    BOOST_CHECK_EQUAL(newRect.height, updatedRect.height);
+
+    ui.setTexture("atlas_image", "");
+    BOOST_CHECK(ui.getTexture("atlas_image").empty());
+
+    ui.setComponentVisible("image_parent", false);
+    BOOST_CHECK(ui.hasComponent("atlas_image"));
+
+    ui.removeComponent("image_parent");
+    BOOST_CHECK(!ui.hasComponent("atlas_image"));
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 // ============================================================================
