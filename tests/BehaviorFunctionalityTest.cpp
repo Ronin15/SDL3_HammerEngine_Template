@@ -16,6 +16,7 @@
 #include "managers/EntityDataManager.hpp"
 #include "ai/BehaviorExecutors.hpp"
 #include "core/ThreadSystem.hpp"
+#include "events/EntityEvents.hpp"
 #include "world/WorldData.hpp"
 #include <memory>
 #include <vector>
@@ -412,6 +413,48 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
 
     // Clean up
     AIManager::Instance().unassignBehavior(chaserHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestKnockbackOverridesChaseMovement) {
+    auto attacker = TestNPC::create(500.0f, 500.0f);
+    auto target = TestNPC::create(700.0f, 500.0f);
+
+    auto& edm = EntityDataManager::Instance();
+    EntityHandle attackerHandle = attacker->getHandle();
+    EntityHandle targetHandle = target->getHandle();
+    const size_t targetIdx = edm.getIndex(targetHandle);
+    BOOST_REQUIRE(targetIdx != SIZE_MAX);
+
+    AIManager::Instance().assignBehavior(targetHandle, "Chase");
+
+    edm.initMemoryData(targetIdx);
+    auto& memData = edm.getMemoryData(targetIdx);
+    memData.lastAttacker = attackerHandle;
+    memData.lastCombatTime = GameTimeManager::Instance().getTotalGameTimeSeconds();
+    memData.setValid(true);
+
+    updateAI(0.016f, attacker->getPosition());
+
+    const float preHitVelocityX = target->getVelocity().getX();
+    BOOST_CHECK_LT(preHitVelocityX, 0.0f);
+
+    auto damageEvent = EventManager::Instance().acquireDamageEvent();
+    damageEvent->configure(attackerHandle, targetHandle, 15.0f, Vector2D(60.0f, 0.0f));
+    BOOST_REQUIRE(EventManager::Instance().dispatchEvent(
+        std::static_pointer_cast<Event>(damageEvent),
+        EventManager::DispatchMode::Immediate));
+
+    const float hitStartX = target->getPosition().getX();
+
+    updateAI(0.016f, attacker->getPosition());
+
+    const float postHitVelocityX = target->getVelocity().getX();
+    const float postHitX = target->getPosition().getX();
+
+    BOOST_CHECK_GT(postHitVelocityX, 0.0f);
+    BOOST_CHECK_GT(postHitX, hitStartX);
+
+    AIManager::Instance().unassignBehavior(targetHandle);
 }
 
 BOOST_AUTO_TEST_CASE(TestFleeBehavior) {

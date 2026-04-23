@@ -1547,15 +1547,19 @@ void AIManager::processBatch(
         break;
     }
 
-    // Apply knockback impulse to velocity (decays over multiple frames).
+    // Apply knockback after behavior execution so combat impulses can override
+    // steering for a few frames. Adding knockback on top of chase/attack
+    // velocity made projectile hits on NPCs read like "no knockback" because
+    // active AI motion could cancel most or all of the shove.
+    //
     // Gated by a single sparse-array load — entities without knockback pay nothing.
     // Expiry is deferred to the main thread via outKnockbackClears: SparseSidecar::remove()
     // performs swap-pop on shared vectors and patches the displaced entity's m_sparse slot,
     // so it is not race-safe across worker threads.
     if (auto* kb = ctx.knockback.get(static_cast<uint32_t>(edmIdx)))
     {
-      transform.velocity.setX(transform.velocity.getX() + kb->impulseX);
-      transform.velocity.setY(transform.velocity.getY() + kb->impulseY);
+      transform.velocity.setX(kb->impulseX);
+      transform.velocity.setY(kb->impulseY);
       kb->impulseX *= Knockback::DECAY;
       kb->impulseY *= Knockback::DECAY;
       if (--kb->framesRemaining == 0)
