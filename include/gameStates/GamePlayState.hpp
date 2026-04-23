@@ -81,6 +81,7 @@ private:
   bool m_statusBarDirty{true};   // Flag to rebuild status bar only when events fire
 
   // Inventory UI methods
+  bool tryOpenNearbyMerchantTrade();
   void toggleInventoryDisplay();
   void registerEventHandlers();
   void unregisterEventHandlers();

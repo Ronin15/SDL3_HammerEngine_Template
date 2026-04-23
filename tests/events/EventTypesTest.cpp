@@ -7,6 +7,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "events/EventFactory.hpp"
+#include "events/MerchantSpawnEvent.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/ParticleEffectEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
@@ -34,6 +35,7 @@ struct EventTypesFixture {
     registerWeatherCreator();
     registerSceneChangeCreator();
     registerNPCSpawnCreator();
+    registerMerchantSpawnCreator();
   }
 
   ~EventTypesFixture() {
@@ -95,6 +97,27 @@ struct EventTypesFixture {
 
           return EventFactory::Instance().createNPCSpawnEvent(
               def.name, npcType, count, spawnRadius);
+        });
+  }
+
+  void registerMerchantSpawnCreator() {
+    EventFactory::Instance().registerCustomEventCreator(
+        "MerchantSpawn", [](const EventDefinition &def) {
+          std::string merchantClass = def.params.count("merchantClass")
+                                          ? def.params.at("merchantClass")
+                                          : "GeneralMerchant";
+          std::string merchantRace = def.params.count("merchantRace")
+                                         ? def.params.at("merchantRace")
+                                         : "Human";
+          int count = static_cast<int>(def.numParams.count("count")
+                                           ? def.numParams.at("count")
+                                           : 1.0f);
+          float spawnRadius = def.numParams.count("spawnRadius")
+                                  ? def.numParams.at("spawnRadius")
+                                  : 0.0f;
+
+          return EventFactory::Instance().createMerchantSpawnEvent(
+              def.name, merchantClass, merchantRace, count, spawnRadius);
         });
   }
 };
@@ -291,6 +314,22 @@ BOOST_FIXTURE_TEST_CASE(NPCSpawnEventBasics, EventTypesFixture) {
   conditionFlag = true;
   // In a real test, this would still return false because the proximity and
   // time conditions aren't met
+}
+
+BOOST_FIXTURE_TEST_CASE(MerchantSpawnEventBasics, EventTypesFixture) {
+  MerchantSpawnParameters params;
+  params.merchantClass = "GeneralMerchant";
+  params.merchantRace = "Human";
+  params.count = 1;
+
+  auto merchantEvent = std::make_shared<MerchantSpawnEvent>("SpawnMerchant", params);
+
+  BOOST_CHECK_EQUAL(merchantEvent->getName(), "SpawnMerchant");
+  BOOST_CHECK_EQUAL(merchantEvent->getType(), "MerchantSpawn");
+  BOOST_CHECK_EQUAL(merchantEvent->getTypeName(), "MerchantSpawnEvent");
+  BOOST_CHECK(merchantEvent->getTypeId() == EventTypeId::MerchantSpawn);
+  BOOST_CHECK_EQUAL(merchantEvent->getMerchantSpawnParameters().merchantClass,
+                    "GeneralMerchant");
 }
 
 // Test EventFactory creation methods
@@ -777,7 +816,8 @@ BOOST_AUTO_TEST_CASE(TestEventTypeIdEnumValues) {
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Combat), 13);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Entity), 14);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::BehaviorMessage), 15);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 16);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::MerchantSpawn), 16);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 17);
 }
 
 // Test ResourceChangeEvent
@@ -952,6 +992,9 @@ BOOST_FIXTURE_TEST_CASE(AllEventTypesReturnCorrectTypeId, EventTypesFixture) {
   // NPCSpawn
   NPCSpawnEvent npcEvent("test", "Guard");
   BOOST_CHECK(npcEvent.getTypeId() == EventTypeId::NPCSpawn);
+
+  MerchantSpawnEvent merchantEvent("merchant_test", "GeneralMerchant");
+  BOOST_CHECK(merchantEvent.getTypeId() == EventTypeId::MerchantSpawn);
 
   // ParticleEffect
   ParticleEffectEvent particleEvent("test", ParticleEffectType::Fire, 0.0f, 0.0f);

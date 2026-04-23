@@ -13,6 +13,7 @@
 #include "events/CollisionObstacleChangedEvent.hpp"
 #include "events/EntityEvents.hpp"
 #include "events/Event.hpp"
+#include "events/MerchantSpawnEvent.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/ParticleEffectEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
@@ -35,6 +36,13 @@ void registerBuiltInHandlers(EventManager& eventManager) {
     auto npcEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(data.event);
     if (npcEvent) {
       npcEvent->execute();
+    }
+  });
+  eventManager.registerPersistentHandler(EventTypeId::MerchantSpawn, [](const EventData &data) {
+    if (!data.isActive() || !data.event) return;
+    auto merchantEvent = std::dynamic_pointer_cast<MerchantSpawnEvent>(data.event);
+    if (merchantEvent) {
+      merchantEvent->execute();
     }
   });
 }
@@ -95,6 +103,10 @@ bool EventManager::init() {
   });
   m_npcSpawnPool.setCreator([]() {
     return std::make_shared<NPCSpawnEvent>("trigger_npc_spawn", SpawnParameters{});
+  });
+  m_merchantSpawnPool.setCreator([]() {
+    return std::make_shared<MerchantSpawnEvent>("trigger_merchant_spawn",
+                                                MerchantSpawnParameters{});
   });
   m_resourceChangePool.setCreator([]() {
     return std::make_shared<ResourceChangeEvent>(
@@ -401,6 +413,39 @@ bool EventManager::spawnNPC(const std::string &npcType, float x, float y,
   data.event = npcEvent;
 
   return dispatchEvent(EventTypeId::NPCSpawn, data, mode, "spawnNPC");
+}
+
+bool EventManager::spawnMerchant(const std::string& merchantClass,
+                                 float x, float y,
+                                 const std::string& merchantRace,
+                                 int count,
+                                 float spawnRadius,
+                                 bool worldWide,
+                                 DispatchMode mode) const {
+  MerchantSpawnParameters params;
+  params.merchantClass = merchantClass.empty() ? "GeneralMerchant" : merchantClass;
+  params.merchantRace = merchantRace.empty() ? "Human" : merchantRace;
+  params.count = count;
+  params.spawnRadius = spawnRadius;
+  params.worldWide = worldWide;
+
+  auto merchantEvent = m_merchantSpawnPool.acquire();
+  if (!merchantEvent) {
+    merchantEvent = std::make_shared<MerchantSpawnEvent>("trigger_merchant_spawn",
+                                                         params);
+  } else {
+    merchantEvent->reset();
+    merchantEvent->setMerchantSpawnParameters(params);
+  }
+  merchantEvent->clearSpawnPoints();
+  merchantEvent->addSpawnPoint(x, y);
+
+  EventData data;
+  data.typeId = EventTypeId::MerchantSpawn;
+  data.setActive(true);
+  data.event = merchantEvent;
+
+  return dispatchEvent(EventTypeId::MerchantSpawn, data, mode, "spawnMerchant");
 }
 
 bool EventManager::triggerParticleEffect(const std::string &effectName, float x,
@@ -1168,6 +1213,11 @@ void EventManager::releaseEventToPool(EventTypeId typeId, const EventPtr& event)
         m_npcSpawnPool.release(nse);
       }
       break;
+    case EventTypeId::MerchantSpawn:
+      if (auto mse = std::dynamic_pointer_cast<MerchantSpawnEvent>(event)) {
+        m_merchantSpawnPool.release(mse);
+      }
+      break;
     case EventTypeId::ResourceChange:
       if (auto rce = std::dynamic_pointer_cast<ResourceChangeEvent>(event)) {
         m_resourceChangePool.release(rce);
@@ -1231,6 +1281,7 @@ size_t EventManager::getPendingEventCount() const {
 void EventManager::clearEventPools() {
   m_weatherPool.clear();
   m_npcSpawnPool.clear();
+  m_merchantSpawnPool.clear();
   m_resourceChangePool.clear();
   m_worldPool.clear();
   m_cameraPool.clear();

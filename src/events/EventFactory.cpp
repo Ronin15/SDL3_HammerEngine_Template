@@ -4,6 +4,7 @@
 */
 
 #include "events/EventFactory.hpp"
+#include "events/MerchantSpawnEvent.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
@@ -42,6 +43,24 @@ EventFactory::EventFactory() {
         float spawnRadius = def.numParams.count("spawnRadius") ? def.numParams.at("spawnRadius") : 0.0f;
 
         return createNPCSpawnEvent(def.name, npcType, count, spawnRadius);
+    });
+
+    registerCustomEventCreator("MerchantSpawn", [this](const EventDefinition& def) {
+        std::string merchantClass = def.params.count("merchantClass")
+                                        ? def.params.at("merchantClass")
+                                        : "GeneralMerchant";
+        std::string merchantRace = def.params.count("merchantRace")
+                                       ? def.params.at("merchantRace")
+                                       : "Human";
+        int count = static_cast<int>(def.numParams.count("count")
+                                         ? def.numParams.at("count")
+                                         : 1.0f);
+        float spawnRadius = def.numParams.count("spawnRadius")
+                                ? def.numParams.at("spawnRadius")
+                                : 0.0f;
+
+        return createMerchantSpawnEvent(def.name, merchantClass, merchantRace,
+                                        count, spawnRadius);
     });
 
     // Particle effect creator
@@ -136,6 +155,24 @@ bool EventFactory::init() {
             float spawnRadius = def.numParams.count("spawnRadius") ? def.numParams.at("spawnRadius") : 0.0f;
 
             return createNPCSpawnEvent(def.name, npcType, count, spawnRadius);
+        });
+
+        registerCustomEventCreator("MerchantSpawn", [this](const EventDefinition& def) {
+            std::string merchantClass = def.params.count("merchantClass")
+                                            ? def.params.at("merchantClass")
+                                            : "GeneralMerchant";
+            std::string merchantRace = def.params.count("merchantRace")
+                                           ? def.params.at("merchantRace")
+                                           : "Human";
+            int count = static_cast<int>(def.numParams.count("count")
+                                             ? def.numParams.at("count")
+                                             : 1.0f);
+            float spawnRadius = def.numParams.count("spawnRadius")
+                                    ? def.numParams.at("spawnRadius")
+                                    : 0.0f;
+
+            return createMerchantSpawnEvent(def.name, merchantClass, merchantRace,
+                                            count, spawnRadius);
         });
     }
 
@@ -291,6 +328,22 @@ EventPtr EventFactory::createNPCSpawnEvent(const std::string& name, const std::s
     // Default to a circle spawn area around origin
     event->setSpawnArea(0.0f, 0.0f, spawnRadius);
 
+    return std::static_pointer_cast<Event>(event);
+}
+
+EventPtr EventFactory::createMerchantSpawnEvent(const std::string& name,
+                                                const std::string& merchantClass,
+                                                const std::string& merchantRace,
+                                                int count,
+                                                float spawnRadius) {
+    MerchantSpawnParameters params;
+    params.merchantClass = merchantClass.empty() ? "GeneralMerchant" : merchantClass;
+    params.merchantRace = merchantRace.empty() ? "Human" : merchantRace;
+    params.count = count;
+    params.spawnRadius = spawnRadius;
+
+    auto event = std::make_shared<MerchantSpawnEvent>(name, params);
+    event->setSpawnArea(0.0f, 0.0f, spawnRadius);
     return std::static_pointer_cast<Event>(event);
 }
 

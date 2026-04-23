@@ -42,6 +42,7 @@ class Event;
 namespace VoidLight { struct CollisionInfo; }
 class WeatherEvent;
 class NPCSpawnEvent;
+class MerchantSpawnEvent;
 class ResourceChangeEvent;
 class WorldEvent;
 class CameraEvent;
@@ -368,6 +369,11 @@ public:
                 const std::vector<std::string> &aiBehaviors = {},
                 bool worldWide = false,
                 DispatchMode mode = DispatchMode::Deferred) const;
+  bool spawnMerchant(const std::string& merchantClass, float x, float y,
+                     const std::string& merchantRace = "Human",
+                     int count = 1, float spawnRadius = 0.0f,
+                     bool worldWide = false,
+                     DispatchMode mode = DispatchMode::Deferred) const;
 
   /**
    * @brief Triggers a particle effect
@@ -512,6 +518,7 @@ private:
   // Event pools for trigger methods (reuse event objects)
   mutable EventPool<WeatherEvent> m_weatherPool;
   mutable EventPool<NPCSpawnEvent> m_npcSpawnPool;
+  mutable EventPool<MerchantSpawnEvent> m_merchantSpawnPool;
   mutable EventPool<ResourceChangeEvent> m_resourceChangePool;
   mutable EventPool<WorldEvent> m_worldPool;
   mutable EventPool<CameraEvent> m_cameraPool;

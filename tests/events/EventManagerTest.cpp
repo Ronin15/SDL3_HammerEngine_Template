@@ -22,6 +22,7 @@
 #include "events/CollisionObstacleChangedEvent.hpp"
 #include "events/EntityEvents.hpp"
 #include "events/Event.hpp"
+#include "events/MerchantSpawnEvent.hpp"
 #include "events/ParticleEffectEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
@@ -240,6 +241,24 @@ BOOST_FIXTURE_TEST_CASE(SpawnNPC_DispatchesToHandlers, EventManagerFixture) {
                                                EventManager::DispatchMode::Immediate);
   BOOST_CHECK(ok);
   BOOST_CHECK(npcHandlerCalled.load());
+
+  EventManager::Instance().removeHandler(tok);
+}
+
+BOOST_FIXTURE_TEST_CASE(SpawnMerchant_DispatchesToHandlers, EventManagerFixture) {
+  std::atomic<bool> merchantHandlerCalled{false};
+  auto tok = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::MerchantSpawn, [&merchantHandlerCalled](const EventData &data) {
+        if (std::dynamic_pointer_cast<MerchantSpawnEvent>(data.event)) {
+          merchantHandlerCalled.store(true);
+        }
+      });
+
+  bool ok = EventManager::Instance().spawnMerchant(
+      "GeneralMerchant", 10.0f, 20.0f, "Human", 1, 0.0f, false,
+      EventManager::DispatchMode::Immediate);
+  BOOST_CHECK(ok);
+  BOOST_CHECK(merchantHandlerCalled.load());
 
   EventManager::Instance().removeHandler(tok);
 }

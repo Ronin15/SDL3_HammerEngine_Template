@@ -1083,6 +1083,11 @@ int UIManager::getSelectedListItem(const std::string &listID) const {
 void UIManager::setSelectedListItem(const std::string &listID, int index) {
   auto component = getComponent(listID);
   if (component && component->m_type == UIComponentType::LIST) {
+    if (index == -1) {
+      component->m_selectedIndex = -1;
+      return;
+    }
+
     if (index >= 0 && index < static_cast<int>(component->m_listItems.size())) {
       component->m_selectedIndex = index;
     }

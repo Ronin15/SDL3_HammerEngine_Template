@@ -20,6 +20,7 @@
 #include "gameStates/PauseState.hpp"
 #include "events/HarvestResourceEvent.hpp"
 #include "events/EntityEvents.hpp"
+#include "managers/EventManager.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
@@ -180,6 +181,18 @@ bool GamePlayState::enter() {
     ui.setComponentPositioning("gameplay_fps", fpsPos);
 
     inventoryCtrl.initializeInventoryUI();
+    if (mp_Player) {
+      Vector2D const merchantSpawnPos =
+          mp_Player->getPosition() + Vector2D(-96.0f, 32.0f);
+      EventManager::Instance().spawnMerchant("GeneralMerchant",
+                                             merchantSpawnPos.getX(),
+                                             merchantSpawnPos.getY(),
+                                             "Human",
+                                             1,
+                                             0.0f,
+                                             false,
+                                             EventManager::DispatchMode::Immediate);
+    }
 
     // Subscribe all controllers at once
     m_controllers.subscribeAll();
@@ -322,6 +335,11 @@ bool GamePlayState::exit() {
   auto &wrm = WorldResourceManager::Instance();
   auto &eventMgr = EventManager::Instance();
 
+  if (auto* socialCtrl = m_controllers.get<SocialController>();
+      socialCtrl && socialCtrl->isTrading()) {
+    socialCtrl->closeTrade();
+  }
+
   if (m_transitioningToLoading) {
     // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded
     // flag This prevents infinite loop when returning from LoadingState
@@ -397,6 +415,11 @@ bool GamePlayState::exit() {
 
   // Full exit (going to main menu, other states, or shutting down)
   m_transitioningToGameOver = false;
+
+  if (auto* socialCtrl = m_controllers.get<SocialController>();
+      socialCtrl && socialCtrl->isTrading()) {
+    socialCtrl->closeTrade();
+  }
 
   // Clear NPCs before manager cleanup (NPCs hold EDM indices)
   aiMgr.destroyAllNPCsForStateTransition();
@@ -543,6 +566,11 @@ void GamePlayState::pause() {
     ui.setComponentVisible(InventoryController::INVENTORY_PANEL_ID, false);
   }
 
+  if (auto* socialCtrl = m_controllers.get<SocialController>();
+      socialCtrl && socialCtrl->isTrading()) {
+    socialCtrl->closeTrade();
+  }
+
   // Stop player movement to prevent drift during pause
   if (mp_Player) {
     mp_Player->setVelocity(Vector2D(0, 0));
@@ -605,14 +633,19 @@ void GamePlayState::handleInput() {
   }
 
   // Inventory toggle
-  if (inputMgr.isCommandPressed(InputManager::Command::OpenInventory)) {
-    toggleInventoryDisplay();
-  }
-
-  // FPS counter toggle
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_F2)) {
     m_fpsVisible = !m_fpsVisible;
     ui.setComponentVisible("gameplay_fps", m_fpsVisible);
+  }
+
+  auto* socialCtrl = m_controllers.get<SocialController>();
+  if (socialCtrl && socialCtrl->isTrading()) {
+    socialCtrl->handleTradeInput(inputMgr);
+    return;
+  }
+
+  if (inputMgr.isCommandPressed(InputManager::Command::OpenInventory)) {
+    toggleInventoryDisplay();
   }
 
   // Combat — attack command (default: F, rebindable via Controls settings)
@@ -654,43 +687,11 @@ void GamePlayState::handleInput() {
 
   // Interaction — trade/pickup/harvest command (default: E, rebindable)
   if (inputMgr.isCommandPressed(InputManager::Command::Interact) && mp_Player) {
-    auto& socialCtrl = *m_controllers.get<SocialController>();
-
-    // If already trading, close the trade UI
-    if (socialCtrl.isTrading()) {
-      socialCtrl.closeTrade();
-    } else {
-      // Try to find a nearby merchant NPC to trade with
-      bool openedTrade = false;
-      auto& edm = EntityDataManager::Instance();
-      auto& aiMgr = AIManager::Instance();
-      Vector2D playerPos = mp_Player->getPosition();
-
-      // Query nearby NPCs
-      m_nearbyHandlesBuffer.clear();
-      aiMgr.scanActiveHandlesInRadius(playerPos, 100.0f, m_nearbyHandlesBuffer, true);
-
-      for (const auto& handle : m_nearbyHandlesBuffer) {
-        if (!handle.isValid() || handle.getKind() != EntityKind::NPC) {
-          continue;
-        }
-        // Check if this NPC is a merchant
-        if (edm.isNPCMerchant(handle)) {
-          if (socialCtrl.openTrade(handle)) {
-            openedTrade = true;
-            break;
-          }
-        }
-      }
-
-      // If no merchant found, try pickup/harvest
-      if (!openedTrade) {
-        auto& inventoryCtrl = *m_controllers.get<InventoryController>();
-        if (!inventoryCtrl.attemptPickup()) {
-          // Try to start progress-based harvesting
-          auto& harvestCtrl = *m_controllers.get<HarvestController>();
-          harvestCtrl.startHarvest();
-        }
+    if (!tryOpenNearbyMerchantTrade()) {
+      auto& inventoryCtrl = *m_controllers.get<InventoryController>();
+      if (!inventoryCtrl.attemptPickup()) {
+        auto& harvestCtrl = *m_controllers.get<HarvestController>();
+        harvestCtrl.startHarvest();
       }
     }
   }
@@ -749,6 +750,36 @@ void GamePlayState::toggleInventoryDisplay() {
   if (auto* inventoryCtrl = m_controllers.get<InventoryController>()) {
     inventoryCtrl->toggleInventoryDisplay();
   }
+}
+
+bool GamePlayState::tryOpenNearbyMerchantTrade() {
+  if (!mp_Player) {
+    return false;
+  }
+
+  auto* socialCtrl = m_controllers.get<SocialController>();
+  if (!socialCtrl) {
+    return false;
+  }
+
+  auto& edm = EntityDataManager::Instance();
+  auto& aiMgr = AIManager::Instance();
+  Vector2D const playerPos = mp_Player->getPosition();
+
+  m_nearbyHandlesBuffer.clear();
+  aiMgr.scanActiveHandlesInRadius(playerPos, 100.0f, m_nearbyHandlesBuffer, true);
+
+  for (const auto& handle : m_nearbyHandlesBuffer) {
+    if (!handle.isValid() || handle.getKind() != EntityKind::NPC) {
+      continue;
+    }
+
+    if (edm.isNPCMerchant(handle) && socialCtrl->openTrade(handle)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 void GamePlayState::initializeCamera() {

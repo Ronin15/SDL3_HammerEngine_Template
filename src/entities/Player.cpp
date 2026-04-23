@@ -409,10 +409,11 @@ void Player::initializeInventory() {
   // Give player some starting resources using ResourceTemplateManager
   const auto &templateManager = ResourceTemplateManager::Instance();
 
-  auto goldResource = templateManager.getResourceByName("gold");
-  if (goldResource) {
-    m_goldHandle = goldResource->getHandle();  // Cache for gold methods
+  m_goldHandle = templateManager.getHandleById("gold_coins");
+  if (m_goldHandle.isValid()) {
     edm.addToInventory(m_inventoryIndex, m_goldHandle, 100);
+  } else {
+    PLAYER_WARN("Player::initializeInventory - gold_coins resource not found");
   }
 
   auto healthPotionResource = templateManager.getResourceByName("health_potion");

@@ -14,6 +14,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "controllers/social/SocialController.hpp"
+#include "entities/Player.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "events/EntityEvents.hpp"
@@ -21,8 +22,10 @@
 #include "managers/EventManager.hpp"
 #include "managers/GameTimeManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "../events/EventManagerTestAccess.hpp"
+#include <cmath>
 #include <memory>
 
 // ============================================================================
@@ -37,12 +40,22 @@ public:
         EventManager::Instance().init();
 
         // Initialize managers
+        BOOST_REQUIRE(ResourceTemplateManager::Instance().init());
         BOOST_REQUIRE(EntityDataManager::Instance().init());
         BOOST_REQUIRE(CollisionManager::Instance().init());
         BOOST_REQUIRE(PathfinderManager::Instance().init());
         BOOST_REQUIRE(AIManager::Instance().init());
         GameTimeManager::Instance().init();
         UIManager::Instance().init();
+
+        player = std::make_shared<Player>();
+        player->initializeInventory();
+        BOOST_REQUIRE(player->getHandle().isValid());
+
+        goldHandle = ResourceTemplateManager::Instance().getHandleById("gold_coins");
+        breadHandle = ResourceTemplateManager::Instance().getHandleById("bread");
+        BOOST_REQUIRE(goldHandle.isValid());
+        BOOST_REQUIRE(breadHandle.isValid());
     }
 
     ~SocialControllerTestFixture() {
@@ -51,12 +64,25 @@ public:
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
         EntityDataManager::Instance().clean();
+        ResourceTemplateManager::Instance().clean();
         EventManager::Instance().clean();
     }
 
     // Non-copyable
     SocialControllerTestFixture(const SocialControllerTestFixture&) = delete;
     SocialControllerTestFixture& operator=(const SocialControllerTestFixture&) = delete;
+
+protected:
+    EntityHandle spawnMerchant(const Vector2D& position = Vector2D(100.0f, 100.0f)) {
+        EntityHandle merchant = EntityDataManager::Instance().createNPCWithRaceClass(
+            position, "Human", "GeneralMerchant");
+        BOOST_REQUIRE(merchant.isValid());
+        return merchant;
+    }
+
+    std::shared_ptr<Player> player;
+    VoidLight::ResourceHandle goldHandle;
+    VoidLight::ResourceHandle breadHandle;
 };
 
 // ============================================================================
@@ -379,7 +405,7 @@ BOOST_AUTO_TEST_CASE(TestInitialTradeState) {
 }
 
 BOOST_AUTO_TEST_CASE(TestOpenTradeWithInvalidNPC) {
-    SocialController controller(nullptr);
+    SocialController controller(player);
 
     EntityHandle invalidHandle;
 
@@ -460,6 +486,92 @@ BOOST_AUTO_TEST_SUITE_END()
 // ============================================================================
 
 BOOST_FIXTURE_TEST_SUITE(TradeTransactionTests, SocialControllerTestFixture)
+
+BOOST_AUTO_TEST_CASE(TestOpenTradeWithMerchantPopulatesInventoryLists) {
+    SocialController controller(player);
+    EntityHandle merchant = spawnMerchant();
+
+    BOOST_REQUIRE(controller.openTrade(merchant));
+    BOOST_CHECK(controller.isTrading());
+    BOOST_CHECK_EQUAL(controller.getMerchantHandle(), merchant);
+    BOOST_CHECK(!controller.getMerchantItems().empty());
+    BOOST_CHECK_EQUAL(controller.getSelectedMerchantIndex(), 0);
+    BOOST_CHECK_EQUAL(controller.getSelectedPlayerIndex(), -1);
+}
+
+BOOST_AUTO_TEST_CASE(TestExecuteBuyUsesGoldCoinsCurrency) {
+    SocialController controller(player);
+    EntityHandle merchant = spawnMerchant();
+    auto& edm = EntityDataManager::Instance();
+
+    BOOST_REQUIRE(player->addGold(250));
+    const int initialPlayerGold = player->getGold();
+    const uint32_t merchantInvIdx = edm.getNPCInventoryIndex(merchant);
+    BOOST_REQUIRE(merchantInvIdx != INVALID_INVENTORY_INDEX);
+    const int initialMerchantGold = edm.getInventoryQuantity(merchantInvIdx, goldHandle);
+    const int initialPlayerBread = player->getInventoryQuantity(breadHandle);
+
+    BOOST_REQUIRE(controller.openTrade(merchant));
+
+    int breadIndex = -1;
+    const auto& merchantItems = controller.getMerchantItems();
+    for (size_t i = 0; i < merchantItems.size(); ++i) {
+        if (merchantItems[i].handle == breadHandle) {
+            breadIndex = static_cast<int>(i);
+            break;
+        }
+    }
+
+    BOOST_REQUIRE(breadIndex >= 0);
+    controller.selectMerchantItem(static_cast<size_t>(breadIndex));
+    controller.setQuantity(2);
+
+    const int expectedCost = static_cast<int>(std::ceil(controller.getCurrentBuyPrice()));
+    BOOST_REQUIRE_GT(expectedCost, 0);
+    BOOST_CHECK(controller.executeBuy() == TradeResult::Success);
+
+    BOOST_CHECK_EQUAL(player->getGold(), initialPlayerGold - expectedCost);
+    BOOST_CHECK_EQUAL(player->getInventoryQuantity(breadHandle), initialPlayerBread + 2);
+    BOOST_CHECK_EQUAL(edm.getInventoryQuantity(merchantInvIdx, goldHandle),
+                      initialMerchantGold + expectedCost);
+}
+
+BOOST_AUTO_TEST_CASE(TestExecuteSellUsesGoldCoinsCurrency) {
+    SocialController controller(player);
+    EntityHandle merchant = spawnMerchant();
+    auto& edm = EntityDataManager::Instance();
+
+    BOOST_REQUIRE(player->addGold(50));
+    BOOST_REQUIRE(player->addToInventory(breadHandle, 3));
+    const int initialPlayerGold = player->getGold();
+    const int initialPlayerBread = player->getInventoryQuantity(breadHandle);
+    const uint32_t merchantInvIdx = edm.getNPCInventoryIndex(merchant);
+    const int initialMerchantGold = edm.getInventoryQuantity(merchantInvIdx, goldHandle);
+
+    BOOST_REQUIRE(controller.openTrade(merchant));
+
+    int breadIndex = -1;
+    const auto& playerItems = controller.getPlayerItems();
+    for (size_t i = 0; i < playerItems.size(); ++i) {
+        if (playerItems[i].handle == breadHandle) {
+            breadIndex = static_cast<int>(i);
+            break;
+        }
+    }
+
+    BOOST_REQUIRE(breadIndex >= 0);
+    controller.selectPlayerItem(static_cast<size_t>(breadIndex));
+    controller.setQuantity(2);
+
+    const int expectedPayout = static_cast<int>(std::floor(controller.getCurrentSellPrice()));
+    BOOST_REQUIRE_GT(expectedPayout, 0);
+    BOOST_CHECK(controller.executeSell() == TradeResult::Success);
+
+    BOOST_CHECK_EQUAL(player->getGold(), initialPlayerGold + expectedPayout);
+    BOOST_CHECK_EQUAL(player->getInventoryQuantity(breadHandle), initialPlayerBread - 2);
+    BOOST_CHECK_EQUAL(edm.getInventoryQuantity(merchantInvIdx, goldHandle),
+                      initialMerchantGold - expectedPayout);
+}
 
 BOOST_AUTO_TEST_CASE(TestExecuteBuyWhenNotTrading) {
     SocialController controller(nullptr);

@@ -94,6 +94,11 @@ public:
   EventPtr createNPCSpawnEvent(const std::string &name,
                                const std::string &npcType, int count = 1,
                                float spawnRadius = 0.0f);
+  EventPtr createMerchantSpawnEvent(const std::string &name,
+                                    const std::string &merchantClass,
+                                    const std::string &merchantRace = "Human",
+                                    int count = 1,
+                                    float spawnRadius = 0.0f);
 
   // Particle effect event
   EventPtr createParticleEffectEvent(const std::string &name,
