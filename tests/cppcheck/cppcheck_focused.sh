@@ -1,5 +1,5 @@
 #!/bin/bash
-# Simple focused cppcheck analysis for SDL3_VoidLight-Framework_Template
+# Simple focused cppcheck analysis for VoidLight-Framework
 # This script runs cppcheck with optimized settings to show only real issues
 
 set -e
@@ -13,7 +13,7 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}=== SDL3 VoidLight-Framework - Focused Cppcheck Analysis ===${NC}"
+echo -e "${BLUE}=== VoidLight-Framework - Focused Cppcheck Analysis ===${NC}"
 echo ""
 
 # Check if cppcheck is available
@@ -58,7 +58,6 @@ if [ -f "$PROJECT_ROOT/compile_commands.json" ]; then
         --enable=warning,style,performance,portability \
         --library=std,posix \
         --library="$SCRIPT_DIR/cppcheck_lib.cfg" \
-        --suppressions-list="$SCRIPT_DIR/cppcheck_suppressions.txt" \
         --std=c++20 \
         --quiet \
         --template='{file}:{line}: [{severity}] {message}' \
@@ -74,7 +73,6 @@ else
         --enable=warning,style,performance,portability \
         --library=std,posix \
         --library="$SCRIPT_DIR/cppcheck_lib.cfg" \
-        --suppressions-list="$SCRIPT_DIR/cppcheck_suppressions.txt" \
         --platform=unix64 \
         --std=c++20 \
         --quiet \
@@ -117,14 +115,8 @@ echo ""
 
 # Dynamic summary based on actual results
 if [ $TOTAL_COUNT -eq 0 ]; then
-    echo -e "${GREEN}🎉 Perfect! No issues found!${NC}"
-    echo -e "${BLUE}Status: All critical issues have been resolved${NC}"
-    echo "✅ Array bounds errors - FIXED"
-    echo "✅ Uninitialized variables - FIXED"
-    echo "✅ Thread safety issues - FIXED"
-    echo "✅ Style improvements - COMPLETED"
-    echo ""
-    echo -e "${GREEN}Result: 100% of actionable issues resolved!${NC}"
+    echo -e "${GREEN}✓ No issues found!${NC}"
+    echo -e "${BLUE}Status: cppcheck reported no warnings, errors, or performance issues${NC}"
 else
     echo -e "${YELLOW}Found $TOTAL_COUNT issues:${NC}"
     [ "$ERROR_COUNT" -gt 0 ] && echo -e "${RED}  Errors: $ERROR_COUNT${NC}"
@@ -142,5 +134,4 @@ else
 fi
 
 echo ""
-echo -e "${YELLOW}Note: This configuration filters out ~2,500 false positives${NC}"
-echo -e "${YELLOW}to focus on genuine code quality issues.${NC}"
+echo -e "${YELLOW}Note: This configuration keeps the output focused on genuine code quality issues.${NC}"

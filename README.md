@@ -38,7 +38,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Comprehensive Testing & Analysis**
 
-    74 test executables with Boost.Test framework covering unit, integration, and performance testing. Includes AI+Collision integration tests, GPU rendering tests, SIMD correctness validation, NPC memory coverage, and comprehensive thread safety verification with documented TSAN suppressions. Static analysis (cppcheck, clang-tidy), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration support production-ready quality assurance.
+    80 source-controlled test executables with Boost.Test framework covering unit, integration, and performance testing. Includes AI+Collision integration tests, GPU rendering tests, SIMD correctness validation, NPC memory coverage, and comprehensive thread safety verification with documented TSAN suppressions. Static analysis (cppcheck, clang-tidy), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration support production-ready quality assurance.
 
 - **Debug Profiling Tools**
 
@@ -46,7 +46,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Release Logging**
 
-    In Release builds, CRITICAL and ERROR messages are written to a timestamped log file. All other levels are compiled out entirely. under the OS user data directory (`~/Library/Application Support/HammerForgedGames/VoidLight_Template/logs/` on macOS, `%APPDATA%\HammerForgedGames\VoidLight_Template\logs\` on Windows, `~/.local/share/HammerForgedGames/VoidLight_Template/logs/` on Linux). Files are named `voidlight_YYYYMMDD_HHMMSS.log` and the 5 most recent are kept automatically. See [Logger](docs/utils/Logger.md) for details.
+    In Release builds, CRITICAL and ERROR messages are written to a timestamped log file. All other levels are compiled out entirely. Log files are written under the OS user data directory (`~/Library/Application Support/HammerForgedGames/VoidLight_Template/logs/` on macOS, `%APPDATA%\HammerForgedGames\VoidLight_Template\logs\` on Windows, `~/.local/share/HammerForgedGames/VoidLight_Template/logs/` on Linux). Files are named `voidlight_YYYYMMDD_HHMMSS.log` and the 5 most recent are kept automatically. See [Logger](docs/utils/Logger.md) for details.
 
 - **Cross-Platform Optimizations**
 
@@ -148,7 +148,7 @@ export TSAN_OPTIONS="suppressions=$(pwd)/tests/tsan_suppressions.txt"
 - Static analysis:
   - `cppcheck`: `./tests/test_scripts/run_cppcheck_focused.sh`
     See [tests/cppcheck/README.md](tests/cppcheck/README.md) for more.
-  - `clang-tidy`: `./tests/test_scripts/run_clang_tidy.sh`
+  - `clang-tidy`: `./tests/clang-tidy/clang_tidy_focused.sh`
     See [tests/clang-tidy/README.md](tests/clang-tidy/README.md) for configuration, focused analysis, and full-project analysis details.
 - Memory & thread safety validation: AddressSanitizer (ASAN) and ThreadSanitizer (TSAN) support
   See [docs/core/ThreadSystem.md#threadsanitizer-tsan-support](docs/core/ThreadSystem.md#threadsanitizer-tsan-support) for details

@@ -621,4 +621,4 @@ printFloat4("v", v); // Prints: v: [5.00, 5.00, 5.00, 5.00]
 - [AIManager Documentation](../ai/AIManager.md) - SIMD distance calculations
 - [CollisionManager Documentation](../managers/CollisionManager.md) - SIMD AABB operations
 - [ParticleManager Documentation](../managers/ParticleManager.md) - SIMD particle updates
-- [CLAUDE.md](../../CLAUDE.md) - Build configuration for SIMD optimization
+- [AGENTS.md](../../AGENTS.md) - Repo build and architecture guidance for SIMD-related work

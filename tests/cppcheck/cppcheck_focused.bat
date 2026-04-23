@@ -1,10 +1,10 @@
 @echo off
-REM Simple focused cppcheck analysis for SDL3_HammerEngine_Template (Windows)
+REM Simple focused cppcheck analysis for VoidLight-Framework (Windows)
 REM This script runs cppcheck with optimized settings to show only real issues
 
 setlocal enabledelayedexpansion
 
-echo === SDL3 VoidLight-Framework - Focused Cppcheck Analysis ===
+echo === VoidLight-Framework - Focused Cppcheck Analysis ===
 echo.
 
 REM Check if cppcheck is available
@@ -23,11 +23,6 @@ if not exist "cppcheck_lib.cfg" (
     exit /b 1
 )
 
-if not exist "cppcheck_suppressions.txt" (
-    echo Error: cppcheck_suppressions.txt not found
-    echo Please ensure you're running this from the project root directory
-    exit /b 1
-)
 echo Running focused analysis ^(errors, warnings, performance issues only^)...
 echo.
 
@@ -39,7 +34,6 @@ cppcheck ^
     --enable=warning,style,performance,portability ^
     --library=std,posix ^
     --library=cppcheck_lib.cfg ^
-    --suppressions-list=cppcheck_suppressions.txt ^
     -I..\..\include ^
     -I..\..\src ^
     --platform=win64 ^
@@ -76,14 +70,8 @@ echo.
 
 REM Dynamic summary based on actual results
 if !TOTAL_COUNT! equ 0 (
-    echo 🎉 Perfect! No issues found!
-    echo Status: All critical issues have been resolved
-    echo ✓ Array bounds errors - FIXED
-    echo ✓ Uninitialized variables - FIXED
-    echo ✓ Thread safety issues - FIXED
-    echo ✓ Style improvements - COMPLETED
-    echo.
-    echo Result: 100%% of actionable issues resolved!
+    echo ✓ No issues found!
+    echo Status: cppcheck reported no warnings, errors, or performance issues
 ) else (
     echo Found !TOTAL_COUNT! issues:
     if !ERROR_COUNT! gtr 0 (echo   Errors: !ERROR_COUNT!)
@@ -102,6 +90,5 @@ if !TOTAL_COUNT! equ 0 (
 )
 
 echo.
-echo Note: This configuration filters out ~2,500 false positives
-echo to focus on genuine code quality issues.
+echo Note: This configuration keeps the output focused on genuine code quality issues.
 echo.

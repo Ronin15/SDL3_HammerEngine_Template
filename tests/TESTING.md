@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the VoidLight Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 74 source-controlled test executables covering AI systems, AI behaviors, behavior state transitions, crowd-query runtime behavior, UI functionality, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading-state helpers, manager runtime behavior, frame profiling, GameTimeManager simulation, controller systems, entity state management, entity data management, NPC memory system, background simulation, EDM integration tests, GPU rendering subsystem, GPU frame timing benchmarks, and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 80 source-controlled test executables covering AI systems, AI behaviors, behavior state transitions, crowd-query runtime behavior, UI functionality, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading-state helpers, manager runtime behavior, frame profiling, GameTimeManager simulation, controller systems, entity state management, entity data management, NPC memory system, background simulation, EDM integration tests, resource integration coverage, GPU rendering subsystem, GPU frame timing benchmarks, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -118,7 +118,7 @@ The VoidLight Engine has the following test suites:
 - **Core Tests**: Fast functional validation (~4-8 minutes total)
 - **Benchmarks**: Performance and scalability testing (~8-20 minutes total)
 - **GPU Tests**: SDL3 GPU rendering validation
-- **Total Coverage**: 74 source-controlled test executables with comprehensive automation scripts
+- **Total Coverage**: 80 source-controlled test executables with comprehensive automation scripts
 
 ## Running Tests
 
