@@ -166,6 +166,7 @@ See `tests/TESTING.md` for broader test documentation.
 - `DayNightController` requires `update(dt)` every frame. The GPU path already feeds it through `GPURenderer::setDayNightParams()`.
 - Use `LoadingState` plus async `ThreadSystem` work for loading instead of blocking manual rendering.
 - Call `setComponentPositioning()` after creating UI components. Prefer existing UI helpers such as `createTitleAtTop()`, `createButtonAtBottom()`, `createCenteredButton()`, and `createCenteredDialog()`.
+- For UI/controller layout work, prefer `UIManager` public sizing, positioning, and relayout APIs. Do not reach back into `GameEngine` from controllers just to query window size or force UI relayout.
 - Use `mp_stateManager->changeState()` for transitions. `GameEngine::Instance()` remains valid for non-transition engine access.
 - Prefer local references over cached manager or controller members. Add controllers with `m_controllers.add<T>()` in `enter()` and do not keep cached `mp_*Ctrl` members.
 
