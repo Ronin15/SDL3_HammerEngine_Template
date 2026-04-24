@@ -145,7 +145,6 @@ void AIManager::clean() {
     std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
 
     // Clear all storage (behaviors are data in EDM, no cleanup needed)
-    m_storage.hotData.clear();
     m_storage.handles.clear();
     m_storage.lastUpdateTimes.clear();
     m_storage.edmIndices.clear();
@@ -186,7 +185,6 @@ void AIManager::prepareForStateTransition() {
     size_t entityCount = m_storage.size();
 
     // Clear all storage completely
-    m_storage.hotData.clear();
     m_storage.handles.clear();
     m_storage.lastUpdateTimes.clear();
     m_storage.edmIndices.clear();
@@ -226,7 +224,7 @@ void AIManager::update(float deltaTime) {
 
   // Early exit if no AI-managed entities (e.g., just player with no NPCs)
   // This avoids all setup overhead when there's no behavior work to do
-  if (m_storage.hotData.empty()) {
+  if (m_storage.edmIndices.empty()) {
     return;
   }
 
@@ -605,10 +603,6 @@ void AIManager::assignBehavior(EntityHandle handle,
       BehaviorType oldType = edm.getBehaviorConfigRef(edmIndex).type;
       removeFromIndices(edmIndex, oldType);
 
-      if (!m_storage.hotData[index].active) {
-        m_storage.hotData[index].active = true;
-      }
-
       if (index < m_storage.edmIndices.size()) {
         m_storage.edmIndices[index] = edmIndex;
       }
@@ -625,10 +619,6 @@ void AIManager::assignBehavior(EntityHandle handle,
     // Add new entity
     size_t newIndex = m_storage.size();
 
-    AIEntityData::HotData hotData{};
-    hotData.active = true;
-
-    m_storage.hotData.push_back(hotData);
     m_storage.handles.push_back(handle);
     m_storage.lastUpdateTimes.push_back(0.0f);
     m_storage.edmIndices.push_back(edmIndex);
@@ -687,10 +677,6 @@ void AIManager::assignBehavior(EntityHandle handle,
       BehaviorType oldType = edm.getBehaviorConfigRef(edmIndex).type;
       removeFromIndices(edmIndex, oldType);
 
-      if (!m_storage.hotData[index].active) {
-        m_storage.hotData[index].active = true;
-      }
-
       if (index < m_storage.edmIndices.size()) {
         m_storage.edmIndices[index] = edmIndex;
       }
@@ -705,10 +691,7 @@ void AIManager::assignBehavior(EntityHandle handle,
   } else {
     // Add new entity
     size_t newIndex = m_storage.size();
-    AIEntityData::HotData hotData{};
-    hotData.active = true;
 
-    m_storage.hotData.push_back(hotData);
     m_storage.handles.push_back(handle);
     m_storage.lastUpdateTimes.push_back(0.0f);
     m_storage.edmIndices.push_back(edmIndex);
@@ -743,9 +726,6 @@ void AIManager::unassignBehavior(EntityHandle handle) {
   if (it != m_handleToIndex.end()) {
     size_t index = it->second;
     if (index < m_storage.size()) {
-      // Mark as inactive
-      m_storage.hotData[index].active = false;
-
       // Remove from indices then clear behavior config in EDM
       size_t edmIndex = m_storage.edmIndices[index];
       if (edmIndex != SIZE_MAX) {
@@ -770,8 +750,6 @@ bool AIManager::hasBehavior(EntityHandle handle) const {
 
   auto it = m_handleToIndex.find(handle);
   if (it != m_handleToIndex.end() && it->second < m_storage.size()) {
-    if (!m_storage.hotData[it->second].active) return false;
-
     // Check if entity has a valid behavior config in EDM
     size_t edmIndex = m_storage.edmIndices[it->second];
     if (edmIndex != SIZE_MAX) {
@@ -816,11 +794,9 @@ void AIManager::unregisterEntity(EntityHandle handle) {
 
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
-  // Mark as inactive and remove from indices
+  // Remove from indices and reverse mapping
   auto it = m_handleToIndex.find(handle);
   if (it != m_handleToIndex.end() && it->second < m_storage.size()) {
-    m_storage.hotData[it->second].active = false;
-
     size_t edmIndex = m_storage.edmIndices[it->second];
     if (edmIndex != SIZE_MAX) {
       auto& edm = EntityDataManager::Instance();
@@ -988,8 +964,7 @@ void AIManager::scanGuardsInRadius(const Vector2D &center, float radius,
       continue;
     }
     const size_t storageIdx = m_edmToStorageIndex[edmIdx];
-    if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size() ||
-        !m_storage.hotData[storageIdx].active) {
+    if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size()) {
       continue;
     }
     const auto& hotData = edm.getHotDataByIndex(edmIdx);
@@ -1020,8 +995,7 @@ void AIManager::scanFactionInRadius(uint8_t faction, const Vector2D &center,
       continue;
     }
     const size_t storageIdx = m_edmToStorageIndex[edmIdx];
-    if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size() ||
-        !m_storage.hotData[storageIdx].active) {
+    if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size()) {
       continue;
     }
     const auto& hotData = edm.getHotDataByIndex(edmIdx);
@@ -1091,8 +1065,7 @@ void AIManager::commitQueuedFactionChanges() {
     }
 
     const size_t storageIdx = m_edmToStorageIndex[edmIndex];
-    if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size() ||
-        !m_storage.hotData[storageIdx].active) {
+    if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size()) {
       continue;
     }
 
@@ -1262,8 +1235,7 @@ void AIManager::commitQueuedBehaviorTransitions() {
     }
 
     size_t storageIdx = m_edmToStorageIndex[edmIndex];
-    if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size() ||
-        !m_storage.hotData[storageIdx].active) {
+    if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size()) {
       continue;
     }
 
@@ -1293,7 +1265,6 @@ void AIManager::resetBehaviors() {
   std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
 
   // Clear all data (behaviors are data in EDM, no cleanup needed)
-  m_storage.hotData.clear();
   m_storage.handles.clear();
   m_storage.lastUpdateTimes.clear();
   m_storage.edmIndices.clear();
@@ -1483,10 +1454,7 @@ void AIManager::processBatch(
     }
     size_t storageIdx = m_edmToStorageIndex[edmIdx];
     if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size()) {
-      continue; // Invalid storage index
-    }
-    if (!m_storage.hotData[storageIdx].active) {
-      continue; // Entity marked inactive
+      continue; // No behavior assigned for this entity
     }
 
     if (!edm.hasBehaviorData(edmIdx)) {
