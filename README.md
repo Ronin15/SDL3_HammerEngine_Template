@@ -14,7 +14,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Adaptive Multi-Threading System**
 
-   Hardware-adaptive thread pool with intelligent WorkerBudget batch optimization. Automatically detects logical cores (including SMT/hyperthreading) and reserves one to reduce OS contention. Sequential manager execution gives each system ALL workers during its update window. Priority-based scheduling (5 levels) and adaptive batch sizing help the engine scale cleanly across hardware.
+   Hardware-adaptive thread pool with intelligent WorkerBudget batch optimization. Automatically detects logical cores (including SMT/hyperthreading) and reserves one to reduce OS contention. Sequential manager execution gives each system ALL workers during its update window. Priority-based scheduling and adaptive batch sizing help the engine scale cleanly across hardware.
 
 - **High-Performance AI System**
 
@@ -79,10 +79,6 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 - **Extensibility**: Modular managers, clear APIs, and easy resource and UI customization.
 - **Developer Experience**: Clean code, strict style, automated testing, and comprehensive docs.
 - **Production-Ready Design**: Architecture and tooling designed for serious game development, with comprehensive testing infrastructure and performance validation.
-
----
-
-**Get started building your next 2D game with a foundation that’s fast, safe, and ready for anything.**
 
 ---
 
