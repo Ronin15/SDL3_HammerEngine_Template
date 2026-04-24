@@ -174,6 +174,13 @@ bool EntityDataManager::init() {
         m_sidecarResetHooks.emplace_back(
             [this]() { m_knockback = SparseSidecar<KnockbackData>{}; });
 
+        m_sidecarGrowHooks.emplace_back(
+            [this](size_t n) { m_memoryOverflow.resizeSparse(n); });
+        m_sidecarPerEntityHooks.emplace_back(
+            [this](uint32_t i) { m_memoryOverflow.removeAllFor(i); });
+        m_sidecarResetHooks.emplace_back(
+            [this]() { m_memoryOverflow = SparseSidecar<MemoryOverflow>{}; });
+
         m_initialized.store(true, std::memory_order_release);
         ENTITY_INFO("EntityDataManager initialized successfully");
         return true;
@@ -221,8 +228,6 @@ void EntityDataManager::clearAllEntityStorage() {
     m_waypointSlots.clear();
     m_behaviorData.clear();
     m_memoryData.clear();
-    m_memoryOverflow.clear();
-    m_nextMemoryOverflowId = 1;
 
     // Transient state sidecars — must be reset alongside m_hotData.
     for (auto& hook : m_sidecarResetHooks) hook();
@@ -2988,9 +2993,9 @@ void EntityDataManager::clearMemoryData(size_t index) {
     }
     auto& data = m_memoryData[index];
 
-    // Clean up overflow if present
-    if (data.hasOverflow() && data.overflowId > 0) {
-        m_memoryOverflow.erase(data.overflowId);
+    // Clean up overflow sidecar entry if present
+    if (data.hasOverflow()) {
+        m_memoryOverflow.removeAllFor(static_cast<uint32_t>(index));
     }
 
     data.clear();
@@ -3016,14 +3021,12 @@ void EntityDataManager::addMemory(size_t index, const MemoryEntry& entry, bool u
         data.nextInlineSlot = (data.nextInlineSlot + 1) % NPCMemoryData::INLINE_MEMORY_COUNT;
         data.memoryCount++;
     } else if (useOverflow) {
-        // Allocate overflow if needed
+        // Allocate overflow sidecar entry if needed
         if (!data.hasOverflow()) {
-            data.overflowId = m_nextMemoryOverflowId++;
             data.flags |= NPCMemoryData::FLAG_HAS_OVERFLOW;
-            m_memoryOverflow[data.overflowId] = MemoryOverflow{};
         }
 
-        auto& overflow = m_memoryOverflow[data.overflowId];
+        auto& overflow = m_memoryOverflow.apply(static_cast<uint32_t>(index));
         overflow.extraMemories.push_back(entry);
         overflow.trimToMax();
         data.memoryCount = static_cast<uint16_t>(
@@ -3061,10 +3064,10 @@ void EntityDataManager::findMemoriesByType(size_t index, MemoryType type,
     }
 
     // Search overflow if present
-    if (data.hasOverflow() && data.overflowId > 0) {
-        auto it = m_memoryOverflow.find(data.overflowId);
-        if (it != m_memoryOverflow.end()) {
-            for (const auto& mem : it->second.extraMemories) {
+    if (data.hasOverflow()) {
+        const auto* overflow = m_memoryOverflow.get(static_cast<uint32_t>(index));
+        if (overflow) {
+            for (const auto& mem : overflow->extraMemories) {
                 if (mem.isValid() && mem.type == type) {
                     outMemories.push_back(&mem);
                     if (maxResults > 0 && outMemories.size() >= maxResults) {
@@ -3096,10 +3099,10 @@ void EntityDataManager::findMemoriesOfEntity(size_t index, EntityHandle subject,
     }
 
     // Search overflow
-    if (data.hasOverflow() && data.overflowId > 0) {
-        auto it = m_memoryOverflow.find(data.overflowId);
-        if (it != m_memoryOverflow.end()) {
-            for (const auto& mem : it->second.extraMemories) {
+    if (data.hasOverflow()) {
+        const auto* overflow = m_memoryOverflow.get(static_cast<uint32_t>(index));
+        if (overflow) {
+            for (const auto& mem : overflow->extraMemories) {
                 if (mem.isValid() && mem.subject == subject) {
                     outMemories.push_back(&mem);
                 }
