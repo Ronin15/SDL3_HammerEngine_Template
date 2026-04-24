@@ -1546,6 +1546,11 @@ void AIManager::processBatch(
           const float scale = MAX_KICK_SPEED / std::sqrt(magSq);
           kickX *= scale;
           kickY *= scale;
+          // Float rounding on `x * (cap/x)` can leave |kick*| a few ULPs above
+          // the cap (e.g. 250.000015). Clamp components defensively so the
+          // post-clamp magnitude is bounded by MAX_KICK_SPEED on either axis.
+          kickX = std::clamp(kickX, -MAX_KICK_SPEED, MAX_KICK_SPEED);
+          kickY = std::clamp(kickY, -MAX_KICK_SPEED, MAX_KICK_SPEED);
         }
         transform.velocity.setX(kickX);
         transform.velocity.setY(kickY);
