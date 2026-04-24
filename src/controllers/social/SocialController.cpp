@@ -231,10 +231,12 @@ TradeResult SocialController::executeBuy() {
     }
 
     const auto& item = m_merchantItems[m_selectedMerchantIndex];
-    TradeResult result = tryBuy(m_merchantHandle, item.handle, m_quantity);
+    const auto itemHandle = item.handle;
+    const std::string itemName = item.name;
+    TradeResult result = tryBuy(m_merchantHandle, itemHandle, m_quantity);
 
     if (result == TradeResult::Success) {
-        float price = calculateBuyPrice(m_merchantHandle, item.handle, m_quantity);
+        float price = calculateBuyPrice(m_merchantHandle, itemHandle, m_quantity);
         int savedQty = m_quantity;
 
         refreshMerchantItems();
@@ -245,11 +247,11 @@ TradeResult SocialController::executeBuy() {
         m_priceDisplayDirty = true;
         rebuildTradeListsUI();
         updateSelectionHighlight();
-        SOCIAL_INFO(std::format("Bought {} x{}", item.name, savedQty));
+        SOCIAL_INFO(std::format("Bought {} x{}", itemName, savedQty));
 
         UIManager::Instance().addEventLogEntry(
             "gameplay_event_log",
-            std::format("Bought {} x{} for {:.0f} gold", item.name, savedQty, price));
+            std::format("Bought {} x{} for {:.0f} gold", itemName, savedQty, price));
     }
 
     return result;
@@ -265,10 +267,12 @@ TradeResult SocialController::executeSell() {
     }
 
     const auto& item = m_playerItems[m_selectedPlayerIndex];
-    TradeResult result = trySell(m_merchantHandle, item.handle, m_quantity);
+    const auto itemHandle = item.handle;
+    const std::string itemName = item.name;
+    TradeResult result = trySell(m_merchantHandle, itemHandle, m_quantity);
 
     if (result == TradeResult::Success) {
-        float price = calculateSellPrice(m_merchantHandle, item.handle, m_quantity);
+        float price = calculateSellPrice(m_merchantHandle, itemHandle, m_quantity);
         int savedQty = m_quantity;
 
         refreshMerchantItems();
@@ -279,11 +283,11 @@ TradeResult SocialController::executeSell() {
         m_priceDisplayDirty = true;
         rebuildTradeListsUI();
         updateSelectionHighlight();
-        SOCIAL_INFO(std::format("Sold {} x{}", item.name, savedQty));
+        SOCIAL_INFO(std::format("Sold {} x{}", itemName, savedQty));
 
         UIManager::Instance().addEventLogEntry(
             "gameplay_event_log",
-            std::format("Sold {} x{} for {:.0f} gold", item.name, savedQty, price));
+            std::format("Sold {} x{} for {:.0f} gold", itemName, savedQty, price));
     }
 
     return result;

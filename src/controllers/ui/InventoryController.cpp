@@ -4,7 +4,6 @@
  */
 
 #include "controllers/ui/InventoryController.hpp"
-#include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
 #include "entities/Resource.hpp"
@@ -123,8 +122,7 @@ void InventoryController::initializeInventoryUI() {
     }
 
     auto& ui = UIManager::Instance();
-    const auto& gameEngine = GameEngine::Instance();
-    const int windowWidth = gameEngine.getWidthInPixels();
+    const int windowWidth = ui.getWidthInPixels();
     constexpr int childWidth = INVENTORY_PANEL_WIDTH - (INVENTORY_CHILD_INSET * 2);
     constexpr int inventoryHeight =
         INVENTORY_HEADER_HEIGHT + INVENTORY_GRID_HEIGHT + INVENTORY_BOTTOM_PADDING;
