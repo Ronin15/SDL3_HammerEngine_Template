@@ -19,6 +19,11 @@
 #include "gpu/GPUTypes.hpp"
 #include "gpu/SpriteBatch.hpp"
 
+SDL_GPUTexture* UIGPUDrawCommand::resolve() const noexcept
+{
+  return textureOwner ? textureOwner->get() : texture;
+}
+
 bool UIManager::init() {
   if (m_isShutdown) {
     return false;
@@ -3022,7 +3027,6 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
     UIGPUDrawCommand cmd;
     cmd.type = UIGPUDrawCommand::Type::Image;
     cmd.textureOwner = textureData->texture;
-    cmd.texture = textureData->texture->get();
     cmd.vertexOffset = uiOffset;
     cmd.vertexCount = 6;
     m_gpuImageCommands.push_back(cmd);
@@ -3606,8 +3610,7 @@ void UIManager::renderGPU(VoidLight::GPURenderer& gpuRenderer, SDL_GPURenderPass
     gpuRenderer.pushViewProjection(pass, orthoMatrix);
 
     for (const auto& cmd : m_gpuImageCommands) {
-      SDL_GPUTexture* imageTexture =
-          cmd.textureOwner ? cmd.textureOwner->get() : cmd.texture;
+      SDL_GPUTexture* imageTexture = cmd.resolve();
       if (!imageTexture) {
         continue;
       }
@@ -3629,8 +3632,7 @@ void UIManager::renderGPU(VoidLight::GPURenderer& gpuRenderer, SDL_GPURenderPass
     SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
 
     for (const auto& cmd : m_gpuTextCommands) {
-      SDL_GPUTexture* textTexture =
-          cmd.textureOwner ? cmd.textureOwner->get() : cmd.texture;
+      SDL_GPUTexture* textTexture = cmd.resolve();
       if (!textTexture) {
         continue;
       }

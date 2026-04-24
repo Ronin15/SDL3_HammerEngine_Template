@@ -127,6 +127,9 @@ public:
   bool removeGold(int amount);
   [[nodiscard]] bool hasGold(int amount) const;
 
+  // Cached gold resource handle — avoids repeated ResourceTemplateManager lookups
+  [[nodiscard]] VoidLight::ResourceHandle getGoldHandle() const noexcept { return m_goldHandle; }
+
 private:
   void handleMovementInput(float deltaTime);
   void handleStateTransitions();

@@ -105,6 +105,8 @@ struct KnockbackData
     float   impulseX{0.0f};         // 4 bytes: knockback impulse X component
     float   impulseY{0.0f};         // 4 bytes: knockback impulse Y component
     uint8_t framesRemaining{0};     // 1 byte:  remaining fixed-timestep frames
+    bool    justApplied{false};     // 1 byte:  true on the first tick after a hit is applied;
+                                    //           cleared by AIManager after consuming the REPLACE path
 };
 
 /**

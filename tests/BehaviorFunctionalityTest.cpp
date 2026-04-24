@@ -446,13 +446,38 @@ BOOST_AUTO_TEST_CASE(TestKnockbackOverridesChaseMovement) {
 
     const float hitStartX = target->getPosition().getX();
 
+    // Frame 1: REPLACE path — impulse * KICK_MULTIPLIER overrides chase velocity.
+    // KICK_MULTIPLIER=6.0, MAX_KICK_SPEED=250.0 (AIManager.cpp ~line 1564-1568).
+    // Knockback vector was (60,0), mass defaults to 1.0 → impulseX = 60 * 1.0 = 60.
+    // Kick = 60 * 6 = 360, clamped to MAX_KICK_SPEED=250. Expect velocity in (0, 250].
     updateAI(0.016f, attacker->getPosition());
 
     const float postHitVelocityX = target->getVelocity().getX();
     const float postHitX = target->getPosition().getX();
 
+    // Frame-1 velocity must be positive (knocked right, away from attacker at x=500)
+    // and within the expected clamped band from KICK_MULTIPLIER / MAX_KICK_SPEED.
     BOOST_CHECK_GT(postHitVelocityX, 0.0f);
+    BOOST_CHECK_LE(postHitVelocityX, 250.0f); // capped at MAX_KICK_SPEED
     BOOST_CHECK_GT(postHitX, hitStartX);
+
+    // Frame 2: ADD path — decayed impulse blends on top of chase velocity.
+    // Decay factor is Knockback::DECAY = 0.7 per frame.
+    // Frame-2 impulse = 60 * 0.7 = 42 (or clamped equivalent); net X may go negative
+    // as chase resumes, but the decayed impulse reduces the magnitude vs frame-1.
+    const float frame2StartX = target->getPosition().getX();
+    updateAI(0.016f, attacker->getPosition());
+
+    const float frame2VelocityX = target->getVelocity().getX();
+    const float frame2X = target->getPosition().getX();
+
+    // Decayed impulse on frame 2 must have smaller magnitude than the clamped frame-1 kick.
+    BOOST_CHECK_LT(std::abs(frame2VelocityX), postHitVelocityX);
+
+    // Position must still have advanced rightward on frame 1 (already checked above);
+    // frame 2 position advances in direction of the blended velocity.
+    (void)frame2StartX;
+    (void)frame2X;
 
     AIManager::Instance().unassignBehavior(targetHandle);
 }

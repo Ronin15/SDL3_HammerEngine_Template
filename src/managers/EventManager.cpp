@@ -953,6 +953,7 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
   kb.impulseX += knockback.getX() * knockbackScale;
   kb.impulseY += knockback.getY() * knockbackScale;
   kb.framesRemaining = static_cast<uint8_t>(Knockback::FRAMES);
+  kb.justApplied = true;
 
   if (attackerHandle.isValid() && targetIsNPC) {
     edm.recordCombatEvent(targetIdx, attackerHandle, targetHandle,

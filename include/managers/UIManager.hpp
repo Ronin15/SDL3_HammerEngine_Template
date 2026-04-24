@@ -34,11 +34,19 @@ class GPUTexture;
 struct UIGPUDrawCommand {
     enum class Type { Rect, Text, Image };
     Type type{Type::Rect};
+    // textureOwner: lifetime-managing handle for manager-owned GPU textures (Image commands).
     std::shared_ptr<VoidLight::GPUTexture> textureOwner{};
-    SDL_GPUTexture* texture{nullptr};  // For text/image
+    // texture: non-owning pointer for externally-managed textures (e.g. SDL3_ttf atlas, Text commands).
+    // Only stored raw here because SDL3_ttf owns the atlas lifetime; do NOT use for Image commands.
+    // Materialize the final SDL_GPUTexture* via resolve() only at the GPU API submission boundary.
+    SDL_GPUTexture* texture{nullptr};
     TTF_ImageType imageType{TTF_IMAGE_INVALID};
     uint32_t vertexOffset{0};
     uint32_t vertexCount{0};
+
+    // Returns the GPU texture pointer for submission. Prefers the owned handle; falls back to
+    // the raw pointer for externally-managed textures (Text commands via SDL3_ttf).
+    [[nodiscard]] SDL_GPUTexture* resolve() const noexcept;
 };
 
 // GPU command buffer capacities (avoids per-frame reallocations)

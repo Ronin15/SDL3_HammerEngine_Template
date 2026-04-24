@@ -9,7 +9,18 @@
 #include <fstream>
 #include <string>
 #include <vector>
-#include <filesystem>
+
+// Resolve a repo-relative path to an absolute path using the compile-time
+// project root injected by CMake. Allows the test binary to be run from any
+// working directory (not just the repo root).
+#ifndef VOIDLIGHT_PROJECT_SOURCE_DIR
+#  define VOIDLIGHT_PROJECT_SOURCE_DIR "."
+#endif
+
+static std::string sourcePath(const char* repoRelative)
+{
+    return std::string(VOIDLIGHT_PROJECT_SOURCE_DIR) + "/" + repoRelative;
+}
 
 // ============================================================================
 // Helper Functions
@@ -130,8 +141,8 @@ BOOST_AUTO_TEST_SUITE(GPURenderPipelineComplianceTests)
 // This must only happen in GameEngine::present() for unified render path
 
 BOOST_AUTO_TEST_CASE(TestOnlyGameEngineCallsEndFrame) {
-    const std::string gameEngineFile = "src/core/GameEngine.cpp";
-    const std::string gpuRendererFile = "src/gpu/GPURenderer.cpp";
+    const std::string gameEngineFile = sourcePath("src/core/GameEngine.cpp");
+    const std::string gpuRendererFile = sourcePath("src/gpu/GPURenderer.cpp");
 
     bool hasPresentMethod = fileContainsPattern(gameEngineFile, "void GameEngine::present()");
     bool callsEndFrame = fileContainsPattern(gameEngineFile, "GPURenderer::Instance().endFrame()");
@@ -140,18 +151,18 @@ BOOST_AUTO_TEST_CASE(TestOnlyGameEngineCallsEndFrame) {
 
     // Verify game states never end the frame directly
     std::vector<std::string> gameStateFiles = {
-        "src/gameStates/AIDemoState.cpp",
-        "src/gameStates/AdvancedAIDemoState.cpp",
-        "src/gameStates/OverlayDemoState.cpp",
-        "src/gameStates/LogoState.cpp",
-        "src/gameStates/GameOverState.cpp",
-        "src/gameStates/MainMenuState.cpp",
-        "src/gameStates/GamePlayState.cpp",
-        "src/gameStates/PauseState.cpp",
-        "src/gameStates/SettingsMenuState.cpp",
-        "src/gameStates/LoadingState.cpp",
-        "src/gameStates/UIDemoState.cpp",
-        "src/gameStates/EventDemoState.cpp"
+        sourcePath("src/gameStates/AIDemoState.cpp"),
+        sourcePath("src/gameStates/AdvancedAIDemoState.cpp"),
+        sourcePath("src/gameStates/OverlayDemoState.cpp"),
+        sourcePath("src/gameStates/LogoState.cpp"),
+        sourcePath("src/gameStates/GameOverState.cpp"),
+        sourcePath("src/gameStates/MainMenuState.cpp"),
+        sourcePath("src/gameStates/GamePlayState.cpp"),
+        sourcePath("src/gameStates/PauseState.cpp"),
+        sourcePath("src/gameStates/SettingsMenuState.cpp"),
+        sourcePath("src/gameStates/LoadingState.cpp"),
+        sourcePath("src/gameStates/UIDemoState.cpp"),
+        sourcePath("src/gameStates/EventDemoState.cpp")
     };
 
     for (const auto& file : gameStateFiles) {
@@ -169,25 +180,25 @@ BOOST_AUTO_TEST_CASE(TestOnlyGameEngineCallsEndFrame) {
 // State-side scene recording helpers must not acquire passes themselves
 
 BOOST_AUTO_TEST_CASE(TestOnlyGameEngineBeginsScenePass) {
-    const std::string gameEngineFile = "src/core/GameEngine.cpp";
+    const std::string gameEngineFile = sourcePath("src/core/GameEngine.cpp");
 
     bool hasScenePass = fileContainsPattern(gameEngineFile, "gpuRenderer.beginScenePass()");
     BOOST_CHECK(hasScenePass);
 
     // Verify GameStates NEVER begin the pass directly
     std::vector<std::string> gameStateFiles = {
-        "src/gameStates/AIDemoState.cpp",
-        "src/gameStates/AdvancedAIDemoState.cpp",
-        "src/gameStates/OverlayDemoState.cpp",
-        "src/gameStates/LogoState.cpp",
-        "src/gameStates/GameOverState.cpp",
-        "src/gameStates/MainMenuState.cpp",
-        "src/gameStates/GamePlayState.cpp",
-        "src/gameStates/PauseState.cpp",
-        "src/gameStates/SettingsMenuState.cpp",
-        "src/gameStates/LoadingState.cpp",
-        "src/gameStates/UIDemoState.cpp",
-        "src/gameStates/EventDemoState.cpp"
+        sourcePath("src/gameStates/AIDemoState.cpp"),
+        sourcePath("src/gameStates/AdvancedAIDemoState.cpp"),
+        sourcePath("src/gameStates/OverlayDemoState.cpp"),
+        sourcePath("src/gameStates/LogoState.cpp"),
+        sourcePath("src/gameStates/GameOverState.cpp"),
+        sourcePath("src/gameStates/MainMenuState.cpp"),
+        sourcePath("src/gameStates/GamePlayState.cpp"),
+        sourcePath("src/gameStates/PauseState.cpp"),
+        sourcePath("src/gameStates/SettingsMenuState.cpp"),
+        sourcePath("src/gameStates/LoadingState.cpp"),
+        sourcePath("src/gameStates/UIDemoState.cpp"),
+        sourcePath("src/gameStates/EventDemoState.cpp")
     };
 
     for (const auto& file : gameStateFiles) {
@@ -202,7 +213,7 @@ BOOST_AUTO_TEST_CASE(TestOnlyGameEngineBeginsScenePass) {
 // LoadingState must use ThreadSystem for async loading, not blocking loops
 
 BOOST_AUTO_TEST_CASE(TestLoadingStateAsyncPattern) {
-    const std::string loadingStateFile = "src/gameStates/LoadingState.cpp";
+    const std::string loadingStateFile = sourcePath("src/gameStates/LoadingState.cpp");
 
     // Verify LoadingState uses ThreadSystem for async operations
     bool usesThreadSystem = fileContainsPattern(loadingStateFile, "ThreadSystem");
@@ -245,7 +256,7 @@ BOOST_AUTO_TEST_CASE(TestLoadingStateAsyncPattern) {
 // LoadingState should use GPU hooks and avoid legacy present/clear calls
 
 BOOST_AUTO_TEST_CASE(TestLoadingStateRenderPattern) {
-    const std::string loadingStateFile = "src/gameStates/LoadingState.cpp";
+    const std::string loadingStateFile = sourcePath("src/gameStates/LoadingState.cpp");
 
     BOOST_CHECK(fileContainsPattern(loadingStateFile, "LoadingState::recordGPUVertices"));
     BOOST_CHECK(fileContainsPattern(loadingStateFile, "LoadingState::renderGPUUI"));
@@ -268,7 +279,7 @@ BOOST_AUTO_TEST_SUITE(RenderingFlowTests)
 // ----------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(TestGameEngineCallsGameStateManager) {
-    const std::string gameEngineFile = "src/core/GameEngine.cpp";
+    const std::string gameEngineFile = sourcePath("src/core/GameEngine.cpp");
 
     // Verify GameEngine::render() delegates to GameStateManager
     bool callsRecord = fileContainsPattern(gameEngineFile, "mp_gameStateManager->recordGPUVertices(");
@@ -285,7 +296,7 @@ BOOST_AUTO_TEST_CASE(TestGameEngineCallsGameStateManager) {
 // ----------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(TestGameStateManagerCallsGameState) {
-    const std::string gsmFile = "src/managers/GameStateManager.cpp";
+    const std::string gsmFile = sourcePath("src/managers/GameStateManager.cpp");
 
     bool callsRecord = fileContainsPattern(gsmFile, "->recordGPUVertices(");
     bool callsScene = fileContainsPattern(gsmFile, "->renderGPUScene(");
@@ -303,12 +314,12 @@ BOOST_AUTO_TEST_CASE(TestGameStateManagerCallsGameState) {
 
 BOOST_AUTO_TEST_CASE(TestCompleteRenderingFlow) {
     // Step 1: GameEngine::render() exists
-    const std::string gameEngineFile = "src/core/GameEngine.cpp";
+    const std::string gameEngineFile = sourcePath("src/core/GameEngine.cpp");
     bool hasGameEngineRender = fileContainsPattern(gameEngineFile, "void GameEngine::render()");
     BOOST_CHECK(hasGameEngineRender);
 
     // Step 2: GameStateManager GPU entrypoints exist
-    const std::string gsmFile = "src/managers/GameStateManager.cpp";
+    const std::string gsmFile = sourcePath("src/managers/GameStateManager.cpp");
     bool hasGSMRecord = fileContainsPattern(gsmFile, "void GameStateManager::recordGPUVertices(");
     bool hasGSMScene = fileContainsPattern(gsmFile, "void GameStateManager::renderGPUScene(");
     bool hasGSMUI = fileContainsPattern(gsmFile, "void GameStateManager::renderGPUUI(");
@@ -318,14 +329,14 @@ BOOST_AUTO_TEST_CASE(TestCompleteRenderingFlow) {
 
     // Step 3: At least one GameState implements GPU rendering hooks
     std::vector<std::string> gameStateFiles = {
-        "src/gameStates/AIDemoState.cpp",
-        "src/gameStates/AdvancedAIDemoState.cpp",
-        "src/gameStates/MainMenuState.cpp",
-        "src/gameStates/GamePlayState.cpp",
-        "src/gameStates/LoadingState.cpp",
-        "src/gameStates/OverlayDemoState.cpp",
-        "src/gameStates/EventDemoState.cpp",
-        "src/gameStates/LogoState.cpp"
+        sourcePath("src/gameStates/AIDemoState.cpp"),
+        sourcePath("src/gameStates/AdvancedAIDemoState.cpp"),
+        sourcePath("src/gameStates/MainMenuState.cpp"),
+        sourcePath("src/gameStates/GamePlayState.cpp"),
+        sourcePath("src/gameStates/LoadingState.cpp"),
+        sourcePath("src/gameStates/OverlayDemoState.cpp"),
+        sourcePath("src/gameStates/EventDemoState.cpp"),
+        sourcePath("src/gameStates/LogoState.cpp")
     };
 
     bool foundStateRender = false;
@@ -341,8 +352,8 @@ BOOST_AUTO_TEST_CASE(TestCompleteRenderingFlow) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGPUVertexRecordingPrecedesScenePassAndSwapchainIsAcquiredInScenePass) {
-    const std::string gameEngineFile = "src/core/GameEngine.cpp";
-    const std::string gpuRendererFile = "src/gpu/GPURenderer.cpp";
+    const std::string gameEngineFile = sourcePath("src/core/GameEngine.cpp");
+    const std::string gpuRendererFile = sourcePath("src/gpu/GPURenderer.cpp");
 
     std::ifstream gameEngineStream(gameEngineFile);
     BOOST_REQUIRE(gameEngineStream.is_open());
@@ -375,7 +386,7 @@ BOOST_AUTO_TEST_CASE(TestGPUVertexRecordingPrecedesScenePassAndSwapchainIsAcquir
 }
 
 BOOST_AUTO_TEST_CASE(TestGamePlayStateGPUResourceDrawOrderMatchesSDLPath) {
-    const std::string gamePlayFile = "src/gameStates/GamePlayState.cpp";
+    const std::string gamePlayFile = sourcePath("src/gameStates/GamePlayState.cpp");
 
     std::ifstream file(gamePlayFile);
     BOOST_REQUIRE(file.is_open());
@@ -406,7 +417,7 @@ BOOST_AUTO_TEST_SUITE(RenderingBestPracticesTests)
 // Multiple end-frame paths per frame hurt performance
 
 BOOST_AUTO_TEST_CASE(TestNoDoublePresentPattern) {
-    const std::string gameEngineFile = "src/core/GameEngine.cpp";
+    const std::string gameEngineFile = sourcePath("src/core/GameEngine.cpp");
 
     int presentCount = countPatternInFile(gameEngineFile, "endFrame(");
 
@@ -420,7 +431,7 @@ BOOST_AUTO_TEST_CASE(TestNoDoublePresentPattern) {
 // Each frame should be self-contained for deterministic rendering
 
 BOOST_AUTO_TEST_CASE(TestRenderStateIsolation) {
-    const std::string gameEngineFile = "src/core/GameEngine.cpp";
+    const std::string gameEngineFile = sourcePath("src/core/GameEngine.cpp");
 
     bool hasScenePass = fileContainsPattern(gameEngineFile, "gpuRenderer.beginScenePass()");
     BOOST_CHECK_MESSAGE(hasScenePass, "GameEngine::render() must begin the GPU scene pass");
@@ -430,7 +441,7 @@ BOOST_AUTO_TEST_CASE(TestRenderStateIsolation) {
 }
 
 BOOST_AUTO_TEST_CASE(TestUIRecordClearsPerFrameGPUCommands) {
-    const std::string uiManagerFile = "src/managers/UIManager.cpp";
+    const std::string uiManagerFile = sourcePath("src/managers/UIManager.cpp");
     const std::string recordFunction = "void UIManager::recordGPUVertices";
     const std::string clearFunction = "void UIManager::clearGPUCommandBuffers";
 
@@ -456,9 +467,9 @@ BOOST_AUTO_TEST_CASE(TestUIRecordClearsPerFrameGPUCommands) {
 
 BOOST_AUTO_TEST_CASE(TestNoMidFramePresentInManagers) {
     std::vector<std::string> managerFiles = {
-        "src/managers/UIManager.cpp",
-        "src/managers/ParticleManager.cpp",
-        "src/managers/WorldManager.cpp"
+        sourcePath("src/managers/UIManager.cpp"),
+        sourcePath("src/managers/ParticleManager.cpp"),
+        sourcePath("src/managers/WorldManager.cpp")
     };
 
     for (const auto& file : managerFiles) {
@@ -483,15 +494,15 @@ BOOST_AUTO_TEST_SUITE(DeterministicRenderingTests)
 
 BOOST_AUTO_TEST_CASE(TestNoRandomInRenderMethods) {
     std::vector<std::string> gameStateFiles = {
-        "src/gameStates/AIDemoState.cpp",
-        "src/gameStates/AdvancedAIDemoState.cpp",
-        "src/gameStates/GameOverState.cpp",
-        "src/gameStates/MainMenuState.cpp",
-        "src/gameStates/GamePlayState.cpp",
-        "src/gameStates/PauseState.cpp",
-        "src/gameStates/SettingsMenuState.cpp",
-        "src/gameStates/OverlayDemoState.cpp",
-        "src/gameStates/LogoState.cpp"
+        sourcePath("src/gameStates/AIDemoState.cpp"),
+        sourcePath("src/gameStates/AdvancedAIDemoState.cpp"),
+        sourcePath("src/gameStates/GameOverState.cpp"),
+        sourcePath("src/gameStates/MainMenuState.cpp"),
+        sourcePath("src/gameStates/GamePlayState.cpp"),
+        sourcePath("src/gameStates/PauseState.cpp"),
+        sourcePath("src/gameStates/SettingsMenuState.cpp"),
+        sourcePath("src/gameStates/OverlayDemoState.cpp"),
+        sourcePath("src/gameStates/LogoState.cpp")
     };
 
     for (const auto& file : gameStateFiles) {
@@ -534,8 +545,8 @@ BOOST_AUTO_TEST_CASE(TestNoRandomInRenderMethods) {
 // Replaces old GameLoop buffer management (removed in commit 792501b)
 
 BOOST_AUTO_TEST_CASE(TestTimestepManagerPattern) {
-    const std::string gameEngineHpp = "include/core/GameEngine.hpp";
-    const std::string hammerMainCpp = "src/core/VoidLightMain.cpp";
+    const std::string gameEngineHpp = sourcePath("include/core/GameEngine.hpp");
+    const std::string hammerMainCpp = sourcePath("src/core/VoidLightMain.cpp");
 
     // GameEngine must have TimestepManager
     BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineHpp, "TimestepManager"),
@@ -555,7 +566,7 @@ BOOST_AUTO_TEST_CASE(TestTimestepManagerPattern) {
 // ----------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(TestVSyncConfiguration) {
-    const std::string gameEngineCpp = "src/core/GameEngine.cpp";
+    const std::string gameEngineCpp = sourcePath("src/core/GameEngine.cpp");
 
     BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "SDL_SetGPUSwapchainParameters"),
         "GameEngine should configure VSync at runtime via SDL_SetGPUSwapchainParameters");
@@ -566,7 +577,7 @@ BOOST_AUTO_TEST_CASE(TestVSyncConfiguration) {
 // ----------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(TestSDLPerformanceHints) {
-    const std::string gameEngineCpp = "src/core/GameEngine.cpp";
+    const std::string gameEngineCpp = sourcePath("src/core/GameEngine.cpp");
 
     // Verify render batching hint (cross-platform performance optimization)
     BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "SDL_RENDER_BATCHING"),
@@ -585,8 +596,8 @@ BOOST_AUTO_TEST_CASE(TestSDLPerformanceHints) {
 // ----------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(TestSoftwareFrameLimitingFallback) {
-    const std::string timestepCpp = "src/core/TimestepManager.cpp";
-    const std::string gameEngineCpp = "src/core/GameEngine.cpp";
+    const std::string timestepCpp = sourcePath("src/core/TimestepManager.cpp");
+    const std::string gameEngineCpp = sourcePath("src/core/GameEngine.cpp");
 
     // Verify software frame limiting exists as VSync fallback
     BOOST_CHECK_MESSAGE(fileContainsPattern(timestepCpp, "preciseFrameWait"),
@@ -604,8 +615,8 @@ BOOST_AUTO_TEST_CASE(TestSoftwareFrameLimitingFallback) {
 // ----------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(TestInterpolationAlphaForSmoothRendering) {
-    const std::string gameEngineCpp = "src/core/GameEngine.cpp";
-    const std::string timestepCpp = "src/core/TimestepManager.cpp";
+    const std::string gameEngineCpp = sourcePath("src/core/GameEngine.cpp");
+    const std::string timestepCpp = sourcePath("src/core/TimestepManager.cpp");
 
     // Verify interpolation alpha is used for smooth rendering
     BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "getInterpolationAlpha"),

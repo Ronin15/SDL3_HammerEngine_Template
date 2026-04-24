@@ -1567,8 +1567,9 @@ void AIManager::processBatch(
       // impulse direction is preserved; only the magnitude is clamped.
       constexpr float MAX_KICK_SPEED = 250.0f;
       constexpr float MAX_KICK_SPEED_SQ = MAX_KICK_SPEED * MAX_KICK_SPEED;
-      if (kb->framesRemaining == static_cast<uint8_t>(Knockback::FRAMES))
+      if (kb->justApplied)
       {
+        kb->justApplied = false;
         float kickX = kb->impulseX * KICK_MULTIPLIER;
         float kickY = kb->impulseY * KICK_MULTIPLIER;
         const float magSq = kickX * kickX + kickY * kickY;

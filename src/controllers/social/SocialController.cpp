@@ -1063,5 +1063,9 @@ void SocialController::executeActiveTrade() {
 }
 
 VoidLight::ResourceHandle SocialController::getGoldHandle() const {
-    return ResourceTemplateManager::Instance().getHandleById("gold_coins");
+    auto player = mp_player.lock();
+    if (!player) {
+        return VoidLight::ResourceHandle{};
+    }
+    return player->getGoldHandle();
 }

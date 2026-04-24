@@ -277,6 +277,10 @@ foreach(test_name ${ALL_TESTS})
     add_executable(${test_name} ${test_source})
     target_link_libraries(${test_name} PRIVATE VoidLightLib Boost::unit_test_framework)
     target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
+    if(${test_name} STREQUAL "rendering_pipeline_tests")
+        target_compile_definitions(${test_name} PRIVATE
+            VOIDLIGHT_PROJECT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    endif()
 endforeach()
 
 # --- Tests needing EventManagerTestAccess ---
