@@ -54,6 +54,8 @@ if [ -f "$PROJECT_ROOT/compile_commands.json" ]; then
         --project="$PROJECT_ROOT/compile_commands.json" \
         --file-filter="*/src/*" \
         --file-filter="*/include/*" \
+        -i"$PROJECT_ROOT/build" \
+        -i"$PROJECT_ROOT/build/*" \
         -j$JOBS \
         --enable=warning,style,performance,portability \
         --library=std,posix \

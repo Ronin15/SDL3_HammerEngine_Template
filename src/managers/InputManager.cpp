@@ -359,20 +359,20 @@ void InputManager::captureRebind()
         // Triggers are positive-only axes.
         const bool havePrevAxis = !m_prevGamepadAxisPos.empty();
         struct AxisEntry {
-            SDL_GamepadAxis axis;
             size_t positiveIdx;
-            bool supportsNegative;
             size_t negativeIdx;
+            SDL_GamepadAxis axis;
+            bool supportsNegative;
         };
         AxisEntry axes[] = {
-            {SDL_GAMEPAD_AXIS_LEFTX,         0, true,  0},
-            {SDL_GAMEPAD_AXIS_LEFTY,         1, true,  1},
-            {SDL_GAMEPAD_AXIS_RIGHTX,        2, true,  2},
-            {SDL_GAMEPAD_AXIS_RIGHTY,        3, true,  3},
-            {SDL_GAMEPAD_AXIS_LEFT_TRIGGER,  4, false, 0},
-            {SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, 5, false, 0},
+            {0, 0, SDL_GAMEPAD_AXIS_LEFTX,         true},
+            {1, 1, SDL_GAMEPAD_AXIS_LEFTY,         true},
+            {2, 2, SDL_GAMEPAD_AXIS_RIGHTX,        true},
+            {3, 3, SDL_GAMEPAD_AXIS_RIGHTY,        true},
+            {4, 0, SDL_GAMEPAD_AXIS_LEFT_TRIGGER,  false},
+            {5, 0, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, false},
         };
-        for (auto [axis, positiveIdx, supportsNegative, negativeIdx] : axes) {
+        for (auto [positiveIdx, negativeIdx, axis, supportsNegative] : axes) {
             const float val = getGamepadAxisValue(0, axis);
             if (val > 0.5f) {
                 bool prev = havePrevAxis && m_prevGamepadAxisPos[0][positiveIdx];
