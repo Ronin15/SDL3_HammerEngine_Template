@@ -158,14 +158,18 @@ public:
     }
 
     // Wall-time-bounded benchmark. Returns median per-frame ms across NUM_MEASUREMENT_RUNS passes.
-    // Each pass runs aim.update() until at least targetWallMs has elapsed (and at least
+    // Each pass runs aim.update() until at least TARGET_WALL_MS has elapsed (and at least
     // MIN_ITERATIONS have run, so noise can't run away at very high entity counts).
-    // Sanity-checks that AIManager actually executed `expectedExecutions` behaviors per pass.
+    // Sanity-checks that AIManager actually executed expected behavior count per pass.
+    //
+    // TARGET_WALL_MS tuned for ctest cadence: 30 ms per pass × 5 runs × ~7 entity counts
+    // ≈ 1 s of actual measurement time (plus warmup + setup). 30 ms is well above timer
+    // resolution noise (microseconds) without ballooning regular regression runs.
     static constexpr int NUM_MEASUREMENT_RUNS = 5;
     static constexpr int WARMUP_FRAMES = 100;
     static constexpr int MIN_ITERATIONS = 50;
-    static constexpr int MAX_ITERATIONS = 200000; // safety cap
-    static constexpr double TARGET_WALL_MS = 250.0;
+    static constexpr int MAX_ITERATIONS = 50000; // safety cap (matches ~30ms at 0.0006ms/frame)
+    static constexpr double TARGET_WALL_MS = 30.0;
 
     double runBenchmark(size_t expectedExecutionsPerFrame) {
         auto& aim = AIManager::Instance();
@@ -282,7 +286,10 @@ BOOST_AUTO_TEST_CASE(AIEntityScaling)
               << std::setw(12) << "Threading"
               << std::setw(10) << "Status\n";
 
-    std::vector<size_t> entityCounts = {100, 500, 1000, 2000, 5000, 10000, 25000, 50000, 100000};
+    // Entity counts sized for ctest cadence. 25K covers the multi-threaded engagement point
+    // (WorkerBudget switches single→multi around there). 50K/100K are stress numbers — run
+    // those manually if needed; they add ~5–15 s of setup time each that ctest shouldn't pay.
+    std::vector<size_t> entityCounts = {100, 500, 1000, 2000, 5000, 10000, 25000};
     auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
     // Track best performance for summary
