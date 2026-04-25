@@ -157,14 +157,17 @@ public:
         return EntityDataManager::Instance().getActiveIndices().size();
     }
 
-    // Run benchmark with median-of-N-runs for stable results.
-    // Returns median time per iteration in ms.
-    // Uses multiple measurement passes to reject outliers from CPU jitter,
-    // thermal fluctuation, and cache effects.
+    // Wall-time-bounded benchmark. Returns median per-frame ms across NUM_MEASUREMENT_RUNS passes.
+    // Each pass runs aim.update() until at least targetWallMs has elapsed (and at least
+    // MIN_ITERATIONS have run, so noise can't run away at very high entity counts).
+    // Sanity-checks that AIManager actually executed `expectedExecutions` behaviors per pass.
     static constexpr int NUM_MEASUREMENT_RUNS = 5;
     static constexpr int WARMUP_FRAMES = 100;
+    static constexpr int MIN_ITERATIONS = 50;
+    static constexpr int MAX_ITERATIONS = 200000; // safety cap
+    static constexpr double TARGET_WALL_MS = 250.0;
 
-    double runBenchmark(int iterations) {
+    double runBenchmark(size_t expectedExecutionsPerFrame) {
         auto& aim = AIManager::Instance();
 
         // Extended warmup for WorkerBudget hill-climb convergence
@@ -175,18 +178,33 @@ public:
             aim.update(0.016f);
         }
 
-        // Multiple measurement passes — median is robust to outliers
         std::vector<double> runTimes;
         runTimes.reserve(NUM_MEASUREMENT_RUNS);
 
         for (int run = 0; run < NUM_MEASUREMENT_RUNS; ++run) {
-            auto start = std::chrono::high_resolution_clock::now();
-            for (int i = 0; i < iterations; ++i) {
+            const size_t executionsBefore = aim.getBehaviorUpdateCount();
+            const auto start = std::chrono::high_resolution_clock::now();
+
+            int iterations = 0;
+            double elapsedMs = 0.0;
+            while (iterations < MIN_ITERATIONS ||
+                   (elapsedMs < TARGET_WALL_MS && iterations < MAX_ITERATIONS)) {
                 aim.update(0.016f);
+                ++iterations;
+                elapsedMs = std::chrono::duration<double, std::milli>(
+                    std::chrono::high_resolution_clock::now() - start).count();
             }
-            auto end = std::chrono::high_resolution_clock::now();
-            runTimes.push_back(
-                std::chrono::duration<double, std::milli>(end - start).count() / iterations);
+
+            // Sanity check: confirm AIManager actually executed the expected work per frame
+            // (catches early-returns, paused state, or any path that times-fast-but-does-nothing).
+            const size_t executionsAfter = aim.getBehaviorUpdateCount();
+            const size_t actualExecutions = executionsAfter - executionsBefore;
+            const size_t expectedTotal = expectedExecutionsPerFrame * static_cast<size_t>(iterations);
+            // Allow 1% slack — first frame after warmup may have minor variance
+            const size_t minExpected = expectedTotal - (expectedTotal / 100);
+            BOOST_REQUIRE_GE(actualExecutions, minExpected);
+
+            runTimes.push_back(elapsedMs / iterations);
         }
 
         std::sort(runTimes.begin(), runTimes.end());
@@ -264,7 +282,7 @@ BOOST_AUTO_TEST_CASE(AIEntityScaling)
               << std::setw(12) << "Threading"
               << std::setw(10) << "Status\n";
 
-    std::vector<size_t> entityCounts = {100, 500, 1000, 2000, 5000, 10000};
+    std::vector<size_t> entityCounts = {100, 500, 1000, 2000, 5000, 10000, 25000, 50000, 100000};
     auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
 
     // Track best performance for summary
@@ -285,11 +303,9 @@ BOOST_AUTO_TEST_CASE(AIEntityScaling)
                       << " entities in Active tier!\n";
         }
 
-        // Target ~300ms per measurement pass (5 passes via median)
-        // Ensures adequate wall time for stable timing at all entity counts
-        int iterations = std::max(50, 300000 / static_cast<int>(count));
-
-        double medianMs = runBenchmark(iterations);
+        // Wall-time-bounded measurement; per-frame ms returned, work-done sanity-checked
+        // against the active count via getBehaviorUpdateCount().
+        double medianMs = runBenchmark(activeCount);
 
         // Derive updates/sec from median time: count entities / medianMs * 1000
         // This is equivalent to the old behaviorUpdateCount approach but more stable
@@ -328,121 +344,11 @@ BOOST_AUTO_TEST_CASE(AIEntityScaling)
     std::cout << std::endl;
 }
 
-// ---------------------------------------------------------------------------
-// Threading Mode Comparison
-// ---------------------------------------------------------------------------
-BOOST_AUTO_TEST_CASE(ThreadingModeComparison)
-{
-    std::cout << "--- Threading Mode Comparison ---\n";
-    std::cout << "(Threading uses adaptive threshold from WorkerBudget)\n";
-    std::cout << std::setw(10) << "Entities"
-              << std::setw(14) << "Single (ms)"
-              << std::setw(14) << "Multi (ms)"
-              << std::setw(10) << "Speedup\n";
-
-    std::vector<size_t> entityCounts = {500, 1000, 2000, 5000, 10000};
-
-    for (size_t count : entityCounts) {
-        float worldSize = std::sqrt(static_cast<float>(count)) * 100.0f;
-        int iterations = std::max(50, 300000 / static_cast<int>(count));
-
-        // Test single-threaded (disabling threading bypasses adaptive threshold)
-        prepareForTest();
-        #ifndef NDEBUG
-        AIManager::Instance().enableThreading(false);
-        #endif
-        createEntities(count, worldSize);
-        setupWorld(worldSize);
-        size_t activeCount = verifyActiveTier();
-        if (activeCount != count) {
-            std::cout << "WARNING: Single-thread test - Only " << activeCount
-                      << "/" << count << " entities in Active tier!\n";
-        }
-        double singleMs = runBenchmark(iterations);
-        cleanup();
-
-        // Test multi-threaded (adaptive threshold decides if threading is used)
-        prepareForTest();
-        #ifndef NDEBUG
-        AIManager::Instance().enableThreading(true);
-        #endif
-        createEntities(count, worldSize);
-        setupWorld(worldSize);
-        activeCount = verifyActiveTier();
-        if (activeCount != count) {
-            std::cout << "WARNING: Multi-thread test - Only " << activeCount
-                      << "/" << count << " entities in Active tier!\n";
-        }
-        double multiMs = runBenchmark(iterations);
-        cleanup();
-
-        double speedup = (multiMs > 0) ? singleMs / multiMs : 0.0;
-
-        std::cout << std::setw(10) << count
-                  << std::setw(14) << std::fixed << std::setprecision(2) << singleMs
-                  << std::setw(14) << std::fixed << std::setprecision(2) << multiMs
-                  << std::setw(9) << std::fixed << std::setprecision(2) << speedup << "x\n";
-    }
-
-    // Restore default threading mode
-    #ifndef NDEBUG
-    AIManager::Instance().enableThreading(true);
-    #endif
-    std::cout << std::endl;
-}
-
-// ---------------------------------------------------------------------------
-// Idle Behavior Threading Test (Simple behavior - pure threading test)
-// ---------------------------------------------------------------------------
-BOOST_AUTO_TEST_CASE(IdleBehaviorThreading)
-{
-    std::cout << "--- Idle Behavior Threading ---\n";
-    std::cout << "Testing threading overhead with simple behavior\n";
-    std::cout << "(Threading uses adaptive threshold from WorkerBudget)\n";
-    std::cout << std::setw(10) << "Entities"
-              << std::setw(14) << "Single (ms)"
-              << std::setw(14) << "Multi (ms)"
-              << std::setw(10) << "Speedup\n";
-
-    std::vector<size_t> entityCounts = {500, 1000, 2000, 5000, 10000};
-
-    for (size_t count : entityCounts) {
-        float worldSize = std::sqrt(static_cast<float>(count)) * 100.0f;
-        int iterations = std::max(50, 300000 / static_cast<int>(count));
-
-        // Test single-threaded
-        prepareForTest();
-        #ifndef NDEBUG
-        AIManager::Instance().enableThreading(false);
-        #endif
-        createEntitiesWithBehaviors(count, worldSize, {"Idle"});
-        setupWorld(worldSize);
-        double singleMs = runBenchmark(iterations);
-        cleanup();
-
-        // Test multi-threaded (adaptive threshold decides if threading is used)
-        prepareForTest();
-        #ifndef NDEBUG
-        AIManager::Instance().enableThreading(true);
-        #endif
-        createEntitiesWithBehaviors(count, worldSize, {"Idle"});
-        setupWorld(worldSize);
-        double multiMs = runBenchmark(iterations);
-        cleanup();
-
-        double speedup = (multiMs > 0) ? singleMs / multiMs : 0.0;
-
-        std::cout << std::setw(10) << count
-                  << std::setw(14) << std::fixed << std::setprecision(2) << singleMs
-                  << std::setw(14) << std::fixed << std::setprecision(2) << multiMs
-                  << std::setw(9) << std::fixed << std::setprecision(2) << speedup << "x\n";
-    }
-
-    #ifndef NDEBUG
-    AIManager::Instance().enableThreading(true);
-    #endif
-    std::cout << std::endl;
-}
+// Removed ThreadingModeComparison and IdleBehaviorThreading: forcing single-vs-multi via
+// enableThreading() bypasses WorkerBudget's adaptive decision — that's the engine's actual
+// production behavior, and overriding it measures a configuration that would never ship.
+// The primary AIEntityScaling test reports which mode WorkerBudget chose per entity count,
+// which is the truth.
 
 // ---------------------------------------------------------------------------
 // Behavior Mix Test
@@ -468,14 +374,12 @@ BOOST_AUTO_TEST_CASE(BehaviorMixTest)
         {"Full Mix", {"Wander", "Guard", "Patrol", "Follow", "Chase"}}
     };
 
-    constexpr int ITERATIONS = 150;  // ~300ms measurement per pass at 2K entities
-
     for (const auto& mix : mixes) {
         prepareForTest();
         createEntitiesWithBehaviors(ENTITY_COUNT, WORLD_SIZE, mix.behaviors);
         setupWorld(WORLD_SIZE);  // Pass spawn worldSize directly
 
-        double medianMs = runBenchmark(ITERATIONS);
+        double medianMs = runBenchmark(verifyActiveTier());
         double updatesPerSec = (medianMs > 0.0)
             ? (static_cast<double>(ENTITY_COUNT) / medianMs) * 1000.0
             : 0.0;
