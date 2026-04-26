@@ -383,19 +383,41 @@ TradeResult SocialController::tryBuy(EntityHandle npcHandle,
         return TradeResult::InsufficientFunds;
     }
 
+    const auto goldHandle = getGoldHandle();
+    const int npcOldGoldQuantity = edm.getInventoryQuantity(npcInvIdx, goldHandle);
+    if (!edm.addToInventory(npcInvIdx, goldHandle, priceInt)) {
+        SOCIAL_DEBUG("tryBuy: NPC inventory cannot accept payment");
+        return TradeResult::InventoryFull;
+    }
+
+    const int npcOldItemQuantity = edm.getInventoryQuantity(npcInvIdx, itemHandle);
     if (!edm.removeFromInventory(npcInvIdx, itemHandle, quantity)) {
+        edm.removeFromInventory(npcInvIdx, goldHandle, priceInt);
         SOCIAL_ERROR("tryBuy: Failed to remove item from NPC inventory");
         return TradeResult::InsufficientStock;
     }
 
     if (!player->addToInventory(itemHandle, quantity)) {
         edm.addToInventory(npcInvIdx, itemHandle, quantity);
+        edm.removeFromInventory(npcInvIdx, goldHandle, priceInt);
         SOCIAL_DEBUG("tryBuy: Player inventory full");
         return TradeResult::InventoryFull;
     }
 
-    player->removeGold(priceInt);
-    edm.addToInventory(npcInvIdx, getGoldHandle(), priceInt);
+    if (!player->removeGold(priceInt)) {
+        edm.addToInventory(npcInvIdx, itemHandle, quantity);
+        player->removeFromInventory(itemHandle, quantity);
+        edm.removeFromInventory(npcInvIdx, goldHandle, priceInt);
+        SOCIAL_ERROR("tryBuy: Failed to remove payment from player");
+        return TradeResult::InsufficientFunds;
+    }
+
+    dispatchResourceChange(npcHandle, itemHandle, npcOldItemQuantity,
+                           edm.getInventoryQuantity(npcInvIdx, itemHandle),
+                           "traded");
+    dispatchResourceChange(npcHandle, goldHandle, npcOldGoldQuantity,
+                           edm.getInventoryQuantity(npcInvIdx, goldHandle),
+                           "traded");
 
     recordTrade(npcHandle, totalPrice, true);
 
@@ -454,19 +476,40 @@ TradeResult SocialController::trySell(EntityHandle npcHandle,
         return TradeResult::InsufficientFunds;
     }
 
-    if (!player->removeFromInventory(itemHandle, quantity)) {
-        SOCIAL_ERROR("trySell: Failed to remove item from player inventory");
-        return TradeResult::InsufficientStock;
-    }
-
+    const int npcOldItemQuantity = edm.getInventoryQuantity(npcInvIdx, itemHandle);
     if (!edm.addToInventory(npcInvIdx, itemHandle, quantity)) {
-        player->addToInventory(itemHandle, quantity);
         SOCIAL_DEBUG("trySell: NPC inventory full");
         return TradeResult::InventoryFull;
     }
 
-    edm.removeFromInventory(npcInvIdx, goldHandle, priceInt);
-    player->addGold(priceInt);
+    if (!player->addGold(priceInt)) {
+        edm.removeFromInventory(npcInvIdx, itemHandle, quantity);
+        SOCIAL_DEBUG("trySell: Player inventory cannot accept payment");
+        return TradeResult::InventoryFull;
+    }
+
+    if (!player->removeFromInventory(itemHandle, quantity)) {
+        player->removeGold(priceInt);
+        edm.removeFromInventory(npcInvIdx, itemHandle, quantity);
+        SOCIAL_ERROR("trySell: Failed to remove item from player inventory");
+        return TradeResult::InsufficientStock;
+    }
+
+    const int npcOldGoldQuantity = edm.getInventoryQuantity(npcInvIdx, goldHandle);
+    if (!edm.removeFromInventory(npcInvIdx, goldHandle, priceInt)) {
+        player->addToInventory(itemHandle, quantity);
+        player->removeGold(priceInt);
+        edm.removeFromInventory(npcInvIdx, itemHandle, quantity);
+        SOCIAL_ERROR("trySell: Failed to remove payment from NPC inventory");
+        return TradeResult::InsufficientFunds;
+    }
+
+    dispatchResourceChange(npcHandle, itemHandle, npcOldItemQuantity,
+                           edm.getInventoryQuantity(npcInvIdx, itemHandle),
+                           "traded");
+    dispatchResourceChange(npcHandle, goldHandle, npcOldGoldQuantity,
+                           edm.getInventoryQuantity(npcInvIdx, goldHandle),
+                           "traded");
 
     recordTrade(npcHandle, totalPrice, true);
 
@@ -514,7 +557,7 @@ bool SocialController::tryGift(EntityHandle npcHandle,
         return false;
     }
 
-    const auto& edm = EntityDataManager::Instance();
+    auto& edm = EntityDataManager::Instance();
     size_t npcIdx = edm.getIndex(npcHandle);
     if (npcIdx == SIZE_MAX) {
         SOCIAL_DEBUG("tryGift: NPC not found in EDM");
@@ -530,10 +573,27 @@ bool SocialController::tryGift(EntityHandle npcHandle,
         return false;
     }
 
+    const uint32_t npcInvIdx = getNPCInventoryIndex(npcHandle);
+    if (npcInvIdx == INVALID_INVENTORY_INDEX) {
+        SOCIAL_DEBUG("tryGift: NPC does not have an inventory");
+        return false;
+    }
+
+    const int npcOldItemQuantity = edm.getInventoryQuantity(npcInvIdx, itemHandle);
+    if (!edm.addToInventory(npcInvIdx, itemHandle, quantity)) {
+        SOCIAL_DEBUG("tryGift: NPC inventory full");
+        return false;
+    }
+
     if (!player->removeFromInventory(itemHandle, quantity)) {
+        edm.removeFromInventory(npcInvIdx, itemHandle, quantity);
         SOCIAL_ERROR("tryGift: Failed to remove item from player inventory");
         return false;
     }
+
+    dispatchResourceChange(npcHandle, itemHandle, npcOldItemQuantity,
+                           edm.getInventoryQuantity(npcInvIdx, itemHandle),
+                           "gifted");
 
     float giftValue = getItemBaseValue(itemHandle) * quantity;
     recordGift(npcHandle, giftValue);
@@ -682,6 +742,20 @@ void SocialController::recordTrade(EntityHandle npcHandle, float tradeValue, boo
 void SocialController::recordGift(EntityHandle npcHandle, float giftValue) {
     float value = GIFT_RELATIONSHIP_BASE + (giftValue * GIFT_VALUE_SCALE);
     recordInteraction(npcHandle, InteractionType::Gift, value);
+}
+
+void SocialController::dispatchResourceChange(EntityHandle ownerHandle,
+                                              VoidLight::ResourceHandle resourceHandle,
+                                              int oldQuantity,
+                                              int newQuantity,
+                                              const std::string& reason) const {
+    if (oldQuantity == newQuantity) {
+        return;
+    }
+
+    EventManager::Instance().triggerResourceChange(
+        ownerHandle, resourceHandle, oldQuantity, newQuantity, reason,
+        EventManager::DispatchMode::Deferred);
 }
 
 float SocialController::getItemBaseValue(VoidLight::ResourceHandle itemHandle) const {

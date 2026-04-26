@@ -346,6 +346,28 @@ BOOST_AUTO_TEST_CASE(TestExtremeQuantityValues) {
   entityDataManager->destroyInventory(invIndex);
 }
 
+BOOST_AUTO_TEST_CASE(TestInventoryAddFailureDoesNotPartiallyMutate) {
+  auto resource = createTestResource("AtomicInventoryAddTest");
+  resource->setMaxStackSize(10);
+  BOOST_REQUIRE(templateManager->registerResourceTemplate(resource));
+
+  auto handle = resource->getHandle();
+  uint32_t invIndex = entityDataManager->createInventory(1, true);
+  BOOST_REQUIRE(invIndex != INVALID_INVENTORY_INDEX);
+
+  const int maxStack = templateManager->getMaxStackSize(handle);
+  const int actualInlineCapacity =
+      static_cast<int>(InventoryData::INLINE_SLOT_COUNT) * maxStack;
+  const int initialQuantity = actualInlineCapacity - 2;
+
+  BOOST_REQUIRE(entityDataManager->addToInventory(invIndex, handle, initialQuantity));
+  BOOST_CHECK(!entityDataManager->addToInventory(invIndex, handle, 3));
+  BOOST_CHECK_EQUAL(entityDataManager->getInventoryQuantity(invIndex, handle),
+                    initialQuantity);
+
+  entityDataManager->destroyInventory(invIndex);
+}
+
 //==============================================================================
 // Malformed Input and Error Recovery
 //==============================================================================

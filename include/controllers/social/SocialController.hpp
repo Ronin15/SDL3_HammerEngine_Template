@@ -152,8 +152,8 @@ public:
     /**
      * @brief Give an item to an NPC as a gift
      *
-     * Gifts improve relationship based on item value.
-     * NPCs remember gifts and become more friendly.
+     * Gifts transfer the item into the NPC inventory and improve relationship
+     * based on item value. NPCs remember gifts and become more friendly.
      */
     bool tryGift(EntityHandle npcHandle,
                  VoidLight::ResourceHandle itemHandle,
@@ -250,6 +250,11 @@ private:
     void recordTrade(EntityHandle npcHandle, float tradeValue, bool wasGoodDeal);
     void recordGift(EntityHandle npcHandle, float giftValue);
     // --- Utility ---
+    void dispatchResourceChange(EntityHandle ownerHandle,
+                                VoidLight::ResourceHandle resourceHandle,
+                                int oldQuantity,
+                                int newQuantity,
+                                const std::string& reason) const;
     [[nodiscard]] float getItemBaseValue(VoidLight::ResourceHandle itemHandle) const;
 
     // Player reference

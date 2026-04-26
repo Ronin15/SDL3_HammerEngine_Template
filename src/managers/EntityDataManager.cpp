@@ -2059,10 +2059,13 @@ bool EntityDataManager::initNPCAsMerchant(EntityHandle handle, uint16_t maxSlots
     // Get character data
     auto& charData = getCharacterDataByIndex(idx);
 
-    // Check if already has inventory
+    // Modern NPC creation gives every NPC an inventory; merchant status is the
+    // capability flag layered on top of that storage.
     if (charData.hasInventory()) {
-        ENTITY_WARN("initNPCAsMerchant: NPC already has inventory");
-        return true;  // Already set up
+        charData.stateFlags |= CharacterData::FLAG_MERCHANT;
+        ENTITY_INFO(std::format("NPC {} initialized as merchant with existing inventory",
+                                handle.getId()));
+        return true;
     }
 
     // Create inventory
@@ -2142,6 +2145,32 @@ bool EntityDataManager::addToInventory(uint32_t inventoryIndex,
 
     auto& inv = m_inventoryData[inventoryIndex];
     InventoryOverflow* overflow = (inv.overflowId > 0) ? &m_inventoryOverflow[inv.overflowId] : nullptr;
+
+    int availableCapacity = 0;
+    for (size_t i = 0; i < InventoryData::INLINE_SLOT_COUNT; ++i) {
+        const auto& slot = inv.slots[i];
+        if (!slot.isEmpty() && slot.resourceHandle == handle) {
+            availableCapacity += std::max(0, maxStack - static_cast<int>(slot.quantity));
+        } else if (slot.isEmpty()) {
+            availableCapacity += maxStack;
+        }
+    }
+
+    if (overflow) {
+        for (const auto& slot : overflow->extraSlots) {
+            if (!slot.isEmpty() && slot.resourceHandle == handle) {
+                availableCapacity += std::max(0, maxStack - static_cast<int>(slot.quantity));
+            } else if (slot.isEmpty()) {
+                availableCapacity += maxStack;
+            }
+        }
+    }
+
+    if (availableCapacity < quantity) {
+        ENTITY_WARN(std::format("addToInventory: Could not add {} items (inventory full)",
+                                quantity - availableCapacity));
+        return false;
+    }
 
     int remaining = quantity;
 

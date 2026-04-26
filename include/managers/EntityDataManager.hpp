@@ -1637,8 +1637,7 @@ public:
      * @param maxSlots Maximum inventory slots (default 20)
      * @return true if successfully initialized, false on failure
      *
-     * Creates an inventory for the NPC and sets the FLAG_MERCHANT flag.
-     * The inventory index is stored in CharacterData.inventoryIndex.
+     * Ensures the NPC has an inventory and sets the FLAG_MERCHANT flag.
      * Use this to enable trading with the NPC via SocialController.
      */
     [[nodiscard]] bool initNPCAsMerchant(EntityHandle handle, uint16_t maxSlots = 20);
@@ -1653,7 +1652,7 @@ public:
     /**
      * @brief Get an NPC's inventory index
      * @param handle NPC entity handle
-     * @return Inventory index, or INVALID_INVENTORY_INDEX if not a merchant
+     * @return Inventory index, or INVALID_INVENTORY_INDEX if the NPC has no inventory
      */
     [[nodiscard]] uint32_t getNPCInventoryIndex(EntityHandle handle) const;
 
