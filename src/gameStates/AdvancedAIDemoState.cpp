@@ -715,14 +715,7 @@ void AdvancedAIDemoState::initializeCamera() {
     m_camera->setTarget(playerAsEntity);
     m_camera->setMode(VoidLight::Camera::Mode::Follow);
 
-    // Set up camera configuration for fast, smooth following
-    // Using exponential smoothing for smooth, responsive follow
-    VoidLight::Camera::Config config;
-    config.followSpeed = 5.0f;      // Speed of camera interpolation
-    config.deadZoneRadius = 0.0f;   // No dead zone - always follow
-    config.smoothingFactor = 0.85f; // Smoothing factor (0-1, higher = smoother)
-    config.clampToWorldBounds = true; // Keep camera within world
-    m_camera->setConfig(config);
+    // Camera follow tuning lives in Camera::Config defaults — uniform across states.
 
     // Provide camera to player for screen-to-world coordinate conversion
     m_player->setCamera(m_camera.get());

@@ -40,24 +40,34 @@ public:
 
     /**
      * @brief Camera configuration structure
+     *
+     * Follow-mode tuning:
+     *  - followLag is a time constant (seconds). The camera reaches ~63% of
+     *    a step toward the target after followLag seconds, ~95% after 3x.
+     *    Smaller = snappier, larger = more cinematic trail.
+     *      0.00f  : disabled (camera snaps to target every update)
+     *      0.08f  : tight, action-y
+     *      0.18f  : default, subtle trail
+     *      0.35f+ : floaty / cinematic
+     *  - deadZoneRadius (pixels): if the target sits inside this radius
+     *    around the camera, no smoothing is applied. Suppresses sub-pixel
+     *    shimmer when the player is idle. 0 disables the dead zone.
+     *  - maxCatchupDistance (pixels): when the target gets farther than
+     *    this from the camera (e.g. teleport, fast dash), the camera snaps
+     *    forward so it never falls arbitrarily far behind. 0 disables.
      */
     struct Config {
-        float followSpeed{5.0f};        // Speed of camera interpolation when following
-        float deadZoneRadius{32.0f};    // Dead zone around target (no movement if target within this)
-        float maxFollowDistance{200.0f}; // Maximum distance camera can be from target
-        float smoothingFactor{0.85f};   // Smoothing factor for interpolation (0-1)
-        bool clampToWorldBounds{true};  // Whether to clamp camera to world bounds
+        float followLag{0.18f};            // Time constant in seconds (see above)
+        float deadZoneRadius{4.0f};        // Pixels; 0 = no dead zone
+        float maxCatchupDistance{600.0f};  // Pixels; 0 = no catchup snap
+        bool clampToWorldBounds{true};
 
         // Zoom configuration
         std::vector<float> zoomLevels{1.0f, 2.0f, 3.0f};  // Integer zoom levels (pixel-perfect)
         int defaultZoomLevel{0};                           // Starting zoom level index
 
-        // Validation
         bool isValid() const {
-            if (followSpeed <= 0.0f || deadZoneRadius < 0.0f || maxFollowDistance <= 0.0f) {
-                return false;
-            }
-            if (smoothingFactor < 0.0f || smoothingFactor > 1.0f) {
+            if (followLag < 0.0f || deadZoneRadius < 0.0f || maxCatchupDistance < 0.0f) {
                 return false;
             }
             if (zoomLevels.empty()) {
