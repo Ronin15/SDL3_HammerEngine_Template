@@ -50,7 +50,6 @@ class CameraMovedEvent;
 class CameraZoomChangedEvent;
 class CameraShakeStartedEvent;
 class CameraShakeEndedEvent;
-class CollisionEvent;
 class WorldTriggerEvent;
 class HarvestResourceEvent;
 class CollisionObstacleChangedEvent;
@@ -398,12 +397,6 @@ public:
                              DispatchMode mode = DispatchMode::Deferred) const;
 
   /**
-   * @brief Triggers a collision event
-   */
-  bool triggerCollision(const VoidLight::CollisionInfo &info,
-                        DispatchMode mode = DispatchMode::Deferred) const;
-
-  /**
    * @brief Triggers a world trigger event (OnEnter style)
    */
   bool triggerWorldTrigger(const WorldTriggerEvent &event,
@@ -524,7 +517,6 @@ private:
   mutable EventPool<CameraEvent> m_cameraPool;
 
   // Hot-path event pools (triggered frequently during gameplay)
-  mutable EventPool<CollisionEvent> m_collisionPool;
   mutable EventPool<ParticleEffectEvent> m_particleEffectPool;
   mutable EventPool<CollisionObstacleChangedEvent> m_collisionObstacleChangedPool;
   mutable EventPool<DamageEvent> m_damagePool;

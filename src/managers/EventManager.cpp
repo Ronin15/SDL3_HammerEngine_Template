@@ -9,7 +9,6 @@
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 #include "events/CameraEvent.hpp"
-#include "events/CollisionEvent.hpp"
 #include "events/CollisionObstacleChangedEvent.hpp"
 #include "events/EntityEvents.hpp"
 #include "events/Event.hpp"
@@ -114,10 +113,6 @@ bool EventManager::init() {
   });
 
   // Hot-path event pools
-  m_collisionPool.setCreator([]() {
-    VoidLight::CollisionInfo emptyInfo{};
-    return std::make_shared<CollisionEvent>(emptyInfo);
-  });
   m_particleEffectPool.setCreator([]() {
     return std::make_shared<ParticleEffectEvent>("pool_particle",
                                                  ParticleEffectType::Fire, 0.0f,
@@ -505,24 +500,6 @@ bool EventManager::triggerResourceChange(
 
   return dispatchEvent(EventTypeId::ResourceChange, eventData, mode,
                        "triggerResourceChange");
-}
-
-bool EventManager::triggerCollision(const VoidLight::CollisionInfo &info,
-                                    DispatchMode mode) const {
-  auto collisionEvent = m_collisionPool.acquire();
-  if (collisionEvent) {
-    collisionEvent->setInfo(info);
-    collisionEvent->setConsumed(false);
-  } else {
-    collisionEvent = std::make_shared<CollisionEvent>(info);
-  }
-
-  EventData eventData;
-  eventData.typeId = EventTypeId::Collision;
-  eventData.setActive(true);
-  eventData.event = collisionEvent;
-
-  return dispatchEvent(EventTypeId::Collision, eventData, mode, "triggerCollision");
 }
 
 bool EventManager::triggerWorldTrigger(const WorldTriggerEvent &event,
@@ -1234,11 +1211,6 @@ void EventManager::releaseEventToPool(EventTypeId typeId, const EventPtr& event)
         m_cameraPool.release(ce);
       }
       break;
-    case EventTypeId::Collision:
-      if (auto ce = std::dynamic_pointer_cast<CollisionEvent>(event)) {
-        m_collisionPool.release(ce);
-      }
-      break;
     case EventTypeId::ParticleEffect:
       if (auto pe = std::dynamic_pointer_cast<ParticleEffectEvent>(event)) {
         m_particleEffectPool.release(pe);
@@ -1286,7 +1258,6 @@ void EventManager::clearEventPools() {
   m_resourceChangePool.clear();
   m_worldPool.clear();
   m_cameraPool.clear();
-  m_collisionPool.clear();
   m_particleEffectPool.clear();
   m_collisionObstacleChangedPool.clear();
   m_damagePool.clear();

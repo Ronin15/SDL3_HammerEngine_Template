@@ -17,7 +17,6 @@
 #include "entities/EntityHandle.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
-#include "collisions/CollisionInfo.hpp"
 #include "events/CameraEvent.hpp"
 #include "events/CollisionObstacleChangedEvent.hpp"
 #include "events/EntityEvents.hpp"
@@ -296,22 +295,6 @@ BOOST_FIXTURE_TEST_CASE(TriggerResourceChange_DispatchesToHandlers, EventManager
   EventManager::Instance().removeHandler(tok);
 }
 
-BOOST_FIXTURE_TEST_CASE(TriggerCollision_DispatchesToHandlers, EventManagerFixture) {
-  std::atomic<bool> collisionHandlerCalled{false};
-  auto tok = EventManager::Instance().registerHandlerWithToken(
-      EventTypeId::Collision, [&collisionHandlerCalled](const EventData &data) {
-        if (data.event) collisionHandlerCalled.store(true);
-      });
-
-  VoidLight::CollisionInfo info{};
-  bool ok = EventManager::Instance().triggerCollision(info,
-                                                       EventManager::DispatchMode::Immediate);
-  BOOST_CHECK(ok);
-  BOOST_CHECK(collisionHandlerCalled.load());
-
-  EventManager::Instance().removeHandler(tok);
-}
-
 BOOST_FIXTURE_TEST_CASE(TriggerWorldLoaded_DispatchesToHandlers, EventManagerFixture) {
   std::atomic<bool> worldHandlerCalled{false};
   auto tok = EventManager::Instance().registerHandlerWithToken(
@@ -449,22 +432,6 @@ BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_NPCSpawnEvents, EventManagerFixture) 
   EventManager::Instance().spawnNPC("B", 0, 0, 1, 0, "", {}, false, EventManager::DispatchMode::Immediate);
 
   BOOST_CHECK_EQUAL(firstNPC.get(), secondNPC.get()); // Same pooled event reused
-}
-
-BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_CollisionEvents, EventManagerFixture) {
-  EventPtr firstColl = nullptr;
-  EventPtr secondColl = nullptr;
-  EventManager::Instance().registerHandler(
-      EventTypeId::Collision, [&](const EventData &data) {
-        if (!firstColl) firstColl = data.event;
-        else secondColl = data.event;
-      });
-
-  VoidLight::CollisionInfo info{};
-  EventManager::Instance().triggerCollision(info, EventManager::DispatchMode::Immediate);
-  EventManager::Instance().triggerCollision(info, EventManager::DispatchMode::Immediate);
-
-  BOOST_CHECK_EQUAL(firstColl.get(), secondColl.get()); // Same pooled event reused
 }
 
 BOOST_FIXTURE_TEST_CASE(EventPoolRecycling_ParticleEffectEvents, EventManagerFixture) {
@@ -1206,27 +1173,3 @@ BOOST_FIXTURE_TEST_CASE(IdempotentClean_SafeMultipleCalls, EventManagerFixture) 
   BOOST_CHECK(EventManager::Instance().isInitialized());
 }
 
-BOOST_FIXTURE_TEST_CASE(DeferredDispatch_FollowsFIFOEnqueueOrder, EventManagerFixture) {
-  std::vector<int> processingOrder;
-  std::mutex orderMutex;
-
-  EventManager::Instance().registerHandler(EventTypeId::Weather, [&](const EventData &) {
-    std::lock_guard<std::mutex> lock(orderMutex);
-    processingOrder.push_back(1);
-  });
-  EventManager::Instance().registerHandler(EventTypeId::Collision, [&](const EventData &) {
-    std::lock_guard<std::mutex> lock(orderMutex);
-    processingOrder.push_back(2);
-  });
-
-  // Deferred processing should preserve enqueue order even across event types.
-  EventManager::Instance().changeWeather("Test", 1.0f);
-  VoidLight::CollisionInfo info{};
-  EventManager::Instance().triggerCollision(info);
-
-  EventManager::Instance().update();
-
-  BOOST_REQUIRE_EQUAL(processingOrder.size(), 2);
-  BOOST_CHECK_EQUAL(processingOrder[0], 1);
-  BOOST_CHECK_EQUAL(processingOrder[1], 2);
-}

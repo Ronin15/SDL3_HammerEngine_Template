@@ -1055,7 +1055,7 @@ void GameEngine::update(float deltaTime) {
 
   // 3.5 Projectile system - position integration + lifetime management
   //     Uses WorkerBudget threading with SIMD 4-wide movement.
-  //     Collision damage handled via EventTypeId::Collision subscription.
+  //     Collision damage handled via CollisionManager::setProjectileHitSink().
   { PROFILE_MANAGER(VoidLight::ManagerPhase::Projectile);
     mp_projectileManager->update(deltaTime); }
 

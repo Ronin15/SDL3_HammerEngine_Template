@@ -18,16 +18,15 @@ enum class EventTypeId : uint8_t {
   World = 5,
   Camera = 6,
   Harvest = 7,
-  Collision = 8,
-  WorldTrigger = 9,
-  CollisionObstacleChanged = 10,
-  Custom = 11,
-  Time = 12,
-  Combat = 13,
-  Entity = 14,            // EntityEvents: Damage, Death, Spawn
-  BehaviorMessage = 15,   // Inter-entity behavior messages (RAISE_ALERT, etc.)
-  MerchantSpawn = 16,     // Merchant-focused NPC spawning
-  COUNT = 17
+  WorldTrigger = 8,
+  CollisionObstacleChanged = 9,
+  Custom = 10,
+  Time = 11,
+  Combat = 12,
+  Entity = 13,            // EntityEvents: Damage, Death, Spawn
+  BehaviorMessage = 14,   // Inter-entity behavior messages (RAISE_ALERT, etc.)
+  MerchantSpawn = 15,     // Merchant-focused NPC spawning
+  COUNT = 16
 };
 
 #endif // EVENT_TYPE_ID_HPP

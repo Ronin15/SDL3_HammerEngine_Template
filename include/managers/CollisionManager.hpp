@@ -165,15 +165,16 @@ public:
     void onTileChanged(int x, int y);             // update a specific cell
     void setWorldBounds(float minX, float minY, float maxX, float maxY);
 
-    // Callbacks
-    using CollisionCB = std::function<void(const CollisionInfo&)>;
-    void addCollisionCallback(CollisionCB cb);
-    void onCollision(CollisionCB cb) { addCollisionCallback(std::move(cb)); }
-
     // Projectile hit sink: registered by ProjectileManager::init(), cleared in clean().
     // Keeps CollisionManager agnostic of the higher-layer ProjectileManager.
     using ProjectileHitSink = std::function<void(const CollisionInfo&)>;
     void setProjectileHitSink(ProjectileHitSink sink) { m_projectileHitSink = std::move(sink); }
+
+    // Read-only view of collisions resolved during the most recent update().
+    // Buffer is reused each frame; do not hold the reference across update() calls.
+    const std::vector<CollisionInfo>& getLastFrameCollisions() const {
+        return m_collisionPool.collisionBuffer;
+    }
 
     // Metrics
     size_t getBodyCount() const { return m_storage.size(); }
@@ -475,7 +476,6 @@ private:
     mutable CullingArea m_lastStaticQueryCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
     mutable bool m_staticQueryCacheDirty{true};
 
-    std::vector<CollisionCB> m_callbacks;
     ProjectileHitSink m_projectileHitSink;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
     std::unordered_map<uint64_t, std::pair<EntityID,EntityID>> m_activeTriggerPairs; // OnEnter/Exit filtering

@@ -101,7 +101,6 @@ EventManager has **persistent** and **transient** handlers. `prepareForStateTran
 
 - **`init()` → `registerPersistentHandler[WithToken]()`**: manager infrastructure (CollisionManager world events, ProjectileManager collision handler, PathfinderManager world/obstacle events, WorldManager season events). Registered once.
 - **`enter()` → `registerHandler[WithToken]()`**: state-level handlers (GamePlayState time/weather/harvest, ControllerRegistry subscriptions). Auto-cleared on transition.
-- CollisionManager's `m_callbacks` (collision→EventManager bridge) are persistent and not cleared in `prepareForStateTransition()`. No state registers collision callbacks.
 
 Never manually unsubscribe/resubscribe manager handlers across transitions.
 

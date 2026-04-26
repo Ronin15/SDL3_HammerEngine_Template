@@ -1065,17 +1065,11 @@ BOOST_AUTO_TEST_CASE(TestCollisionInfoIndicesIntegrity)
     BOOST_REQUIRE_MESSAGE(hotA.hasCollision(), "Entity A should have collision enabled");
     BOOST_REQUIRE_MESSAGE(hotB.hasCollision(), "Entity B should have collision enabled");
 
-    // Set up collision callback to inspect CollisionInfo
-    std::vector<CollisionInfo> capturedCollisions;
-
-    CollisionManager::Instance().addCollisionCallback([&capturedCollisions](const CollisionInfo& collision) {
-        capturedCollisions.push_back(collision);
-    });
-
     // Run collision detection
     CollisionManager::Instance().update(0.016f);
 
-    // Verify we captured collisions
+    // Read this frame's collisions directly from the manager's reusable buffer
+    const auto& capturedCollisions = CollisionManager::Instance().getLastFrameCollisions();
     BOOST_REQUIRE_MESSAGE(!capturedCollisions.empty(), "Expected movable-movable collision between overlapping EDM entities");
 
     for (const auto& collision : capturedCollisions) {

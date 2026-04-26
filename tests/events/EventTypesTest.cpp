@@ -790,7 +790,6 @@ BOOST_FIXTURE_TEST_CASE(TimeEventBaseClass, EventTypesFixture) {
 // ============================================================================
 
 #include "events/CameraEvent.hpp"
-#include "events/CollisionEvent.hpp"
 #include "events/CollisionObstacleChangedEvent.hpp"
 #include "events/HarvestResourceEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
@@ -808,16 +807,15 @@ BOOST_AUTO_TEST_CASE(TestEventTypeIdEnumValues) {
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::World), 5);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Camera), 6);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Harvest), 7);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Collision), 8);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::WorldTrigger), 9);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::CollisionObstacleChanged), 10);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Custom), 11);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Time), 12);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Combat), 13);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Entity), 14);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::BehaviorMessage), 15);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::MerchantSpawn), 16);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 17);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::WorldTrigger), 8);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::CollisionObstacleChanged), 9);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Custom), 10);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Time), 11);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Combat), 12);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Entity), 13);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::BehaviorMessage), 14);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::MerchantSpawn), 15);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 16);
 }
 
 // Test ResourceChangeEvent
@@ -930,26 +928,6 @@ BOOST_FIXTURE_TEST_CASE(HarvestResourceEventBasics, EventTypesFixture) {
 
 }
 
-// Test CollisionEvent
-BOOST_FIXTURE_TEST_CASE(CollisionEventBasics, EventTypesFixture) {
-    VoidLight::CollisionInfo info;
-    info.a = 1;
-    info.b = 2;
-
-    CollisionEvent event(info);
-
-    BOOST_CHECK_EQUAL(event.getName(), "CollisionEvent");
-    BOOST_CHECK_EQUAL(event.getType(), "CollisionEvent");
-    BOOST_CHECK(event.getTypeId() == EventTypeId::Collision);
-    BOOST_CHECK_EQUAL(event.getInfo().a, 1);
-    BOOST_CHECK_EQUAL(event.getInfo().b, 2);
-
-    // Test reset - clears all data for event pool recycling
-    event.reset();
-    BOOST_CHECK_EQUAL(event.getInfo().a, 0);
-    BOOST_CHECK_EQUAL(event.getInfo().b, 0);
-}
-
 // Test WorldTriggerEvent
 BOOST_FIXTURE_TEST_CASE(WorldTriggerEventBasics, EventTypesFixture) {
     WorldTriggerEvent event(42, 1, VoidLight::TriggerTag::Water, Vector2D(5, 10), TriggerPhase::Enter);
@@ -1017,13 +995,6 @@ BOOST_FIXTURE_TEST_CASE(AllEventTypesReturnCorrectTypeId, EventTypesFixture) {
   // Harvest
   HarvestResourceEvent harvestEvent(1, 0, 0, "wood");
   BOOST_CHECK(harvestEvent.getTypeId() == EventTypeId::Harvest);
-
-  // Collision
-  VoidLight::CollisionInfo info;
-  info.a = 1;
-  info.b = 2;
-  CollisionEvent collisionEvent(info);
-  BOOST_CHECK(collisionEvent.getTypeId() == EventTypeId::Collision);
 
   // WorldTrigger
   WorldTriggerEvent triggerEvent(1, 2, VoidLight::TriggerTag::None, Vector2D(0,0), TriggerPhase::Enter);
