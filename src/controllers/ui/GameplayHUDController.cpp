@@ -13,10 +13,10 @@
 
 namespace {
 
-constexpr int HOTBAR_SLOT_SIZE = 48;
+constexpr int HOTBAR_SLOT_SIZE = 68;
 constexpr int HOTBAR_SLOT_GAP = 6;
 constexpr int HOTBAR_BOTTOM_OFFSET = 24;
-constexpr int HOTBAR_KEY_LABEL_SIZE = 14;
+constexpr int HOTBAR_KEY_LABEL_SIZE = 17;
 
 constexpr int HOTBAR_TOTAL_WIDTH =
     static_cast<int>(GameplayHUDController::HOTBAR_SLOT_COUNT) * HOTBAR_SLOT_SIZE +
