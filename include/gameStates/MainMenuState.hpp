@@ -40,7 +40,18 @@ class MainMenuState : public GameState {
       "mainmenu_settings_btn",
       "mainmenu_exit_btn",
   };
+
+  // Quit-confirm dialog navigation — Cancel first so it is the default focus.
+  static constexpr std::array<std::string_view, 2> kQuitDialogNavOrder{
+      "mainmenu_quit_dialog_cancel_btn",
+      "mainmenu_quit_dialog_yes_btn",
+  };
+
   size_t m_selectedIndex{0};
+  bool m_quitDialogOpen{false};
+
+  void openQuitDialog();
+  void closeQuitDialog();
 };
 
 #endif  // MAIN_MENU_STATE_HPP

@@ -2588,13 +2588,6 @@ void UIManager::createCenteredDialog(const std::string &id, int width,
                                0,
                                width,
                                height});
-
-  // Apply positioning for overlay background using unified API
-  setComponentPositioning("overlay_background", {UIPositionMode::TOP_ALIGNED,
-                                                 0,
-                                                 0,
-                                                 -1,   // Full width
-                                                 -1}); // Full height
 }
 
 void UIManager::createCenteredButton(const std::string &id, int offsetY,
