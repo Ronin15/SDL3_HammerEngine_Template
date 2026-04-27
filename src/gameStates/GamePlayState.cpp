@@ -566,6 +566,10 @@ void GamePlayState::pause() {
     ui.setComponentVisible(InventoryController::INVENTORY_PANEL_ID, false);
   }
 
+  if (auto* hudCtrl = m_controllers.get<GameplayHUDController>()) {
+    hudCtrl->setHotbarVisible(false);
+  }
+
   if (auto* socialCtrl = m_controllers.get<SocialController>();
       socialCtrl && socialCtrl->isTrading()) {
     socialCtrl->closeTrade();
@@ -604,6 +608,10 @@ void GamePlayState::resume() {
   if (auto* inventoryCtrl = m_controllers.get<InventoryController>();
       inventoryCtrl && inventoryCtrl->isInventoryVisible()) {
     inventoryCtrl->setInventoryVisible(true);
+  }
+
+  if (auto* hudCtrl = m_controllers.get<GameplayHUDController>()) {
+    hudCtrl->setHotbarVisible(true);
   }
 
   // Resume all controllers (re-subscribe to events after pause)

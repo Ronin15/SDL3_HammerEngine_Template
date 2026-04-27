@@ -214,6 +214,20 @@ void GameplayHUDController::initializeHotbarUI()
     applyHotbarSelectionStyling();
 }
 
+void GameplayHUDController::setHotbarVisible(bool visible)
+{
+    if (!m_hotbarUICreated)
+    {
+        return;
+    }
+    auto& ui = UIManager::Instance();
+    for (size_t i = 0; i < HOTBAR_SLOT_COUNT; ++i)
+    {
+        ui.setComponentVisible(hotbarSlotId(i), visible);
+        ui.setComponentVisible(hotbarKeyLabelId(i), visible);
+    }
+}
+
 void GameplayHUDController::setHotbarSelectedIndex(size_t i)
 {
     if (i >= HOTBAR_SLOT_COUNT)

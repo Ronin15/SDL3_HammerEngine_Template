@@ -45,6 +45,7 @@ public:
 
     void initializeHotbarUI();
     void setHotbarSelectedIndex(size_t i);
+    void setHotbarVisible(bool visible);
     [[nodiscard]] size_t getHotbarSelectedIndex() const { return m_hotbarSelectedIndex; }
 
     static constexpr size_t HOTBAR_SLOT_COUNT = 9;
