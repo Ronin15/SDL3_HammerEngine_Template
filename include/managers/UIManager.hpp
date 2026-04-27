@@ -182,6 +182,11 @@ struct UIComponent {
   bool m_visible{true};
   bool m_enabled{true};
   int m_zOrder{0};
+  // When true, this component swallows mouse hover/press for any lower-z component
+  // that shares the cursor position. Used by modal overlays to block click-through
+  // to UI beneath them. Non-interactive types (PANEL etc.) otherwise let input
+  // fall through to whatever is underneath.
+  bool m_blocksInputBelow{false};
 
   // Auto-repositioning properties
   UIPositioning m_positioning{};

@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <limits>
 #include <numeric>
 #include "gpu/GPURenderer.hpp"
 #include "gpu/GPUVertexPool.hpp"
@@ -232,9 +233,11 @@ void UIManager::linkToParent(const std::shared_ptr<UIComponent> &component,
     component->m_style.useTextBackground = false;
   }
 
-  // Ensure child renders on top of its parent regardless of theme defaults
+  // Ensure child renders on top of its parent regardless of theme defaults.
+  // Additive bump preserves relative ordering between siblings (e.g. a button at z=10 and
+  // a title at z=25 inside a modal dialog at z=600 end up at 611 and 626 respectively).
   if (component->m_zOrder <= parent->m_zOrder) {
-    component->m_zOrder = parent->m_zOrder + 1;
+    component->m_zOrder += parent->m_zOrder + 1;
   }
 }
 
@@ -540,10 +543,11 @@ void UIManager::createDialog(const std::string &id, const UIRect &bounds,
   // Apply global scale for resolution-aware sizing
   component->m_bounds = scaleRect(bounds);
   component->m_style = m_currentTheme.getStyle(UIComponentType::DIALOG);
-  component->m_zOrder = UIConstants::ZORDER_DIALOG; // Render behind other elements by default
+  component->m_zOrder = UIConstants::ZORDER_DIALOG; // Default z; createModal() bumps to ZORDER_MODAL_DIALOG for modal use
 
   m_components[id] = component;
   linkToParent(component, parentId);
+  invalidateComponentCache();
 }
 
 void UIManager::createModal(const std::string &dialogId, const UIRect &bounds,
@@ -556,11 +560,25 @@ void UIManager::createModal(const std::string &dialogId, const UIRect &bounds,
     refreshAllComponentThemes();
   }
 
-  // Create overlay to dim background
+  // Create overlay to dim background, then elevate it to the modal layer so it
+  // renders above all regular UI (buttons/labels/titles) and dims them correctly.
   createOverlay(windowWidth, windowHeight);
+  if (auto overlay = getComponent("__overlay")) {
+    overlay->m_zOrder = UIConstants::ZORDER_MODAL_OVERLAY;
+    // The modal overlay must swallow input for everything beneath it; otherwise
+    // clicks pass through the overlay onto the buttons underneath (PANEL hits
+    // do not set mouseHandled in handleInput).
+    overlay->m_blocksInputBelow = true;
+    invalidateComponentCache();
+  }
 
-  // Create dialog box
+  // Create dialog box and elevate it above the modal overlay so children added
+  // via linkToParent (createLabel/createButton with parentId) auto-elevate above it.
   createDialog(dialogId, bounds);
+  if (auto dialog = getComponent(dialogId)) {
+    dialog->m_zOrder = UIConstants::ZORDER_MODAL_DIALOG;
+    invalidateComponentCache();
+  }
 }
 
 void UIManager::refreshAllComponentThemes() const {
@@ -2006,6 +2024,14 @@ void UIManager::handleInput() {
         }
       }
 
+      // Modal-style components (e.g. the modal overlay) swallow input for any
+      // lower-z component beneath the cursor. We mark mouseHandled so the rest
+      // of the loop short-circuits, preventing click-through to the UI below.
+      if (component->m_blocksInputBelow) {
+        mouseHandled = true;
+        continue;
+      }
+
       // Handle click/press for interactive components
       if (component->m_type == UIComponentType::BUTTON ||
           component->m_type == UIComponentType::BUTTON_DANGER ||
@@ -3149,8 +3175,23 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
 
   // Render components in z-order
   const auto& sortedComponents = getSortedComponents();
+
+  // Modal cull: text/images/primitives go through separate render passes that
+  // each draw their commands together regardless of z-band. To honor a modal
+  // overlay's intent of obscuring everything beneath it, find the highest-z
+  // input-blocking component (the modal overlay) and skip draw emission for
+  // anything below it. The overlay itself, the dialog, and dialog children
+  // (linked via parentId so their z is bumped above the overlay) survive.
+  int modalCullZ = std::numeric_limits<int>::min();
+  for (const auto& component : sortedComponents) {
+    if (component && component->m_visible && component->m_blocksInputBelow) {
+      modalCullZ = std::max(modalCullZ, component->m_zOrder);
+    }
+  }
+
   for (const auto& component : sortedComponents) {
     if (!component || !component->m_visible) continue;
+    if (component->m_zOrder < modalCullZ) continue;
 
     SDL_Color bgColor = component->m_style.backgroundColor;
 

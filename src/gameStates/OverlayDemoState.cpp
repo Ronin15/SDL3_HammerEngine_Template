@@ -283,16 +283,17 @@ void OverlayDemoState::setupModalOverlayMode() {
     // Create centered dialog with standardized dimensions
     ui.createCenteredDialog("overlay_demo_dialog_panel", dialogWidth, dialogHeight, "dark");
 
-    // Position child components using absolute baseline coordinates relative to dialog
-    ui.createLabel("overlay_demo_dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action");
-    ui.createLabel("overlay_demo_dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Are you sure you want to quit?");
+    // Position child components linked to the dialog panel — linkToParent auto-elevates
+    // z-order and suppresses redundant text backgrounds.
+    ui.createLabel("overlay_demo_dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action",
+                   "overlay_demo_dialog_panel");
+    ui.createLabel("overlay_demo_dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Are you sure you want to quit?",
+                   "overlay_demo_dialog_panel");
 
-    // Disable text backgrounds for labels inside modal (they have solid modal background)
-    ui.enableTextBackground("overlay_demo_dialog_title", false);
-    ui.enableTextBackground("overlay_demo_dialog_text", false);
-
-    ui.createButtonSuccess("overlay_demo_modal_yes_btn", {dialogX + 50, dialogY + 120, 100, 40}, "Yes");
-    ui.createButtonWarning("overlay_demo_modal_cancel_btn", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
+    ui.createButtonSuccess("overlay_demo_modal_yes_btn", {dialogX + 50, dialogY + 120, 100, 40}, "Yes",
+                           "overlay_demo_dialog_panel");
+    ui.createButtonWarning("overlay_demo_modal_cancel_btn", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel",
+                           "overlay_demo_dialog_panel");
 
     // Set CENTERED_BOTH positioning for all dialog children to move with dialog during fullscreen toggle
     // Offsets calculated from baseline center (960, 540)
@@ -332,16 +333,17 @@ void OverlayDemoState::setupLightModalOverlayMode() {
     // Create centered dialog with standardized dimensions
     ui.createCenteredDialog("overlay_demo_dialog_panel", dialogWidth, dialogHeight, "light");
 
-    // Position child components using absolute baseline coordinates relative to dialog
-    ui.createLabel("overlay_demo_dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action");
-    ui.createLabel("overlay_demo_dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Save changes before closing?");
+    // Position child components linked to the dialog panel — linkToParent auto-elevates
+    // z-order and suppresses redundant text backgrounds.
+    ui.createLabel("overlay_demo_dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action",
+                   "overlay_demo_dialog_panel");
+    ui.createLabel("overlay_demo_dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Save changes before closing?",
+                   "overlay_demo_dialog_panel");
 
-    // Disable text backgrounds for labels inside modal (they have solid modal background)
-    ui.enableTextBackground("overlay_demo_dialog_title", false);
-    ui.enableTextBackground("overlay_demo_dialog_text", false);
-
-    ui.createButtonSuccess("overlay_demo_modal_save_btn", {dialogX + 50, dialogY + 120, 100, 40}, "Save");
-    ui.createButtonWarning("overlay_demo_modal_cancel_btn", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
+    ui.createButtonSuccess("overlay_demo_modal_save_btn", {dialogX + 50, dialogY + 120, 100, 40}, "Save",
+                           "overlay_demo_dialog_panel");
+    ui.createButtonWarning("overlay_demo_modal_cancel_btn", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel",
+                           "overlay_demo_dialog_panel");
 
     // Set CENTERED_BOTH positioning for all dialog children to move with dialog during fullscreen toggle
     // Offsets calculated from baseline center (960, 540)

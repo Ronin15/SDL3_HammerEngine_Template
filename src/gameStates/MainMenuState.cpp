@@ -108,21 +108,22 @@ bool MainMenuState::enter() {
 
   ui.createLabel("mainmenu_quit_dialog_title",
                  {dialogX + 20, dialogY + 20, 360, 30},
-                 "Quit Game?");
-  ui.enableTextBackground("mainmenu_quit_dialog_title", false);
+                 "Quit Game?",
+                 "mainmenu_quit_dialog_panel");
   ui.setComponentPositioning("mainmenu_quit_dialog_title",
                              {UIPositionMode::CENTERED_BOTH, 0, -65, 360, 30});
 
   ui.createLabel("mainmenu_quit_dialog_text",
                  {dialogX + 20, dialogY + 60, 360, 40},
-                 "Exit to desktop?");
-  ui.enableTextBackground("mainmenu_quit_dialog_text", false);
+                 "Exit to desktop?",
+                 "mainmenu_quit_dialog_panel");
   ui.setComponentPositioning("mainmenu_quit_dialog_text",
                              {UIPositionMode::CENTERED_BOTH, 0, -20, 360, 40});
 
   ui.createButtonSuccess("mainmenu_quit_dialog_yes_btn",
                          {dialogX + 50, dialogY + 120, 100, 40},
-                         "Quit");
+                         "Quit",
+                         "mainmenu_quit_dialog_panel");
   ui.setComponentPositioning("mainmenu_quit_dialog_yes_btn",
                              {UIPositionMode::CENTERED_BOTH, 100, 40, 100, 40});
   ui.setOnClick("mainmenu_quit_dialog_yes_btn", []() {
@@ -131,20 +132,17 @@ bool MainMenuState::enter() {
 
   ui.createButtonWarning("mainmenu_quit_dialog_cancel_btn",
                          {dialogX + 250, dialogY + 120, 100, 40},
-                         "Cancel");
+                         "Cancel",
+                         "mainmenu_quit_dialog_panel");
   ui.setComponentPositioning("mainmenu_quit_dialog_cancel_btn",
                              {UIPositionMode::CENTERED_BOTH, -100, 40, 100, 40});
   ui.setOnClick("mainmenu_quit_dialog_cancel_btn", [this]() {
     closeQuitDialog();
   });
 
-  // Hide all dialog components (and the modal dimmer) until the user triggers them.
-  ui.setComponentVisible("__overlay",                      false);
-  ui.setComponentVisible("mainmenu_quit_dialog_panel",     false);
-  ui.setComponentVisible("mainmenu_quit_dialog_title",     false);
-  ui.setComponentVisible("mainmenu_quit_dialog_text",      false);
-  ui.setComponentVisible("mainmenu_quit_dialog_yes_btn",   false);
-  ui.setComponentVisible("mainmenu_quit_dialog_cancel_btn",false);
+  // Hide the modal layer (overlay + dialog panel + its children cascade via linkToParent) until triggered.
+  ui.setComponentVisible("__overlay",                  false);
+  ui.setComponentVisible("mainmenu_quit_dialog_panel", false);
 
   m_selectedIndex = 0;
   VoidLight::MenuNavigation::applySelection(kNavOrder, m_selectedIndex);
@@ -219,21 +217,10 @@ void MainMenuState::openQuitDialog()
   m_quitDialogOpen = true;
   auto& ui = UIManager::Instance();
 
-  // Hide main menu chrome so the dialog is the only thing on top of the overlay.
-  // ZORDER_TITLE/BUTTON outrank ZORDER_DIALOG, so simply showing the dialog
-  // without hiding these would leave them rendering through the dialog panel.
-  ui.setComponentVisible("mainmenu_title", false);
-  for (const auto id : kNavOrder)
-  {
-    ui.setComponentVisible(std::string{id}, false);
-  }
-
-  ui.setComponentVisible("__overlay",                      true);
-  ui.setComponentVisible("mainmenu_quit_dialog_panel",     true);
-  ui.setComponentVisible("mainmenu_quit_dialog_title",     true);
-  ui.setComponentVisible("mainmenu_quit_dialog_text",      true);
-  ui.setComponentVisible("mainmenu_quit_dialog_yes_btn",   true);
-  ui.setComponentVisible("mainmenu_quit_dialog_cancel_btn",true);
+  // The modal overlay (z=500) dims menu buttons and title beneath it; the dialog
+  // panel (z=600) and its linked children render above everything. No hide hacks needed.
+  ui.setComponentVisible("__overlay",                  true);
+  ui.setComponentVisible("mainmenu_quit_dialog_panel", true);
 
   // Default focus: Cancel (index 0 in kQuitDialogNavOrder)
   m_selectedIndex = 0;
@@ -245,19 +232,8 @@ void MainMenuState::closeQuitDialog()
   m_quitDialogOpen = false;
   auto& ui = UIManager::Instance();
 
-  ui.setComponentVisible("__overlay",                      false);
-  ui.setComponentVisible("mainmenu_quit_dialog_panel",     false);
-  ui.setComponentVisible("mainmenu_quit_dialog_title",     false);
-  ui.setComponentVisible("mainmenu_quit_dialog_text",      false);
-  ui.setComponentVisible("mainmenu_quit_dialog_yes_btn",   false);
-  ui.setComponentVisible("mainmenu_quit_dialog_cancel_btn",false);
-
-  // Restore main menu chrome.
-  ui.setComponentVisible("mainmenu_title", true);
-  for (const auto id : kNavOrder)
-  {
-    ui.setComponentVisible(std::string{id}, true);
-  }
+  ui.setComponentVisible("__overlay",                  false);
+  ui.setComponentVisible("mainmenu_quit_dialog_panel", false);
 
   // Return focus to the Exit button (last item in main menu nav order)
   m_selectedIndex = kNavOrder.size() - 1;

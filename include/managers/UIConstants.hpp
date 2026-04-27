@@ -37,7 +37,7 @@ namespace UIConstants {
   // Controls the render order of UI components (lower values render first/behind)
   constexpr int ZORDER_OVERLAY = -10;         // Overlay backgrounds render behind everything
   constexpr int ZORDER_PANEL = 0;             // Background panels
-  constexpr int ZORDER_DIALOG = 2;            // Dialogs render above overlays and panels
+  constexpr int ZORDER_DIALOG = 2;            // Non-modal dialogs render above overlays and panels (no current direct users; reserved for future use)
   constexpr int ZORDER_IMAGE = 1;             // Background images
   constexpr int ZORDER_PROGRESS_BAR = 5;      // Progress indicators
   constexpr int ZORDER_EVENT_LOG = 6;         // Event log displays
@@ -48,6 +48,8 @@ namespace UIConstants {
   constexpr int ZORDER_INPUT_FIELD = 15;      // Text input fields
   constexpr int ZORDER_LABEL = 20;            // Text labels
   constexpr int ZORDER_TITLE = 25;            // Title text
+  constexpr int ZORDER_MODAL_OVERLAY = 500;   // Modal overlay dims content beneath the dialog
+  constexpr int ZORDER_MODAL_DIALOG = 600;    // Modal dialog content (panels, plus child labels/buttons via linkToParent)
   constexpr int ZORDER_TOOLTIP = 1000;        // Tooltips always on top
 
   // Border Width Constants
