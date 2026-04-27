@@ -6,7 +6,7 @@
 #include "gameStates/GamePlayState.hpp"
 #include "entities/Player.hpp"
 #include "controllers/combat/CombatController.hpp"
-#include "controllers/ui/GameplayHUDController.hpp"
+#include "controllers/ui/HudController.hpp"
 #include "controllers/ui/InventoryController.hpp"
 #include "controllers/social/SocialController.hpp"
 #include "controllers/world/DayNightController.hpp"
@@ -102,7 +102,7 @@ bool GamePlayState::enter() {
     m_controllers.add<WeatherController>();
     m_controllers.add<DayNightController>();
     m_controllers.add<CombatController>(mp_Player);
-    m_controllers.add<GameplayHUDController>(mp_Player->getHandle());
+    m_controllers.add<HudController>(mp_Player->getHandle());
     auto& inventoryCtrl = m_controllers.add<InventoryController>(mp_Player);
     m_controllers.add<HarvestController>(mp_Player);
     m_controllers.add<ResourceRenderController>();
@@ -180,7 +180,7 @@ bool GamePlayState::enter() {
     ui.setComponentPositioning("gameplay_fps", fpsPos);
 
     inventoryCtrl.initializeInventoryUI();
-    m_controllers.get<GameplayHUDController>()->initializeHotbarUI();
+    m_controllers.get<HudController>()->initializeHotbarUI();
     if (mp_Player) {
       Vector2D const merchantSpawnPos =
           mp_Player->getPosition() + Vector2D(-96.0f, 32.0f);
@@ -265,7 +265,7 @@ void GamePlayState::update(float deltaTime) {
     m_npcRenderCtrl.update(deltaTime);
 
     // Update combat HUD (health/stamina bars, target frame)
-    auto& gameplayHudCtrl = *m_controllers.get<GameplayHUDController>();
+    auto& gameplayHudCtrl = *m_controllers.get<HudController>();
     ui.updateCombatHUD(
         mp_Player->getHealth(),
         mp_Player->getStamina(),
@@ -566,7 +566,7 @@ void GamePlayState::pause() {
     ui.setComponentVisible(InventoryController::INVENTORY_PANEL_ID, false);
   }
 
-  if (auto* hudCtrl = m_controllers.get<GameplayHUDController>()) {
+  if (auto* hudCtrl = m_controllers.get<HudController>()) {
     hudCtrl->setHotbarVisible(false);
   }
 
@@ -610,7 +610,7 @@ void GamePlayState::resume() {
     inventoryCtrl->setInventoryVisible(true);
   }
 
-  if (auto* hudCtrl = m_controllers.get<GameplayHUDController>()) {
+  if (auto* hudCtrl = m_controllers.get<HudController>()) {
     hudCtrl->setHotbarVisible(true);
   }
 

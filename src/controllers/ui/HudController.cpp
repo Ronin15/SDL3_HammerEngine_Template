@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#include "controllers/ui/GameplayHUDController.hpp"
+#include "controllers/ui/HudController.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/InputManager.hpp"
@@ -19,8 +19,8 @@ constexpr int HOTBAR_BOTTOM_OFFSET = 24;
 constexpr int HOTBAR_KEY_LABEL_SIZE = 17;
 
 constexpr int HOTBAR_TOTAL_WIDTH =
-    static_cast<int>(GameplayHUDController::HOTBAR_SLOT_COUNT) * HOTBAR_SLOT_SIZE +
-    (static_cast<int>(GameplayHUDController::HOTBAR_SLOT_COUNT) - 1) * HOTBAR_SLOT_GAP;
+    static_cast<int>(HudController::HOTBAR_SLOT_COUNT) * HOTBAR_SLOT_SIZE +
+    (static_cast<int>(HudController::HOTBAR_SLOT_COUNT) - 1) * HOTBAR_SLOT_GAP;
 
 // BOTTOM_CENTERED positions x = (windowWidth - bounds.width)/2 + offsetX.
 // For each slot we want bounds.x = (windowWidth - HOTBAR_TOTAL_WIDTH)/2 + i*(SLOT_SIZE + GAP),
@@ -33,7 +33,7 @@ constexpr int slotCenterOffsetX(size_t i)
 
 } // namespace
 
-void GameplayHUDController::subscribe()
+void HudController::subscribe()
 {
     if (checkAlreadySubscribed())
     {
@@ -47,7 +47,7 @@ void GameplayHUDController::subscribe()
     setSubscribed(true);
 }
 
-void GameplayHUDController::update(float deltaTime)
+void HudController::update(float deltaTime)
 {
     pollHotbarInput();
 
@@ -80,7 +80,7 @@ void GameplayHUDController::update(float deltaTime)
         : 0.0f;
 }
 
-bool GameplayHUDController::hasActiveTarget() const
+bool HudController::hasActiveTarget() const
 {
     if (m_targetDisplayTimer <= 0.0f || !m_targetedHandle.isValid())
     {
@@ -97,7 +97,7 @@ bool GameplayHUDController::hasActiveTarget() const
     return edm.getHotDataByIndex(targetIdx).isAlive();
 }
 
-float GameplayHUDController::getTargetHealth() const
+float HudController::getTargetHealth() const
 {
     if (!hasActiveTarget())
     {
@@ -107,7 +107,7 @@ float GameplayHUDController::getTargetHealth() const
     return m_cachedTargetHealth;
 }
 
-void GameplayHUDController::onCombatEvent(const EventData& data)
+void HudController::onCombatEvent(const EventData& data)
 {
     if (!data.isActive() || !data.event || !m_playerHandle.isValid())
     {
@@ -153,7 +153,7 @@ void GameplayHUDController::onCombatEvent(const EventData& data)
     }
 }
 
-void GameplayHUDController::clearTarget()
+void HudController::clearTarget()
 {
     m_targetedHandle = EntityHandle{};
     m_lastLabeledHandle = EntityHandle{};
@@ -165,7 +165,7 @@ void GameplayHUDController::clearTarget()
     }
 }
 
-void GameplayHUDController::initializeHotbarUI()
+void HudController::initializeHotbarUI()
 {
     if (m_hotbarUICreated)
     {
@@ -214,7 +214,7 @@ void GameplayHUDController::initializeHotbarUI()
     applyHotbarSelectionStyling();
 }
 
-void GameplayHUDController::setHotbarVisible(bool visible)
+void HudController::setHotbarVisible(bool visible)
 {
     if (!m_hotbarUICreated)
     {
@@ -228,7 +228,7 @@ void GameplayHUDController::setHotbarVisible(bool visible)
     }
 }
 
-void GameplayHUDController::setHotbarSelectedIndex(size_t i)
+void HudController::setHotbarSelectedIndex(size_t i)
 {
     if (i >= HOTBAR_SLOT_COUNT)
     {
@@ -242,7 +242,7 @@ void GameplayHUDController::setHotbarSelectedIndex(size_t i)
     applyHotbarSelectionStyling();
 }
 
-void GameplayHUDController::pollHotbarInput()
+void HudController::pollHotbarInput()
 {
     auto& inputMgr = InputManager::Instance();
     using C = InputManager::Command;
@@ -257,7 +257,7 @@ void GameplayHUDController::pollHotbarInput()
     }
 }
 
-void GameplayHUDController::applyHotbarSelectionStyling()
+void HudController::applyHotbarSelectionStyling()
 {
     if (!m_hotbarUICreated)
     {
@@ -289,12 +289,12 @@ void GameplayHUDController::applyHotbarSelectionStyling()
     }
 }
 
-std::string GameplayHUDController::hotbarSlotId(size_t i)
+std::string HudController::hotbarSlotId(size_t i)
 {
     return "gameplay_hotbar_slot_" + std::to_string(i);
 }
 
-std::string GameplayHUDController::hotbarKeyLabelId(size_t i)
+std::string HudController::hotbarKeyLabelId(size_t i)
 {
     return "gameplay_hotbar_key_" + std::to_string(i);
 }

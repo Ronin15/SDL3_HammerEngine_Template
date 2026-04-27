@@ -3,10 +3,10 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#define BOOST_TEST_MODULE GameplayHUDControllerTests
+#define BOOST_TEST_MODULE HudControllerTests
 #include <boost/test/unit_test.hpp>
 
-#include "controllers/ui/GameplayHUDController.hpp"
+#include "controllers/ui/HudController.hpp"
 #include "collisions/CollisionInfo.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -15,10 +15,10 @@
 #include "managers/ProjectileManager.hpp"
 #include "../events/EventManagerTestAccess.hpp"
 
-class GameplayHUDControllerFixture
+class HudControllerFixture
 {
 public:
-    GameplayHUDControllerFixture()
+    HudControllerFixture()
     {
         EventManagerTestAccess::reset();
         EventManager::Instance().init();
@@ -27,7 +27,7 @@ public:
         BOOST_REQUIRE(ProjectileManager::Instance().init());
     }
 
-    ~GameplayHUDControllerFixture()
+    ~HudControllerFixture()
     {
         ProjectileManager::Instance().clean();
         EntityDataManager::Instance().clean();
@@ -60,13 +60,13 @@ protected:
     }
 };
 
-BOOST_FIXTURE_TEST_SUITE(GameplayHUDControllerTests, GameplayHUDControllerFixture)
+BOOST_FIXTURE_TEST_SUITE(HudControllerTests, HudControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestControllerNameAndInitialState)
 {
-    GameplayHUDController controller(EntityHandle{});
+    HudController controller(EntityHandle{});
 
-    BOOST_CHECK_EQUAL(controller.getName(), "GameplayHUDController");
+    BOOST_CHECK_EQUAL(controller.getName(), "HudController");
     BOOST_CHECK(!controller.hasActiveTarget());
     BOOST_CHECK_EQUAL(controller.getTargetHealth(), 0.0f);
     BOOST_CHECK_EQUAL(controller.getTargetLabel(), "Target");
@@ -76,7 +76,7 @@ BOOST_AUTO_TEST_CASE(TestPlayerMeleeHitSetsTargetState)
 {
     EntityHandle player = createPlayerHandle();
     EntityHandle target = createNPCTarget();
-    GameplayHUDController controller(player);
+    HudController controller(player);
     controller.subscribe();
 
     dispatchDamage(player, target, 25.0f);
@@ -94,7 +94,7 @@ BOOST_AUTO_TEST_CASE(TestPlayerProjectileHitSetsTargetState)
 
     EntityHandle player = createPlayerHandle();
     EntityHandle target = createNPCTarget();
-    GameplayHUDController controller(player);
+    HudController controller(player);
     controller.subscribe();
 
     EntityHandle projectile = edm.createProjectile(
@@ -125,7 +125,7 @@ BOOST_AUTO_TEST_CASE(TestNPCDamageToPlayerDoesNotSetTarget)
 {
     EntityHandle player = createPlayerHandle();
     EntityHandle npc = createNPCTarget();
-    GameplayHUDController controller(player);
+    HudController controller(player);
     controller.subscribe();
 
     dispatchDamage(npc, player, 12.0f);
@@ -137,7 +137,7 @@ BOOST_AUTO_TEST_CASE(TestLethalHitClearsTargetState)
 {
     EntityHandle player = createPlayerHandle();
     EntityHandle target = createNPCTarget();
-    GameplayHUDController controller(player);
+    HudController controller(player);
     controller.subscribe();
 
     dispatchDamage(player, target, 500.0f);
@@ -150,13 +150,13 @@ BOOST_AUTO_TEST_CASE(TestTimerExpiryClearsTargetState)
 {
     EntityHandle player = createPlayerHandle();
     EntityHandle target = createNPCTarget();
-    GameplayHUDController controller(player);
+    HudController controller(player);
     controller.subscribe();
 
     dispatchDamage(player, target, 10.0f);
     BOOST_REQUIRE(controller.hasActiveTarget());
 
-    controller.update(GameplayHUDController::TARGET_DISPLAY_DURATION + 0.01f);
+    controller.update(HudController::TARGET_DISPLAY_DURATION + 0.01f);
 
     BOOST_CHECK(!controller.hasActiveTarget());
 }

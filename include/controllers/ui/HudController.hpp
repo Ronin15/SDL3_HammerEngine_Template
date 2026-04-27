@@ -3,14 +3,14 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#ifndef GAMEPLAY_HUD_CONTROLLER_HPP
-#define GAMEPLAY_HUD_CONTROLLER_HPP
+#ifndef HUD_CONTROLLER_HPP
+#define HUD_CONTROLLER_HPP
 
 /**
- * @file GameplayHUDController.hpp
+ * @file HudController.hpp
  * @brief State-scoped event bridge for transient gameplay HUD state
  *
- * GameplayHUDController listens to committed gameplay events and exposes
+ * HudController listens to committed gameplay events and exposes
  * read-only state for HUD rendering. It does not mutate UI components
  * directly; active states query this controller when updating the HUD.
  */
@@ -20,23 +20,23 @@
 #include "entities/EntityHandle.hpp"
 #include <string>
 
-class GameplayHUDController : public ControllerBase, public IUpdatable
+class HudController : public ControllerBase, public IUpdatable
 {
 public:
     static constexpr float TARGET_DISPLAY_DURATION{3.0f};
 
-    explicit GameplayHUDController(EntityHandle playerHandle)
+    explicit HudController(EntityHandle playerHandle)
         : m_playerHandle(playerHandle)
     {
     }
 
-    ~GameplayHUDController() override = default;
+    ~HudController() override = default;
 
-    GameplayHUDController(GameplayHUDController&&) noexcept = default;
-    GameplayHUDController& operator=(GameplayHUDController&&) noexcept = default;
+    HudController(HudController&&) noexcept = default;
+    HudController& operator=(HudController&&) noexcept = default;
 
     void subscribe() override;
-    [[nodiscard]] std::string_view getName() const override { return "GameplayHUDController"; }
+    [[nodiscard]] std::string_view getName() const override { return "HudController"; }
     void update(float deltaTime) override;
 
     [[nodiscard]] bool hasActiveTarget() const;
@@ -70,4 +70,4 @@ private:
     bool m_hotbarUICreated{false};
 };
 
-#endif // GAMEPLAY_HUD_CONTROLLER_HPP
+#endif // HUD_CONTROLLER_HPP
