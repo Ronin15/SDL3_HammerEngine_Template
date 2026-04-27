@@ -51,11 +51,6 @@ void HudController::subscribe()
 
 void HudController::update(float deltaTime)
 {
-    if (m_hotbarUICreated)
-    {
-        pollHotbarInput();
-    }
-
     if (m_targetDisplayTimer > 0.0f)
     {
         m_targetDisplayTimer -= deltaTime;
@@ -233,22 +228,16 @@ void HudController::setHotbarVisible(bool visible)
     }
 }
 
-void HudController::setHotbarSelectedIndex(size_t i)
+void HudController::handleHotbarInput()
 {
-    if (i >= HOTBAR_SLOT_COUNT)
+    // Must run from a per-render-frame path (e.g. GamePlayState::handleInput),
+    // not from update(). isCommandPressed is rising-edge; refreshCommandState
+    // advances the edge each render frame, so polling from a fixed-step update
+    // drops taps whenever render rate exceeds the update rate.
+    if (!m_hotbarUICreated)
     {
         return;
     }
-    if (i == m_hotbarSelectedIndex && m_hotbarUICreated)
-    {
-        return;
-    }
-    m_hotbarSelectedIndex = i;
-    applyHotbarSelectionStyling();
-}
-
-void HudController::pollHotbarInput()
-{
     using C = InputManager::Command;
     static constexpr std::array<C, HOTBAR_SLOT_COUNT> kHotbarCommands{
         C::HotbarSlot1, C::HotbarSlot2, C::HotbarSlot3,
@@ -264,6 +253,20 @@ void HudController::pollHotbarInput()
             break;
         }
     }
+}
+
+void HudController::setHotbarSelectedIndex(size_t i)
+{
+    if (i >= HOTBAR_SLOT_COUNT)
+    {
+        return;
+    }
+    if (i == m_hotbarSelectedIndex && m_hotbarUICreated)
+    {
+        return;
+    }
+    m_hotbarSelectedIndex = i;
+    applyHotbarSelectionStyling();
 }
 
 void HudController::applyHotbarSelectionStyling()

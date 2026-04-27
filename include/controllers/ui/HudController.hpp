@@ -49,6 +49,7 @@ public:
     [[nodiscard]] const std::string& getTargetLabel() const { return m_targetLabel; }
 
     void initializeHotbarUI();
+    void handleHotbarInput();
     void setHotbarSelectedIndex(size_t i);
     void setHotbarVisible(bool visible);
     [[nodiscard]] size_t getHotbarSelectedIndex() const { return m_hotbarSelectedIndex; }
@@ -59,7 +60,6 @@ public:
 private:
     void onCombatEvent(const EventData& data);
     void clearTarget();
-    void pollHotbarInput();
     void applyHotbarSelectionStyling();
     static std::string hotbarSlotId(size_t i);
     static std::string hotbarKeyLabelId(size_t i);

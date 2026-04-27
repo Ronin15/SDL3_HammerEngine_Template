@@ -657,6 +657,10 @@ void GamePlayState::handleInput() {
     toggleInventoryDisplay();
   }
 
+  if (auto* hudCtrl = m_controllers.get<HudController>()) {
+    hudCtrl->handleHotbarInput();
+  }
+
   // Combat — attack command (default: F, rebindable via Controls settings)
   if (inputMgr.isCommandPressed(InputManager::Command::AttackLight) && mp_Player) {
     m_controllers.get<CombatController>()->tryAttack();
