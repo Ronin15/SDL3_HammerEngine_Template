@@ -42,7 +42,6 @@
 #include <format>
 
 #include "gpu/GPURenderer.hpp"
-#include "gpu/SpriteBatch.hpp"
 #include "utils/GPUSceneRecorder.hpp"
 
 // Constructor/destructor defined here where GPUSceneRecorder is complete (for unique_ptr)
