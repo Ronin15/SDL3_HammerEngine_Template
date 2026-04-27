@@ -180,6 +180,7 @@ bool GamePlayState::enter() {
     ui.setComponentPositioning("gameplay_fps", fpsPos);
 
     inventoryCtrl.initializeInventoryUI();
+    m_controllers.get<GameplayHUDController>()->initializeHotbarUI();
     if (mp_Player) {
       Vector2D const merchantSpawnPos =
           mp_Player->getPosition() + Vector2D(-96.0f, 32.0f);

@@ -8,11 +8,9 @@
 
 #include <SDL3/SDL.h>
 #include <array>
-#include <memory>
 #include <optional>
 #include <span>
 #include <string>
-#include <utility>
 #include <vector>
 #include "utils/Vector2D.hpp"
 
@@ -32,6 +30,9 @@ class InputManager {
         AttackLight, Interact, OpenInventory, Pause,
         WorldInteract,   // LMB world click (mouse pos read from getMousePosition())
         ZoomIn, ZoomOut,
+        // Hotbar selection (v1: select-only; use action TBD)
+        HotbarSlot1, HotbarSlot2, HotbarSlot3, HotbarSlot4, HotbarSlot5,
+        HotbarSlot6, HotbarSlot7, HotbarSlot8, HotbarSlot9,
         // Menu
         MenuConfirm, MenuCancel, MenuUp, MenuDown, MenuLeft, MenuRight,
         COUNT

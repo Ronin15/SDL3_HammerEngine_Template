@@ -7,11 +7,12 @@
 #include "ai/BehaviorExecutors.hpp"
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
+
 #include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
-#include "managers/GameTimeManager.hpp"
+
 #include "managers/InputManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"

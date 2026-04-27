@@ -43,9 +43,20 @@ public:
     [[nodiscard]] float getTargetHealth() const;
     [[nodiscard]] const std::string& getTargetLabel() const { return m_targetLabel; }
 
+    void initializeHotbarUI();
+    void setHotbarSelectedIndex(size_t i);
+    [[nodiscard]] size_t getHotbarSelectedIndex() const { return m_hotbarSelectedIndex; }
+
+    static constexpr size_t HOTBAR_SLOT_COUNT = 9;
+    static constexpr const char* HOTBAR_PANEL_ID = "gameplay_hotbar_panel";
+
 private:
     void onCombatEvent(const EventData& data);
     void clearTarget();
+    void pollHotbarInput();
+    void applyHotbarSelectionStyling();
+    static std::string hotbarSlotId(size_t i);
+    static std::string hotbarKeyLabelId(size_t i);
 
     EntityHandle m_playerHandle{};
     EntityHandle m_targetedHandle{};
@@ -53,6 +64,9 @@ private:
     float m_targetDisplayTimer{0.0f};
     float m_cachedTargetHealth{0.0f};
     std::string m_targetLabel{"Target"};
+
+    size_t m_hotbarSelectedIndex{0};
+    bool m_hotbarUICreated{false};
 };
 
 #endif // GAMEPLAY_HUD_CONTROLLER_HPP

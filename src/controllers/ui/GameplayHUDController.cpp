@@ -6,6 +6,32 @@
 #include "controllers/ui/GameplayHUDController.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/InputManager.hpp"
+#include "managers/UIConstants.hpp"
+#include "managers/UIManager.hpp"
+#include <string>
+
+namespace {
+
+constexpr int HOTBAR_SLOT_SIZE = 48;
+constexpr int HOTBAR_SLOT_GAP = 6;
+constexpr int HOTBAR_BOTTOM_OFFSET = 24;
+constexpr int HOTBAR_KEY_LABEL_SIZE = 14;
+
+constexpr int HOTBAR_TOTAL_WIDTH =
+    static_cast<int>(GameplayHUDController::HOTBAR_SLOT_COUNT) * HOTBAR_SLOT_SIZE +
+    (static_cast<int>(GameplayHUDController::HOTBAR_SLOT_COUNT) - 1) * HOTBAR_SLOT_GAP;
+
+// BOTTOM_CENTERED positions x = (windowWidth - bounds.width)/2 + offsetX.
+// For each slot we want bounds.x = (windowWidth - HOTBAR_TOTAL_WIDTH)/2 + i*(SLOT_SIZE + GAP),
+// so offsetX = i*(SLOT_SIZE + GAP) - (HOTBAR_TOTAL_WIDTH - SLOT_SIZE)/2.
+constexpr int slotCenterOffsetX(size_t i)
+{
+    return static_cast<int>(i) * (HOTBAR_SLOT_SIZE + HOTBAR_SLOT_GAP) -
+           (HOTBAR_TOTAL_WIDTH - HOTBAR_SLOT_SIZE) / 2;
+}
+
+} // namespace
 
 void GameplayHUDController::subscribe()
 {
@@ -23,6 +49,8 @@ void GameplayHUDController::subscribe()
 
 void GameplayHUDController::update(float deltaTime)
 {
+    pollHotbarInput();
+
     if (m_targetDisplayTimer > 0.0f)
     {
         m_targetDisplayTimer -= deltaTime;
@@ -135,4 +163,121 @@ void GameplayHUDController::clearTarget()
     {
         m_targetLabel = "Target";
     }
+}
+
+void GameplayHUDController::initializeHotbarUI()
+{
+    if (m_hotbarUICreated)
+    {
+        applyHotbarSelectionStyling();
+        return;
+    }
+
+    auto& ui = UIManager::Instance();
+
+    ui.createPanel(HOTBAR_PANEL_ID,
+                   {0, 0, HOTBAR_TOTAL_WIDTH, HOTBAR_SLOT_SIZE});
+    ui.setComponentPositioning(
+        HOTBAR_PANEL_ID,
+        {UIPositionMode::BOTTOM_CENTERED, 0, HOTBAR_BOTTOM_OFFSET,
+         HOTBAR_TOTAL_WIDTH, HOTBAR_SLOT_SIZE});
+
+    for (size_t i = 0; i < HOTBAR_SLOT_COUNT; ++i)
+    {
+        const std::string slotComponentId = hotbarSlotId(i);
+        ui.createButton(slotComponentId,
+                        {0, 0, HOTBAR_SLOT_SIZE, HOTBAR_SLOT_SIZE},
+                        "");
+        ui.setComponentPositioning(
+            slotComponentId,
+            {UIPositionMode::BOTTOM_CENTERED, slotCenterOffsetX(i),
+             HOTBAR_BOTTOM_OFFSET, HOTBAR_SLOT_SIZE, HOTBAR_SLOT_SIZE});
+
+        UIStyle keyLabelStyle;
+        keyLabelStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=0};
+        keyLabelStyle.textColor = {.r=220, .g=225, .b=235, .a=230};
+        keyLabelStyle.textAlign = UIAlignment::TOP_LEFT;
+        keyLabelStyle.fontID = UIConstants::FONT_UI;
+
+        const std::string keyLabelComponentId = hotbarKeyLabelId(i);
+        ui.createLabel(keyLabelComponentId,
+                       {0, 0, HOTBAR_KEY_LABEL_SIZE, HOTBAR_KEY_LABEL_SIZE},
+                       std::to_string(i + 1));
+        ui.setStyle(keyLabelComponentId, keyLabelStyle);
+        ui.setComponentPositioning(
+            keyLabelComponentId,
+            {UIPositionMode::BOTTOM_CENTERED, slotCenterOffsetX(i) + 4,
+             HOTBAR_BOTTOM_OFFSET + HOTBAR_SLOT_SIZE - HOTBAR_KEY_LABEL_SIZE - 2,
+             HOTBAR_KEY_LABEL_SIZE, HOTBAR_KEY_LABEL_SIZE});
+    }
+
+    m_hotbarUICreated = true;
+    applyHotbarSelectionStyling();
+}
+
+void GameplayHUDController::setHotbarSelectedIndex(size_t i)
+{
+    if (i >= HOTBAR_SLOT_COUNT)
+    {
+        return;
+    }
+    if (i == m_hotbarSelectedIndex && m_hotbarUICreated)
+    {
+        return;
+    }
+    m_hotbarSelectedIndex = i;
+    applyHotbarSelectionStyling();
+}
+
+void GameplayHUDController::pollHotbarInput()
+{
+    auto& inputMgr = InputManager::Instance();
+    using C = InputManager::Command;
+    for (size_t i = 0; i < HOTBAR_SLOT_COUNT; ++i)
+    {
+        const auto cmd = static_cast<C>(static_cast<uint32_t>(C::HotbarSlot1) + i);
+        if (inputMgr.isCommandPressed(cmd))
+        {
+            setHotbarSelectedIndex(i);
+            break;
+        }
+    }
+}
+
+void GameplayHUDController::applyHotbarSelectionStyling()
+{
+    if (!m_hotbarUICreated)
+    {
+        return;
+    }
+
+    UIStyle defaultStyle;
+    defaultStyle.backgroundColor = {.r=20, .g=24, .b=30, .a=190};
+    defaultStyle.borderColor = {.r=95, .g=115, .b=135, .a=210};
+    defaultStyle.hoverColor = {.r=42, .g=66, .b=92, .a=230};
+    defaultStyle.pressedColor = {.r=60, .g=88, .b=118, .a=240};
+    defaultStyle.borderWidth = 1;
+    defaultStyle.textAlign = UIAlignment::CENTER_CENTER;
+
+    UIStyle selectedStyle = defaultStyle;
+    selectedStyle.borderColor = {.r=240, .g=200, .b=80, .a=255};
+    selectedStyle.borderWidth = 3;
+    selectedStyle.backgroundColor = {.r=40, .g=44, .b=52, .a=210};
+
+    auto& ui = UIManager::Instance();
+    for (size_t i = 0; i < HOTBAR_SLOT_COUNT; ++i)
+    {
+        ui.setStyle(hotbarSlotId(i),
+                    (i == m_hotbarSelectedIndex) ? selectedStyle : defaultStyle);
+    }
+}
+
+std::string GameplayHUDController::hotbarSlotId(size_t i)
+{
+    return "gameplay_hotbar_slot_" + std::to_string(i);
+}
+
+std::string GameplayHUDController::hotbarKeyLabelId(size_t i)
+{
+    return "gameplay_hotbar_key_" + std::to_string(i);
 }

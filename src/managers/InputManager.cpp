@@ -527,6 +527,18 @@ void InputManager::loadDefaultBindings()
     add(C::ZoomOut,       S::Keyboard,            SDL_SCANCODE_LEFTBRACKET);
     add(C::ZoomOut,       S::GamepadButton,       SDL_GAMEPAD_BUTTON_DPAD_DOWN);
 
+    // Hotbar selection — keyboard 1-9. No gamepad defaults in v1; gamepad
+    // hotbar scheme (D-pad cycle vs face-button shortcuts) is a v2 design call.
+    add(C::HotbarSlot1,   S::Keyboard,            SDL_SCANCODE_1);
+    add(C::HotbarSlot2,   S::Keyboard,            SDL_SCANCODE_2);
+    add(C::HotbarSlot3,   S::Keyboard,            SDL_SCANCODE_3);
+    add(C::HotbarSlot4,   S::Keyboard,            SDL_SCANCODE_4);
+    add(C::HotbarSlot5,   S::Keyboard,            SDL_SCANCODE_5);
+    add(C::HotbarSlot6,   S::Keyboard,            SDL_SCANCODE_6);
+    add(C::HotbarSlot7,   S::Keyboard,            SDL_SCANCODE_7);
+    add(C::HotbarSlot8,   S::Keyboard,            SDL_SCANCODE_8);
+    add(C::HotbarSlot9,   S::Keyboard,            SDL_SCANCODE_9);
+
     // Menu commands are dispatched through the action layer
     // (MenuNavigation -> InputManager::isCommandPressed), so they are
     // device-agnostic at runtime: any binding present below fires when the
@@ -641,6 +653,15 @@ namespace
             case C::WorldInteract: return "world_interact";
             case C::ZoomIn:        return "zoom_in";
             case C::ZoomOut:       return "zoom_out";
+            case C::HotbarSlot1:   return "hotbar_slot_1";
+            case C::HotbarSlot2:   return "hotbar_slot_2";
+            case C::HotbarSlot3:   return "hotbar_slot_3";
+            case C::HotbarSlot4:   return "hotbar_slot_4";
+            case C::HotbarSlot5:   return "hotbar_slot_5";
+            case C::HotbarSlot6:   return "hotbar_slot_6";
+            case C::HotbarSlot7:   return "hotbar_slot_7";
+            case C::HotbarSlot8:   return "hotbar_slot_8";
+            case C::HotbarSlot9:   return "hotbar_slot_9";
             case C::MenuConfirm:   return "menu_confirm";
             case C::MenuCancel:    return "menu_cancel";
             case C::MenuUp:        return "menu_up";
@@ -1086,6 +1107,15 @@ std::string InputManager::commandDisplayName(Command c) const
         case C::WorldInteract: return "World Interact";
         case C::ZoomIn:        return "Zoom In";
         case C::ZoomOut:       return "Zoom Out";
+        case C::HotbarSlot1:   return "Hotbar Slot 1";
+        case C::HotbarSlot2:   return "Hotbar Slot 2";
+        case C::HotbarSlot3:   return "Hotbar Slot 3";
+        case C::HotbarSlot4:   return "Hotbar Slot 4";
+        case C::HotbarSlot5:   return "Hotbar Slot 5";
+        case C::HotbarSlot6:   return "Hotbar Slot 6";
+        case C::HotbarSlot7:   return "Hotbar Slot 7";
+        case C::HotbarSlot8:   return "Hotbar Slot 8";
+        case C::HotbarSlot9:   return "Hotbar Slot 9";
         case C::MenuConfirm:   return "Menu Confirm";
         case C::MenuCancel:    return "Menu Cancel";
         case C::MenuUp:        return "Menu Up";
