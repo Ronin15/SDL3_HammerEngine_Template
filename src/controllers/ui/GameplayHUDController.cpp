@@ -175,12 +175,10 @@ void GameplayHUDController::initializeHotbarUI()
 
     auto& ui = UIManager::Instance();
 
-    ui.createPanel(HOTBAR_PANEL_ID,
-                   {0, 0, HOTBAR_TOTAL_WIDTH, HOTBAR_SLOT_SIZE});
-    ui.setComponentPositioning(
-        HOTBAR_PANEL_ID,
-        {UIPositionMode::BOTTOM_CENTERED, 0, HOTBAR_BOTTOM_OFFSET,
-         HOTBAR_TOTAL_WIDTH, HOTBAR_SLOT_SIZE});
+    // No parent panel: slots are positioned independently via BOTTOM_CENTERED.
+    // A parent panel would also receive a HOVERED state from UIManager when
+    // the mouse is over any slot, painting its theme hoverColor behind the
+    // slots and leaking visual state we do not own.
 
     for (size_t i = 0; i < HOTBAR_SLOT_COUNT; ++i)
     {
@@ -192,6 +190,7 @@ void GameplayHUDController::initializeHotbarUI()
             slotComponentId,
             {UIPositionMode::BOTTOM_CENTERED, slotCenterOffsetX(i),
              HOTBAR_BOTTOM_OFFSET, HOTBAR_SLOT_SIZE, HOTBAR_SLOT_SIZE});
+        ui.setOnClick(slotComponentId, [this, i]() { setHotbarSelectedIndex(i); });
 
         UIStyle keyLabelStyle;
         keyLabelStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=0};
@@ -254,8 +253,10 @@ void GameplayHUDController::applyHotbarSelectionStyling()
     UIStyle defaultStyle;
     defaultStyle.backgroundColor = {.r=20, .g=24, .b=30, .a=190};
     defaultStyle.borderColor = {.r=95, .g=115, .b=135, .a=210};
-    defaultStyle.hoverColor = {.r=42, .g=66, .b=92, .a=230};
-    defaultStyle.pressedColor = {.r=60, .g=88, .b=118, .a=240};
+    // Hover/press match background — hotbar selection is owned by us, not by
+    // UIManager's interactive state, so the slot must not visually flinch on hover.
+    defaultStyle.hoverColor = defaultStyle.backgroundColor;
+    defaultStyle.pressedColor = defaultStyle.backgroundColor;
     defaultStyle.borderWidth = 1;
     defaultStyle.textAlign = UIAlignment::CENTER_CENTER;
 
@@ -263,6 +264,8 @@ void GameplayHUDController::applyHotbarSelectionStyling()
     selectedStyle.borderColor = {.r=240, .g=200, .b=80, .a=255};
     selectedStyle.borderWidth = 3;
     selectedStyle.backgroundColor = {.r=40, .g=44, .b=52, .a=210};
+    selectedStyle.hoverColor = selectedStyle.backgroundColor;
+    selectedStyle.pressedColor = selectedStyle.backgroundColor;
 
     auto& ui = UIManager::Instance();
     for (size_t i = 0; i < HOTBAR_SLOT_COUNT; ++i)
