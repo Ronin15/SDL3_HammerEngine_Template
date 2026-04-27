@@ -68,8 +68,6 @@ void PauseState::update(float) {
     if (!ui.isShutdown()) {
         ui.update(0.0f);
     }
-    // Re-apply the controller-focus highlight each frame so gamepad
-    // hotplug naturally clears/restores the selection.
     VoidLight::MenuNavigation::applySelection(kNavOrder, m_selectedIndex);
 }
 
@@ -94,10 +92,9 @@ void PauseState::handleInput() {
   const auto& inputMgr = InputManager::Instance();
 
   VoidLight::MenuNavigation::readInputs(kNavOrder, m_selectedIndex);
-  // MenuCancel (B/Circle) or Pause (START) both resume gameplay — symmetric
-  // with GamePlayState which uses Command::Pause to enter PauseState.
-  // Both checks use isCommandPressed (rising-edge) to avoid re-pausing on the
-  // same frame. Gamepad-only by design; keyboard+mouse users click Resume.
+  // MenuCancel or Pause both resume gameplay — symmetric with GamePlayState
+  // which uses Command::Pause to enter PauseState. Both use isCommandPressed
+  // (rising-edge) to avoid re-pausing on the same frame.
   if (VoidLight::MenuNavigation::cancelPressed() ||
       inputMgr.isCommandPressed(InputManager::Command::Pause)) {
       mp_stateManager->popState();

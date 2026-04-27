@@ -626,6 +626,13 @@ void GamePlayState::handleInput() {
   auto &ui = UIManager::Instance();
   GameTimeManager &gameTimeMgr = GameTimeManager::Instance();
 
+  // Trade dialog is modal — it consumes all input so Pause cannot fire behind it.
+  auto* socialCtrl = m_controllers.get<SocialController>();
+  if (socialCtrl && socialCtrl->isTrading()) {
+    socialCtrl->handleTradeInput(inputMgr);
+    return;
+  }
+
   if (inputMgr.isCommandPressed(InputManager::Command::Pause)) {
     // Create PauseState if it doesn't exist
     if (!mp_stateManager->hasState(GameStateId::PAUSE)) {
@@ -644,12 +651,6 @@ void GamePlayState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_F2)) {
     m_fpsVisible = !m_fpsVisible;
     ui.setComponentVisible("gameplay_fps", m_fpsVisible);
-  }
-
-  auto* socialCtrl = m_controllers.get<SocialController>();
-  if (socialCtrl && socialCtrl->isTrading()) {
-    socialCtrl->handleTradeInput(inputMgr);
-    return;
   }
 
   if (inputMgr.isCommandPressed(InputManager::Command::OpenInventory)) {

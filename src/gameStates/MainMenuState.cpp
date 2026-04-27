@@ -110,8 +110,6 @@ void MainMenuState::update(float) {
   if (!ui.isShutdown()) {
     ui.update(0.0f);
   }
-  // Re-apply the controller-focus highlight each frame so gamepad
-  // hotplug naturally clears/restores the selection.
   VoidLight::MenuNavigation::applySelection(kNavOrder, m_selectedIndex);
 }
 
@@ -132,8 +130,6 @@ void MainMenuState::handleInput() {
   const auto& inputManager = InputManager::Instance();
 
   VoidLight::MenuNavigation::readInputs(kNavOrder, m_selectedIndex);
-  // MenuCancel on the main menu quits the app. Gamepad-only by design;
-  // keyboard+mouse users click the Exit button.
   if (VoidLight::MenuNavigation::cancelPressed()) {
       GameEngine::Instance().setRunning(false);
   }

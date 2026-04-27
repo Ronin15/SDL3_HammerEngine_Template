@@ -12,10 +12,6 @@
 
 namespace VoidLight {
 
-// True once the user has pressed a MenuUp/Down/Left/Right action this menu
-// visit. Reset by MenuNavigation::reset() (called from menu state enter()).
-static bool s_keyboardNavUsed = false;
-
 void MenuNavigation::applySelection(std::span<const std::string_view> navOrder,
                                     size_t index) {
   if (navOrder.empty()) {
@@ -50,10 +46,10 @@ void MenuNavigation::step(std::span<const std::string_view> navOrder,
   applySelection(navOrder, index);
 }
 
-bool MenuNavigation::readInputs(std::span<const std::string_view> navOrder,
+void MenuNavigation::readInputs(std::span<const std::string_view> navOrder,
                                 size_t &index, bool enabled) {
   if (!enabled || navOrder.empty()) {
-    return false;
+    return;
   }
   const auto &input = InputManager::Instance();
   if (input.isCommandPressed(InputManager::Command::MenuUp)) {
@@ -67,10 +63,8 @@ bool MenuNavigation::readInputs(std::span<const std::string_view> navOrder,
   if (input.isCommandPressed(InputManager::Command::MenuConfirm)) {
     if (index < navOrder.size()) {
       UIManager::Instance().simulateClick(std::string(navOrder[index]));
-      return true;
     }
   }
-  return false;
 }
 
 bool MenuNavigation::cancelPressed() {

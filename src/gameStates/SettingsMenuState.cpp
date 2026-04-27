@@ -93,8 +93,6 @@ void SettingsMenuState::update(float deltaTime) {
         m_pendingRefreshCommand = InputManager::Command::COUNT;
     }
 
-    // Re-apply the controller-focus highlight each frame so gamepad
-    // hotplug naturally clears/restores the selection.
     VoidLight::MenuNavigation::applySelection(m_navOrder, m_selectedIndex);
 }
 
@@ -117,7 +115,6 @@ void SettingsMenuState::handleInput() {
     if (!inputManager.isRebinding()) {
         VoidLight::MenuNavigation::readInputs(m_navOrder, m_selectedIndex);
         handleSliderAdjust();
-        // Gamepad-only; keyboard+mouse users click the Back button.
         if (VoidLight::MenuNavigation::cancelPressed()) {
             mp_stateManager->changeState(GameStateId::MAIN_MENU);
         }
@@ -143,7 +140,6 @@ void SettingsMenuState::handleSliderAdjust() {
     const std::string_view selected = m_navOrder[m_selectedIndex];
     if (!isSliderId(selected)) return;
 
-    // Gamepad-only slider adjust; keyboard+mouse users drag the slider handle.
     const bool left  = VoidLight::MenuNavigation::leftPressed();
     const bool right = VoidLight::MenuNavigation::rightPressed();
     if (!left && !right) return;

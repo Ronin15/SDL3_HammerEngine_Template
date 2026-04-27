@@ -8,11 +8,16 @@
 
 /**
  * @file HudController.hpp
- * @brief State-scoped event bridge for transient gameplay HUD state
+ * @brief Gameplay HUD controller for target-frame state and hotbar interaction
  *
- * HudController listens to committed gameplay events and exposes
- * read-only state for HUD rendering. It does not mutate UI components
- * directly; active states query this controller when updating the HUD.
+ * HudController owns the hotbar UI subtree (nine slot buttons + key labels
+ * created via UIManager) and the transient combat target-frame state.
+ * It creates and styles its components in initializeHotbarUI(), applies
+ * selection highlighting, and hides/shows slots in response to game events.
+ * Combat event subscription populates the target display for GamePlayState's
+ * updateCombatHUD() call each frame.
+ *
+ * Ownership: ControllerRegistry owns the controller instance.
  */
 
 #include "controllers/ControllerBase.hpp"
@@ -67,6 +72,7 @@ private:
     std::string m_targetLabel{"Target"};
 
     size_t m_hotbarSelectedIndex{0};
+    // Set strictly in lockstep with UIManager hotbar component existence; gates pollHotbarInput and visibility ops.
     bool m_hotbarUICreated{false};
 };
 

@@ -29,7 +29,7 @@ public:
   // when the corresponding Command has a binding that was just pressed; if a
   // command is unmapped, it does nothing. Pressing MenuUp/MenuDown also
   // engages keyboard-focus highlighting until the next reset().
-  static bool readInputs(std::span<const std::string_view> navOrder,
+  static void readInputs(std::span<const std::string_view> navOrder,
                          size_t &index, bool enabled = true);
 
   // Returns true this frame if MenuCancel was pressed via any mapped binding.
@@ -47,6 +47,11 @@ public:
   // menu visit starts with the highlight hidden until a nav key is pressed
   // (mouse-only users keep clean hover until they engage keyboard nav).
   static void reset();
+
+private:
+  // True once the user has pressed a menu nav action this visit.
+  // Reset by reset() (called from menu state enter()).
+  static inline bool s_keyboardNavUsed = false;
 };
 
 } // namespace VoidLight

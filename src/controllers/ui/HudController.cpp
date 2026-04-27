@@ -9,6 +9,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/UIConstants.hpp"
 #include "managers/UIManager.hpp"
+#include <format>
 #include <string>
 
 namespace {
@@ -49,7 +50,10 @@ void HudController::subscribe()
 
 void HudController::update(float deltaTime)
 {
-    pollHotbarInput();
+    if (m_hotbarUICreated)
+    {
+        pollHotbarInput();
+    }
 
     if (m_targetDisplayTimer > 0.0f)
     {
@@ -291,10 +295,10 @@ void HudController::applyHotbarSelectionStyling()
 
 std::string HudController::hotbarSlotId(size_t i)
 {
-    return "gameplay_hotbar_slot_" + std::to_string(i);
+    return std::format("gameplay_hotbar_slot_{}", i);
 }
 
 std::string HudController::hotbarKeyLabelId(size_t i)
 {
-    return "gameplay_hotbar_key_" + std::to_string(i);
+    return std::format("gameplay_hotbar_key_{}", i);
 }

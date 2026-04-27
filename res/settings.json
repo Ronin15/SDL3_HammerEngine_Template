@@ -12,8 +12,8 @@
   },
   "graphics": {
     "vsync": true,
-    "show_fps": false,
     "resolution_height": 720,
+    "show_fps": false,
     "buffer_count": 3,
     "fullscreen": false,
     "fps_limit": 60,
