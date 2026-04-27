@@ -39,11 +39,6 @@ class InputManager {
         COUNT
     };
 
-    static_assert(static_cast<std::uint32_t>(Command::HotbarSlot9) -
-                      static_cast<std::uint32_t>(Command::HotbarSlot1) == 8,
-                  "HotbarSlot1..HotbarSlot9 must be contiguous; "
-                  "HudController::pollHotbarInput uses pointer-arithmetic over them");
-
     enum class InputSource : uint8_t
     {
         Keyboard,             // code = SDL_Scancode

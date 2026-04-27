@@ -8,7 +8,6 @@
 #include "controllers/ui/HudController.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
-#include "gameStates/GameOverState.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
@@ -24,7 +23,6 @@
 #include "managers/WorldManager.hpp"
 #include "core/WorkerBudget.hpp"
 #include "gpu/GPURenderer.hpp"
-#include "gpu/SpriteBatch.hpp"
 #include "utils/GPUSceneRecorder.hpp"
 
 #include <cmath>

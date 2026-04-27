@@ -17,7 +17,7 @@ Current controller families:
 | Controller | Role | Notes |
 |-----------|------|-------|
 | [CombatController](CombatController.md) | Player melee combat, stamina, target HUD data | Queries AI/EDM directly, updates gameplay event log |
-| [GameplayHUDController](GameplayHUDController.md) | State-scoped combat HUD bridge | Subscribes to Combat events; exposes transient target state |
+| [HudController](HudController.md) | State-scoped HUD: hotbar UI + transient combat target state | Owns hotbar components; subscribes to Combat events |
 | [WeatherController](WeatherController.md) | Weather state tracking | Event-driven |
 | [DayNightController](DayNightController.md) | Time-of-day visuals and GPU lighting | Requires `update(dt)` each frame |
 | [HarvestController](HarvestController.md) | Progress-based harvesting of WRM/EDM harvestables | Cancels on movement, emits resource/harvest events |
@@ -28,7 +28,7 @@ Current controller families:
 ```cpp
 bool GamePlayState::enter() {
     m_controllers.add<CombatController>(mp_player);
-    m_controllers.add<GameplayHUDController>(mp_player->getHandle());
+    m_controllers.add<HudController>(mp_player->getHandle());
     m_controllers.add<HarvestController>(mp_player);
     m_controllers.add<SocialController>(mp_player);
     m_controllers.add<WeatherController>();

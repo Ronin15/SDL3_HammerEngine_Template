@@ -9,6 +9,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/UIConstants.hpp"
 #include "managers/UIManager.hpp"
+#include <array>
 #include <format>
 #include <string>
 
@@ -248,12 +249,16 @@ void HudController::setHotbarSelectedIndex(size_t i)
 
 void HudController::pollHotbarInput()
 {
-    auto& inputMgr = InputManager::Instance();
     using C = InputManager::Command;
-    for (size_t i = 0; i < HOTBAR_SLOT_COUNT; ++i)
+    static constexpr std::array<C, HOTBAR_SLOT_COUNT> kHotbarCommands{
+        C::HotbarSlot1, C::HotbarSlot2, C::HotbarSlot3,
+        C::HotbarSlot4, C::HotbarSlot5, C::HotbarSlot6,
+        C::HotbarSlot7, C::HotbarSlot8, C::HotbarSlot9,
+    };
+    auto& inputMgr = InputManager::Instance();
+    for (size_t i = 0; i < kHotbarCommands.size(); ++i)
     {
-        const auto cmd = static_cast<C>(static_cast<uint32_t>(C::HotbarSlot1) + i);
-        if (inputMgr.isCommandPressed(cmd))
+        if (inputMgr.isCommandPressed(kHotbarCommands[i]))
         {
             setHotbarSelectedIndex(i);
             break;
