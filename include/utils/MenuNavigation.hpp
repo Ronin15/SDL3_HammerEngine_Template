@@ -14,36 +14,39 @@ namespace VoidLight {
 
 class MenuNavigation {
 public:
-  // Applies the keyboard-focus highlight to navOrder[index]. When no gamepad
-  // is connected (InputManager::isGamepadConnected() == false) this instead
-  // clears any existing keyboard selection — menu highlighting is a
-  // controller-only affordance; mouse/keyboard users interact via clicks.
-  // Safe to call every frame: handles gamepad hotplug by clearing/reapplying
-  // selection as connection state changes.
+  // Applies the keyboard-focus highlight to navOrder[index] when keyboard nav
+  // is "engaged": either a gamepad is connected, or the user has pressed a
+  // mapped MenuUp/Down/Left/Right since the last reset(). Otherwise clears
+  // any existing keyboard selection so mouse hover renders normally. Safe to
+  // call every frame.
   static void applySelection(std::span<const std::string_view> navOrder,
                              size_t index);
 
   static void step(std::span<const std::string_view> navOrder, size_t &index,
                    int delta);
 
-  // Reads MenuUp/Down/Confirm edges. All direction and confirm handling is
-  // gated on gamepad connection — returns false and does nothing when no
-  // controller is attached.
+  // Reads MenuUp/Down/Confirm edges via the action-mapping system. Fires only
+  // when the corresponding Command has a binding that was just pressed; if a
+  // command is unmapped, it does nothing. Pressing MenuUp/MenuDown also
+  // engages keyboard-focus highlighting until the next reset().
   static bool readInputs(std::span<const std::string_view> navOrder,
                          size_t &index, bool enabled = true);
 
-  // Returns true this frame if MenuCancel was pressed AND a gamepad is
-  // connected. Menu commands are controller-only by design; keyboard+mouse
-  // users navigate menus via mouse clicks.
+  // Returns true this frame if MenuCancel was pressed via any mapped binding.
   [[nodiscard]] static bool cancelPressed();
 
-  // Returns true this frame if MenuLeft was pressed AND a gamepad is
-  // connected. Controller-only — see cancelPressed() for the rationale.
+  // Returns true this frame if MenuLeft was pressed via any mapped binding.
+  // Side effect: engages keyboard-focus highlighting.
   [[nodiscard]] static bool leftPressed();
 
-  // Returns true this frame if MenuRight was pressed AND a gamepad is
-  // connected. Controller-only — see cancelPressed() for the rationale.
+  // Returns true this frame if MenuRight was pressed via any mapped binding.
+  // Side effect: engages keyboard-focus highlighting.
   [[nodiscard]] static bool rightPressed();
+
+  // Clears the keyboard-nav focus flag. Call from menu state enter() so each
+  // menu visit starts with the highlight hidden until a nav key is pressed
+  // (mouse-only users keep clean hover until they engage keyboard nav).
+  static void reset();
 };
 
 } // namespace VoidLight

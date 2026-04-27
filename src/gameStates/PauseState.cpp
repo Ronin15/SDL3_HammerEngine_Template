@@ -18,6 +18,8 @@ bool PauseState::enter() {
   auto& gameEngine = GameEngine::Instance();
   auto& ui = UIManager::Instance();
 
+  VoidLight::MenuNavigation::reset();
+
   // Pause all game managers via GameEngine (collision, pathfinding, AI, particles, GameTime)
   gameEngine.setGlobalPause(true);
 

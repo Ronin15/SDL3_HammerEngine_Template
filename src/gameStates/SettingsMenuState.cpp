@@ -26,6 +26,8 @@
 bool SettingsMenuState::enter() {
     GAMESTATE_INFO("Entering SETTINGS MENU State");
 
+    VoidLight::MenuNavigation::reset();
+
     m_pendingRefreshCommand = InputManager::Command::COUNT;
 
     // Pause all game managers to reduce power draw while in settings

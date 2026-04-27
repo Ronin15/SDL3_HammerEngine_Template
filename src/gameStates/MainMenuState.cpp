@@ -20,6 +20,8 @@
 bool MainMenuState::enter() {
   GAMESTATE_INFO("Entering MAIN MENU State");
 
+  VoidLight::MenuNavigation::reset();
+
   // Pause all game managers to reduce power draw while at menu
   GameEngine::Instance().setGlobalPause(true);
 

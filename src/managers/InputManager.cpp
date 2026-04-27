@@ -527,20 +527,23 @@ void InputManager::loadDefaultBindings()
     add(C::ZoomOut,       S::Keyboard,            SDL_SCANCODE_LEFTBRACKET);
     add(C::ZoomOut,       S::GamepadButton,       SDL_GAMEPAD_BUTTON_DPAD_DOWN);
 
-    // MenuConfirm/MenuCancel keyboard defaults (Enter/Esc) exist so the
-    // Controls-tab rebind UI shows a populated Keyboard & Mouse row rather than
-    // "(unbound)". They are intentionally unreachable at runtime: MenuNavigation
-    // gates all menu commands on isGamepadConnected(), so only the gamepad
-    // bindings below are ever exercised. The four directional Menu commands are
-    // likewise gamepad-only — keyboard+mouse users drive menu focus with the
-    // cursor, not arrow keys.
+    // Menu commands are dispatched through the action layer
+    // (MenuNavigation -> InputManager::isCommandPressed), so they are
+    // device-agnostic at runtime: any binding present below fires when the
+    // bound key/button is pressed, and a command with no binding simply does
+    // nothing. Arrow keys drive keyboard menu navigation; D-Pad drives
+    // gamepad menu navigation.
     add(C::MenuConfirm,   S::Keyboard,            SDL_SCANCODE_RETURN);
     add(C::MenuConfirm,   S::GamepadButton,       SDL_GAMEPAD_BUTTON_SOUTH);           // A/Cross
     add(C::MenuCancel,    S::Keyboard,            SDL_SCANCODE_ESCAPE);
     add(C::MenuCancel,    S::GamepadButton,       SDL_GAMEPAD_BUTTON_EAST);            // B/Circle
+    add(C::MenuUp,        S::Keyboard,            SDL_SCANCODE_UP);
     add(C::MenuUp,        S::GamepadButton,       SDL_GAMEPAD_BUTTON_DPAD_UP);
+    add(C::MenuDown,      S::Keyboard,            SDL_SCANCODE_DOWN);
     add(C::MenuDown,      S::GamepadButton,       SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    add(C::MenuLeft,      S::Keyboard,            SDL_SCANCODE_LEFT);
     add(C::MenuLeft,      S::GamepadButton,       SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+    add(C::MenuRight,     S::Keyboard,            SDL_SCANCODE_RIGHT);
     add(C::MenuRight,     S::GamepadButton,       SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
 }
 

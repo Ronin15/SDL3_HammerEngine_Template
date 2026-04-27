@@ -12,6 +12,10 @@
 
 namespace VoidLight {
 
+// True once the user has pressed a MenuUp/Down/Left/Right action this menu
+// visit. Reset by MenuNavigation::reset() (called from menu state enter()).
+static bool s_keyboardNavUsed = false;
+
 void MenuNavigation::applySelection(std::span<const std::string_view> navOrder,
                                     size_t index) {
   if (navOrder.empty()) {
@@ -21,7 +25,9 @@ void MenuNavigation::applySelection(std::span<const std::string_view> navOrder,
     index = 0;
   }
   auto &ui = UIManager::Instance();
-  if (!InputManager::Instance().isGamepadConnected()) {
+  const bool focusEngaged =
+      InputManager::Instance().isGamepadConnected() || s_keyboardNavUsed;
+  if (!focusEngaged) {
     ui.clearKeyboardSelection();
     return;
   }
@@ -50,40 +56,46 @@ bool MenuNavigation::readInputs(std::span<const std::string_view> navOrder,
     return false;
   }
   const auto &input = InputManager::Instance();
-  const bool controllerActive = input.isGamepadConnected();
-  if (controllerActive) {
-    if (input.isCommandPressed(InputManager::Command::MenuUp)) {
-      step(navOrder, index, -1);
-    }
-    if (input.isCommandPressed(InputManager::Command::MenuDown)) {
-      step(navOrder, index, +1);
-    }
-    if (input.isCommandPressed(InputManager::Command::MenuConfirm)) {
-      if (index < navOrder.size()) {
-        UIManager::Instance().simulateClick(std::string(navOrder[index]));
-        return true;
-      }
+  if (input.isCommandPressed(InputManager::Command::MenuUp)) {
+    s_keyboardNavUsed = true;
+    step(navOrder, index, -1);
+  }
+  if (input.isCommandPressed(InputManager::Command::MenuDown)) {
+    s_keyboardNavUsed = true;
+    step(navOrder, index, +1);
+  }
+  if (input.isCommandPressed(InputManager::Command::MenuConfirm)) {
+    if (index < navOrder.size()) {
+      UIManager::Instance().simulateClick(std::string(navOrder[index]));
+      return true;
     }
   }
   return false;
 }
 
 bool MenuNavigation::cancelPressed() {
-  const auto &input = InputManager::Instance();
-  return input.isGamepadConnected() &&
-         input.isCommandPressed(InputManager::Command::MenuCancel);
+  return InputManager::Instance().isCommandPressed(
+      InputManager::Command::MenuCancel);
 }
 
 bool MenuNavigation::leftPressed() {
-  const auto &input = InputManager::Instance();
-  return input.isGamepadConnected() &&
-         input.isCommandPressed(InputManager::Command::MenuLeft);
+  const bool pressed = InputManager::Instance().isCommandPressed(
+      InputManager::Command::MenuLeft);
+  if (pressed) {
+    s_keyboardNavUsed = true;
+  }
+  return pressed;
 }
 
 bool MenuNavigation::rightPressed() {
-  const auto &input = InputManager::Instance();
-  return input.isGamepadConnected() &&
-         input.isCommandPressed(InputManager::Command::MenuRight);
+  const bool pressed = InputManager::Instance().isCommandPressed(
+      InputManager::Command::MenuRight);
+  if (pressed) {
+    s_keyboardNavUsed = true;
+  }
+  return pressed;
 }
+
+void MenuNavigation::reset() { s_keyboardNavUsed = false; }
 
 } // namespace VoidLight
