@@ -554,19 +554,19 @@ void InventoryController::handleInventorySlotClicked(size_t slotIndex) {
         return;
     }
 
-    const auto& entry = m_gridEntries[slotIndex];
-    if (!isEquipment(entry.handle)) {
+    const VoidLight::ResourceHandle itemHandle = m_gridEntries[slotIndex].handle;
+    if (!isEquipment(itemHandle)) {
         return;
     }
 
     auto player = mp_player.lock();
-    if (!player || !player->equipItem(entry.handle)) {
+    if (!player || !player->equipItem(itemHandle)) {
         return;
     }
 
     refreshInventoryUI();
     UIManager::Instance().addEventLogEntry(
-        EVENT_LOG_ID, std::format("Equipped {}", displayNameFor(entry.handle)));
+        EVENT_LOG_ID, std::format("Equipped {}", displayNameFor(itemHandle)));
 }
 
 void InventoryController::handleGearSlotClicked(size_t slotIndex) {
