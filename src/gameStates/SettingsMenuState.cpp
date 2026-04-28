@@ -129,6 +129,26 @@ constexpr std::array<std::string_view, 3> kSliderIds{
     "settings_sfx_volume_slider",
 };
 
+constexpr std::array<InputManager::Command, 17> kControlsTabCommands{
+    InputManager::Command::MoveUp,
+    InputManager::Command::MoveDown,
+    InputManager::Command::MoveLeft,
+    InputManager::Command::MoveRight,
+    InputManager::Command::AttackLight,
+    InputManager::Command::Interact,
+    InputManager::Command::OpenInventory,
+    InputManager::Command::Pause,
+    InputManager::Command::WorldInteract,
+    InputManager::Command::ZoomIn,
+    InputManager::Command::ZoomOut,
+    InputManager::Command::MenuConfirm,
+    InputManager::Command::MenuCancel,
+    InputManager::Command::MenuUp,
+    InputManager::Command::MenuDown,
+    InputManager::Command::MenuLeft,
+    InputManager::Command::MenuRight,
+};
+
 bool isSliderId(std::string_view id) {
     return std::any_of(kSliderIds.begin(), kSliderIds.end(),
                        [&](std::string_view s) { return s == id; });
@@ -160,7 +180,6 @@ void SettingsMenuState::rebuildNavOrder() {
     // m_navOrder as a view list. Reserving up-front prevents reallocation
     // so the string_views remain valid for the state's lifetime.
     using DC = InputManager::DeviceCategory;
-    constexpr size_t kCmdCount = static_cast<size_t>(InputManager::Command::COUNT);
 
     m_navBacking.clear();
     m_navOrder.clear();
@@ -169,12 +188,11 @@ void SettingsMenuState::rebuildNavOrder() {
     // holds string_views into it — any reallocation invalidates every view.
     // Reserve unconditionally so future additions can't silently grow capacity
     // mid-fill.
-    constexpr size_t kBackingCapacity = kCmdCount * 2;
+    constexpr size_t kBackingCapacity = kControlsTabCommands.size() * 2;
     m_navBacking.reserve(kBackingCapacity);
 
     if (m_currentTab == SettingsTab::Controls) {
-        for (size_t i = 0; i < kCmdCount; ++i) {
-            auto cmd = static_cast<InputManager::Command>(i);
+        for (InputManager::Command cmd : kControlsTabCommands) {
             m_navBacking.push_back(bindingButtonId(cmd, DC::KeyboardMouse));
             m_navBacking.push_back(bindingButtonId(cmd, DC::Controller));
         }
@@ -575,9 +593,8 @@ void SettingsMenuState::updateTabVisibility() {
     // Helper to set visibility on all controls-tab components
     auto setControlsTabVisible = [&](bool visible) {
         using DC = InputManager::DeviceCategory;
-        constexpr size_t kCount = static_cast<size_t>(InputManager::Command::COUNT);
-        for (size_t i = 0; i < kCount; ++i) {
-            auto cmd = static_cast<InputManager::Command>(i);
+        for (size_t i = 0; i < kControlsTabCommands.size(); ++i) {
+            const InputManager::Command cmd = kControlsTabCommands[i];
             ui.setComponentVisible(std::format("settings_ctrl_label_{}", i), visible);
             ui.setComponentVisible(bindingButtonId(cmd, DC::KeyboardMouse), visible);
             ui.setComponentVisible(bindingButtonId(cmd, DC::Controller), visible);
@@ -741,9 +758,8 @@ void SettingsMenuState::createControlsUI()
     ui.setComponentPositioning("settings_ctrl_header_ctrl",
         {UIPositionMode::TOP_ALIGNED, colCtrlX, headerY, colW, btnH});
 
-    constexpr size_t kCount = static_cast<size_t>(InputManager::Command::COUNT);
-    for (size_t i = 0; i < kCount; ++i) {
-        auto cmd = static_cast<InputManager::Command>(i);
+    for (size_t i = 0; i < kControlsTabCommands.size(); ++i) {
+        const InputManager::Command cmd = kControlsTabCommands[i];
         const int y = startY + static_cast<int>(i) * rowH;
 
         // Row label
@@ -782,16 +798,15 @@ void SettingsMenuState::createControlsUI()
     ui.setComponentVisible("settings_ctrl_header_ctrl", false);
 
     // Reset button
-    const int resetY = startY + static_cast<int>(kCount) * rowH + 10;
+    const int resetY = startY + static_cast<int>(kControlsTabCommands.size()) * rowH + 10;
     ui.createButton("settings_ctrl_reset_btn",
         {leftX, resetY, 300, btnH}, "Reset Controls to Defaults");
     ui.setComponentPositioning("settings_ctrl_reset_btn",
         {UIPositionMode::TOP_ALIGNED, leftX, resetY, 300, btnH});
     ui.setOnClick("settings_ctrl_reset_btn", [this]() {
         InputManager::Instance().resetBindingsToDefaults();
-        constexpr size_t cnt = static_cast<size_t>(InputManager::Command::COUNT);
-        for (size_t i = 0; i < cnt; ++i) {
-            refreshBindingLabels(static_cast<InputManager::Command>(i));
+        for (InputManager::Command cmd : kControlsTabCommands) {
+            refreshBindingLabels(cmd);
         }
     });
     ui.setComponentVisible("settings_ctrl_reset_btn", false);
