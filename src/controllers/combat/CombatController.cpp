@@ -14,7 +14,7 @@
 #include <format>
 
 namespace {
-constexpr const char* GAMEPLAY_EVENT_LOG = "gameplay_event_log";
+constexpr const char* EVENT_LOG = "event_log";
 }
 
 void CombatController::subscribe() {
@@ -165,7 +165,7 @@ void CombatController::performAttack(Player *player) {
                     handle.getId(), attackDamage, oldHealth, newHealth));
 
     UIManager::Instance().addEventLogEntry(
-        GAMEPLAY_EVENT_LOG,
+        EVENT_LOG,
         std::format("Hit Enemy #{} for {:.0f} damage!", handle.getId(), attackDamage));
 
     // Kill notification for UI
@@ -173,7 +173,7 @@ void CombatController::performAttack(Player *player) {
       COMBAT_INFO(std::format("Entity {} killed!", handle.getId()));
 
       UIManager::Instance().addEventLogEntry(
-          GAMEPLAY_EVENT_LOG,
+          EVENT_LOG,
           std::format("Defeated Enemy #{}!", handle.getId()));
     }
   }

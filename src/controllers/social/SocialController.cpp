@@ -21,7 +21,7 @@
 #include <format>
 
 namespace {
-    constexpr const char* GAMEPLAY_EVENT_LOG = "gameplay_event_log";
+    constexpr const char* EVENT_LOG = "event_log";
 
     AIManager::SocialInteractionType toAISocialInteractionType(InteractionType type) {
         switch (type) {
@@ -251,7 +251,7 @@ TradeResult SocialController::executeBuy() {
         SOCIAL_INFO(std::format("Bought {} x{}", itemName, savedQty));
 
         UIManager::Instance().addEventLogEntry(
-            "gameplay_event_log",
+            EVENT_LOG,
             std::format("Bought {} x{} for {:.0f} gold", itemName, savedQty, price));
     }
 
@@ -287,7 +287,7 @@ TradeResult SocialController::executeSell() {
         SOCIAL_INFO(std::format("Sold {} x{}", itemName, savedQty));
 
         UIManager::Instance().addEventLogEntry(
-            "gameplay_event_log",
+            EVENT_LOG,
             std::format("Sold {} x{} for {:.0f} gold", itemName, savedQty, price));
     }
 
@@ -676,7 +676,7 @@ void SocialController::alertNearbyGuards(const Vector2D& location, EntityHandle)
                                 guardsAlerted, location.getX(), location.getY()));
 
         UIManager::Instance().addEventLogEntry(
-            GAMEPLAY_EVENT_LOG,
+            EVENT_LOG,
             std::format("Guards alerted! {} guards responding to crime.", guardsAlerted));
     }
 }

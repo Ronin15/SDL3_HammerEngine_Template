@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
 #include "entities/Resource.hpp"
+#include "entities/resources/ItemResources.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
@@ -15,7 +16,9 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include <algorithm>
+#include <array>
 #include <format>
+#include <string_view>
 
 namespace {
 
@@ -32,13 +35,58 @@ constexpr int INVENTORY_GRID_WIDTH =
 constexpr int INVENTORY_GRID_HEIGHT =
     (INVENTORY_GRID_ROWS * INVENTORY_SLOT_SIZE) +
     ((INVENTORY_GRID_ROWS - 1) * INVENTORY_SLOT_GAP);
-constexpr int INVENTORY_PANEL_WIDTH = 280;
-constexpr int INVENTORY_PANEL_MARGIN_RIGHT = 20;
-constexpr int INVENTORY_PANEL_MARGIN_TOP = 170;
+constexpr int INVENTORY_PANEL_WIDTH = 740;
 constexpr int INVENTORY_CHILD_INSET = 10;
-constexpr int INVENTORY_HEADER_HEIGHT = 110;
+constexpr int INVENTORY_HEADER_HEIGHT = 130;
 constexpr int INVENTORY_BOTTOM_PADDING = 15;
+constexpr int INVENTORY_SECTION_WIDTH = 280;
+constexpr int INVENTORY_TITLE_Y = 20;
+constexpr int INVENTORY_TITLE_HEIGHT = 35;
+constexpr int INVENTORY_STATUS_Y = 80;
+constexpr int INVENTORY_STATUS_HEIGHT = 25;
+constexpr int INVENTORY_SECTION_HEADER_Y = 55;
+constexpr int INVENTORY_SECTION_HEADER_WIDTH = UIConstants::DEFAULT_BUTTON_WIDTH;
+constexpr int INVENTORY_SECTION_HEADER_HEIGHT = 26;
+constexpr int INVENTORY_CONTENT_Y = 110;
+constexpr int INVENTORY_COUNT_INSET_X = 2;
+constexpr int INVENTORY_COUNT_HEIGHT = 14;
+constexpr int INVENTORY_COUNT_BOTTOM_INSET = 16;
+constexpr int GEAR_SECTION_X = 320;
+constexpr int GEAR_SLOT_WIDTH = 390;
+constexpr int GEAR_SLOT_HEIGHT = 44;
+constexpr int GEAR_SLOT_GAP = 8;
+constexpr int GEAR_ICON_INSET = 6;
+constexpr int GEAR_ICON_SIZE = 32;
+constexpr int GEAR_LABEL_GAP = 5;
+constexpr int GEAR_LABEL_INSET_Y = 4;
+constexpr int GEAR_LABEL_VERTICAL_PADDING = GEAR_LABEL_INSET_Y * 2;
+constexpr int GEAR_LABEL_WIDTH =
+    GEAR_SLOT_WIDTH - GEAR_ICON_SIZE - (GEAR_ICON_INSET * 2) - GEAR_LABEL_GAP;
+constexpr int GEAR_LABEL_HEIGHT = GEAR_SLOT_HEIGHT - GEAR_LABEL_VERTICAL_PADDING;
+constexpr int GEAR_LIST_HEIGHT =
+    (static_cast<int>(Equipment::EquipmentSlot::COUNT) * GEAR_SLOT_HEIGHT) +
+    ((static_cast<int>(Equipment::EquipmentSlot::COUNT) - 1) * GEAR_SLOT_GAP);
 constexpr std::string_view INVENTORY_ATLAS_TEXTURE_ID = "atlas";
+
+constexpr int centerOffset(int position, int size, int containerHalfSize) {
+    return position + (size / 2) - containerHalfSize;
+}
+
+struct GearSlotView {
+    std::string_view slotName;
+    std::string_view label;
+};
+
+constexpr std::array<GearSlotView, 8> GEAR_SLOTS{{
+    {"weapon", "Weapon"},
+    {"helmet", "Helmet"},
+    {"chest", "Chest"},
+    {"legs", "Legs"},
+    {"boots", "Boots"},
+    {"gloves", "Gloves"},
+    {"ring", "Ring"},
+    {"necklace", "Necklace"},
+}};
 
 } // namespace
 
@@ -122,45 +170,78 @@ void InventoryController::initializeInventoryUI() {
     }
 
     auto& ui = UIManager::Instance();
-    const int windowWidth = ui.getWidthInPixels();
-    constexpr int childWidth = INVENTORY_PANEL_WIDTH - (INVENTORY_CHILD_INSET * 2);
+    constexpr int childWidth = INVENTORY_SECTION_WIDTH - (INVENTORY_CHILD_INSET * 2);
+    constexpr int inventoryContentHeight = std::max(INVENTORY_GRID_HEIGHT, GEAR_LIST_HEIGHT);
     constexpr int inventoryHeight =
-        INVENTORY_HEADER_HEIGHT + INVENTORY_GRID_HEIGHT + INVENTORY_BOTTOM_PADDING;
-    const int inventoryX = windowWidth - INVENTORY_PANEL_WIDTH - INVENTORY_PANEL_MARGIN_RIGHT;
-    constexpr int inventoryY = INVENTORY_PANEL_MARGIN_TOP;
+        INVENTORY_HEADER_HEIGHT + inventoryContentHeight + INVENTORY_BOTTOM_PADDING;
+    constexpr int panelHalfWidth = INVENTORY_PANEL_WIDTH / 2;
+    constexpr int panelHalfHeight = inventoryHeight / 2;
     constexpr int gridOffsetX = INVENTORY_CHILD_INSET +
         ((childWidth - INVENTORY_GRID_WIDTH) / 2);
-    constexpr int gridOffsetY = 110;
+    constexpr int gridOffsetY = INVENTORY_CONTENT_Y;
 
     ui.createPanel(INVENTORY_PANEL_ID,
-                   {inventoryX, inventoryY, INVENTORY_PANEL_WIDTH, inventoryHeight});
+                   {0, 0, INVENTORY_PANEL_WIDTH, inventoryHeight});
     ui.setComponentPositioning(
         INVENTORY_PANEL_ID,
-        {UIPositionMode::TOP_RIGHT, INVENTORY_PANEL_MARGIN_RIGHT,
-         INVENTORY_PANEL_MARGIN_TOP, INVENTORY_PANEL_WIDTH, inventoryHeight});
+        {UIPositionMode::CENTERED_BOTH, 0, 0, INVENTORY_PANEL_WIDTH, inventoryHeight});
 
     ui.createTitle(INVENTORY_TITLE_ID,
-                   {inventoryX + INVENTORY_CHILD_INSET, inventoryY + 25, childWidth, 35},
+                   {INVENTORY_CHILD_INSET, INVENTORY_TITLE_Y,
+                    INVENTORY_PANEL_WIDTH - (INVENTORY_CHILD_INSET * 2),
+                    INVENTORY_TITLE_HEIGHT},
                    "Player Inventory", INVENTORY_PANEL_ID);
     ui.setTitleAlignment(INVENTORY_TITLE_ID, UIAlignment::CENTER_CENTER);
+    ui.enableAutoSizing(INVENTORY_TITLE_ID, false);
     ui.setComponentPositioning(
         INVENTORY_TITLE_ID,
-        {UIPositionMode::TOP_RIGHT, INVENTORY_PANEL_MARGIN_RIGHT + INVENTORY_CHILD_INSET,
-         INVENTORY_PANEL_MARGIN_TOP + 25, childWidth, 35});
+        {UIPositionMode::CENTERED_BOTH, 0,
+         centerOffset(INVENTORY_TITLE_Y, INVENTORY_TITLE_HEIGHT, panelHalfHeight),
+         INVENTORY_PANEL_WIDTH - (INVENTORY_CHILD_INSET * 2), INVENTORY_TITLE_HEIGHT});
 
     ui.createLabel(INVENTORY_STATUS_ID,
-                   {inventoryX + INVENTORY_CHILD_INSET, inventoryY + 75, childWidth, 25},
+                   {INVENTORY_CHILD_INSET, INVENTORY_STATUS_Y,
+                    childWidth, INVENTORY_STATUS_HEIGHT},
                    "Capacity: 0/20", INVENTORY_PANEL_ID);
+    ui.enableAutoSizing(INVENTORY_STATUS_ID, false);
     ui.setComponentPositioning(
         INVENTORY_STATUS_ID,
-        {UIPositionMode::TOP_RIGHT, INVENTORY_PANEL_MARGIN_RIGHT + INVENTORY_CHILD_INSET,
-         INVENTORY_PANEL_MARGIN_TOP + 75, childWidth, 25});
+        {UIPositionMode::CENTERED_BOTH,
+         centerOffset(INVENTORY_CHILD_INSET, childWidth, panelHalfWidth),
+         centerOffset(INVENTORY_STATUS_Y, INVENTORY_STATUS_HEIGHT, panelHalfHeight),
+         childWidth, INVENTORY_STATUS_HEIGHT});
+
+    ui.createLabel("inventory_tab_items",
+                   {gridOffsetX, INVENTORY_SECTION_HEADER_Y,
+                    INVENTORY_SECTION_HEADER_WIDTH, INVENTORY_SECTION_HEADER_HEIGHT},
+                   "Inventory", INVENTORY_PANEL_ID);
+    ui.setLabelAlignment("inventory_tab_items", UIAlignment::CENTER_LEFT);
+    ui.enableAutoSizing("inventory_tab_items", false);
+    ui.setComponentPositioning(
+        "inventory_tab_items",
+        {UIPositionMode::CENTERED_BOTH,
+         centerOffset(gridOffsetX, INVENTORY_SECTION_HEADER_WIDTH, panelHalfWidth),
+         centerOffset(INVENTORY_SECTION_HEADER_Y, INVENTORY_SECTION_HEADER_HEIGHT, panelHalfHeight),
+         INVENTORY_SECTION_HEADER_WIDTH, INVENTORY_SECTION_HEADER_HEIGHT});
+
+    ui.createLabel("inventory_tab_gear",
+                   {GEAR_SECTION_X, INVENTORY_SECTION_HEADER_Y,
+                    INVENTORY_SECTION_HEADER_WIDTH, INVENTORY_SECTION_HEADER_HEIGHT},
+                   "Gear", INVENTORY_PANEL_ID);
+    ui.setLabelAlignment("inventory_tab_gear", UIAlignment::CENTER_LEFT);
+    ui.enableAutoSizing("inventory_tab_gear", false);
+    ui.setComponentPositioning(
+        "inventory_tab_gear",
+        {UIPositionMode::CENTERED_BOTH,
+         centerOffset(GEAR_SECTION_X, INVENTORY_SECTION_HEADER_WIDTH, panelHalfWidth),
+         centerOffset(INVENTORY_SECTION_HEADER_Y, INVENTORY_SECTION_HEADER_HEIGHT, panelHalfHeight),
+         INVENTORY_SECTION_HEADER_WIDTH, INVENTORY_SECTION_HEADER_HEIGHT});
 
     UIStyle slotStyle;
     slotStyle.backgroundColor = {.r=20, .g=24, .b=30, .a=190};
     slotStyle.borderColor = {.r=95, .g=115, .b=135, .a=210};
-    slotStyle.hoverColor = {.r=42, .g=66, .b=92, .a=230};
-    slotStyle.pressedColor = {.r=60, .g=88, .b=118, .a=240};
+    slotStyle.hoverColor = slotStyle.backgroundColor;
+    slotStyle.pressedColor = slotStyle.backgroundColor;
     slotStyle.borderWidth = 1;
     slotStyle.textAlign = UIAlignment::CENTER_CENTER;
 
@@ -176,24 +257,26 @@ void InventoryController::initializeInventoryUI() {
     for (int slot = 0; slot < INVENTORY_SLOT_COUNT; ++slot) {
         const int col = slot % INVENTORY_GRID_COLUMNS;
         const int row = slot / INVENTORY_GRID_COLUMNS;
-        const int slotX = inventoryX + gridOffsetX +
+        const int slotX = gridOffsetX +
             col * (INVENTORY_SLOT_SIZE + INVENTORY_SLOT_GAP);
-        const int slotY = inventoryY + gridOffsetY +
-            row * (INVENTORY_SLOT_SIZE + INVENTORY_SLOT_GAP);
-        const int posRightOffset = INVENTORY_PANEL_MARGIN_RIGHT + gridOffsetX +
-            col * (INVENTORY_SLOT_SIZE + INVENTORY_SLOT_GAP);
-        const int posTopOffset = INVENTORY_PANEL_MARGIN_TOP + gridOffsetY +
+        const int slotY = gridOffsetY +
             row * (INVENTORY_SLOT_SIZE + INVENTORY_SLOT_GAP);
 
         const std::string slotComponentId = slotId(static_cast<size_t>(slot));
         ui.createButton(slotComponentId,
                         {slotX, slotY, INVENTORY_SLOT_SIZE, INVENTORY_SLOT_SIZE},
                         "", INVENTORY_PANEL_ID);
+        ui.enableAutoSizing(slotComponentId, false);
         ui.setStyle(slotComponentId, slotStyle);
         ui.setComponentPositioning(
             slotComponentId,
-            {UIPositionMode::TOP_RIGHT, posRightOffset, posTopOffset,
+            {UIPositionMode::CENTERED_BOTH,
+             centerOffset(slotX, INVENTORY_SLOT_SIZE, panelHalfWidth),
+             centerOffset(slotY, INVENTORY_SLOT_SIZE, panelHalfHeight),
              INVENTORY_SLOT_SIZE, INVENTORY_SLOT_SIZE});
+        ui.setOnClick(slotComponentId, [this, slot]() {
+            handleInventorySlotClicked(static_cast<size_t>(slot));
+        });
 
         const std::string iconComponentId = iconId(static_cast<size_t>(slot));
         ui.createAtlasImage(
@@ -203,20 +286,91 @@ void InventoryController::initializeInventoryUI() {
             "", UIRect{}, slotComponentId);
         ui.setComponentPositioning(
             iconComponentId,
-            {UIPositionMode::TOP_RIGHT, posRightOffset + INVENTORY_ICON_INSET,
-             posTopOffset + INVENTORY_ICON_INSET, INVENTORY_ICON_SIZE,
+            {UIPositionMode::CENTERED_BOTH,
+             centerOffset(slotX + INVENTORY_ICON_INSET, INVENTORY_ICON_SIZE, panelHalfWidth),
+             centerOffset(slotY + INVENTORY_ICON_INSET, INVENTORY_ICON_SIZE, panelHalfHeight),
+             INVENTORY_ICON_SIZE,
              INVENTORY_ICON_SIZE});
 
         const std::string countComponentId = countId(static_cast<size_t>(slot));
         ui.createLabel(countComponentId,
-                       {slotX + 2, slotY + INVENTORY_SLOT_SIZE - 16,
-                        INVENTORY_SLOT_SIZE - 4, 14},
+                       {slotX + INVENTORY_COUNT_INSET_X,
+                        slotY + INVENTORY_SLOT_SIZE - INVENTORY_COUNT_BOTTOM_INSET,
+                        INVENTORY_SLOT_SIZE - (INVENTORY_COUNT_INSET_X * 2),
+                        INVENTORY_COUNT_HEIGHT},
                        "", slotComponentId);
+        ui.enableAutoSizing(countComponentId, false);
         ui.setStyle(countComponentId, countStyle);
         ui.setComponentPositioning(
             countComponentId,
-            {UIPositionMode::TOP_RIGHT, posRightOffset + 2,
-             posTopOffset + INVENTORY_SLOT_SIZE - 16, INVENTORY_SLOT_SIZE - 4, 14});
+            {UIPositionMode::CENTERED_BOTH,
+             centerOffset(slotX + INVENTORY_COUNT_INSET_X,
+                          INVENTORY_SLOT_SIZE - (INVENTORY_COUNT_INSET_X * 2),
+                          panelHalfWidth),
+             centerOffset(slotY + INVENTORY_SLOT_SIZE - INVENTORY_COUNT_BOTTOM_INSET,
+                          INVENTORY_COUNT_HEIGHT,
+                          panelHalfHeight),
+             INVENTORY_SLOT_SIZE - (INVENTORY_COUNT_INSET_X * 2),
+             INVENTORY_COUNT_HEIGHT});
+    }
+
+    UIStyle gearLabelStyle;
+    gearLabelStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=0};
+    gearLabelStyle.textColor = {.r=230, .g=235, .b=242, .a=255};
+    gearLabelStyle.textAlign = UIAlignment::CENTER_LEFT;
+    gearLabelStyle.fontID = UIConstants::FONT_UI;
+
+    constexpr int gearOffsetY = INVENTORY_CONTENT_Y;
+    for (size_t slot = 0; slot < GEAR_SLOTS.size(); ++slot) {
+        const int row = static_cast<int>(slot);
+        const int slotX = GEAR_SECTION_X;
+        const int slotY = gearOffsetY +
+            row * (GEAR_SLOT_HEIGHT + GEAR_SLOT_GAP);
+
+        const std::string slotComponentId = gearSlotId(slot);
+        ui.createButton(slotComponentId,
+                        {slotX, slotY, GEAR_SLOT_WIDTH, GEAR_SLOT_HEIGHT},
+                        "", INVENTORY_PANEL_ID);
+        ui.enableAutoSizing(slotComponentId, false);
+        ui.setStyle(slotComponentId, slotStyle);
+        ui.setComponentPositioning(
+            slotComponentId,
+            {UIPositionMode::CENTERED_BOTH,
+             centerOffset(slotX, GEAR_SLOT_WIDTH, panelHalfWidth),
+             centerOffset(slotY, GEAR_SLOT_HEIGHT, panelHalfHeight),
+             GEAR_SLOT_WIDTH, GEAR_SLOT_HEIGHT});
+        ui.setOnClick(slotComponentId, [this, slot]() {
+            handleGearSlotClicked(slot);
+        });
+
+        const std::string iconComponentId = gearIconId(slot);
+        ui.createAtlasImage(
+            iconComponentId,
+            {slotX + GEAR_ICON_INSET, slotY + GEAR_ICON_INSET,
+             GEAR_ICON_SIZE, GEAR_ICON_SIZE},
+            "", UIRect{}, slotComponentId);
+        ui.setComponentPositioning(
+            iconComponentId,
+            {UIPositionMode::CENTERED_BOTH,
+             centerOffset(slotX + GEAR_ICON_INSET, GEAR_ICON_SIZE, panelHalfWidth),
+             centerOffset(slotY + GEAR_ICON_INSET, GEAR_ICON_SIZE, panelHalfHeight),
+             GEAR_ICON_SIZE, GEAR_ICON_SIZE});
+
+        const std::string labelComponentId = gearLabelId(slot);
+        ui.createLabel(labelComponentId,
+                       {slotX + GEAR_ICON_INSET + GEAR_ICON_SIZE + GEAR_LABEL_GAP,
+                        slotY + GEAR_LABEL_INSET_Y,
+                        GEAR_LABEL_WIDTH, GEAR_LABEL_HEIGHT},
+                       std::string(GEAR_SLOTS[slot].label), slotComponentId);
+        ui.enableAutoSizing(labelComponentId, false);
+        ui.setStyle(labelComponentId, gearLabelStyle);
+        ui.setComponentPositioning(
+            labelComponentId,
+            {UIPositionMode::CENTERED_BOTH,
+             centerOffset(slotX + GEAR_ICON_INSET + GEAR_ICON_SIZE + GEAR_LABEL_GAP,
+                          GEAR_LABEL_WIDTH, panelHalfWidth),
+             centerOffset(slotY + GEAR_LABEL_INSET_Y, GEAR_LABEL_HEIGHT, panelHalfHeight),
+             GEAR_LABEL_WIDTH, GEAR_LABEL_HEIGHT});
     }
 
     m_inventoryUICreated = true;
@@ -273,6 +427,7 @@ void InventoryController::refreshInventoryUI() {
     for (size_t i = 0; i < INVENTORY_SLOT_COUNT; ++i) {
         refreshSlot(i, i < m_gridEntries.size() ? &m_gridEntries[i] : nullptr);
     }
+    refreshGearUI();
 }
 
 void InventoryController::toggleInventoryDisplay() {
@@ -349,14 +504,120 @@ void InventoryController::refreshSlot(size_t slotIndex,
     ui.setText(countComponentId, std::format("{}", entry->quantity));
 }
 
+void InventoryController::refreshGearUI() {
+    for (size_t i = 0; i < GEAR_SLOTS.size(); ++i) {
+        refreshGearSlot(i);
+    }
+}
+
+void InventoryController::refreshGearSlot(size_t slotIndex) {
+    auto player = mp_player.lock();
+    if (!player || slotIndex >= GEAR_SLOTS.size()) {
+        return;
+    }
+
+    auto& ui = UIManager::Instance();
+    const std::string iconComponentId = gearIconId(slotIndex);
+    const std::string labelComponentId = gearLabelId(slotIndex);
+    const VoidLight::ResourceHandle equipped =
+        player->getEquippedItem(std::string(GEAR_SLOTS[slotIndex].slotName));
+
+    if (!equipped.isValid()) {
+        ui.setTexture(iconComponentId, "");
+        ui.setImageSourceRect(iconComponentId, UIRect{});
+        ui.setText(labelComponentId, std::format("{}: Empty", GEAR_SLOTS[slotIndex].label));
+        return;
+    }
+
+    auto resourceTemplate =
+        ResourceTemplateManager::Instance().getResourceTemplate(equipped);
+    if (!resourceTemplate || resourceTemplate->getAtlasW() <= 0 ||
+        resourceTemplate->getAtlasH() <= 0) {
+        ui.setTexture(iconComponentId, "");
+        ui.setImageSourceRect(iconComponentId, UIRect{});
+    } else {
+        ui.setTexture(iconComponentId, std::string(INVENTORY_ATLAS_TEXTURE_ID));
+        ui.setImageSourceRect(
+            iconComponentId,
+            UIRect{resourceTemplate->getAtlasX(), resourceTemplate->getAtlasY(),
+                   resourceTemplate->getAtlasW(), resourceTemplate->getAtlasH()});
+    }
+
+    ui.setText(labelComponentId,
+               std::format("{}: {}", GEAR_SLOTS[slotIndex].label,
+                           resourceTemplate ? resourceTemplate->getName()
+                                            : equipped.toString()));
+}
+
+void InventoryController::handleInventorySlotClicked(size_t slotIndex) {
+    if (slotIndex >= m_gridEntries.size()) {
+        return;
+    }
+
+    const auto& entry = m_gridEntries[slotIndex];
+    if (!isEquipment(entry.handle)) {
+        return;
+    }
+
+    auto player = mp_player.lock();
+    if (!player || !player->equipItem(entry.handle)) {
+        return;
+    }
+
+    refreshInventoryUI();
+    UIManager::Instance().addEventLogEntry(
+        EVENT_LOG_ID, std::format("Equipped {}", displayNameFor(entry.handle)));
+}
+
+void InventoryController::handleGearSlotClicked(size_t slotIndex) {
+    auto player = mp_player.lock();
+    if (!player || slotIndex >= GEAR_SLOTS.size()) {
+        return;
+    }
+
+    const std::string slotName(GEAR_SLOTS[slotIndex].slotName);
+    const VoidLight::ResourceHandle equipped = player->getEquippedItem(slotName);
+    if (!equipped.isValid() || !player->unequipItem(slotName)) {
+        return;
+    }
+
+    refreshInventoryUI();
+    UIManager::Instance().addEventLogEntry(
+        EVENT_LOG_ID, std::format("Unequipped {}", displayNameFor(equipped)));
+}
+
+bool InventoryController::isEquipment(const VoidLight::ResourceHandle& handle) {
+    auto resourceTemplate =
+        ResourceTemplateManager::Instance().getResourceTemplate(handle);
+    return resourceTemplate && resourceTemplate->getType() == ResourceType::Equipment;
+}
+
+std::string InventoryController::displayNameFor(const VoidLight::ResourceHandle& handle) {
+    auto resourceTemplate =
+        ResourceTemplateManager::Instance().getResourceTemplate(handle);
+    return resourceTemplate ? resourceTemplate->getName() : handle.toString();
+}
+
 std::string InventoryController::slotId(size_t slotIndex) {
-    return std::format("gameplay_inventory_slot_{}", slotIndex);
+    return std::format("inventory_slot_{}", slotIndex);
 }
 
 std::string InventoryController::iconId(size_t slotIndex) {
-    return std::format("gameplay_inventory_icon_{}", slotIndex);
+    return std::format("inventory_icon_{}", slotIndex);
 }
 
 std::string InventoryController::countId(size_t slotIndex) {
-    return std::format("gameplay_inventory_count_{}", slotIndex);
+    return std::format("inventory_count_{}", slotIndex);
+}
+
+std::string InventoryController::gearSlotId(size_t slotIndex) {
+    return std::format("gear_slot_{}", slotIndex);
+}
+
+std::string InventoryController::gearIconId(size_t slotIndex) {
+    return std::format("gear_icon_{}", slotIndex);
+}
+
+std::string InventoryController::gearLabelId(size_t slotIndex) {
+    return std::format("gear_label_{}", slotIndex);
 }

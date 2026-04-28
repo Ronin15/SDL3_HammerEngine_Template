@@ -1484,6 +1484,8 @@ void UIManager::setLightTheme() {
   // Panel style - light overlay for subtle UI separation
   UIStyle panelStyle;
   panelStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=40}; // Very light overlay (15% opacity)
+  panelStyle.hoverColor = panelStyle.backgroundColor;
+  panelStyle.pressedColor = panelStyle.backgroundColor;
   panelStyle.borderWidth = UIConstants::BORDER_WIDTH_NONE;
   panelStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::PANEL] = panelStyle;
@@ -1653,6 +1655,8 @@ void UIManager::setDarkTheme() {
   // Panel style - slightly more overlay for dark theme
   UIStyle panelStyle;
   panelStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=50}; // 19% opacity
+  panelStyle.hoverColor = panelStyle.backgroundColor;
+  panelStyle.pressedColor = panelStyle.backgroundColor;
   panelStyle.borderWidth = UIConstants::BORDER_WIDTH_NONE;
   panelStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::PANEL] = panelStyle;

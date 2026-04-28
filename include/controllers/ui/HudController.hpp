@@ -55,7 +55,7 @@ public:
     [[nodiscard]] size_t getHotbarSelectedIndex() const { return m_hotbarSelectedIndex; }
 
     static constexpr size_t HOTBAR_SLOT_COUNT = 9;
-    static constexpr const char* HOTBAR_PANEL_ID = "gameplay_hotbar_panel";
+    static constexpr const char* HOTBAR_PANEL_ID = "hotbar_panel";
 
 private:
     void onCombatEvent(const EventData& data);

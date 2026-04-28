@@ -12,6 +12,7 @@
 #include "entities/playerStates/PlayerHurtState.hpp"
 #include "entities/playerStates/PlayerIdleState.hpp"
 #include "entities/playerStates/PlayerRunningState.hpp"
+#include "entities/resources/ItemResources.hpp"
 
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -24,6 +25,35 @@
 
 #include <algorithm>
 #include <format>
+
+namespace {
+
+std::string equipmentSlotName(Equipment::EquipmentSlot slot) {
+  switch (slot) {
+  case Equipment::EquipmentSlot::Weapon:
+    return "weapon";
+  case Equipment::EquipmentSlot::Helmet:
+    return "helmet";
+  case Equipment::EquipmentSlot::Chest:
+    return "chest";
+  case Equipment::EquipmentSlot::Legs:
+    return "legs";
+  case Equipment::EquipmentSlot::Boots:
+    return "boots";
+  case Equipment::EquipmentSlot::Gloves:
+    return "gloves";
+  case Equipment::EquipmentSlot::Ring:
+    return "ring";
+  case Equipment::EquipmentSlot::Necklace:
+    return "necklace";
+  case Equipment::EquipmentSlot::COUNT:
+    break;
+  }
+
+  return "unknown";
+}
+
+} // namespace
 
 Player::Player() : Entity() {
   // Register with EntityDataManager FIRST - data must exist before any state
@@ -538,31 +568,43 @@ bool Player::equipItem(VoidLight::ResourceHandle itemHandle) {
     return false;
   }
 
-  // Check if it's equipment
   if (itemTemplate->getType() != ResourceType::Equipment) {
     PLAYER_WARN(std::format("Player::equipItem - Item is not equipment (handle: {})", itemHandle.toString()));
     return false;
   }
 
-  // Determine equipment slot (simplified - in a real game you'd check
-  // Equipment::EquipmentSlot)
-  std::string slotName =
-      "weapon"; // Default, should be determined from item properties
-
-  // Unequip existing item in that slot
-  if (m_equippedItems[slotName].isValid()) {
-    unequipItem(slotName);
+  const auto equipment = std::dynamic_pointer_cast<Equipment>(itemTemplate);
+  if (!equipment) {
+    PLAYER_ERROR(std::format("Player::equipItem - Equipment template has wrong type (handle: {})", itemHandle.toString()));
+    return false;
   }
 
-  // Remove item from inventory and equip it
-  if (edm.removeFromInventory(m_inventoryIndex, itemHandle, 1)) {
-    m_equippedItems[slotName] = itemHandle;
-    PLAYER_DEBUG(std::format("Equipped item (handle: {}) in slot: {}",
-                             itemHandle.toString(), slotName));
+  const std::string slotName = equipmentSlotName(equipment->getEquipmentSlot());
+  if (slotName == "unknown") {
+    PLAYER_ERROR(std::format("Player::equipItem - Unknown equipment slot for handle: {}", itemHandle.toString()));
+    return false;
+  }
+
+  VoidLight::ResourceHandle previouslyEquipped = m_equippedItems[slotName];
+  if (previouslyEquipped == itemHandle) {
     return true;
   }
 
-  return false;
+  if (!edm.removeFromInventory(m_inventoryIndex, itemHandle, 1)) {
+    return false;
+  }
+
+  if (previouslyEquipped.isValid() &&
+      !edm.addToInventory(m_inventoryIndex, previouslyEquipped, 1)) {
+    edm.addToInventory(m_inventoryIndex, itemHandle, 1);
+    PLAYER_WARN(std::format("Player::equipItem - Could not return previous item to inventory (handle: {})", previouslyEquipped.toString()));
+    return false;
+  }
+
+  m_equippedItems[slotName] = itemHandle;
+  PLAYER_DEBUG(std::format("Equipped item (handle: {}) in slot: {}",
+                           itemHandle.toString(), slotName));
+  return true;
 }
 
 bool Player::unequipItem(const std::string &slotName) {

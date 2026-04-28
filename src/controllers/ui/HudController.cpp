@@ -303,10 +303,10 @@ void HudController::applyHotbarSelectionStyling()
 
 std::string HudController::hotbarSlotId(size_t i)
 {
-    return std::format("gameplay_hotbar_slot_{}", i);
+    return std::format("hotbar_slot_{}", i);
 }
 
 std::string HudController::hotbarKeyLabelId(size_t i)
 {
-    return std::format("gameplay_hotbar_key_{}", i);
+    return std::format("hotbar_key_{}", i);
 }

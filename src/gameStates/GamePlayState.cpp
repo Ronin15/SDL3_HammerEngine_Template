@@ -126,7 +126,7 @@ bool GamePlayState::enter() {
     auto &ui = UIManager::Instance();
 
     // Create event log for time/weather messages
-    ui.createEventLog("gameplay_event_log",
+    ui.createEventLog("event_log",
                       {10, ui.getHeightInPixels() - 200, 730, 180}, 7);
     UIPositioning eventLogPos;
     eventLogPos.mode = UIPositionMode::BOTTOM_ALIGNED;
@@ -134,23 +134,23 @@ bool GamePlayState::enter() {
     eventLogPos.offsetY = 20;
     eventLogPos.fixedHeight = 180;
     eventLogPos.widthPercent = UIConstants::EVENT_LOG_WIDTH_PERCENT;
-    ui.setComponentPositioning("gameplay_event_log", eventLogPos);
+    ui.setComponentPositioning("event_log", eventLogPos);
 
     // Create time status label at top-right of screen (no panel, just label)
     int const barHeight = UIConstants::STATUS_BAR_HEIGHT;
     int labelPadding = UIConstants::STATUS_BAR_LABEL_PADDING;
 
-    ui.createLabel("gameplay_time_label",
+    ui.createLabel("time_label",
                    {labelPadding, 6, ui.getWidthInPixels() - 2 * labelPadding,
                     barHeight - 12},
                    "");
 
     // Right-align the text within the label
-    ui.setLabelAlignment("gameplay_time_label", UIAlignment::CENTER_RIGHT);
+    ui.setLabelAlignment("time_label", UIAlignment::CENTER_RIGHT);
 
     // Full-width label driven by setComponentPositioning — disable auto-sizing
     // so setText() updates don't shrink bounds back to content width.
-    ui.enableAutoSizing("gameplay_time_label", false);
+    ui.enableAutoSizing("time_label", false);
 
     // Full-width positioning for resize handling
     UIPositioning labelPos;
@@ -159,25 +159,25 @@ bool GamePlayState::enter() {
     labelPos.offsetY = 6;                    // Small vertical offset from top
     labelPos.fixedWidth = -2 * labelPadding; // Full width minus margins
     labelPos.fixedHeight = barHeight - 12;
-    ui.setComponentPositioning("gameplay_time_label", labelPos);
+    ui.setComponentPositioning("time_label", labelPos);
 
     // Pre-allocate status buffer for zero per-frame allocations
     m_statusBuffer.reserve(256);
 
     // Create FPS counter label (top-left, initially hidden, toggled with F2)
-    ui.createLabel("gameplay_fps", {labelPadding, 6, 120, barHeight - 12},
+    ui.createLabel("fps", {labelPadding, 6, 120, barHeight - 12},
                    "FPS: --");
-    ui.setComponentVisible("gameplay_fps", false);
+    ui.setComponentVisible("fps", false);
     // Fixed 120px width fits any "FPS: nnn.n" — skip per-setText font metrics
     // since this updates whenever FPS crosses the 0.05 delta threshold.
-    ui.enableAutoSizing("gameplay_fps", false);
+    ui.enableAutoSizing("fps", false);
     UIPositioning fpsPos;
     fpsPos.mode = UIPositionMode::TOP_ALIGNED;
     fpsPos.offsetX = labelPadding;
     fpsPos.offsetY = 6;
     fpsPos.fixedWidth = 120;
     fpsPos.fixedHeight = barHeight - 12;
-    ui.setComponentPositioning("gameplay_fps", fpsPos);
+    ui.setComponentPositioning("fps", fpsPos);
 
     inventoryCtrl.initializeInventoryUI();
     m_controllers.get<HudController>()->initializeHotbarUI();
@@ -310,7 +310,7 @@ void GamePlayState::update(float deltaTime) {
                    gameTimeMgr.getTimeOfDayName(), gameTimeMgr.getSeasonName(),
                    static_cast<int>(gameTimeMgr.getCurrentTemperature()),
                    m_controllers.get<WeatherController>()->getCurrentWeatherString());
-    ui.setText("gameplay_time_label", m_statusBuffer);
+    ui.setText("time_label", m_statusBuffer);
   }
 
   // Update UI
@@ -548,9 +548,9 @@ void GamePlayState::unregisterEventHandlers() {
 void GamePlayState::pause() {
   // Hide gameplay UI when paused (PauseState overlays on top)
   auto &ui = UIManager::Instance();
-  ui.setComponentVisible("gameplay_event_log", false);
-  ui.setComponentVisible("gameplay_time_label", false);
-  ui.setComponentVisible("gameplay_fps", false);
+  ui.setComponentVisible("event_log", false);
+  ui.setComponentVisible("time_label", false);
+  ui.setComponentVisible("fps", false);
 
   // Hide combat HUD components
   ui.setComponentVisible("hud_health_label", false);
@@ -589,12 +589,12 @@ void GamePlayState::pause() {
 void GamePlayState::resume() {
   // Show gameplay UI when resuming from pause
   auto &ui = UIManager::Instance();
-  ui.setComponentVisible("gameplay_event_log", true);
-  ui.setComponentVisible("gameplay_time_label", true);
+  ui.setComponentVisible("event_log", true);
+  ui.setComponentVisible("time_label", true);
 
   // Restore FPS counter visibility if it was enabled
   if (m_fpsVisible) {
-    ui.setComponentVisible("gameplay_fps", true);
+    ui.setComponentVisible("fps", true);
   }
 
   // Show combat HUD components (always visible during gameplay)
@@ -650,7 +650,7 @@ void GamePlayState::handleInput() {
   // Inventory toggle
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_F2)) {
     m_fpsVisible = !m_fpsVisible;
-    ui.setComponentVisible("gameplay_fps", m_fpsVisible);
+    ui.setComponentVisible("fps", m_fpsVisible);
   }
 
   if (inputMgr.isCommandPressed(InputManager::Command::OpenInventory)) {
@@ -724,12 +724,12 @@ void GamePlayState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_COMMA)) {
     gameTimeMgr.setTimeScale(60.0f);
     GAMEPLAY_INFO("Time scale set to NORMAL (60x)");
-    ui.addEventLogEntry("gameplay_event_log", "Time: NORMAL speed (60x)");
+    ui.addEventLogEntry("event_log", "Time: NORMAL speed (60x)");
   }
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_PERIOD)) {
     gameTimeMgr.setTimeScale(3600.0f);
     GAMEPLAY_INFO("Time scale set to MAX (3600x)");
-    ui.addEventLogEntry("gameplay_event_log", "Time: MAX speed (3600x)");
+    ui.addEventLogEntry("event_log", "Time: MAX speed (3600x)");
   }
 #endif
 
@@ -869,7 +869,7 @@ void GamePlayState::onTimePeriodChanged(const EventData &data) {
 
   // Add event log entry for the time period change
   UIManager::Instance().addEventLogEntry(
-      "gameplay_event_log",
+      "event_log",
       std::string(m_controllers.get<DayNightController>()->getCurrentPeriodDescription()));
 
   GAMEPLAY_DEBUG(std::format("Day/night transition started to period: {}",
@@ -975,7 +975,7 @@ void GamePlayState::onWeatherChanged(const EventData &data) {
 
   // Add event log entry for the weather change
   UIManager::Instance().addEventLogEntry(
-      "gameplay_event_log",
+      "event_log",
       std::string(m_controllers.get<WeatherController>()->getCurrentWeatherDescription()));
 
   GAMEPLAY_DEBUG(weatherEvent->getWeatherTypeString());
@@ -1037,7 +1037,7 @@ void GamePlayState::recordGPUVertices(VoidLight::GPURenderer &gpuRenderer,
       m_fpsBuffer.clear();
       std::format_to(std::back_inserter(m_fpsBuffer), "FPS: {:.1f}",
                      currentFPS);
-      ui.setText("gameplay_fps", m_fpsBuffer);
+      ui.setText("fps", m_fpsBuffer);
       m_lastDisplayedFPS = currentFPS;
     }
   }

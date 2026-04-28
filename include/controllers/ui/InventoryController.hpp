@@ -48,10 +48,10 @@ public:
 
     static constexpr float PICKUP_RADIUS = 32.0f;
 
-    static constexpr const char* INVENTORY_PANEL_ID = "gameplay_inventory_panel";
-    static constexpr const char* INVENTORY_TITLE_ID = "gameplay_inventory_title";
-    static constexpr const char* INVENTORY_STATUS_ID = "gameplay_inventory_status";
-    static constexpr const char* EVENT_LOG_ID = "gameplay_event_log";
+    static constexpr const char* INVENTORY_PANEL_ID = "inventory_panel";
+    static constexpr const char* INVENTORY_TITLE_ID = "inventory_title";
+    static constexpr const char* INVENTORY_STATUS_ID = "inventory_status";
+    static constexpr const char* EVENT_LOG_ID = "event_log";
 
 private:
     struct InventoryGridEntry {
@@ -63,10 +63,20 @@ private:
     void onResourceChange(const EventData& data);
     void addInventoryEventLogEntry(const VoidLight::ResourceHandle& handle, int delta);
     void refreshSlot(size_t slotIndex, const InventoryGridEntry* entry);
+    void refreshGearUI();
+    void refreshGearSlot(size_t slotIndex);
+    void handleInventorySlotClicked(size_t slotIndex);
+    void handleGearSlotClicked(size_t slotIndex);
+
+    [[nodiscard]] static bool isEquipment(const VoidLight::ResourceHandle& handle);
+    [[nodiscard]] static std::string displayNameFor(const VoidLight::ResourceHandle& handle);
 
     [[nodiscard]] static std::string slotId(size_t slotIndex);
     [[nodiscard]] static std::string iconId(size_t slotIndex);
     [[nodiscard]] static std::string countId(size_t slotIndex);
+    [[nodiscard]] static std::string gearSlotId(size_t slotIndex);
+    [[nodiscard]] static std::string gearIconId(size_t slotIndex);
+    [[nodiscard]] static std::string gearLabelId(size_t slotIndex);
 
     std::weak_ptr<Player> mp_player;
     bool m_inventoryVisible{false};

@@ -63,7 +63,7 @@ public:
 
     ~InventoryControllerTestFixture() {
         WorldResourceManager::Instance().clean();
-        UIManager::Instance().clean();
+        UIManager::Instance().cleanupForStateTransition();
         EntityDataManager::Instance().clean();
         ResourceTemplateManager::Instance().clean();
         EventManager::Instance().clean();
@@ -128,18 +128,138 @@ BOOST_AUTO_TEST_CASE(TestInitializeInventoryUICreatesReusableGrid) {
     auto& ui = UIManager::Instance();
     BOOST_CHECK(ui.hasComponent(InventoryController::INVENTORY_PANEL_ID));
     BOOST_CHECK(ui.hasComponent(InventoryController::INVENTORY_STATUS_ID));
-    BOOST_CHECK(ui.hasComponent("gameplay_inventory_slot_0"));
-    BOOST_CHECK(ui.hasComponent("gameplay_inventory_icon_0"));
-    BOOST_CHECK(ui.hasComponent("gameplay_inventory_count_0"));
-    BOOST_CHECK(ui.hasComponent("gameplay_inventory_slot_19"));
-    BOOST_CHECK(ui.hasComponent("gameplay_inventory_icon_19"));
-    BOOST_CHECK(ui.hasComponent("gameplay_inventory_count_19"));
+    BOOST_CHECK(ui.hasComponent("inventory_slot_0"));
+    BOOST_CHECK(ui.hasComponent("inventory_icon_0"));
+    BOOST_CHECK(ui.hasComponent("inventory_count_0"));
+    BOOST_CHECK(ui.hasComponent("inventory_slot_19"));
+    BOOST_CHECK(ui.hasComponent("inventory_icon_19"));
+    BOOST_CHECK(ui.hasComponent("inventory_count_19"));
+    BOOST_CHECK(ui.hasComponent("inventory_tab_items"));
+    BOOST_CHECK(ui.hasComponent("inventory_tab_gear"));
+    BOOST_CHECK(ui.hasComponent("gear_slot_0"));
+    BOOST_CHECK(ui.hasComponent("gear_icon_0"));
+    BOOST_CHECK(ui.hasComponent("gear_label_0"));
+    BOOST_CHECK(ui.hasComponent("gear_slot_7"));
+    BOOST_CHECK(ui.hasComponent("gear_icon_7"));
+    BOOST_CHECK(ui.hasComponent("gear_label_7"));
 
     controller.setInventoryVisible(true);
     BOOST_CHECK(controller.isInventoryVisible());
 
     controller.setInventoryVisible(false);
     BOOST_CHECK(!controller.isInventoryVisible());
+}
+
+BOOST_AUTO_TEST_CASE(TestInventoryGearLayoutHasReadableSpacingAt1280x720) {
+    auto& ui = UIManager::Instance();
+    ui.onWindowResize(1280, 720);
+
+    InventoryController controller(player);
+    controller.initializeInventoryUI();
+
+    const UIRect panelBounds = ui.getBounds(InventoryController::INVENTORY_PANEL_ID);
+    const UIRect inventoryHeaderBounds = ui.getBounds("inventory_tab_items");
+    const UIRect firstInventoryBounds = ui.getBounds("inventory_slot_0");
+    const UIRect gearHeaderBounds = ui.getBounds("inventory_tab_gear");
+    const UIRect firstGearBounds = ui.getBounds("gear_slot_0");
+    const UIRect secondGearBounds = ui.getBounds("gear_slot_1");
+    const UIRect firstGearLabelBounds = ui.getBounds("gear_label_0");
+    const int panelCenterX = panelBounds.x + (panelBounds.width / 2);
+
+    BOOST_CHECK_GE(panelBounds.width, 480);
+    BOOST_CHECK_GE(firstGearBounds.width, 240);
+    BOOST_CHECK_GE(firstGearLabelBounds.width, 200);
+    BOOST_CHECK_GE(panelCenterX, 639);
+    BOOST_CHECK_LE(panelCenterX, 641);
+    BOOST_CHECK_EQUAL(inventoryHeaderBounds.x, firstInventoryBounds.x);
+    BOOST_CHECK_EQUAL(gearHeaderBounds.x, firstGearBounds.x);
+    BOOST_CHECK_GT(secondGearBounds.y, firstGearBounds.y + firstGearBounds.height);
+    BOOST_CHECK_LE(panelBounds.x + panelBounds.width, 1280);
+}
+
+BOOST_AUTO_TEST_CASE(TestPlayerEquipUsesEquipmentSlotMetadata) {
+    auto chestHandle = getResourceHandleById("dragon_scale_armor");
+    BOOST_REQUIRE(chestHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(chestHandle, 1));
+
+    BOOST_REQUIRE(player->equipItem(chestHandle));
+
+    BOOST_CHECK(player->getEquippedItem("chest") == chestHandle);
+    BOOST_CHECK(!player->getEquippedItem("weapon").isValid());
+    BOOST_CHECK_EQUAL(
+        EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), chestHandle),
+        0);
+}
+
+BOOST_AUTO_TEST_CASE(TestUnknownEquipmentSlotDoesNotEquip) {
+    auto shieldHandle = getResourceHandleById("iron_shield");
+    BOOST_REQUIRE(shieldHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(shieldHandle, 1));
+
+    BOOST_CHECK(!player->equipItem(shieldHandle));
+    BOOST_CHECK(!player->getEquippedItem("weapon").isValid());
+    BOOST_CHECK(!player->getEquippedItem("unknown").isValid());
+    BOOST_CHECK_EQUAL(
+        EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), shieldHandle),
+        1);
+}
+
+BOOST_AUTO_TEST_CASE(TestInventorySlotClickEquipsAndGearSlotClickUnequips) {
+    auto chestHandle = getResourceHandleById("dragon_scale_armor");
+    BOOST_REQUIRE(chestHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(chestHandle, 1));
+
+    InventoryController controller(player);
+    controller.initializeInventoryUI();
+    controller.setInventoryVisible(true);
+
+    auto& ui = UIManager::Instance();
+    ui.simulateClick("inventory_slot_0");
+    ui.update(0.016f);
+
+    BOOST_CHECK(player->getEquippedItem("chest") == chestHandle);
+    BOOST_CHECK_EQUAL(ui.getText("gear_label_2").find("Dragon Scale Armor"), 7);
+    BOOST_CHECK_EQUAL(
+        EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), chestHandle),
+        0);
+
+    ui.simulateClick("gear_slot_2");
+    ui.update(0.016f);
+
+    BOOST_CHECK(!player->getEquippedItem("chest").isValid());
+    BOOST_CHECK(ui.getText("gear_label_2").find("Empty") != std::string::npos);
+    BOOST_CHECK_EQUAL(
+        EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), chestHandle),
+        1);
+}
+
+BOOST_AUTO_TEST_CASE(TestEquippingReplacementReturnsPreviousItemToInventory) {
+    auto arcaneStaffHandle = getResourceHandleById("arcane_staff");
+    auto daggerHandle = getResourceHandleById("dagger");
+    BOOST_REQUIRE(arcaneStaffHandle.isValid());
+    BOOST_REQUIRE(daggerHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(arcaneStaffHandle, 1));
+    BOOST_REQUIRE(player->addToInventory(daggerHandle, 1));
+
+    InventoryController controller(player);
+    controller.initializeInventoryUI();
+    controller.setInventoryVisible(true);
+
+    auto& ui = UIManager::Instance();
+    ui.simulateClick("inventory_slot_0");
+    ui.update(0.016f);
+    BOOST_REQUIRE(player->getEquippedItem("weapon") == arcaneStaffHandle);
+
+    ui.simulateClick("inventory_slot_0");
+    ui.update(0.016f);
+
+    BOOST_CHECK(player->getEquippedItem("weapon") == daggerHandle);
+    BOOST_CHECK_EQUAL(
+        EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), arcaneStaffHandle),
+        1);
+    BOOST_CHECK_EQUAL(
+        EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), daggerHandle),
+        0);
 }
 
 BOOST_AUTO_TEST_CASE(TestMoveConstructor) {

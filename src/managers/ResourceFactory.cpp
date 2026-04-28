@@ -182,13 +182,11 @@ ResourceFactory::createEquipment(VoidLight::ResourceHandle handle,
   std::string id = json["id"].asString();
   std::string name = json["name"].asString();
 
-  // Determine equipment slot from JSON or default to Weapon
-  Equipment::EquipmentSlot slot = Equipment::EquipmentSlot::Weapon;
+  Equipment::EquipmentSlot slot = Equipment::EquipmentSlot::COUNT;
   if (json.hasKey("properties") && json["properties"].isObject()) {
     const JsonValue &props = json["properties"];
     if (props.hasKey("slot")) {
-      std::string slotStr = props["slot"].tryAsString().value_or("Weapon");
-      // Simple mapping - could be enhanced with a conversion utility
+      std::string slotStr = props["slot"].tryAsString().value_or("Unknown");
       if (slotStr == "Helmet")
         slot = Equipment::EquipmentSlot::Helmet;
       else if (slotStr == "Chest")
@@ -203,6 +201,8 @@ ResourceFactory::createEquipment(VoidLight::ResourceHandle handle,
         slot = Equipment::EquipmentSlot::Ring;
       else if (slotStr == "Necklace")
         slot = Equipment::EquipmentSlot::Necklace;
+      else if (slotStr == "Weapon")
+        slot = Equipment::EquipmentSlot::Weapon;
     }
   }
 
