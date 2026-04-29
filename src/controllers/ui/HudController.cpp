@@ -4,9 +4,13 @@
  */
 
 #include "controllers/ui/HudController.hpp"
+#include "entities/Player.hpp"
+#include "entities/Resource.hpp"
 #include "events/EntityEvents.hpp"
+#include "events/ResourceChangeEvent.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/InputManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIConstants.hpp"
 #include "managers/UIManager.hpp"
 #include <array>
@@ -19,6 +23,11 @@ constexpr int HOTBAR_SLOT_SIZE = 68;
 constexpr int HOTBAR_SLOT_GAP = 6;
 constexpr int HOTBAR_BOTTOM_OFFSET = 24;
 constexpr int HOTBAR_KEY_LABEL_SIZE = 17;
+constexpr int HOTBAR_ICON_INSET = 8;
+constexpr int HOTBAR_ICON_SIZE = HOTBAR_SLOT_SIZE - (HOTBAR_ICON_INSET * 2);
+constexpr int HOTBAR_COUNT_HEIGHT = 16;
+constexpr int HOTBAR_COUNT_BOTTOM_OFFSET = HOTBAR_BOTTOM_OFFSET + 7;
+constexpr std::string_view HOTBAR_ATLAS_TEXTURE_ID = "atlas";
 
 constexpr int HOTBAR_TOTAL_WIDTH =
     static_cast<int>(HudController::HOTBAR_SLOT_COUNT) * HOTBAR_SLOT_SIZE +
@@ -35,6 +44,12 @@ constexpr int slotCenterOffsetX(size_t i)
 
 } // namespace
 
+HudController::HudController(std::shared_ptr<Player> player)
+    : mp_player(player)
+    , m_playerHandle(player ? player->getHandle() : EntityHandle{})
+{
+}
+
 void HudController::subscribe()
 {
     if (checkAlreadySubscribed())
@@ -46,6 +61,12 @@ void HudController::subscribe()
         EventTypeId::Combat,
         [this](const EventData& data) { onCombatEvent(data); });
     addHandlerToken(token);
+
+    auto resourceToken = EventManager::Instance().registerHandlerWithToken(
+        EventTypeId::ResourceChange,
+        [this](const EventData& data) { onResourceChange(data); });
+    addHandlerToken(resourceToken);
+
     setSubscribed(true);
 }
 
@@ -153,6 +174,17 @@ void HudController::onCombatEvent(const EventData& data)
     }
 }
 
+void HudController::onResourceChange(const EventData& data)
+{
+    const auto* event = dynamic_cast<const ResourceChangeEvent*>(data.event.get());
+    if (!event || event->getOwnerHandle() != m_playerHandle)
+    {
+        return;
+    }
+
+    refreshHotbarUI();
+}
+
 void HudController::clearTarget()
 {
     m_targetedHandle = EntityHandle{};
@@ -192,6 +224,36 @@ void HudController::initializeHotbarUI()
              HOTBAR_BOTTOM_OFFSET, HOTBAR_SLOT_SIZE, HOTBAR_SLOT_SIZE});
         ui.setOnClick(slotComponentId, [this, i]() { setHotbarSelectedIndex(i); });
 
+        const std::string iconComponentId = hotbarIconId(i);
+        ui.createAtlasImage(iconComponentId,
+                            {0, 0, HOTBAR_ICON_SIZE, HOTBAR_ICON_SIZE},
+                            "", UIRect{});
+        ui.setComponentPositioning(
+            iconComponentId,
+            {UIPositionMode::BOTTOM_CENTERED, slotCenterOffsetX(i),
+             HOTBAR_BOTTOM_OFFSET + HOTBAR_ICON_INSET,
+             HOTBAR_ICON_SIZE, HOTBAR_ICON_SIZE});
+
+        UIStyle countStyle;
+        countStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=0};
+        countStyle.textColor = {.r=255, .g=255, .b=255, .a=255};
+        countStyle.textAlign = UIAlignment::CENTER_RIGHT;
+        countStyle.fontID = UIConstants::FONT_UI;
+        countStyle.useTextBackground = true;
+        countStyle.textBackgroundColor = {.r=0, .g=0, .b=0, .a=150};
+        countStyle.textBackgroundPadding = 2;
+
+        const std::string countComponentId = hotbarCountId(i);
+        ui.createLabel(countComponentId,
+                       {0, 0, HOTBAR_SLOT_SIZE - 4, HOTBAR_COUNT_HEIGHT},
+                       "");
+        ui.enableAutoSizing(countComponentId, false);
+        ui.setStyle(countComponentId, countStyle);
+        ui.setComponentPositioning(
+            countComponentId,
+            {UIPositionMode::BOTTOM_CENTERED, slotCenterOffsetX(i),
+             HOTBAR_COUNT_BOTTOM_OFFSET, HOTBAR_SLOT_SIZE - 4, HOTBAR_COUNT_HEIGHT});
+
         UIStyle keyLabelStyle;
         keyLabelStyle.backgroundColor = {.r=0, .g=0, .b=0, .a=0};
         keyLabelStyle.textColor = {.r=220, .g=225, .b=235, .a=230};
@@ -211,6 +273,7 @@ void HudController::initializeHotbarUI()
     }
 
     m_hotbarUICreated = true;
+    refreshHotbarUI();
     applyHotbarSelectionStyling();
 }
 
@@ -224,6 +287,8 @@ void HudController::setHotbarVisible(bool visible)
     for (size_t i = 0; i < HOTBAR_SLOT_COUNT; ++i)
     {
         ui.setComponentVisible(hotbarSlotId(i), visible);
+        ui.setComponentVisible(hotbarIconId(i), visible);
+        ui.setComponentVisible(hotbarCountId(i), visible);
         ui.setComponentVisible(hotbarKeyLabelId(i), visible);
     }
 }
@@ -269,6 +334,89 @@ void HudController::setHotbarSelectedIndex(size_t i)
     applyHotbarSelectionStyling();
 }
 
+bool HudController::assignHotbarItem(size_t slotIndex, VoidLight::ResourceHandle handle)
+{
+    if (slotIndex >= HOTBAR_SLOT_COUNT || !handle.isValid())
+    {
+        return false;
+    }
+
+    m_hotbarItems[slotIndex] = handle;
+    refreshHotbarUI();
+    return true;
+}
+
+void HudController::clearHotbarItem(size_t slotIndex)
+{
+    if (slotIndex >= HOTBAR_SLOT_COUNT)
+    {
+        return;
+    }
+
+    m_hotbarItems[slotIndex] = VoidLight::ResourceHandle{};
+    refreshHotbarUI();
+}
+
+VoidLight::ResourceHandle HudController::getHotbarItem(size_t slotIndex) const
+{
+    if (slotIndex >= HOTBAR_SLOT_COUNT)
+    {
+        return VoidLight::ResourceHandle{};
+    }
+
+    return m_hotbarItems[slotIndex];
+}
+
+void HudController::refreshHotbarUI()
+{
+    if (!m_hotbarUICreated)
+    {
+        return;
+    }
+
+    auto& ui = UIManager::Instance();
+    auto player = mp_player.lock();
+    const uint32_t inventoryIndex = player ? player->getInventoryIndex() : INVALID_INVENTORY_INDEX;
+    auto& edm = EntityDataManager::Instance();
+    auto& rtm = ResourceTemplateManager::Instance();
+
+    for (size_t i = 0; i < HOTBAR_SLOT_COUNT; ++i)
+    {
+        const std::string iconComponentId = hotbarIconId(i);
+        const std::string countComponentId = hotbarCountId(i);
+        const VoidLight::ResourceHandle handle = m_hotbarItems[i];
+
+        if (!handle.isValid())
+        {
+            ui.setTexture(iconComponentId, "");
+            ui.setImageSourceRect(iconComponentId, UIRect{});
+            ui.setText(countComponentId, "");
+            continue;
+        }
+
+        auto resourceTemplate = rtm.getResourceTemplate(handle);
+        if (resourceTemplate && resourceTemplate->getAtlasW() > 0 &&
+            resourceTemplate->getAtlasH() > 0)
+        {
+            ui.setTexture(iconComponentId, std::string(HOTBAR_ATLAS_TEXTURE_ID));
+            ui.setImageSourceRect(
+                iconComponentId,
+                UIRect{resourceTemplate->getAtlasX(), resourceTemplate->getAtlasY(),
+                       resourceTemplate->getAtlasW(), resourceTemplate->getAtlasH()});
+        }
+        else
+        {
+            ui.setTexture(iconComponentId, "");
+            ui.setImageSourceRect(iconComponentId, UIRect{});
+        }
+
+        const int quantity = (inventoryIndex != INVALID_INVENTORY_INDEX)
+            ? edm.getInventoryQuantity(inventoryIndex, handle)
+            : 0;
+        ui.setText(countComponentId, std::format("{}", quantity));
+    }
+}
+
 void HudController::applyHotbarSelectionStyling()
 {
     if (!m_hotbarUICreated)
@@ -309,4 +457,14 @@ std::string HudController::hotbarSlotId(size_t i)
 std::string HudController::hotbarKeyLabelId(size_t i)
 {
     return std::format("hotbar_key_{}", i);
+}
+
+std::string HudController::hotbarIconId(size_t i)
+{
+    return std::format("hotbar_icon_{}", i);
+}
+
+std::string HudController::hotbarCountId(size_t i)
+{
+    return std::format("hotbar_count_{}", i);
 }

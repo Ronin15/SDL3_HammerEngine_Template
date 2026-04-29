@@ -23,17 +23,19 @@
 #include "controllers/ControllerBase.hpp"
 #include "controllers/IUpdatable.hpp"
 #include "entities/EntityHandle.hpp"
+#include "utils/ResourceHandle.hpp"
+#include <array>
+#include <memory>
 #include <string>
+
+class Player;
 
 class HudController : public ControllerBase, public IUpdatable
 {
 public:
     static constexpr float TARGET_DISPLAY_DURATION{3.0f};
 
-    explicit HudController(EntityHandle playerHandle)
-        : m_playerHandle(playerHandle)
-    {
-    }
+    explicit HudController(std::shared_ptr<Player> player);
 
     ~HudController() override = default;
 
@@ -54,16 +56,25 @@ public:
     void setHotbarVisible(bool visible);
     [[nodiscard]] size_t getHotbarSelectedIndex() const { return m_hotbarSelectedIndex; }
 
+    bool assignHotbarItem(size_t slotIndex, VoidLight::ResourceHandle handle);
+    void clearHotbarItem(size_t slotIndex);
+    [[nodiscard]] VoidLight::ResourceHandle getHotbarItem(size_t slotIndex) const;
+    void refreshHotbarUI();
+
     static constexpr size_t HOTBAR_SLOT_COUNT = 9;
     static constexpr const char* HOTBAR_PANEL_ID = "hotbar_panel";
+    static std::string hotbarSlotId(size_t i);
 
 private:
     void onCombatEvent(const EventData& data);
+    void onResourceChange(const EventData& data);
     void clearTarget();
     void applyHotbarSelectionStyling();
-    static std::string hotbarSlotId(size_t i);
     static std::string hotbarKeyLabelId(size_t i);
+    static std::string hotbarIconId(size_t i);
+    static std::string hotbarCountId(size_t i);
 
+    std::weak_ptr<Player> mp_player;
     EntityHandle m_playerHandle{};
     EntityHandle m_targetedHandle{};
     EntityHandle m_lastLabeledHandle{};
@@ -72,6 +83,7 @@ private:
     std::string m_targetLabel{"Target"};
 
     size_t m_hotbarSelectedIndex{0};
+    std::array<VoidLight::ResourceHandle, HOTBAR_SLOT_COUNT> m_hotbarItems{};
     // Set strictly in lockstep with UIManager hotbar component existence; gates pollHotbarInput and visibility ops.
     bool m_hotbarUICreated{false};
 };

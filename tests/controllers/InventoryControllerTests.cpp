@@ -241,17 +241,10 @@ BOOST_AUTO_TEST_CASE(TestEquippingReplacementReturnsPreviousItemToInventory) {
     BOOST_REQUIRE(player->addToInventory(arcaneStaffHandle, 1));
     BOOST_REQUIRE(player->addToInventory(daggerHandle, 1));
 
-    InventoryController controller(player);
-    controller.initializeInventoryUI();
-    controller.setInventoryVisible(true);
-
-    auto& ui = UIManager::Instance();
-    ui.simulateClick("inventory_slot_0");
-    ui.update(0.016f);
+    BOOST_REQUIRE(player->equipItem(arcaneStaffHandle));
     BOOST_REQUIRE(player->getEquippedItem("weapon") == arcaneStaffHandle);
 
-    ui.simulateClick("inventory_slot_0");
-    ui.update(0.016f);
+    BOOST_REQUIRE(player->equipItem(daggerHandle));
 
     BOOST_CHECK(player->getEquippedItem("weapon") == daggerHandle);
     BOOST_CHECK_EQUAL(
@@ -260,6 +253,25 @@ BOOST_AUTO_TEST_CASE(TestEquippingReplacementReturnsPreviousItemToInventory) {
     BOOST_CHECK_EQUAL(
         EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), daggerHandle),
         0);
+}
+
+BOOST_AUTO_TEST_CASE(TestWeaponInventoryClickStartsHotbarAssignmentInsteadOfEquip) {
+    auto daggerHandle = getResourceHandleById("dagger");
+    BOOST_REQUIRE(daggerHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(daggerHandle, 1));
+
+    InventoryController controller(player);
+    controller.initializeInventoryUI();
+    controller.setInventoryVisible(true);
+
+    auto& ui = UIManager::Instance();
+    ui.simulateClick("inventory_slot_0");
+    ui.update(0.016f);
+
+    BOOST_CHECK(!player->getEquippedItem("weapon").isValid());
+    BOOST_CHECK_EQUAL(
+        EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), daggerHandle),
+        1);
 }
 
 BOOST_AUTO_TEST_CASE(TestMoveConstructor) {

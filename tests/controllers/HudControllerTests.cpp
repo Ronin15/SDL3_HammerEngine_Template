@@ -8,12 +8,16 @@
 
 #include "controllers/ui/HudController.hpp"
 #include "collisions/CollisionInfo.hpp"
+#include "entities/Player.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/GameTimeManager.hpp"
 #include "managers/ProjectileManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
+#include "managers/UIManager.hpp"
 #include "../events/EventManagerTestAccess.hpp"
+#include <format>
 
 class HudControllerFixture
 {
@@ -23,22 +27,27 @@ public:
         EventManagerTestAccess::reset();
         EventManager::Instance().init();
         GameTimeManager::Instance().init(12.0f, 1.0f);
+        BOOST_REQUIRE(ResourceTemplateManager::Instance().init());
         BOOST_REQUIRE(EntityDataManager::Instance().init());
+        UIManager::Instance().init();
         BOOST_REQUIRE(ProjectileManager::Instance().init());
     }
 
     ~HudControllerFixture()
     {
         ProjectileManager::Instance().clean();
+        UIManager::Instance().cleanupForStateTransition();
         EntityDataManager::Instance().clean();
+        ResourceTemplateManager::Instance().clean();
         EventManager::Instance().clean();
     }
 
 protected:
-    EntityHandle createPlayerHandle(EntityHandle::IDType id = 1,
-                                    const Vector2D& pos = Vector2D(100.0f, 100.0f))
+    std::shared_ptr<Player> createPlayer(const Vector2D& pos = Vector2D(100.0f, 100.0f))
     {
-        return EntityDataManager::Instance().registerPlayer(id, pos);
+        auto player = std::make_shared<Player>();
+        player->setPosition(pos);
+        return player;
     }
 
     EntityHandle createNPCTarget(const Vector2D& pos = Vector2D(200.0f, 100.0f))
@@ -64,7 +73,7 @@ BOOST_FIXTURE_TEST_SUITE(HudControllerTests, HudControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestControllerNameAndInitialState)
 {
-    HudController controller(EntityHandle{});
+    HudController controller(nullptr);
 
     BOOST_CHECK_EQUAL(controller.getName(), "HudController");
     BOOST_CHECK(!controller.hasActiveTarget());
@@ -74,12 +83,13 @@ BOOST_AUTO_TEST_CASE(TestControllerNameAndInitialState)
 
 BOOST_AUTO_TEST_CASE(TestPlayerMeleeHitSetsTargetState)
 {
-    EntityHandle player = createPlayerHandle();
+    auto player = createPlayer();
+    EntityHandle playerHandle = player->getHandle();
     EntityHandle target = createNPCTarget();
     HudController controller(player);
     controller.subscribe();
 
-    dispatchDamage(player, target, 25.0f);
+    dispatchDamage(playerHandle, target, 25.0f);
 
     BOOST_REQUIRE(controller.hasActiveTarget());
     const auto& charData = EntityDataManager::Instance().getCharacterData(target);
@@ -92,13 +102,14 @@ BOOST_AUTO_TEST_CASE(TestPlayerProjectileHitSetsTargetState)
 {
     auto& edm = EntityDataManager::Instance();
 
-    EntityHandle player = createPlayerHandle();
+    auto player = createPlayer();
+    EntityHandle playerHandle = player->getHandle();
     EntityHandle target = createNPCTarget();
     HudController controller(player);
     controller.subscribe();
 
     EntityHandle projectile = edm.createProjectile(
-        Vector2D(190.0f, 100.0f), Vector2D(220.0f, 0.0f), player, 30.0f, 5.0f);
+        Vector2D(190.0f, 100.0f), Vector2D(220.0f, 0.0f), playerHandle, 30.0f, 5.0f);
     const size_t projectileIdx = edm.getIndex(projectile);
     const size_t targetIdx = edm.getIndex(target);
     BOOST_REQUIRE_NE(projectileIdx, SIZE_MAX);
@@ -123,24 +134,26 @@ BOOST_AUTO_TEST_CASE(TestPlayerProjectileHitSetsTargetState)
 
 BOOST_AUTO_TEST_CASE(TestNPCDamageToPlayerDoesNotSetTarget)
 {
-    EntityHandle player = createPlayerHandle();
+    auto player = createPlayer();
+    EntityHandle playerHandle = player->getHandle();
     EntityHandle npc = createNPCTarget();
     HudController controller(player);
     controller.subscribe();
 
-    dispatchDamage(npc, player, 12.0f);
+    dispatchDamage(npc, playerHandle, 12.0f);
 
     BOOST_CHECK(!controller.hasActiveTarget());
 }
 
 BOOST_AUTO_TEST_CASE(TestLethalHitClearsTargetState)
 {
-    EntityHandle player = createPlayerHandle();
+    auto player = createPlayer();
+    EntityHandle playerHandle = player->getHandle();
     EntityHandle target = createNPCTarget();
     HudController controller(player);
     controller.subscribe();
 
-    dispatchDamage(player, target, 500.0f);
+    dispatchDamage(playerHandle, target, 500.0f);
 
     BOOST_CHECK(!controller.hasActiveTarget());
     BOOST_CHECK_EQUAL(controller.getTargetHealth(), 0.0f);
@@ -148,17 +161,38 @@ BOOST_AUTO_TEST_CASE(TestLethalHitClearsTargetState)
 
 BOOST_AUTO_TEST_CASE(TestTimerExpiryClearsTargetState)
 {
-    EntityHandle player = createPlayerHandle();
+    auto player = createPlayer();
+    EntityHandle playerHandle = player->getHandle();
     EntityHandle target = createNPCTarget();
     HudController controller(player);
     controller.subscribe();
 
-    dispatchDamage(player, target, 10.0f);
+    dispatchDamage(playerHandle, target, 10.0f);
     BOOST_REQUIRE(controller.hasActiveTarget());
 
     controller.update(HudController::TARGET_DISPLAY_DURATION + 0.01f);
 
     BOOST_CHECK(!controller.hasActiveTarget());
+}
+
+BOOST_AUTO_TEST_CASE(TestHotbarAssignmentUpdatesSlotIconAndCount)
+{
+    auto player = createPlayer();
+    player->initializeInventory();
+    auto potionHandle = ResourceTemplateManager::Instance().getHandleById("health_potion");
+    BOOST_REQUIRE(potionHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(potionHandle, 3));
+    const int potionQuantity = player->getInventoryQuantity(potionHandle);
+
+    HudController controller(player);
+    controller.initializeHotbarUI();
+
+    BOOST_REQUIRE(controller.assignHotbarItem(0, potionHandle));
+
+    auto& ui = UIManager::Instance();
+    BOOST_CHECK(controller.getHotbarItem(0) == potionHandle);
+    BOOST_CHECK_EQUAL(ui.getTexture("hotbar_icon_0"), "atlas");
+    BOOST_CHECK_EQUAL(ui.getText("hotbar_count_0"), std::format("{}", potionQuantity));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

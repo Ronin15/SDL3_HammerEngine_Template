@@ -230,7 +230,7 @@ bool AdvancedAIDemoState::enter() {
 
     // Register CombatController (follows GamePlayState pattern)
     m_controllers.add<CombatController>(m_player);
-    m_controllers.add<HudController>(m_player->getHandle());
+    m_controllers.add<HudController>(m_player);
     m_controllers.subscribeAll();
     registerEventHandlers();
 

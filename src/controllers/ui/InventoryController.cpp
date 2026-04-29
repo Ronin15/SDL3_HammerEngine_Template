@@ -4,6 +4,7 @@
  */
 
 #include "controllers/ui/InventoryController.hpp"
+#include "controllers/ui/HudController.hpp"
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
 #include "entities/Resource.hpp"
@@ -11,6 +12,7 @@
 #include "events/ResourceChangeEvent.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/InputManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIConstants.hpp"
 #include "managers/UIManager.hpp"
@@ -67,6 +69,8 @@ constexpr int GEAR_LIST_HEIGHT =
     (static_cast<int>(Equipment::EquipmentSlot::COUNT) * GEAR_SLOT_HEIGHT) +
     ((static_cast<int>(Equipment::EquipmentSlot::COUNT) - 1) * GEAR_SLOT_GAP);
 constexpr std::string_view INVENTORY_ATLAS_TEXTURE_ID = "atlas";
+constexpr const char* HOTBAR_DRAG_GHOST_ID = "inventory_hotbar_drag_ghost";
+constexpr int HOTBAR_DRAG_GHOST_SIZE = 40;
 
 constexpr int centerOffset(int position, int size, int containerHalfSize) {
     return position + (size / 2) - containerHalfSize;
@@ -437,9 +441,66 @@ void InventoryController::toggleInventoryDisplay() {
 void InventoryController::setInventoryVisible(bool visible) {
     m_inventoryVisible = visible;
     UIManager::Instance().setComponentVisible(INVENTORY_PANEL_ID, visible);
+    if (!visible) {
+        cancelHotbarAssignment();
+    }
     if (visible) {
         refreshInventoryUI();
     }
+}
+
+void InventoryController::handleHotbarAssignmentInput(HudController& hudController) {
+    auto& input = InputManager::Instance();
+    const bool leftMouseDown = input.getMouseButtonState(LEFT);
+    const bool mouseJustPressed = leftMouseDown && !m_leftMouseWasDown;
+    const bool mouseJustReleased = !leftMouseDown && m_leftMouseWasDown;
+
+    if (m_inventoryVisible && mouseJustPressed) {
+        const int inventorySlot = findInventorySlotAtMouse();
+        if (inventorySlot >= 0 &&
+            startHotbarAssignment(static_cast<size_t>(inventorySlot))) {
+            m_draggingHotbarAssignment = true;
+            m_draggedHotbarAssignment = m_pendingHotbarAssignment;
+        } else if (m_pendingHotbarAssignment.isValid()) {
+            const int hotbarSlot = findHotbarSlotAtMouse();
+            if (hotbarSlot >= 0 &&
+                hudController.assignHotbarItem(static_cast<size_t>(hotbarSlot),
+                                               m_pendingHotbarAssignment)) {
+                UIManager::Instance().addEventLogEntry(
+                    EVENT_LOG_ID,
+                    std::format("Assigned {} to hotbar {}",
+                                displayNameFor(m_pendingHotbarAssignment),
+                                hotbarSlot + 1));
+                cancelHotbarAssignment();
+            }
+        }
+    }
+
+    if (m_draggingHotbarAssignment && m_draggedHotbarAssignment.isValid() && leftMouseDown) {
+        updateDragGhost(m_draggedHotbarAssignment, true);
+    }
+
+    if (mouseJustReleased) {
+        if (m_draggingHotbarAssignment && m_draggedHotbarAssignment.isValid()) {
+            const int hotbarSlot = findHotbarSlotAtMouse();
+            if (hotbarSlot >= 0 &&
+                hudController.assignHotbarItem(static_cast<size_t>(hotbarSlot),
+                                               m_draggedHotbarAssignment)) {
+                UIManager::Instance().addEventLogEntry(
+                    EVENT_LOG_ID,
+                    std::format("Assigned {} to hotbar {}",
+                                displayNameFor(m_draggedHotbarAssignment),
+                                hotbarSlot + 1));
+                m_pendingHotbarAssignment = VoidLight::ResourceHandle{};
+            }
+        }
+
+        m_draggingHotbarAssignment = false;
+        m_draggedHotbarAssignment = VoidLight::ResourceHandle{};
+        updateDragGhost(VoidLight::ResourceHandle{}, false);
+    }
+
+    m_leftMouseWasDown = leftMouseDown;
 }
 
 void InventoryController::onResourceChange(const EventData& data) {
@@ -555,6 +616,14 @@ void InventoryController::handleInventorySlotClicked(size_t slotIndex) {
     }
 
     const VoidLight::ResourceHandle itemHandle = m_gridEntries[slotIndex].handle;
+    if (isHotbarAssignable(itemHandle)) {
+        m_pendingHotbarAssignment = itemHandle;
+        UIManager::Instance().addEventLogEntry(
+            EVENT_LOG_ID,
+            std::format("Select a hotbar slot for {}", displayNameFor(itemHandle)));
+        return;
+    }
+
     if (!isEquipment(itemHandle)) {
         return;
     }
@@ -586,10 +655,129 @@ void InventoryController::handleGearSlotClicked(size_t slotIndex) {
         EVENT_LOG_ID, std::format("Unequipped {}", displayNameFor(equipped)));
 }
 
+bool InventoryController::startHotbarAssignment(size_t slotIndex) {
+    if (slotIndex >= m_gridEntries.size()) {
+        return false;
+    }
+
+    const VoidLight::ResourceHandle itemHandle = m_gridEntries[slotIndex].handle;
+    if (!isHotbarAssignable(itemHandle)) {
+        return false;
+    }
+
+    m_pendingHotbarAssignment = itemHandle;
+    return true;
+}
+
+void InventoryController::cancelHotbarAssignment() {
+    m_pendingHotbarAssignment = VoidLight::ResourceHandle{};
+    m_draggedHotbarAssignment = VoidLight::ResourceHandle{};
+    m_draggingHotbarAssignment = false;
+    updateDragGhost(VoidLight::ResourceHandle{}, false);
+}
+
+void InventoryController::updateDragGhost(const VoidLight::ResourceHandle& handle,
+                                          bool visible) {
+    auto& ui = UIManager::Instance();
+    if (!m_dragGhostCreated) {
+        ui.createAtlasImage(HOTBAR_DRAG_GHOST_ID,
+                            {0, 0, HOTBAR_DRAG_GHOST_SIZE, HOTBAR_DRAG_GHOST_SIZE},
+                            "", UIRect{});
+        ui.setComponentZOrder(HOTBAR_DRAG_GHOST_ID, 1000);
+        ui.setComponentVisible(HOTBAR_DRAG_GHOST_ID, false);
+        m_dragGhostCreated = true;
+    }
+
+    if (!visible || !handle.isValid()) {
+        ui.setComponentVisible(HOTBAR_DRAG_GHOST_ID, false);
+        return;
+    }
+
+    const Vector2D& mousePos = InputManager::Instance().getMousePosition();
+    const float uiScale = std::max(ui.getGlobalScale(), 0.01f);
+    ui.setComponentBounds(
+        HOTBAR_DRAG_GHOST_ID,
+        UIRect{static_cast<int>((mousePos.getX() / uiScale) - (HOTBAR_DRAG_GHOST_SIZE * 0.5f)),
+               static_cast<int>((mousePos.getY() / uiScale) - (HOTBAR_DRAG_GHOST_SIZE * 0.5f)),
+               HOTBAR_DRAG_GHOST_SIZE,
+               HOTBAR_DRAG_GHOST_SIZE});
+
+    auto resourceTemplate =
+        ResourceTemplateManager::Instance().getResourceTemplate(handle);
+    if (resourceTemplate && resourceTemplate->getAtlasW() > 0 &&
+        resourceTemplate->getAtlasH() > 0) {
+        ui.setTexture(HOTBAR_DRAG_GHOST_ID, std::string(INVENTORY_ATLAS_TEXTURE_ID));
+        ui.setImageSourceRect(
+            HOTBAR_DRAG_GHOST_ID,
+            UIRect{resourceTemplate->getAtlasX(), resourceTemplate->getAtlasY(),
+                   resourceTemplate->getAtlasW(), resourceTemplate->getAtlasH()});
+    } else {
+        ui.setTexture(HOTBAR_DRAG_GHOST_ID, "");
+        ui.setImageSourceRect(HOTBAR_DRAG_GHOST_ID, UIRect{});
+    }
+    ui.setComponentVisible(HOTBAR_DRAG_GHOST_ID, true);
+}
+
+int InventoryController::findInventorySlotAtMouse() const {
+    if (!m_inventoryUICreated || !m_inventoryVisible) {
+        return -1;
+    }
+
+    const Vector2D& mousePos = InputManager::Instance().getMousePosition();
+    const int mouseX = static_cast<int>(mousePos.getX());
+    const int mouseY = static_cast<int>(mousePos.getY());
+    auto& ui = UIManager::Instance();
+
+    for (size_t i = 0; i < INVENTORY_SLOT_COUNT; ++i) {
+        const UIRect bounds = ui.getBounds(slotId(i));
+        if (bounds.contains(mouseX, mouseY)) {
+            return static_cast<int>(i);
+        }
+    }
+
+    return -1;
+}
+
+int InventoryController::findHotbarSlotAtMouse() const {
+    const Vector2D& mousePos = InputManager::Instance().getMousePosition();
+    const int mouseX = static_cast<int>(mousePos.getX());
+    const int mouseY = static_cast<int>(mousePos.getY());
+    auto& ui = UIManager::Instance();
+
+    for (size_t i = 0; i < HudController::HOTBAR_SLOT_COUNT; ++i) {
+        const UIRect bounds = ui.getBounds(HudController::hotbarSlotId(i));
+        if (bounds.contains(mouseX, mouseY)) {
+            return static_cast<int>(i);
+        }
+    }
+
+    return -1;
+}
+
 bool InventoryController::isEquipment(const VoidLight::ResourceHandle& handle) {
     auto resourceTemplate =
         ResourceTemplateManager::Instance().getResourceTemplate(handle);
     return resourceTemplate && resourceTemplate->getType() == ResourceType::Equipment;
+}
+
+bool InventoryController::isWeapon(const VoidLight::ResourceHandle& handle) {
+    auto resourceTemplate =
+        ResourceTemplateManager::Instance().getResourceTemplate(handle);
+    auto equipment = std::dynamic_pointer_cast<Equipment>(resourceTemplate);
+    return equipment &&
+        equipment->getEquipmentSlot() == Equipment::EquipmentSlot::Weapon;
+}
+
+bool InventoryController::isHotbarAssignable(const VoidLight::ResourceHandle& handle) {
+    auto resourceTemplate =
+        ResourceTemplateManager::Instance().getResourceTemplate(handle);
+    if (!resourceTemplate) {
+        return false;
+    }
+
+    return resourceTemplate->isConsumable() ||
+        resourceTemplate->getType() == ResourceType::Consumable ||
+        isWeapon(handle);
 }
 
 std::string InventoryController::displayNameFor(const VoidLight::ResourceHandle& handle) {

@@ -22,6 +22,7 @@
 #include <vector>
 
 class Player;
+class HudController;
 struct UIRect;
 
 class InventoryController : public ControllerBase {
@@ -42,6 +43,7 @@ public:
 
     void initializeInventoryUI();
     void refreshInventoryUI();
+    void handleHotbarAssignmentInput(HudController& hudController);
     void toggleInventoryDisplay();
     void setInventoryVisible(bool visible);
     [[nodiscard]] bool isInventoryVisible() const { return m_inventoryVisible; }
@@ -67,8 +69,15 @@ private:
     void refreshGearSlot(size_t slotIndex);
     void handleInventorySlotClicked(size_t slotIndex);
     void handleGearSlotClicked(size_t slotIndex);
+    bool startHotbarAssignment(size_t slotIndex);
+    void cancelHotbarAssignment();
+    void updateDragGhost(const VoidLight::ResourceHandle& handle, bool visible);
+    [[nodiscard]] int findInventorySlotAtMouse() const;
+    [[nodiscard]] int findHotbarSlotAtMouse() const;
 
     [[nodiscard]] static bool isEquipment(const VoidLight::ResourceHandle& handle);
+    [[nodiscard]] static bool isWeapon(const VoidLight::ResourceHandle& handle);
+    [[nodiscard]] static bool isHotbarAssignable(const VoidLight::ResourceHandle& handle);
     [[nodiscard]] static std::string displayNameFor(const VoidLight::ResourceHandle& handle);
 
     [[nodiscard]] static std::string slotId(size_t slotIndex);
@@ -81,6 +90,11 @@ private:
     std::weak_ptr<Player> mp_player;
     bool m_inventoryVisible{false};
     bool m_inventoryUICreated{false};
+    bool m_leftMouseWasDown{false};
+    bool m_draggingHotbarAssignment{false};
+    bool m_dragGhostCreated{false};
+    VoidLight::ResourceHandle m_pendingHotbarAssignment{};
+    VoidLight::ResourceHandle m_draggedHotbarAssignment{};
     std::vector<InventoryGridEntry> m_gridEntries;
     std::string m_resourceNameBuffer;
 };

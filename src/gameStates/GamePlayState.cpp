@@ -102,7 +102,7 @@ bool GamePlayState::enter() {
     m_controllers.add<WeatherController>();
     m_controllers.add<DayNightController>();
     m_controllers.add<CombatController>(mp_Player);
-    m_controllers.add<HudController>(mp_Player->getHandle());
+    m_controllers.add<HudController>(mp_Player);
     auto& inventoryCtrl = m_controllers.add<InventoryController>(mp_Player);
     m_controllers.add<HarvestController>(mp_Player);
     m_controllers.add<ResourceRenderController>();
@@ -658,6 +658,10 @@ void GamePlayState::handleInput() {
   }
 
   if (auto* hudCtrl = m_controllers.get<HudController>()) {
+    if (auto* inventoryCtrl = m_controllers.get<InventoryController>();
+        inventoryCtrl && inventoryCtrl->isInventoryVisible()) {
+      inventoryCtrl->handleHotbarAssignmentInput(*hudCtrl);
+    }
     hudCtrl->handleHotbarInput();
   }
 
