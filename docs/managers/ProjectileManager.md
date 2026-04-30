@@ -13,7 +13,7 @@ Projectiles are regular EDM entities created via `EntityDataManager::createProje
 ## Runtime Contract
 
 - Small projectiles are **overlap-driven hit bodies**, not blocking physics bodies.
-- `CollisionManager` still detects projectile overlaps and dispatches `CollisionEvent`s for them.
+- `CollisionManager` detects projectile overlaps and delivers `CollisionInfo` directly through the projectile hit sink.
 - `CollisionManager::resolve()` skips positional pushback and velocity cancellation when a projectile is involved, so projectile contacts do not block movement.
 - `ProjectileManager` applies owner immunity at event-handling time using the stored projectile owner handle.
 - Any other health-bearing target can receive projectile damage, regardless of faction.
@@ -25,7 +25,7 @@ Projectiles are regular EDM entities created via `EntityDataManager::createProje
 2. After resolving each collision, `CollisionManager::update()` stamps `CollisionInfo::projectileInvolved` and invokes `m_projectileHitSink` directly (set by `ProjectileManager::init()`).
 3. `ProjectileManager::handleProjectileCollision()` receives the `CollisionInfo` directly on the main thread, applies owner immunity, embeds on non-health targets, and converts valid health-target hits into a deferred `DamageEvent` (same combat queue NPC melee/ranged combat uses).
 
-Non-projectile collisions are forwarded to `EventManager` via the existing `addCollisionCallback` path, unchanged.
+Non-projectile collision callbacks remain manager-owned infrastructure for world triggers and obstacle-change event traffic. Projectile contacts do not use a collision-event object API.
 
 This keeps `CollisionManager` agnostic of higher-layer managers while preserving the non-blocking "small projectile" gameplay rule.
 

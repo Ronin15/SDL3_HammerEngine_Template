@@ -49,15 +49,19 @@ struct EntityHotData {
     EntityKind kind;                // 1 byte: Entity type
     SimulationTier tier;            // 1 byte: Active/Background/Hibernated
     uint8_t flags;                  // 1 byte: alive, dirty, pending destroy
-    uint8_t generation;             // 1 byte: Handle generation
+    uint8_t reserved;               // 1 byte: padding; generation lives in m_generations
     uint32_t typeLocalIndex;        // 4 bytes: Index into type-specific array
     uint16_t collisionLayers;       // 2 bytes: Collision layer mask
     uint16_t collisionMask;         // 2 bytes: What layers to collide with
     uint8_t collisionFlags;         // 1 byte: COLLISION_ENABLED, IS_TRIGGER
-    // ... padding to 64 bytes
+    uint8_t triggerTag;             // 1 byte: TriggerTag for trigger entities
+    uint8_t triggerType;            // 1 byte: TriggerType
+    uint8_t _knockbackPad[9];       // 9 bytes: reserved; knockback moved to sidecar
 };
 static_assert(sizeof(EntityHotData) == 64, "One cache line");
 ```
+
+Handle generation is tracked in `m_generations`, not in the hot cache line. Transient knockback no longer lives inline in `EntityHotData`; it is stored in `SparseSidecar<KnockbackData>` so only entities currently under knockback occupy dense state.
 
 ### TransformData (32 bytes)
 
@@ -178,6 +182,8 @@ void prepareForStateTransition();
 EntityHandle createNPC(const Vector2D& position, float halfWidth = 16.0f, float halfHeight = 16.0f);
 EntityHandle createPlayer(const Vector2D& position);
 EntityHandle createDroppedItem(const Vector2D& position, ResourceHandle handle, int quantity = 1);
+EntityHandle createContainer(const Vector2D& position, ContainerType type, uint16_t maxSlots = 20, uint8_t lockLevel = 0, const std::string& worldId = "");
+EntityHandle createHarvestable(const Vector2D& position, ResourceHandle yieldResource, int yieldMin = 1, int yieldMax = 3, float respawnTime = 60.0f, const std::string& worldId = "", HarvestType harvestType = HarvestType::Gathering);
 EntityHandle createProjectile(const Vector2D& position, const Vector2D& velocity, EntityHandle owner, float damage, float lifetime = 5.0f);
 EntityHandle createAreaEffect(const Vector2D& position, float radius, EntityHandle owner, float damage, float duration);
 EntityHandle createStaticBody(const Vector2D& position, float halfWidth, float halfHeight);
@@ -274,6 +280,34 @@ bool hasBehaviorData(size_t index) const noexcept;
 void initBehaviorData(size_t index, BehaviorType type);
 void clearBehaviorData(size_t index);
 ```
+
+Variant-specific behavior config and state live in per-type dense pools. Use `getBehaviorConfigRef(index)` to read the active `BehaviorType` and pool index, and `reassignBehaviorConfig(...)` / `clearBehaviorConfig(...)` for structural changes. `BehaviorData` is now shared cross-behavior state only.
+
+### Knockback Sidecar
+
+```cpp
+KnockbackData& applyKnockback(size_t edmIdx);
+KnockbackData* getKnockback(size_t edmIdx) noexcept;
+bool hasKnockback(size_t edmIdx) const noexcept;
+void clearKnockback(size_t edmIdx) noexcept;
+size_t knockbackActiveCount() const noexcept;
+SparseSidecar<KnockbackData>& knockbackSidecar() noexcept;
+```
+
+`EventManager` applies knockback when processing `DamageEvent`. `AIManager` and player movement consume and decay it during update. Expired entries are cleared on the main thread after worker batches join.
+
+### Inventory Data
+
+```cpp
+uint32_t createInventory(uint16_t maxSlots, bool worldTracked = false);
+bool initNPCAsMerchant(EntityHandle handle, uint16_t maxSlots = 20);
+uint32_t getNPCInventoryIndex(EntityHandle handle) const;
+bool addToInventory(uint32_t inventoryIndex, ResourceHandle handle, int quantity);
+bool removeFromInventory(uint32_t inventoryIndex, ResourceHandle handle, int quantity);
+int getInventoryQuantity(uint32_t inventoryIndex, ResourceHandle handle) const;
+```
+
+Inventories are EDM-backed data, not legacy entity-owned inventory components. Containers auto-create inventories, merchants use EDM inventory indices, and world-tracked inventories register aggregate data with `WorldResourceManager`.
 
 ### Simulation Tier Management
 

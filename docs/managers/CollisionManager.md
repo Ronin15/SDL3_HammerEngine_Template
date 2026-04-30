@@ -153,7 +153,8 @@ enum class BodyType {
 
 Important runtime exception:
 - Small projectiles are detected as dynamic overlap bodies, but they do **not** use blocking position resolution.
-- Projectile contacts still produce `CollisionEvent`s, and projectile hit gameplay is resolved later by `ProjectileManager`.
+- Projectile contacts are delivered directly as `CollisionInfo` to the projectile hit sink registered by `ProjectileManager`.
+- Projectile damage is then emitted as a deferred `DamageEvent`; there is no collision-event object subscription API for this path.
 
 The collision system groups KINEMATIC + DYNAMIC as "movable" bodies for broadphase optimization, since both require collision detection against static geometry and each other.
 
@@ -660,13 +661,15 @@ for (const auto& entity : m_activeEntities) {
 CollisionManager::Instance().updateKinematicBatchSOA(kinematicUpdates);
 ```
 
-### Collision Event Handling
+### Event Integration
+
+Collision-to-event traffic is limited to explicit event channels such as world triggers and obstacle changes. Projectile gameplay uses the projectile hit sink instead:
+
 ```cpp
-EventManager::Instance().subscribe<CollisionEvent>(
-    [](const CollisionEvent& event) {
-        handleEntityCollision(event.entityA, event.entityB);
-    }
-);
+CollisionManager::Instance().setProjectileHitSink(
+    [](const CollisionInfo& info) {
+        ProjectileManager::Instance().handleProjectileCollision(info);
+    });
 ```
 
 ### AI Obstacle Avoidance

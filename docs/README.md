@@ -11,6 +11,7 @@ This hub covers the engine architecture and the major subsystem docs. The curren
 - [WorkerBudget](core/WorkerBudget.md)
 - [TimestepManager](core/TimestepManager.md)
 - [ARCHITECTURE](ARCHITECTURE.md)
+- [InputManager](managers/InputManager.md)
 
 ## AI and Events
 
@@ -30,7 +31,8 @@ This hub covers the engine architecture and the major subsystem docs. The curren
 
 - [Controllers Overview](controllers/README.md)
 - [CombatController](controllers/CombatController.md)
-- [GameplayHUDController](controllers/GameplayHUDController.md)
+- [HudController](controllers/HudController.md)
+- [InventoryController](controllers/InventoryController.md)
 - [HarvestController](controllers/HarvestController.md)
 - [SocialController](controllers/SocialController.md)
 - [WorldManager](managers/WorldManager.md)
@@ -60,6 +62,7 @@ This hub covers the engine architecture and the major subsystem docs. The curren
 - [Camera](utils/Camera.md)
 - [JsonReader](utils/JsonReader.md)
 - [JSON Resource Loading Guide](utils/JSON_Resource_Loading_Guide.md)
+- [MenuNavigation](utils/MenuNavigation.md)
 - [Serialization](utils/SERIALIZATION.md)
 - [ResourceHandle System](utils/ResourceHandle_System.md)
 
@@ -71,7 +74,6 @@ This hub covers the engine architecture and the major subsystem docs. The curren
 ## Performance & Development
 
 - [Power Efficiency](performance/PowerEfficiency.md)
-- [Camera Refactor Plan](Camera_Refactor_Plan.md)
 - [SDL3 macOS Cleanup Issue](issues/SDL3_MACOS_CLEANUP_ISSUE.md)
 - [AGENTS.md](../AGENTS.md)
 

@@ -31,6 +31,8 @@ config.idle = VoidLight-Framework::IdleBehaviorConfig::createSubtleSway();
 AIManager::Instance().assignBehavior(handle, config);
 ```
 
+`assignBehavior(...)` moves the selected variant into EDM's dense config/state pools and stores a compact `BehaviorConfigRef` on the entity. Executors receive the typed config and typed state from those pools during `AIManager::processBatch()`.
+
 Or use a registered behavior name:
 
 ```cpp
@@ -58,5 +60,6 @@ Use:
 ## Notes
 
 - persistent behavior state must live in EDM
+- variant-specific state lives in the matching dense state pool, not in `BehaviorData`
 - per-frame locals must not be used for path/state that should survive updates
-- behavior switching is initialized through `Behaviors::init(...)`, not by constructing a new class instance
+- behavior switching is initialized through typed `Behaviors::init...` helpers after `reassignBehaviorConfig(...)`, not by constructing a new class instance

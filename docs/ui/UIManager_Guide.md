@@ -53,11 +53,23 @@ This branch adds built-in combat HUD helpers used by gameplay/demo states:
 
 ```cpp
 createCombatHUD();
-updateCombatHUD(playerHealth, playerStamina, hasTarget, targetHealth);
+updateCombatHUD(playerHealth, playerStamina, hasTarget, targetName, targetHealth);
 destroyCombatHUD();
 ```
 
 Use them from states that own combat flow instead of rebuilding the same health/stamina/target frame wiring by hand.
+
+## Input Focus and Simulated Clicks
+
+`UIManager` tracks keyboard/controller selection separately from mouse hover. Shared menu states use `MenuNavigation::applySelection()` to set the current keyboard selection only after controller navigation is active, keeping mouse-only hover behavior clean.
+
+`simulateClick()` queues the component callback. Tests and state code that depend on the callback having run should call `UIManager::update(...)` after simulating the click.
+
+## Images and Atlas Icons
+
+Use the atlas-backed image APIs for inventory, hotbar, and other resource icons instead of creating ad-hoc texture ownership in controllers. Controllers provide the component ID and texture/resource identity; `UIManager` owns component rendering.
+
+For transparent or steady-looking interactive components, set `hoverColor` and `pressedColor` to match the base background color. Otherwise the UI will visibly flash on hover/press even if the component appears transparent at rest.
 
 ## Positioning
 

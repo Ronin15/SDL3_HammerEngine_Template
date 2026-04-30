@@ -130,7 +130,7 @@ void UIManager::render(SDL_Renderer* renderer) {
 
 ## 11. References
 
-- See `docs/Camera_Refactor_Plan.md` for related UI overlay and rendering architecture.
+- See `docs/ui/UIManager_Guide.md` and `docs/utils/Camera.md` for related UI overlay and camera integration details.
 - See `include/core/GameEngine.hpp`, `include/ui/UIManager.hpp`, and `include/world/WorldData.hpp` for integration points.
 
 ---

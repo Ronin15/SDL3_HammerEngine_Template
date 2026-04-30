@@ -153,4 +153,8 @@ python3 tools/atlas_tool.py pack
 
 **Requirements:** ImageMagick (`convert` command)
 
-**Textures affected:** biome_\*, building_\*, obstacle_\* tiles (16 base textures x 4 seasons = 64 variants)
+The generator reads base PNGs from `res/sprites/`; missing sources are skipped with a warning. Run `extract` first when generating variants from the current atlas.
+
+**Textures affected:** `biome_celestial`, `biome_default`, `biome_desert`, `biome_forest`, `biome_haunted`, `biome_mountain`, `biome_ocean`, `biome_plains`, `biome_swamp`, `building_cityhall`, `building_house`, `building_hut`, `building_large`, `bush`, `obstacle_grass`, and `obstacle_tree`.
+
+Each base texture produces `spring_`, `summer_`, `fall_`, and `winter_` variants. Data files keep their `textureId`; runtime code resolves seasonal atlas IDs from `atlas.json`.

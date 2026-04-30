@@ -27,13 +27,15 @@ Current responsibilities:
 
 ### Update Pipeline
 
-1. gather active EDM indices
+1. gather active EDM indices into `m_activeIndicesBuffer`
 2. cache per-frame player position, world bounds, and game time
-3. run emotional contagion / combat-memory pre-pass where needed
-4. ask `WorkerBudgetManager` for threading decision
-5. execute behaviors with `BehaviorContext`
+3. ask `WorkerBudgetManager` for a batch strategy against the full active workload
+4. run each contiguous batch through `processBatch(...)`
+5. in the per-entity fused loop, apply emotional decay, switch on `BehaviorConfigRef::type`, call the typed executor, process movement, and consume knockback sidecar state
 6. flush deferred `EventManager::DeferredEvent` batches
 7. drain and commit command-bus outputs on the main thread
+
+`BehaviorContext` pre-fetches shared state needed by the typed executors, including the EDM knockback sidecar. Worker threads may read/update their entity's behavior state, but structural behavior changes and sidecar removal are committed on the main thread.
 
 ## Behavior Assignment
 
@@ -58,6 +60,7 @@ aiMgr.assignBehavior(handle, cfg);
 ```
 
 There is no longer a `clone()`-based behavior instance model.
+`assignBehavior(...)` stores the config in EDM's per-variant dense config pool and creates the matching per-variant state slot. Runtime dispatch uses `BehaviorConfigRef`, not a virtual behavior object.
 
 ## Spatial Queries
 

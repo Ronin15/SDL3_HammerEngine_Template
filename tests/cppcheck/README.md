@@ -32,7 +32,8 @@ There is no separate suppressions list in the current checkout. The focused and 
 
 ## Output
 
-Reports are written to `../../test_results/` with timestamped XML and text summaries.
+Full scripts write timestamped XML and text summaries to `../../test_results/`.
+Focused scripts print a terminal summary and do not persist reports.
 
 ## Usage Examples
 

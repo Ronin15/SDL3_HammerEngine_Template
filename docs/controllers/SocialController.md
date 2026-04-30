@@ -18,6 +18,7 @@ It is state-scoped and updateable because trade UI pricing can refresh while a s
 ```cpp
 bool openTrade(EntityHandle npcHandle);
 void closeTrade();
+void handleTradeInput(const InputManager& inputMgr);
 bool isTrading() const;
 EntityHandle getMerchantHandle() const;
 ```
@@ -61,6 +62,16 @@ void alertNearbyGuards(const Vector2D& location, EntityHandle criminal);
 - Trade UI is created through `UIManager`; price display and selection highlights are controller-managed.
 - Buying and selling update inventory, gold, and relationship/memory state.
 - Theft reporting records negative interaction state, fires event traffic, and alerts nearby guards.
+
+## GamePlayState Integration
+
+`GamePlayState` spawns its bootstrap merchant through `EventManager::spawnMerchant(...)` so merchant creation stays on the event path. During gameplay, `Interact` prioritizes merchant trading first, then inventory pickup, then harvesting.
+
+While a trade session is open, trade input is modal:
+
+- `handleTradeInput(inputMgr)` consumes menu-style commands for pane switching, item selection, quantity adjustment, confirm, and cancel.
+- normal gameplay input such as attack, pickup, and pause-sensitive UI interaction should not run through the usual path until the trade session closes.
+- pause/exit paths call `closeTrade()` so state-owned UI does not survive transition cleanup.
 
 ## Data Dependencies
 

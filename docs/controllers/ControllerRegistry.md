@@ -300,5 +300,5 @@ The dual-pointer approach avoids repeated `dynamic_cast` during `updateAll()`.
 ## Related Documentation
 
 - **[Controllers Overview](README.md)** - Controller pattern and lifecycle
-- **[ControllerBase](ControllerBase.md)** - Base class for all controllers
+- `include/controllers/ControllerBase.hpp` - Base class for all controllers
 - **[GameStateManager](../managers/GameStateManager.md)** - State lifecycle

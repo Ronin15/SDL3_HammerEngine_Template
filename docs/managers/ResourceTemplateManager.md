@@ -195,6 +195,8 @@ Resources are defined in JSON files with the following structure:
 }
 ```
 
+Equipment slots must match the current `EquipmentSlot` enum. Unknown or missing slot values are intentionally left as `COUNT` by resource creation and rejected by `Player::equipItem(...)`; they do not silently default to `Weapon`. Add a real enum value and resource handling before documenting or shipping a new slot such as `Shield`.
+
 #### Consumable
 ```json
 "properties": {

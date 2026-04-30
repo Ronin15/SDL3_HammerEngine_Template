@@ -12,6 +12,8 @@ The InputManager provides centralized input handling for the VoidLight Engine, i
 
 - **Cross-Platform Coordinate Conversion**: Mouse events automatically scaled by pixel density for UI accuracy
 - **Event-Driven Input**: Efficient key press/release detection with frame-based tracking; key repeat events are ignored for `wasKeyPressed`
+- **Command Layer**: Gameplay and menu code can query action commands instead of raw SDL inputs
+- **Rebinding and Persistence**: Keyboard/mouse and controller bindings can be captured separately and saved to JSON
 - **Gamepad Support**: Multi-controller support with SDL3 gamepad API, normalized axis values in [-1.0, 1.0]
 - **Hot-Plug Support**: Gamepads can be connected and disconnected at runtime via `SDL_EVENT_GAMEPAD_ADDED` / `SDL_EVENT_GAMEPAD_REMOVED`
 - **Focus Loss Handling**: Keyboard and gamepad state is cleared on window focus loss to prevent stuck inputs
@@ -48,6 +50,53 @@ bool leftClick = input.getMouseButtonState(LEFT);
 The InputManager automatically converts mouse coordinates to match the engine's coordinate system. All mouse events use logical coordinates after conversion, ensuring UI and gameplay accuracy across platforms.
 
 ## Input Detection Methods
+
+### Command Input
+
+The branch adds an action-mapped command layer:
+
+```cpp
+if (input.isCommandPressed(InputManager::Command::OpenInventory)) {
+    inventory.toggleInventoryDisplay();
+}
+
+if (input.isCommandDown(InputManager::Command::MoveLeft)) {
+    // continuous movement
+}
+```
+
+Command queries:
+
+- `isCommandPressed(Command)` returns a rising edge for this frame.
+- `isCommandDown(Command)` returns current command state.
+- `isCommandReleased(Command)` returns a falling edge for this frame.
+
+Command state is refreshed once per frame by `GameEngine::handleEvents()` after SDL polling:
+
+```text
+clearFrameInput() -> SDL event routing -> refreshCommandState() -> GameState input reads
+```
+
+Do not read command edges from worker threads. Worker code should use state captured on the main thread or the lower-level raw input APIs where appropriate.
+
+### Bindings and Rebinding
+
+Bindings are grouped by `DeviceCategory`:
+
+- `KeyboardMouse`
+- `Controller`
+
+The Controls tab uses `startRebinding(command, category)` to replace the binding only for the chosen category. Inputs from the opposite category are ignored while capture is active. Use `cancelRebinding()` to abort capture.
+
+Persistence APIs:
+
+```cpp
+bool loadBindingsFromFile(const std::string& path);
+bool saveBindingsToFile(const std::string& path) const;
+void resetBindingsToDefaults();
+```
+
+`GameEngine` loads `res/input_bindings.json` during startup. `SettingsMenuState` saves it after applying settings or resetting controls.
 
 ### Keyboard Input
 
@@ -116,13 +165,16 @@ void initializeGamePad();
 void clean();
 bool isShutdown() const;
 
-// Input polling (call once per frame)
-void update();
-
 // Keyboard input
 bool isKeyDown(SDL_Scancode key) const;
 bool wasKeyPressed(SDL_Scancode key) const;
 void clearFrameInput();
+
+// Command input
+bool isCommandPressed(Command c) const;
+bool isCommandDown(Command c) const;
+bool isCommandReleased(Command c) const;
+void refreshCommandState();
 
 // Joystick input — returns normalized [-1.0, 1.0] float with dead zone applied
 float getAxisX(int joy, int stick) const;
@@ -145,8 +197,9 @@ enum mouse_buttons { LEFT = 0, MIDDLE = 1, RIGHT = 2 };
 
 ## Best Practices
 
-- Call `InputManager::Instance().update()` once per frame in the main loop.
+- Let `GameEngine::handleEvents()` own `clearFrameInput()` and `refreshCommandState()` ordering.
 - Use `isKeyDown()` for continuous actions, `wasKeyPressed()` for discrete actions.
+- Prefer command queries for gameplay/menu actions that should be rebindable.
 - Use `getMousePosition()` and `getMouseButtonState()` for UI and gameplay input.
 - Use `initializeGamePad()` if you need to ensure gamepad support is ready.
 - Always check for valid indices when querying gamepad state.

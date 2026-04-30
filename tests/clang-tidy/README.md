@@ -20,11 +20,14 @@ echo 'export PATH="/opt/homebrew/opt/llvm/bin:$PATH"' >> ~/.zshrc
 
 ### Running Analysis
 
-#### Focused Analysis (Changed Files Only) - Recommended for Development
+#### Focused Analysis (Project `src/` Files) - Recommended for Development
 ```bash
 cd tests/clang-tidy
 ./clang_tidy_focused.sh
 ```
+
+The focused script filters the compile database to first-party project files under
+`src/`. It is not a git-diff changed-file runner.
 
 #### Full Analysis (All Source Files) - Comprehensive but Slower
 ```bash

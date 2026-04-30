@@ -75,7 +75,7 @@ struct BehaviorContext {
 
 - Type-indexed dispatch (O(1) routing via `EventTypeId` enum)
 - Priority levels: CRITICAL (1000) → HIGH (800) → NORMAL (500) → LOW (200) → DEFERRED (0)
-- Event pools for hot-path events (CollisionEvent, ParticleEffect)
+- Event pools for hot-path event objects such as particle effects
 - Token-based handler registration for loose coupling
 
 **Existing Event Chains**:
