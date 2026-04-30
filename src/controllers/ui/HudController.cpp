@@ -341,6 +341,13 @@ bool HudController::assignHotbarItem(size_t slotIndex, VoidLight::ResourceHandle
         return false;
     }
 
+    for (size_t i = 0; i < HOTBAR_SLOT_COUNT; ++i)
+    {
+        if (i != slotIndex && m_hotbarItems[i] == handle)
+        {
+            m_hotbarItems[i] = VoidLight::ResourceHandle{};
+        }
+    }
     m_hotbarItems[slotIndex] = handle;
     refreshHotbarUI();
     return true;

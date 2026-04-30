@@ -195,4 +195,27 @@ BOOST_AUTO_TEST_CASE(TestHotbarAssignmentUpdatesSlotIconAndCount)
     BOOST_CHECK_EQUAL(ui.getText("hotbar_count_0"), std::format("{}", potionQuantity));
 }
 
+BOOST_AUTO_TEST_CASE(TestHotbarReassigningSameItemMovesAssignment)
+{
+    auto player = createPlayer();
+    player->initializeInventory();
+    auto potionHandle = ResourceTemplateManager::Instance().getHandleById("health_potion");
+    BOOST_REQUIRE(potionHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(potionHandle, 3));
+
+    HudController controller(player);
+    controller.initializeHotbarUI();
+
+    BOOST_REQUIRE(controller.assignHotbarItem(0, potionHandle));
+    BOOST_REQUIRE(controller.assignHotbarItem(4, potionHandle));
+
+    auto& ui = UIManager::Instance();
+    BOOST_CHECK(!controller.getHotbarItem(0).isValid());
+    BOOST_CHECK(controller.getHotbarItem(4) == potionHandle);
+    BOOST_CHECK_EQUAL(ui.getTexture("hotbar_icon_0"), "");
+    BOOST_CHECK_EQUAL(ui.getText("hotbar_count_0"), "");
+    BOOST_CHECK_EQUAL(ui.getTexture("hotbar_icon_4"), "atlas");
+    BOOST_CHECK_EQUAL(ui.getText("hotbar_count_4"), "3");
+}
+
 BOOST_AUTO_TEST_SUITE_END()
