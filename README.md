@@ -26,7 +26,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Flexible UI System**
 
-    Content-aware auto-sizing, professional theming (light/dark/custom), and rich component library (buttons, labels, input fields, lists, modals, etc.). Responsive layouts with DPI-aware rendering and animation support. Centralized UI constants with resolution-aware scaling (1920×1080 baseline) and event-driven resize handling. Optimized for PC handheld devices (Steam Deck, ROG Ally, OneXPlayer) with automatic baseline resolution scaling down to 1280×720.
+    Content-aware auto-sizing, professional theming (light/dark plus programmatic custom themes), and rich component library (buttons, labels, input fields, lists, modals, etc.). Responsive layouts with DPI-aware rendering and animation support. Centralized UI constants with resolution-aware scaling (1920×1080 baseline) and event-driven resize handling. Optimized for PC handheld devices (Steam Deck, ROG Ally, OneXPlayer) with automatic baseline resolution scaling down to 1280×720.
 
 - **Action-Mapped Input & Menu Navigation**
 
@@ -98,7 +98,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 - Platforms: Linux, macOS (Apple Silicon), Windows (MinGW)
 - [SDL3 dependencies](https://wiki.libsdl.org/SDL3/README-linux) (ttf, mixer)
 - Boost (for tests), cppcheck & clang-tidy (static analysis), Valgrind (optional, Linux only)
-- Platform shader tools (required):
+- Platform shader tools (required only when regenerating checked-in shader binaries):
   - Linux: `glslangValidator` for Vulkan SPIR-V shaders
   - macOS: `glslangValidator` + `spirv-cross` for Metal shaders
   - Windows: `glslangValidator` + `spirv-cross` + `dxc` for Direct3D 12 DXIL shaders
@@ -125,7 +125,7 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
 
 When `ccache` is installed, CMake enables it by default for C and C++ compilation. Disable it with `-DUSE_CCACHE=OFF` if you need uncached compiler invocations.
 
-> Platform shader tools (see Prerequisites) must be installed for the build to compile shaders.
+> Platform shader tools are needed to rebuild shader binaries from source. Without them, CMake uses the checked-in shader binaries under `res/shaders/` where available.
 
 **Sanitizer builds** (for debugging memory/thread issues):
 ```bash
