@@ -13,11 +13,13 @@
 #define BOOST_TEST_MODULE InventoryControllerTests
 #include <boost/test/unit_test.hpp>
 
+#include "controllers/ui/HudController.hpp"
 #include "controllers/ui/InventoryController.hpp"
 #include "entities/Player.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/InputManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldResourceManager.hpp"
@@ -33,6 +35,29 @@ namespace {
 
 VoidLight::ResourceHandle getResourceHandleById(const std::string& id) {
     return ResourceTemplateManager::Instance().getHandleById(id);
+}
+
+void moveMouseTo(const UIRect& bounds) {
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_EVENT_MOUSE_MOTION;
+    event.motion.x = static_cast<float>(bounds.x + (bounds.width / 2));
+    event.motion.y = static_cast<float>(bounds.y + (bounds.height / 2));
+    InputManager::Instance().onMouseMove(event);
+}
+
+void setLeftMouseDownAt(const UIRect& bounds, bool down) {
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
+    event.button.button = SDL_BUTTON_LEFT;
+    event.button.x = static_cast<float>(bounds.x + (bounds.width / 2));
+    event.button.y = static_cast<float>(bounds.y + (bounds.height / 2));
+    if (down) {
+        InputManager::Instance().onMouseButtonDown(event);
+    } else {
+        InputManager::Instance().onMouseButtonUp(event);
+    }
 }
 
 } // namespace
@@ -272,6 +297,41 @@ BOOST_AUTO_TEST_CASE(TestWeaponInventoryClickStartsHotbarAssignmentInsteadOfEqui
     BOOST_CHECK_EQUAL(
         EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), daggerHandle),
         1);
+}
+
+BOOST_AUTO_TEST_CASE(TestHotbarItemCanBeDraggedToAnotherSlot) {
+    auto potionHandle = getResourceHandleById("health_potion");
+    BOOST_REQUIRE(potionHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(potionHandle, 3));
+
+    auto& ui = UIManager::Instance();
+    ui.onWindowResize(1280, 720);
+
+    HudController hudController(player);
+    hudController.initializeHotbarUI();
+    BOOST_REQUIRE(hudController.assignHotbarItem(0, potionHandle));
+
+    InventoryController inventoryController(player);
+    InputManager::Instance().reset();
+
+    const UIRect sourceBounds = ui.getBounds(HudController::hotbarSlotId(0));
+    const UIRect targetBounds = ui.getBounds(HudController::hotbarSlotId(4));
+
+    setLeftMouseDownAt(sourceBounds, true);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    moveMouseTo(targetBounds);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    setLeftMouseDownAt(targetBounds, false);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    BOOST_CHECK(!hudController.getHotbarItem(0).isValid());
+    BOOST_CHECK(hudController.getHotbarItem(4) == potionHandle);
+    BOOST_CHECK_EQUAL(ui.getTexture("hotbar_icon_0"), "");
+    BOOST_CHECK_EQUAL(ui.getText("hotbar_count_0"), "");
+    BOOST_CHECK_EQUAL(ui.getTexture("hotbar_icon_4"), "atlas");
+    BOOST_CHECK_EQUAL(ui.getText("hotbar_count_4"), "3");
 }
 
 BOOST_AUTO_TEST_CASE(TestMoveConstructor) {

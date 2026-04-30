@@ -455,23 +455,42 @@ void InventoryController::handleHotbarAssignmentInput(HudController& hudControll
     const bool mouseJustPressed = leftMouseDown && !m_leftMouseWasDown;
     const bool mouseJustReleased = !leftMouseDown && m_leftMouseWasDown;
 
-    if (m_inventoryVisible && mouseJustPressed) {
-        const int inventorySlot = findInventorySlotAtMouse();
-        if (inventorySlot >= 0 &&
-            startHotbarAssignment(static_cast<size_t>(inventorySlot))) {
-            m_draggingHotbarAssignment = true;
-            m_draggedHotbarAssignment = m_pendingHotbarAssignment;
-        } else if (m_pendingHotbarAssignment.isValid()) {
+    if (mouseJustPressed) {
+        bool mousePressHandled = false;
+        if (m_inventoryVisible) {
+            const int inventorySlot = findInventorySlotAtMouse();
+            if (inventorySlot >= 0 &&
+                startHotbarAssignment(static_cast<size_t>(inventorySlot))) {
+                m_draggingHotbarAssignment = true;
+                m_draggedHotbarAssignment = m_pendingHotbarAssignment;
+                m_draggedHotbarSourceSlot = -1;
+                mousePressHandled = true;
+            } else if (m_pendingHotbarAssignment.isValid()) {
+                const int hotbarSlot = findHotbarSlotAtMouse();
+                if (hotbarSlot >= 0 &&
+                    hudController.assignHotbarItem(static_cast<size_t>(hotbarSlot),
+                                                   m_pendingHotbarAssignment)) {
+                    UIManager::Instance().addEventLogEntry(
+                        EVENT_LOG_ID,
+                        std::format("Assigned {} to hotbar {}",
+                                    displayNameFor(m_pendingHotbarAssignment),
+                                    hotbarSlot + 1));
+                    cancelHotbarAssignment();
+                    mousePressHandled = true;
+                }
+            }
+        }
+
+        if (!mousePressHandled && !m_draggingHotbarAssignment &&
+            !m_pendingHotbarAssignment.isValid()) {
             const int hotbarSlot = findHotbarSlotAtMouse();
-            if (hotbarSlot >= 0 &&
-                hudController.assignHotbarItem(static_cast<size_t>(hotbarSlot),
-                                               m_pendingHotbarAssignment)) {
-                UIManager::Instance().addEventLogEntry(
-                    EVENT_LOG_ID,
-                    std::format("Assigned {} to hotbar {}",
-                                displayNameFor(m_pendingHotbarAssignment),
-                                hotbarSlot + 1));
-                cancelHotbarAssignment();
+            if (hotbarSlot >= 0) {
+                const auto assigned = hudController.getHotbarItem(static_cast<size_t>(hotbarSlot));
+                if (assigned.isValid()) {
+                    m_draggingHotbarAssignment = true;
+                    m_draggedHotbarAssignment = assigned;
+                    m_draggedHotbarSourceSlot = hotbarSlot;
+                }
             }
         }
     }
@@ -486,17 +505,27 @@ void InventoryController::handleHotbarAssignmentInput(HudController& hudControll
             if (hotbarSlot >= 0 &&
                 hudController.assignHotbarItem(static_cast<size_t>(hotbarSlot),
                                                m_draggedHotbarAssignment)) {
-                UIManager::Instance().addEventLogEntry(
-                    EVENT_LOG_ID,
-                    std::format("Assigned {} to hotbar {}",
-                                displayNameFor(m_draggedHotbarAssignment),
-                                hotbarSlot + 1));
+                if (m_draggedHotbarSourceSlot >= 0 &&
+                    m_draggedHotbarSourceSlot != hotbarSlot) {
+                    UIManager::Instance().addEventLogEntry(
+                        EVENT_LOG_ID,
+                        std::format("Moved {} to hotbar {}",
+                                    displayNameFor(m_draggedHotbarAssignment),
+                                    hotbarSlot + 1));
+                } else if (m_draggedHotbarSourceSlot < 0) {
+                    UIManager::Instance().addEventLogEntry(
+                        EVENT_LOG_ID,
+                        std::format("Assigned {} to hotbar {}",
+                                    displayNameFor(m_draggedHotbarAssignment),
+                                    hotbarSlot + 1));
+                }
                 m_pendingHotbarAssignment = VoidLight::ResourceHandle{};
             }
         }
 
         m_draggingHotbarAssignment = false;
         m_draggedHotbarAssignment = VoidLight::ResourceHandle{};
+        m_draggedHotbarSourceSlot = -1;
         updateDragGhost(VoidLight::ResourceHandle{}, false);
     }
 
@@ -673,6 +702,7 @@ void InventoryController::cancelHotbarAssignment() {
     m_pendingHotbarAssignment = VoidLight::ResourceHandle{};
     m_draggedHotbarAssignment = VoidLight::ResourceHandle{};
     m_draggingHotbarAssignment = false;
+    m_draggedHotbarSourceSlot = -1;
     updateDragGhost(VoidLight::ResourceHandle{}, false);
 }
 

@@ -658,8 +658,7 @@ void GamePlayState::handleInput() {
   }
 
   if (auto* hudCtrl = m_controllers.get<HudController>()) {
-    if (auto* inventoryCtrl = m_controllers.get<InventoryController>();
-        inventoryCtrl && inventoryCtrl->isInventoryVisible()) {
+    if (auto* inventoryCtrl = m_controllers.get<InventoryController>()) {
       inventoryCtrl->handleHotbarAssignmentInput(*hudCtrl);
     }
     hudCtrl->handleHotbarInput();

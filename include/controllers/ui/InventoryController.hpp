@@ -93,6 +93,7 @@ private:
     bool m_leftMouseWasDown{false};
     bool m_draggingHotbarAssignment{false};
     bool m_dragGhostCreated{false};
+    int m_draggedHotbarSourceSlot{-1};
     VoidLight::ResourceHandle m_pendingHotbarAssignment{};
     VoidLight::ResourceHandle m_draggedHotbarAssignment{};
     std::vector<InventoryGridEntry> m_gridEntries;
