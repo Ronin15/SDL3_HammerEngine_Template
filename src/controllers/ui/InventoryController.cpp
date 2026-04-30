@@ -43,6 +43,7 @@ constexpr int INVENTORY_HEADER_HEIGHT = 130;
 constexpr int INVENTORY_BOTTOM_PADDING = 15;
 constexpr int INVENTORY_SECTION_WIDTH = 280;
 constexpr int INVENTORY_TITLE_Y = 20;
+constexpr int INVENTORY_TITLE_WIDTH = 220;
 constexpr int INVENTORY_TITLE_HEIGHT = 35;
 constexpr int INVENTORY_STATUS_Y = 80;
 constexpr int INVENTORY_STATUS_HEIGHT = 25;
@@ -183,6 +184,17 @@ void InventoryController::initializeInventoryUI() {
     constexpr int gridOffsetX = INVENTORY_CHILD_INSET +
         ((childWidth - INVENTORY_GRID_WIDTH) / 2);
     constexpr int gridOffsetY = INVENTORY_CONTENT_Y;
+    constexpr int titleX = (INVENTORY_PANEL_WIDTH - INVENTORY_TITLE_WIDTH) / 2;
+
+    UIStyle headerStyle;
+    headerStyle.backgroundColor = {.r=20, .g=24, .b=30, .a=190};
+    headerStyle.borderColor = {.r=95, .g=115, .b=135, .a=210};
+    headerStyle.hoverColor = headerStyle.backgroundColor;
+    headerStyle.pressedColor = headerStyle.backgroundColor;
+    headerStyle.textColor = {.r=230, .g=235, .b=242, .a=255};
+    headerStyle.borderWidth = 1;
+    headerStyle.useTextBackground = false;
+    headerStyle.fontID = UIConstants::FONT_UI;
 
     ui.createPanel(INVENTORY_PANEL_ID,
                    {0, 0, INVENTORY_PANEL_WIDTH, inventoryHeight});
@@ -191,17 +203,18 @@ void InventoryController::initializeInventoryUI() {
         {UIPositionMode::CENTERED_BOTH, 0, 0, INVENTORY_PANEL_WIDTH, inventoryHeight});
 
     ui.createTitle(INVENTORY_TITLE_ID,
-                   {INVENTORY_CHILD_INSET, INVENTORY_TITLE_Y,
-                    INVENTORY_PANEL_WIDTH - (INVENTORY_CHILD_INSET * 2),
-                    INVENTORY_TITLE_HEIGHT},
-                   "Player Inventory", INVENTORY_PANEL_ID);
+                   {titleX, INVENTORY_TITLE_Y,
+                    INVENTORY_TITLE_WIDTH, INVENTORY_TITLE_HEIGHT},
+                   "Inventory", INVENTORY_PANEL_ID);
+    ui.setStyle(INVENTORY_TITLE_ID, headerStyle);
     ui.setTitleAlignment(INVENTORY_TITLE_ID, UIAlignment::CENTER_CENTER);
     ui.enableAutoSizing(INVENTORY_TITLE_ID, false);
     ui.setComponentPositioning(
         INVENTORY_TITLE_ID,
-        {UIPositionMode::CENTERED_BOTH, 0,
+        {UIPositionMode::CENTERED_BOTH,
+         centerOffset(titleX, INVENTORY_TITLE_WIDTH, panelHalfWidth),
          centerOffset(INVENTORY_TITLE_Y, INVENTORY_TITLE_HEIGHT, panelHalfHeight),
-         INVENTORY_PANEL_WIDTH - (INVENTORY_CHILD_INSET * 2), INVENTORY_TITLE_HEIGHT});
+         INVENTORY_TITLE_WIDTH, INVENTORY_TITLE_HEIGHT});
 
     ui.createLabel(INVENTORY_STATUS_ID,
                    {INVENTORY_CHILD_INSET, INVENTORY_STATUS_Y,
@@ -218,7 +231,8 @@ void InventoryController::initializeInventoryUI() {
     ui.createLabel("inventory_tab_items",
                    {gridOffsetX, INVENTORY_SECTION_HEADER_Y,
                     INVENTORY_SECTION_HEADER_WIDTH, INVENTORY_SECTION_HEADER_HEIGHT},
-                   "Inventory", INVENTORY_PANEL_ID);
+                   "Items", INVENTORY_PANEL_ID);
+    ui.setStyle("inventory_tab_items", headerStyle);
     ui.setLabelAlignment("inventory_tab_items", UIAlignment::CENTER_LEFT);
     ui.enableAutoSizing("inventory_tab_items", false);
     ui.setComponentPositioning(
@@ -232,6 +246,7 @@ void InventoryController::initializeInventoryUI() {
                    {GEAR_SECTION_X, INVENTORY_SECTION_HEADER_Y,
                     INVENTORY_SECTION_HEADER_WIDTH, INVENTORY_SECTION_HEADER_HEIGHT},
                    "Gear", INVENTORY_PANEL_ID);
+    ui.setStyle("inventory_tab_gear", headerStyle);
     ui.setLabelAlignment("inventory_tab_gear", UIAlignment::CENTER_LEFT);
     ui.enableAutoSizing("inventory_tab_gear", false);
     ui.setComponentPositioning(

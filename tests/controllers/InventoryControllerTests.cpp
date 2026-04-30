@@ -25,6 +25,7 @@
 #include "managers/WorldResourceManager.hpp"
 #include "../events/EventManagerTestAccess.hpp"
 #include <atomic>
+#include <cstdlib>
 #include <memory>
 
 // ============================================================================
@@ -152,6 +153,7 @@ BOOST_AUTO_TEST_CASE(TestInitializeInventoryUICreatesReusableGrid) {
 
     auto& ui = UIManager::Instance();
     BOOST_CHECK(ui.hasComponent(InventoryController::INVENTORY_PANEL_ID));
+    BOOST_CHECK(ui.hasComponent(InventoryController::INVENTORY_TITLE_ID));
     BOOST_CHECK(ui.hasComponent(InventoryController::INVENTORY_STATUS_ID));
     BOOST_CHECK(ui.hasComponent("inventory_slot_0"));
     BOOST_CHECK(ui.hasComponent("inventory_icon_0"));
@@ -167,6 +169,9 @@ BOOST_AUTO_TEST_CASE(TestInitializeInventoryUICreatesReusableGrid) {
     BOOST_CHECK(ui.hasComponent("gear_slot_7"));
     BOOST_CHECK(ui.hasComponent("gear_icon_7"));
     BOOST_CHECK(ui.hasComponent("gear_label_7"));
+    BOOST_CHECK_EQUAL(ui.getText(InventoryController::INVENTORY_TITLE_ID), "Inventory");
+    BOOST_CHECK_EQUAL(ui.getText("inventory_tab_items"), "Items");
+    BOOST_CHECK_EQUAL(ui.getText("inventory_tab_gear"), "Gear");
 
     controller.setInventoryVisible(true);
     BOOST_CHECK(controller.isInventoryVisible());
@@ -183,6 +188,7 @@ BOOST_AUTO_TEST_CASE(TestInventoryGearLayoutHasReadableSpacingAt1280x720) {
     controller.initializeInventoryUI();
 
     const UIRect panelBounds = ui.getBounds(InventoryController::INVENTORY_PANEL_ID);
+    const UIRect titleBounds = ui.getBounds(InventoryController::INVENTORY_TITLE_ID);
     const UIRect inventoryHeaderBounds = ui.getBounds("inventory_tab_items");
     const UIRect firstInventoryBounds = ui.getBounds("inventory_slot_0");
     const UIRect gearHeaderBounds = ui.getBounds("inventory_tab_gear");
@@ -192,10 +198,12 @@ BOOST_AUTO_TEST_CASE(TestInventoryGearLayoutHasReadableSpacingAt1280x720) {
     const int panelCenterX = panelBounds.x + (panelBounds.width / 2);
 
     BOOST_CHECK_GE(panelBounds.width, 480);
+    BOOST_CHECK_LT(titleBounds.width, panelBounds.width / 2);
     BOOST_CHECK_GE(firstGearBounds.width, 240);
     BOOST_CHECK_GE(firstGearLabelBounds.width, 200);
     BOOST_CHECK_GE(panelCenterX, 639);
     BOOST_CHECK_LE(panelCenterX, 641);
+    BOOST_CHECK_LE(std::abs((titleBounds.x + (titleBounds.width / 2)) - panelCenterX), 1);
     BOOST_CHECK_EQUAL(inventoryHeaderBounds.x, firstInventoryBounds.x);
     BOOST_CHECK_EQUAL(gearHeaderBounds.x, firstGearBounds.x);
     BOOST_CHECK_GT(secondGearBounds.y, firstGearBounds.y + firstGearBounds.height);
