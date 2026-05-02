@@ -22,7 +22,7 @@ Typical input order in gameplay:
 1. `OpenInventory` toggles the inventory panel.
 2. `Interact` prioritizes merchant trade, then pickup, then harvest interaction.
 3. When the inventory is open, slot clicks may equip gear, consume usable items, or start a hotbar assignment.
-4. During hotbar assignment, the controller tracks the dragged resource handle and calls `HudController::assignHotbarItem(...)` after the target slot is chosen.
+4. During hotbar assignment, the controller tracks the dragged resource handle. Inventory-origin drops assign through `HudController::assignHotbarItem(...)`; hotbar-origin drags reorder through `HudController::moveHotbarItem(...)`.
 
 ## UI Contract
 

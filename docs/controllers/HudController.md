@@ -20,7 +20,7 @@ The target display is transient and auto-expires after `TARGET_DISPLAY_DURATION`
 - Call `handleHotbarInput()` from state input handling after command state has been refreshed
 - Toggle `setHotbarVisible(false)` on pause, `true` on resume
 - Query `hasActiveTarget()` / `getTargetLabel()` / `getTargetHealth()` when updating the combat HUD
-- Let `InventoryController` assign items through `assignHotbarItem()` / `clearHotbarItem()` instead of mutating UI components directly
+- Let `InventoryController` assign and reorder items through `assignHotbarItem()`, `moveHotbarItem()`, and `clearHotbarItem()` instead of mutating UI components directly
 
 States that only need the target-frame state (e.g., demos) may add the controller without calling `initializeHotbarUI()`; hotbar polling is gated on UI creation and will no-op.
 
