@@ -305,9 +305,21 @@ uint32_t getNPCInventoryIndex(EntityHandle handle) const;
 bool addToInventory(uint32_t inventoryIndex, ResourceHandle handle, int quantity);
 bool removeFromInventory(uint32_t inventoryIndex, ResourceHandle handle, int quantity);
 int getInventoryQuantity(uint32_t inventoryIndex, ResourceHandle handle) const;
+std::unordered_map<ResourceHandle, int> getInventoryResources(uint32_t inventoryIndex) const;
+InventorySlotData getInventorySlot(uint32_t inventoryIndex, size_t slotIndex) const;
+size_t getInventorySlots(uint32_t inventoryIndex, std::span<InventorySlotData> outSlots) const;
+bool swapInventorySlots(uint32_t inventoryIndex, size_t sourceSlot, size_t targetSlot);
 ```
 
 Inventories are EDM-backed data, not legacy entity-owned inventory components. Containers auto-create inventories, merchants use EDM inventory indices, and world-tracked inventories register aggregate data with `WorldResourceManager`.
+
+Inventory APIs are split by use case:
+
+- `getInventoryResources(...)` returns aggregate quantities by `ResourceHandle` for world/resource/social systems that do not care about layout.
+- `getInventorySlot(...)` and `getInventorySlots(...)` expose ordered physical slot contents. Prefer the span-based bulk read for UI refreshes so callers take one inventory lock and reuse caller-owned storage.
+- `swapInventorySlots(...)` is a storage primitive only. It validates the inventory and slot indices, works across inline and overflow slots, preserves `usedSlots`, and marks the inventory dirty only when slot contents actually change.
+
+Drag/drop, player policy, hotbar assignment, and UI feedback belong in `InventoryController`, not EDM.
 
 ### Simulation Tier Management
 

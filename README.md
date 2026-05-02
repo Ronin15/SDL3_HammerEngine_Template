@@ -38,7 +38,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Inventory, Equipment & Trading**
 
-    State-scoped inventory and HUD controllers support pickup, gear equip/unequip, hotbar assignment, event-driven inventory refresh, merchant buy/sell UI, relationship-aware pricing, gifts, theft reporting, and NPC memory integration.
+    State-scoped inventory and HUD controllers support pickup, gear equip/unequip, inventory slot reordering, hotbar assignment, event-driven inventory refresh, merchant buy/sell UI, relationship-aware pricing, gifts, theft reporting, and NPC memory integration.
 
 - **Fast, Safe Serialization**
   
