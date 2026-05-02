@@ -57,6 +57,7 @@ public:
     [[nodiscard]] size_t getHotbarSelectedIndex() const { return m_hotbarSelectedIndex; }
 
     bool assignHotbarItem(size_t slotIndex, VoidLight::ResourceHandle handle);
+    bool moveHotbarItem(size_t sourceSlot, size_t targetSlot);
     void clearHotbarItem(size_t slotIndex);
     [[nodiscard]] VoidLight::ResourceHandle getHotbarItem(size_t slotIndex) const;
     void refreshHotbarUI();

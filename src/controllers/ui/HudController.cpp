@@ -16,6 +16,7 @@
 #include <array>
 #include <format>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -349,6 +350,24 @@ bool HudController::assignHotbarItem(size_t slotIndex, VoidLight::ResourceHandle
         }
     }
     m_hotbarItems[slotIndex] = handle;
+    refreshHotbarUI();
+    return true;
+}
+
+bool HudController::moveHotbarItem(size_t sourceSlot, size_t targetSlot)
+{
+    if (sourceSlot >= HOTBAR_SLOT_COUNT || targetSlot >= HOTBAR_SLOT_COUNT ||
+        !m_hotbarItems[sourceSlot].isValid())
+    {
+        return false;
+    }
+
+    if (sourceSlot == targetSlot)
+    {
+        return true;
+    }
+
+    std::swap(m_hotbarItems[sourceSlot], m_hotbarItems[targetSlot]);
     refreshHotbarUI();
     return true;
 }

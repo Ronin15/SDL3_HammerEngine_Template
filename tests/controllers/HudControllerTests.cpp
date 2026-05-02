@@ -218,4 +218,53 @@ BOOST_AUTO_TEST_CASE(TestHotbarReassigningSameItemMovesAssignment)
     BOOST_CHECK_EQUAL(ui.getText("hotbar_count_4"), "3");
 }
 
+BOOST_AUTO_TEST_CASE(TestHotbarMoveSwapsOccupiedSlotsAndMovesToEmptySlot)
+{
+    auto player = createPlayer();
+    player->initializeInventory();
+    auto potionHandle = ResourceTemplateManager::Instance().getHandleById("health_potion");
+    auto manaHandle = ResourceTemplateManager::Instance().getHandleById("mana_elixir");
+    BOOST_REQUIRE(potionHandle.isValid());
+    BOOST_REQUIRE(manaHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(potionHandle, 3));
+    BOOST_REQUIRE(player->addToInventory(manaHandle, 2));
+
+    HudController controller(player);
+    controller.initializeHotbarUI();
+
+    BOOST_REQUIRE(controller.assignHotbarItem(0, potionHandle));
+    BOOST_REQUIRE(controller.assignHotbarItem(4, manaHandle));
+    BOOST_REQUIRE(controller.moveHotbarItem(0, 4));
+
+    auto& ui = UIManager::Instance();
+    BOOST_CHECK(controller.getHotbarItem(0) == manaHandle);
+    BOOST_CHECK(controller.getHotbarItem(4) == potionHandle);
+    BOOST_CHECK_EQUAL(ui.getText("hotbar_count_0"), "2");
+    BOOST_CHECK_EQUAL(ui.getText("hotbar_count_4"), "3");
+
+    BOOST_REQUIRE(controller.moveHotbarItem(4, 1));
+    BOOST_CHECK(!controller.getHotbarItem(4).isValid());
+    BOOST_CHECK(controller.getHotbarItem(1) == potionHandle);
+    BOOST_CHECK_EQUAL(ui.getText("hotbar_count_4"), "");
+    BOOST_CHECK_EQUAL(ui.getText("hotbar_count_1"), "3");
+}
+
+BOOST_AUTO_TEST_CASE(TestHotbarMoveRejectsInvalidSlotsAndEmptySource)
+{
+    auto player = createPlayer();
+    player->initializeInventory();
+    auto potionHandle = ResourceTemplateManager::Instance().getHandleById("health_potion");
+    BOOST_REQUIRE(potionHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(potionHandle, 3));
+
+    HudController controller(player);
+    controller.initializeHotbarUI();
+    BOOST_REQUIRE(controller.assignHotbarItem(0, potionHandle));
+
+    BOOST_CHECK(!controller.moveHotbarItem(8, 1));
+    BOOST_CHECK(!controller.moveHotbarItem(0, HudController::HOTBAR_SLOT_COUNT));
+    BOOST_CHECK(controller.getHotbarItem(0) == potionHandle);
+    BOOST_CHECK(!controller.getHotbarItem(1).isValid());
+}
+
 BOOST_AUTO_TEST_SUITE_END()

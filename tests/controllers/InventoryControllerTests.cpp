@@ -342,6 +342,45 @@ BOOST_AUTO_TEST_CASE(TestHotbarItemCanBeDraggedToAnotherSlot) {
     BOOST_CHECK_EQUAL(ui.getText("hotbar_count_4"), "3");
 }
 
+BOOST_AUTO_TEST_CASE(TestHotbarItemDragSwapsOccupiedSlots) {
+    auto potionHandle = getResourceHandleById("health_potion");
+    auto manaHandle = getResourceHandleById("mana_elixir");
+    BOOST_REQUIRE(potionHandle.isValid());
+    BOOST_REQUIRE(manaHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(potionHandle, 3));
+    BOOST_REQUIRE(player->addToInventory(manaHandle, 2));
+
+    auto& ui = UIManager::Instance();
+    ui.onWindowResize(1280, 720);
+
+    HudController hudController(player);
+    hudController.initializeHotbarUI();
+    BOOST_REQUIRE(hudController.assignHotbarItem(0, potionHandle));
+    BOOST_REQUIRE(hudController.assignHotbarItem(4, manaHandle));
+
+    InventoryController inventoryController(player);
+    InputManager::Instance().reset();
+
+    const UIRect sourceBounds = ui.getBounds(HudController::hotbarSlotId(0));
+    const UIRect targetBounds = ui.getBounds(HudController::hotbarSlotId(4));
+
+    setLeftMouseDownAt(sourceBounds, true);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    moveMouseTo(targetBounds);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    setLeftMouseDownAt(targetBounds, false);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    BOOST_CHECK(hudController.getHotbarItem(0) == manaHandle);
+    BOOST_CHECK(hudController.getHotbarItem(4) == potionHandle);
+    BOOST_CHECK_EQUAL(ui.getTexture("hotbar_icon_0"), "atlas");
+    BOOST_CHECK_EQUAL(ui.getText("hotbar_count_0"), "2");
+    BOOST_CHECK_EQUAL(ui.getTexture("hotbar_icon_4"), "atlas");
+    BOOST_CHECK_EQUAL(ui.getText("hotbar_count_4"), "3");
+}
+
 BOOST_AUTO_TEST_CASE(TestMoveConstructor) {
     InventoryController controller(nullptr);
     controller.subscribe();
