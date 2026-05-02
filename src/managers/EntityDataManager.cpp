@@ -18,8 +18,10 @@ using VoidLight::JsonValue;
 #include <algorithm>
 #include <cassert>
 #include <format>
+#include <functional>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <ranges>
 
 namespace {
@@ -62,6 +64,64 @@ AtlasRegion lookupAtlasRegion(const std::string& regionId) {
         .h     = static_cast<uint16_t>(region["h"].asInt()),
         .found = true
     };
+}
+
+[[nodiscard]] bool sameInventorySlot(const InventorySlotData& lhs,
+                                     const InventorySlotData& rhs) noexcept {
+    return lhs.resourceHandle == rhs.resourceHandle &&
+           lhs.quantity == rhs.quantity;
+}
+
+[[nodiscard]] std::optional<std::reference_wrapper<const InventorySlotData>>
+getInventorySlotRef(
+    const InventoryData& inv,
+    const std::optional<std::reference_wrapper<const InventoryOverflow>>& overflow,
+    size_t slotIndex) noexcept {
+    if (slotIndex >= inv.maxSlots) {
+        return std::nullopt;
+    }
+
+    if (slotIndex < InventoryData::INLINE_SLOT_COUNT) {
+        return std::cref(inv.slots[slotIndex]);
+    }
+
+    if (!overflow.has_value()) {
+        return std::nullopt;
+    }
+
+    const size_t overflowIndex = slotIndex - InventoryData::INLINE_SLOT_COUNT;
+    const auto& extraSlots = overflow->get().extraSlots;
+    if (overflowIndex >= extraSlots.size()) {
+        return std::nullopt;
+    }
+
+    return std::cref(extraSlots[overflowIndex]);
+}
+
+[[nodiscard]] std::optional<std::reference_wrapper<InventorySlotData>>
+getInventorySlotRef(
+    InventoryData& inv,
+    const std::optional<std::reference_wrapper<InventoryOverflow>>& overflow,
+    size_t slotIndex) noexcept {
+    if (slotIndex >= inv.maxSlots) {
+        return std::nullopt;
+    }
+
+    if (slotIndex < InventoryData::INLINE_SLOT_COUNT) {
+        return std::ref(inv.slots[slotIndex]);
+    }
+
+    if (!overflow.has_value()) {
+        return std::nullopt;
+    }
+
+    const size_t overflowIndex = slotIndex - InventoryData::INLINE_SLOT_COUNT;
+    auto& extraSlots = overflow->get().extraSlots;
+    if (overflowIndex >= extraSlots.size()) {
+        return std::nullopt;
+    }
+
+    return std::ref(extraSlots[overflowIndex]);
 }
 
 } // namespace
@@ -2144,7 +2204,10 @@ bool EntityDataManager::addToInventory(uint32_t inventoryIndex,
     std::lock_guard<std::mutex> lock(m_inventoryMutex);
 
     auto& inv = m_inventoryData[inventoryIndex];
-    InventoryOverflow* overflow = (inv.overflowId > 0) ? &m_inventoryOverflow[inv.overflowId] : nullptr;
+    std::optional<std::reference_wrapper<InventoryOverflow>> overflow;
+    if (inv.overflowId > 0) {
+        overflow = std::ref(m_inventoryOverflow[inv.overflowId]);
+    }
 
     int availableCapacity = 0;
     for (size_t i = 0; i < InventoryData::INLINE_SLOT_COUNT; ++i) {
@@ -2156,8 +2219,8 @@ bool EntityDataManager::addToInventory(uint32_t inventoryIndex,
         }
     }
 
-    if (overflow) {
-        for (const auto& slot : overflow->extraSlots) {
+    if (overflow.has_value()) {
+        for (const auto& slot : overflow->get().extraSlots) {
             if (!slot.isEmpty() && slot.resourceHandle == handle) {
                 availableCapacity += std::max(0, maxStack - static_cast<int>(slot.quantity));
             } else if (slot.isEmpty()) {
@@ -2189,8 +2252,8 @@ bool EntityDataManager::addToInventory(uint32_t inventoryIndex,
     }
 
     // Check overflow slots
-    if (overflow) {
-        for (auto& slot : overflow->extraSlots) {
+    if (overflow.has_value()) {
+        for (auto& slot : overflow->get().extraSlots) {
             if (remaining <= 0) break;
             if (!slot.isEmpty() && slot.resourceHandle == handle) {
                 int canAdd = maxStack - slot.quantity;
@@ -2217,8 +2280,8 @@ bool EntityDataManager::addToInventory(uint32_t inventoryIndex,
     }
 
     // Check overflow slots
-    if (overflow) {
-        for (auto& slot : overflow->extraSlots) {
+    if (overflow.has_value()) {
+        for (auto& slot : overflow->get().extraSlots) {
             if (remaining <= 0) break;
             if (slot.isEmpty()) {
                 int toAdd = std::min(maxStack, remaining);
@@ -2260,7 +2323,10 @@ bool EntityDataManager::removeFromInventory(uint32_t inventoryIndex,
     }
 
     auto& inv = m_inventoryData[inventoryIndex];
-    InventoryOverflow* overflow = (inv.overflowId > 0) ? &m_inventoryOverflow[inv.overflowId] : nullptr;
+    std::optional<std::reference_wrapper<InventoryOverflow>> overflow;
+    if (inv.overflowId > 0) {
+        overflow = std::ref(m_inventoryOverflow[inv.overflowId]);
+    }
 
     int remaining = quantity;
 
@@ -2279,8 +2345,8 @@ bool EntityDataManager::removeFromInventory(uint32_t inventoryIndex,
     }
 
     // Remove from overflow slots
-    if (overflow) {
-        for (auto& slot : overflow->extraSlots) {
+    if (overflow.has_value()) {
+        for (auto& slot : overflow->get().extraSlots) {
             if (remaining <= 0) break;
             if (!slot.isEmpty() && slot.resourceHandle == handle) {
                 int toRemove = std::min(static_cast<int>(slot.quantity), remaining);
@@ -2389,6 +2455,123 @@ EntityDataManager::getInventoryResources(uint32_t inventoryIndex) const {
     }
 
     return result;
+}
+
+InventorySlotData EntityDataManager::getInventorySlot(uint32_t inventoryIndex,
+                                                      size_t slotIndex) const {
+    std::lock_guard<std::mutex> lock(m_inventoryMutex);
+
+    if (inventoryIndex == INVALID_INVENTORY_INDEX ||
+        inventoryIndex >= m_inventoryData.size()) {
+        return {};
+    }
+
+    const auto& inv = m_inventoryData[inventoryIndex];
+    if (!inv.isValid() || slotIndex >= inv.maxSlots) {
+        return {};
+    }
+
+    std::optional<std::reference_wrapper<const InventoryOverflow>> overflow;
+    if (inv.overflowId > 0) {
+        const auto it = m_inventoryOverflow.find(inv.overflowId);
+        if (it != m_inventoryOverflow.end()) {
+            overflow = std::cref(it->second);
+        }
+    }
+
+    const auto slot = getInventorySlotRef(inv, overflow, slotIndex);
+    return slot.has_value() ? slot->get() : InventorySlotData{};
+}
+
+size_t EntityDataManager::getInventorySlots(uint32_t inventoryIndex,
+                                            std::span<InventorySlotData> outSlots) const {
+    if (outSlots.empty()) {
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(m_inventoryMutex);
+
+    if (inventoryIndex == INVALID_INVENTORY_INDEX ||
+        inventoryIndex >= m_inventoryData.size()) {
+        return 0;
+    }
+
+    const auto& inv = m_inventoryData[inventoryIndex];
+    if (!inv.isValid()) {
+        return 0;
+    }
+
+    const size_t slotsToCopy = std::min(outSlots.size(), static_cast<size_t>(inv.maxSlots));
+    const size_t inlineCount = std::min(slotsToCopy, InventoryData::INLINE_SLOT_COUNT);
+    std::copy_n(inv.slots, inlineCount, outSlots.begin());
+
+    if (slotsToCopy <= InventoryData::INLINE_SLOT_COUNT) {
+        return slotsToCopy;
+    }
+
+    if (inv.overflowId == 0) {
+        return 0;
+    }
+
+    const auto it = m_inventoryOverflow.find(inv.overflowId);
+    if (it == m_inventoryOverflow.end()) {
+        return 0;
+    }
+
+    const size_t overflowCount = slotsToCopy - InventoryData::INLINE_SLOT_COUNT;
+    if (overflowCount > it->second.extraSlots.size()) {
+        return 0;
+    }
+
+    std::copy_n(it->second.extraSlots.begin(),
+                overflowCount,
+                outSlots.begin() + static_cast<std::ptrdiff_t>(InventoryData::INLINE_SLOT_COUNT));
+    return slotsToCopy;
+}
+
+bool EntityDataManager::swapInventorySlots(uint32_t inventoryIndex,
+                                           size_t sourceSlot,
+                                           size_t targetSlot) {
+    std::lock_guard<std::mutex> lock(m_inventoryMutex);
+
+    if (inventoryIndex == INVALID_INVENTORY_INDEX ||
+        inventoryIndex >= m_inventoryData.size()) {
+        return false;
+    }
+
+    auto& inv = m_inventoryData[inventoryIndex];
+    if (!inv.isValid() || sourceSlot >= inv.maxSlots || targetSlot >= inv.maxSlots) {
+        return false;
+    }
+
+    std::optional<std::reference_wrapper<InventoryOverflow>> overflow;
+    if (inv.needsOverflow()) {
+        if (inv.overflowId == 0) {
+            return false;
+        }
+
+        const auto it = m_inventoryOverflow.find(inv.overflowId);
+        if (it == m_inventoryOverflow.end() ||
+            it->second.extraSlots.size() !=
+                inv.maxSlots - InventoryData::INLINE_SLOT_COUNT) {
+            return false;
+        }
+        overflow = std::ref(it->second);
+    }
+
+    auto source = getInventorySlotRef(inv, overflow, sourceSlot);
+    auto target = getInventorySlotRef(inv, overflow, targetSlot);
+    if (!source.has_value() || !target.has_value()) {
+        return false;
+    }
+
+    if (sourceSlot == targetSlot || sameInventorySlot(source->get(), target->get())) {
+        return true;
+    }
+
+    std::swap(source->get(), target->get());
+    inv.flags |= InventoryData::FLAG_DIRTY;
+    return true;
 }
 
 InventoryData& EntityDataManager::getInventoryData(uint32_t inventoryIndex) {

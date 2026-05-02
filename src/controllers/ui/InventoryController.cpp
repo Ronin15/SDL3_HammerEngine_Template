@@ -417,34 +417,40 @@ void InventoryController::refreshInventoryUI() {
         return;
     }
 
-    const auto& inv = EntityDataManager::Instance().getInventoryData(invIdx);
+    auto& edm = EntityDataManager::Instance();
+    const auto& inv = edm.getInventoryData(invIdx);
     ui.setText(INVENTORY_STATUS_ID,
                std::format("Capacity: {}/{}", inv.usedSlots, inv.maxSlots));
 
-    auto allResources = EntityDataManager::Instance().getInventoryResources(invIdx);
-    m_gridEntries.clear();
-    m_gridEntries.reserve(allResources.size());
+    std::array<InventorySlotData, INVENTORY_SLOT_COUNT> inventorySlots{};
+    const size_t copiedSlotCount = edm.getInventorySlots(invIdx, inventorySlots);
 
-    for (const auto& [resourceHandle, quantity] : allResources) {
-        if (quantity <= 0) {
+    m_gridEntries.clear();
+    m_gridEntries.reserve(INVENTORY_SLOT_COUNT);
+
+    for (size_t i = 0; i < INVENTORY_SLOT_COUNT; ++i) {
+        if (i >= copiedSlotCount) {
+            m_gridEntries.push_back({});
+            continue;
+        }
+
+        const InventorySlotData& slot = inventorySlots[i];
+        if (slot.isEmpty()) {
+            m_gridEntries.push_back({});
             continue;
         }
 
         auto resourceTemplate =
-            ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle);
+            ResourceTemplateManager::Instance().getResourceTemplate(slot.resourceHandle);
         m_gridEntries.push_back({
-            .name = resourceTemplate ? resourceTemplate->getName() : resourceHandle.toString(),
-            .handle = resourceHandle,
-            .quantity = quantity});
+            .name = resourceTemplate ? resourceTemplate->getName() : slot.resourceHandle.toString(),
+            .handle = slot.resourceHandle,
+            .quantity = slot.quantity});
     }
 
-    std::sort(m_gridEntries.begin(), m_gridEntries.end(),
-              [](const InventoryGridEntry& lhs, const InventoryGridEntry& rhs) {
-                  return lhs.name < rhs.name;
-              });
-
     for (size_t i = 0; i < INVENTORY_SLOT_COUNT; ++i) {
-        refreshSlot(i, i < m_gridEntries.size() ? &m_gridEntries[i] : nullptr);
+        const auto& entry = m_gridEntries[i];
+        refreshSlot(i, entry.handle.isValid() && entry.quantity > 0 ? &entry : nullptr);
     }
     refreshGearUI();
 }
@@ -458,6 +464,8 @@ void InventoryController::setInventoryVisible(bool visible) {
     UIManager::Instance().setComponentVisible(INVENTORY_PANEL_ID, visible);
     if (!visible) {
         cancelHotbarAssignment();
+        m_draggedInventorySourceSlot = -1;
+        m_draggedInventoryHandle = VoidLight::ResourceHandle{};
     }
     if (visible) {
         refreshInventoryUI();
@@ -474,11 +482,8 @@ void InventoryController::handleHotbarAssignmentInput(HudController& hudControll
         bool mousePressHandled = false;
         if (m_inventoryVisible) {
             const int inventorySlot = findInventorySlotAtMouse();
-            if (inventorySlot >= 0 &&
-                startHotbarAssignment(static_cast<size_t>(inventorySlot))) {
-                m_draggingHotbarAssignment = true;
-                m_draggedHotbarAssignment = m_pendingHotbarAssignment;
-                m_draggedHotbarSourceSlot = -1;
+            if (inventorySlot >= 0) {
+                startInventorySlotDrag(static_cast<size_t>(inventorySlot));
                 mousePressHandled = true;
             } else if (m_pendingHotbarAssignment.isValid()) {
                 const int hotbarSlot = findHotbarSlotAtMouse();
@@ -512,10 +517,18 @@ void InventoryController::handleHotbarAssignmentInput(HudController& hudControll
 
     if (m_draggingHotbarAssignment && m_draggedHotbarAssignment.isValid() && leftMouseDown) {
         updateDragGhost(m_draggedHotbarAssignment, true);
+    } else if (m_draggedInventoryHandle.isValid() && leftMouseDown) {
+        updateDragGhost(m_draggedInventoryHandle, true);
     }
 
     if (mouseJustReleased) {
-        if (m_draggingHotbarAssignment && m_draggedHotbarAssignment.isValid()) {
+        bool completedDrop = false;
+        const int releasedInventorySlot = findInventorySlotAtMouse();
+        if (m_draggedInventorySourceSlot >= 0 && m_draggedInventoryHandle.isValid() &&
+            releasedInventorySlot >= 0) {
+            finishInventorySlotDrag();
+            completedDrop = true;
+        } else if (m_draggingHotbarAssignment && m_draggedHotbarAssignment.isValid()) {
             const int hotbarSlot = findHotbarSlotAtMouse();
             if (hotbarSlot >= 0) {
                 const bool hotbarUpdated = m_draggedHotbarSourceSlot >= 0
@@ -540,13 +553,20 @@ void InventoryController::handleHotbarAssignmentInput(HudController& hudControll
                                         hotbarSlot + 1));
                     }
                     m_pendingHotbarAssignment = VoidLight::ResourceHandle{};
+                    completedDrop = true;
                 }
             }
+        }
+
+        if (m_draggedInventorySourceSlot >= 0 && releasedInventorySlot < 0 && !completedDrop) {
+            m_pendingHotbarAssignment = VoidLight::ResourceHandle{};
         }
 
         m_draggingHotbarAssignment = false;
         m_draggedHotbarAssignment = VoidLight::ResourceHandle{};
         m_draggedHotbarSourceSlot = -1;
+        m_draggedInventorySourceSlot = -1;
+        m_draggedInventoryHandle = VoidLight::ResourceHandle{};
         updateDragGhost(VoidLight::ResourceHandle{}, false);
     }
 
@@ -666,6 +686,10 @@ void InventoryController::handleInventorySlotClicked(size_t slotIndex) {
     }
 
     const VoidLight::ResourceHandle itemHandle = m_gridEntries[slotIndex].handle;
+    if (!itemHandle.isValid()) {
+        return;
+    }
+
     if (isHotbarAssignable(itemHandle)) {
         m_pendingHotbarAssignment = itemHandle;
         UIManager::Instance().addEventLogEntry(
@@ -711,6 +735,10 @@ bool InventoryController::startHotbarAssignment(size_t slotIndex) {
     }
 
     const VoidLight::ResourceHandle itemHandle = m_gridEntries[slotIndex].handle;
+    if (!itemHandle.isValid()) {
+        return false;
+    }
+
     if (!isHotbarAssignable(itemHandle)) {
         return false;
     }
@@ -724,6 +752,8 @@ void InventoryController::cancelHotbarAssignment() {
     m_draggedHotbarAssignment = VoidLight::ResourceHandle{};
     m_draggingHotbarAssignment = false;
     m_draggedHotbarSourceSlot = -1;
+    m_draggedInventorySourceSlot = -1;
+    m_draggedInventoryHandle = VoidLight::ResourceHandle{};
     updateDragGhost(VoidLight::ResourceHandle{}, false);
 }
 
@@ -767,6 +797,55 @@ void InventoryController::updateDragGhost(const VoidLight::ResourceHandle& handl
         ui.setImageSourceRect(HOTBAR_DRAG_GHOST_ID, UIRect{});
     }
     ui.setComponentVisible(HOTBAR_DRAG_GHOST_ID, true);
+}
+
+bool InventoryController::startInventorySlotDrag(size_t slotIndex) {
+    if (slotIndex >= m_gridEntries.size()) {
+        return false;
+    }
+
+    const VoidLight::ResourceHandle itemHandle = m_gridEntries[slotIndex].handle;
+    if (!itemHandle.isValid()) {
+        return false;
+    }
+
+    m_draggedInventorySourceSlot = static_cast<int>(slotIndex);
+    m_draggedInventoryHandle = itemHandle;
+
+    if (startHotbarAssignment(slotIndex)) {
+        m_draggingHotbarAssignment = true;
+        m_draggedHotbarAssignment = m_pendingHotbarAssignment;
+        m_draggedHotbarSourceSlot = -1;
+    }
+
+    return true;
+}
+
+void InventoryController::finishInventorySlotDrag() {
+    auto player = mp_player.lock();
+    if (!player || m_draggedInventorySourceSlot < 0) {
+        return;
+    }
+
+    const uint32_t invIdx = player->getInventoryIndex();
+    if (invIdx == INVALID_INVENTORY_INDEX) {
+        return;
+    }
+
+    const int targetSlot = findInventorySlotAtMouse();
+    if (targetSlot < 0) {
+        return;
+    }
+
+    if (EntityDataManager::Instance().swapInventorySlots(
+            invIdx,
+            static_cast<size_t>(m_draggedInventorySourceSlot),
+            static_cast<size_t>(targetSlot))) {
+        if (targetSlot != m_draggedInventorySourceSlot) {
+            m_pendingHotbarAssignment = VoidLight::ResourceHandle{};
+        }
+        refreshInventoryUI();
+    }
 }
 
 int InventoryController::findInventorySlotAtMouse() const {

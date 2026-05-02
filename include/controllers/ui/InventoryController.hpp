@@ -72,6 +72,8 @@ private:
     bool startHotbarAssignment(size_t slotIndex);
     void cancelHotbarAssignment();
     void updateDragGhost(const VoidLight::ResourceHandle& handle, bool visible);
+    bool startInventorySlotDrag(size_t slotIndex);
+    void finishInventorySlotDrag();
     [[nodiscard]] int findInventorySlotAtMouse() const;
     [[nodiscard]] int findHotbarSlotAtMouse() const;
 
@@ -94,8 +96,10 @@ private:
     bool m_draggingHotbarAssignment{false};
     bool m_dragGhostCreated{false};
     int m_draggedHotbarSourceSlot{-1};
+    int m_draggedInventorySourceSlot{-1};
     VoidLight::ResourceHandle m_pendingHotbarAssignment{};
     VoidLight::ResourceHandle m_draggedHotbarAssignment{};
+    VoidLight::ResourceHandle m_draggedInventoryHandle{};
     std::vector<InventoryGridEntry> m_gridEntries;
     std::string m_resourceNameBuffer;
 };

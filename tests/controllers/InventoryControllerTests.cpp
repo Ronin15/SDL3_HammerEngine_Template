@@ -61,6 +61,32 @@ void setLeftMouseDownAt(const UIRect& bounds, bool down) {
     }
 }
 
+bool sameRect(const UIRect& lhs, const UIRect& rhs) {
+    return lhs.x == rhs.x &&
+        lhs.y == rhs.y &&
+        lhs.width == rhs.width &&
+        lhs.height == rhs.height;
+}
+
+size_t findInventorySlotFor(const std::shared_ptr<Player>& player,
+                            const VoidLight::ResourceHandle& handle) {
+    const uint32_t invIdx = player ? player->getInventoryIndex() : INVALID_INVENTORY_INDEX;
+    if (invIdx == INVALID_INVENTORY_INDEX) {
+        return SIZE_MAX;
+    }
+
+    const auto& inv = EntityDataManager::Instance().getInventoryData(invIdx);
+    for (size_t i = 0; i < inv.maxSlots; ++i) {
+        const InventorySlotData slot =
+            EntityDataManager::Instance().getInventorySlot(invIdx, i);
+        if (!slot.isEmpty() && slot.resourceHandle == handle) {
+            return i;
+        }
+    }
+
+    return SIZE_MAX;
+}
+
 } // namespace
 
 class InventoryControllerTestFixture {
@@ -247,7 +273,9 @@ BOOST_AUTO_TEST_CASE(TestInventorySlotClickEquipsAndGearSlotClickUnequips) {
     controller.setInventoryVisible(true);
 
     auto& ui = UIManager::Instance();
-    ui.simulateClick("inventory_slot_0");
+    const size_t chestSlot = findInventorySlotFor(player, chestHandle);
+    BOOST_REQUIRE_NE(chestSlot, SIZE_MAX);
+    ui.simulateClick("inventory_slot_" + std::to_string(chestSlot));
     ui.update(0.016f);
 
     BOOST_CHECK(player->getEquippedItem("chest") == chestHandle);
@@ -298,13 +326,128 @@ BOOST_AUTO_TEST_CASE(TestWeaponInventoryClickStartsHotbarAssignmentInsteadOfEqui
     controller.setInventoryVisible(true);
 
     auto& ui = UIManager::Instance();
-    ui.simulateClick("inventory_slot_0");
+    const size_t daggerSlot = findInventorySlotFor(player, daggerHandle);
+    BOOST_REQUIRE_NE(daggerSlot, SIZE_MAX);
+    ui.simulateClick("inventory_slot_" + std::to_string(daggerSlot));
     ui.update(0.016f);
 
     BOOST_CHECK(!player->getEquippedItem("weapon").isValid());
     BOOST_CHECK_EQUAL(
         EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), daggerHandle),
         1);
+}
+
+BOOST_AUTO_TEST_CASE(TestInventoryDragSwapsOccupiedSlots) {
+    auto ironOreHandle = getResourceHandleById("iron_ore");
+    auto breadHandle = getResourceHandleById("bread");
+    auto manaHandle = getResourceHandleById("mana_elixir");
+    BOOST_REQUIRE(ironOreHandle.isValid());
+    BOOST_REQUIRE(breadHandle.isValid());
+    BOOST_REQUIRE(manaHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(manaHandle, 2));
+    BOOST_REQUIRE(player->addToInventory(breadHandle, 4));
+    BOOST_REQUIRE(player->addToInventory(ironOreHandle, 6));
+
+    auto& ui = UIManager::Instance();
+    ui.onWindowResize(1280, 720);
+
+    HudController hudController(player);
+    hudController.initializeHotbarUI();
+
+    InventoryController inventoryController(player);
+    inventoryController.initializeInventoryUI();
+    inventoryController.setInventoryVisible(true);
+    InputManager::Instance().reset();
+
+    const UIRect sourceBounds = ui.getBounds("inventory_slot_0");
+    const UIRect targetBounds = ui.getBounds("inventory_slot_4");
+    const UIRect sourceRectBefore = ui.getImageSourceRect("inventory_icon_0");
+    const UIRect targetRectBefore = ui.getImageSourceRect("inventory_icon_4");
+    const std::string sourceCountBefore = ui.getText("inventory_count_0");
+    const std::string targetCountBefore = ui.getText("inventory_count_4");
+
+    setLeftMouseDownAt(sourceBounds, true);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    moveMouseTo(targetBounds);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    setLeftMouseDownAt(targetBounds, false);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    BOOST_CHECK(sameRect(ui.getImageSourceRect("inventory_icon_0"), targetRectBefore));
+    BOOST_CHECK(sameRect(ui.getImageSourceRect("inventory_icon_4"), sourceRectBefore));
+    BOOST_CHECK_EQUAL(ui.getText("inventory_count_0"), targetCountBefore);
+    BOOST_CHECK_EQUAL(ui.getText("inventory_count_4"), sourceCountBefore);
+}
+
+BOOST_AUTO_TEST_CASE(TestInventoryDragMovesOccupiedSlotToEmptySlot) {
+    auto& ui = UIManager::Instance();
+    ui.onWindowResize(1280, 720);
+
+    HudController hudController(player);
+    hudController.initializeHotbarUI();
+
+    InventoryController inventoryController(player);
+    inventoryController.initializeInventoryUI();
+    inventoryController.setInventoryVisible(true);
+    InputManager::Instance().reset();
+
+    const UIRect sourceBounds = ui.getBounds("inventory_slot_0");
+    const UIRect targetBounds = ui.getBounds("inventory_slot_4");
+    const UIRect sourceRectBefore = ui.getImageSourceRect("inventory_icon_0");
+    const std::string sourceCountBefore = ui.getText("inventory_count_0");
+
+    BOOST_REQUIRE_EQUAL(ui.getTexture("inventory_icon_4"), "");
+    BOOST_REQUIRE_EQUAL(ui.getText("inventory_count_4"), "");
+
+    setLeftMouseDownAt(sourceBounds, true);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    moveMouseTo(targetBounds);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    setLeftMouseDownAt(targetBounds, false);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    BOOST_CHECK_EQUAL(ui.getTexture("inventory_icon_0"), "");
+    BOOST_CHECK_EQUAL(ui.getText("inventory_count_0"), "");
+    BOOST_CHECK(sameRect(ui.getImageSourceRect("inventory_icon_4"), sourceRectBefore));
+    BOOST_CHECK_EQUAL(ui.getText("inventory_count_4"), sourceCountBefore);
+}
+
+BOOST_AUTO_TEST_CASE(TestInventoryDragDropOutsideLeavesOrderUnchanged) {
+    auto& ui = UIManager::Instance();
+    ui.onWindowResize(1280, 720);
+
+    HudController hudController(player);
+    hudController.initializeHotbarUI();
+
+    InventoryController inventoryController(player);
+    inventoryController.initializeInventoryUI();
+    inventoryController.setInventoryVisible(true);
+    InputManager::Instance().reset();
+
+    const UIRect sourceBounds = ui.getBounds("inventory_slot_0");
+    const UIRect outsideBounds{0, 0, 2, 2};
+    const UIRect sourceRectBefore = ui.getImageSourceRect("inventory_icon_0");
+    const UIRect secondRectBefore = ui.getImageSourceRect("inventory_icon_1");
+    const std::string sourceCountBefore = ui.getText("inventory_count_0");
+    const std::string secondCountBefore = ui.getText("inventory_count_1");
+
+    setLeftMouseDownAt(sourceBounds, true);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    moveMouseTo(outsideBounds);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    setLeftMouseDownAt(outsideBounds, false);
+    inventoryController.handleHotbarAssignmentInput(hudController);
+
+    BOOST_CHECK(sameRect(ui.getImageSourceRect("inventory_icon_0"), sourceRectBefore));
+    BOOST_CHECK(sameRect(ui.getImageSourceRect("inventory_icon_1"), secondRectBefore));
+    BOOST_CHECK_EQUAL(ui.getText("inventory_count_0"), sourceCountBefore);
+    BOOST_CHECK_EQUAL(ui.getText("inventory_count_1"), secondCountBefore);
 }
 
 BOOST_AUTO_TEST_CASE(TestHotbarItemCanBeDraggedToAnotherSlot) {

@@ -1730,6 +1730,38 @@ public:
     getInventoryResources(uint32_t inventoryIndex) const;
 
     /**
+     * @brief Get one ordered physical inventory slot
+     * @param inventoryIndex Target inventory
+     * @param slotIndex Physical slot index in the inventory
+     * @return Slot contents by value, or an empty slot for invalid input/state
+     */
+    [[nodiscard]] InventorySlotData getInventorySlot(uint32_t inventoryIndex,
+                                                     size_t slotIndex) const;
+
+    /**
+     * @brief Copy ordered physical inventory slots into caller-owned storage
+     * @param inventoryIndex Target inventory
+     * @param outSlots Destination span for slots starting at physical slot 0
+     * @return Number of slots copied, or 0 for invalid input/state
+     */
+    [[nodiscard]] size_t getInventorySlots(uint32_t inventoryIndex,
+                                           std::span<InventorySlotData> outSlots) const;
+
+    /**
+     * @brief Swap two ordered physical inventory slots
+     * @param inventoryIndex Target inventory
+     * @param sourceSlot Physical source slot index
+     * @param targetSlot Physical target slot index
+     * @return true when both slots are valid for this inventory, false otherwise
+     *
+     * Swaps storage only. Empty target slots naturally receive the source stack,
+     * and usedSlots remains unchanged because occupancy count does not change.
+     */
+    bool swapInventorySlots(uint32_t inventoryIndex,
+                            size_t sourceSlot,
+                            size_t targetSlot);
+
+    /**
      * @brief Get inventory data by index
      * @param inventoryIndex Target inventory
      * @return Reference to inventory data
