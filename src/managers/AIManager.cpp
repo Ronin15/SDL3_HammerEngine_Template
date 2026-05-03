@@ -196,6 +196,7 @@ void AIManager::clean() {
   m_pendingBehaviorTransitions.clear();
   m_pendingBehaviorMessages.clear();
   m_pendingMeleeFallbackEquips.clear();
+  m_pendingRangedAttacks.clear();
 
   {
     std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
@@ -232,6 +233,7 @@ void AIManager::prepareForStateTransition() {
   m_pendingBehaviorTransitions.clear();
   m_pendingBehaviorMessages.clear();
   m_pendingMeleeFallbackEquips.clear();
+  m_pendingRangedAttacks.clear();
 
   // Batches always complete within update() — no pending futures to wait for.
 
