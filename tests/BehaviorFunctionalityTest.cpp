@@ -734,9 +734,13 @@ BOOST_AUTO_TEST_CASE(TestAttackBehaviorSynchronizesCurrentAttackMode) {
     auto& edm = EntityDataManager::Instance();
 
     auto attacker = TestNPC::create(300.0f, 300.0f);
+    auto target = TestNPC::create(360.0f, 300.0f);
     const EntityHandle attackerHandle = attacker->getHandle();
+    const EntityHandle targetHandle = target->getHandle();
     const size_t attackerIdx = edm.getIndex(attackerHandle);
+    const size_t targetIdx = edm.getIndex(targetHandle);
     BOOST_REQUIRE(attackerIdx != SIZE_MAX);
+    BOOST_REQUIRE(targetIdx != SIZE_MAX);
 
     AIManager::Instance().assignBehavior(attackerHandle, "Attack");
     const auto ref = edm.getBehaviorConfigRef(attackerIdx);
@@ -746,6 +750,8 @@ BOOST_AUTO_TEST_CASE(TestAttackBehaviorSynchronizesCurrentAttackMode) {
     attackConfig.attackMode = 0;
     auto& attackState = edm.getAttackState(ref.index);
     attackState.attackMode = 1;
+    attackState.hasExplicitTarget = true;
+    attackState.explicitTarget = targetHandle;
 
     auto& hotData = edm.getHotDataByIndex(attackerIdx);
     auto& memoryData = edm.getMemoryData(attackerIdx);
