@@ -10,11 +10,13 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
+#include "entities/resources/EquipmentResources.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/GameTimeManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "utils/SIMDMath.hpp"
 #include <array>
 #include <algorithm>
@@ -35,6 +37,7 @@ struct PendingBehaviorMessageCandidate {
 };
 
 constexpr size_t MAX_COMPACTED_BEHAVIOR_MESSAGES = 16;
+constexpr float NPC_PROJECTILE_SPAWN_OFFSET = 20.0f;
 
 void sortPendingBehaviorCandidates(
     std::array<PendingBehaviorMessageCandidate,
@@ -70,6 +73,58 @@ void upsertPendingBehaviorCandidate(
   if (count < candidates.size()) {
     candidates[count++] = candidate;
   }
+}
+
+bool equipFirstAvailableMeleeWeapon(EntityDataManager& edm, EntityHandle handle) {
+  if (!handle.isValid() || !handle.hasHealth()) {
+    return false;
+  }
+
+  const size_t idx = edm.getIndex(handle);
+  if (idx == SIZE_MAX) {
+    return false;
+  }
+
+  const auto& charData = edm.getCharacterDataByIndex(idx);
+  if (!charData.hasInventory()) {
+    return false;
+  }
+
+  const size_t maxSlots = edm.getInventoryData(charData.inventoryIndex).maxSlots;
+  auto& resourceManager = ResourceTemplateManager::Instance();
+  for (size_t slot = 0; slot < maxSlots; ++slot) {
+    const InventorySlotData inventorySlot =
+        edm.getInventorySlot(charData.inventoryIndex, slot);
+    if (inventorySlot.isEmpty()) {
+      continue;
+    }
+
+    auto resourceTemplate =
+        resourceManager.getResourceTemplate(inventorySlot.resourceHandle);
+    const auto equipment =
+        std::dynamic_pointer_cast<Equipment>(resourceTemplate);
+    if (!equipment ||
+        equipment->getEquipmentSlot() != Equipment::EquipmentSlot::Weapon ||
+        equipment->getWeaponMode() != Equipment::WeaponMode::Melee) {
+      continue;
+    }
+
+    return edm.equipCharacterItem(handle, inventorySlot.resourceHandle);
+  }
+
+  return false;
+}
+
+void dispatchResourceChange(EntityHandle ownerHandle,
+                            const InventoryResourceChange& change,
+                            const std::string& reason) {
+  if (!change.isValid()) {
+    return;
+  }
+
+  EventManager::Instance().triggerResourceChange(
+      ownerHandle, change.resourceHandle, change.oldQuantity,
+      change.newQuantity, reason);
 }
 
 } // namespace
@@ -449,6 +504,7 @@ void AIManager::update(float deltaTime) {
         entityCount, frameShouldThread, totalBatchCount, totalUpdateTime);
 
     // Commit commands emitted by worker threads during this frame's batches.
+    commitQueuedRangedAttacks();
     commitQueuedMeleeFallbackEquips();
     commitQueuedBehaviorTransitions();
     commitQueuedBehaviorMessages();
@@ -1122,13 +1178,67 @@ void AIManager::commitQueuedMeleeFallbackEquips() {
       const size_t resolvedEdmIndex = edm.getIndex(cmd.targetHandle);
       if (resolvedEdmIndex != SIZE_MAX && resolvedEdmIndex == edmIndex) {
         const bool equippedFallback =
-            edm.equipFirstAvailableMeleeWeapon(cmd.targetHandle);
+            equipFirstAvailableMeleeWeapon(edm, cmd.targetHandle);
         AI_DEBUG_IF(!equippedFallback,
                     "No melee fallback weapon available for ranged attacker");
       }
     }
 
     i = runEnd;
+  }
+}
+
+void AIManager::commitQueuedRangedAttacks() {
+  VoidLight::AICommandBus::Instance().drainRangedAttacks(m_pendingRangedAttacks);
+  if (m_pendingRangedAttacks.empty()) {
+    return;
+  }
+
+  auto& edm = EntityDataManager::Instance();
+  std::sort(m_pendingRangedAttacks.begin(), m_pendingRangedAttacks.end(),
+            [](const auto& lhs, const auto& rhs) {
+              if (lhs.attackerEdmIndex != rhs.attackerEdmIndex) {
+                return lhs.attackerEdmIndex < rhs.attackerEdmIndex;
+              }
+              return lhs.sequence < rhs.sequence;
+            });
+
+  for (const auto& cmd : m_pendingRangedAttacks) {
+    if (!cmd.attackerHandle.isValid() || cmd.projectileSpeed <= 0.0f) {
+      continue;
+    }
+
+    const size_t resolvedEdmIndex = edm.getIndex(cmd.attackerHandle);
+    if (resolvedEdmIndex == SIZE_MAX ||
+        resolvedEdmIndex != cmd.attackerEdmIndex) {
+      continue;
+    }
+
+    Vector2D direction = cmd.targetPos - cmd.attackerPos;
+    const float dist = direction.length();
+    if (dist < 1.0f) {
+      continue;
+    }
+    direction = direction * (1.0f / dist);
+
+    InventoryResourceChange ammoChange{};
+    if (!edm.consumeRequiredAmmoForRangedAttack(cmd.attackerHandle,
+                                                &ammoChange)) {
+      const bool equippedFallback =
+          equipFirstAvailableMeleeWeapon(edm, cmd.attackerHandle);
+      AI_DEBUG_IF(!equippedFallback,
+                  "No melee fallback weapon available for ranged attacker");
+      continue;
+    }
+
+    dispatchResourceChange(cmd.attackerHandle, ammoChange, "ammo_consumed");
+
+    const Vector2D spawnPos =
+        cmd.attackerPos + direction * NPC_PROJECTILE_SPAWN_OFFSET;
+    const Vector2D velocity = direction * cmd.projectileSpeed;
+    const float lifetime = (cmd.attackRange / cmd.projectileSpeed) + 0.5f;
+    edm.createProjectile(spawnPos, velocity, cmd.attackerHandle,
+                         cmd.damage, lifetime);
   }
 }
 

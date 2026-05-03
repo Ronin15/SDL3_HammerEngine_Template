@@ -24,6 +24,55 @@
 
 #include <algorithm>
 #include <format>
+#include <unordered_map>
+#include <vector>
+
+namespace {
+
+using ResourceQuantitySnapshot =
+    std::unordered_map<VoidLight::ResourceHandle, int>;
+
+void addTrackedResource(ResourceQuantitySnapshot& snapshot,
+                        EntityDataManager& edm,
+                        uint32_t inventoryIndex,
+                        VoidLight::ResourceHandle handle) {
+  if (!handle.isValid() || snapshot.contains(handle)) {
+    return;
+  }
+
+  snapshot.emplace(handle, edm.getInventoryQuantity(inventoryIndex, handle));
+}
+
+ResourceQuantitySnapshot collectInventoryResourceSnapshot(
+    EntityDataManager& edm,
+    EntityHandle ownerHandle,
+    uint32_t inventoryIndex,
+    VoidLight::ResourceHandle explicitHandle) {
+  ResourceQuantitySnapshot snapshot;
+  if (!edm.isValidInventoryIndex(inventoryIndex)) {
+    return snapshot;
+  }
+
+  addTrackedResource(snapshot, edm, inventoryIndex, explicitHandle);
+
+  const size_t maxSlots = edm.getInventoryData(inventoryIndex).maxSlots;
+  std::vector<InventorySlotData> slots(maxSlots);
+  const size_t slotCount = edm.getInventorySlots(inventoryIndex, slots);
+  for (size_t i = 0; i < slotCount; ++i) {
+    addTrackedResource(snapshot, edm, inventoryIndex, slots[i].resourceHandle);
+  }
+
+  if (ownerHandle.isValid() && ownerHandle.hasHealth()) {
+    const auto& charData = edm.getCharacterData(ownerHandle);
+    for (const auto& equippedHandle : charData.equippedItems) {
+      addTrackedResource(snapshot, edm, inventoryIndex, equippedHandle);
+    }
+  }
+
+  return snapshot;
+}
+
+} // namespace
 
 Player::Player() : Entity() {
   // Register with EntityDataManager FIRST - data must exist before any state
@@ -406,9 +455,9 @@ void Player::initializeInventory() {
     PLAYER_WARN("Player::initializeInventory - gold_coins resource not found");
   }
 
-  auto healthPotionResource = templateManager.getResourceByName("health_potion");
-  if (healthPotionResource) {
-    edm.addToInventory(m_inventoryIndex, healthPotionResource->getHandle(), 3);
+  const auto healthPotionHandle = templateManager.getHandleById("health_potion");
+  if (healthPotionHandle.isValid()) {
+    edm.addToInventory(m_inventoryIndex, healthPotionHandle, 3);
   }
 
   PLAYER_DEBUG(std::format("Player EDM inventory initialized with index {}", m_inventoryIndex));
@@ -513,11 +562,59 @@ float Player::getMovementSpeed() const {
 
 // Equipment management
 bool Player::equipItem(VoidLight::ResourceHandle itemHandle) {
-  return EntityDataManager::Instance().equipCharacterItem(m_handle, itemHandle);
+  auto& edm = EntityDataManager::Instance();
+  const auto before = collectInventoryResourceSnapshot(
+      edm, m_handle, m_inventoryIndex, itemHandle);
+  const bool result = edm.equipCharacterItem(m_handle, itemHandle);
+  if (!result) {
+    return false;
+  }
+
+  const auto after = collectInventoryResourceSnapshot(
+      edm, m_handle, m_inventoryIndex, itemHandle);
+  for (const auto& [handle, oldQuantity] : before) {
+    const auto afterIt = after.find(handle);
+    const int newQuantity =
+        afterIt != after.end() ? afterIt->second : 0;
+    if (oldQuantity != newQuantity) {
+      onResourceChanged(handle, oldQuantity, newQuantity);
+    }
+  }
+  for (const auto& [handle, newQuantity] : after) {
+    if (!before.contains(handle) && newQuantity != 0) {
+      onResourceChanged(handle, 0, newQuantity);
+    }
+  }
+  return true;
 }
 
 bool Player::unequipItem(const std::string &slotName) {
-  return EntityDataManager::Instance().unequipCharacterItem(m_handle, slotName);
+  auto& edm = EntityDataManager::Instance();
+  const VoidLight::ResourceHandle equippedHandle =
+      edm.getEquippedCharacterItem(m_handle, slotName);
+  const auto before = collectInventoryResourceSnapshot(
+      edm, m_handle, m_inventoryIndex, equippedHandle);
+  const bool result = edm.unequipCharacterItem(m_handle, slotName);
+  if (!result) {
+    return false;
+  }
+
+  const auto after = collectInventoryResourceSnapshot(
+      edm, m_handle, m_inventoryIndex, equippedHandle);
+  for (const auto& [handle, oldQuantity] : before) {
+    const auto afterIt = after.find(handle);
+    const int newQuantity =
+        afterIt != after.end() ? afterIt->second : 0;
+    if (oldQuantity != newQuantity) {
+      onResourceChanged(handle, oldQuantity, newQuantity);
+    }
+  }
+  for (const auto& [handle, newQuantity] : after) {
+    if (!before.contains(handle) && newQuantity != 0) {
+      onResourceChanged(handle, 0, newQuantity);
+    }
+  }
+  return true;
 }
 
 VoidLight::ResourceHandle

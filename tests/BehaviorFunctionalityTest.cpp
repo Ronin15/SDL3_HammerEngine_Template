@@ -14,6 +14,7 @@
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "ai/BehaviorExecutors.hpp"
 #include "core/ThreadSystem.hpp"
 #include "events/EntityEvents.hpp"
@@ -105,6 +106,7 @@ struct BehaviorTestFixture {
         // Initialize managers in proper order (matches CollisionPathfindingIntegrationTests)
         GameTimeManager::Instance().init();  // Required for combat timing in behaviors
         EventManager::Instance().init();
+        BOOST_REQUIRE(ResourceTemplateManager::Instance().init());
         WorldManager::Instance().init();
         BOOST_REQUIRE(EntityDataManager::Instance().init());
         CollisionManager::Instance().init();
@@ -175,6 +177,7 @@ struct BehaviorTestFixture {
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
         EntityDataManager::Instance().clean();
+        ResourceTemplateManager::Instance().clean();
         WorldManager::Instance().clean();
         EventManager::Instance().clean();
         // ThreadSystem persists across tests

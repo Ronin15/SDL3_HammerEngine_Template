@@ -187,7 +187,7 @@ private:
   bool registerResourceTemplateInternal(const ResourcePtr &resource);
 
   // Default resource creation
-  void createDefaultResources();
+  [[nodiscard]] bool createDefaultResources();
 };
 
 #endif // RESOURCE_TEMPLATE_MANAGER_HPP

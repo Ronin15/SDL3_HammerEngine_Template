@@ -2472,8 +2472,12 @@ EntityDataManager::findCompatibleAmmo(uint32_t inventoryIndex,
     return VoidLight::ResourceHandle{};
 }
 
-bool EntityDataManager::consumeRequiredAmmoForRangedAttack(EntityHandle handle)
+bool EntityDataManager::consumeRequiredAmmoForRangedAttack(
+    EntityHandle handle, InventoryResourceChange* outChange)
 {
+    if (outChange) {
+        *outChange = InventoryResourceChange{};
+    }
     if (!handle.isValid() || !handle.hasHealth()) {
         return false;
     }
@@ -2514,48 +2518,15 @@ bool EntityDataManager::consumeRequiredAmmoForRangedAttack(EntityHandle handle)
         return false;
     }
 
-    return removeFromInventory(charData.inventoryIndex, ammoHandle, 1);
-}
-
-bool EntityDataManager::equipFirstAvailableMeleeWeapon(EntityHandle handle)
-{
-    if (!handle.isValid() || !handle.hasHealth()) {
+    const int oldQuantity = getInventoryQuantity(charData.inventoryIndex, ammoHandle);
+    if (!removeFromInventory(charData.inventoryIndex, ammoHandle, 1)) {
         return false;
     }
-
-    const size_t idx = getIndex(handle);
-    if (idx == SIZE_MAX) {
-        return false;
+    if (outChange) {
+        *outChange = InventoryResourceChange{ammoHandle, oldQuantity,
+                                             oldQuantity - 1};
     }
-
-    const auto& charData = getCharacterDataByIndex(idx);
-    if (!charData.hasInventory()) {
-        return false;
-    }
-
-    const size_t maxSlots = getInventoryData(charData.inventoryIndex).maxSlots;
-    for (size_t slot = 0; slot < maxSlots; ++slot) {
-        const InventorySlotData inventorySlot =
-            getInventorySlot(charData.inventoryIndex, slot);
-        if (inventorySlot.isEmpty()) {
-            continue;
-        }
-
-        auto resourceTemplate =
-            ResourceTemplateManager::Instance().getResourceTemplate(
-                inventorySlot.resourceHandle);
-        const auto equipment =
-            std::dynamic_pointer_cast<Equipment>(resourceTemplate);
-        if (!equipment ||
-            equipment->getEquipmentSlot() != Equipment::EquipmentSlot::Weapon ||
-            equipment->getWeaponMode() != Equipment::WeaponMode::Melee) {
-            continue;
-        }
-
-        return equipCharacterItem(handle, inventorySlot.resourceHandle);
-    }
-
-    return false;
+    return true;
 }
 
 float EntityDataManager::getEffectiveAttackDamage(EntityHandle handle) const

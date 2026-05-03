@@ -204,8 +204,6 @@ void applyDamageToTarget(EntityHandle targetHandle, float damage, const Vector2D
     t_deferredDamageEvents.push_back({EventTypeId::Combat, std::move(eventData)});
 }
 
-constexpr float NPC_PROJECTILE_SPAWN_OFFSET = 20.0f;
-
 bool fireProjectile(const Vector2D& attackerPos, const Vector2D& targetPos,
                     EntityHandle attackerHandle, float damage,
                     float attackRange, float projectileSpeed) {
@@ -213,25 +211,19 @@ bool fireProjectile(const Vector2D& attackerPos, const Vector2D& targetPos,
     if (projectileSpeed <= 0.0f) {
         return false;
     }
-    if (!edm.consumeRequiredAmmoForRangedAttack(attackerHandle)) {
-        const size_t attackerIndex = edm.getIndex(attackerHandle);
-        if (attackerIndex != SIZE_MAX) {
-            VoidLight::AICommandBus::Instance().enqueueMeleeFallbackEquip(
-                attackerHandle, attackerIndex);
-        }
-        return false;
-    }
 
     Vector2D direction = targetPos - attackerPos;
     float dist = direction.length();
     if (dist < 1.0f) return false;
-    direction = direction * (1.0f / dist);
 
-    Vector2D spawnPos = attackerPos + direction * NPC_PROJECTILE_SPAWN_OFFSET;
-    Vector2D velocity = direction * projectileSpeed;
-    float lifetime = (attackRange / projectileSpeed) + 0.5f;
+    const size_t attackerIndex = edm.getIndex(attackerHandle);
+    if (attackerIndex == SIZE_MAX) {
+        return false;
+    }
 
-    edm.createProjectile(spawnPos, velocity, attackerHandle, damage, lifetime);
+    VoidLight::AICommandBus::Instance().enqueueRangedAttack(
+        attackerHandle, attackerIndex, attackerPos, targetPos, damage,
+        attackRange, projectileSpeed);
     return true;
 }
 

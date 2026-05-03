@@ -97,6 +97,21 @@ BOOST_AUTO_TEST_CASE(TestDefaultCatalogsLoadSplitEquipment) {
   BOOST_REQUIRE(ale != nullptr);
   BOOST_CHECK_EQUAL(static_cast<int>(ale->getEffect()),
                     static_cast<int>(Consumable::ConsumableEffect::RestoreStamina));
+
+  BOOST_CHECK_EQUAL(resourceManager->getResourceTemplateCount(), 58U);
+}
+
+BOOST_AUTO_TEST_CASE(TestUnmappedResourceTexturesDoNotSampleDefaultAtlasTile) {
+  auto healthPotion = resourceManager->getResourceById("health_potion");
+  BOOST_REQUIRE(healthPotion != nullptr);
+  BOOST_CHECK_GT(healthPotion->getAtlasW(), 0);
+  BOOST_CHECK_GT(healthPotion->getAtlasH(), 0);
+
+  auto bow = resourceManager->getResourceById("bow");
+  BOOST_REQUIRE(bow != nullptr);
+  BOOST_CHECK_EQUAL(bow->getIconTextureId(), "bow_icon");
+  BOOST_CHECK_EQUAL(bow->getAtlasW(), 0);
+  BOOST_CHECK_EQUAL(bow->getAtlasH(), 0);
 }
 
 BOOST_AUTO_TEST_CASE(TestLoadValidJsonString) {

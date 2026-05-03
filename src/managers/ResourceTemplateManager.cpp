@@ -71,6 +71,12 @@ bool ResourceTemplateManager::init() {
     m_resourceTemplates.clear();
     m_categoryIndex.clear();
     m_typeIndex.clear();
+    m_maxStackSizes.clear();
+    m_values.clear();
+    m_categories.clear();
+    m_types.clear();
+    m_nameIndex.clear();
+    m_idIndex.clear();
 
     // PERFORMANCE OPTIMIZATION: Reserve capacity to avoid hashtable rehashing
     const size_t expectedResourceCount = 100; // Adjust based on typical usage
@@ -95,8 +101,19 @@ bool ResourceTemplateManager::init() {
     // Initialize ResourceFactory
     ResourceFactory::initialize();
 
-    // Create default resources
-    createDefaultResources();
+    if (!createDefaultResources()) {
+      RESOURCE_ERROR("ResourceTemplateManager::init - Failed to load default resource catalogs");
+      m_resourceTemplates.clear();
+      m_categoryIndex.clear();
+      m_typeIndex.clear();
+      m_maxStackSizes.clear();
+      m_values.clear();
+      m_categories.clear();
+      m_types.clear();
+      m_nameIndex.clear();
+      m_idIndex.clear();
+      return false;
+    }
 
     m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false; // Reset shutdown flag on successful init
@@ -764,7 +781,7 @@ bool ResourceTemplateManager::checkForDuplicateName(
   return false;
 }
 
-void ResourceTemplateManager::createDefaultResources() {
+bool ResourceTemplateManager::createDefaultResources() {
   RESOURCE_INFO(
       "ResourceTemplateManager::createDefaultResources - Creating default "
       "resource templates");
@@ -775,14 +792,20 @@ void ResourceTemplateManager::createDefaultResources() {
     constexpr std::array<std::string_view, 5> resourceCatalogs{
         "items.json", "weapons.json", "equipment.json", "materials.json",
         "currency.json"};
+    bool allCatalogsLoaded = true;
     for (std::string_view catalog : resourceCatalogs) {
       const std::string catalogPath = VoidLight::ResourcePath::resolve(
           std::format("res/data/{}", catalog));
       const bool catalogLoaded = loadResourcesFromJson(catalogPath);
+      allCatalogsLoaded = allCatalogsLoaded && catalogLoaded;
 
       RESOURCE_WARN_IF(!catalogLoaded,
           std::format("ResourceTemplateManager::createDefaultResources - "
                       "Failed to load {}", catalog));
+    }
+
+    if (!allCatalogsLoaded) {
+      return false;
     }
 
     // Apply atlas coordinates from atlas.json (following WorldManager pattern)
@@ -816,10 +839,12 @@ void ResourceTemplateManager::createDefaultResources() {
 
     RESOURCE_INFO("ResourceTemplateManager::createDefaultResources - Default "
                   "resources loaded from JSON files");
+    return true;
   } catch (const std::exception &ex) {
     RESOURCE_ERROR(
         "ResourceTemplateManager::createDefaultResources - Exception: " +
         std::string(ex.what()));
+    return false;
   }
 }
 

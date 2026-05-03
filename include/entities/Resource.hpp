@@ -150,8 +150,8 @@ protected:
   // Atlas coordinates (for sprite atlas rendering)
   int m_atlasX{0};                       // X offset in atlas
   int m_atlasY{0};                       // Y offset in atlas
-  int m_atlasW{16};                      // Width in atlas
-  int m_atlasH{16};                      // Height in atlas
+  int m_atlasW{0};                       // Width in atlas (0 = unmapped)
+  int m_atlasH{0};                       // Height in atlas (0 = unmapped)
 };
 
 #endif // RESOURCE_HPP

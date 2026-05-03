@@ -6,16 +6,70 @@
 #include "controllers/combat/CombatController.hpp"
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
+#include "entities/resources/EquipmentResources.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include <format>
 
 namespace {
 constexpr const char* EVENT_LOG = "event_log";
 constexpr float PLAYER_PROJECTILE_SPAWN_OFFSET = 20.0f;
+
+bool equipFirstAvailableMeleeWeapon(EntityDataManager& edm, EntityHandle handle) {
+  if (!handle.isValid() || !handle.hasHealth()) {
+    return false;
+  }
+
+  const size_t idx = edm.getIndex(handle);
+  if (idx == SIZE_MAX) {
+    return false;
+  }
+
+  const auto& charData = edm.getCharacterDataByIndex(idx);
+  if (!charData.hasInventory()) {
+    return false;
+  }
+
+  const size_t maxSlots = edm.getInventoryData(charData.inventoryIndex).maxSlots;
+  auto& resourceManager = ResourceTemplateManager::Instance();
+  for (size_t slot = 0; slot < maxSlots; ++slot) {
+    const InventorySlotData inventorySlot =
+        edm.getInventorySlot(charData.inventoryIndex, slot);
+    if (inventorySlot.isEmpty()) {
+      continue;
+    }
+
+    auto resourceTemplate =
+        resourceManager.getResourceTemplate(inventorySlot.resourceHandle);
+    const auto equipment =
+        std::dynamic_pointer_cast<Equipment>(resourceTemplate);
+    if (!equipment ||
+        equipment->getEquipmentSlot() != Equipment::EquipmentSlot::Weapon ||
+        equipment->getWeaponMode() != Equipment::WeaponMode::Melee) {
+      continue;
+    }
+
+    return edm.equipCharacterItem(handle, inventorySlot.resourceHandle);
+  }
+
+  return false;
+}
+
+void dispatchResourceChange(EntityHandle ownerHandle,
+                            const InventoryResourceChange& change,
+                            const std::string& reason) {
+  if (!change.isValid()) {
+    return;
+  }
+
+  EventManager::Instance().triggerResourceChange(
+      ownerHandle, change.resourceHandle, change.oldQuantity,
+      change.newQuantity, reason);
+}
 }
 
 void CombatController::subscribe() {
@@ -112,14 +166,16 @@ bool CombatController::performAttack(Player *player) {
       return false;
     }
 
-    if (!edm.consumeRequiredAmmoForRangedAttack(playerHandle)) {
-      if (!edm.equipFirstAvailableMeleeWeapon(playerHandle)) {
+    InventoryResourceChange ammoChange{};
+    if (!edm.consumeRequiredAmmoForRangedAttack(playerHandle, &ammoChange)) {
+      if (!equipFirstAvailableMeleeWeapon(edm, playerHandle)) {
         COMBAT_INFO("Player has no compatible ammunition or melee fallback weapon");
         UIManager::Instance().addEventLogEntry(EVENT_LOG, "No ammunition!");
         return false;
       }
       activeCharData = edm.getCharacterData(playerHandle);
     } else {
+      dispatchResourceChange(playerHandle, ammoChange, "ammo_consumed");
       const Vector2D direction(attackDirX, 0.0f);
       const Vector2D spawnPos =
           playerPos + direction * PLAYER_PROJECTILE_SPAWN_OFFSET;

@@ -487,6 +487,16 @@ struct InventoryOverflow {
     void clear() noexcept { extraSlots.clear(); }
 };
 
+struct InventoryResourceChange {
+    VoidLight::ResourceHandle resourceHandle{};
+    int oldQuantity{0};
+    int newQuantity{0};
+
+    [[nodiscard]] bool isValid() const noexcept {
+        return resourceHandle.isValid() && oldQuantity != newQuantity;
+    }
+};
+
 /**
  * @brief Area effect data for AoE zones (spell effects, traps)
  */
@@ -1689,23 +1699,15 @@ public:
     getEquippedCharacterItem(EntityHandle handle, const std::string& slotName) const;
 
     /**
-     * @brief Auto-equip valid equipment already present in a character inventory.
-     */
-    bool autoEquipCharacterEquipment(EntityHandle handle);
-
-    /**
      * @brief Consume one compatible ammunition item for a ranged equipped weapon.
      *
      * Ranged weapons with no ammo requirement return true. Weapons that require
      * ammo scan the owning inventory's physical slots in order and remove one
      * matching ammunition item.
      */
-    [[nodiscard]] bool consumeRequiredAmmoForRangedAttack(EntityHandle handle);
-
-    /**
-     * @brief Equip the first melee weapon found in physical inventory order.
-     */
-    [[nodiscard]] bool equipFirstAvailableMeleeWeapon(EntityHandle handle);
+    [[nodiscard]] bool
+    consumeRequiredAmmoForRangedAttack(EntityHandle handle,
+                                       InventoryResourceChange* outChange);
 
     [[nodiscard]] float getEffectiveAttackDamage(EntityHandle handle) const;
     [[nodiscard]] float getEffectiveDefense(EntityHandle handle) const;
@@ -2700,6 +2702,7 @@ private:
 
     // Helper for faction-based collision layers
     void applyFactionCollision(size_t index, uint8_t faction);
+    bool autoEquipCharacterEquipment(EntityHandle handle);
     void recalculateCharacterEquipmentStats(uint32_t characterIndex);
     [[nodiscard]] VoidLight::ResourceHandle
     findCompatibleAmmo(uint32_t inventoryIndex, std::string_view ammoType) const;
