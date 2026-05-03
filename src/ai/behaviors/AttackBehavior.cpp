@@ -4,6 +4,7 @@
  */
 
 #include "ai/BehaviorExecutors.hpp"
+#include "ai/AICommandBus.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -205,13 +206,25 @@ void applyDamageToTarget(EntityHandle targetHandle, float damage, const Vector2D
 
 constexpr float NPC_PROJECTILE_SPAWN_OFFSET = 20.0f;
 
-void fireProjectile(const Vector2D& attackerPos, const Vector2D& targetPos,
+bool fireProjectile(const Vector2D& attackerPos, const Vector2D& targetPos,
                     EntityHandle attackerHandle, float damage,
                     float attackRange, float projectileSpeed) {
     auto& edm = EntityDataManager::Instance();
+    if (projectileSpeed <= 0.0f) {
+        return false;
+    }
+    if (!edm.consumeRequiredAmmoForRangedAttack(attackerHandle)) {
+        const size_t attackerIndex = edm.getIndex(attackerHandle);
+        if (attackerIndex != SIZE_MAX) {
+            VoidLight::AICommandBus::Instance().enqueueMeleeFallbackEquip(
+                attackerHandle, attackerIndex);
+        }
+        return false;
+    }
+
     Vector2D direction = targetPos - attackerPos;
     float dist = direction.length();
-    if (dist < 1.0f) return;
+    if (dist < 1.0f) return false;
     direction = direction * (1.0f / dist);
 
     Vector2D spawnPos = attackerPos + direction * NPC_PROJECTILE_SPAWN_OFFSET;
@@ -219,6 +232,7 @@ void fireProjectile(const Vector2D& attackerPos, const Vector2D& targetPos,
     float lifetime = (attackRange / projectileSpeed) + 0.5f;
 
     edm.createProjectile(spawnPos, velocity, attackerHandle, damage, lifetime);
+    return true;
 }
 
 void moveToPosition(BehaviorContext& ctx, const Vector2D& targetPos, float speed) {
@@ -340,12 +354,15 @@ void executeAttackAction(BehaviorContext& ctx, VoidLight::AttackStateData& attac
     if (!targetHandle.isValid()) return;
 
     AttackMode mode = static_cast<AttackMode>(attack.attackMode);
+    bool attackResolved = false;
     if (mode == AttackMode::RANGED) {
-        fireProjectile(entityPos, targetPos, attackerHandle, damage,
-                       config.attackRange, config.projectileSpeed);
+        attackResolved = fireProjectile(entityPos, targetPos, attackerHandle, damage,
+                                        config.attackRange, config.projectileSpeed);
     } else {
         applyDamageToTarget(targetHandle, damage, knockback, attackerHandle);
+        attackResolved = true;
     }
+    if (!attackResolved) return;
 
     if (ctx.characterData.faction > 1) {
         size_t targetIdx = edm.getIndex(targetHandle);
@@ -713,8 +730,9 @@ void executeAttack(BehaviorContext& ctx, const VoidLight::AttackBehaviorConfig& 
                     EntityHandle attackerHandle = edm.getHandle(ctx.edmIndex);
                     AttackMode specialMode = static_cast<AttackMode>(attack.attackMode);
                     if (specialMode == AttackMode::RANGED) {
-                        fireProjectile(entityPos, targetPos, attackerHandle, specialDamage,
-                                       config.attackRange, config.projectileSpeed);
+                        static_cast<void>(fireProjectile(entityPos, targetPos, attackerHandle,
+                                                         specialDamage, config.attackRange,
+                                                         config.projectileSpeed));
                     } else {
                         applyDamageToTarget(targetHandle, specialDamage, knockback, attackerHandle);
 

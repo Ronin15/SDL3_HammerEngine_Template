@@ -8,6 +8,8 @@
 
 #include "entities/Resource.hpp"
 
+#include <string>
+
 /**
  * @brief Base class for all item resources (equipment, consumables, quest
  * items)
@@ -91,6 +93,22 @@ public:
 
 private:
   std::string m_questId{""}; // Associated quest ID (empty = general quest item)
+};
+
+/**
+ * @brief Ammunition items consumed by compatible ranged weapons
+ */
+class Ammunition : public Item {
+public:
+  Ammunition(VoidLight::ResourceHandle handle, const std::string &id,
+             const std::string &name, const std::string &ammoType);
+  ~Ammunition() override = default;
+
+  const std::string &getAmmoType() const { return m_ammoType; }
+  void setAmmoType(const std::string &ammoType) { m_ammoType = ammoType; }
+
+private:
+  std::string m_ammoType;
 };
 
 #endif // ITEM_RESOURCES_HPP

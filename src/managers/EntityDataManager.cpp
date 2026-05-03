@@ -679,6 +679,7 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     charData.attackDamage = raceInfo.baseAttackDamage * classInfo.attackDamageMult;
     charData.baseAttackDamage = charData.attackDamage;
     charData.attackRange = raceInfo.baseAttackRange * classInfo.attackRangeMult;
+    charData.baseAttackRange = charData.attackRange;
     charData.moveSpeed = raceInfo.baseMoveSpeed * classInfo.moveSpeedMult;
     charData.baseMoveSpeed = charData.moveSpeed;
     charData.priority = classInfo.basePriority;
@@ -687,7 +688,9 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     charData.combatStyle = (classInfo.combatStyle == "ranged")
         ? CharacterData::CombatStyle::Ranged
         : CharacterData::CombatStyle::Melee;
+    charData.baseCombatStyle = charData.combatStyle;
     charData.projectileSpeed = classInfo.projectileSpeed;
+    charData.baseProjectileSpeed = charData.projectileSpeed;
     charData.mass = raceInfo.sizeMultiplier * raceInfo.sizeMultiplier;  // Mass scales with area
 
     // Apply faction-based collision layers
@@ -812,6 +815,7 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
     charData.attackDamage = typeInfo.baseAttackDamage * variantInfo.attackDamageMult;
     charData.baseAttackDamage = charData.attackDamage;
     charData.attackRange = typeInfo.baseAttackRange * variantInfo.attackRangeMult;
+    charData.baseAttackRange = charData.attackRange;
     charData.moveSpeed = typeInfo.baseMoveSpeed * variantInfo.moveSpeedMult;
     charData.baseMoveSpeed = charData.moveSpeed;
     charData.priority = variantInfo.basePriority;
@@ -911,6 +915,7 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
     charData.attackDamage = speciesInfo.baseAttackDamage * roleInfo.attackDamageMult;
     charData.baseAttackDamage = charData.attackDamage;
     charData.attackRange = speciesInfo.baseAttackRange;  // Animals don't have range multiplier
+    charData.baseAttackRange = charData.attackRange;
     charData.moveSpeed = speciesInfo.baseMoveSpeed * roleInfo.moveSpeedMult;
     charData.baseMoveSpeed = charData.moveSpeed;
     charData.priority = roleInfo.basePriority;
@@ -2439,6 +2444,120 @@ bool EntityDataManager::autoEquipCharacterEquipment(EntityHandle handle)
     return equippedAny;
 }
 
+VoidLight::ResourceHandle
+EntityDataManager::findCompatibleAmmo(uint32_t inventoryIndex,
+                                      std::string_view ammoType) const
+{
+    if (ammoType.empty() || !isValidInventoryIndex(inventoryIndex)) {
+        return VoidLight::ResourceHandle{};
+    }
+
+    const size_t maxSlots = getInventoryData(inventoryIndex).maxSlots;
+    for (size_t slot = 0; slot < maxSlots; ++slot) {
+        const InventorySlotData inventorySlot = getInventorySlot(inventoryIndex, slot);
+        if (inventorySlot.isEmpty()) {
+            continue;
+        }
+
+        auto resourceTemplate =
+            ResourceTemplateManager::Instance().getResourceTemplate(
+                inventorySlot.resourceHandle);
+        const auto ammunition =
+            std::dynamic_pointer_cast<Ammunition>(resourceTemplate);
+        if (ammunition && ammunition->getAmmoType() == ammoType) {
+            return inventorySlot.resourceHandle;
+        }
+    }
+
+    return VoidLight::ResourceHandle{};
+}
+
+bool EntityDataManager::consumeRequiredAmmoForRangedAttack(EntityHandle handle)
+{
+    if (!handle.isValid() || !handle.hasHealth()) {
+        return false;
+    }
+
+    const size_t idx = getIndex(handle);
+    if (idx == SIZE_MAX) {
+        return false;
+    }
+
+    const auto& charData = getCharacterDataByIndex(idx);
+    const auto weaponSlotIndex =
+        Equipment::equipmentSlotIndex(Equipment::EquipmentSlot::Weapon);
+    if (!weaponSlotIndex.has_value()) {
+        return true;
+    }
+
+    const VoidLight::ResourceHandle weaponHandle =
+        charData.equippedItems[*weaponSlotIndex];
+    if (!weaponHandle.isValid()) {
+        return true;
+    }
+
+    auto resourceTemplate =
+        ResourceTemplateManager::Instance().getResourceTemplate(weaponHandle);
+    const auto weapon = std::dynamic_pointer_cast<Equipment>(resourceTemplate);
+    if (!weapon || weapon->getWeaponMode() != Equipment::WeaponMode::Ranged ||
+        weapon->getAmmoTypeRequired().empty()) {
+        return true;
+    }
+
+    if (!charData.hasInventory()) {
+        return false;
+    }
+
+    const VoidLight::ResourceHandle ammoHandle =
+        findCompatibleAmmo(charData.inventoryIndex, weapon->getAmmoTypeRequired());
+    if (!ammoHandle.isValid()) {
+        return false;
+    }
+
+    return removeFromInventory(charData.inventoryIndex, ammoHandle, 1);
+}
+
+bool EntityDataManager::equipFirstAvailableMeleeWeapon(EntityHandle handle)
+{
+    if (!handle.isValid() || !handle.hasHealth()) {
+        return false;
+    }
+
+    const size_t idx = getIndex(handle);
+    if (idx == SIZE_MAX) {
+        return false;
+    }
+
+    const auto& charData = getCharacterDataByIndex(idx);
+    if (!charData.hasInventory()) {
+        return false;
+    }
+
+    const size_t maxSlots = getInventoryData(charData.inventoryIndex).maxSlots;
+    for (size_t slot = 0; slot < maxSlots; ++slot) {
+        const InventorySlotData inventorySlot =
+            getInventorySlot(charData.inventoryIndex, slot);
+        if (inventorySlot.isEmpty()) {
+            continue;
+        }
+
+        auto resourceTemplate =
+            ResourceTemplateManager::Instance().getResourceTemplate(
+                inventorySlot.resourceHandle);
+        const auto equipment =
+            std::dynamic_pointer_cast<Equipment>(resourceTemplate);
+        if (!equipment ||
+            equipment->getEquipmentSlot() != Equipment::EquipmentSlot::Weapon ||
+            equipment->getWeaponMode() != Equipment::WeaponMode::Melee) {
+            continue;
+        }
+
+        return equipCharacterItem(handle, inventorySlot.resourceHandle);
+    }
+
+    return false;
+}
+
 float EntityDataManager::getEffectiveAttackDamage(EntityHandle handle) const
 {
     return getCharacterData(handle).attackDamage;
@@ -2464,6 +2583,9 @@ void EntityDataManager::recalculateCharacterEquipmentStats(uint32_t characterInd
     float attackBonus = 0.0f;
     float defenseBonus = 0.0f;
     float speedBonus = 0.0f;
+    float attackRange = charData.baseAttackRange;
+    float projectileSpeed = charData.baseProjectileSpeed;
+    uint8_t combatStyle = charData.baseCombatStyle;
 
     for (const auto& itemHandle : charData.equippedItems) {
         if (!itemHandle.isValid()) {
@@ -2480,11 +2602,33 @@ void EntityDataManager::recalculateCharacterEquipmentStats(uint32_t characterInd
         attackBonus += static_cast<float>(equipment->getAttackBonus());
         defenseBonus += static_cast<float>(equipment->getDefenseBonus());
         speedBonus += static_cast<float>(equipment->getSpeedBonus());
+
+        if (equipment->getEquipmentSlot() == Equipment::EquipmentSlot::Weapon) {
+            if (equipment->getWeaponMode() == Equipment::WeaponMode::Melee) {
+                combatStyle = CharacterData::CombatStyle::Melee;
+                projectileSpeed = 0.0f;
+            } else if (equipment->getWeaponMode() == Equipment::WeaponMode::Ranged) {
+                combatStyle = CharacterData::CombatStyle::Ranged;
+            }
+
+            if (equipment->getAttackRangeOverride() > 0.0f) {
+                attackRange = equipment->getAttackRangeOverride();
+            }
+            if (equipment->getProjectileSpeedOverride() > 0.0f) {
+                projectileSpeed = equipment->getProjectileSpeedOverride();
+            }
+        }
     }
 
     charData.attackDamage = std::max(0.0f, charData.baseAttackDamage + attackBonus);
+    charData.attackRange = std::max(0.0f, attackRange);
     charData.armorDefense = std::max(0.0f, defenseBonus);
     charData.moveSpeed = std::max(1.0f, charData.baseMoveSpeed + speedBonus);
+    charData.combatStyle = combatStyle;
+    charData.projectileSpeed =
+        (combatStyle == CharacterData::CombatStyle::Ranged)
+            ? std::max(0.0f, projectileSpeed)
+            : 0.0f;
 }
 
 bool EntityDataManager::addToInventory(uint32_t inventoryIndex,
@@ -3192,7 +3336,7 @@ void EntityDataManager::setCharacterBaseStats(EntityHandle handle,
     charData.maxStamina = std::max(0.0f, maxStamina);
     charData.stamina = std::min(charData.stamina, charData.maxStamina);
     charData.baseAttackDamage = std::max(0.0f, attackDamage);
-    charData.attackRange = std::max(0.0f, attackRange);
+    charData.baseAttackRange = std::max(0.0f, attackRange);
     charData.baseMoveSpeed = std::max(1.0f, moveSpeed);
     recalculateCharacterEquipmentStats(typeIndex);
 }

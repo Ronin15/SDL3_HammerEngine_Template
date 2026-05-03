@@ -43,7 +43,7 @@ getOrLoadResourceByName(ResourceTemplateManager *manager,
     return handle;
   }
 
-  manager->loadResourcesFromJson("res/data/resources.json");
+  manager->loadResourcesFromJson("res/data/materials.json");
 
   handle = findResourceByName(manager, name);
   return handle;

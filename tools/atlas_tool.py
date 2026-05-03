@@ -759,8 +759,14 @@ def collect_expected_texture_ids(paths: dict) -> dict:
     categories = {}
     data_dir = paths['project_root'] / "res" / "data"
 
-    # Process resource catalogs (items, materials, currency, equipment)
-    resource_catalogs = ("resources.json", "equipment.json")
+    # Process resource catalogs (items, weapons, equipment, materials, currency)
+    resource_catalogs = (
+        "items.json",
+        "weapons.json",
+        "equipment.json",
+        "materials.json",
+        "currency.json",
+    )
     items_found = []
     materials_found = []
     currency_found = []
@@ -787,7 +793,7 @@ def collect_expected_texture_ids(paths: dict) -> dict:
                         items_found.append(entry)
                     elif cat == 'Material':
                         materials_found.append(entry)
-                    elif cat in ('Currency', 'GameResource'):
+                    elif cat == 'Currency':
                         currency_found.append(entry)
                     else:
                         items_found.append(entry)
@@ -799,7 +805,7 @@ def collect_expected_texture_ids(paths: dict) -> dict:
     if materials_found:
         categories['Materials'] = materials_found
     if currency_found:
-        categories['Currency & Resources'] = currency_found
+        categories['Currency'] = currency_found
 
     # Process races.json (NPCs)
     races_path = data_dir / "races.json"

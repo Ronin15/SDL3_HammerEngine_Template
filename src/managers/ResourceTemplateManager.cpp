@@ -9,7 +9,9 @@
 #include "utils/JsonReader.hpp"
 #include "utils/ResourcePath.hpp"
 #include <algorithm>
+#include <array>
 #include <format>
+#include <string_view>
 
 using VoidLight::JsonReader;
 using VoidLight::JsonValue;
@@ -693,19 +695,18 @@ void ResourceTemplateManager::createDefaultResources() {
   try {
     // Load resource catalogs before atlas mapping so all entries share one
     // texture-coordinate pass.
-    const std::string resourcesPath = VoidLight::ResourcePath::resolve("res/data/resources.json");
-    bool resourcesLoaded = loadResourcesFromJson(resourcesPath);
+    constexpr std::array<std::string_view, 5> resourceCatalogs{
+        "items.json", "weapons.json", "equipment.json", "materials.json",
+        "currency.json"};
+    for (std::string_view catalog : resourceCatalogs) {
+      const std::string catalogPath = VoidLight::ResourcePath::resolve(
+          std::format("res/data/{}", catalog));
+      const bool catalogLoaded = loadResourcesFromJson(catalogPath);
 
-    RESOURCE_WARN_IF(!resourcesLoaded,
-        "ResourceTemplateManager::createDefaultResources - "
-        "Failed to load resources.json");
-
-    const std::string equipmentPath = VoidLight::ResourcePath::resolve("res/data/equipment.json");
-    bool equipmentLoaded = loadResourcesFromJson(equipmentPath);
-
-    RESOURCE_WARN_IF(!equipmentLoaded,
-        "ResourceTemplateManager::createDefaultResources - "
-        "Failed to load equipment.json");
+      RESOURCE_WARN_IF(!catalogLoaded,
+          std::format("ResourceTemplateManager::createDefaultResources - "
+                      "Failed to load {}", catalog));
+    }
 
     // Apply atlas coordinates from atlas.json (following WorldManager pattern)
     JsonReader atlasReader;

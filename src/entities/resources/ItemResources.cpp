@@ -50,3 +50,10 @@ QuestItem::QuestItem(VoidLight::ResourceHandle handle, const std::string &id,
   setMaxStackSize(1);
   setConsumable(false);
 }
+
+Ammunition::Ammunition(VoidLight::ResourceHandle handle, const std::string &id,
+                       const std::string &name, const std::string &ammoType)
+    : Item(handle, id, name, ResourceType::Ammunition), m_ammoType(ammoType) {
+  setMaxStackSize(200);
+  setConsumable(true);
+}

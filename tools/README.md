@@ -99,9 +99,9 @@ python3 tools/atlas_tool.py pack
 - `res/sprites/` - Individual sprite files (temporary working directory)
 - `res/data/atlas.json` - Atlas region coordinates (single source of truth)
 
-Data files (`resources.json`, `equipment.json`, `races.json`, etc.) define
-`textureId`. C++ looks up coordinates from `atlas.json` at runtime using the
-`textureId`.
+Data files (`items.json`, `weapons.json`, `equipment.json`, `materials.json`,
+`currency.json`, `races.json`, etc.) define `textureId`. C++ looks up
+coordinates from `atlas.json` at runtime using the `textureId`.
 
 ### Adding New Sprites
 

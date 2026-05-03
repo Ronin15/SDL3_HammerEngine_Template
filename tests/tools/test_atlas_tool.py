@@ -118,19 +118,31 @@ class AtlasToolMapperTests(unittest.TestCase):
                 {"Items": [{"id": "potion", "name": "Potion", "source": "test"}]},
             )
 
-    def test_collect_expected_texture_ids_includes_equipment_catalog(self):
+    def test_collect_expected_texture_ids_includes_split_resource_catalogs(self):
         with tempfile.TemporaryDirectory() as tmp:
             paths = self.make_paths(Path(tmp))
             data_dir = Path(tmp) / "res" / "data"
             data_dir.mkdir()
 
-            (data_dir / "resources.json").write_text(
+            (data_dir / "items.json").write_text(
                 json.dumps({
                     "resources": [
                         {
                             "name": "Health Potion",
                             "category": "Item",
                             "textureId": "health_potion_world",
+                        }
+                    ]
+                }),
+                encoding="utf-8",
+            )
+            (data_dir / "weapons.json").write_text(
+                json.dumps({
+                    "resources": [
+                        {
+                            "name": "Iron Sword",
+                            "category": "Item",
+                            "textureId": "iron_sword_icon",
                         }
                     ]
                 }),
@@ -157,7 +169,12 @@ class AtlasToolMapperTests(unittest.TestCase):
                     {
                         "id": "health_potion_world",
                         "name": "Health Potion",
-                        "source": "resources.json",
+                        "source": "items.json",
+                    },
+                    {
+                        "id": "iron_sword_icon",
+                        "name": "Iron Sword",
+                        "source": "weapons.json",
                     },
                     {
                         "id": "iron_shield_icon",

@@ -40,6 +40,12 @@ public:
         uint8_t newFaction{0};
     };
 
+    struct EquipmentSwapCommand {
+        EntityHandle targetHandle{};
+        size_t targetEdmIndex{SIZE_MAX};
+        uint64_t sequence{0};
+    };
+
     static AICommandBus& Instance() {
         static AICommandBus instance;
         return instance;
@@ -51,12 +57,14 @@ public:
                                    const BehaviorConfigData& config);
     void enqueueFactionChange(EntityHandle targetHandle, size_t targetEdmIndex,
                               uint8_t oldFaction, uint8_t newFaction);
+    void enqueueMeleeFallbackEquip(EntityHandle targetHandle, size_t targetEdmIndex);
     void clearBehaviorMessages(EntityHandle targetHandle, size_t targetEdmIndex);
     void clearAll();
 
     void drainBehaviorMessages(std::vector<BehaviorMessageCommand>& out);
     void drainBehaviorTransitions(std::vector<BehaviorTransitionCommand>& out);
     void drainFactionChanges(std::vector<FactionChangeCommand>& out);
+    void drainMeleeFallbackEquips(std::vector<EquipmentSwapCommand>& out);
 
 private:
     AICommandBus() = default;
@@ -67,8 +75,10 @@ private:
     std::vector<BehaviorMessageCommand> m_pendingMessages;
     std::vector<BehaviorTransitionCommand> m_pendingTransitions;
     std::vector<FactionChangeCommand> m_pendingFactionChanges;
+    std::vector<EquipmentSwapCommand> m_pendingMeleeFallbackEquips;
     std::atomic<uint64_t> m_nextMessageSequence{1};
     std::atomic<uint64_t> m_nextTransitionSequence{1};
+    std::atomic<uint64_t> m_nextEquipmentSequence{1};
 };
 
 } // namespace VoidLight

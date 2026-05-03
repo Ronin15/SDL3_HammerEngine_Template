@@ -827,11 +827,11 @@ void EventDemoState::triggerResourceDemo() {
     break;
   }
   case 3: {
-    // Discovery pattern: Find building materials
-    auto gameResources =
-        templateManager.getResourcesByType(ResourceType::BuildingMaterial);
-    if (!gameResources.empty()) {
-      selectedResource = gameResources[0];
+    // Discovery pattern: Find processed crafting materials
+    auto craftingComponents =
+        templateManager.getResourcesByType(ResourceType::CraftingComponent);
+    if (!craftingComponents.empty()) {
+      selectedResource = craftingComponents[0];
       quantity = 8;
     }
     break;

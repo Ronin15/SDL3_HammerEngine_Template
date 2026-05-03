@@ -15,6 +15,7 @@
 
 namespace {
 constexpr const char* EVENT_LOG = "event_log";
+constexpr float PLAYER_PROJECTILE_SPAWN_OFFSET = 20.0f;
 }
 
 void CombatController::subscribe() {
@@ -98,20 +99,42 @@ void CombatController::performAttack(Player *player) {
   auto& edm = EntityDataManager::Instance();
   auto& aiMgr = AIManager::Instance();
   const Vector2D playerPos = player->getPosition();
-  const float attackRange = player->getAttackRange();
-  const float attackDamage = player->getAttackDamage();
+  EntityHandle playerHandle = player->getHandle();
+  CharacterData activeCharData = edm.getCharacterData(playerHandle);
 
   // Determine attack direction based on player facing
   float attackDirX = (player->getFlip() == SDL_FLIP_HORIZONTAL) ? -1.0f : 1.0f;
 
+  if (activeCharData.combatStyle == CharacterData::CombatStyle::Ranged) {
+    if (!edm.consumeRequiredAmmoForRangedAttack(playerHandle)) {
+      if (!edm.equipFirstAvailableMeleeWeapon(playerHandle)) {
+        COMBAT_INFO("Player has no compatible ammunition or melee fallback weapon");
+        UIManager::Instance().addEventLogEntry(EVENT_LOG, "No ammunition!");
+        return;
+      }
+      activeCharData = edm.getCharacterData(playerHandle);
+    } else if (activeCharData.projectileSpeed > 0.0f) {
+      const Vector2D direction(attackDirX, 0.0f);
+      const Vector2D spawnPos =
+          playerPos + direction * PLAYER_PROJECTILE_SPAWN_OFFSET;
+      const Vector2D velocity = direction * activeCharData.projectileSpeed;
+      const float lifetime =
+          (activeCharData.attackRange / activeCharData.projectileSpeed) + 0.5f;
+      edm.createProjectile(spawnPos, velocity, playerHandle,
+                           activeCharData.attackDamage, lifetime);
+      UIManager::Instance().addEventLogEntry(EVENT_LOG, "Fired ranged attack!");
+      return;
+    } else {
+      COMBAT_WARN("Player ranged weapon has no projectile speed configured");
+      return;
+    }
+  }
+
   // Query nearby entity handles from AIManager (EntityHandle-based API)
   // Reuse buffer to avoid per-frame allocation
   m_nearbyHandlesBuffer.clear();  // Keeps capacity
-  aiMgr.scanActiveHandlesInRadius(playerPos, attackRange,
+  aiMgr.scanActiveHandlesInRadius(playerPos, activeCharData.attackRange,
                              m_nearbyHandlesBuffer, true);
-
-  // Get player's EntityHandle for event-driven damage
-  EntityHandle playerHandle = player->getHandle();
 
   for (const auto &handle : m_nearbyHandlesBuffer) {
     if (!handle.isValid())
@@ -153,7 +176,8 @@ void CombatController::performAttack(Player *player) {
     // on the main thread immediately for player attacks.
     auto& eventMgr = EventManager::Instance();
     auto damageEvent = eventMgr.acquireDamageEvent();
-    damageEvent->configure(playerHandle, handle, attackDamage, knockback);
+    damageEvent->configure(playerHandle, handle, activeCharData.attackDamage,
+                           knockback);
     eventMgr.dispatchEvent(
         damageEvent, EventManager::DispatchMode::Immediate);
 
@@ -162,11 +186,13 @@ void CombatController::performAttack(Player *player) {
 
     COMBAT_INFO(
         std::format("Hit entity {} for {:.1f} damage! HP: {:.1f} -> {:.1f}",
-                    handle.getId(), attackDamage, oldHealth, newHealth));
+                    handle.getId(), activeCharData.attackDamage, oldHealth,
+                    newHealth));
 
     UIManager::Instance().addEventLogEntry(
         EVENT_LOG,
-        std::format("Hit Enemy #{} for {:.0f} damage!", handle.getId(), attackDamage));
+        std::format("Hit Enemy #{} for {:.0f} damage!", handle.getId(),
+                    activeCharData.attackDamage));
 
     // Kill notification for UI
     if (wasLethal) {

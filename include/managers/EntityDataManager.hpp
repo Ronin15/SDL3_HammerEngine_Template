@@ -249,11 +249,13 @@ struct CharacterData {
     float baseAttackDamage{10.0f};
     float attackDamage{10.0f};
     float attackRange{50.0f};
+    float baseAttackRange{50.0f};
     float baseMoveSpeed{100.0f};
     float moveSpeed{100.0f};   // Effective movement speed
     float armorDefense{0.0f};  // Effective defense from equipped gear
     float mass{1.0f};          // Physical mass (affects knockback resistance)
     float projectileSpeed{0.0f}; // Ranged projectile speed (px/s), 0 = melee
+    float baseProjectileSpeed{0.0f};
 
     // Identity (creature composition)
     CreatureCategory category{CreatureCategory::NPC};  // NPC, Monster, or Animal
@@ -268,6 +270,7 @@ struct CharacterData {
     uint8_t stateFlags{0};     // alive, stunned, invulnerable, etc.
     enum CombatStyle : uint8_t { Melee = 0, Ranged = 1 };
     uint8_t combatStyle{CombatStyle::Melee};
+    uint8_t baseCombatStyle{CombatStyle::Melee};
 
     // Inventory (for merchants and NPCs that carry items)
     uint32_t inventoryIndex{INVALID_INVENTORY_INDEX};  // EDM inventory index
@@ -1690,6 +1693,20 @@ public:
      */
     bool autoEquipCharacterEquipment(EntityHandle handle);
 
+    /**
+     * @brief Consume one compatible ammunition item for a ranged equipped weapon.
+     *
+     * Ranged weapons with no ammo requirement return true. Weapons that require
+     * ammo scan the owning inventory's physical slots in order and remove one
+     * matching ammunition item.
+     */
+    [[nodiscard]] bool consumeRequiredAmmoForRangedAttack(EntityHandle handle);
+
+    /**
+     * @brief Equip the first melee weapon found in physical inventory order.
+     */
+    [[nodiscard]] bool equipFirstAvailableMeleeWeapon(EntityHandle handle);
+
     [[nodiscard]] float getEffectiveAttackDamage(EntityHandle handle) const;
     [[nodiscard]] float getEffectiveDefense(EntityHandle handle) const;
     [[nodiscard]] float getEffectiveMoveSpeed(EntityHandle handle) const;
@@ -2684,6 +2701,8 @@ private:
     // Helper for faction-based collision layers
     void applyFactionCollision(size_t index, uint8_t faction);
     void recalculateCharacterEquipmentStats(uint32_t characterIndex);
+    [[nodiscard]] VoidLight::ResourceHandle
+    findCompatibleAmmo(uint32_t inventoryIndex, std::string_view ammoType) const;
 
     // State
     std::atomic<bool> m_initialized{false};

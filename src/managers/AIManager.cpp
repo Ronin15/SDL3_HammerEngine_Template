@@ -140,6 +140,7 @@ void AIManager::clean() {
   m_pendingFactionChanges.clear();
   m_pendingBehaviorTransitions.clear();
   m_pendingBehaviorMessages.clear();
+  m_pendingMeleeFallbackEquips.clear();
 
   {
     std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
@@ -175,6 +176,7 @@ void AIManager::prepareForStateTransition() {
   m_pendingFactionChanges.clear();
   m_pendingBehaviorTransitions.clear();
   m_pendingBehaviorMessages.clear();
+  m_pendingMeleeFallbackEquips.clear();
 
   // Batches always complete within update() — no pending futures to wait for.
 
@@ -234,8 +236,10 @@ void AIManager::update(float deltaTime) {
 
     // Commit queued cross-thread commands before reading per-entity behavior state.
     // Order matters: faction changes keep indices coherent before scans;
+    // equipment swaps update current combat stats before attack configs are read;
     // transitions first, then messages, so messages target current behavior.
     commitQueuedFactionChanges();
+    commitQueuedMeleeFallbackEquips();
     commitQueuedBehaviorTransitions();
     commitQueuedBehaviorMessages();
 
@@ -445,6 +449,7 @@ void AIManager::update(float deltaTime) {
         entityCount, frameShouldThread, totalBatchCount, totalUpdateTime);
 
     // Commit commands emitted by worker threads during this frame's batches.
+    commitQueuedMeleeFallbackEquips();
     commitQueuedBehaviorTransitions();
     commitQueuedBehaviorMessages();
 
@@ -1085,6 +1090,48 @@ void AIManager::commitQueuedFactionChanges() {
   }
 }
 
+void AIManager::commitQueuedMeleeFallbackEquips() {
+  VoidLight::AICommandBus::Instance().drainMeleeFallbackEquips(
+      m_pendingMeleeFallbackEquips);
+  if (m_pendingMeleeFallbackEquips.empty()) {
+    return;
+  }
+
+  auto& edm = EntityDataManager::Instance();
+  std::sort(m_pendingMeleeFallbackEquips.begin(),
+            m_pendingMeleeFallbackEquips.end(),
+            [](const auto& lhs, const auto& rhs) {
+              if (lhs.targetEdmIndex != rhs.targetEdmIndex) {
+                return lhs.targetEdmIndex < rhs.targetEdmIndex;
+              }
+              return lhs.sequence > rhs.sequence;
+            });
+
+  size_t i = 0;
+  while (i < m_pendingMeleeFallbackEquips.size()) {
+    const auto& cmd = m_pendingMeleeFallbackEquips[i];
+    const size_t edmIndex = cmd.targetEdmIndex;
+
+    size_t runEnd = i + 1;
+    while (runEnd < m_pendingMeleeFallbackEquips.size() &&
+           m_pendingMeleeFallbackEquips[runEnd].targetEdmIndex == edmIndex) {
+      ++runEnd;
+    }
+
+    if (cmd.targetHandle.isValid()) {
+      const size_t resolvedEdmIndex = edm.getIndex(cmd.targetHandle);
+      if (resolvedEdmIndex != SIZE_MAX && resolvedEdmIndex == edmIndex) {
+        const bool equippedFallback =
+            edm.equipFirstAvailableMeleeWeapon(cmd.targetHandle);
+        AI_DEBUG_IF(!equippedFallback,
+                    "No melee fallback weapon available for ranged attacker");
+      }
+    }
+
+    i = runEnd;
+  }
+}
+
 void AIManager::commitQueuedBehaviorMessages() {
   VoidLight::AICommandBus::Instance().drainBehaviorMessages(m_pendingBehaviorMessages);
   if (m_pendingBehaviorMessages.empty()) {
@@ -1503,8 +1550,20 @@ void AIManager::processBatch(
         Behaviors::executeGuard(ctx, edm.getGuardConfig(ref.index), edm.getGuardState(ref.index));
         break;
       case BehaviorType::Attack:
-        Behaviors::executeAttack(ctx, edm.getAttackConfig(ref.index), edm.getAttackState(ref.index));
+      {
+        auto attackConfig = edm.getAttackConfig(ref.index);
+        attackConfig.attackDamage = characterData.attackDamage;
+        attackConfig.attackRange = characterData.attackRange;
+        attackConfig.attackMode =
+            (characterData.combatStyle == CharacterData::CombatStyle::Ranged)
+                ? 1
+                : 0;
+        if (characterData.projectileSpeed > 0.0f) {
+          attackConfig.projectileSpeed = characterData.projectileSpeed;
+        }
+        Behaviors::executeAttack(ctx, attackConfig, edm.getAttackState(ref.index));
         break;
+      }
       case BehaviorType::Flee:
         Behaviors::executeFlee(ctx, edm.getFleeConfig(ref.index), edm.getFleeState(ref.index));
         break;

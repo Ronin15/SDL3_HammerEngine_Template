@@ -1465,6 +1465,60 @@ BOOST_AUTO_TEST_CASE(TestCharacterEquipmentRecalculatesCachedStats) {
     BOOST_CHECK_EQUAL(edm->getInventoryQuantity(inventory, ironSword), 1);
 }
 
+BOOST_AUTO_TEST_CASE(TestRangedWeaponConsumesCompatibleAmmunition) {
+    EntityHandle player = edm->registerPlayer(40004, Vector2D(10.0f, 10.0f));
+    BOOST_REQUIRE(player.isValid());
+    edm->setCharacterBaseStats(player, 100.0f, 100.0f, 25.0f, 50.0f, 120.0f);
+
+    const uint32_t inventory = edm->createInventory(10, false);
+    BOOST_REQUIRE_NE(inventory, INVALID_INVENTORY_INDEX);
+    edm->setCharacterInventoryIndex(player, inventory);
+
+    const auto bow = ResourceTemplateManager::Instance().getHandleById("bow");
+    const auto arrows = ResourceTemplateManager::Instance().getHandleById("arrows");
+    BOOST_REQUIRE(bow.isValid());
+    BOOST_REQUIRE(arrows.isValid());
+    BOOST_REQUIRE(edm->addToInventory(inventory, bow, 1));
+    BOOST_REQUIRE(edm->addToInventory(inventory, arrows, 2));
+
+    BOOST_REQUIRE(edm->equipCharacterItem(player, bow));
+    BOOST_CHECK_EQUAL(edm->getCharacterData(player).combatStyle,
+                      CharacterData::CombatStyle::Ranged);
+    BOOST_CHECK_CLOSE(edm->getCharacterData(player).attackRange, 400.0f, 0.001f);
+    BOOST_CHECK_CLOSE(edm->getCharacterData(player).projectileSpeed, 300.0f, 0.001f);
+
+    BOOST_CHECK(edm->consumeRequiredAmmoForRangedAttack(player));
+    BOOST_CHECK_EQUAL(edm->getInventoryQuantity(inventory, arrows), 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestRangedWeaponWithoutAmmoFallsBackToMeleeWeapon) {
+    EntityHandle player = edm->registerPlayer(40005, Vector2D(10.0f, 10.0f));
+    BOOST_REQUIRE(player.isValid());
+    edm->setCharacterBaseStats(player, 100.0f, 100.0f, 25.0f, 50.0f, 120.0f);
+
+    const uint32_t inventory = edm->createInventory(10, false);
+    BOOST_REQUIRE_NE(inventory, INVALID_INVENTORY_INDEX);
+    edm->setCharacterInventoryIndex(player, inventory);
+
+    const auto bow = ResourceTemplateManager::Instance().getHandleById("bow");
+    const auto dagger = ResourceTemplateManager::Instance().getHandleById("dagger");
+    BOOST_REQUIRE(bow.isValid());
+    BOOST_REQUIRE(dagger.isValid());
+    BOOST_REQUIRE(edm->addToInventory(inventory, bow, 1));
+    BOOST_REQUIRE(edm->addToInventory(inventory, dagger, 1));
+
+    BOOST_REQUIRE(edm->equipCharacterItem(player, bow));
+    BOOST_CHECK(!edm->consumeRequiredAmmoForRangedAttack(player));
+    BOOST_CHECK(edm->equipFirstAvailableMeleeWeapon(player));
+
+    BOOST_CHECK(edm->getEquippedCharacterItem(player, "weapon") == dagger);
+    BOOST_CHECK_EQUAL(edm->getInventoryQuantity(inventory, bow), 1);
+    BOOST_CHECK_EQUAL(edm->getCharacterData(player).combatStyle,
+                      CharacterData::CombatStyle::Melee);
+    BOOST_CHECK_CLOSE(edm->getCharacterData(player).attackRange, 40.0f, 0.001f);
+    BOOST_CHECK_CLOSE(edm->getCharacterData(player).projectileSpeed, 0.0f, 0.001f);
+}
+
 BOOST_AUTO_TEST_CASE(TestTwoHandedWeaponClearsShieldSlot) {
     EntityHandle player = edm->registerPlayer(40002, Vector2D(10.0f, 10.0f));
     BOOST_REQUIRE(player.isValid());

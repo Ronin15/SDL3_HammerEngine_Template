@@ -323,10 +323,12 @@ private:
   std::vector<VoidLight::AICommandBus::BehaviorTransitionCommand> m_selectedTransitions;
   std::unordered_map<size_t, size_t> m_selectedTransitionsByEdmIndex;
   std::vector<VoidLight::AICommandBus::FactionChangeCommand> m_pendingFactionChanges;
+  std::vector<VoidLight::AICommandBus::EquipmentSwapCommand> m_pendingMeleeFallbackEquips;
 
   void addToIndices(size_t edmIndex, BehaviorType behaviorType);
   void removeFromIndices(size_t edmIndex, BehaviorType oldBehaviorType);
   void commitQueuedFactionChanges();
+  void commitQueuedMeleeFallbackEquips();
   void commitQueuedBehaviorMessages();
   void commitQueuedBehaviorTransitions();
 

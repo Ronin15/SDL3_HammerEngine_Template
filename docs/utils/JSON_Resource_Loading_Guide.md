@@ -2,7 +2,10 @@
 
 ## Overview
 
-The project now uses the unified `res/data/resources.json` catalog for runtime resource definitions. This file contains more than a minimal demo set: equipment, consumables, crafting materials, ores, gems, currencies, merchant goods, and gameplay resources all live in the same catalog.
+The project uses focused runtime resource catalogs under `res/data/`:
+`items.json`, `weapons.json`, `equipment.json`, `materials.json`, and
+`currency.json`. This keeps balance data grouped by gameplay role while
+preserving one runtime loading path through `ResourceTemplateManager`.
 
 Use `ResourceTemplateManager` for loading and fast handle lookup, then use handles at runtime.
 
@@ -47,7 +50,11 @@ When adding new resources, choose `maxStackSize` deliberately and assume it affe
 
 ### Merchant / economy content is now first-class
 
-`resources.json` is no longer just a few sample items. It includes merchant-facing equipment, consumables, raw materials, and currencies used by the trading/social systems.
+The split catalogs include merchant-facing equipment, consumables, raw
+materials, and currencies used by the trading/social systems. Add weapons to
+`weapons.json`, armor and other gear to `equipment.json`, consumables and ammo
+to `items.json`, crafting inputs to `materials.json`, and spendable currencies
+to `currency.json`.
 
 ## Related Data
 

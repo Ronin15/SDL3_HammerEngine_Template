@@ -35,6 +35,14 @@ void Equipment::setHandsRequired(int handsRequired) {
   m_handsRequired = std::clamp(handsRequired, 0, 2);
 }
 
+void Equipment::setAttackRangeOverride(float attackRange) {
+  m_attackRangeOverride = std::max(0.0f, attackRange);
+}
+
+void Equipment::setProjectileSpeedOverride(float projectileSpeed) {
+  m_projectileSpeedOverride = std::max(0.0f, projectileSpeed);
+}
+
 std::string Equipment::equipmentSlotToString(EquipmentSlot slot) {
   const auto slotIndex = equipmentSlotIndex(slot);
   if (!slotIndex) {
@@ -42,6 +50,21 @@ std::string Equipment::equipmentSlotToString(EquipmentSlot slot) {
   }
 
   return std::string(EQUIPMENT_SLOT_DEFINITIONS[*slotIndex].label);
+}
+
+std::optional<Equipment::WeaponMode>
+Equipment::weaponModeFromString(std::string_view modeName) {
+  if (modeName == "melee" || modeName == "Melee") {
+    return WeaponMode::Melee;
+  }
+  if (modeName == "ranged" || modeName == "Ranged") {
+    return WeaponMode::Ranged;
+  }
+  if (modeName == "none" || modeName == "None") {
+    return WeaponMode::None;
+  }
+
+  return std::nullopt;
 }
 
 const std::array<Equipment::EquipmentSlotInfo, Equipment::SLOT_COUNT> &

@@ -202,7 +202,7 @@ void Game::init() {
     registerCustomResources();
 
     // 3. Load resource files (now includes custom types)
-    ResourceTemplateManager::Instance().loadResourcesFromJson("res/data/resources.json");
+    ResourceTemplateManager::Instance().loadResourcesFromJson("res/data/items.json");
 }
 ```
 

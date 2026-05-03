@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "core/Logger.hpp"
-#include "entities/resources/CurrencyAndGameResources.hpp"
+#include "entities/resources/CurrencyResources.hpp"
 #include "entities/resources/EquipmentResources.hpp"
 #include "entities/resources/ItemResources.hpp"
 #include "entities/resources/MaterialResources.hpp"
@@ -202,11 +202,11 @@ BOOST_AUTO_TEST_CASE(TestLoadValidJsonFile) {
   // the same file again (duplicate name detection should handle this
   // gracefully).
 
-  // Test loading from the project's existing resources.json file
+  // Test loading from the project's existing items.json file
   std::vector<std::filesystem::path> candidatePaths;
 
   // Try multiple potential working directories and path combinations
-  std::filesystem::path itemsFile = "resources.json";
+  std::filesystem::path itemsFile = "items.json";
   std::vector<std::filesystem::path> basePaths = {
       std::filesystem::current_path() / ".." / ".." / "res" /
           "data",                                       // From bin/debug/

@@ -166,8 +166,8 @@ Resources are defined in JSON files with the following structure:
     {
       "id": "unique_resource_id",
       "name": "Display Name",
-      "category": "Item|Material|Currency|GameResource",
-      "type": "Equipment|Consumable|QuestItem|CraftingComponent|RawResource|Gold|Gem|FactionToken|Energy|Mana|BuildingMaterial|Ammunition",
+      "category": "Item|Material|Currency",
+      "type": "Equipment|Consumable|QuestItem|Ammunition|CraftingComponent|RawResource|Gold|Gem|FactionToken|CraftingCurrency",
       "description": "Resource description",
       "value": 100.0,
       "maxStackSize": 1,
@@ -186,16 +186,21 @@ Resources are defined in JSON files with the following structure:
 #### Equipment
 ```json
 "properties": {
-  "slot": "Weapon|Helmet|Chest|Legs|Boots|Gloves|Ring|Necklace",
+  "slot": "Weapon|Shield|Helmet|Chest|Legs|Boots|Gloves|Ring|Necklace",
   "attackBonus": 15,
   "defenseBonus": 5,
   "speedBonus": 0,
+  "handsRequired": 1,
+  "weaponMode": "melee|ranged",
+  "attackRange": 50,
+  "projectileSpeed": 0,
+  "ammoTypeRequired": "Arrow",
   "durability": 100,
   "maxDurability": 100
 }
 ```
 
-Equipment slots must match the current `EquipmentSlot` enum. Unknown or missing slot values are intentionally left as `COUNT` by resource creation and rejected by `Player::equipItem(...)`; they do not silently default to `Weapon`. Add a real enum value and resource handling before documenting or shipping a new slot such as `Shield`.
+Equipment slots must match the current `EquipmentSlot` enum. Unknown or missing slot values are intentionally left as `COUNT` by resource creation and rejected by equip paths; they do not silently default to `Weapon`.
 
 #### Consumable
 ```json
@@ -216,7 +221,7 @@ Equipment slots must match the current `EquipmentSlot` enum. Unknown or missing 
 #### CraftingComponent
 ```json
 "properties": {
-  "componentType": "Metal|Wood|Leather|Fabric|Gem|Essence|Crystal",
+  "componentType": "Metal|Wood|Leather|Fabric|Gem|Essence|Crystal|Stone",
   "tier": 3,
   "purity": 0.8
 }
@@ -231,7 +236,14 @@ Equipment slots must match the current `EquipmentSlot` enum. Unknown or missing 
 }
 ```
 
-#### Currency (Gold/Gem/FactionToken)
+#### Ammunition
+```json
+"properties": {
+  "ammoType": "Arrow"
+}
+```
+
+#### Currency (Gold/Gem/FactionToken/CraftingCurrency)
 ```json
 "properties": {
   "exchangeRate": 100.0,
@@ -239,20 +251,6 @@ Equipment slots must match the current `EquipmentSlot` enum. Unknown or missing 
   "clarity": 8,                                  // Gem only
   "factionId": "guild_faction",                  // FactionToken only
   "reputation": 500                              // FactionToken only
-}
-```
-
-#### GameResource (Energy/Mana/BuildingMaterial/Ammunition)
-```json
-"properties": {
-  "regenerationRate": 1.5,
-  "maxEnergy": 200,                              // Energy only
-  "manaType": "Arcane|Divine|Nature|Dark",       // Mana only
-  "maxMana": 150,                                // Mana only
-  "materialType": "Wood|Stone|Metal|Crystal",    // BuildingMaterial only
-  "durability": 100,                             // BuildingMaterial only
-  "ammoType": "Arrow|Bolt|Bullet|ThrowingKnife|MagicMissile",  // Ammunition only
-  "damage": 25                                   // Ammunition only
 }
 ```
 
@@ -346,7 +344,11 @@ auto& rtm = ResourceTemplateManager::Instance();
 rtm.init();
 
 // Phase 1: Data Loading (name-based lookups allowed)
-rtm.loadResourcesFromJson("res/data/resources.json");
+rtm.loadResourcesFromJson("res/data/items.json");
+rtm.loadResourcesFromJson("res/data/weapons.json");
+rtm.loadResourcesFromJson("res/data/equipment.json");
+rtm.loadResourcesFromJson("res/data/materials.json");
+rtm.loadResourcesFromJson("res/data/currency.json");
 
 // Convert names to handles during initialization
 VoidLight-Framework::ResourceHandle goldHandle = rtm.getHandleByName("Gold");
