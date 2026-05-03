@@ -261,8 +261,8 @@ Equipment slots must match the current `EquipmentSlot` enum. Unknown or missing 
 auto& rtm = ResourceTemplateManager::Instance();
 rtm.init();
 
-// Load from the catalog that owns the resource type being edited.
-bool success = rtm.loadResourcesFromJson("res/data/weapons.json");
+// init() loads the built-in catalogs. Load only custom catalogs explicitly.
+bool success = rtm.loadResourcesFromJson("res/data/custom_weapons.json");
 if (success) {
     std::cout << "All resources loaded successfully!" << std::endl;
 }
@@ -343,14 +343,8 @@ ResourceFactory::registerCreator("MyCustomType", [](const JsonValue& json) -> Re
 auto& rtm = ResourceTemplateManager::Instance();
 rtm.init();
 
-// Phase 1: Data Loading (name-based lookups allowed)
-rtm.loadResourcesFromJson("res/data/items.json");
-rtm.loadResourcesFromJson("res/data/weapons.json");
-rtm.loadResourcesFromJson("res/data/equipment.json");
-rtm.loadResourcesFromJson("res/data/materials.json");
-rtm.loadResourcesFromJson("res/data/currency.json");
-
-// Convert stable JSON IDs to handles during initialization
+// Built-in catalogs are already loaded. Convert stable resource IDs to handles
+// during initialization.
 VoidLight-Framework::ResourceHandle goldHandle = rtm.getHandleById("gold_coins");
 VoidLight-Framework::ResourceHandle healthPotionHandle = rtm.getHandleById("health_potion");
 VoidLight-Framework::ResourceHandle swordHandle = rtm.getHandleById("magic_sword");
@@ -436,6 +430,8 @@ All public methods are thread-safe via internal locking. For best performance, b
 ## Error Handling
 - JSON loading methods return `false` if any resource fails to load
 - **Duplicate resource names are automatically detected and rejected** during loading
+- **Duplicate resource IDs are rejected before a catalog is registered**
+- Missing resource IDs are generated deterministically from the display name
 - Invalid resources are skipped but valid ones are still loaded  
 - Detailed error messages are logged for debugging
 - Unknown resource types fall back to base `Resource` class

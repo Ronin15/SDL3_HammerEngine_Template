@@ -4,13 +4,13 @@
 
 ## Overview
 
-`CombatController` is the player-facing melee combat helper used by gameplay and demo states. It is frame-updatable because it owns:
+`CombatController` is the player-facing combat helper used by gameplay and demo states. It is frame-updatable because it owns:
 
 - attack cooldown timing
 - stamina regeneration
 - reusable query buffers for nearby AI targets
 
-The controller performs hit detection by querying nearby AI/EDM entities directly, applies damage through the `DamageEvent` gameplay path, and updates the gameplay event log.
+The controller performs ranged projectile attacks when the equipped weapon supports them, consumes compatible ammunition through EDM inventory, falls back to a melee weapon when one is available, performs melee hit detection by querying nearby AI/EDM entities directly, applies damage through the `DamageEvent` gameplay path, and updates the gameplay event log.
 
 ## Core API
 
@@ -30,10 +30,12 @@ ATTACK_COOLDOWN = 0.5f
 ## Runtime Flow
 
 1. `tryAttack()` checks cooldown and player stamina.
-2. `performAttack()` queries nearby handles using a reused buffer.
-3. valid targets are damaged through the current player/EDM combat path.
-4. the gameplay event log is updated for player feedback.
-5. `update()` regenerates stamina.
+2. `performAttack()` verifies that a ranged attack can fire or that a melee fallback can be equipped.
+3. successful ranged attacks consume ammunition and create a projectile.
+4. melee attacks query nearby handles using a reused buffer.
+5. valid melee targets are damaged through the current player/EDM combat path.
+6. stamina, cooldown, and player attacking state are committed only after an attack can actually happen.
+7. `update()` regenerates stamina.
 
 ## HUD Integration
 

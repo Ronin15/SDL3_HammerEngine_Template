@@ -10,12 +10,38 @@
 #include "utils/ResourcePath.hpp"
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <format>
 #include <string_view>
+#include <unordered_set>
 
 using VoidLight::JsonReader;
 using VoidLight::JsonValue;
 using VoidLight::ResourceFactory;
+
+namespace {
+
+std::string normalizeResourceId(std::string_view source) {
+  std::string id;
+  id.reserve(source.size());
+
+  bool needsSeparator = false;
+  for (const unsigned char ch : source) {
+    if (std::isalnum(ch) != 0) {
+      if (needsSeparator && !id.empty()) {
+        id.push_back('_');
+      }
+      id.push_back(static_cast<char>(std::tolower(ch)));
+      needsSeparator = false;
+    } else {
+      needsSeparator = !id.empty();
+    }
+  }
+
+  return id;
+}
+
+} // namespace
 
 ResourceTemplateManager &ResourceTemplateManager::Instance() {
   static ResourceTemplateManager instance;
@@ -483,7 +509,7 @@ bool ResourceTemplateManager::loadResourcesFromJsonString(
     return false;
   }
 
-  const JsonValue &root = reader.getRoot();
+  JsonValue root = reader.getRoot();
 
   if (!root.isObject()) {
     RESOURCE_ERROR("ResourceTemplateManager::loadResourcesFromJsonString - "
@@ -498,7 +524,58 @@ bool ResourceTemplateManager::loadResourcesFromJsonString(
     return false;
   }
 
-  const JsonValue &resourcesArray = root["resources"];
+  JsonValue &resourcesArray = root["resources"];
+  std::unordered_set<std::string> batchIds;
+  batchIds.reserve(resourcesArray.size());
+
+  for (size_t i = 0; i < resourcesArray.size(); ++i) {
+    JsonValue &resourceJson = resourcesArray[i];
+    if (!resourceJson.isObject()) {
+      RESOURCE_ERROR(std::format(
+          "ResourceTemplateManager::loadResourcesFromJsonString - "
+          "Resource at index {} is not an object", i));
+      return false;
+    }
+    if (!resourceJson.hasKey("name") || !resourceJson["name"].isString()) {
+      RESOURCE_ERROR(std::format(
+          "ResourceTemplateManager::loadResourcesFromJsonString - "
+          "Resource at index {} missing or invalid 'name' field", i));
+      return false;
+    }
+    if (resourceJson.hasKey("id") && !resourceJson["id"].isString()) {
+      RESOURCE_ERROR(std::format(
+          "ResourceTemplateManager::loadResourcesFromJsonString - "
+          "Resource at index {} has non-string 'id' field", i));
+      return false;
+    }
+
+    const std::string explicitId =
+        resourceJson.hasKey("id") ? resourceJson["id"].asString() : "";
+    const std::string idSource =
+        explicitId.empty() ? resourceJson["name"].asString() : explicitId;
+    const std::string resolvedId = normalizeResourceId(idSource);
+    if (resolvedId.empty()) {
+      RESOURCE_ERROR(std::format(
+          "ResourceTemplateManager::loadResourcesFromJsonString - "
+          "Resource at index {} has no usable ID source", i));
+      return false;
+    }
+    if (!batchIds.insert(resolvedId).second) {
+      RESOURCE_ERROR(std::format(
+          "ResourceTemplateManager::loadResourcesFromJsonString - "
+          "Duplicate resource id '{}' in current catalog", resolvedId));
+      return false;
+    }
+    if (m_idIndex.find(resolvedId) != m_idIndex.end()) {
+      RESOURCE_ERROR(std::format(
+          "ResourceTemplateManager::loadResourcesFromJsonString - "
+          "Duplicate resource id '{}' already registered", resolvedId));
+      return false;
+    }
+
+    resourceJson["id"] = JsonValue(resolvedId);
+  }
+
   size_t loadedCount = 0;
   size_t failedCount = 0;
 

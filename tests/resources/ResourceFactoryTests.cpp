@@ -176,6 +176,33 @@ BOOST_AUTO_TEST_CASE(TestCreateConsumableFromJson) {
   BOOST_CHECK_EQUAL(consumable->getEffectDuration(), 0);
 }
 
+BOOST_AUTO_TEST_CASE(TestCreateStaminaConsumableFromJson) {
+  std::string jsonString = R"({
+        "id": "test_stamina_drink",
+        "name": "Test Stamina Drink",
+        "category": "Item",
+        "type": "Consumable",
+        "description": "A test stamina drink",
+        "value": 8,
+        "maxStackSize": 10,
+        "consumable": true,
+        "properties": {
+            "effect": "RestoreStamina",
+            "effectPower": 20,
+            "effectDuration": 0
+        }
+    })";
+
+  JsonValue json = parseJson(jsonString);
+  ResourcePtr resource = ResourceFactory::createFromJson(json);
+
+  auto consumable = std::dynamic_pointer_cast<Consumable>(resource);
+  BOOST_REQUIRE(consumable != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(consumable->getEffect()),
+                    static_cast<int>(Consumable::ConsumableEffect::RestoreStamina));
+  BOOST_CHECK_EQUAL(consumable->getEffectPower(), 20);
+}
+
 BOOST_AUTO_TEST_CASE(TestCreateQuestItemFromJson) {
   std::string jsonString = R"({
         "id": "test_key",

@@ -45,8 +45,9 @@ public:
     BoostAttack = 2,
     BoostDefense = 3,
     BoostSpeed = 4,
-    Teleport = 5,
-    COUNT = 6
+    RestoreStamina = 5,
+    Teleport = 6,
+    COUNT = 7
   };
 
   Consumable(VoidLight::ResourceHandle handle, const std::string &id,

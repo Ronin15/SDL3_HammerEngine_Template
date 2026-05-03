@@ -73,6 +73,10 @@ bool CombatController::tryAttack() {
     return false;
   }
 
+  if (!performAttack(player.get())) {
+    return false;
+  }
+
   // Consume stamina and start cooldown
   float oldStamina = player->getStamina();
   player->consumeStamina(ATTACK_STAMINA_COST);
@@ -84,15 +88,12 @@ bool CombatController::tryAttack() {
   // Transition player to attacking state
   player->changeState("attacking");
 
-  // Perform hit detection using AIManager
-  performAttack(player.get());
-
   return true;
 }
 
-void CombatController::performAttack(Player *player) {
+bool CombatController::performAttack(Player *player) {
   if (!player) {
-    return;
+    return false;
   }
 
   // Cache manager references at function scope
@@ -106,14 +107,19 @@ void CombatController::performAttack(Player *player) {
   float attackDirX = (player->getFlip() == SDL_FLIP_HORIZONTAL) ? -1.0f : 1.0f;
 
   if (activeCharData.combatStyle == CharacterData::CombatStyle::Ranged) {
+    if (activeCharData.projectileSpeed <= 0.0f) {
+      COMBAT_WARN("Player ranged weapon has no projectile speed configured");
+      return false;
+    }
+
     if (!edm.consumeRequiredAmmoForRangedAttack(playerHandle)) {
       if (!edm.equipFirstAvailableMeleeWeapon(playerHandle)) {
         COMBAT_INFO("Player has no compatible ammunition or melee fallback weapon");
         UIManager::Instance().addEventLogEntry(EVENT_LOG, "No ammunition!");
-        return;
+        return false;
       }
       activeCharData = edm.getCharacterData(playerHandle);
-    } else if (activeCharData.projectileSpeed > 0.0f) {
+    } else {
       const Vector2D direction(attackDirX, 0.0f);
       const Vector2D spawnPos =
           playerPos + direction * PLAYER_PROJECTILE_SPAWN_OFFSET;
@@ -123,10 +129,7 @@ void CombatController::performAttack(Player *player) {
       edm.createProjectile(spawnPos, velocity, playerHandle,
                            activeCharData.attackDamage, lifetime);
       UIManager::Instance().addEventLogEntry(EVENT_LOG, "Fired ranged attack!");
-      return;
-    } else {
-      COMBAT_WARN("Player ranged weapon has no projectile speed configured");
-      return;
+      return true;
     }
   }
 
@@ -203,6 +206,8 @@ void CombatController::performAttack(Player *player) {
           std::format("Defeated Enemy #{}!", handle.getId()));
     }
   }
+
+  return true;
 }
 
 void CombatController::regenerateStamina(Player *player, float deltaTime) {

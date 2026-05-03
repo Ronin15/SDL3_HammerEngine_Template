@@ -730,6 +730,40 @@ BOOST_AUTO_TEST_CASE(TestAttackBehaviorRespectsAuthoredRangeWhenClosing) {
     BOOST_CHECK_GT(longAttackDistance, shortAttackDistance + 25.0f);
 }
 
+BOOST_AUTO_TEST_CASE(TestAttackBehaviorSynchronizesCurrentAttackMode) {
+    auto& edm = EntityDataManager::Instance();
+
+    auto attacker = TestNPC::create(300.0f, 300.0f);
+    const EntityHandle attackerHandle = attacker->getHandle();
+    const size_t attackerIdx = edm.getIndex(attackerHandle);
+    BOOST_REQUIRE(attackerIdx != SIZE_MAX);
+
+    AIManager::Instance().assignBehavior(attackerHandle, "Attack");
+    const auto ref = edm.getBehaviorConfigRef(attackerIdx);
+    BOOST_REQUIRE(ref.type == BehaviorType::Attack);
+
+    auto attackConfig = edm.getAttackConfig(ref.index);
+    attackConfig.attackMode = 0;
+    auto& attackState = edm.getAttackState(ref.index);
+    attackState.attackMode = 1;
+
+    auto& hotData = edm.getHotDataByIndex(attackerIdx);
+    auto& memoryData = edm.getMemoryData(attackerIdx);
+    memoryData.setValid(true);
+
+    BehaviorContext ctx(hotData.transform, hotData, attackerHandle.getId(),
+                        attackerIdx, 0.016f, EntityHandle{}, Vector2D(0, 0),
+                        Vector2D(0, 0), false, edm.getBehaviorData(attackerIdx),
+                        &edm.getPathData(attackerIdx), memoryData,
+                        edm.getCharacterDataByIndex(attackerIdx),
+                        0.0f, 0.0f, 1280.0f, 1280.0f, true, 0.0f,
+                        edm.knockbackSidecar());
+
+    Behaviors::executeAttack(ctx, attackConfig, attackState);
+
+    BOOST_CHECK_EQUAL(static_cast<int>(attackState.attackMode), 0);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 // Test Suite 5: Message System Testing

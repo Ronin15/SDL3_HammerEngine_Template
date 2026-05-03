@@ -76,6 +76,27 @@ BOOST_AUTO_TEST_CASE(TestDefaultCatalogsLoadSplitEquipment) {
   BOOST_REQUIRE(healthPotion != nullptr);
   BOOST_CHECK_EQUAL(static_cast<int>(healthPotion->getType()),
                     static_cast<int>(ResourceType::Consumable));
+
+  auto ironArmor = resourceManager->getResourceById("iron_armor");
+  BOOST_REQUIRE(ironArmor != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(ironArmor->getType()),
+                    static_cast<int>(ResourceType::Equipment));
+
+  auto ironOre = resourceManager->getResourceById("iron_ore");
+  BOOST_REQUIRE(ironOre != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(ironOre->getCategory()),
+                    static_cast<int>(ResourceCategory::Material));
+
+  auto goldCoins = resourceManager->getResourceById("gold_coins");
+  BOOST_REQUIRE(goldCoins != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(goldCoins->getCategory()),
+                    static_cast<int>(ResourceCategory::Currency));
+
+  auto ale = std::dynamic_pointer_cast<Consumable>(
+      resourceManager->getResourceById("ale"));
+  BOOST_REQUIRE(ale != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(ale->getEffect()),
+                    static_cast<int>(Consumable::ConsumableEffect::RestoreStamina));
 }
 
 BOOST_AUTO_TEST_CASE(TestLoadValidJsonString) {
@@ -328,6 +349,33 @@ BOOST_AUTO_TEST_CASE(TestLoadInvalidResourceData) {
   BOOST_CHECK_EQUAL(newCount, initialCount);
 }
 
+BOOST_AUTO_TEST_CASE(TestLoadGeneratesDeterministicIdsFromNames) {
+  std::string jsonString = R"({
+        "resources": [
+            {
+                "name": "Runtime Generated ID",
+                "category": "Item",
+                "type": "Consumable",
+                "description": "No authored id",
+                "value": 5,
+                "maxStackSize": 3,
+                "consumable": true
+            }
+        ]
+    })";
+
+  const size_t initialCount = resourceManager->getResourceTemplateCount();
+  BOOST_REQUIRE(resourceManager->loadResourcesFromJsonString(jsonString));
+  BOOST_CHECK_EQUAL(resourceManager->getResourceTemplateCount(), initialCount + 1);
+
+  const auto generatedHandle =
+      resourceManager->getHandleById("runtime_generated_id");
+  BOOST_REQUIRE(generatedHandle.isValid());
+  auto generated = resourceManager->getResourceTemplate(generatedHandle);
+  BOOST_REQUIRE(generated != nullptr);
+  BOOST_CHECK_EQUAL(generated->getName(), "Runtime Generated ID");
+}
+
 BOOST_AUTO_TEST_CASE(TestLoadNonExistentFile) {
   // Test loading from a file that doesn't exist
   std::string nonExistentFile = "../../non_existent_file.json";
@@ -366,7 +414,7 @@ BOOST_AUTO_TEST_CASE(TestLoadDuplicateResources) {
   BOOST_REQUIRE(resource1 != nullptr);
   BOOST_CHECK_EQUAL(resource1->getName(), "First Version");
 
-  // Second load with same ID (should fail to register)
+  // Second load with same ID should fail before mutating indexes.
   std::string jsonString2 = R"({
         "resources": [
             {
@@ -383,21 +431,18 @@ BOOST_AUTO_TEST_CASE(TestLoadDuplicateResources) {
     })";
 
   bool result2 = resourceManager->loadResourcesFromJsonString(jsonString2);
-  BOOST_CHECK(result2); // Should succeed - different resources can have same ID
-                        // but different handles
+  BOOST_CHECK(!result2);
 
-  // Both resources should now exist with different names and handles
+  // The first resource remains, and the duplicate did not partially register.
   auto firstHandle = findResourceByName(resourceManager, "First Version");
   BOOST_REQUIRE(firstHandle.isValid());
   auto firstResource = resourceManager->getResourceTemplate(firstHandle);
   BOOST_REQUIRE(firstResource != nullptr);
   BOOST_CHECK_EQUAL(firstResource->getName(), "First Version");
+  BOOST_CHECK(resourceManager->getHandleById("duplicate_test") == firstHandle);
 
   auto secondHandle = findResourceByName(resourceManager, "Second Version");
-  BOOST_REQUIRE(secondHandle.isValid());
-  auto secondResource = resourceManager->getResourceTemplate(secondHandle);
-  BOOST_REQUIRE(secondResource != nullptr);
-  BOOST_CHECK_EQUAL(secondResource->getName(), "Second Version");
+  BOOST_CHECK(!secondHandle.isValid());
 }
 
 BOOST_AUTO_TEST_CASE(TestLoadResourcesStatistics) {

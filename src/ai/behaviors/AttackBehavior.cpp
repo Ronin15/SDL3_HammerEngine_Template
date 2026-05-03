@@ -508,6 +508,7 @@ void executeAttack(BehaviorContext& ctx, const VoidLight::AttackBehaviorConfig& 
     auto& shared = ctx.sharedState;
 
     processAttackMessages(shared, attack, config);
+    attack.attackMode = config.attackMode;
 
     Vector2D targetPos;
     bool hasTarget = false;

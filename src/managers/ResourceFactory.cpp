@@ -259,6 +259,8 @@ ResourceFactory::createConsumable(VoidLight::ResourceHandle handle,
         effect = Consumable::ConsumableEffect::BoostDefense;
       else if (effectStr == "BoostSpeed")
         effect = Consumable::ConsumableEffect::BoostSpeed;
+      else if (effectStr == "RestoreStamina")
+        effect = Consumable::ConsumableEffect::RestoreStamina;
       else if (effectStr == "Teleport")
         effect = Consumable::ConsumableEffect::Teleport;
 

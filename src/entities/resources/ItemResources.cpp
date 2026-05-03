@@ -36,6 +36,7 @@ std::string Consumable::consumableEffectToString(ConsumableEffect effect) {
       {ConsumableEffect::BoostAttack, "Boost Attack"},
       {ConsumableEffect::BoostDefense, "Boost Defense"},
       {ConsumableEffect::BoostSpeed, "Boost Speed"},
+      {ConsumableEffect::RestoreStamina, "Restore Stamina"},
       {ConsumableEffect::Teleport, "Teleport"}};
 
   auto it = effectMap.find(effect);
