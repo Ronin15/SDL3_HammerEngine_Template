@@ -1233,7 +1233,7 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict, missing
                 }}
             }}
 
-            const categoryOrder = ['Items', 'Materials', 'Currency & Resources', 'Races', 'Monsters', 'Animals', 'Biomes', 'Obstacles', 'Decorations', 'Buildings'];
+            const categoryOrder = ['Items', 'Materials', 'Currency', 'Races', 'Monsters', 'Animals', 'Biomes', 'Obstacles', 'Decorations', 'Buildings'];
 
             categoryOrder.forEach(categoryName => {{
                 const ids = allCategories[categoryName];
