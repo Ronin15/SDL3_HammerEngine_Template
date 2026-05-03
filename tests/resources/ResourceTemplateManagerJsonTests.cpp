@@ -13,6 +13,7 @@
 
 #include "core/Logger.hpp"
 #include "entities/resources/CurrencyAndGameResources.hpp"
+#include "entities/resources/EquipmentResources.hpp"
 #include "entities/resources/ItemResources.hpp"
 #include "entities/resources/MaterialResources.hpp"
 #include "managers/ResourceTemplateManager.hpp"
@@ -64,6 +65,18 @@ protected:
 
 BOOST_FIXTURE_TEST_SUITE(ResourceTemplateManagerJsonTestSuite,
                          ResourceTemplateManagerJsonTestFixture)
+
+BOOST_AUTO_TEST_CASE(TestDefaultCatalogsLoadSplitEquipment) {
+  auto ironSword = resourceManager->getResourceById("iron_sword");
+  BOOST_REQUIRE(ironSword != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(ironSword->getType()),
+                    static_cast<int>(ResourceType::Equipment));
+
+  auto healthPotion = resourceManager->getResourceById("health_potion");
+  BOOST_REQUIRE(healthPotion != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(healthPotion->getType()),
+                    static_cast<int>(ResourceType::Consumable));
+}
 
 BOOST_AUTO_TEST_CASE(TestLoadValidJsonString) {
   std::string jsonString = R"({

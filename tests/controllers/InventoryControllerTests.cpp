@@ -16,6 +16,7 @@
 #include "controllers/ui/HudController.hpp"
 #include "controllers/ui/InventoryController.hpp"
 #include "entities/Player.hpp"
+#include "entities/resources/EquipmentResources.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
@@ -195,9 +196,14 @@ BOOST_AUTO_TEST_CASE(TestInitializeInventoryUICreatesReusableGrid) {
     BOOST_CHECK(ui.hasComponent("gear_slot_7"));
     BOOST_CHECK(ui.hasComponent("gear_icon_7"));
     BOOST_CHECK(ui.hasComponent("gear_label_7"));
+    BOOST_CHECK(ui.hasComponent("gear_slot_8"));
+    BOOST_CHECK(ui.hasComponent("gear_icon_8"));
+    BOOST_CHECK(ui.hasComponent("gear_label_8"));
     BOOST_CHECK_EQUAL(ui.getText(InventoryController::INVENTORY_TITLE_ID), "Inventory");
     BOOST_CHECK_EQUAL(ui.getText("inventory_tab_items"), "Items");
     BOOST_CHECK_EQUAL(ui.getText("inventory_tab_gear"), "Gear");
+    BOOST_CHECK_EQUAL(ui.getText("gear_label_0"), "Weapon: Empty");
+    BOOST_CHECK_EQUAL(ui.getText("gear_label_1"), "Shield: Empty");
 
     controller.setInventoryVisible(true);
     BOOST_CHECK(controller.isInventoryVisible());
@@ -251,15 +257,21 @@ BOOST_AUTO_TEST_CASE(TestPlayerEquipUsesEquipmentSlotMetadata) {
 }
 
 BOOST_AUTO_TEST_CASE(TestUnknownEquipmentSlotDoesNotEquip) {
-    auto shieldHandle = getResourceHandleById("iron_shield");
-    BOOST_REQUIRE(shieldHandle.isValid());
-    BOOST_REQUIRE(player->addToInventory(shieldHandle, 1));
+    auto unknownSlotHandle = ResourceTemplateManager::Instance().generateHandle();
+    auto unknownSlotEquipment = std::make_shared<Equipment>(
+        unknownSlotHandle,
+        "unknown_slot_relic",
+        "Unknown Slot Relic",
+        Equipment::EquipmentSlot::COUNT);
+    BOOST_REQUIRE(
+        ResourceTemplateManager::Instance().registerResourceTemplate(unknownSlotEquipment));
+    BOOST_REQUIRE(player->addToInventory(unknownSlotHandle, 1));
 
-    BOOST_CHECK(!player->equipItem(shieldHandle));
+    BOOST_CHECK(!player->equipItem(unknownSlotHandle));
     BOOST_CHECK(!player->getEquippedItem("weapon").isValid());
     BOOST_CHECK(!player->getEquippedItem("unknown").isValid());
     BOOST_CHECK_EQUAL(
-        EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), shieldHandle),
+        EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), unknownSlotHandle),
         1);
 }
 
@@ -279,16 +291,16 @@ BOOST_AUTO_TEST_CASE(TestInventorySlotClickEquipsAndGearSlotClickUnequips) {
     ui.update(0.016f);
 
     BOOST_CHECK(player->getEquippedItem("chest") == chestHandle);
-    BOOST_CHECK_EQUAL(ui.getText("gear_label_2").find("Dragon Scale Armor"), 7);
+    BOOST_CHECK_EQUAL(ui.getText("gear_label_3").find("Dragon Scale Armor"), 7);
     BOOST_CHECK_EQUAL(
         EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), chestHandle),
         0);
 
-    ui.simulateClick("gear_slot_2");
+    ui.simulateClick("gear_slot_3");
     ui.update(0.016f);
 
     BOOST_CHECK(!player->getEquippedItem("chest").isValid());
-    BOOST_CHECK(ui.getText("gear_label_2").find("Empty") != std::string::npos);
+    BOOST_CHECK(ui.getText("gear_label_3").find("Empty") != std::string::npos);
     BOOST_CHECK_EQUAL(
         EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), chestHandle),
         1);

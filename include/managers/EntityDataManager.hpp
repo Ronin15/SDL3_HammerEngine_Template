@@ -47,8 +47,10 @@
 #include "utils/Vector2D.hpp"
 #include "world/HarvestType.hpp"
 #include <atomic>
+#include <array>
 #include <cassert>
 #include <cstdint>
+#include <cstddef>
 #include <functional>
 #include <limits>
 #include <mutex>
@@ -66,6 +68,7 @@
 
 /// Invalid inventory index constant (defined early for use in struct defaults)
 static constexpr uint32_t INVALID_INVENTORY_INDEX = std::numeric_limits<uint32_t>::max();
+static constexpr size_t CHARACTER_EQUIPMENT_SLOT_COUNT = 9;
 
 /**
  * @brief Per-entity archetype reference for behavior config storage (8 bytes)
@@ -239,12 +242,16 @@ enum class Sex : uint8_t {
 struct CharacterData {
     // Stats (computed from base × modifier at creation)
     float health{100.0f};
+    float baseMaxHealth{100.0f};
     float maxHealth{100.0f};
     float stamina{100.0f};
     float maxStamina{100.0f};
+    float baseAttackDamage{10.0f};
     float attackDamage{10.0f};
     float attackRange{50.0f};
-    float moveSpeed{100.0f};   // Base movement speed
+    float baseMoveSpeed{100.0f};
+    float moveSpeed{100.0f};   // Effective movement speed
+    float armorDefense{0.0f};  // Effective defense from equipped gear
     float mass{1.0f};          // Physical mass (affects knockback resistance)
     float projectileSpeed{0.0f}; // Ranged projectile speed (px/s), 0 = melee
 
@@ -264,6 +271,8 @@ struct CharacterData {
 
     // Inventory (for merchants and NPCs that carry items)
     uint32_t inventoryIndex{INVALID_INVENTORY_INDEX};  // EDM inventory index
+    std::array<VoidLight::ResourceHandle, CHARACTER_EQUIPMENT_SLOT_COUNT>
+        equippedItems{};
 
     // Emotional resilience from class (affects emotion changes)
     float emotionalResilience{0.5f};
@@ -1657,6 +1666,35 @@ public:
     [[nodiscard]] uint32_t getNPCInventoryIndex(EntityHandle handle) const;
 
     /**
+     * @brief Equip one inventory item onto a character.
+     *
+     * Removes one item from the character inventory, stores it in the matching
+     * equipment slot, returns any replaced item to the same inventory, and
+     * refreshes cached effective combat stats.
+     */
+    bool equipCharacterItem(EntityHandle handle, VoidLight::ResourceHandle itemHandle);
+
+    /**
+     * @brief Unequip the item in a character slot and return it to inventory.
+     */
+    bool unequipCharacterItem(EntityHandle handle, const std::string& slotName);
+
+    /**
+     * @brief Get the currently equipped item for a character slot.
+     */
+    [[nodiscard]] VoidLight::ResourceHandle
+    getEquippedCharacterItem(EntityHandle handle, const std::string& slotName) const;
+
+    /**
+     * @brief Auto-equip valid equipment already present in a character inventory.
+     */
+    bool autoEquipCharacterEquipment(EntityHandle handle);
+
+    [[nodiscard]] float getEffectiveAttackDamage(EntityHandle handle) const;
+    [[nodiscard]] float getEffectiveDefense(EntityHandle handle) const;
+    [[nodiscard]] float getEffectiveMoveSpeed(EntityHandle handle) const;
+
+    /**
      * @brief Destroy an inventory and release its resources
      * @param inventoryIndex Index from createInventory()
      *
@@ -1959,6 +1997,14 @@ public:
 
     [[nodiscard]] CharacterData& getCharacterData(EntityHandle handle);
     [[nodiscard]] const CharacterData& getCharacterData(EntityHandle handle) const;
+
+    void setCharacterBaseStats(EntityHandle handle,
+                               float maxHealth,
+                               float maxStamina,
+                               float attackDamage,
+                               float attackRange,
+                               float moveSpeed);
+    void setCharacterInventoryIndex(EntityHandle handle, uint32_t inventoryIndex);
 
     /**
      * @brief Set the faction of a character and update collision layers
@@ -2637,6 +2683,7 @@ private:
 
     // Helper for faction-based collision layers
     void applyFactionCollision(size_t index, uint8_t faction);
+    void recalculateCharacterEquipmentStats(uint32_t characterIndex);
 
     // State
     std::atomic<bool> m_initialized{false};

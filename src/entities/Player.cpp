@@ -12,7 +12,6 @@
 #include "entities/playerStates/PlayerHurtState.hpp"
 #include "entities/playerStates/PlayerIdleState.hpp"
 #include "entities/playerStates/PlayerRunningState.hpp"
-#include "entities/resources/ItemResources.hpp"
 
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -26,35 +25,6 @@
 #include <algorithm>
 #include <format>
 
-namespace {
-
-std::string equipmentSlotName(Equipment::EquipmentSlot slot) {
-  switch (slot) {
-  case Equipment::EquipmentSlot::Weapon:
-    return "weapon";
-  case Equipment::EquipmentSlot::Helmet:
-    return "helmet";
-  case Equipment::EquipmentSlot::Chest:
-    return "chest";
-  case Equipment::EquipmentSlot::Legs:
-    return "legs";
-  case Equipment::EquipmentSlot::Boots:
-    return "boots";
-  case Equipment::EquipmentSlot::Gloves:
-    return "gloves";
-  case Equipment::EquipmentSlot::Ring:
-    return "ring";
-  case Equipment::EquipmentSlot::Necklace:
-    return "necklace";
-  case Equipment::EquipmentSlot::COUNT:
-    break;
-  }
-
-  return "unknown";
-}
-
-} // namespace
-
 Player::Player() : Entity() {
   // Register with EntityDataManager FIRST - data must exist before any state
   // setup This establishes the single source of truth for all entity data
@@ -64,6 +34,8 @@ Player::Player() : Entity() {
     EntityHandle handle =
         edm.registerPlayer(getID(), m_initialPosition, 16.0f, 16.0f);
     setHandle(handle);
+    edm.setCharacterBaseStats(handle, 100.0f, 100.0f, 25.0f, 50.0f,
+                              m_movementSpeed);
   }
 
   m_textureID =
@@ -375,9 +347,6 @@ void Player::clean() {
     m_inventoryIndex = INVALID_INVENTORY_INDEX;
   }
 
-  // Clear equipped items
-  m_equippedItems.clear();
-
   // Unregister from EntityDataManager
   if (edm.isInitialized()) {
     edm.unregisterEntity(getID());
@@ -425,16 +394,7 @@ void Player::initializeInventory() {
     PLAYER_ERROR("Failed to create player inventory");
     return;
   }
-
-  // Initialize equipment slots with invalid handles
-  m_equippedItems["weapon"] = VoidLight::ResourceHandle{};
-  m_equippedItems["helmet"] = VoidLight::ResourceHandle{};
-  m_equippedItems["chest"] = VoidLight::ResourceHandle{};
-  m_equippedItems["legs"] = VoidLight::ResourceHandle{};
-  m_equippedItems["boots"] = VoidLight::ResourceHandle{};
-  m_equippedItems["gloves"] = VoidLight::ResourceHandle{};
-  m_equippedItems["ring"] = VoidLight::ResourceHandle{};
-  m_equippedItems["necklace"] = VoidLight::ResourceHandle{};
+  edm.setCharacterInventoryIndex(m_handle, m_inventoryIndex);
 
   // Give player some starting resources using ResourceTemplateManager
   const auto &templateManager = ResourceTemplateManager::Instance();
@@ -543,108 +503,26 @@ bool Player::hasGold(int amount) const {
   return getGold() >= amount;
 }
 
+float Player::getMovementSpeed() const {
+  if (!hasValidHandle()) {
+    return m_movementSpeed;
+  }
+
+  return EntityDataManager::Instance().getCharacterData(m_handle).moveSpeed;
+}
+
 // Equipment management
 bool Player::equipItem(VoidLight::ResourceHandle itemHandle) {
-  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
-    PLAYER_WARN("Player::equipItem - Inventory not initialized");
-    return false;
-  }
-
-  if (!itemHandle.isValid()) {
-    PLAYER_ERROR("Player::equipItem - Invalid resource handle");
-    return false;
-  }
-
-  auto &edm = EntityDataManager::Instance();
-  if (!edm.hasInInventory(m_inventoryIndex, itemHandle, 1)) {
-    PLAYER_WARN(std::format("Player::equipItem - Item not available (handle: {})", itemHandle.toString()));
-    return false;
-  }
-
-  const auto &templateManager = ResourceTemplateManager::Instance();
-  auto itemTemplate = templateManager.getResourceTemplate(itemHandle);
-  if (!itemTemplate) {
-    PLAYER_ERROR(std::format("Player::equipItem - Cannot get template for item handle: {}", itemHandle.toString()));
-    return false;
-  }
-
-  if (itemTemplate->getType() != ResourceType::Equipment) {
-    PLAYER_WARN(std::format("Player::equipItem - Item is not equipment (handle: {})", itemHandle.toString()));
-    return false;
-  }
-
-  const auto equipment = std::dynamic_pointer_cast<Equipment>(itemTemplate);
-  if (!equipment) {
-    PLAYER_ERROR(std::format("Player::equipItem - Equipment template has wrong type (handle: {})", itemHandle.toString()));
-    return false;
-  }
-
-  const std::string slotName = equipmentSlotName(equipment->getEquipmentSlot());
-  if (slotName == "unknown") {
-    PLAYER_ERROR(std::format("Player::equipItem - Unknown equipment slot for handle: {}", itemHandle.toString()));
-    return false;
-  }
-
-  VoidLight::ResourceHandle previouslyEquipped = m_equippedItems[slotName];
-  if (previouslyEquipped == itemHandle) {
-    return true;
-  }
-
-  if (!edm.removeFromInventory(m_inventoryIndex, itemHandle, 1)) {
-    return false;
-  }
-
-  if (previouslyEquipped.isValid() &&
-      !edm.addToInventory(m_inventoryIndex, previouslyEquipped, 1)) {
-    edm.addToInventory(m_inventoryIndex, itemHandle, 1);
-    PLAYER_WARN(std::format("Player::equipItem - Could not return previous item to inventory (handle: {})", previouslyEquipped.toString()));
-    return false;
-  }
-
-  m_equippedItems[slotName] = itemHandle;
-  PLAYER_DEBUG(std::format("Equipped item (handle: {}) in slot: {}",
-                           itemHandle.toString(), slotName));
-  return true;
+  return EntityDataManager::Instance().equipCharacterItem(m_handle, itemHandle);
 }
 
 bool Player::unequipItem(const std::string &slotName) {
-  if (slotName.empty()) {
-    PLAYER_ERROR("Player::unequipItem - Slot name cannot be empty");
-    return false;
-  }
-
-  auto it = m_equippedItems.find(slotName);
-  if (it == m_equippedItems.end() || !it->second.isValid()) {
-    PLAYER_WARN(std::format(
-        "Player::unequipItem - No item equipped in slot: {}", slotName));
-    return false; // Nothing equipped in this slot
-  }
-
-  VoidLight::ResourceHandle itemHandle = it->second;
-
-  // Try to add back to inventory
-  auto &edm = EntityDataManager::Instance();
-  if (edm.addToInventory(m_inventoryIndex, itemHandle, 1)) {
-    it->second = VoidLight::ResourceHandle{}; // Set to invalid handle
-    PLAYER_DEBUG(std::format("Unequipped item (handle: {}) from slot: {}",
-                             itemHandle.toString(), slotName));
-    return true;
-  }
-
-  PLAYER_WARN(std::format("Player::unequipItem - Could not add item back to inventory (handle: {})", itemHandle.toString()));
-  return false;
+  return EntityDataManager::Instance().unequipCharacterItem(m_handle, slotName);
 }
 
 VoidLight::ResourceHandle
 Player::getEquippedItem(const std::string &slotName) const {
-  if (slotName.empty()) {
-    PLAYER_ERROR("Player::getEquippedItem - Slot name cannot be empty");
-    return VoidLight::ResourceHandle{};
-  }
-
-  auto it = m_equippedItems.find(slotName);
-  return (it != m_equippedItems.end()) ? it->second
-                                       : VoidLight::ResourceHandle{};
+  return EntityDataManager::Instance().getEquippedCharacterItem(m_handle, slotName);
 }
 
 // Crafting and consumption
@@ -835,13 +713,14 @@ void Player::die() {
 
 void Player::setMaxHealth(float maxHealth) {
   auto &charData = EntityDataManager::Instance().getCharacterData(m_handle);
-  charData.maxHealth = maxHealth;
+  charData.baseMaxHealth = std::max(1.0f, maxHealth);
+  charData.maxHealth = charData.baseMaxHealth;
   charData.health = std::min(charData.health, charData.maxHealth);
 }
 
 void Player::setMaxStamina(float maxStamina) {
   auto &charData = EntityDataManager::Instance().getCharacterData(m_handle);
-  charData.maxStamina = maxStamina;
+  charData.maxStamina = std::max(1.0f, maxStamina);
   charData.stamina = std::min(charData.stamina, charData.maxStamina);
 }
 

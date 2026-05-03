@@ -920,7 +920,11 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
   const float damage = preparedCombat.valid
       ? preparedCombat.damage
       : damageEvent->getDamage();
-  charData.health = std::max(0.0f, charData.health - damage);
+  const float armorDefense = std::max(0.0f, charData.armorDefense);
+  const float mitigatedDamage = damage > 0.0f
+      ? std::max(1.0f, damage * (100.0f / (100.0f + armorDefense)))
+      : 0.0f;
+  charData.health = std::max(0.0f, charData.health - mitigatedDamage);
 
   const Vector2D knockback = preparedCombat.valid
       ? preparedCombat.knockback
@@ -934,7 +938,7 @@ void EventManager::commitPreparedCombatEvent(const PendingDispatch& pendingDispa
 
   if (attackerHandle.isValid() && targetIsNPC) {
     edm.recordCombatEvent(targetIdx, attackerHandle, targetHandle,
-                          damage, true, gameTime);
+                          mitigatedDamage, true, gameTime);
   }
 
   const bool wasLethal = (charData.health <= 0.0f);

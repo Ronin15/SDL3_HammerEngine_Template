@@ -2,6 +2,7 @@
 """Tests for atlas mapper state and rename helpers."""
 
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -115,6 +116,55 @@ class AtlasToolMapperTests(unittest.TestCase):
             self.assertEqual(
                 state["missingIds"],
                 {"Items": [{"id": "potion", "name": "Potion", "source": "test"}]},
+            )
+
+    def test_collect_expected_texture_ids_includes_equipment_catalog(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self.make_paths(Path(tmp))
+            data_dir = Path(tmp) / "res" / "data"
+            data_dir.mkdir()
+
+            (data_dir / "resources.json").write_text(
+                json.dumps({
+                    "resources": [
+                        {
+                            "name": "Health Potion",
+                            "category": "Item",
+                            "textureId": "health_potion_world",
+                        }
+                    ]
+                }),
+                encoding="utf-8",
+            )
+            (data_dir / "equipment.json").write_text(
+                json.dumps({
+                    "resources": [
+                        {
+                            "name": "Iron Shield",
+                            "category": "Item",
+                            "textureId": "iron_shield_icon",
+                        }
+                    ]
+                }),
+                encoding="utf-8",
+            )
+
+            expected_ids = atlas_tool.collect_expected_texture_ids(paths)
+
+            self.assertEqual(
+                expected_ids["Items"],
+                [
+                    {
+                        "id": "health_potion_world",
+                        "name": "Health Potion",
+                        "source": "resources.json",
+                    },
+                    {
+                        "id": "iron_shield_icon",
+                        "name": "Iron Shield",
+                        "source": "equipment.json",
+                    },
+                ],
             )
 
 

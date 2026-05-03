@@ -8,7 +8,7 @@
 #include "core/Logger.hpp"
 #include "entities/Player.hpp"
 #include "entities/Resource.hpp"
-#include "entities/resources/ItemResources.hpp"
+#include "entities/resources/EquipmentResources.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
@@ -77,21 +77,9 @@ constexpr int centerOffset(int position, int size, int containerHalfSize) {
     return position + (size / 2) - containerHalfSize;
 }
 
-struct GearSlotView {
-    std::string_view slotName;
-    std::string_view label;
-};
-
-constexpr std::array<GearSlotView, 8> GEAR_SLOTS{{
-    {"weapon", "Weapon"},
-    {"helmet", "Helmet"},
-    {"chest", "Chest"},
-    {"legs", "Legs"},
-    {"boots", "Boots"},
-    {"gloves", "Gloves"},
-    {"ring", "Ring"},
-    {"necklace", "Necklace"},
-}};
+const auto& gearSlots() {
+    return Equipment::equipmentSlotDefinitions();
+}
 
 } // namespace
 
@@ -340,7 +328,8 @@ void InventoryController::initializeInventoryUI() {
     gearLabelStyle.fontID = UIConstants::FONT_UI;
 
     constexpr int gearOffsetY = INVENTORY_CONTENT_Y;
-    for (size_t slot = 0; slot < GEAR_SLOTS.size(); ++slot) {
+    const auto& slots = gearSlots();
+    for (size_t slot = 0; slot < slots.size(); ++slot) {
         const int row = static_cast<int>(slot);
         const int slotX = GEAR_SECTION_X;
         const int slotY = gearOffsetY +
@@ -380,7 +369,7 @@ void InventoryController::initializeInventoryUI() {
                        {slotX + GEAR_ICON_INSET + GEAR_ICON_SIZE + GEAR_LABEL_GAP,
                         slotY + GEAR_LABEL_INSET_Y,
                         GEAR_LABEL_WIDTH, GEAR_LABEL_HEIGHT},
-                       std::string(GEAR_SLOTS[slot].label), slotComponentId);
+                       std::string(slots[slot].label), slotComponentId);
         ui.enableAutoSizing(labelComponentId, false);
         ui.setStyle(labelComponentId, gearLabelStyle);
         ui.setComponentPositioning(
@@ -636,14 +625,16 @@ void InventoryController::refreshSlot(size_t slotIndex,
 }
 
 void InventoryController::refreshGearUI() {
-    for (size_t i = 0; i < GEAR_SLOTS.size(); ++i) {
+    const auto& slots = gearSlots();
+    for (size_t i = 0; i < slots.size(); ++i) {
         refreshGearSlot(i);
     }
 }
 
 void InventoryController::refreshGearSlot(size_t slotIndex) {
     auto player = mp_player.lock();
-    if (!player || slotIndex >= GEAR_SLOTS.size()) {
+    const auto& slots = gearSlots();
+    if (!player || slotIndex >= slots.size()) {
         return;
     }
 
@@ -651,12 +642,12 @@ void InventoryController::refreshGearSlot(size_t slotIndex) {
     const std::string iconComponentId = gearIconId(slotIndex);
     const std::string labelComponentId = gearLabelId(slotIndex);
     const VoidLight::ResourceHandle equipped =
-        player->getEquippedItem(std::string(GEAR_SLOTS[slotIndex].slotName));
+        player->getEquippedItem(std::string(slots[slotIndex].id));
 
     if (!equipped.isValid()) {
         ui.setTexture(iconComponentId, "");
         ui.setImageSourceRect(iconComponentId, UIRect{});
-        ui.setText(labelComponentId, std::format("{}: Empty", GEAR_SLOTS[slotIndex].label));
+        ui.setText(labelComponentId, std::format("{}: Empty", slots[slotIndex].label));
         return;
     }
 
@@ -675,7 +666,7 @@ void InventoryController::refreshGearSlot(size_t slotIndex) {
     }
 
     ui.setText(labelComponentId,
-               std::format("{}: {}", GEAR_SLOTS[slotIndex].label,
+               std::format("{}: {}", slots[slotIndex].label,
                            resourceTemplate ? resourceTemplate->getName()
                                             : equipped.toString()));
 }
@@ -714,11 +705,12 @@ void InventoryController::handleInventorySlotClicked(size_t slotIndex) {
 
 void InventoryController::handleGearSlotClicked(size_t slotIndex) {
     auto player = mp_player.lock();
-    if (!player || slotIndex >= GEAR_SLOTS.size()) {
+    const auto& slots = gearSlots();
+    if (!player || slotIndex >= slots.size()) {
         return;
     }
 
-    const std::string slotName(GEAR_SLOTS[slotIndex].slotName);
+    const std::string slotName(slots[slotIndex].id);
     const VoidLight::ResourceHandle equipped = player->getEquippedItem(slotName);
     if (!equipped.isValid() || !player->unequipItem(slotName)) {
         return;

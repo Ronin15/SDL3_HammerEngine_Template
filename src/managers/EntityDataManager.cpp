@@ -6,6 +6,7 @@
 #include "managers/EntityDataManager.hpp"
 #include "core/Logger.hpp"
 #include "entities/Entity.hpp"  // For AnimationConfig
+#include "entities/resources/EquipmentResources.hpp"
 #include "managers/AIManager.hpp"  // For auto-registering NPCs with AI
 #include "managers/ResourceTemplateManager.hpp"  // For getMaxStackSize in inventory
 #include "managers/WorldResourceManager.hpp"  // For unregister on harvestable destruction
@@ -15,6 +16,7 @@
 
 using VoidLight::JsonReader;
 using VoidLight::JsonValue;
+#include <array>
 #include <algorithm>
 #include <cassert>
 #include <format>
@@ -23,6 +25,7 @@ using VoidLight::JsonValue;
 #include <numeric>
 #include <optional>
 #include <ranges>
+#include <string_view>
 
 namespace {
 
@@ -669,12 +672,15 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     charData.typeId = m_raceNameToId.count(race) ? m_raceNameToId[race] : 0;
     charData.subtypeId = m_classNameToId.count(charClass) ? m_classNameToId[charClass] : 0;
     charData.maxHealth = raceInfo.baseHealth * classInfo.healthMult;
+    charData.baseMaxHealth = charData.maxHealth;
     charData.health = charData.maxHealth;
     charData.maxStamina = raceInfo.baseStamina * classInfo.staminaMult;
     charData.stamina = charData.maxStamina;
     charData.attackDamage = raceInfo.baseAttackDamage * classInfo.attackDamageMult;
+    charData.baseAttackDamage = charData.attackDamage;
     charData.attackRange = raceInfo.baseAttackRange * classInfo.attackRangeMult;
     charData.moveSpeed = raceInfo.baseMoveSpeed * classInfo.moveSpeedMult;
+    charData.baseMoveSpeed = charData.moveSpeed;
     charData.priority = classInfo.basePriority;
     charData.faction = (factionOverride != 0xFF) ? factionOverride : classInfo.defaultFaction;
     charData.emotionalResilience = classInfo.emotionalResilience;
@@ -737,6 +743,10 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
         }
     }
 
+    if (!classInfo.isMerchant) {
+        autoEquipCharacterEquipment(handle);
+    }
+
     ENTITY_DEBUG(std::format("Created {} {} at ({},{}) HP:{:.0f} DMG:{:.1f} SPD:{:.0f}{}",
                             race, charClass, position.getX(), position.getY(),
                             charData.maxHealth, charData.attackDamage, charData.moveSpeed,
@@ -795,12 +805,15 @@ EntityHandle EntityDataManager::createMonster(const Vector2D& position,
     charData.typeId = m_monsterTypeNameToId.count(monsterType) ? m_monsterTypeNameToId[monsterType] : 0;
     charData.subtypeId = m_monsterVariantNameToId.count(variant) ? m_monsterVariantNameToId[variant] : 0;
     charData.maxHealth = typeInfo.baseHealth * variantInfo.healthMult;
+    charData.baseMaxHealth = charData.maxHealth;
     charData.health = charData.maxHealth;
     charData.maxStamina = typeInfo.baseStamina * variantInfo.staminaMult;
     charData.stamina = charData.maxStamina;
     charData.attackDamage = typeInfo.baseAttackDamage * variantInfo.attackDamageMult;
+    charData.baseAttackDamage = charData.attackDamage;
     charData.attackRange = typeInfo.baseAttackRange * variantInfo.attackRangeMult;
     charData.moveSpeed = typeInfo.baseMoveSpeed * variantInfo.moveSpeedMult;
+    charData.baseMoveSpeed = charData.moveSpeed;
     charData.priority = variantInfo.basePriority;
     charData.faction = (factionOverride != 0xFF) ? factionOverride : typeInfo.defaultFaction;
     charData.mass = typeInfo.sizeMultiplier * typeInfo.sizeMultiplier;  // Mass scales with area
@@ -891,12 +904,15 @@ EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
     charData.typeId = m_speciesNameToId.count(species) ? m_speciesNameToId[species] : 0;
     charData.subtypeId = m_animalRoleNameToId.count(role) ? m_animalRoleNameToId[role] : 0;
     charData.maxHealth = speciesInfo.baseHealth * roleInfo.healthMult;
+    charData.baseMaxHealth = charData.maxHealth;
     charData.health = charData.maxHealth;
     charData.maxStamina = speciesInfo.baseStamina * roleInfo.staminaMult;
     charData.stamina = charData.maxStamina;
     charData.attackDamage = speciesInfo.baseAttackDamage * roleInfo.attackDamageMult;
+    charData.baseAttackDamage = charData.attackDamage;
     charData.attackRange = speciesInfo.baseAttackRange;  // Animals don't have range multiplier
     charData.moveSpeed = speciesInfo.baseMoveSpeed * roleInfo.moveSpeedMult;
+    charData.baseMoveSpeed = charData.moveSpeed;
     charData.priority = roleInfo.basePriority;
     charData.faction = (factionOverride != 0xFF) ? factionOverride : roleInfo.defaultFaction;
     charData.mass = speciesInfo.sizeMultiplier * speciesInfo.sizeMultiplier;  // Mass scales with area
@@ -1758,15 +1774,11 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
     hot.collisionFlags = EntityHotData::COLLISION_ENABLED | EntityHotData::NEEDS_TRIGGER_DETECTION;
     hot.triggerTag = 0;
 
-    // Allocate character data (CharacterData + NPCRenderData stay in sync)
+    // Allocate character data. Player-specific base stats are configured by
+    // Player after registration so the bolt-on player module owns that policy.
     uint32_t charIndex = allocateCharacterSlot();
     auto& charData = m_characterData[charIndex];
-    charData.health = 100.0f;
-    charData.maxHealth = 100.0f;
-    charData.stamina = 100.0f;
-    charData.maxStamina = 100.0f;
-    charData.attackDamage = 25.0f;
-    charData.attackRange = 50.0f;
+    charData.category = CreatureCategory::NPC;
     charData.stateFlags = 0;
     hot.typeLocalIndex = charIndex;
 
@@ -2170,6 +2182,309 @@ uint32_t EntityDataManager::getNPCInventoryIndex(EntityHandle handle) const {
 
     const auto& charData = getCharacterDataByIndex(idx);
     return charData.inventoryIndex;
+}
+
+bool EntityDataManager::equipCharacterItem(EntityHandle handle,
+                                           VoidLight::ResourceHandle itemHandle)
+{
+    if (!handle.isValid() || !handle.hasHealth()) {
+        ENTITY_ERROR("equipCharacterItem: Invalid character handle");
+        return false;
+    }
+    if (!itemHandle.isValid()) {
+        ENTITY_ERROR("equipCharacterItem: Invalid resource handle");
+        return false;
+    }
+
+    const size_t idx = getIndex(handle);
+    if (idx == SIZE_MAX) {
+        ENTITY_ERROR("equipCharacterItem: Character not found in EDM");
+        return false;
+    }
+
+    auto& charData = getCharacterDataByIndex(idx);
+    if (!charData.hasInventory()) {
+        ENTITY_WARN("equipCharacterItem: Character has no inventory");
+        return false;
+    }
+    if (!hasInInventory(charData.inventoryIndex, itemHandle, 1)) {
+        ENTITY_WARN(std::format("equipCharacterItem: Item {} is not in inventory",
+                                itemHandle.toString()));
+        return false;
+    }
+
+    auto resourceTemplate =
+        ResourceTemplateManager::Instance().getResourceTemplate(itemHandle);
+    if (!resourceTemplate || resourceTemplate->getType() != ResourceType::Equipment) {
+        ENTITY_WARN(std::format("equipCharacterItem: Item {} is not equipment",
+                                itemHandle.toString()));
+        return false;
+    }
+
+    const auto equipment = std::dynamic_pointer_cast<Equipment>(resourceTemplate);
+    if (!equipment) {
+        ENTITY_ERROR(std::format("equipCharacterItem: Equipment template {} has wrong type",
+                                 itemHandle.toString()));
+        return false;
+    }
+
+    const auto slotIndex = Equipment::equipmentSlotIndex(equipment->getEquipmentSlot());
+    if (!slotIndex.has_value()) {
+        ENTITY_ERROR(std::format("equipCharacterItem: Unknown equipment slot for {}",
+                                 itemHandle.toString()));
+        return false;
+    }
+
+    const auto weaponSlotIndex =
+        Equipment::equipmentSlotIndex(Equipment::EquipmentSlot::Weapon);
+    const auto shieldSlotIndex =
+        Equipment::equipmentSlotIndex(Equipment::EquipmentSlot::Shield);
+
+    if (equipment->getEquipmentSlot() == Equipment::EquipmentSlot::Shield &&
+        weaponSlotIndex.has_value()) {
+        const VoidLight::ResourceHandle equippedWeapon =
+            charData.equippedItems[*weaponSlotIndex];
+        if (equippedWeapon.isValid()) {
+            auto equippedWeaponTemplate =
+                ResourceTemplateManager::Instance().getResourceTemplate(equippedWeapon);
+            const auto equippedWeaponResource =
+                std::dynamic_pointer_cast<Equipment>(equippedWeaponTemplate);
+            if (equippedWeaponResource &&
+                equippedWeaponResource->getHandsRequired() >= 2) {
+                ENTITY_WARN(std::format(
+                    "equipCharacterItem: Cannot equip shield {} while two-handed weapon {} is equipped",
+                    itemHandle.toString(), equippedWeapon.toString()));
+                return false;
+            }
+        }
+    }
+
+    VoidLight::ResourceHandle previouslyEquipped =
+        charData.equippedItems[*slotIndex];
+    if (previouslyEquipped == itemHandle) {
+        return true;
+    }
+
+    VoidLight::ResourceHandle displacedShield;
+    if (equipment->getEquipmentSlot() == Equipment::EquipmentSlot::Weapon &&
+        equipment->getHandsRequired() >= 2 && shieldSlotIndex.has_value()) {
+        displacedShield = charData.equippedItems[*shieldSlotIndex];
+    }
+
+    int returnedItemCount = previouslyEquipped.isValid() ? 1 : 0;
+    returnedItemCount += displacedShield.isValid() ? 1 : 0;
+    if (returnedItemCount > 0) {
+        const size_t maxSlots = getInventoryData(charData.inventoryIndex).maxSlots;
+        int emptySlots = 0;
+        bool equippedItemSlotWillEmpty = false;
+        for (size_t inventorySlot = 0; inventorySlot < maxSlots; ++inventorySlot) {
+            const InventorySlotData slot =
+                getInventorySlot(charData.inventoryIndex, inventorySlot);
+            if (slot.isEmpty()) {
+                ++emptySlots;
+            } else if (slot.resourceHandle == itemHandle && slot.quantity <= 1) {
+                equippedItemSlotWillEmpty = true;
+            }
+        }
+
+        if (emptySlots + (equippedItemSlotWillEmpty ? 1 : 0) < returnedItemCount) {
+            ENTITY_WARN(std::format(
+                "equipCharacterItem: Not enough inventory space to equip {}",
+                itemHandle.toString()));
+            return false;
+        }
+    }
+
+    if (!removeFromInventory(charData.inventoryIndex, itemHandle, 1)) {
+        return false;
+    }
+
+    if (previouslyEquipped.isValid() &&
+        !addToInventory(charData.inventoryIndex, previouslyEquipped, 1)) {
+        addToInventory(charData.inventoryIndex, itemHandle, 1);
+        ENTITY_WARN(std::format("equipCharacterItem: Could not return previous item {}",
+                                previouslyEquipped.toString()));
+        return false;
+    }
+
+    if (displacedShield.isValid() &&
+        !addToInventory(charData.inventoryIndex, displacedShield, 1)) {
+        if (previouslyEquipped.isValid()) {
+            removeFromInventory(charData.inventoryIndex, previouslyEquipped, 1);
+        }
+        addToInventory(charData.inventoryIndex, itemHandle, 1);
+        ENTITY_WARN(std::format("equipCharacterItem: Could not return shield item {}",
+                                displacedShield.toString()));
+        return false;
+    }
+
+    charData.equippedItems[*slotIndex] = itemHandle;
+    if (displacedShield.isValid()) {
+        charData.equippedItems[*shieldSlotIndex] = VoidLight::ResourceHandle{};
+    }
+    recalculateCharacterEquipmentStats(m_hotData[idx].typeLocalIndex);
+    return true;
+}
+
+bool EntityDataManager::unequipCharacterItem(EntityHandle handle,
+                                             const std::string& slotName)
+{
+    if (slotName.empty()) {
+        ENTITY_ERROR("unequipCharacterItem: Slot name cannot be empty");
+        return false;
+    }
+    if (!handle.isValid() || !handle.hasHealth()) {
+        ENTITY_ERROR("unequipCharacterItem: Invalid character handle");
+        return false;
+    }
+
+    const auto slotIndex = Equipment::equipmentSlotIndex(slotName);
+    if (!slotIndex.has_value()) {
+        ENTITY_ERROR(std::format("unequipCharacterItem: Unknown equipment slot '{}'",
+                                 slotName));
+        return false;
+    }
+
+    const size_t idx = getIndex(handle);
+    if (idx == SIZE_MAX) {
+        return false;
+    }
+
+    auto& charData = getCharacterDataByIndex(idx);
+    if (!charData.hasInventory()) {
+        return false;
+    }
+
+    const VoidLight::ResourceHandle itemHandle = charData.equippedItems[*slotIndex];
+    if (!itemHandle.isValid()) {
+        return false;
+    }
+
+    if (!addToInventory(charData.inventoryIndex, itemHandle, 1)) {
+        ENTITY_WARN(std::format("unequipCharacterItem: Could not return item {}",
+                                itemHandle.toString()));
+        return false;
+    }
+
+    charData.equippedItems[*slotIndex] = VoidLight::ResourceHandle{};
+    recalculateCharacterEquipmentStats(m_hotData[idx].typeLocalIndex);
+    return true;
+}
+
+VoidLight::ResourceHandle
+EntityDataManager::getEquippedCharacterItem(EntityHandle handle,
+                                            const std::string& slotName) const
+{
+    if (slotName.empty() || !handle.isValid() || !handle.hasHealth()) {
+        return VoidLight::ResourceHandle{};
+    }
+
+    const auto slotIndex = Equipment::equipmentSlotIndex(slotName);
+    if (!slotIndex.has_value()) {
+        return VoidLight::ResourceHandle{};
+    }
+
+    const size_t idx = getIndex(handle);
+    if (idx == SIZE_MAX) {
+        return VoidLight::ResourceHandle{};
+    }
+
+    return getCharacterDataByIndex(idx).equippedItems[*slotIndex];
+}
+
+bool EntityDataManager::autoEquipCharacterEquipment(EntityHandle handle)
+{
+    if (!handle.isValid() || !handle.hasHealth()) {
+        return false;
+    }
+
+    const size_t idx = getIndex(handle);
+    if (idx == SIZE_MAX) {
+        return false;
+    }
+
+    const auto& charData = getCharacterDataByIndex(idx);
+    if (!charData.hasInventory()) {
+        return false;
+    }
+
+    const size_t maxSlots = getInventoryData(charData.inventoryIndex).maxSlots;
+    bool equippedAny = false;
+    for (size_t slot = 0; slot < maxSlots; ++slot) {
+        const InventorySlotData inventorySlot =
+            getInventorySlot(charData.inventoryIndex, slot);
+        if (inventorySlot.isEmpty()) {
+            continue;
+        }
+
+        auto resourceTemplate =
+            ResourceTemplateManager::Instance().getResourceTemplate(
+                inventorySlot.resourceHandle);
+        auto equipment = std::dynamic_pointer_cast<Equipment>(resourceTemplate);
+        if (!equipment) {
+            continue;
+        }
+
+        const auto slotIndex =
+            Equipment::equipmentSlotIndex(equipment->getEquipmentSlot());
+        if (!slotIndex.has_value() ||
+            getCharacterDataByIndex(idx).equippedItems[*slotIndex].isValid()) {
+            continue;
+        }
+
+        equippedAny =
+            equipCharacterItem(handle, inventorySlot.resourceHandle) || equippedAny;
+    }
+
+    return equippedAny;
+}
+
+float EntityDataManager::getEffectiveAttackDamage(EntityHandle handle) const
+{
+    return getCharacterData(handle).attackDamage;
+}
+
+float EntityDataManager::getEffectiveDefense(EntityHandle handle) const
+{
+    return getCharacterData(handle).armorDefense;
+}
+
+float EntityDataManager::getEffectiveMoveSpeed(EntityHandle handle) const
+{
+    return getCharacterData(handle).moveSpeed;
+}
+
+void EntityDataManager::recalculateCharacterEquipmentStats(uint32_t characterIndex)
+{
+    if (characterIndex >= m_characterData.size()) {
+        return;
+    }
+
+    auto& charData = m_characterData[characterIndex];
+    float attackBonus = 0.0f;
+    float defenseBonus = 0.0f;
+    float speedBonus = 0.0f;
+
+    for (const auto& itemHandle : charData.equippedItems) {
+        if (!itemHandle.isValid()) {
+            continue;
+        }
+
+        auto resourceTemplate =
+            ResourceTemplateManager::Instance().getResourceTemplate(itemHandle);
+        auto equipment = std::dynamic_pointer_cast<Equipment>(resourceTemplate);
+        if (!equipment) {
+            continue;
+        }
+
+        attackBonus += static_cast<float>(equipment->getAttackBonus());
+        defenseBonus += static_cast<float>(equipment->getDefenseBonus());
+        speedBonus += static_cast<float>(equipment->getSpeedBonus());
+    }
+
+    charData.attackDamage = std::max(0.0f, charData.baseAttackDamage + attackBonus);
+    charData.armorDefense = std::max(0.0f, defenseBonus);
+    charData.moveSpeed = std::max(1.0f, charData.baseMoveSpeed + speedBonus);
 }
 
 bool EntityDataManager::addToInventory(uint32_t inventoryIndex,
@@ -2840,6 +3155,63 @@ const CharacterData& EntityDataManager::getCharacterData(EntityHandle handle) co
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
     assert(typeIndex < m_characterData.size() && "Type index out of bounds");
     return m_characterData[typeIndex];
+}
+
+void EntityDataManager::setCharacterBaseStats(EntityHandle handle,
+                                              float maxHealth,
+                                              float maxStamina,
+                                              float attackDamage,
+                                              float attackRange,
+                                              float moveSpeed)
+{
+    if (!handle.isValid() || !handle.hasHealth()) {
+        ENTITY_ERROR("setCharacterBaseStats: Invalid character handle");
+        return;
+    }
+
+    const size_t index = getIndex(handle);
+    if (index == SIZE_MAX) {
+        ENTITY_ERROR("setCharacterBaseStats: Character not found in EDM");
+        return;
+    }
+
+    const uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+    if (typeIndex >= m_characterData.size()) {
+        ENTITY_ERROR("setCharacterBaseStats: Type index out of bounds");
+        return;
+    }
+
+    auto& charData = m_characterData[typeIndex];
+    charData.baseMaxHealth = std::max(1.0f, maxHealth);
+    charData.maxHealth = charData.baseMaxHealth;
+    charData.health = std::min(std::max(0.0f, charData.health),
+                               charData.maxHealth);
+    if (charData.health <= 0.0f) {
+        charData.health = charData.maxHealth;
+    }
+    charData.maxStamina = std::max(0.0f, maxStamina);
+    charData.stamina = std::min(charData.stamina, charData.maxStamina);
+    charData.baseAttackDamage = std::max(0.0f, attackDamage);
+    charData.attackRange = std::max(0.0f, attackRange);
+    charData.baseMoveSpeed = std::max(1.0f, moveSpeed);
+    recalculateCharacterEquipmentStats(typeIndex);
+}
+
+void EntityDataManager::setCharacterInventoryIndex(EntityHandle handle,
+                                                   uint32_t inventoryIndex)
+{
+    if (!handle.isValid() || !handle.hasHealth()) {
+        ENTITY_ERROR("setCharacterInventoryIndex: Invalid character handle");
+        return;
+    }
+    if (!isValidInventoryIndex(inventoryIndex)) {
+        ENTITY_ERROR(std::format("setCharacterInventoryIndex: Invalid inventory index {}",
+                                 inventoryIndex));
+        return;
+    }
+
+    auto& charData = getCharacterData(handle);
+    charData.inventoryIndex = inventoryIndex;
 }
 
 // getCharacterDataByIndex() is now inline in EntityDataManager.hpp

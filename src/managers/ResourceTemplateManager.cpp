@@ -691,13 +691,21 @@ void ResourceTemplateManager::createDefaultResources() {
       "resource templates");
 
   try {
-    // Load resources from unified JSON file
+    // Load resource catalogs before atlas mapping so all entries share one
+    // texture-coordinate pass.
     const std::string resourcesPath = VoidLight::ResourcePath::resolve("res/data/resources.json");
     bool resourcesLoaded = loadResourcesFromJson(resourcesPath);
 
     RESOURCE_WARN_IF(!resourcesLoaded,
         "ResourceTemplateManager::createDefaultResources - "
         "Failed to load resources.json");
+
+    const std::string equipmentPath = VoidLight::ResourcePath::resolve("res/data/equipment.json");
+    bool equipmentLoaded = loadResourcesFromJson(equipmentPath);
+
+    RESOURCE_WARN_IF(!equipmentLoaded,
+        "ResourceTemplateManager::createDefaultResources - "
+        "Failed to load equipment.json");
 
     // Apply atlas coordinates from atlas.json (following WorldManager pattern)
     JsonReader atlasReader;

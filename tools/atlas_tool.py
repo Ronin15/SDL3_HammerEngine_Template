@@ -759,17 +759,20 @@ def collect_expected_texture_ids(paths: dict) -> dict:
     categories = {}
     data_dir = paths['project_root'] / "res" / "data"
 
-    # Process resources.json (unified items, materials, currency)
-    resources_path = data_dir / "resources.json"
-    if resources_path.exists():
+    # Process resource catalogs (items, materials, currency, equipment)
+    resource_catalogs = ("resources.json", "equipment.json")
+    items_found = []
+    materials_found = []
+    currency_found = []
+    seen_tex_ids = set()
+    for catalog_name in resource_catalogs:
+        resources_path = data_dir / catalog_name
+        if not resources_path.exists():
+            continue
         try:
             with open(resources_path, 'r') as f:
                 data = json.load(f)
             # Separate into categories based on the 'category' field
-            items_found = []
-            materials_found = []
-            currency_found = []
-            seen_tex_ids = set()
             for resource in data.get('resources', []):
                 tex_id = resource.get('textureId')
                 if tex_id and tex_id not in seen_tex_ids:
@@ -777,7 +780,7 @@ def collect_expected_texture_ids(paths: dict) -> dict:
                     entry = {
                         'id': tex_id,
                         'name': resource.get('name', tex_id),
-                        'source': 'resources.json'
+                        'source': catalog_name
                     }
                     cat = resource.get('category', '')
                     if cat == 'Item':
@@ -788,14 +791,15 @@ def collect_expected_texture_ids(paths: dict) -> dict:
                         currency_found.append(entry)
                     else:
                         items_found.append(entry)
-            if items_found:
-                categories['Items'] = items_found
-            if materials_found:
-                categories['Materials'] = materials_found
-            if currency_found:
-                categories['Currency & Resources'] = currency_found
         except Exception:
             pass
+
+    if items_found:
+        categories['Items'] = items_found
+    if materials_found:
+        categories['Materials'] = materials_found
+    if currency_found:
+        categories['Currency & Resources'] = currency_found
 
     # Process races.json (NPCs)
     races_path = data_dir / "races.json"

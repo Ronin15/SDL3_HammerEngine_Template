@@ -7,6 +7,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "core/ThreadSystem.hpp"
+#include "entities/resources/EquipmentResources.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -1433,6 +1434,131 @@ BOOST_AUTO_TEST_CASE(TestNPCRenderDataClearedOnDestroy) {
     // Handle should be invalid
     BOOST_CHECK(!edm->isValidHandle(handle));
     BOOST_CHECK_EQUAL(edm->getEntityCount(EntityKind::NPC), 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestCharacterEquipmentRecalculatesCachedStats) {
+    EntityHandle player = edm->registerPlayer(40001, Vector2D(10.0f, 10.0f));
+    BOOST_REQUIRE(player.isValid());
+    edm->setCharacterBaseStats(player, 100.0f, 100.0f, 25.0f, 50.0f, 120.0f);
+
+    const uint32_t inventory = edm->createInventory(10, false);
+    BOOST_REQUIRE_NE(inventory, INVALID_INVENTORY_INDEX);
+    edm->setCharacterInventoryIndex(player, inventory);
+
+    auto ironSword = ResourceTemplateManager::Instance().getHandleById("iron_sword");
+    auto ironArmor = ResourceTemplateManager::Instance().getHandleById("iron_armor");
+    BOOST_REQUIRE(ironSword.isValid());
+    BOOST_REQUIRE(ironArmor.isValid());
+    BOOST_REQUIRE(edm->addToInventory(inventory, ironSword, 1));
+    BOOST_REQUIRE(edm->addToInventory(inventory, ironArmor, 1));
+
+    BOOST_REQUIRE(edm->equipCharacterItem(player, ironSword));
+    BOOST_CHECK_CLOSE(edm->getCharacterData(player).attackDamage, 35.0f, 0.001f);
+    BOOST_CHECK_EQUAL(edm->getInventoryQuantity(inventory, ironSword), 0);
+
+    BOOST_REQUIRE(edm->equipCharacterItem(player, ironArmor));
+    BOOST_CHECK_CLOSE(edm->getCharacterData(player).armorDefense, 20.0f, 0.001f);
+    BOOST_CHECK_CLOSE(edm->getCharacterData(player).moveSpeed, 115.0f, 0.001f);
+
+    BOOST_REQUIRE(edm->unequipCharacterItem(player, "weapon"));
+    BOOST_CHECK_CLOSE(edm->getCharacterData(player).attackDamage, 25.0f, 0.001f);
+    BOOST_CHECK_EQUAL(edm->getInventoryQuantity(inventory, ironSword), 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestTwoHandedWeaponClearsShieldSlot) {
+    EntityHandle player = edm->registerPlayer(40002, Vector2D(10.0f, 10.0f));
+    BOOST_REQUIRE(player.isValid());
+    edm->setCharacterBaseStats(player, 100.0f, 100.0f, 25.0f, 50.0f, 120.0f);
+
+    const uint32_t inventory = edm->createInventory(10, false);
+    BOOST_REQUIRE_NE(inventory, INVALID_INVENTORY_INDEX);
+    edm->setCharacterInventoryIndex(player, inventory);
+
+    const auto bow = ResourceTemplateManager::Instance().getHandleById("bow");
+    const auto ironShield = ResourceTemplateManager::Instance().getHandleById("iron_shield");
+    BOOST_REQUIRE(bow.isValid());
+    BOOST_REQUIRE(ironShield.isValid());
+    BOOST_REQUIRE(edm->addToInventory(inventory, ironShield, 1));
+    BOOST_REQUIRE(edm->addToInventory(inventory, bow, 1));
+
+    BOOST_REQUIRE(edm->equipCharacterItem(player, ironShield));
+    BOOST_CHECK(edm->getEquippedCharacterItem(player, "shield") == ironShield);
+    BOOST_CHECK_CLOSE(edm->getCharacterData(player).armorDefense, 15.0f, 0.001f);
+
+    BOOST_REQUIRE(edm->equipCharacterItem(player, bow));
+    BOOST_CHECK(edm->getEquippedCharacterItem(player, "weapon") == bow);
+    BOOST_CHECK(!edm->getEquippedCharacterItem(player, "shield").isValid());
+    BOOST_CHECK_EQUAL(edm->getInventoryQuantity(inventory, ironShield), 1);
+    BOOST_CHECK_CLOSE(edm->getCharacterData(player).attackDamage, 33.0f, 0.001f);
+    BOOST_CHECK_CLOSE(edm->getCharacterData(player).armorDefense, 0.0f, 0.001f);
+}
+
+BOOST_AUTO_TEST_CASE(TestShieldCannotEquipOverTwoHandedWeapon) {
+    EntityHandle player = edm->registerPlayer(40003, Vector2D(10.0f, 10.0f));
+    BOOST_REQUIRE(player.isValid());
+    edm->setCharacterBaseStats(player, 100.0f, 100.0f, 25.0f, 50.0f, 120.0f);
+
+    const uint32_t inventory = edm->createInventory(10, false);
+    BOOST_REQUIRE_NE(inventory, INVALID_INVENTORY_INDEX);
+    edm->setCharacterInventoryIndex(player, inventory);
+
+    const auto bow = ResourceTemplateManager::Instance().getHandleById("bow");
+    const auto ironShield = ResourceTemplateManager::Instance().getHandleById("iron_shield");
+    BOOST_REQUIRE(bow.isValid());
+    BOOST_REQUIRE(ironShield.isValid());
+    BOOST_REQUIRE(edm->addToInventory(inventory, bow, 1));
+    BOOST_REQUIRE(edm->addToInventory(inventory, ironShield, 1));
+
+    BOOST_REQUIRE(edm->equipCharacterItem(player, bow));
+    BOOST_CHECK(!edm->equipCharacterItem(player, ironShield));
+    BOOST_CHECK(edm->getEquippedCharacterItem(player, "weapon") == bow);
+    BOOST_CHECK(!edm->getEquippedCharacterItem(player, "shield").isValid());
+    BOOST_CHECK_EQUAL(edm->getInventoryQuantity(inventory, ironShield), 1);
+    BOOST_CHECK_CLOSE(edm->getCharacterData(player).armorDefense, 0.0f, 0.001f);
+}
+
+BOOST_AUTO_TEST_CASE(TestNPCStartingEquipmentAutoEquipsNonMerchants) {
+    EntityHandle guard = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Guard");
+    BOOST_REQUIRE(guard.isValid());
+
+    const auto ironSword = ResourceTemplateManager::Instance().getHandleById("iron_sword");
+    const auto ironShield = ResourceTemplateManager::Instance().getHandleById("iron_shield");
+    BOOST_REQUIRE(ironSword.isValid());
+    BOOST_REQUIRE(ironShield.isValid());
+
+    BOOST_CHECK(edm->getEquippedCharacterItem(guard, "weapon") == ironSword);
+    BOOST_CHECK(edm->getEquippedCharacterItem(guard, "shield") == ironShield);
+    BOOST_CHECK_CLOSE(edm->getCharacterData(guard).attackDamage, 22.0f, 0.001f);
+    BOOST_CHECK_CLOSE(edm->getCharacterData(guard).armorDefense, 15.0f, 0.001f);
+}
+
+BOOST_AUTO_TEST_CASE(TestNPCStartingEquipmentPreservesClassOrderForSameSlot) {
+    EntityHandle ranger = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Ranger");
+    BOOST_REQUIRE(ranger.isValid());
+
+    const auto bow = ResourceTemplateManager::Instance().getHandleById("bow");
+    const auto dagger = ResourceTemplateManager::Instance().getHandleById("dagger");
+    BOOST_REQUIRE(bow.isValid());
+    BOOST_REQUIRE(dagger.isValid());
+
+    BOOST_CHECK(edm->getEquippedCharacterItem(ranger, "weapon") == bow);
+    BOOST_CHECK_EQUAL(
+        edm->getInventoryQuantity(edm->getCharacterData(ranger).inventoryIndex, dagger),
+        1);
+    BOOST_CHECK_CLOSE(edm->getCharacterData(ranger).attackDamage, 21.0f, 0.001f);
+}
+
+BOOST_AUTO_TEST_CASE(TestMerchantStartingEquipmentRemainsInventoryStock) {
+    EntityHandle blacksmith = edm->createNPCWithRaceClass(Vector2D(100.0f, 100.0f), "Human", "Blacksmith");
+    BOOST_REQUIRE(blacksmith.isValid());
+
+    const auto ironSword = ResourceTemplateManager::Instance().getHandleById("iron_sword");
+    BOOST_REQUIRE(ironSword.isValid());
+
+    BOOST_CHECK(!edm->getEquippedCharacterItem(blacksmith, "weapon").isValid());
+    BOOST_CHECK_EQUAL(
+        edm->getInventoryQuantity(edm->getNPCInventoryIndex(blacksmith), ironSword),
+        3);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

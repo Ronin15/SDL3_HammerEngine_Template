@@ -732,6 +732,28 @@ BOOST_FIXTURE_TEST_CASE(ImmediateDamageCommit_RunsBeforeCustomCombatHandlers,
   EventManager::Instance().removeHandler(tok);
 }
 
+BOOST_FIXTURE_TEST_CASE(ImmediateDamageCommit_AppliesArmorDefense,
+                        EventManagerFixture) {
+  auto& edm = EntityDataManager::Instance();
+  EntityHandle playerHandle = edm.registerPlayer(9111, Vector2D(100.0f, 100.0f));
+  BOOST_REQUIRE(playerHandle.isValid());
+
+  auto& playerData = edm.getCharacterData(playerHandle);
+  playerData.maxHealth = 100.0f;
+  playerData.health = 100.0f;
+  playerData.mass = 1.0f;
+  playerData.armorDefense = 100.0f;
+
+  auto damageEvent = std::make_shared<DamageEvent>(
+      EntityEventType::DamageIntent, EntityHandle{}, playerHandle, 40.0f,
+      Vector2D(0.0f, 0.0f));
+
+  BOOST_CHECK(EventManager::Instance().dispatchEvent(
+      damageEvent, EventManager::DispatchMode::Immediate));
+
+  BOOST_CHECK_CLOSE(edm.getCharacterData(playerHandle).health, 80.0f, 0.01f);
+}
+
 BOOST_FIXTURE_TEST_CASE(DeferredDamageCommit_RunsBeforeCustomCombatHandlers,
                         EventManagerFixture) {
   auto& edm = EntityDataManager::Instance();
@@ -1172,4 +1194,3 @@ BOOST_FIXTURE_TEST_CASE(IdempotentClean_SafeMultipleCalls, EventManagerFixture) 
   BOOST_CHECK(EventManager::Instance().init());
   BOOST_CHECK(EventManager::Instance().isInitialized());
 }
-

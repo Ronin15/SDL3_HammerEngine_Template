@@ -11,6 +11,7 @@
 
 #include "core/Logger.hpp"
 #include "entities/resources/CurrencyAndGameResources.hpp"
+#include "entities/resources/EquipmentResources.hpp"
 #include "entities/resources/ItemResources.hpp"
 #include "entities/resources/MaterialResources.hpp"
 #include "managers/ResourceFactory.hpp"
@@ -73,6 +74,7 @@ BOOST_AUTO_TEST_CASE(TestCreateEquipmentFromJson) {
         "consumable": false,
         "properties": {
             "slot": "Weapon",
+            "handsRequired": 2,
             "attackBonus": 15,
             "defenseBonus": 2,
             "speedBonus": 0,
@@ -98,6 +100,38 @@ BOOST_AUTO_TEST_CASE(TestCreateEquipmentFromJson) {
                     static_cast<int>(Equipment::EquipmentSlot::Weapon));
   BOOST_CHECK_EQUAL(equipment->getAttackBonus(), 15);
   BOOST_CHECK_EQUAL(equipment->getDefenseBonus(), 2);
+  BOOST_CHECK_EQUAL(equipment->getHandsRequired(), 2);
+}
+
+BOOST_AUTO_TEST_CASE(TestCreateShieldEquipmentFromJson) {
+  std::string jsonString = R"({
+        "id": "test_shield",
+        "name": "Test Shield",
+        "category": "Item",
+        "type": "Equipment",
+        "description": "A test shield for testing",
+        "value": 100,
+        "maxStackSize": 1,
+        "consumable": false,
+        "properties": {
+            "slot": "Shield",
+            "handsRequired": 1,
+            "attackBonus": 0,
+            "defenseBonus": 15,
+            "durability": 100,
+            "maxDurability": 100
+        }
+    })";
+
+  JsonValue json = parseJson(jsonString);
+  ResourcePtr resource = ResourceFactory::createFromJson(json);
+
+  auto equipment = std::dynamic_pointer_cast<Equipment>(resource);
+  BOOST_REQUIRE(equipment != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(equipment->getEquipmentSlot()),
+                    static_cast<int>(Equipment::EquipmentSlot::Shield));
+  BOOST_CHECK_EQUAL(equipment->getDefenseBonus(), 15);
+  BOOST_CHECK_EQUAL(equipment->getHandsRequired(), 1);
 }
 
 BOOST_AUTO_TEST_CASE(TestCreateConsumableFromJson) {

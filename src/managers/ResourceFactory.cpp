@@ -6,12 +6,28 @@
 #include "managers/ResourceFactory.hpp"
 #include "core/Logger.hpp"
 #include "entities/resources/CurrencyAndGameResources.hpp"
+#include "entities/resources/EquipmentResources.hpp"
 #include "entities/resources/ItemResources.hpp"
 #include "entities/resources/MaterialResources.hpp"
 #include "managers/ResourceTemplateManager.hpp"
+#include <algorithm>
 #include <format>
 
 namespace VoidLight {
+
+namespace {
+
+int defaultHandsRequiredForSlot(Equipment::EquipmentSlot slot) {
+  switch (slot) {
+  case Equipment::EquipmentSlot::Weapon:
+  case Equipment::EquipmentSlot::Shield:
+    return 1;
+  default:
+    return 0;
+  }
+}
+
+} // namespace
 
 ResourcePtr ResourceFactory::createFromJson(const JsonValue &json) {
   if (!json.isObject()) {
@@ -187,22 +203,8 @@ ResourceFactory::createEquipment(VoidLight::ResourceHandle handle,
     const JsonValue &props = json["properties"];
     if (props.hasKey("slot")) {
       std::string slotStr = props["slot"].tryAsString().value_or("Unknown");
-      if (slotStr == "Helmet")
-        slot = Equipment::EquipmentSlot::Helmet;
-      else if (slotStr == "Chest")
-        slot = Equipment::EquipmentSlot::Chest;
-      else if (slotStr == "Legs")
-        slot = Equipment::EquipmentSlot::Legs;
-      else if (slotStr == "Boots")
-        slot = Equipment::EquipmentSlot::Boots;
-      else if (slotStr == "Gloves")
-        slot = Equipment::EquipmentSlot::Gloves;
-      else if (slotStr == "Ring")
-        slot = Equipment::EquipmentSlot::Ring;
-      else if (slotStr == "Necklace")
-        slot = Equipment::EquipmentSlot::Necklace;
-      else if (slotStr == "Weapon")
-        slot = Equipment::EquipmentSlot::Weapon;
+      slot = Equipment::equipmentSlotFromString(slotStr)
+                 .value_or(Equipment::EquipmentSlot::COUNT);
     }
   }
 
@@ -215,6 +217,9 @@ ResourceFactory::createEquipment(VoidLight::ResourceHandle handle,
     equipment->setAttackBonus(props["attackBonus"].tryAsInt().value_or(0));
     equipment->setDefenseBonus(props["defenseBonus"].tryAsInt().value_or(0));
     equipment->setSpeedBonus(props["speedBonus"].tryAsInt().value_or(0));
+    equipment->setHandsRequired(std::clamp(
+        props["handsRequired"].tryAsInt().value_or(defaultHandsRequiredForSlot(slot)),
+        0, 2));
 
     if (props.hasKey("durability") && props.hasKey("maxDurability")) {
       equipment->setDurability(props["durability"].tryAsInt().value_or(100),
