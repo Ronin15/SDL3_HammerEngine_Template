@@ -145,21 +145,25 @@ void registerCustomResources() {
 
 ### Step 4: Define in JSON
 
-Create resource definitions in your data files:
+Create resource definitions in a role-appropriate catalog, or in a custom
+catalog loaded after the built-in split catalogs:
 
 ```json
-// res/data/custom_resources.json
 {
     "resources": [
         {
+            "id": "fire_sword",
             "type": "custom_type",
+            "category": "Item",
             "name": "Fire Sword",
             "description": "A sword wreathed in flames",
             "damage": 25.0,
             "durability": 150
         },
         {
+            "id": "ice_dagger",
             "type": "custom_type",
+            "category": "Item",
             "name": "Ice Dagger",
             "description": "A dagger of frozen steel",
             "damage": 15.0,
@@ -176,10 +180,10 @@ Load your resources using ResourceTemplateManager:
 ```cpp
 // Load all resources from file
 auto& rtm = ResourceTemplateManager::Instance();
-rtm.loadResourcesFromJson("res/data/custom_resources.json");
+rtm.loadResourcesFromJson("res/data/custom_weapons.json");
 
-// Access by name
-ResourceHandle fireHandle = rtm.getHandleByName("Fire Sword");
+// Access by stable JSON ID
+ResourceHandle fireHandle = rtm.getHandleById("fire_sword");
 ResourcePtr fireSword = rtm.getResourceTemplate(fireHandle);
 
 // Cast to specific type if needed
@@ -203,6 +207,11 @@ void Game::init() {
 
     // 3. Load resource files (now includes custom types)
     ResourceTemplateManager::Instance().loadResourcesFromJson("res/data/items.json");
+    ResourceTemplateManager::Instance().loadResourcesFromJson("res/data/weapons.json");
+    ResourceTemplateManager::Instance().loadResourcesFromJson("res/data/equipment.json");
+    ResourceTemplateManager::Instance().loadResourcesFromJson("res/data/materials.json");
+    ResourceTemplateManager::Instance().loadResourcesFromJson("res/data/currency.json");
+    ResourceTemplateManager::Instance().loadResourcesFromJson("res/data/custom_weapons.json");
 }
 ```
 

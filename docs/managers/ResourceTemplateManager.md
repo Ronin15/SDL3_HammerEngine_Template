@@ -261,8 +261,8 @@ Equipment slots must match the current `EquipmentSlot` enum. Unknown or missing 
 auto& rtm = ResourceTemplateManager::Instance();
 rtm.init();
 
-// Load from file
-bool success = rtm.loadResourcesFromJson("res/data/items.json");
+// Load from the catalog that owns the resource type being edited.
+bool success = rtm.loadResourcesFromJson("res/data/weapons.json");
 if (success) {
     std::cout << "All resources loaded successfully!" << std::endl;
 }
@@ -350,10 +350,10 @@ rtm.loadResourcesFromJson("res/data/equipment.json");
 rtm.loadResourcesFromJson("res/data/materials.json");
 rtm.loadResourcesFromJson("res/data/currency.json");
 
-// Convert names to handles during initialization
-VoidLight-Framework::ResourceHandle goldHandle = rtm.getHandleByName("Gold");
-VoidLight-Framework::ResourceHandle healthPotionHandle = rtm.getHandleByName("Health Potion");
-VoidLight-Framework::ResourceHandle swordHandle = rtm.getHandleByName("Magic Sword");
+// Convert stable JSON IDs to handles during initialization
+VoidLight-Framework::ResourceHandle goldHandle = rtm.getHandleById("gold_coins");
+VoidLight-Framework::ResourceHandle healthPotionHandle = rtm.getHandleById("health_potion");
+VoidLight-Framework::ResourceHandle swordHandle = rtm.getHandleById("magic_sword");
 
 // Phase 2: Runtime Operations (handle-based only)
 class GameLogic {
@@ -364,8 +364,8 @@ private:
 public:
     void init() {
         auto& rtm = ResourceTemplateManager::Instance();
-        m_goldHandle = rtm.getHandleByName("Gold");  // One-time lookup
-        m_healthPotionHandle = rtm.getHandleByName("Health Potion");
+        m_goldHandle = rtm.getHandleById("gold_coins");  // One-time lookup
+        m_healthPotionHandle = rtm.getHandleById("health_potion");
     }
     
     void gameplayOperation() {
@@ -393,7 +393,7 @@ void slowGameplayOperation() {
     auto& rtm = ResourceTemplateManager::Instance();
     
     // SLOW: String-based lookup every frame
-    ResourcePtr gold = rtm.getResourceByName("Gold");  // Hash lookup, string comparison
+    ResourcePtr gold = rtm.getResourceById("gold_coins");  // Hash lookup, string comparison
     if (gold) {
         float value = gold->getValue();  // Shared_ptr dereferencing
     }
@@ -420,7 +420,7 @@ All public methods are thread-safe via internal locking. For best performance, b
 ### Data Loading Best Practices
 - **Load JSON resources at game startup** after initializing the manager
 - Use unique, descriptive names for each resource template (enforced by duplicate detection)
-- Organize resources into logical JSON files (items.json, materials.json, etc.)
+- Organize resources into the focused catalogs: `items.json`, `weapons.json`, `equipment.json`, `materials.json`, and `currency.json`
 - **Validate JSON files** before deploying to catch syntax errors and duplicate names early
 - Use the `properties` object for type-specific data to keep the schema extensible
 

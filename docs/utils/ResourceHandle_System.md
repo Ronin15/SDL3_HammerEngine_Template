@@ -84,10 +84,10 @@ private:
     
 public:
     void init() override {
-        // Phase 1: Convert names to handles during initialization
+        // Phase 1: Convert stable JSON IDs to handles during initialization
         const auto& rtm = ResourceTemplateManager::Instance();
-        m_goldHandle = rtm.getHandleByName("Gold");
-        m_healthPotionHandle = rtm.getHandleByName("Health Potion");
+        m_goldHandle = rtm.getHandleById("gold_coins");
+        m_healthPotionHandle = rtm.getHandleById("health_potion");
     }
     
     void updateInventoryUI() {
@@ -151,15 +151,15 @@ private:
     
 public:
     void initializeLootDrops() {
-        // Phase 1: Convert names to handles during setup
+        // Phase 1: Convert stable JSON IDs to handles during setup
         const auto& rtm = ResourceTemplateManager::Instance();
         
-        auto goldHandle = rtm.getHandleByName("Gold");
+        auto goldHandle = rtm.getHandleById("gold_coins");
         if (goldHandle.isValid()) {
             m_dropRates[goldHandle] = 0.8f; // 80% drop rate
         }
         
-        auto potionHandle = rtm.getHandleByName("Health Potion");
+        auto potionHandle = rtm.getHandleById("health_potion");
         if (potionHandle.isValid()) {
             m_dropRates[potionHandle] = 0.3f; // 30% drop rate
         }
@@ -202,13 +202,13 @@ void fastResourceAccess() {
 // ❌ BAD: Slow string operations during gameplay
 void slowResourceAccess() {
     // String lookup every time (slow)
-    ResourcePtr resource = rtm.getResourceByName("Gold");
+    ResourcePtr resource = rtm.getResourceById("gold_coins");
     if (resource) {
         float value = resource->getValue();  // Shared_ptr dereferencing
     }
     
     // String-based inventory operations (slow)
-    inventory->addResource("Health Potion", 1);  // Name lookup required
+    inventory->addResource("health_potion", 1);  // String lookup required
 }
 ```
 
@@ -225,8 +225,8 @@ public:
     void initialize() {
         // Cache handles once during initialization
         const auto& rtm = ResourceTemplateManager::Instance();
-        m_goldHandle = rtm.getHandleByName("Gold");
-        m_healthPotionHandle = rtm.getHandleByName("Health Potion");
+        m_goldHandle = rtm.getHandleById("gold_coins");
+        m_healthPotionHandle = rtm.getHandleById("health_potion");
     }
 };
 ```
@@ -237,7 +237,7 @@ class ResourceConstants {
 public:
     static VoidLight-Framework::ResourceHandle getGoldHandle() {
         static VoidLight-Framework::ResourceHandle s_goldHandle = 
-            ResourceTemplateManager::Instance().getHandleByName("Gold");
+            ResourceTemplateManager::Instance().getHandleById("gold_coins");
         return s_goldHandle;
     }
 };
