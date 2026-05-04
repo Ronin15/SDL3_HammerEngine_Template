@@ -52,9 +52,7 @@ If `acquireSwapchainTexture()` fails, the engine can skip the presentable frame 
 ## Important Branch Details
 
 - UI text is atlas-backed through SDL3_ttf GPU draw sequences
-- `GPURenderer` exposes dedicated UI text pipelines:
-  - `getUITextAlphaPipeline()`
-  - `getUITextSDFPipeline()`
+- `GPURenderer::renderUIBatches()` owns SDL_GPU UI pipeline, sampler, vertex-buffer, and draw-call submission
 - vertex pools are triple-buffered
 - UI/menu text should be snapped to whole pixels before vertex emission
 

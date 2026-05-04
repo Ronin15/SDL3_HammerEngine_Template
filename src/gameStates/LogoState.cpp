@@ -172,7 +172,7 @@ void LogoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
   vertexPool.setWrittenVertexCount(vertexOffset);
 
   // Record text vertices to UI vertex pool (rendered to swapchain)
-  m_textDrawCommands.clear();
+  m_textDrawBatches.clear();
   FontManager& fontMgr = FontManager::Instance();
 
   auto& uiPool = gpuRenderer.getUIVertexPool();
@@ -209,8 +209,12 @@ void LogoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
 
       VoidLight::SpriteVertex* v = uiBasePtr + uiVertexOffset;
       SDL_Color drawColor = {.r=200, .g=200, .b=200, .a=255};
+      auto pipeline = VoidLight::UITextPipelineKind::Alpha;
       if (seq->image_type == TTF_IMAGE_COLOR) {
         drawColor = {.r=255, .g=255, .b=255, .a=255};
+        pipeline = VoidLight::UITextPipelineKind::Color;
+      } else if (seq->image_type == TTF_IMAGE_SDF) {
+        pipeline = VoidLight::UITextPipelineKind::SDF;
       }
       for (int i = 0; i < seq->num_indices; ++i) {
         int sourceIndex = seq->indices[i];
@@ -226,13 +230,14 @@ void LogoState::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
                 .r=drawColor.r, .g=drawColor.g, .b=drawColor.b, .a=drawColor.a};
       }
 
-      GPUDrawCommand cmd;
-      cmd.texture = seq->atlas_texture;
-      cmd.imageType = seq->image_type;
-      cmd.vertexOffset = uiVertexOffset;
-      cmd.vertexCount = static_cast<uint32_t>(seq->num_indices);
-      m_textDrawCommands.push_back(cmd);
-      uiVertexOffset += static_cast<uint32_t>(seq->num_indices);
+      const uint32_t indexCount = static_cast<uint32_t>(seq->num_indices);
+      VoidLight::UITextDrawBatch batch;
+      batch.texture = seq->atlas_texture;
+      batch.pipeline = pipeline;
+      batch.vertexOffset = uiVertexOffset;
+      batch.vertexCount = indexCount;
+      m_textDrawBatches.push_back(batch);
+      uiVertexOffset += indexCount;
     }
   };
 
@@ -298,55 +303,5 @@ void LogoState::renderGPUScene(VoidLight::GPURenderer& gpuRenderer,
 
 void LogoState::renderGPUUI(VoidLight::GPURenderer& gpuRenderer,
                             SDL_GPURenderPass* swapchainPass) {
-  if (!swapchainPass || m_textDrawCommands.empty()) {
-    return;
-  }
-
-  // Create orthographic projection for screen-space rendering
-  float orthoMatrix[16];
-  VoidLight::GPURenderer::createOrthoMatrix(
-      0.0f, static_cast<float>(gpuRenderer.getViewportWidth()),
-      0.0f, static_cast<float>(gpuRenderer.getViewportHeight()),
-      orthoMatrix);
-
-  // Bind vertex buffer
-  SDL_GPUBufferBinding vertexBinding{};
-  vertexBinding.buffer = gpuRenderer.getUIVertexPool().getGPUBuffer();
-  vertexBinding.offset = 0;
-  SDL_BindGPUVertexBuffers(swapchainPass, 0, &vertexBinding, 1);
-
-  // Draw each text sequence
-  for (const auto& cmd : m_textDrawCommands) {
-    SDL_GPUTexture* textTexture =
-        cmd.textureOwner ? cmd.textureOwner->get() : cmd.texture;
-    if (!textTexture) {
-      continue;
-    }
-
-    SDL_GPUTextureSamplerBinding texSampler{};
-    texSampler.texture = textTexture;
-    switch (cmd.imageType) {
-      case TTF_IMAGE_SDF:
-        texSampler.sampler = gpuRenderer.getLinearSampler();
-        SDL_BindGPUGraphicsPipeline(swapchainPass,
-                                    gpuRenderer.getUITextSDFPipeline());
-        break;
-      case TTF_IMAGE_COLOR:
-        texSampler.sampler = gpuRenderer.getLinearSampler();
-        SDL_BindGPUGraphicsPipeline(swapchainPass,
-                                    gpuRenderer.getUISpritePipeline());
-        break;
-      case TTF_IMAGE_ALPHA:
-      default:
-        texSampler.sampler = gpuRenderer.getLinearSampler();
-        SDL_BindGPUGraphicsPipeline(swapchainPass,
-                                    gpuRenderer.getUITextAlphaPipeline());
-        break;
-    }
-    gpuRenderer.pushViewProjection(swapchainPass, orthoMatrix);
-    SDL_BindGPUFragmentSamplers(swapchainPass, 0, &texSampler, 1);
-
-    SDL_DrawGPUPrimitives(swapchainPass, cmd.vertexCount, 1,
-                          cmd.vertexOffset, 0);
-  }
+  gpuRenderer.renderUIBatches(swapchainPass, 0, {}, m_textDrawBatches);
 }

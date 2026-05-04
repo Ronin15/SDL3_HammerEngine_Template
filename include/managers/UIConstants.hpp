@@ -33,11 +33,12 @@ namespace UIConstants {
   constexpr int LIST_ITEM_PADDING = 8;
   constexpr int SCROLLBAR_WIDTH = 20;
 
-  // Z-Order Layering Constants
-  // Controls the render order of UI components (lower values render first/behind)
-  constexpr int ZORDER_OVERLAY = -10;         // Overlay backgrounds render behind everything
+  // Z-Order Priority Constants
+  // Controls input priority and same-family render order. UIManager submits
+  // fixed render families for GPU performance: primitives, images, then text.
+  constexpr int ZORDER_OVERLAY = -10;         // Lowest priority overlay backgrounds
   constexpr int ZORDER_PANEL = 0;             // Background panels
-  constexpr int ZORDER_DIALOG = 2;            // Non-modal dialogs render above overlays and panels (no current direct users; reserved for future use)
+  constexpr int ZORDER_DIALOG = 2;            // Non-modal dialog priority
   constexpr int ZORDER_IMAGE = 1;             // Background images
   constexpr int ZORDER_PROGRESS_BAR = 5;      // Progress indicators
   constexpr int ZORDER_EVENT_LOG = 6;         // Event log displays
@@ -48,9 +49,9 @@ namespace UIConstants {
   constexpr int ZORDER_INPUT_FIELD = 15;      // Text input fields
   constexpr int ZORDER_LABEL = 20;            // Text labels
   constexpr int ZORDER_TITLE = 25;            // Title text
-  constexpr int ZORDER_MODAL_OVERLAY = 500;   // Modal overlay dims content beneath the dialog
-  constexpr int ZORDER_MODAL_DIALOG = 600;    // Modal dialog content (panels, plus child labels/buttons via linkToParent)
-  constexpr int ZORDER_TOOLTIP = 1000;        // Tooltips always on top
+  constexpr int ZORDER_MODAL_OVERLAY = 500;   // Modal overlay render/input cutoff
+  constexpr int ZORDER_MODAL_DIALOG = 600;    // Modal dialog content priority
+  constexpr int ZORDER_TOOLTIP = 1000;        // Highest tooltip priority
 
   // Border Width Constants
   constexpr int BORDER_WIDTH_NONE = 0;        // No border

@@ -55,7 +55,7 @@ This document outlines the design and implementation steps for integrating a bas
 
 - **UIManager** owns and manages the minimap widget.
 - **UIManager::recordGPUVertices(GPURenderer&)** records UI vertices before the swapchain UI pass.
-- **UIManager::renderGPU(GPURenderer&, SDL_GPURenderPass*)** submits the recorded UI commands.
+- **UIManager::renderGPU(GPURenderer&, SDL_GPURenderPass*)** hands recorded UI batches to `GPURenderer`.
 - UIManager handles layout, positioning, and event routing for the minimap.
 
 ---

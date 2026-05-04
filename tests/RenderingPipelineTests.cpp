@@ -22,6 +22,22 @@ static std::string sourcePath(const char* repoRelative)
     return std::string(VOIDLIGHT_PROJECT_SOURCE_DIR) + "/" + repoRelative;
 }
 
+static std::string readFileContents(const std::string& filepath)
+{
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        return {};
+    }
+
+    std::string content;
+    std::string line;
+    while (std::getline(file, line)) {
+        content += line;
+        content.push_back('\n');
+    }
+    return content;
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -440,24 +456,113 @@ BOOST_AUTO_TEST_CASE(TestRenderStateIsolation) {
     BOOST_CHECK_MESSAGE(hasPresent, "GameEngine::present() must end the GPU frame");
 }
 
-BOOST_AUTO_TEST_CASE(TestUIRecordClearsPerFrameGPUCommands) {
+BOOST_AUTO_TEST_CASE(TestUIRecordClearsPerFrameGPUBatches) {
+    const std::string uiManagerFile = sourcePath("src/managers/UIManager.cpp");
+    const std::string uiManagerHeader = sourcePath("include/managers/UIManager.hpp");
+    const std::string recordFunction = "void UIManager::recordGPUVertices";
+    const std::string clearFunction = "void UIManager::clearFrameRenderBatches";
+
+    BOOST_CHECK_MESSAGE(
+        functionContainsPattern(uiManagerFile, recordFunction, "clearFrameRenderBatches()"),
+        "UIManager::recordGPUVertices() must clear frame-local UI batches each frame");
+
+    BOOST_CHECK_MESSAGE(
+        functionContainsPattern(uiManagerFile, clearFunction, "m_uiPrimitiveVertexCount = 0"),
+        "UIManager GPU batch clearing must reset primitive vertex count");
+    BOOST_CHECK_MESSAGE(
+        functionContainsPattern(uiManagerFile, clearFunction, "m_imageRenderBatches.clear()"),
+        "UIManager GPU batch clearing must include image batches");
+    BOOST_CHECK_MESSAGE(
+        functionContainsPattern(uiManagerFile, clearFunction, "m_textRenderBatches.clear()"),
+        "UIManager GPU batch clearing must include text batches");
+
+    BOOST_CHECK_MESSAGE(
+        !fileContainsPattern(uiManagerHeader, "std::shared_ptr<VoidLight::GPUTexture>"),
+        "UIManager frame-local batches must not own GPU textures");
+}
+
+BOOST_AUTO_TEST_CASE(TestUIRenderUsesFixedFamilyOrder) {
+    const std::string gpuRendererFile = sourcePath("src/gpu/GPURenderer.cpp");
+    const std::string content = readFileContents(gpuRendererFile);
+    BOOST_REQUIRE_MESSAGE(!content.empty(), "GPURenderer.cpp must be readable");
+
+    const auto renderPos = content.find("void GPURenderer::renderUIBatches");
+    BOOST_REQUIRE_MESSAGE(renderPos != std::string::npos,
+                          "GPURenderer::renderUIBatches() must exist");
+
+    const auto primitivePos = content.find("if (primitiveVertexCount > 0)", renderPos);
+    const auto imagePos = content.find("if (!imageBatches.empty())", renderPos);
+    const auto textPos = content.find("if (!textBatches.empty())", renderPos);
+
+    BOOST_REQUIRE_MESSAGE(primitivePos != std::string::npos,
+                          "GPURenderer::renderUIBatches() must draw primitive family");
+    BOOST_REQUIRE_MESSAGE(imagePos != std::string::npos,
+                          "GPURenderer::renderUIBatches() must draw image family");
+    BOOST_REQUIRE_MESSAGE(textPos != std::string::npos,
+                          "GPURenderer::renderUIBatches() must draw text family");
+
+    BOOST_CHECK_MESSAGE(primitivePos < imagePos && imagePos < textPos,
+                        "GPURenderer::renderUIBatches() must use fixed primitive -> image -> text family order");
+}
+
+BOOST_AUTO_TEST_CASE(TestUISDLGPUSubmissionStaysInGPURenderer) {
+    const std::string uiManagerFile = sourcePath("src/managers/UIManager.cpp");
+    const std::string gpuRendererFile = sourcePath("src/gpu/GPURenderer.cpp");
+    const std::string uiRenderFunction = "void UIManager::renderGPU";
+    const std::string gpuUIRenderFunction = "void GPURenderer::renderUIBatches";
+
+    BOOST_CHECK_MESSAGE(
+        functionContainsPattern(uiManagerFile, uiRenderFunction, "gpuRenderer.renderUIBatches"),
+        "UIManager::renderGPU() must hand off UI batches to GPURenderer");
+    BOOST_CHECK_MESSAGE(
+        !functionContainsPattern(uiManagerFile, uiRenderFunction, "SDL_BindGPUGraphicsPipeline"),
+        "UIManager::renderGPU() must not bind SDL_GPU pipelines directly");
+    BOOST_CHECK_MESSAGE(
+        !functionContainsPattern(uiManagerFile, uiRenderFunction, "SDL_DrawGPUPrimitives"),
+        "UIManager::renderGPU() must not submit SDL_GPU draw calls directly");
+    BOOST_CHECK_MESSAGE(
+        functionContainsPattern(gpuRendererFile, gpuUIRenderFunction, "SDL_BindGPUGraphicsPipeline"),
+        "GPURenderer::renderUIBatches() must own SDL_GPU pipeline binding");
+    BOOST_CHECK_MESSAGE(
+        functionContainsPattern(gpuRendererFile, gpuUIRenderFunction, "SDL_DrawGPUPrimitives"),
+        "GPURenderer::renderUIBatches() must own SDL_GPU UI draw calls");
+}
+
+BOOST_AUTO_TEST_CASE(TestUIModalRenderOcclusionIsSeparateFromInputBlocking) {
+    const std::string uiManagerFile = sourcePath("src/managers/UIManager.cpp");
+    const std::string createModalFunction = "void UIManager::createModal";
+    const std::string recordFunction = "void UIManager::recordGPUVertices";
+
+    BOOST_CHECK_MESSAGE(
+        functionContainsPattern(uiManagerFile, createModalFunction, "overlay->m_blocksInputBelow = true"),
+        "Modal overlays must still block lower input");
+    BOOST_CHECK_MESSAGE(
+        functionContainsPattern(uiManagerFile, createModalFunction, "overlay->m_occludesRenderingBelow = true"),
+        "Modal overlays must explicitly occlude lower rendered UI");
+    BOOST_CHECK_MESSAGE(
+        functionContainsPattern(uiManagerFile, recordFunction, "component->m_occludesRenderingBelow"),
+        "UI render recording must use the render occlusion flag");
+    BOOST_CHECK_MESSAGE(
+        !functionContainsPattern(uiManagerFile, recordFunction, "component->m_blocksInputBelow"),
+        "UI render recording must not overload the input-blocking flag for render occlusion");
+}
+
+BOOST_AUTO_TEST_CASE(TestUITextureBatchesCoalesceOnlyCompatibleContiguousRanges) {
     const std::string uiManagerFile = sourcePath("src/managers/UIManager.cpp");
     const std::string recordFunction = "void UIManager::recordGPUVertices";
-    const std::string clearFunction = "void UIManager::clearGPUCommandBuffers";
 
     BOOST_CHECK_MESSAGE(
-        functionContainsPattern(uiManagerFile, recordFunction, "clearGPUCommandBuffers()"),
-        "UIManager::recordGPUVertices() must clear frame-local draw commands each frame");
-
+        functionContainsPattern(uiManagerFile, recordFunction, "last.texture == texture"),
+        "UI texture batches must coalesce only when texture is unchanged");
     BOOST_CHECK_MESSAGE(
-        functionContainsPattern(uiManagerFile, clearFunction, "m_gpuPrimitiveCommands.clear()"),
-        "UIManager GPU command clearing must include primitive draw commands");
+        functionContainsPattern(uiManagerFile, recordFunction, "last.pipeline == pipeline"),
+        "UI text batches must coalesce only when text pipeline/image type is unchanged");
     BOOST_CHECK_MESSAGE(
-        functionContainsPattern(uiManagerFile, clearFunction, "m_gpuTextCommands.clear()"),
-        "UIManager GPU command clearing must include text draw commands");
+        functionContainsPattern(uiManagerFile, recordFunction, "last.vertexOffset + last.vertexCount == vertexOffset"),
+        "UI texture batches must coalesce only adjacent vertex ranges");
     BOOST_CHECK_MESSAGE(
-        functionContainsPattern(uiManagerFile, clearFunction, "m_gpuImageCommands.clear()"),
-        "UIManager GPU command clearing must include image draw commands");
+        functionContainsPattern(uiManagerFile, recordFunction, "last.vertexCount += vertexCount"),
+        "UI texture batches must merge compatible ranges instead of adding draw calls");
 }
 
 // ----------------------------------------------------------------------------

@@ -14,16 +14,9 @@
 #include <cmath>
 #include <format>
 #include <limits>
-#include <numeric>
 #include "gpu/GPURenderer.hpp"
 #include "gpu/GPUVertexPool.hpp"
 #include "gpu/GPUTypes.hpp"
-#include "gpu/SpriteBatch.hpp"
-
-SDL_GPUTexture* UIGPUDrawCommand::resolve() const noexcept
-{
-  return textureOwner ? textureOwner->get() : texture;
-}
 
 bool UIManager::init() {
   if (m_isShutdown) {
@@ -72,10 +65,9 @@ bool UIManager::init() {
   UI_INFO(std::format("UI scale set to {} for resolution {}x{}",
                       m_globalScale, m_currentWidthInPixels, m_currentHeightInPixels));
 
-  // Reserve GPU command buffers to avoid per-frame reallocations
-  m_gpuPrimitiveCommands.reserve(GPU_PRIMITIVE_COMMAND_CAPACITY);
-  m_gpuTextCommands.reserve(GPU_TEXT_COMMAND_CAPACITY);
-  m_gpuImageCommands.reserve(GPU_IMAGE_COMMAND_CAPACITY);
+  // Reserve GPU batch buffers to avoid per-frame reallocations.
+  m_textRenderBatches.reserve(UI_TEXT_BATCH_CAPACITY);
+  m_imageRenderBatches.reserve(UI_IMAGE_BATCH_CAPACITY);
 
   // Note: UIManager::onWindowResize() is called directly by InputManager when window resizes
 
@@ -197,10 +189,10 @@ void UIManager::invalidateComponentCache() {
   m_sortedComponentsDirty = true;
 }
 
-void UIManager::clearGPUCommandBuffers() {
-  m_gpuPrimitiveCommands.clear();
-  m_gpuTextCommands.clear();
-  m_gpuImageCommands.clear();
+void UIManager::clearFrameRenderBatches() {
+  m_uiPrimitiveVertexCount = 0;
+  m_imageRenderBatches.clear();
+  m_textRenderBatches.clear();
 }
 
 // Parent/child linkage — called from every create* method after the
@@ -532,6 +524,7 @@ void UIManager::createModal(const std::string &dialogId, const UIRect &bounds,
     // clicks pass through the overlay onto the buttons underneath (PANEL hits
     // do not set mouseHandled in handleInput).
     overlay->m_blocksInputBelow = true;
+    overlay->m_occludesRenderingBelow = true;
     invalidateComponentCache();
   }
 
@@ -1818,10 +1811,9 @@ void UIManager::cleanupForStateTransition() {
   // Stop and clear all animations
   m_animations.clear();
 
-  // Clear any queued callbacks and cached GPU draw commands so no UI-owned GPU
-  // resources survive past explicit shutdown.
+  // Clear any queued callbacks and frame-local GPU batch descriptors.
   m_deferredCallbacks.clear();
-  clearGPUCommandBuffers();
+  clearFrameRenderBatches();
 
   // Clear all interaction state
   m_clickedButtons.clear();
@@ -2911,7 +2903,7 @@ void UIManager::setComponentPositioning(const std::string &id,
 }
 
 void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
-  clearGPUCommandBuffers();
+  clearFrameRenderBatches();
 
   if (m_components.empty()) {
     return;
@@ -2929,11 +2921,17 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
 
   uint32_t primOffset = 0;
   uint32_t uiOffset = 0;
+  const uint32_t primitiveVertexLimit = static_cast<uint32_t>(
+      std::min(primPool.getMaxVertices(),
+               static_cast<size_t>(std::numeric_limits<uint32_t>::max())));
+  const uint32_t uiVertexLimit = static_cast<uint32_t>(
+      std::min(uiPool.getMaxVertices(),
+               static_cast<size_t>(std::numeric_limits<uint32_t>::max())));
   const float viewportHeight = static_cast<float>(gpuRenderer.getViewportHeight());
 
   // Helper to add a filled rectangle
   auto addFilledRect = [&](const UIRect& rect, const SDL_Color& color) {
-    if (primOffset + 6 > GPU_PRIMITIVE_VERTEX_LIMIT) return;  // Safety limit
+    if (primitiveVertexLimit < 6 || primOffset > primitiveVertexLimit - 6) return;
 
     float x = static_cast<float>(rect.x);
     float y = static_cast<float>(rect.y);
@@ -2952,12 +2950,8 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
     v[4] = {.x=x + w, .y=bottom, .r=color.r, .g=color.g, .b=color.b, .a=color.a};
     v[5] = {.x=x,     .y=bottom, .r=color.r, .g=color.g, .b=color.b, .a=color.a};
 
-    UIGPUDrawCommand cmd;
-    cmd.type = UIGPUDrawCommand::Type::Rect;
-    cmd.vertexOffset = primOffset;
-    cmd.vertexCount = 6;
-    m_gpuPrimitiveCommands.push_back(cmd);
     primOffset += 6;
+    m_uiPrimitiveVertexCount = primOffset;
   };
 
   // Helper to add border (4 thin rectangles)
@@ -2971,6 +2965,52 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
     addFilledRect({rect.x, rect.y + width, width, rect.height - 2 * width}, color);
     // Right
     addFilledRect({rect.x + rect.width - width, rect.y + width, width, rect.height - 2 * width}, color);
+  };
+
+  auto appendImageBatch = [&](SDL_GPUTexture* texture, uint32_t vertexOffset,
+                              uint32_t vertexCount) {
+    if (!texture || vertexCount == 0) {
+      return;
+    }
+
+    if (!m_imageRenderBatches.empty()) {
+      auto& last = m_imageRenderBatches.back();
+      if (last.texture == texture &&
+          last.vertexOffset + last.vertexCount == vertexOffset) {
+        last.vertexCount += vertexCount;
+        return;
+      }
+    }
+
+    VoidLight::UITextureDrawBatch batch;
+    batch.texture = texture;
+    batch.vertexOffset = vertexOffset;
+    batch.vertexCount = vertexCount;
+    m_imageRenderBatches.push_back(batch);
+  };
+
+  auto appendTextBatch = [&](SDL_GPUTexture* texture, VoidLight::UITextPipelineKind pipeline,
+                             uint32_t vertexOffset, uint32_t vertexCount) {
+    if (!texture || vertexCount == 0) {
+      return;
+    }
+
+    if (!m_textRenderBatches.empty()) {
+      auto& last = m_textRenderBatches.back();
+      if (last.texture == texture &&
+          last.pipeline == pipeline &&
+          last.vertexOffset + last.vertexCount == vertexOffset) {
+        last.vertexCount += vertexCount;
+        return;
+      }
+    }
+
+    VoidLight::UITextDrawBatch batch;
+    batch.texture = texture;
+    batch.pipeline = pipeline;
+    batch.vertexOffset = vertexOffset;
+    batch.vertexCount = vertexCount;
+    m_textRenderBatches.push_back(batch);
   };
 
   auto addImage = [&](const std::shared_ptr<UIComponent>& component) {
@@ -2991,7 +3031,7 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
                                   static_cast<int>(textureData->height)};
     if (srcRect.width <= 0 || srcRect.height <= 0 ||
         component->m_bounds.width <= 0 || component->m_bounds.height <= 0 ||
-        uiOffset + 6 > GPU_UI_VERTEX_LIMIT) {
+        uiVertexLimit < 6 || uiOffset > uiVertexLimit - 6) {
       return;
     }
 
@@ -3017,12 +3057,7 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
     v[4] = {.x=x + w, .y=bottom, .u=u1, .v=v1, .r=255, .g=255, .b=255, .a=255};
     v[5] = {.x=x,     .y=bottom, .u=u0, .v=v1, .r=255, .g=255, .b=255, .a=255};
 
-    UIGPUDrawCommand cmd;
-    cmd.type = UIGPUDrawCommand::Type::Image;
-    cmd.textureOwner = textureData->texture;
-    cmd.vertexOffset = uiOffset;
-    cmd.vertexCount = 6;
-    m_gpuImageCommands.push_back(cmd);
+    appendImageBatch(textureData->texture->get(), uiOffset, 6);
     uiOffset += 6;
   };
 
@@ -3070,7 +3105,7 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
         break;
     }
 
-    // Draw background rectangle if enabled (added to primitive commands, renders before text)
+    // Draw background rectangle if enabled (added to the primitive family, renders before text)
     if (useBackground && bgColor.a > 0) {
       UIRect bgRect;
       bgRect.x = static_cast<int>(dstX) - bgPadding;
@@ -3113,14 +3148,19 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
         continue;
       }
 
-      if (uiOffset + static_cast<uint32_t>(seq->num_indices) > GPU_UI_VERTEX_LIMIT) {
+      const uint32_t indexCount = static_cast<uint32_t>(seq->num_indices);
+      if (indexCount > uiVertexLimit || uiOffset > uiVertexLimit - indexCount) {
         return;
       }
 
       v = uiBase + uiOffset;
       SDL_Color drawColor = color;
+      auto pipeline = VoidLight::UITextPipelineKind::Alpha;
       if (seq->image_type == TTF_IMAGE_COLOR) {
         drawColor = {.r=255, .g=255, .b=255, .a=color.a};
+        pipeline = VoidLight::UITextPipelineKind::Color;
+      } else if (seq->image_type == TTF_IMAGE_SDF) {
+        pipeline = VoidLight::UITextPipelineKind::SDF;
       }
       for (int i = 0; i < seq->num_indices; ++i) {
         int sourceIndex = seq->indices[i];
@@ -3136,29 +3176,20 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
                 .r=drawColor.r, .g=drawColor.g, .b=drawColor.b, .a=drawColor.a};
       }
 
-      UIGPUDrawCommand cmd;
-      cmd.type = UIGPUDrawCommand::Type::Text;
-      cmd.texture = seq->atlas_texture;
-      cmd.imageType = seq->image_type;
-      cmd.vertexOffset = uiOffset;
-      cmd.vertexCount = static_cast<uint32_t>(seq->num_indices);
-      m_gpuTextCommands.push_back(cmd);
-      uiOffset += static_cast<uint32_t>(seq->num_indices);
+      appendTextBatch(seq->atlas_texture, pipeline, uiOffset, indexCount);
+      uiOffset += indexCount;
     }
   };
 
-  // Render components in z-order
+  // Record components by z-priority inside the fixed UI render families.
   const auto& sortedComponents = getSortedComponents();
 
-  // Modal cull: text/images/primitives go through separate render passes that
-  // each draw their commands together regardless of z-band. To honor a modal
-  // overlay's intent of obscuring everything beneath it, find the highest-z
-  // input-blocking component (the modal overlay) and skip draw emission for
-  // anything below it. The overlay itself, the dialog, and dialog children
-  // (linked via parentId so their z is bumped above the overlay) survive.
+  // Modal render occlusion: fixed families intentionally do not provide
+  // arbitrary cross-family z-order. Modal overlays instead become an explicit
+  // render cutoff; lower normal UI is not recorded into any family.
   int modalCullZ = std::numeric_limits<int>::min();
   for (const auto& component : sortedComponents) {
-    if (component && component->m_visible && component->m_blocksInputBelow) {
+    if (component && component->m_visible && component->m_occludesRenderingBelow) {
       modalCullZ = std::max(modalCullZ, component->m_zOrder);
     }
   }
@@ -3581,91 +3612,6 @@ void UIManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer) {
 }
 
 void UIManager::renderGPU(VoidLight::GPURenderer& gpuRenderer, SDL_GPURenderPass* pass) {
-  if (!pass) return;
-
-  // Create orthographic projection for screen-space rendering
-  float orthoMatrix[16];
-  VoidLight::GPURenderer::createOrthoMatrix(
-      0.0f, static_cast<float>(gpuRenderer.getViewportWidth()),
-      0.0f, static_cast<float>(gpuRenderer.getViewportHeight()),
-      orthoMatrix);
-
-  // Render primitives (filled rectangles)
-  if (!m_gpuPrimitiveCommands.empty()) {
-    SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUIPrimitivePipeline());
-    gpuRenderer.pushViewProjection(pass, orthoMatrix);
-
-    SDL_GPUBufferBinding vertexBinding{};
-    vertexBinding.buffer = gpuRenderer.getPrimitiveVertexPool().getGPUBuffer();
-    vertexBinding.offset = 0;
-    SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
-
-    // Draw all primitives in one call (they share the same pipeline)
-    uint32_t totalVertices = std::accumulate(
-        m_gpuPrimitiveCommands.begin(), m_gpuPrimitiveCommands.end(), 0u,
-        [](uint32_t sum, const auto& cmd) { return sum + cmd.vertexCount; });
-    if (totalVertices > 0) {
-      SDL_DrawGPUPrimitives(pass, totalVertices, 1, 0, 0);
-    }
-  }
-
-  if (!m_gpuImageCommands.empty()) {
-    SDL_GPUBufferBinding vertexBinding{};
-    vertexBinding.buffer = gpuRenderer.getUIVertexPool().getGPUBuffer();
-    vertexBinding.offset = 0;
-    SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
-    SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUISpritePipeline());
-    gpuRenderer.pushViewProjection(pass, orthoMatrix);
-
-    for (const auto& cmd : m_gpuImageCommands) {
-      SDL_GPUTexture* imageTexture = cmd.resolve();
-      if (!imageTexture) {
-        continue;
-      }
-
-      SDL_GPUTextureSamplerBinding texSampler{};
-      texSampler.texture = imageTexture;
-      texSampler.sampler = gpuRenderer.getNearestSampler();
-      SDL_BindGPUFragmentSamplers(pass, 0, &texSampler, 1);
-
-      SDL_DrawGPUPrimitives(pass, cmd.vertexCount, 1, cmd.vertexOffset, 0);
-    }
-  }
-
-  // Render atlas-backed text triangles
-  if (!m_gpuTextCommands.empty()) {
-    SDL_GPUBufferBinding vertexBinding{};
-    vertexBinding.buffer = gpuRenderer.getUIVertexPool().getGPUBuffer();
-    vertexBinding.offset = 0;
-    SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
-
-    for (const auto& cmd : m_gpuTextCommands) {
-      SDL_GPUTexture* textTexture = cmd.resolve();
-      if (!textTexture) {
-        continue;
-      }
-
-      SDL_GPUTextureSamplerBinding texSampler{};
-      texSampler.texture = textTexture;
-      switch (cmd.imageType) {
-        case TTF_IMAGE_SDF:
-          texSampler.sampler = gpuRenderer.getLinearSampler();
-          SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUITextSDFPipeline());
-          break;
-        case TTF_IMAGE_COLOR:
-          texSampler.sampler = gpuRenderer.getLinearSampler();
-          SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUISpritePipeline());
-          break;
-        case TTF_IMAGE_ALPHA:
-        default:
-          texSampler.sampler = gpuRenderer.getLinearSampler();
-          SDL_BindGPUGraphicsPipeline(pass, gpuRenderer.getUITextAlphaPipeline());
-          break;
-      }
-      gpuRenderer.pushViewProjection(pass, orthoMatrix);
-      SDL_BindGPUFragmentSamplers(pass, 0, &texSampler, 1);
-
-      SDL_DrawGPUPrimitives(pass, cmd.vertexCount, 1, cmd.vertexOffset, 0);
-    }
-  }
+  gpuRenderer.renderUIBatches(pass, m_uiPrimitiveVertexCount,
+                              m_imageRenderBatches, m_textRenderBatches);
 }

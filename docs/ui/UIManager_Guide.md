@@ -4,7 +4,7 @@
 
 ## Overview
 
-`UIManager` is the engine's main-thread UI system. It owns component creation, layout, theming, animation, input routing, and SDL3_GPU UI rendering.
+`UIManager` is the engine's main-thread UI system. It owns component creation, layout, theming, animation, input routing, and frame-local UI render batches. SDL_GPU device objects, pipelines, samplers, command buffers, render passes, and vertex pools stay owned by the GPU architecture.
 
 The branch-specific changes worth knowing:
 
@@ -67,6 +67,8 @@ Use them from states that own combat flow instead of rebuilding the same health/
 
 Use the atlas-backed image APIs for inventory, hotbar, and other resource icons instead of creating ad-hoc texture ownership in controllers. Controllers provide the component ID and texture/resource identity; `UIManager` owns component rendering.
 
+`UIManager` does not own GPU textures. It resolves frame-local texture references from `TextureManager` or SDL3_ttf draw data while recording UI batches.
+
 For transparent or steady-looking interactive components, set `hoverColor` and `pressedColor` to match the base background color. Otherwise the UI will visibly flash on hover/press even if the component appears transparent at rest.
 
 ## Positioning
@@ -80,8 +82,11 @@ After creating components, call `setComponentPositioning()` when the element mus
 
 ## Rendering Notes
 
-- `recordGPUVertices()` records UI primitives, text, and images into GPU vertex pools
-- `renderGPU()` submits the recorded UI draw commands during the swapchain UI pass
+- `recordGPUVertices()` records UI primitives, images, and text into renderer-owned GPU vertex pools
+- `renderGPU()` hands frame-local UI batches to `GPURenderer::renderUIBatches()`
+- `GPURenderer` submits fixed render-family batches during the swapchain UI pass: primitives, then images, then text
+- component z-order controls input priority and ordering inside each render family; it is not arbitrary cross-family visual layering
+- modal overlays use explicit render occlusion to skip lower normal UI before batches are emitted
 - the engine, not the state, owns clear/present
 
 ## Related Docs

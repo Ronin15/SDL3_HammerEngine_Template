@@ -7,9 +7,8 @@
 #define UI_MANAGER_HPP
 
 #include "utils/Vector2D.hpp"
+#include "gpu/UIRenderBatches.hpp"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_gpu.h>
-#include <SDL3_ttf/SDL_ttf.h>
 #include <array>
 #include <functional>
 #include <memory>
@@ -27,36 +26,11 @@ struct SDL_GPURenderPass;
 
 namespace VoidLight {
 class GPURenderer;
-class GPUTexture;
 }
 
-// GPU draw command for batching UI rendering
-struct UIGPUDrawCommand {
-    enum class Type { Rect, Text, Image };
-    Type type{Type::Rect};
-    // textureOwner: lifetime-managing handle for manager-owned GPU textures (Image commands).
-    std::shared_ptr<VoidLight::GPUTexture> textureOwner{};
-    // texture: non-owning pointer for externally-managed textures (e.g. SDL3_ttf atlas, Text commands).
-    // Only stored raw here because SDL3_ttf owns the atlas lifetime; do NOT use for Image commands.
-    // Materialize the final SDL_GPUTexture* via resolve() only at the GPU API submission boundary.
-    SDL_GPUTexture* texture{nullptr};
-    TTF_ImageType imageType{TTF_IMAGE_INVALID};
-    uint32_t vertexOffset{0};
-    uint32_t vertexCount{0};
-
-    // Returns the GPU texture pointer for submission. Prefers the owned handle; falls back to
-    // the raw pointer for externally-managed textures (Text commands via SDL3_ttf).
-    [[nodiscard]] SDL_GPUTexture* resolve() const noexcept;
-};
-
-// GPU command buffer capacities (avoids per-frame reallocations)
-constexpr size_t GPU_PRIMITIVE_COMMAND_CAPACITY = 256;
-constexpr size_t GPU_TEXT_COMMAND_CAPACITY = 256;
-constexpr size_t GPU_IMAGE_COMMAND_CAPACITY = 32;
-
-// GPU vertex safety limits
-constexpr uint32_t GPU_PRIMITIVE_VERTEX_LIMIT = 10000;
-constexpr uint32_t GPU_UI_VERTEX_LIMIT = 4000;
+// UI render batch capacities (avoids per-frame reallocations)
+constexpr size_t UI_TEXT_BATCH_CAPACITY = 256;
+constexpr size_t UI_IMAGE_BATCH_CAPACITY = 32;
 
 // UI Component Types
 enum class UIComponentType {
@@ -187,6 +161,10 @@ struct UIComponent {
   // to UI beneath them. Non-interactive types (PANEL etc.) otherwise let input
   // fall through to whatever is underneath.
   bool m_blocksInputBelow{false};
+  // Render occlusion is separate from input blocking. Modal overlays set both:
+  // input uses this component as a hit barrier, while rendering skips lower
+  // normal UI before fixed render-family submission begins.
+  bool m_occludesRenderingBelow{false};
 
   // Auto-repositioning properties
   UIPositioning m_positioning{};
@@ -702,7 +680,7 @@ private:
 
   // Performance optimization helper
   void invalidateComponentCache();
-  void clearGPUCommandBuffers();
+  void clearFrameRenderBatches();
 
   // Layout helpers
   void applyAbsoluteLayout(const std::shared_ptr<UILayout> &layout);
@@ -723,10 +701,12 @@ private:
   // PERFORMANCE: Track active bindings to skip iteration when none exist
   size_t m_activeBindingCount{0};
 
-  // GPU rendering state
-  std::vector<UIGPUDrawCommand> m_gpuPrimitiveCommands{};  // Filled rects (backgrounds, borders)
-  std::vector<UIGPUDrawCommand> m_gpuTextCommands{};      // Text rendering
-  std::vector<UIGPUDrawCommand> m_gpuImageCommands{};     // Images/textures
+  // Frame-local render batch state. Render order is fixed by family: primitives, images,
+  // then text. Component z-order controls input priority and ordering inside
+  // each family, not cross-family visual interleaving.
+  uint32_t m_uiPrimitiveVertexCount{0};                  // Filled rects, borders, text backgrounds
+  std::vector<VoidLight::UITextureDrawBatch> m_imageRenderBatches{}; // Images/textures
+  std::vector<VoidLight::UITextDrawBatch> m_textRenderBatches{};     // SDL3_ttf atlas-backed text
 
   // Delete copy constructor and assignment operator
   UIManager(const UIManager &) = delete;
