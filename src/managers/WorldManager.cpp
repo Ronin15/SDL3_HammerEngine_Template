@@ -71,6 +71,8 @@ void WorldManager::setupEventHandlers() {
 }
 
 void WorldManager::clean() {
+  std::lock_guard<std::mutex> operationLock(m_loadMutex);
+
   if (!m_initialized.load(std::memory_order_acquire) || m_isShutdown) {
     return;
   }
@@ -114,18 +116,24 @@ bool WorldManager::loadNewWorld(
     return false;
   }
 
+  std::lock_guard<std::mutex> operationLock(m_loadMutex);
+  if (m_isShutdown) {
+    WORLD_MANAGER_ERROR("WorldManager is shut down");
+    return false;
+  }
+
   std::optional<std::string> unloadedWorldId;
 
   try {
+    auto newWorld =
+        VoidLight::WorldGenerator::generateWorld(config, progressCallback);
+    if (!newWorld) {
+      WORLD_MANAGER_ERROR("Failed to generate new world");
+      return false;
+    }
+
     {
       std::lock_guard<std::shared_mutex> lock(m_worldMutex);
-
-      auto newWorld =
-          VoidLight::WorldGenerator::generateWorld(config, progressCallback);
-      if (!newWorld) {
-        WORLD_MANAGER_ERROR("Failed to generate new world");
-        return false;
-      }
 
       // Unload current world if it exists
       WORLD_MANAGER_INFO_IF(
@@ -134,6 +142,14 @@ bool WorldManager::loadNewWorld(
       if (m_currentWorld) {
         unloadedWorldId = unloadWorldLocked();
       }
+    }
+
+    if (unloadedWorldId) {
+      fireWorldUnloadedEvent(*unloadedWorldId);
+    }
+
+    {
+      std::lock_guard<std::shared_mutex> lock(m_worldMutex);
 
       // Set new world
       m_currentWorld = std::move(newWorld);
@@ -175,10 +191,6 @@ bool WorldManager::loadNewWorld(
           std::format("WorldLoadedEvent_{}", worldIdCopy));
     }
 
-    if (unloadedWorldId) {
-      fireWorldUnloadedEvent(*unloadedWorldId);
-    }
-
     return true;
   } catch (const std::exception &ex) {
     WORLD_MANAGER_ERROR(
@@ -199,6 +211,7 @@ bool WorldManager::loadWorld(const std::string& /*worldId*/) {
 }
 
 void WorldManager::unloadWorld() {
+  std::lock_guard<std::mutex> operationLock(m_loadMutex);
   std::optional<std::string> unloadedWorldId;
 
   // Take exclusive lock to ensure atomic unload operation

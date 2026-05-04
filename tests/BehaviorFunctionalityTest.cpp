@@ -15,6 +15,7 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
+#include "ai/AICommandBus.hpp"
 #include "ai/BehaviorExecutors.hpp"
 #include "core/ThreadSystem.hpp"
 #include "events/EntityEvents.hpp"
@@ -771,6 +772,77 @@ BOOST_AUTO_TEST_CASE(TestAttackBehaviorSynchronizesCurrentAttackMode) {
     Behaviors::executeAttack(ctx, attackConfig, attackState);
 
     BOOST_CHECK_EQUAL(static_cast<int>(attackState.attackMode), 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestRangedAttackWithoutAmmoResetsForRepositioning) {
+    auto& edm = EntityDataManager::Instance();
+    auto& rtm = ResourceTemplateManager::Instance();
+    VoidLight::AICommandBus::Instance().clearAll();
+
+    auto attacker = TestNPC::create(300.0f, 300.0f);
+    auto target = TestNPC::create(360.0f, 300.0f);
+    const EntityHandle attackerHandle = attacker->getHandle();
+    const EntityHandle targetHandle = target->getHandle();
+    const size_t attackerIdx = edm.getIndex(attackerHandle);
+    const size_t targetIdx = edm.getIndex(targetHandle);
+    BOOST_REQUIRE(attackerIdx != SIZE_MAX);
+    BOOST_REQUIRE(targetIdx != SIZE_MAX);
+
+    edm.setFaction(attackerHandle, 1);
+    edm.setFaction(targetHandle, 2);
+
+    const auto bowHandle = rtm.getHandleById("bow");
+    BOOST_REQUIRE(bowHandle.isValid());
+    auto& attackerChar = edm.getCharacterDataByIndex(attackerIdx);
+    BOOST_REQUIRE(attackerChar.hasInventory());
+    BOOST_REQUIRE(edm.addToInventory(attackerChar.inventoryIndex, bowHandle, 1));
+    BOOST_REQUIRE(edm.equipCharacterItem(attackerHandle, bowHandle));
+
+    AIManager::Instance().assignBehavior(attackerHandle, "Attack");
+    const auto ref = edm.getBehaviorConfigRef(attackerIdx);
+    BOOST_REQUIRE(ref.type == BehaviorType::Attack);
+
+    auto attackConfig = edm.getAttackConfig(ref.index);
+    attackConfig.attackMode = 1;
+    attackConfig.attackRange = 160.0f;
+    attackConfig.projectileSpeed = 180.0f;
+    attackConfig.specialAttackChance = 0.0f;
+
+    auto& attackState = edm.getAttackState(ref.index);
+    attackState.currentState = 3;
+    attackState.stateChangeTimer = 0.0f;
+    attackState.canAttack = true;
+    attackState.hasExplicitTarget = true;
+    attackState.explicitTarget = targetHandle;
+
+    auto& hotData = edm.getHotDataByIndex(attackerIdx);
+    auto& memoryData = edm.getMemoryData(attackerIdx);
+    memoryData.setValid(true);
+    memoryData.lastTarget = targetHandle;
+
+    BehaviorContext ctx(hotData.transform, hotData, attackerHandle.getId(),
+                        attackerIdx, 0.016f, EntityHandle{}, Vector2D(0, 0),
+                        Vector2D(0, 0), false, edm.getBehaviorData(attackerIdx),
+                        &edm.getPathData(attackerIdx), memoryData,
+                        edm.getCharacterDataByIndex(attackerIdx),
+                        0.0f, 0.0f, 1280.0f, 1280.0f, true, 0.0f,
+                        edm.knockbackSidecar());
+
+    Behaviors::executeAttack(ctx, attackConfig, attackState);
+
+    BOOST_CHECK_EQUAL(static_cast<int>(attackState.currentState), 0);
+    BOOST_CHECK(attackState.canAttack);
+    BOOST_CHECK(!attackState.lastAttackHit);
+
+    std::vector<VoidLight::AICommandBus::RangedAttackCommand> rangedCommands;
+    VoidLight::AICommandBus::Instance().drainRangedAttacks(rangedCommands);
+    BOOST_CHECK(rangedCommands.empty());
+
+    std::vector<VoidLight::AICommandBus::EquipmentSwapCommand> fallbackCommands;
+    VoidLight::AICommandBus::Instance().drainMeleeFallbackEquips(fallbackCommands);
+    BOOST_REQUIRE_EQUAL(fallbackCommands.size(), 1u);
+    BOOST_CHECK(fallbackCommands.front().targetHandle == attackerHandle);
+    BOOST_CHECK_EQUAL(fallbackCommands.front().targetEdmIndex, attackerIdx);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

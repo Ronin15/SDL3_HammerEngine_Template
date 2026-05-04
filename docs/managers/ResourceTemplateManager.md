@@ -172,7 +172,9 @@ Resources are defined in JSON files with the following structure:
       "value": 100.0,
       "maxStackSize": 1,
       "consumable": false,
-      "iconTextureId": "texture_id",
+      "textureId": "texture_id",
+      "worldTextureId": "world_texture_id",
+      "iconTextureId": "icon_texture_id",
       "properties": {
         // Type-specific properties (see below)
       }
@@ -205,7 +207,7 @@ Equipment slots must match the current `EquipmentSlot` enum. Unknown or missing 
 #### Consumable
 ```json
 "properties": {
-  "effect": "HealHP|RestoreMP|BoostAttack|BoostDefense|BoostSpeed|Teleport",
+  "effect": "HealHP|RestoreMP|BoostAttack|BoostDefense|BoostSpeed|RestoreStamina|Teleport",
   "effectPower": 50,
   "effectDuration": 0
 }

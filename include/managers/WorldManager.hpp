@@ -12,6 +12,7 @@
 #include "utils/Vector2D.hpp"
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <type_traits>
 #include <string>
@@ -336,6 +337,7 @@ private:
     std::unique_ptr<VoidLight::WorldData> m_currentWorld;
     std::unique_ptr<VoidLight::TileRenderer> m_tileRenderer;
 
+    mutable std::mutex m_loadMutex;
     mutable std::shared_mutex m_worldMutex;
     std::atomic<bool> m_initialized{false};
     bool m_isShutdown{false};

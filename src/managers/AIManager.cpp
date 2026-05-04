@@ -1228,6 +1228,9 @@ void AIManager::commitQueuedRangedAttacks() {
                                                 &ammoChange)) {
       const bool equippedFallback =
           equipFirstAvailableMeleeWeapon(edm, cmd.attackerHandle);
+      VoidLight::AICommandBus::Instance().enqueueBehaviorMessage(
+          cmd.attackerHandle, resolvedEdmIndex,
+          BehaviorMessage::RANGED_ATTACK_FAILED);
       AI_DEBUG_IF(!equippedFallback,
                   "No melee fallback weapon available for ranged attacker");
       continue;
@@ -1239,8 +1242,14 @@ void AIManager::commitQueuedRangedAttacks() {
         cmd.attackerPos + direction * NPC_PROJECTILE_SPAWN_OFFSET;
     const Vector2D velocity = direction * cmd.projectileSpeed;
     const float lifetime = (cmd.attackRange / cmd.projectileSpeed) + 0.5f;
-    edm.createProjectile(spawnPos, velocity, cmd.attackerHandle,
-                         cmd.damage, lifetime);
+    const EntityHandle projectile =
+        edm.createProjectile(spawnPos, velocity, cmd.attackerHandle,
+                             cmd.damage, lifetime);
+    if (!projectile.isValid()) {
+      VoidLight::AICommandBus::Instance().enqueueBehaviorMessage(
+          cmd.attackerHandle, resolvedEdmIndex,
+          BehaviorMessage::RANGED_ATTACK_FAILED);
+    }
   }
 }
 

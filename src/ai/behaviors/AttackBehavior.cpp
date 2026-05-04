@@ -5,10 +5,12 @@
 
 #include "ai/BehaviorExecutors.hpp"
 #include "ai/AICommandBus.hpp"
+#include "entities/resources/EquipmentResources.hpp"
 #include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include <algorithm>
 #include <cmath>
 #include <random>
@@ -109,6 +111,14 @@ void updateTimers(VoidLight::AttackStateData& attack, float deltaTime) {
     attack.strafeTimer += deltaTime;
 }
 
+void resetFailedRangedAttack(VoidLight::AttackStateData& attack) {
+    attack.currentState = static_cast<uint8_t>(AttackState::SEEKING);
+    attack.stateChangeTimer = 0.0f;
+    attack.recoveryTimer = 0.0f;
+    attack.canAttack = true;
+    attack.lastAttackHit = false;
+}
+
 void processAttackMessages(BehaviorData& shared, VoidLight::AttackStateData& attack,
                            const VoidLight::AttackBehaviorConfig&) {
     for (uint8_t i = 0; i < shared.pendingMessageCount; ++i) {
@@ -127,6 +137,10 @@ void processAttackMessages(BehaviorData& shared, VoidLight::AttackStateData& att
                 attack.currentState = static_cast<uint8_t>(AttackState::RETREATING);
                 attack.isRetreating = true;
                 attack.stateChangeTimer = 0.0f;
+                break;
+
+            case BehaviorMessage::RANGED_ATTACK_FAILED:
+                resetFailedRangedAttack(attack);
                 break;
 
             default:
@@ -204,10 +218,58 @@ void applyDamageToTarget(EntityHandle targetHandle, float damage, const Vector2D
     t_deferredDamageEvents.push_back({EventTypeId::Combat, std::move(eventData)});
 }
 
-bool fireProjectile(const Vector2D& attackerPos, const Vector2D& targetPos,
-                    EntityHandle attackerHandle, float damage,
-                    float attackRange, float projectileSpeed) {
+bool hasRequiredAmmoForRangedAttack(const CharacterData& charData) {
+    const auto weaponSlotIndex =
+        Equipment::equipmentSlotIndex(Equipment::EquipmentSlot::Weapon);
+    if (!weaponSlotIndex.has_value()) {
+        return true;
+    }
+
+    const VoidLight::ResourceHandle weaponHandle =
+        charData.equippedItems[*weaponSlotIndex];
+    if (!weaponHandle.isValid()) {
+        return true;
+    }
+
+    auto resourceTemplate =
+        ResourceTemplateManager::Instance().getResourceTemplate(weaponHandle);
+    const auto weapon = std::dynamic_pointer_cast<Equipment>(resourceTemplate);
+    if (!weapon || weapon->getWeaponMode() != Equipment::WeaponMode::Ranged ||
+        weapon->getAmmoTypeRequired().empty()) {
+        return true;
+    }
+
+    if (!charData.hasInventory()) {
+        return false;
+    }
+
     auto& edm = EntityDataManager::Instance();
+    const size_t maxSlots = edm.getInventoryData(charData.inventoryIndex).maxSlots;
+    for (size_t slot = 0; slot < maxSlots; ++slot) {
+        const InventorySlotData inventorySlot =
+            edm.getInventorySlot(charData.inventoryIndex, slot);
+        if (inventorySlot.isEmpty()) {
+            continue;
+        }
+
+        auto ammoTemplate =
+            ResourceTemplateManager::Instance().getResourceTemplate(
+                inventorySlot.resourceHandle);
+        const auto ammunition =
+            std::dynamic_pointer_cast<Ammunition>(ammoTemplate);
+        if (ammunition &&
+            ammunition->getAmmoType() == weapon->getAmmoTypeRequired()) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool fireProjectile(const Vector2D& attackerPos, const Vector2D& targetPos,
+                    EntityHandle attackerHandle, size_t attackerIndex,
+                    const CharacterData& charData, float damage,
+                    float attackRange, float projectileSpeed) {
     if (projectileSpeed <= 0.0f) {
         return false;
     }
@@ -216,8 +278,13 @@ bool fireProjectile(const Vector2D& attackerPos, const Vector2D& targetPos,
     float dist = direction.length();
     if (dist < 1.0f) return false;
 
-    const size_t attackerIndex = edm.getIndex(attackerHandle);
     if (attackerIndex == SIZE_MAX) {
+        return false;
+    }
+
+    if (!hasRequiredAmmoForRangedAttack(charData)) {
+        VoidLight::AICommandBus::Instance().enqueueMeleeFallbackEquip(
+            attackerHandle, attackerIndex);
         return false;
     }
 
@@ -318,7 +385,7 @@ bool shouldRetreat(const BehaviorContext& ctx, float retreatThreshold, float agg
     return healthRatio <= effectiveThreshold && aggression < 0.8f;
 }
 
-void executeAttackAction(BehaviorContext& ctx, VoidLight::AttackStateData& attack,
+bool executeAttackAction(BehaviorContext& ctx, VoidLight::AttackStateData& attack,
                          const Vector2D& targetPos,
                          const VoidLight::AttackBehaviorConfig& config) {
     auto& edm = EntityDataManager::Instance();
@@ -343,18 +410,19 @@ void executeAttackAction(BehaviorContext& ctx, VoidLight::AttackStateData& attac
     } else if (ctx.memoryData.lastAttacker.isValid()) {
         targetHandle = ctx.memoryData.lastAttacker;
     }
-    if (!targetHandle.isValid()) return;
+    if (!targetHandle.isValid()) return false;
 
     AttackMode mode = static_cast<AttackMode>(attack.attackMode);
     bool attackResolved = false;
     if (mode == AttackMode::RANGED) {
-        attackResolved = fireProjectile(entityPos, targetPos, attackerHandle, damage,
+        attackResolved = fireProjectile(entityPos, targetPos, attackerHandle,
+                                        ctx.edmIndex, ctx.characterData, damage,
                                         config.attackRange, config.projectileSpeed);
     } else {
         applyDamageToTarget(targetHandle, damage, knockback, attackerHandle);
         attackResolved = true;
     }
-    if (!attackResolved) return;
+    if (!attackResolved) return false;
 
     if (ctx.characterData.faction > 1) {
         size_t targetIdx = edm.getIndex(targetHandle);
@@ -376,6 +444,8 @@ void executeAttackAction(BehaviorContext& ctx, VoidLight::AttackStateData& attac
             attack.comboTimer = COMBO_TIMEOUT;
         }
     }
+
+    return true;
 }
 
 // ============================================================================
@@ -722,10 +792,12 @@ void executeAttack(BehaviorContext& ctx, const VoidLight::AttackBehaviorConfig& 
                 if (targetHandle.isValid()) {
                     EntityHandle attackerHandle = edm.getHandle(ctx.edmIndex);
                     AttackMode specialMode = static_cast<AttackMode>(attack.attackMode);
+                    bool specialResolved = true;
                     if (specialMode == AttackMode::RANGED) {
-                        static_cast<void>(fireProjectile(entityPos, targetPos, attackerHandle,
+                        specialResolved = fireProjectile(entityPos, targetPos, attackerHandle,
+                                                         ctx.edmIndex, ctx.characterData,
                                                          specialDamage, config.attackRange,
-                                                         config.projectileSpeed));
+                                                         config.projectileSpeed);
                     } else {
                         applyDamageToTarget(targetHandle, specialDamage, knockback, attackerHandle);
 
@@ -756,10 +828,21 @@ void executeAttack(BehaviorContext& ctx, const VoidLight::AttackBehaviorConfig& 
                             }
                         }
                     }
+                    if (!specialResolved) {
+                        if (specialMode == AttackMode::RANGED) {
+                            resetFailedRangedAttack(attack);
+                        }
+                        break;
+                    }
                 }
                 attack.specialAttackReady = false;
             } else {
-                executeAttackAction(ctx, attack, targetPos, config);
+                if (!executeAttackAction(ctx, attack, targetPos, config)) {
+                    if (static_cast<AttackMode>(attack.attackMode) == AttackMode::RANGED) {
+                        resetFailedRangedAttack(attack);
+                    }
+                    break;
+                }
             }
             changeState(attack, AttackState::RECOVERING);
             break;

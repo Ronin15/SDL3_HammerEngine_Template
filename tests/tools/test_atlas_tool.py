@@ -142,7 +142,8 @@ class AtlasToolMapperTests(unittest.TestCase):
                         {
                             "name": "Iron Sword",
                             "category": "Item",
-                            "textureId": "iron_sword_icon",
+                            "worldTextureId": "iron_sword_world",
+                            "iconTextureId": "iron_sword_icon",
                         }
                     ]
                 }),
@@ -172,6 +173,11 @@ class AtlasToolMapperTests(unittest.TestCase):
                         "source": "items.json",
                     },
                     {
+                        "id": "iron_sword_world",
+                        "name": "Iron Sword",
+                        "source": "weapons.json",
+                    },
+                    {
                         "id": "iron_sword_icon",
                         "name": "Iron Sword",
                         "source": "weapons.json",
@@ -183,6 +189,43 @@ class AtlasToolMapperTests(unittest.TestCase):
                     },
                 ],
             )
+
+    def test_scan_for_texture_ids_includes_nested_icons_once(self):
+        data = {
+            "name": "Root",
+            "groups": [
+                {
+                    "name": "Potion",
+                    "iconTextureId": "potion_icon",
+                    "variants": [
+                        {
+                            "name": "Potion World",
+                            "worldTextureId": "potion_world",
+                        },
+                        {
+                            "name": "Duplicate Icon",
+                            "iconTextureId": "potion_icon",
+                        },
+                    ],
+                }
+            ],
+        }
+
+        self.assertEqual(
+            atlas_tool.scan_for_texture_ids(data, "items.json"),
+            [
+                {
+                    "id": "potion_icon",
+                    "name": "Potion",
+                    "source": "items.json",
+                },
+                {
+                    "id": "potion_world",
+                    "name": "Potion World",
+                    "source": "items.json",
+                },
+            ],
+        )
 
 
 if __name__ == "__main__":

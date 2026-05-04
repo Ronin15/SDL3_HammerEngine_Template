@@ -10,6 +10,7 @@
 #include "collisions/CollisionInfo.hpp"
 #include "entities/Player.hpp"
 #include "events/EntityEvents.hpp"
+#include "events/ResourceChangeEvent.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/GameTimeManager.hpp"
@@ -210,6 +211,48 @@ BOOST_AUTO_TEST_CASE(TestHotbarSelectingWeaponEquipsIt)
 
     BOOST_CHECK(player->getEquippedItem("weapon") == daggerHandle);
     BOOST_CHECK_EQUAL(player->getInventoryQuantity(daggerHandle), 0);
+    BOOST_CHECK_EQUAL(UIManager::Instance().getText("hotbar_count_0"), "1");
+    BOOST_CHECK(controller.activateSelectedHotbarItem());
+    BOOST_CHECK(player->getEquippedItem("weapon") == daggerHandle);
+    BOOST_CHECK_EQUAL(UIManager::Instance().getText("hotbar_count_0"), "1");
+}
+
+BOOST_AUTO_TEST_CASE(TestHotbarSelectingConsumableConsumesIt)
+{
+    auto player = createPlayer();
+    player->initializeInventory();
+    auto potionHandle = ResourceTemplateManager::Instance().getHandleById("health_potion");
+    BOOST_REQUIRE(potionHandle.isValid());
+    BOOST_REQUIRE_EQUAL(player->getInventoryQuantity(potionHandle), 3);
+    player->takeDamage(30.0f);
+    const float healthBefore = player->getHealth();
+
+    bool resourceEventSeen = false;
+    EventManager::Instance().registerHandler(
+        EventTypeId::ResourceChange,
+        [&](const EventData& data) {
+            const auto* event =
+                dynamic_cast<const ResourceChangeEvent*>(data.event.get());
+            if (!event || event->getResourceHandle() != potionHandle) {
+                return;
+            }
+            resourceEventSeen = true;
+            BOOST_CHECK_EQUAL(event->getOldQuantity(), 3);
+            BOOST_CHECK_EQUAL(event->getNewQuantity(), 2);
+            BOOST_CHECK_EQUAL(event->getChangeReason(), "player_action");
+        });
+
+    HudController controller(player);
+    controller.initializeHotbarUI();
+
+    BOOST_REQUIRE(controller.assignHotbarItem(0, potionHandle));
+    BOOST_REQUIRE(controller.activateSelectedHotbarItem());
+    EventManager::Instance().update();
+
+    BOOST_CHECK_GT(player->getHealth(), healthBefore);
+    BOOST_CHECK_EQUAL(player->getInventoryQuantity(potionHandle), 2);
+    BOOST_CHECK_EQUAL(UIManager::Instance().getText("hotbar_count_0"), "2");
+    BOOST_CHECK(resourceEventSeen);
 }
 
 BOOST_AUTO_TEST_CASE(TestHotbarReassigningSameItemMovesAssignment)

@@ -44,6 +44,38 @@ constexpr int slotCenterOffsetX(size_t i)
            (HOTBAR_TOTAL_WIDTH - HOTBAR_SLOT_SIZE) / 2;
 }
 
+int getHotbarDisplayQuantity(EntityDataManager& edm,
+                             const std::shared_ptr<Player>& player,
+                             uint32_t inventoryIndex,
+                             VoidLight::ResourceHandle handle)
+{
+    int quantity = (inventoryIndex != INVALID_INVENTORY_INDEX)
+        ? edm.getInventoryQuantity(inventoryIndex, handle)
+        : 0;
+
+    if (!player)
+    {
+        return quantity;
+    }
+
+    const size_t playerIndex = edm.getIndex(player->getHandle());
+    if (playerIndex == SIZE_MAX)
+    {
+        return quantity;
+    }
+
+    const auto& charData = edm.getCharacterDataByIndex(playerIndex);
+    for (const VoidLight::ResourceHandle equippedHandle : charData.equippedItems)
+    {
+        if (equippedHandle == handle)
+        {
+            ++quantity;
+        }
+    }
+
+    return quantity;
+}
+
 } // namespace
 
 HudController::HudController(std::shared_ptr<Player> player)
@@ -363,11 +395,27 @@ bool HudController::activateHotbarItem(VoidLight::ResourceHandle handle)
 
     auto resourceTemplate =
         ResourceTemplateManager::Instance().getResourceTemplate(handle);
+    if (resourceTemplate && resourceTemplate->isConsumable())
+    {
+        const bool consumed = player->consumeItem(handle);
+        if (consumed)
+        {
+            refreshHotbarUI();
+        }
+        return consumed;
+    }
+
     auto equipment = std::dynamic_pointer_cast<Equipment>(resourceTemplate);
     if (!equipment ||
         equipment->getEquipmentSlot() != Equipment::EquipmentSlot::Weapon)
     {
         return false;
+    }
+
+    if (player->getEquippedItem("weapon") == handle)
+    {
+        refreshHotbarUI();
+        return true;
     }
 
     const bool equipped = player->equipItem(handle);
@@ -479,9 +527,8 @@ void HudController::refreshHotbarUI()
             ui.setImageSourceRect(iconComponentId, UIRect{});
         }
 
-        const int quantity = (inventoryIndex != INVALID_INVENTORY_INDEX)
-            ? edm.getInventoryQuantity(inventoryIndex, handle)
-            : 0;
+        const int quantity =
+            getHotbarDisplayQuantity(edm, player, inventoryIndex, handle);
         ui.setText(countComponentId, std::format("{}", quantity));
     }
 }

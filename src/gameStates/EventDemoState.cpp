@@ -376,6 +376,15 @@ bool EventDemoState::exit() {
       bgSimMgr.prepareForStateTransition();
       worldMgr.prepareForStateTransition();
 
+      // Unload before WRM/EventManager transition cleanup so persistent
+      // world-unload handlers observe the same cleared-world contract as
+      // GamePlayState.
+      if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+        worldMgr.unloadWorld();
+        // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent
+        // infinite loop when LoadingState returns to this state
+      }
+
       if (wrm.isInitialized()) {
         wrm.prepareForStateTransition();
       }
@@ -407,13 +416,6 @@ bool EventDemoState::exit() {
 
       // Clean up UI
       ui.prepareForStateTransition();
-
-      // Unload world (LoadingState will reload it)
-      if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-        worldMgr.unloadWorld();
-        // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent
-        // infinite loop when LoadingState returns to this state
-      }
 
       // Reset initialized flag so state re-initializes after loading
       m_initialized = false;
@@ -448,6 +450,14 @@ bool EventDemoState::exit() {
     bgSimMgr.prepareForStateTransition();
     worldMgr.prepareForStateTransition();
 
+    // Unload before WRM/EventManager transition cleanup so persistent
+    // world-unload handlers and WRM reverse lookups are still available.
+    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+      worldMgr.unloadWorld();
+      // Reset m_worldLoaded when doing full exit (going to main menu, etc.)
+      m_worldLoaded = false;
+    }
+
     if (wrm.isInitialized()) {
       wrm.prepareForStateTransition();
     }
@@ -479,15 +489,6 @@ bool EventDemoState::exit() {
 
     // Clean up UI components before world cleanup
     ui.prepareForStateTransition();
-
-    // Unload the world when fully exiting, but only if there's actually a world
-    // loaded This matches GamePlayState's safety pattern and prevents Metal
-    // renderer crashes
-    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-      worldMgr.unloadWorld();
-      // Reset m_worldLoaded when doing full exit (going to main menu, etc.)
-      m_worldLoaded = false;
-    }
 
     // Reset initialization flag for next fresh start
     m_initialized = false;

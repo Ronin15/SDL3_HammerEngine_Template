@@ -158,6 +158,55 @@ BOOST_AUTO_TEST_CASE(TestWorldUnloadedHandlerCanQueryWorldManager) {
     EventManager::Instance().clean();
 }
 
+BOOST_AUTO_TEST_CASE(TestWorldReplacementUnloadsBeforeActivatingNewWorld) {
+    BOOST_REQUIRE(EventManager::Instance().init());
+
+    WorldGenerationConfig config1;
+    config1.width = 20;
+    config1.height = 20;
+    config1.seed = 13579;
+    config1.elevationFrequency = 0.1f;
+    config1.humidityFrequency = 0.1f;
+    config1.waterLevel = 0.3f;
+    config1.mountainLevel = 0.7f;
+
+    WorldGenerationConfig config2 = config1;
+    config2.seed = 97531;
+
+    BOOST_REQUIRE(worldManager->loadNewWorld(config1));
+    const std::string firstWorldId = worldManager->getCurrentWorldId();
+    BOOST_REQUIRE(!firstWorldId.empty());
+
+    bool sawUnload = false;
+    bool hadNoReplacementWorldDuringUnload = false;
+    bool hadNoActiveResourceWorldDuringUnload = false;
+    const auto token = EventManager::Instance().registerHandlerWithToken(
+        EventTypeId::World,
+        [&](const EventData& data) {
+            const auto event =
+                std::dynamic_pointer_cast<WorldUnloadedEvent>(data.event);
+            if (!event || event->getWorldId() != firstWorldId) {
+                return;
+            }
+
+            sawUnload = true;
+            hadNoReplacementWorldDuringUnload =
+                !WorldManager::Instance().hasActiveWorld();
+            hadNoActiveResourceWorldDuringUnload =
+                WorldResourceManager::Instance().getActiveWorld().empty();
+        });
+
+    BOOST_REQUIRE(worldManager->loadNewWorld(config2));
+    BOOST_CHECK(sawUnload);
+    BOOST_CHECK(hadNoReplacementWorldDuringUnload);
+    BOOST_CHECK(hadNoActiveResourceWorldDuringUnload);
+    BOOST_CHECK(worldManager->hasActiveWorld());
+    BOOST_CHECK_NE(firstWorldId, worldManager->getCurrentWorldId());
+
+    EventManager::Instance().removeHandler(token);
+    EventManager::Instance().clean();
+}
+
 BOOST_AUTO_TEST_CASE(TestHarvestablesUseConfiguredHarvestTypes) {
     WorldGenerationConfig config;
     config.width = 40;

@@ -491,7 +491,7 @@ docs/MIGRATION_PLAN.md (586)
 docs/managers/BackgroundSimulationManager.md (107)
 ```
 
-**Data/Resources (15 files):**
+**Data/Resources (13 files):**
 ```
 res/data/
 ├── atlas.json (6917) - Complete texture atlas mappings

@@ -12,6 +12,7 @@
 #include "entities/playerStates/PlayerHurtState.hpp"
 #include "entities/playerStates/PlayerIdleState.hpp"
 #include "entities/playerStates/PlayerRunningState.hpp"
+#include "entities/resources/ItemResources.hpp"
 
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -70,6 +71,30 @@ ResourceQuantitySnapshot collectInventoryResourceSnapshot(
   }
 
   return snapshot;
+}
+
+bool applyConsumableEffect(Player& player, const Consumable& consumable) {
+  const float power = static_cast<float>(consumable.getEffectPower());
+  switch (consumable.getEffect()) {
+    case Consumable::ConsumableEffect::HealHP:
+      player.heal(power);
+      return true;
+    case Consumable::ConsumableEffect::RestoreStamina:
+      player.restoreStamina(power);
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool isSupportedConsumableEffect(const Consumable& consumable) {
+  switch (consumable.getEffect()) {
+    case Consumable::ConsumableEffect::HealHP:
+    case Consumable::ConsumableEffect::RestoreStamina:
+      return true;
+    default:
+      return false;
+  }
 }
 
 } // namespace
@@ -663,11 +688,18 @@ bool Player::consumeItem(VoidLight::ResourceHandle itemHandle) {
     return false;
   }
 
-  // Remove the item and apply its effects
+  const auto consumable = std::dynamic_pointer_cast<Consumable>(itemTemplate);
+  if (!consumable || !isSupportedConsumableEffect(*consumable)) {
+    PLAYER_WARN(std::format("Player::consumeItem - Unsupported consumable effect (handle: {})", itemHandle.toString()));
+    return false;
+  }
+
+  const int oldQuantity = edm.getInventoryQuantity(m_inventoryIndex, itemHandle);
   if (edm.removeFromInventory(m_inventoryIndex, itemHandle, 1)) {
+    applyConsumableEffect(*this, *consumable);
+    onResourceChanged(itemHandle, oldQuantity, oldQuantity - 1);
     PLAYER_DEBUG(
         std::format("Consumed item (handle: {})", itemHandle.toString()));
-    // Here you would apply the item's effects (healing, buffs, etc.)
     return true;
   }
 

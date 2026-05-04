@@ -780,23 +780,24 @@ def collect_expected_texture_ids(paths: dict) -> dict:
                 data = json.load(f)
             # Separate into categories based on the 'category' field
             for resource in data.get('resources', []):
-                tex_id = resource.get('textureId')
-                if tex_id and tex_id not in seen_tex_ids:
-                    seen_tex_ids.add(tex_id)
-                    entry = {
-                        'id': tex_id,
-                        'name': resource.get('name', tex_id),
-                        'source': catalog_name
-                    }
-                    cat = resource.get('category', '')
-                    if cat == 'Item':
-                        items_found.append(entry)
-                    elif cat == 'Material':
-                        materials_found.append(entry)
-                    elif cat == 'Currency':
-                        currency_found.append(entry)
-                    else:
-                        items_found.append(entry)
+                for texture_key in ('textureId', 'worldTextureId', 'iconTextureId'):
+                    tex_id = resource.get(texture_key)
+                    if tex_id and tex_id not in seen_tex_ids:
+                        seen_tex_ids.add(tex_id)
+                        entry = {
+                            'id': tex_id,
+                            'name': resource.get('name', tex_id),
+                            'source': catalog_name
+                        }
+                        cat = resource.get('category', '')
+                        if cat == 'Item':
+                            items_found.append(entry)
+                        elif cat == 'Material':
+                            materials_found.append(entry)
+                        elif cat == 'Currency':
+                            currency_found.append(entry)
+                        else:
+                            items_found.append(entry)
         except Exception:
             pass
 
@@ -891,7 +892,7 @@ def scan_for_texture_ids(data, source: str, parent_name: str = None,
     if _seen is None:
         _seen = set()
     found = []
-    texture_keys = ('textureId', 'worldTextureId')
+    texture_keys = ('textureId', 'worldTextureId', 'iconTextureId')
 
     if isinstance(data, dict):
         for key in texture_keys:

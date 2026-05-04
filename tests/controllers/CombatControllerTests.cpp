@@ -101,6 +101,28 @@ BOOST_AUTO_TEST_CASE(TestRangedNoAmmoDoesNotSpendAttackCost)
     BOOST_CHECK_EQUAL(player->getCurrentStateName(), "idle");
 }
 
+BOOST_AUTO_TEST_CASE(TestRangedNoAmmoEquipsMeleeFallbackThroughPlayer)
+{
+    auto& edm = EntityDataManager::Instance();
+    const auto bow = ResourceTemplateManager::Instance().getHandleById("bow");
+    const auto dagger = ResourceTemplateManager::Instance().getHandleById("dagger");
+    BOOST_REQUIRE(bow.isValid());
+    BOOST_REQUIRE(dagger.isValid());
+
+    BOOST_REQUIRE(edm.addToInventory(player->getInventoryIndex(), bow, 1));
+    BOOST_REQUIRE(edm.addToInventory(player->getInventoryIndex(), dagger, 1));
+    BOOST_REQUIRE(player->equipItem(bow));
+    BOOST_CHECK_EQUAL(edm.getCharacterData(player->getHandle()).combatStyle,
+                      CharacterData::CombatStyle::Ranged);
+
+    CombatController controller(player);
+    BOOST_CHECK(controller.tryAttack());
+    BOOST_CHECK(player->getEquippedItem("weapon") == dagger);
+    BOOST_CHECK_EQUAL(edm.getCharacterData(player->getHandle()).combatStyle,
+                      CharacterData::CombatStyle::Melee);
+    BOOST_CHECK_EQUAL(player->getCurrentStateName(), "attacking");
+}
+
 BOOST_AUTO_TEST_CASE(TestRangedAttackConsumesAmmoAndDispatchesResourceChange)
 {
     auto& edm = EntityDataManager::Instance();

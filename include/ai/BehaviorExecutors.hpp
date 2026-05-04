@@ -101,6 +101,7 @@ namespace BehaviorMessage {
     // Attack messages
     constexpr uint8_t ATTACK_TARGET = 1;     // Force attack on explicit target
     constexpr uint8_t RETREAT = 2;           // Allies retreat when nearby attacker retreats
+    constexpr uint8_t RANGED_ATTACK_FAILED = 3;  // Re-evaluate positioning/equipment after ranged failure
 
     // Flee messages
     constexpr uint8_t PANIC = 10;            // Witness lethal combat — force flee

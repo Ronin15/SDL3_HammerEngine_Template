@@ -19,7 +19,8 @@ namespace {
 constexpr const char* EVENT_LOG = "event_log";
 constexpr float PLAYER_PROJECTILE_SPAWN_OFFSET = 20.0f;
 
-bool equipFirstAvailableMeleeWeapon(EntityDataManager& edm, EntityHandle handle) {
+bool equipFirstAvailableMeleeWeapon(Player& player, EntityDataManager& edm) {
+  const EntityHandle handle = player.getHandle();
   if (!handle.isValid() || !handle.hasHealth()) {
     return false;
   }
@@ -53,7 +54,7 @@ bool equipFirstAvailableMeleeWeapon(EntityDataManager& edm, EntityHandle handle)
       continue;
     }
 
-    return edm.equipCharacterItem(handle, inventorySlot.resourceHandle);
+    return player.equipItem(inventorySlot.resourceHandle);
   }
 
   return false;
@@ -168,7 +169,7 @@ bool CombatController::performAttack(Player *player) {
 
     InventoryResourceChange ammoChange{};
     if (!edm.consumeRequiredAmmoForRangedAttack(playerHandle, &ammoChange)) {
-      if (!equipFirstAvailableMeleeWeapon(edm, playerHandle)) {
+      if (!equipFirstAvailableMeleeWeapon(*player, edm)) {
         COMBAT_INFO("Player has no compatible ammunition or melee fallback weapon");
         UIManager::Instance().addEventLogEntry(EVENT_LOG, "No ammunition!");
         return false;
