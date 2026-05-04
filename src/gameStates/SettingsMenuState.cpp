@@ -5,6 +5,7 @@
 
 #include "gameStates/SettingsMenuState.hpp"
 #include "managers/UIManager.hpp"
+#include "managers/UIConstants.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/SettingsManager.hpp"
@@ -362,11 +363,11 @@ void SettingsMenuState::createGraphicsUI() {
     auto& ui = UIManager::Instance();
 
     int leftColumnX = 200;
-    int startY = 160;
-    int rowHeight = 60;
-    int labelWidth = 250;
-    int controlWidth = 300;
-    int controlX = leftColumnX + labelWidth + 20;
+    int startY = UIConstants::CONTENT_START_Y_AFTER_TABS;
+    int rowHeight = UIConstants::FORM_ROW_HEIGHT;
+    int labelWidth = UIConstants::FORM_LABEL_WIDTH;
+    int controlWidth = UIConstants::FORM_CONTROL_WIDTH;
+    int controlX = leftColumnX + labelWidth + UIConstants::FORM_LABEL_CONTROL_GAP;
 
     // VSync checkbox
     ui.createLabel("settings_vsync_label", {leftColumnX, startY, labelWidth, 40}, "VSync:");
@@ -408,17 +409,17 @@ void SettingsMenuState::createAudioUI() {
     auto& ui = UIManager::Instance();
 
     int leftColumnX = 200;
-    int startY = 160;
-    int rowHeight = 60;
-    int labelWidth = 250;
-    int sliderWidth = 300;
-    int sliderX = leftColumnX + labelWidth + 20;
+    int startY = UIConstants::CONTENT_START_Y_AFTER_TABS;
+    int rowHeight = UIConstants::FORM_ROW_HEIGHT;
+    int labelWidth = UIConstants::FORM_LABEL_WIDTH;
+    int sliderWidth = UIConstants::FORM_CONTROL_WIDTH;
+    int sliderX = leftColumnX + labelWidth + UIConstants::FORM_LABEL_CONTROL_GAP;
 
     // Master Volume slider
     ui.createLabel("settings_master_volume_label", {leftColumnX, startY, labelWidth, 40}, "Master Volume:");
     ui.setComponentPositioning("settings_master_volume_label", {UIPositionMode::TOP_ALIGNED, leftColumnX, startY, labelWidth, 40});
-    ui.createSlider("settings_master_volume_slider", {sliderX, startY, sliderWidth, 30}, 0.0f, 1.0f);
-    ui.setComponentPositioning("settings_master_volume_slider", {UIPositionMode::TOP_ALIGNED, sliderX, startY, sliderWidth, 30});
+    ui.createSlider("settings_master_volume_slider", {sliderX, startY, sliderWidth, UIConstants::DEFAULT_SLIDER_HEIGHT}, 0.0f, 1.0f);
+    ui.setComponentPositioning("settings_master_volume_slider", {UIPositionMode::TOP_ALIGNED, sliderX, startY, sliderWidth, UIConstants::DEFAULT_SLIDER_HEIGHT});
     ui.setValue("settings_master_volume_slider", m_tempSettings.masterVolume);
     ui.setOnValueChanged("settings_master_volume_slider", [this](float value) {
         m_tempSettings.masterVolume = value;
@@ -433,8 +434,8 @@ void SettingsMenuState::createAudioUI() {
     // Music Volume slider
     ui.createLabel("settings_music_volume_label", {leftColumnX, startY + rowHeight, labelWidth, 40}, "Music Volume:");
     ui.setComponentPositioning("settings_music_volume_label", {UIPositionMode::TOP_ALIGNED, leftColumnX, startY + rowHeight, labelWidth, 40});
-    ui.createSlider("settings_music_volume_slider", {sliderX, startY + rowHeight, sliderWidth, 30}, 0.0f, 1.0f);
-    ui.setComponentPositioning("settings_music_volume_slider", {UIPositionMode::TOP_ALIGNED, sliderX, startY + rowHeight, sliderWidth, 30});
+    ui.createSlider("settings_music_volume_slider", {sliderX, startY + rowHeight, sliderWidth, UIConstants::DEFAULT_SLIDER_HEIGHT}, 0.0f, 1.0f);
+    ui.setComponentPositioning("settings_music_volume_slider", {UIPositionMode::TOP_ALIGNED, sliderX, startY + rowHeight, sliderWidth, UIConstants::DEFAULT_SLIDER_HEIGHT});
     ui.setValue("settings_music_volume_slider", m_tempSettings.musicVolume);
     ui.setOnValueChanged("settings_music_volume_slider", [this](float value) {
         m_tempSettings.musicVolume = value;
@@ -448,8 +449,8 @@ void SettingsMenuState::createAudioUI() {
     // SFX Volume slider
     ui.createLabel("settings_sfx_volume_label", {leftColumnX, startY + 2 * rowHeight, labelWidth, 40}, "SFX Volume:");
     ui.setComponentPositioning("settings_sfx_volume_label", {UIPositionMode::TOP_ALIGNED, leftColumnX, startY + 2 * rowHeight, labelWidth, 40});
-    ui.createSlider("settings_sfx_volume_slider", {sliderX, startY + 2 * rowHeight, sliderWidth, 30}, 0.0f, 1.0f);
-    ui.setComponentPositioning("settings_sfx_volume_slider", {UIPositionMode::TOP_ALIGNED, sliderX, startY + 2 * rowHeight, sliderWidth, 30});
+    ui.createSlider("settings_sfx_volume_slider", {sliderX, startY + 2 * rowHeight, sliderWidth, UIConstants::DEFAULT_SLIDER_HEIGHT}, 0.0f, 1.0f);
+    ui.setComponentPositioning("settings_sfx_volume_slider", {UIPositionMode::TOP_ALIGNED, sliderX, startY + 2 * rowHeight, sliderWidth, UIConstants::DEFAULT_SLIDER_HEIGHT});
     ui.setValue("settings_sfx_volume_slider", m_tempSettings.sfxVolume);
     ui.setOnValueChanged("settings_sfx_volume_slider", [this](float value) {
         m_tempSettings.sfxVolume = value;
@@ -488,10 +489,10 @@ void SettingsMenuState::createGameplayUI() {
     auto& ui = UIManager::Instance();
 
     int leftColumnX = 200;
-    int startY = 160;
-    int rowHeight = 60;
-    int labelWidth = 250;
-    int controlX = leftColumnX + labelWidth + 20;
+    int startY = UIConstants::CONTENT_START_Y_AFTER_TABS;
+    int rowHeight = UIConstants::FORM_ROW_HEIGHT;
+    int labelWidth = UIConstants::FORM_LABEL_WIDTH;
+    int controlX = leftColumnX + labelWidth + UIConstants::FORM_LABEL_CONTROL_GAP;
 
     // Difficulty label
     ui.createLabel("settings_difficulty_label", {leftColumnX, startY, labelWidth + 200, 40},
@@ -524,9 +525,9 @@ void SettingsMenuState::createActionButtons() {
     auto& ui = UIManager::Instance();
 
     int buttonWidth = 150;
-    int buttonHeight = 50;
+    int buttonHeight = UIConstants::DEFAULT_BUTTON_HEIGHT;
     int buttonSpacing = 20;
-    int bottomOffset = 80;  // Distance from bottom edge
+    int bottomOffset = UIConstants::BOTTOM_BUTTON_MARGIN;
     int centerX = ui.getWidthInPixels() / 2;
     int bottomY = ui.getHeightInPixels() - bottomOffset;
 

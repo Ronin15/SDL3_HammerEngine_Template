@@ -4,7 +4,7 @@
 
 ## Overview
 
-`UIManager` is the engine's main-thread UI system. It owns component creation, layout, theming, animation, input routing, and both SDL_Renderer and SDL3_GPU rendering paths.
+`UIManager` is the engine's main-thread UI system. It owns component creation, layout, theming, animation, input routing, and SDL3_GPU UI rendering.
 
 The branch-specific changes worth knowing:
 
@@ -21,16 +21,14 @@ void SomeState::update(float dt) {
     ui.update(dt);
 }
 
-void SomeState::render(SDL_Renderer* renderer, float alpha) {
-    UIManager::Instance().render(renderer);
+void SomeState::recordGPUVertices(VoidLight::GPURenderer& gpu, float) {
+    UIManager::Instance().recordGPUVertices(gpu);
 }
 
-#ifdef USE_SDL3_GPU
-void SomeState::renderGPUUI(VoidLight-Framework::GPURenderer& gpu,
+void SomeState::renderGPUUI(VoidLight::GPURenderer& gpu,
                             SDL_GPURenderPass* swapchainPass) {
     UIManager::Instance().renderGPU(gpu, swapchainPass);
 }
-#endif
 ```
 
 ## GPU Text Path
@@ -82,8 +80,8 @@ After creating components, call `setComponentPositioning()` when the element mus
 
 ## Rendering Notes
 
-- `render()` is for the SDL_Renderer path
-- `renderGPU()` is for swapchain-pass UI rendering
+- `recordGPUVertices()` records UI primitives, text, and images into GPU vertex pools
+- `renderGPU()` submits the recorded UI draw commands during the swapchain UI pass
 - the engine, not the state, owns clear/present
 
 ## Related Docs

@@ -673,6 +673,9 @@ private:
   std::shared_ptr<UIComponent> getComponent(const std::string &id);
   std::shared_ptr<const UIComponent> getComponent(const std::string &id) const;
   std::shared_ptr<UILayout> getLayout(const std::string &id);
+  void registerComponent(const std::shared_ptr<UIComponent> &component,
+                         const std::string &parentId,
+                         bool autoSize = false);
 
   // Parent/child linkage — called from every create* method after the
   // component is fully initialized. Registers the child with the parent,
@@ -681,10 +684,14 @@ private:
   // any descendant of one).
   void linkToParent(const std::shared_ptr<UIComponent> &component,
                     const std::string &parentId);
+  void applyThemeStyle(const std::shared_ptr<UIComponent> &component,
+                       UIComponentType type) const;
+  void applyCurrentThemeToComponents() const;
 
   // Auto-repositioning system (private helpers)
   void repositionAllComponents(int width, int height);
   void applyPositioning(std::shared_ptr<UIComponent> component, int width, int height);
+  int calculateListItemHeight(const std::shared_ptr<UIComponent> &component) const;
 
   void handleInput();
   void updateAnimations(float deltaTime);

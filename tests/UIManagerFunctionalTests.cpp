@@ -9,7 +9,19 @@
 #include <memory>
 #include <atomic>
 
+#include "managers/InputManager.hpp"
 #include "managers/UIManager.hpp"
+
+namespace {
+
+void moveMouseTo(float x, float y) {
+    SDL_Event event{};
+    event.motion.x = x;
+    event.motion.y = y;
+    InputManager::Instance().onMouseMove(event);
+}
+
+} // namespace
 
 // ============================================================================
 // FIXTURE: UIManagerFixture
@@ -18,13 +30,15 @@
 struct UIManagerFixture {
     UIManagerFixture() {
         UIManager::Instance().init();
+        InputManager::Instance().reset();
 
         // Set initial window size
         UIManager::Instance().onWindowResize(800, 600);
     }
 
     ~UIManagerFixture() {
-        UIManager::Instance().clean();
+        InputManager::Instance().reset();
+        UIManager::Instance().prepareForStateTransition();
     }
 };
 
@@ -405,6 +419,25 @@ BOOST_AUTO_TEST_CASE(TestCreateTextComponents) {
     ui.removeComponent("title1");
 }
 
+BOOST_AUTO_TEST_CASE(TestLateCreatedTextComponentParticipatesInInputOrder) {
+    auto& ui = UIManager::Instance();
+    ui.setGlobalScale(1.0f);
+
+    ui.createButton("seed_button", UIRect{10, 10, 80, 30}, "Seed");
+    moveMouseTo(20.0f, 20.0f);
+    ui.update(0.0f);
+    BOOST_CHECK(ui.getComponentState("seed_button") == UIState::HOVERED);
+
+    ui.createLabel("late_label", UIRect{200, 200, 100, 30}, "Late");
+    moveMouseTo(210.0f, 210.0f);
+    ui.update(0.0f);
+
+    BOOST_CHECK(ui.getComponentState("late_label") == UIState::HOVERED);
+
+    ui.removeComponent("seed_button");
+    ui.removeComponent("late_label");
+}
+
 // ----------------------------------------------------------------------------
 // Test: Create panel container
 // ----------------------------------------------------------------------------
@@ -482,6 +515,31 @@ BOOST_AUTO_TEST_CASE(TestCreateAtlasImage) {
 
     ui.removeComponent("image_parent");
     BOOST_CHECK(!ui.hasComponent("atlas_image"));
+}
+
+BOOST_AUTO_TEST_CASE(TestCombatHUDHelperOwnsExpectedComponents) {
+    auto& ui = UIManager::Instance();
+
+    ui.createCombatHUD();
+
+    BOOST_CHECK(ui.hasComponent("hud_health_label"));
+    BOOST_CHECK(ui.hasComponent("hud_health_bar"));
+    BOOST_CHECK(ui.hasComponent("hud_stamina_label"));
+    BOOST_CHECK(ui.hasComponent("hud_stamina_bar"));
+    BOOST_CHECK(ui.hasComponent("hud_target_name"));
+    BOOST_CHECK(ui.hasComponent("hud_target_hp_label"));
+    BOOST_CHECK(ui.hasComponent("hud_target_health"));
+
+    ui.updateCombatHUD(75.0f, 40.0f, true, "Training Target", 25.0f);
+    BOOST_CHECK_CLOSE(ui.getValue("hud_health_bar"), 75.0f, 0.001f);
+    BOOST_CHECK_CLOSE(ui.getValue("hud_stamina_bar"), 40.0f, 0.001f);
+    BOOST_CHECK_EQUAL(ui.getText("hud_target_name"), "Training Target");
+    BOOST_CHECK_CLOSE(ui.getValue("hud_target_health"), 25.0f, 0.001f);
+
+    ui.destroyCombatHUD();
+    BOOST_CHECK(!ui.hasComponent("hud_health_label"));
+    BOOST_CHECK(!ui.hasComponent("hud_health_bar"));
+    BOOST_CHECK(!ui.hasComponent("hud_target_name"));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -616,13 +674,26 @@ BOOST_AUTO_TEST_CASE(TestWindowResizeTriggersRepositioning) {
     // Resize window
     ui.onWindowResize(1024, 768);
 
-    // Component should still exist after resize
     BOOST_CHECK(ui.hasComponent("centered"));
+    UIRect bounds = ui.getBounds("centered");
+    int expectedWidth = static_cast<int>(positioning.fixedWidth * ui.getGlobalScale());
+    int expectedHeight = static_cast<int>(positioning.fixedHeight * ui.getGlobalScale());
+    BOOST_CHECK_EQUAL(bounds.width, expectedWidth);
+    BOOST_CHECK_EQUAL(bounds.height, expectedHeight);
+    BOOST_CHECK_EQUAL(bounds.x, (1024 - expectedWidth) / 2);
+    BOOST_CHECK_EQUAL(bounds.y, (768 - expectedHeight) / 2);
 
     // Resize again to different dimensions
     ui.onWindowResize(1280, 720);
 
     BOOST_CHECK(ui.hasComponent("centered"));
+    bounds = ui.getBounds("centered");
+    expectedWidth = static_cast<int>(positioning.fixedWidth * ui.getGlobalScale());
+    expectedHeight = static_cast<int>(positioning.fixedHeight * ui.getGlobalScale());
+    BOOST_CHECK_EQUAL(bounds.width, expectedWidth);
+    BOOST_CHECK_EQUAL(bounds.height, expectedHeight);
+    BOOST_CHECK_EQUAL(bounds.x, (1280 - expectedWidth) / 2);
+    BOOST_CHECK_EQUAL(bounds.y, (720 - expectedHeight) / 2);
 
     ui.removeComponent("centered");
 }

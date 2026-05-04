@@ -457,9 +457,9 @@ constexpr int INFO_LABEL_HEIGHT_COMPACT = 24;  // Compact (tighter layouts)
 
 ```cpp
 // Vertical positioning for info lines
-constexpr int INFO_FIRST_LINE_Y = 55;          // First info line Y position
+constexpr int INFO_FIRST_LINE_Y = 62;          // First info line Y position
 constexpr int INFO_LINE_SPACING = 8;           // Gap between lines
-constexpr int INFO_STATUS_SPACING = 12;        // Extra gap before status section
+constexpr int INFO_STATUS_SPACING = 4;         // Extra gap before status section
 
 // Horizontal positioning
 constexpr int INFO_LABEL_MARGIN_X = 10;        // Left margin for all info labels
@@ -470,11 +470,11 @@ constexpr int INFO_LABEL_MARGIN_X = 10;        // Left margin for all info label
 ```
 Y=10:   [Title]
         (gap of 5px)
-Y=55:   [Info Line 1]
-Y=63:   [Info Line 2]  (8px spacing)
-        (gap of 12px for status)
-Y=83:   [Status Line]
-Y=91:   [Status Line 2] (8px spacing)
+Y=62:   [Info Line 1]
+Y=70:   [Info Line 2]  (8px spacing)
+        (gap of 4px for status)
+Y=82:   [Status Line]
+Y=90:   [Status Line 2] (8px spacing)
 ```
 
 ---
