@@ -181,8 +181,7 @@ BOOST_AUTO_TEST_CASE(TestHotbarAssignmentUpdatesSlotIconAndCount)
     player->initializeInventory();
     auto potionHandle = ResourceTemplateManager::Instance().getHandleById("health_potion");
     BOOST_REQUIRE(potionHandle.isValid());
-    BOOST_REQUIRE(player->addToInventory(potionHandle, 3));
-    const int potionQuantity = player->getInventoryQuantity(potionHandle);
+    BOOST_REQUIRE_EQUAL(player->getInventoryQuantity(potionHandle), 3);
 
     HudController controller(player);
     controller.initializeHotbarUI();
@@ -192,7 +191,7 @@ BOOST_AUTO_TEST_CASE(TestHotbarAssignmentUpdatesSlotIconAndCount)
     auto& ui = UIManager::Instance();
     BOOST_CHECK(controller.getHotbarItem(0) == potionHandle);
     BOOST_CHECK_EQUAL(ui.getTexture("hotbar_icon_0"), "atlas");
-    BOOST_CHECK_EQUAL(ui.getText("hotbar_count_0"), std::format("{}", potionQuantity));
+    BOOST_CHECK_EQUAL(ui.getText("hotbar_count_0"), "3");
 }
 
 BOOST_AUTO_TEST_CASE(TestHotbarReassigningSameItemMovesAssignment)
@@ -201,7 +200,7 @@ BOOST_AUTO_TEST_CASE(TestHotbarReassigningSameItemMovesAssignment)
     player->initializeInventory();
     auto potionHandle = ResourceTemplateManager::Instance().getHandleById("health_potion");
     BOOST_REQUIRE(potionHandle.isValid());
-    BOOST_REQUIRE(player->addToInventory(potionHandle, 3));
+    BOOST_REQUIRE_EQUAL(player->getInventoryQuantity(potionHandle), 3);
 
     HudController controller(player);
     controller.initializeHotbarUI();
@@ -226,7 +225,7 @@ BOOST_AUTO_TEST_CASE(TestHotbarMoveSwapsOccupiedSlotsAndMovesToEmptySlot)
     auto manaHandle = ResourceTemplateManager::Instance().getHandleById("mana_elixir");
     BOOST_REQUIRE(potionHandle.isValid());
     BOOST_REQUIRE(manaHandle.isValid());
-    BOOST_REQUIRE(player->addToInventory(potionHandle, 3));
+    BOOST_REQUIRE_EQUAL(player->getInventoryQuantity(potionHandle), 3);
     BOOST_REQUIRE(player->addToInventory(manaHandle, 2));
 
     HudController controller(player);
@@ -255,7 +254,7 @@ BOOST_AUTO_TEST_CASE(TestHotbarMoveRejectsInvalidSlotsAndEmptySource)
     player->initializeInventory();
     auto potionHandle = ResourceTemplateManager::Instance().getHandleById("health_potion");
     BOOST_REQUIRE(potionHandle.isValid());
-    BOOST_REQUIRE(player->addToInventory(potionHandle, 3));
+    BOOST_REQUIRE_EQUAL(player->getInventoryQuantity(potionHandle), 3);
 
     HudController controller(player);
     controller.initializeHotbarUI();

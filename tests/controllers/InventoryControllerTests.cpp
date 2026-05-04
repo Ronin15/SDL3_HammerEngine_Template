@@ -465,7 +465,7 @@ BOOST_AUTO_TEST_CASE(TestInventoryDragDropOutsideLeavesOrderUnchanged) {
 BOOST_AUTO_TEST_CASE(TestHotbarItemCanBeDraggedToAnotherSlot) {
     auto potionHandle = getResourceHandleById("health_potion");
     BOOST_REQUIRE(potionHandle.isValid());
-    BOOST_REQUIRE(player->addToInventory(potionHandle, 3));
+    BOOST_REQUIRE_EQUAL(player->getInventoryQuantity(potionHandle), 3);
 
     auto& ui = UIManager::Instance();
     ui.onWindowResize(1280, 720);
@@ -502,7 +502,7 @@ BOOST_AUTO_TEST_CASE(TestHotbarItemDragSwapsOccupiedSlots) {
     auto manaHandle = getResourceHandleById("mana_elixir");
     BOOST_REQUIRE(potionHandle.isValid());
     BOOST_REQUIRE(manaHandle.isValid());
-    BOOST_REQUIRE(player->addToInventory(potionHandle, 3));
+    BOOST_REQUIRE_EQUAL(player->getInventoryQuantity(potionHandle), 3);
     BOOST_REQUIRE(player->addToInventory(manaHandle, 2));
 
     auto& ui = UIManager::Instance();
