@@ -12,8 +12,7 @@ Run the repo's benchmark regression workflow without mixing it into correctness 
 ## Workflow
 
 1. Read governing instructions first.
-   - Start with `AGENTS.md`.
-   - Check for narrower `AGENTS.md` or `AGENTS.override.md` files only if benchmark scripts or related report files have local guidance.
+   - Start with the nearest `AGENTS.md` or `AGENTS.override.md` for benchmark scripts, related report files, or touched performance-sensitive code.
    - Treat repo performance, threading, lifecycle, and verification rules as binding.
 
 2. Inspect current state.
@@ -31,12 +30,13 @@ Run the repo's benchmark regression workflow without mixing it into correctness 
    - Never run benchmark scripts in parallel; concurrent runs distort timings.
    - Run each command from the repository root and wait for it to complete before starting the next one.
    - If a benchmark times out, crashes, or cannot run, classify the whole pass as incomplete and report the failed script.
+   - If a result regresses, verify whether the benchmark's scope changed before calling it an algorithm regression.
 
 5. Extract and compare metrics.
    - Parse current result files under `test_results/`, including the `*_current.txt` files when present.
    - Compare against matching baseline files by percentage change.
    - Treat >15% degradation in a critical system as blocking unless the relevant benchmark documentation defines a different threshold.
-   - Distinguish regression, warning, stable result, and improvement.
+   - Distinguish regression, warning, stable result, improvement, and benchmark-scope drift.
 
 6. Produce a compact report.
    - Include the command set, build mode, baseline source, benchmark completion status, critical regressions, warnings, improvements, and report path if one was written.

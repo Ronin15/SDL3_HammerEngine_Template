@@ -15,8 +15,7 @@ description: Design and implement targeted VoidLight-Framework regression tests,
 ## Workflow
 
 1. Read governing instructions first.
-   - Start with `AGENTS.md`.
-   - Read narrower `AGENTS.md` or `AGENTS.override.md` files for touched test and production paths.
+   - Start with the nearest `AGENTS.md` or `AGENTS.override.md` for touched test and production paths.
    - Treat production/test alignment, Boost.Test naming, and subsystem ownership rules as binding.
 
 2. Reproduce before changing expectations.
@@ -29,11 +28,13 @@ description: Design and implement targeted VoidLight-Framework regression tests,
    - Trace the relevant manager, controller, EDM, event, GameState, render, or worker-thread path.
    - Compare with nearby tests in the same subsystem before inventing a new harness style.
    - Distinguish missing test setup from a production defect, especially for `EventManager` and state-owned handler wiring.
+   - Prefer production entrypoints over raw internal events unless the test is explicitly isolating the event layer.
 
 4. Add the narrowest durable coverage.
    - Test the externally meaningful behavior or contract, not private implementation detail.
    - Keep fixtures minimal but representative of the runtime owner relationships.
    - Add production and test changes together when behavior changes.
+   - Use `BOOST_REQUIRE()` for important `[[nodiscard]]` setup calls such as `init()`, `load()`, and `create()`.
    - Never relax assertions to hide a production bug unless the user explicitly asks.
 
 5. Use the right verification depth.

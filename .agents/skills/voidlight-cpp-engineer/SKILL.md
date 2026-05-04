@@ -15,17 +15,18 @@ description: Specialized VoidLight C++20 engineering agent for engine, gameplay,
 ## Workflow
 
 1. Read repository guidance first.
-   - Start with `AGENTS.md` in the current repo.
-   - Search for narrower `AGENTS.md` or `AGENTS.override.md` files that apply to the touched paths.
+   - Start with the nearest `AGENTS.md` or `AGENTS.override.md` that applies to the touched path.
    - Treat local architecture rules as binding.
+   - If the user names a specific file, stay in that file unless they approve spillover.
 
 2. Trace the real system before editing.
    - Read the exact production path involved.
    - Search for matching patterns in the same subsystem before introducing changes.
-   - Verify ownership boundaries such as engine vs state, manager vs data store, and main-thread vs worker-thread responsibilities.
+   - Verify ownership boundaries such as engine vs state, manager vs controller, data store vs policy, and main-thread vs worker-thread responsibilities.
 
 3. Apply minimal production-safe fixes.
    - Prefer direct fixes over new abstractions.
+   - Do not add compatibility overloads, ad-hoc safety layers, or new abstractions unless the task requires them.
    - Reuse existing helpers, manager patterns, threading helpers, and rendering pipelines.
    - Keep EDM-style data stores as storage only and behavior logic in behavior or system code.
    - Preserve one-present-per-frame rendering flow and existing state transition order.

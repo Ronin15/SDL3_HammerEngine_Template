@@ -10,24 +10,26 @@ description: Run a VoidLight repository quality gate against local project instr
 Run a focused repository quality pass around the repo's analyzer wrappers. Treat repository instructions as the source of truth, then run only the focused cppcheck and clang-tidy scripts documented by the repo.
 
 1. Read applicable repository guidance before running checks:
-   - Start at the current working directory and read `AGENTS.md` when present.
-   - Search upward and downward only as needed for narrower `AGENTS.md` or `AGENTS.override.md` files that apply to touched paths.
+   - Start with the nearest `AGENTS.md` or `AGENTS.override.md` that applies to the current working directory or touched paths.
    - For this repository, the standards in `AGENTS.md` are part of the quality gate.
 
 2. Read tool guidance before invoking static analyzers:
    - Read `tests/cppcheck/README.md` before running cppcheck.
    - Read `tests/clang-tidy/README.md` before running clang-tidy.
-   - Follow the documented focused commands, compile database requirements, suppressions, and output expectations from those files.
+   - Follow the documented focused commands, compile database requirements, current suppression/library-config behavior, and output expectations from those files.
 
 3. Build a short execution plan:
    - Include architecture and coding standards checks from `AGENTS.md`.
    - Run only the focused analyzer wrappers documented by the repo: `tests/cppcheck/cppcheck_focused.sh` and `tests/clang-tidy/clang_tidy_focused.sh`.
    - Do not add build steps, broad test runs, or full analyzer passes unless the user explicitly asks for them.
+   - If the user named a specific file, keep the standards review scoped there unless the analyzer finding requires tracing a dependency.
 
 4. Run checks and capture findings:
    - Inspect `git status --short` first so pre-existing user changes are not mistaken for your edits.
    - Run `tests/cppcheck/cppcheck_focused.sh`.
    - Run `tests/clang-tidy/clang_tidy_focused.sh`.
+   - `cppcheck` uses `tests/cppcheck/cppcheck_lib.cfg`; do not invent a separate cppcheck suppressions file.
+   - `clang-tidy` requires `compile_commands.json` and applies `tests/clang-tidy/clang_tidy_suppressions.txt` only if that file exists.
    - If either command fails because of missing dependencies, stale build configuration, missing compile database, or sandbox restrictions, report the exact blocker and either fix the local setup when appropriate or request the needed approval.
 
 5. Investigate before fixing:
