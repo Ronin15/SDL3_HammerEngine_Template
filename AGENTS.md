@@ -149,7 +149,7 @@ See `tests/TESTING.md` for broader test documentation.
 - Demo states may skip managers they never initialized.
 - `ControllerRegistry::clear()` must be called in `GamePlayState::exit()`, not just `unsubscribeAll()`.
 - `EventManager` supports persistent and transient handlers. Persistent manager-level handlers register in `init()` with `registerPersistentHandler[WithToken]()` and survive transitions. State-level handlers register in `enter()` with `registerHandler[WithToken]()` and are cleared by `clearTransientHandlers()`. `clearAllHandlers()` is for shutdown only.
-- Collision-to-`EventManager` bridge callbacks stay persistent across transitions.
+- Collision callbacks are manager-owned infrastructure; projectile collisions use the persistent projectile hit sink rather than state-owned callbacks.
 - Do not manually unsubscribe and resubscribe persistent manager handlers across transitions.
 - World-geometry caches, spatial indices, and reverse lookups must be cleared by transition cleanup or unload handling. Do not rely only on deferred `WorldUnloaded` after transition cleanup has begun.
 - No game state should register collision callbacks directly.

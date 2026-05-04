@@ -184,8 +184,8 @@ void InventoryController::initializeInventoryUI() {
     headerStyle.useTextBackground = false;
     headerStyle.fontID = UIConstants::FONT_UI;
 
-    ui.createPanel(INVENTORY_PANEL_ID,
-                   {0, 0, INVENTORY_PANEL_WIDTH, inventoryHeight});
+    ui.createDialog(INVENTORY_PANEL_ID,
+                    {0, 0, INVENTORY_PANEL_WIDTH, inventoryHeight});
     ui.setComponentPositioning(
         INVENTORY_PANEL_ID,
         {UIPositionMode::CENTERED_BOTH, 0, 0, INVENTORY_PANEL_WIDTH, inventoryHeight});
@@ -747,6 +747,10 @@ void InventoryController::cancelHotbarAssignment() {
     m_draggedInventorySourceSlot = -1;
     m_draggedInventoryHandle = VoidLight::ResourceHandle{};
     updateDragGhost(VoidLight::ResourceHandle{}, false);
+}
+
+void InventoryController::cancelDragOperation() {
+    cancelHotbarAssignment();
 }
 
 void InventoryController::updateDragGhost(const VoidLight::ResourceHandle& handle,

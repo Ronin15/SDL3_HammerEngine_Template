@@ -20,7 +20,10 @@
 #include <format>
 
 EventFactory::EventFactory() {
-    // Register built-in event creators
+    registerBuiltInEventCreators();
+}
+
+void EventFactory::registerBuiltInEventCreators() {
     registerCustomEventCreator("Weather", [this](const EventDefinition& def) {
         std::string weatherType = def.params.count("weatherType") ? def.params.at("weatherType") : "Clear";
         float intensity = def.numParams.count("intensity") ? def.numParams.at("intensity") : 0.5f;
@@ -131,67 +134,14 @@ EventFactory::EventFactory() {
 }
 
 bool EventFactory::init() {
-    // Register built-in event creators if they're not already registered
-    if (m_eventCreators.find("Weather") == m_eventCreators.end()) {
-        registerCustomEventCreator("Weather", [this](const EventDefinition& def) {
-            std::string weatherType = def.params.count("weatherType") ? def.params.at("weatherType") : "Clear";
-            float intensity = def.numParams.count("intensity") ? def.numParams.at("intensity") : 0.5f;
-            float transitionTime = def.numParams.count("transitionTime") ? def.numParams.at("transitionTime") : 5.0f;
-
-            return createWeatherEvent(def.name, weatherType, intensity, transitionTime);
-        });
-
-        registerCustomEventCreator("SceneChange", [this](const EventDefinition& def) {
-            std::string targetScene = def.params.count("targetScene") ? def.params.at("targetScene") : "";
-            std::string transitionType = def.params.count("transitionType") ? def.params.at("transitionType") : "fade";
-            float duration = def.numParams.count("duration") ? def.numParams.at("duration") : 1.0f;
-
-            return createSceneChangeEvent(def.name, targetScene, transitionType, duration);
-        });
-
-        registerCustomEventCreator("NPCSpawn", [this](const EventDefinition& def) {
-            std::string npcType = def.params.count("npcType") ? def.params.at("npcType") : "";
-            int count = static_cast<int>(def.numParams.count("count") ? def.numParams.at("count") : 1.0f);
-            float spawnRadius = def.numParams.count("spawnRadius") ? def.numParams.at("spawnRadius") : 0.0f;
-
-            return createNPCSpawnEvent(def.name, npcType, count, spawnRadius);
-        });
-
-        registerCustomEventCreator("MerchantSpawn", [this](const EventDefinition& def) {
-            std::string merchantClass = def.params.count("merchantClass")
-                                            ? def.params.at("merchantClass")
-                                            : "GeneralMerchant";
-            std::string merchantRace = def.params.count("merchantRace")
-                                           ? def.params.at("merchantRace")
-                                           : "Human";
-            int count = static_cast<int>(def.numParams.count("count")
-                                             ? def.numParams.at("count")
-                                             : 1.0f);
-            float spawnRadius = def.numParams.count("spawnRadius")
-                                    ? def.numParams.at("spawnRadius")
-                                    : 0.0f;
-
-            return createMerchantSpawnEvent(def.name, merchantClass, merchantRace,
-                                            count, spawnRadius);
-        });
-    }
-
+    registerBuiltInEventCreators();
     EVENT_INFO("EventFactory initialized");
     return true;
 }
 
 void EventFactory::clean() {
     m_eventCreators.clear();
-
-    // Re-initialize core creators to ensure they're always available
-    registerCustomEventCreator("Weather", [this](const EventDefinition& def) {
-        std::string weatherType = def.params.count("weatherType") ? def.params.at("weatherType") : "Clear";
-        float intensity = def.numParams.count("intensity") ? def.numParams.at("intensity") : 0.5f;
-        float transitionTime = def.numParams.count("transitionTime") ? def.numParams.at("transitionTime") : 5.0f;
-
-        return createWeatherEvent(def.name, weatherType, intensity, transitionTime);
-    });
-
+    registerBuiltInEventCreators();
     EVENT_INFO("EventFactory cleaned");
 }
 

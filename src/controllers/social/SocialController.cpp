@@ -15,6 +15,7 @@
 
 #include "managers/InputManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
+#include "managers/UIConstants.hpp"
 #include "managers/UIManager.hpp"
 #include <algorithm>
 #include <cmath>
@@ -786,36 +787,38 @@ void SocialController::createTradeUI() {
         ui.enableAutoSizing(id, false);
     };
 
-    ui.createPanel(UI_PANEL, UIRect{0, 0, panelW, panelH});
+    ui.createModal(UI_PANEL, UIRect{0, 0, panelW, panelH}, "",
+                   UIConstants::BASELINE_WIDTH,
+                   UIConstants::BASELINE_HEIGHT);
     ui.setComponentPositioning(UI_PANEL, {UIPositionMode::CENTERED_BOTH, 0, 0, panelW, panelH});
 
-    ui.createTitle(UI_TITLE, UIRect{0, 0, 560, 30}, "Trading");
+    ui.createTitle(UI_TITLE, UIRect{0, 0, 560, 30}, "Trading", UI_PANEL);
     disableAutoSizing(UI_TITLE);
     ui.setComponentPositioning(UI_TITLE, {UIPositionMode::CENTERED_BOTH, 0, 10 + 15 - halfH, 560, 30});
 
     std::string relStr = std::format("Relationship: {}  (Price: {:.0f}%)",
                                      getCurrentTradeRelationshipDescription(),
                                      getCurrentTradePriceModifier() * 100.0f);
-    ui.createLabel(UI_RELATIONSHIP, UIRect{0, 0, 560, 20}, relStr);
+    ui.createLabel(UI_RELATIONSHIP, UIRect{0, 0, 560, 20}, relStr, UI_PANEL);
     disableAutoSizing(UI_RELATIONSHIP);
     ui.setComponentPositioning(UI_RELATIONSHIP, {UIPositionMode::CENTERED_BOTH, 0, 45 + 10 - halfH, 560, 20});
 
-    ui.createLabel("trade_merchant_label", UIRect{0, 0, 270, 20}, "Merchant Inventory");
+    ui.createLabel("trade_merchant_label", UIRect{0, 0, 270, 20}, "Merchant Inventory", UI_PANEL);
     disableAutoSizing("trade_merchant_label");
     ui.setComponentPositioning("trade_merchant_label", {UIPositionMode::CENTERED_BOTH,
         20 + 135 - halfW, 75 + 10 - halfH, 270, 20});
 
-    ui.createList(UI_MERCHANT_LIST, UIRect{0, 0, 270, 200});
+    ui.createList(UI_MERCHANT_LIST, UIRect{0, 0, 270, 200}, UI_PANEL);
     disableAutoSizing(UI_MERCHANT_LIST);
     ui.setComponentPositioning(UI_MERCHANT_LIST, {UIPositionMode::CENTERED_BOTH,
         20 + 135 - halfW, 100 + 100 - halfH, 270, 200});
 
-    ui.createLabel("trade_player_label", UIRect{0, 0, 270, 20}, "Your Inventory");
+    ui.createLabel("trade_player_label", UIRect{0, 0, 270, 20}, "Your Inventory", UI_PANEL);
     disableAutoSizing("trade_player_label");
     ui.setComponentPositioning("trade_player_label", {UIPositionMode::CENTERED_BOTH,
         310 + 135 - halfW, 75 + 10 - halfH, 270, 20});
 
-    ui.createList(UI_PLAYER_LIST, UIRect{0, 0, 270, 200});
+    ui.createList(UI_PLAYER_LIST, UIRect{0, 0, 270, 200}, UI_PANEL);
     disableAutoSizing(UI_PLAYER_LIST);
     ui.setComponentPositioning(UI_PLAYER_LIST, {UIPositionMode::CENTERED_BOTH,
         310 + 135 - halfW, 100 + 100 - halfH, 270, 200});
@@ -830,12 +833,12 @@ void SocialController::createTradeUI() {
         ui.addListItem(UI_PLAYER_LIST, itemStr);
     }
 
-    ui.createLabel(UI_QUANTITY_LABEL, UIRect{0, 0, 150, 25}, "Quantity: 1");
+    ui.createLabel(UI_QUANTITY_LABEL, UIRect{0, 0, 150, 25}, "Quantity: 1", UI_PANEL);
     disableAutoSizing(UI_QUANTITY_LABEL);
     ui.setComponentPositioning(UI_QUANTITY_LABEL, {UIPositionMode::CENTERED_BOTH,
         20 + 75 - halfW, lowerInfoRowY + 12 - halfH, 150, 25});
 
-    ui.createButton(UI_QUANTITY_DEC_BTN, UIRect{0, 0, 35, 30}, "-");
+    ui.createButton(UI_QUANTITY_DEC_BTN, UIRect{0, 0, 35, 30}, "-", UI_PANEL);
     disableAutoSizing(UI_QUANTITY_DEC_BTN);
     ui.setComponentPositioning(UI_QUANTITY_DEC_BTN, {UIPositionMode::CENTERED_BOTH,
         -205, quantityButtonRowY - halfH, 35, 30});
@@ -843,7 +846,7 @@ void SocialController::createTradeUI() {
         adjustQuantityBy(-1);
     });
 
-    ui.createButton(UI_QUANTITY_INC_BTN, UIRect{0, 0, 35, 30}, "+");
+    ui.createButton(UI_QUANTITY_INC_BTN, UIRect{0, 0, 35, 30}, "+", UI_PANEL);
     disableAutoSizing(UI_QUANTITY_INC_BTN);
     ui.setComponentPositioning(UI_QUANTITY_INC_BTN, {UIPositionMode::CENTERED_BOTH,
         -145, quantityButtonRowY - halfH, 35, 30});
@@ -851,14 +854,14 @@ void SocialController::createTradeUI() {
         adjustQuantityBy(1);
     });
 
-    ui.createLabel(UI_PRICE_LABEL, UIRect{0, 0, 200, 25}, "Select an item");
+    ui.createLabel(UI_PRICE_LABEL, UIRect{0, 0, 200, 25}, "Select an item", UI_PANEL);
     disableAutoSizing(UI_PRICE_LABEL);
     ui.setComponentPositioning(UI_PRICE_LABEL, {UIPositionMode::CENTERED_BOTH,
         180 + 100 - halfW, lowerInfoRowY + 12 - halfH, 200, 25});
 
     auto player = mp_player.lock();
     int gold = player ? player->getGold() : 0;
-    ui.createLabel(UI_GOLD_LABEL, UIRect{0, 0, 180, 25}, std::format("Your Gold: {}", gold));
+    ui.createLabel(UI_GOLD_LABEL, UIRect{0, 0, 180, 25}, std::format("Your Gold: {}", gold), UI_PANEL);
     disableAutoSizing(UI_GOLD_LABEL);
     ui.setComponentPositioning(UI_GOLD_LABEL, {UIPositionMode::CENTERED_BOTH,
         400 + 90 - halfW, lowerInfoRowY + 12 - halfH, 180, 25});
@@ -866,7 +869,7 @@ void SocialController::createTradeUI() {
     constexpr int btnW = 100;
     constexpr int btnH = 35;
 
-    ui.createButtonSuccess(UI_BUY_BTN, UIRect{0, 0, btnW, btnH}, "Buy");
+    ui.createButtonSuccess(UI_BUY_BTN, UIRect{0, 0, btnW, btnH}, "Buy", UI_PANEL);
     disableAutoSizing(UI_BUY_BTN);
     ui.setComponentPositioning(UI_BUY_BTN, {UIPositionMode::CENTERED_BOTH,
         -175, actionButtonRowY + btnH/2 - halfH, btnW, btnH});
@@ -874,7 +877,7 @@ void SocialController::createTradeUI() {
         executeBuy();
     });
 
-    ui.createButtonSuccess(UI_SELL_BTN, UIRect{0, 0, btnW, btnH}, "Sell");
+    ui.createButtonSuccess(UI_SELL_BTN, UIRect{0, 0, btnW, btnH}, "Sell", UI_PANEL);
     disableAutoSizing(UI_SELL_BTN);
     ui.setComponentPositioning(UI_SELL_BTN, {UIPositionMode::CENTERED_BOTH,
         0, actionButtonRowY + btnH/2 - halfH, btnW, btnH});
@@ -882,7 +885,7 @@ void SocialController::createTradeUI() {
         executeSell();
     });
 
-    ui.createButtonDanger(UI_CLOSE_BTN, UIRect{0, 0, btnW, btnH}, "Close");
+    ui.createButtonDanger(UI_CLOSE_BTN, UIRect{0, 0, btnW, btnH}, "Close", UI_PANEL);
     disableAutoSizing(UI_CLOSE_BTN);
     ui.setComponentPositioning(UI_CLOSE_BTN, {UIPositionMode::CENTERED_BOTH,
         175, actionButtonRowY + btnH/2 - halfH, btnW, btnH});
@@ -913,6 +916,7 @@ void SocialController::destroyTradeUI() {
     auto& ui = UIManager::Instance();
     ui.clearKeyboardSelection();
     ui.removeComponentsWithPrefix("trade_");
+    ui.removeOverlay();
 }
 
 void SocialController::rebuildTradeListsUI() {

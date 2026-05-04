@@ -122,6 +122,22 @@ struct EventTypesFixture {
   }
 };
 
+BOOST_AUTO_TEST_CASE(EventFactoryCleanInitRestoresBuiltInCreators) {
+  auto& factory = EventFactory::Instance();
+  factory.clean();
+  BOOST_REQUIRE(factory.init());
+
+  EventDefinition def;
+  def.type = "MerchantSpawn";
+  def.name = "MerchantAfterClean";
+
+  auto event = factory.createEvent(def);
+  BOOST_REQUIRE(event != nullptr);
+  BOOST_CHECK_EQUAL(event->getType(), "MerchantSpawn");
+
+  factory.clean();
+}
+
 // Test WeatherEvent creation and functionality
 BOOST_FIXTURE_TEST_CASE(WeatherEventBasics, EventTypesFixture) {
   // Create a weather event

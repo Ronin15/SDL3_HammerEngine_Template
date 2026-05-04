@@ -563,9 +563,11 @@ void GamePlayState::pause() {
   ui.setComponentVisible("hud_target_hp_label", false);
   ui.setComponentVisible("hud_target_health", false);
 
-  if (auto* inventoryCtrl = m_controllers.get<InventoryController>();
-      inventoryCtrl && inventoryCtrl->isInventoryVisible()) {
-    ui.setComponentVisible(InventoryController::INVENTORY_PANEL_ID, false);
+  if (auto* inventoryCtrl = m_controllers.get<InventoryController>()) {
+    inventoryCtrl->cancelDragOperation();
+    if (inventoryCtrl->isInventoryVisible()) {
+      ui.setComponentVisible(InventoryController::INVENTORY_PANEL_ID, false);
+    }
   }
 
   if (auto* hudCtrl = m_controllers.get<HudController>()) {
@@ -642,6 +644,7 @@ void GamePlayState::handleInput() {
     }
     // pushState will call pause() which handles UI hiding and player velocity
     mp_stateManager->pushState(GameStateId::PAUSE);
+    return;
   }
 
   // Developer debug shortcut — return to main menu. Intentionally not rebindable.

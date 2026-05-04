@@ -179,6 +179,7 @@ private:
 
   // Helper methods for event creation
   TransitionType getTransitionTypeFromString(const std::string &transitionType);
+  void registerBuiltInEventCreators();
 };
 
 #endif // EVENT_FACTORY_HPP

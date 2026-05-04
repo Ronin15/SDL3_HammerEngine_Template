@@ -44,6 +44,7 @@ public:
     void initializeInventoryUI();
     void refreshInventoryUI();
     void handleHotbarAssignmentInput(HudController& hudController);
+    void cancelDragOperation();
     void toggleInventoryDisplay();
     void setInventoryVisible(bool visible);
     [[nodiscard]] bool isInventoryVisible() const { return m_inventoryVisible; }
