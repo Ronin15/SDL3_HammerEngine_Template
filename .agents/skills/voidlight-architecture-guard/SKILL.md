@@ -15,19 +15,19 @@ description: Review or fix VoidLight-Framework changes for architectural coheren
 ## Workflow
 
 1. Read repo guidance first.
-   - Start with `AGENTS.md`.
+   - Start with the nearest `AGENTS.md` or `AGENTS.override.md`.
    - Treat EDM, AI, controller, render, threading, and transition rules as binding.
 
 2. Trace the real runtime path.
    - Identify the participating systems at runtime, not just the touched file.
-   - Follow init, enter, update, render, event dispatch, transition, cleanup, and shutdown when relevant.
+   - Follow init, enter, update, render submission, event dispatch, transition, cleanup, and shutdown when relevant.
 
 3. Classify each touched concern by owner.
    - Persistent per-entity cross-frame state belongs in EDM.
    - Behavior, scheduling, caches, registries, and orchestration belong in managers.
    - State-scoped feature flow belongs in controllers.
    - Render controllers read canonical state and must not become lifecycle owners.
-   - Game states coordinate manager/controller setup and teardown order.
+   - Game states coordinate manager/controller setup, teardown order, and render submission only.
 
 4. Check for common drift.
    - Controller directly mutates AI behavior or memory state in EDM.
@@ -35,6 +35,8 @@ description: Review or fix VoidLight-Framework changes for architectural coheren
    - Cross-frame gameplay state exists only in manager-local scratch.
    - Cleanup is split across the wrong owner or only runs on one transition path.
    - Event-driven UI or gameplay flow mutates state without emitting the contract other systems rely on.
+   - State code registers collision callbacks or re-manages persistent manager handlers.
+   - Game states clear, submit, present, or otherwise own frame lifecycle work.
    - Fix introduces a second source of truth instead of using the canonical owner.
 
 5. Prefer the narrowest owner-correct fix.
@@ -53,6 +55,8 @@ description: Review or fix VoidLight-Framework changes for architectural coheren
 - Do not broaden EDM into a policy layer.
 - Do not leave world or state teardown implicit when a manager owns caches or registries.
 - Do not accept fixes that bypass required events, transition ordering, or cleanup hooks.
+- Do not accept game-state collision callback registration or persistent handler churn.
+- Do not move GPU frame lifecycle ownership out of `GameEngine`.
 
 ## Findings / Fix Output
 
