@@ -897,6 +897,10 @@ bool InventoryController::isHotbarAssignable(const VoidLight::ResourceHandle& ha
         return false;
     }
 
+    if (resourceTemplate->getType() == ResourceType::Ammunition) {
+        return false;
+    }
+
     return resourceTemplate->isConsumable() ||
         resourceTemplate->getType() == ResourceType::Consumable ||
         isWeapon(handle);

@@ -192,8 +192,40 @@ BOOST_AUTO_TEST_CASE(TestRemoveWorldClearsSpatialIndices) {
 
   BOOST_CHECK(worldManager->getActiveWorld().empty());
   BOOST_CHECK_EQUAL(worldManager->queryDroppedItemsInRadius(Vector2D(64.0f, 64.0f), 32.0f, indices), 0);
+  BOOST_CHECK(indices.empty());
+  indices.push_back(999);
   BOOST_CHECK_EQUAL(worldManager->queryHarvestablesInRadius(Vector2D(96.0f, 64.0f), 32.0f, indices), 0);
+  BOOST_CHECK(indices.empty());
+  indices.push_back(999);
   BOOST_CHECK_EQUAL(worldManager->queryContainersInRadius(Vector2D(128.0f, 64.0f), 32.0f, indices), 0);
+  BOOST_CHECK(indices.empty());
+}
+
+BOOST_AUTO_TEST_CASE(TestDestroyContainerUnregistersInventory) {
+  const std::string worldId = "container_inventory_cleanup_world";
+  BOOST_REQUIRE(worldManager->createWorld(worldId));
+  worldManager->setActiveWorld(worldId);
+
+  EntityHandle container = entityDataManager->createContainer(
+      Vector2D(128.0f, 64.0f), ContainerType::Chest, 8, 0, worldId);
+  BOOST_REQUIRE(container.isValid());
+
+  std::vector<size_t> containerIndices;
+  BOOST_REQUIRE_EQUAL(
+      worldManager->queryContainersInRadius(Vector2D(128.0f, 64.0f), 32.0f, containerIndices),
+      1);
+  const size_t staticIndex = containerIndices.front();
+  BOOST_REQUIRE_NE(staticIndex, SIZE_MAX);
+  const auto& hot = entityDataManager->getStaticHotDataByIndex(staticIndex);
+  const uint32_t inventoryIndex =
+      entityDataManager->getContainerData(hot.typeLocalIndex).inventoryIndex;
+  BOOST_REQUIRE_NE(inventoryIndex, INVALID_INVENTORY_INDEX);
+  BOOST_CHECK_EQUAL(worldManager->getInventoryCount(worldId), 1);
+
+  entityDataManager->destroyEntity(container);
+
+  BOOST_CHECK_EQUAL(worldManager->getInventoryCount(worldId), 0);
+  BOOST_CHECK(!entityDataManager->isValidInventoryIndex(inventoryIndex));
 }
 
 //==============================================================================

@@ -437,7 +437,7 @@ void Player::setPosition(const Vector2D &position) {
 void Player::initializeInventory() {
   // Create EDM inventory with 20 slots (forces meaningful inventory decisions)
   auto &edm = EntityDataManager::Instance();
-  m_inventoryIndex = edm.createInventory(20, true);  // 20 slots, world-tracked
+  m_inventoryIndex = edm.createInventory(20, false);  // Player inventory is not world resource storage.
 
   if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
     PLAYER_ERROR("Failed to create player inventory");
@@ -653,6 +653,11 @@ bool Player::consumeItem(VoidLight::ResourceHandle itemHandle) {
 
   const auto &templateManager = ResourceTemplateManager::Instance();
   auto itemTemplate = templateManager.getResourceTemplate(itemHandle);
+  if (itemTemplate && itemTemplate->getType() == ResourceType::Ammunition) {
+    PLAYER_WARN(std::format("Player::consumeItem - Ammunition is consumed by weapons only (handle: {})", itemHandle.toString()));
+    return false;
+  }
+
   if (!itemTemplate || !itemTemplate->isConsumable()) {
     PLAYER_WARN(std::format("Player::consumeItem - Item is not consumable (handle: {})", itemHandle.toString()));
     return false;

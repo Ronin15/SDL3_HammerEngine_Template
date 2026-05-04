@@ -121,6 +121,9 @@ bool WorldManager::loadNewWorld(
     WORLD_MANAGER_INFO_IF(
         m_currentWorld,
         std::format("Unloading current world: {}", m_currentWorld->worldId));
+    if (m_currentWorld) {
+      unloadWorldUnsafe();
+    }
 
     // Set new world
     m_currentWorld = std::move(newWorld);
@@ -479,7 +482,7 @@ void WorldManager::fireWorldUnloadedEvent(const std::string &worldId) {
     // Trigger world unloaded via EventManager (no registration)
     const EventManager &eventMgr = EventManager::Instance();
     eventMgr.triggerWorldUnloaded(worldId,
-                                        EventManager::DispatchMode::Deferred);
+                                        EventManager::DispatchMode::Immediate);
 
     WORLD_MANAGER_INFO(
         std::format("WorldUnloadedEvent fired for world: {}", worldId));

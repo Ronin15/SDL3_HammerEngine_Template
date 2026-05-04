@@ -349,6 +349,23 @@ BOOST_AUTO_TEST_CASE(TestWeaponInventoryClickStartsHotbarAssignmentInsteadOfEqui
         1);
 }
 
+BOOST_AUTO_TEST_CASE(TestAmmunitionIsNotConsumableOrManuallyConsumed) {
+    auto arrowsHandle = getResourceHandleById("arrows");
+    BOOST_REQUIRE(arrowsHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(arrowsHandle, 5));
+
+    auto arrowsTemplate =
+        ResourceTemplateManager::Instance().getResourceTemplate(arrowsHandle);
+    BOOST_REQUIRE(arrowsTemplate);
+    BOOST_CHECK_EQUAL(static_cast<int>(arrowsTemplate->getType()),
+                      static_cast<int>(ResourceType::Ammunition));
+    BOOST_CHECK(!arrowsTemplate->isConsumable());
+    BOOST_CHECK(!player->consumeItem(arrowsHandle));
+    BOOST_CHECK_EQUAL(
+        EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), arrowsHandle),
+        5);
+}
+
 BOOST_AUTO_TEST_CASE(TestInventoryDragSwapsOccupiedSlots) {
     auto ironOreHandle = getResourceHandleById("iron_ore");
     auto breadHandle = getResourceHandleById("bread");

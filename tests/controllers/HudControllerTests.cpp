@@ -194,6 +194,24 @@ BOOST_AUTO_TEST_CASE(TestHotbarAssignmentUpdatesSlotIconAndCount)
     BOOST_CHECK_EQUAL(ui.getText("hotbar_count_0"), "3");
 }
 
+BOOST_AUTO_TEST_CASE(TestHotbarSelectingWeaponEquipsIt)
+{
+    auto player = createPlayer();
+    player->initializeInventory();
+    auto daggerHandle = ResourceTemplateManager::Instance().getHandleById("dagger");
+    BOOST_REQUIRE(daggerHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(daggerHandle, 1));
+
+    HudController controller(player);
+    controller.initializeHotbarUI();
+
+    BOOST_REQUIRE(controller.assignHotbarItem(0, daggerHandle));
+    BOOST_REQUIRE(controller.activateSelectedHotbarItem());
+
+    BOOST_CHECK(player->getEquippedItem("weapon") == daggerHandle);
+    BOOST_CHECK_EQUAL(player->getInventoryQuantity(daggerHandle), 0);
+}
+
 BOOST_AUTO_TEST_CASE(TestHotbarReassigningSameItemMovesAssignment)
 {
     auto player = createPlayer();

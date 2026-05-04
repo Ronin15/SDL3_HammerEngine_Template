@@ -53,6 +53,7 @@ public:
     void initializeHotbarUI();
     void handleHotbarInput();
     void setHotbarSelectedIndex(size_t i);
+    bool activateSelectedHotbarItem();
     void setHotbarVisible(bool visible);
     [[nodiscard]] size_t getHotbarSelectedIndex() const { return m_hotbarSelectedIndex; }
 
@@ -71,6 +72,7 @@ private:
     void onResourceChange(const EventData& data);
     void clearTarget();
     void applyHotbarSelectionStyling();
+    bool activateHotbarItem(VoidLight::ResourceHandle handle);
     static std::string hotbarKeyLabelId(size_t i);
     static std::string hotbarIconId(size_t i);
     static std::string hotbarCountId(size_t i);

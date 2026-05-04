@@ -1977,7 +1977,18 @@ void EntityDataManager::destroyStaticResource(EntityHandle handle) {
             break;
         case EntityKind::Container:
             wrm.unregisterContainerSpatial(index);
+            if (m_staticHotData[index].typeLocalIndex < m_containerData.size()) {
+                auto& container = m_containerData[m_staticHotData[index].typeLocalIndex];
+                if (container.inventoryIndex != INVALID_INVENTORY_INDEX) {
+                    wrm.unregisterInventory(container.inventoryIndex);
+                    destroyInventory(container.inventoryIndex);
+                    container.inventoryIndex = INVALID_INVENTORY_INDEX;
+                }
+            }
             m_freeContainerSlots.push_back(m_staticHotData[index].typeLocalIndex);
+            if (m_staticHotData[index].typeLocalIndex < m_containerRenderData.size()) {
+                m_containerRenderData[m_staticHotData[index].typeLocalIndex].clear();
+            }
             break;
         default:
             break;

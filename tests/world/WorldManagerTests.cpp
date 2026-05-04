@@ -440,6 +440,8 @@ BOOST_AUTO_TEST_CASE(TestMultipleWorldLoads) {
     
     // World IDs should be different
     BOOST_CHECK_NE(firstWorldId, secondWorldId);
+    BOOST_CHECK(!worldResourceManager->hasWorld(firstWorldId));
+    BOOST_CHECK(worldResourceManager->hasWorld(secondWorldId));
 }
 
 BOOST_AUTO_TEST_CASE(TestWorldResourceInitialization) {

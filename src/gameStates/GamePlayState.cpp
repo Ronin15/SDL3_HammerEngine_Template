@@ -361,6 +361,14 @@ bool GamePlayState::exit() {
     bgSimMgr.prepareForStateTransition();
     worldMgr.prepareForStateTransition();
 
+    // Unload world before WRM/EventManager transition cleanup so persistent
+    // world-unload handlers and WRM reverse lookups are still available.
+    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+      worldMgr.unloadWorld();
+      // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent
+      // infinite loop when LoadingState returns to this state
+    }
+
     if (wrm.isInitialized()) {
       wrm.prepareForStateTransition();
     }
@@ -389,13 +397,6 @@ bool GamePlayState::exit() {
 
     // Clean up camera and GPU scene recorder
     m_camera.reset();
-
-    // Unload world (LoadingState will reload it)
-    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-      worldMgr.unloadWorld();
-      // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent
-      // infinite loop when LoadingState returns to this state
-    }
 
     // Clean up UI
     ui.prepareForStateTransition();
@@ -432,6 +433,16 @@ bool GamePlayState::exit() {
   bgSimMgr.prepareForStateTransition();
   worldMgr.prepareForStateTransition();
 
+  // Unload world before WRM/EventManager transition cleanup so persistent
+  // world-unload handlers and WRM reverse lookups are still available.
+  if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+    worldMgr.unloadWorld();
+    // CRITICAL: Only reset m_worldLoaded when actually unloading a world
+    // This prevents infinite loop when transitioning to LoadingState (no world
+    // yet)
+    m_worldLoaded = false;
+  }
+
   if (wrm.isInitialized()) {
     wrm.prepareForStateTransition();
   }
@@ -461,15 +472,6 @@ bool GamePlayState::exit() {
 
   // Clean up camera and GPU scene recorder first to stop world rendering
   m_camera.reset();
-
-  // Unload the world when fully exiting gameplay
-  if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-    worldMgr.unloadWorld();
-    // CRITICAL: Only reset m_worldLoaded when actually unloading a world
-    // This prevents infinite loop when transitioning to LoadingState (no world
-    // yet)
-    m_worldLoaded = false;
-  }
 
   // Full UI cleanup using standard pattern
   ui.prepareForStateTransition();

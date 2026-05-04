@@ -1644,7 +1644,8 @@ public:
     /**
      * @brief Create a new inventory
      * @param maxSlots Maximum number of slots (uses overflow for > INLINE_SLOT_COUNT)
-     * @param worldTracked If true, registers with WorldResourceManager for aggregate queries
+     * @param worldTracked Metadata flag for inventories that participate in world resource queries.
+     * Callers with a world context must register/unregister explicitly with WorldResourceManager.
      * @return Inventory index, or INVALID_INVENTORY_INDEX on failure
      *
      * Validation:
@@ -1717,8 +1718,8 @@ public:
      * @brief Destroy an inventory and release its resources
      * @param inventoryIndex Index from createInventory()
      *
-     * Clears overflow data if present, adds slot to free-list.
-     * If worldTracked, unregisters from WorldResourceManager.
+     * Clears overflow data if present and adds slot to free-list.
+     * WorldResourceManager registrations are owned by the caller that registered the inventory.
      */
     void destroyInventory(uint32_t inventoryIndex);
 

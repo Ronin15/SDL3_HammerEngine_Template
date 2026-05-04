@@ -6,6 +6,7 @@
 #include "controllers/ui/HudController.hpp"
 #include "entities/Player.hpp"
 #include "entities/Resource.hpp"
+#include "entities/resources/EquipmentResources.hpp"
 #include "events/EntityEvents.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -329,10 +330,52 @@ void HudController::setHotbarSelectedIndex(size_t i)
     }
     if (i == m_hotbarSelectedIndex && m_hotbarUICreated)
     {
+        activateSelectedHotbarItem();
         return;
     }
     m_hotbarSelectedIndex = i;
     applyHotbarSelectionStyling();
+    activateSelectedHotbarItem();
+}
+
+bool HudController::activateSelectedHotbarItem()
+{
+    if (m_hotbarSelectedIndex >= HOTBAR_SLOT_COUNT)
+    {
+        return false;
+    }
+
+    return activateHotbarItem(m_hotbarItems[m_hotbarSelectedIndex]);
+}
+
+bool HudController::activateHotbarItem(VoidLight::ResourceHandle handle)
+{
+    if (!handle.isValid())
+    {
+        return false;
+    }
+
+    auto player = mp_player.lock();
+    if (!player)
+    {
+        return false;
+    }
+
+    auto resourceTemplate =
+        ResourceTemplateManager::Instance().getResourceTemplate(handle);
+    auto equipment = std::dynamic_pointer_cast<Equipment>(resourceTemplate);
+    if (!equipment ||
+        equipment->getEquipmentSlot() != Equipment::EquipmentSlot::Weapon)
+    {
+        return false;
+    }
+
+    const bool equipped = player->equipItem(handle);
+    if (equipped)
+    {
+        refreshHotbarUI();
+    }
+    return equipped;
 }
 
 bool HudController::assignHotbarItem(size_t slotIndex, VoidLight::ResourceHandle handle)

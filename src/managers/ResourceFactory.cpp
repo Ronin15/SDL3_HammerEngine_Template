@@ -307,6 +307,7 @@ ResourceFactory::createAmmunition(VoidLight::ResourceHandle handle,
 
   auto ammunition = std::make_shared<Ammunition>(handle, id, name, ammoType);
   setCommonProperties(ammunition, json);
+  ammunition->setConsumable(false);
   ammunition->setAmmoType(ammoType);
   return ammunition;
 }

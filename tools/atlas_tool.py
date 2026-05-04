@@ -1435,6 +1435,23 @@ def cmd_pack(paths: dict):
         print("No sprites found")
         return False
 
+    existing_region_count = 0
+    if atlas_json_path.exists():
+        try:
+            with atlas_json_path.open('r', encoding='utf-8') as f:
+                atlas_data = json.load(f)
+            existing_region_count = len(atlas_data.get('regions', {}))
+        except (OSError, json.JSONDecodeError) as ex:
+            print(f"Warning: Could not read existing atlas.json for pack sanity check: {ex}")
+
+    if existing_region_count > 0 and len(sprite_files) < max(1, existing_region_count // 2):
+        print(
+            "Warning: res/sprites contains far fewer sprites than the current atlas "
+            f"({len(sprite_files)} PNGs vs {existing_region_count} atlas regions). "
+            "If you intend to update the existing atlas, run extract first; pack will "
+            "replace atlas.png and atlas.json with only the sprites currently present."
+        )
+
     print(f"Loading {len(sprite_files)} sprites...")
 
     # Load sprites

@@ -105,11 +105,17 @@ coordinates from `atlas.json` at runtime using the `textureId`.
 
 ### Adding New Sprites
 
-**Option A: Single sprite**
-1. Add PNG to `res/sprites/` with the texture ID as filename
+`res/sprites/` is a working directory, not the canonical sprite store. `pack`
+rebuilds `atlas.png` and `atlas.json` from whatever PNGs are currently in that
+directory, then removes those PNGs. To update the current atlas, start by
+extracting it so existing sprites are present before you add or modify files.
+
+**Option A: Add or modify a sprite in the current atlas**
+1. Run `python3 tools/atlas_tool.py extract`
+2. Add or replace a PNG in `res/sprites/` with the texture ID as filename
    - e.g., `res/sprites/new_item_world.png`
-2. Run `python3 tools/atlas_tool.py pack`
-3. Atlas rebuilt, atlas.json updated automatically
+3. Run `python3 tools/atlas_tool.py pack`
+4. Atlas rebuilt, atlas.json updated automatically, and `res/sprites/` cleaned
 
 **Option B: From external sprite sheet**
 1. Extract sprites from source image:

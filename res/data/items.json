@@ -94,7 +94,7 @@
       "description": "Arrows imbued with spectral energy that can pierce through magical defenses.",
       "value": 15,
       "maxStackSize": 500,
-      "consumable": true,
+      "consumable": false,
       "textureId": "spectral_arrows",
       "properties": {
         "ammoType": "Arrow"
@@ -108,7 +108,7 @@
       "description": "Standard arrows for use with a bow.",
       "value": 2,
       "maxStackSize": 100,
-      "consumable": true,
+      "consumable": false,
       "textureId": "arrows_icon",
       "properties": {
         "ammoType": "Arrow"
