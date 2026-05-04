@@ -1003,6 +1003,10 @@ float GameEngine::getCurrentFPS() const {
 }
 
 void GameEngine::update(float deltaTime) {
+  if (!m_running) {
+    return;
+  }
+
   // OPTIMAL MANAGER UPDATE ARCHITECTURE - CLEAN DESIGN
   // ===================================================
   // Update order optimized for correct NPC movement AND animation sync.
@@ -1039,6 +1043,9 @@ void GameEngine::update(float deltaTime) {
   // 1. Event system - FIRST: process global events, state changes, weather triggers
   { PROFILE_MANAGER(VoidLight::ManagerPhase::Event);
     mp_eventManager->update(); }
+  if (!m_running) {
+    return;
+  }
 
   // 2. Game states - player movement and state logic
   //    MUST update BEFORE AIManager so NPCs react to current player position.
@@ -1046,6 +1053,9 @@ void GameEngine::update(float deltaTime) {
   { PROFILE_MANAGER(VoidLight::ManagerPhase::GameState);
     mp_gameStateManager->setCurrentFPS(m_timestepManager->getCurrentFPS());
     mp_gameStateManager->update(deltaTime); }
+  if (!m_running) {
+    return;
+  }
 
   // 3. AI system - processes NPC behaviors with internal parallelization
   //    Sets NPC velocities and applies position updates.
@@ -1153,7 +1163,10 @@ void GameEngine::clean() {
 
   // Clean up engine managers (non-singletons)
   GAMEENGINE_INFO("Cleaning up GameState manager...");
-  mp_gameStateManager.reset();
+  if (mp_gameStateManager) {
+    mp_gameStateManager->clearAllStates();
+    mp_gameStateManager.reset();
+  }
 
   // Active state exit paths may need workers alive to drain pathfinding,
   // background simulation, or other queued jobs. Once states are gone, shut the

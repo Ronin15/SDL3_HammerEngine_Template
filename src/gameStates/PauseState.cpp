@@ -53,7 +53,7 @@ bool PauseState::enter() {
   });
 
   ui.setOnClick("pause_mainmenu_btn", [this]() {
-      mp_stateManager->changeState(GameStateId::MAIN_MENU);
+      mp_stateManager->changeStateClearingStack(GameStateId::MAIN_MENU);
   });
 
   m_selectedIndex = 0;

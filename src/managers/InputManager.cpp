@@ -483,6 +483,21 @@ InputManager::getBindingForCategory(Command c, DeviceCategory cat) const
     return std::nullopt;
 }
 
+InputManager::BindingSnapshot InputManager::captureBindings() const
+{
+    BindingSnapshot snapshot{};
+    std::copy(m_bindings.begin(), m_bindings.end(), snapshot.begin());
+    return snapshot;
+}
+
+void InputManager::restoreBindings(const BindingSnapshot& snapshot)
+{
+    m_bindings = snapshot;
+    cancelRebinding();
+    m_currentDown.fill(false);
+    m_previousDown.fill(false);
+}
+
 void InputManager::loadDefaultBindings()
 {
     for (auto& v : m_bindings) {

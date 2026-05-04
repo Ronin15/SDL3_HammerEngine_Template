@@ -73,6 +73,7 @@ if [ -f "$PROJECT_ROOT/compile_commands.json" ]; then
         --enable=warning,style,performance,portability \
         --library=std,posix \
         --library="$SCRIPT_DIR/cppcheck_lib.cfg" \
+        --suppressions-list="$SCRIPT_DIR/cppcheck_suppressions.txt" \
         --std=c++20 \
         --quiet \
         --template='{file}:{line}: [{severity}] {message}' \
@@ -90,6 +91,7 @@ else
         --enable=warning,style,performance,portability \
         --library=std,posix \
         --library="$SCRIPT_DIR/cppcheck_lib.cfg" \
+        --suppressions-list="$SCRIPT_DIR/cppcheck_suppressions.txt" \
         --platform=unix64 \
         --std=c++20 \
         --quiet \

@@ -823,15 +823,16 @@ BOOST_AUTO_TEST_CASE(TestEventTypeIdEnumValues) {
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::World), 5);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Camera), 6);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Harvest), 7);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::WorldTrigger), 8);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::CollisionObstacleChanged), 9);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Custom), 10);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Time), 11);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Combat), 12);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Entity), 13);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::BehaviorMessage), 14);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::MerchantSpawn), 15);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 16);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Collision), 8);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::WorldTrigger), 9);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::CollisionObstacleChanged), 10);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Custom), 11);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Time), 12);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Combat), 13);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Entity), 14);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::BehaviorMessage), 15);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::MerchantSpawn), 16);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 17);
 }
 
 // Test ResourceChangeEvent

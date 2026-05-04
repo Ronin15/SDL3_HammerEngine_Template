@@ -21,7 +21,10 @@ cppcheck_focused.bat
 ### `cppcheck_lib.cfg`
 Project-specific library definitions that keep cppcheck aligned with the codebase's macros and helper APIs.
 
-There is no separate suppressions list in the current checkout. The focused and full scripts rely on `cppcheck_lib.cfg` plus the script-level filters they already apply.
+### `cppcheck_suppressions.txt`
+Focused-analysis suppressions for known cppcheck false positives and irrelevant warnings.
+
+The focused scripts use both `cppcheck_lib.cfg` and `cppcheck_suppressions.txt`. The full scripts intentionally remain unsuppressed so they can expose the complete analyzer surface when a broader manual pass is requested.
 
 ## Scripts
 
@@ -63,4 +66,4 @@ When project-specific macros or helper functions change:
 2. Re-run the focused analysis
 3. Extend the library config only with targeted entries
 
-If cppcheck starts reporting false positives, prefer a focused library-config update over broad suppressions.
+If cppcheck starts reporting false positives, prefer a focused library-config update when the issue is macro/API modeling. Add suppressions only for confirmed analyzer noise that should stay filtered from the focused quality gate.

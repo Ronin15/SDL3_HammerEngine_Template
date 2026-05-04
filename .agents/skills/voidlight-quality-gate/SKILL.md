@@ -28,7 +28,7 @@ Run a focused repository quality pass around the repo's analyzer wrappers. Treat
    - Inspect `git status --short` first so pre-existing user changes are not mistaken for your edits.
    - Run `tests/cppcheck/cppcheck_focused.sh`.
    - Run `tests/clang-tidy/clang_tidy_focused.sh`.
-   - `cppcheck` uses `tests/cppcheck/cppcheck_lib.cfg`; do not invent a separate cppcheck suppressions file.
+   - Focused `cppcheck` uses `tests/cppcheck/cppcheck_lib.cfg` and `tests/cppcheck/cppcheck_suppressions.txt`; do not substitute the full cppcheck wrappers for the focused quality gate.
    - `clang-tidy` requires `compile_commands.json` and applies `tests/clang-tidy/clang_tidy_suppressions.txt` only if that file exists.
    - If either command fails because of missing dependencies, stale build configuration, missing compile database, or sandbox restrictions, report the exact blocker and either fix the local setup when appropriate or request the needed approval.
 

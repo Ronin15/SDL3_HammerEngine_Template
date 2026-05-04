@@ -10,7 +10,7 @@ The CollisionManager is a high-performance collision detection and response syst
 - **Singleton Pattern**: Ensures single instance with global access
 - **Hierarchical Spatial Hash**: Two-tier adaptive spatial hash system optimized for 10K+ bodies
 - **SOA Storage**: Structure-of-Arrays layout for cache-friendly collision processing
-- **Event-Driven**: Integrates with EventManager for collision notifications
+- **Explicit Event Channels**: Emits world-trigger and obstacle-change events; general non-projectile collision pairs stay on the collision hot path
 - **Batch Processing**: Optimized batch updates for AI entity kinematics
 - **Hybrid Threading**: Dual-path (single/multi-threaded) for both broadphase and narrowphase
 
@@ -671,6 +671,8 @@ CollisionManager::Instance().setProjectileHitSink(
         ProjectileManager::Instance().handleProjectileCollision(info);
     });
 ```
+
+General non-projectile collision pairs are not forwarded through `EventManager`. If a future system needs collision-derived behavior, add a narrow manager-owned sink or explicit event contract instead of restoring broad per-collision forwarding.
 
 ### AI Obstacle Avoidance
 ```cpp

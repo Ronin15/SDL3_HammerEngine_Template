@@ -73,6 +73,7 @@ private:
 
     // Track the command whose binding label we need to refresh after capture
     InputManager::Command m_pendingRefreshCommand{InputManager::Command::COUNT};
+    InputManager::BindingSnapshot m_bindingSnapshot{};
 
     /**
      * @brief Load current settings from SettingsManager into temp storage

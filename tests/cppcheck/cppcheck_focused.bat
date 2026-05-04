@@ -19,7 +19,12 @@ if errorlevel 1 (
 REM Verify configuration files exist
 if not exist "cppcheck_lib.cfg" (
     echo Error: cppcheck_lib.cfg not found
-    echo Please ensure you're running this from the project root directory
+    echo Please ensure you're running this from the tests\cppcheck directory
+    exit /b 1
+)
+if not exist "cppcheck_suppressions.txt" (
+    echo Error: cppcheck_suppressions.txt not found
+    echo Please ensure you're running this from the tests\cppcheck directory
     exit /b 1
 )
 
@@ -34,6 +39,7 @@ cppcheck ^
     --enable=warning,style,performance,portability ^
     --library=std,posix ^
     --library=cppcheck_lib.cfg ^
+    --suppressions-list=cppcheck_suppressions.txt ^
     -I..\..\include ^
     -I..\..\src ^
     --platform=win64 ^

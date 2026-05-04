@@ -454,6 +454,43 @@ BOOST_AUTO_TEST_CASE(KeyboardRebindPreservesControllerBinding)
     mgr.resetBindingsToDefaults();
 }
 
+BOOST_AUTO_TEST_CASE(BindingSnapshotRestoreRevertsRebindAndCancelsCapture)
+{
+    TestHelpers::resetState();
+    auto& mgr = InputManager::Instance();
+
+    using C = InputManager::Command;
+    using DC = InputManager::DeviceCategory;
+
+    const auto snapshot = mgr.captureBindings();
+    auto original = mgr.getBindingForCategory(C::AttackLight, DC::KeyboardMouse);
+    BOOST_REQUIRE(original.has_value());
+
+    mgr.startRebinding(C::AttackLight, DC::KeyboardMouse);
+    BOOST_REQUIRE(mgr.isRebinding());
+
+    TestHelpers::injectKeyDown(SDL_SCANCODE_K);
+    TestHelpers::processFrame();
+    BOOST_REQUIRE(!mgr.isRebinding());
+
+    auto rebound = mgr.getBindingForCategory(C::AttackLight, DC::KeyboardMouse);
+    BOOST_REQUIRE(rebound.has_value());
+    BOOST_CHECK_EQUAL(rebound->code, static_cast<int>(SDL_SCANCODE_K));
+
+    mgr.startRebinding(C::Pause, DC::KeyboardMouse);
+    BOOST_REQUIRE(mgr.isRebinding());
+
+    mgr.restoreBindings(snapshot);
+
+    BOOST_CHECK(!mgr.isRebinding());
+    auto restored = mgr.getBindingForCategory(C::AttackLight, DC::KeyboardMouse);
+    BOOST_REQUIRE(restored.has_value());
+    BOOST_CHECK(restored->source == original->source);
+    BOOST_CHECK_EQUAL(restored->code, original->code);
+
+    mgr.resetBindingsToDefaults();
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 // =============================================================================

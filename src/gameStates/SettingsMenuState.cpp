@@ -30,6 +30,7 @@ bool SettingsMenuState::enter() {
     VoidLight::MenuNavigation::reset();
 
     m_pendingRefreshCommand = InputManager::Command::COUNT;
+    m_bindingSnapshot = InputManager::Instance().captureBindings();
 
     // Pause all game managers to reduce power draw while in settings
     GameEngine::Instance().setGlobalPause(true);
@@ -102,6 +103,9 @@ bool SettingsMenuState::exit() {
 
     // NOTE: Do NOT unpause here - gameplay states will unpause on enter
     // This keeps systems paused during menu-to-menu transitions
+    auto& inputMgr = InputManager::Instance();
+    inputMgr.restoreBindings(m_bindingSnapshot);
+    m_pendingRefreshCommand = InputManager::Command::COUNT;
 
     auto& ui = UIManager::Instance();
     ui.prepareForStateTransition();
@@ -304,6 +308,7 @@ void SettingsMenuState::applySettings() {
             VoidLight::ResourcePath::resolve("res/input_bindings.json"))) {
         GAMESTATE_WARN("Failed to save input bindings to disk");
     }
+    m_bindingSnapshot = InputManager::Instance().captureBindings();
 
     GAMESTATE_INFO("Settings saved successfully");
 }

@@ -68,6 +68,7 @@ class InputManager {
         InputSource source;
         int code;
     };
+    using BindingSnapshot = std::array<std::vector<InputBinding>, static_cast<size_t>(Command::COUNT)>;
 
     // -------------------------------------------------------------------------
     // Command query — main thread only.
@@ -88,6 +89,8 @@ class InputManager {
     // Returns the first binding for this command whose source belongs to the
     // given device category, or std::nullopt if none exists.
     std::optional<InputBinding> getBindingForCategory(Command c, DeviceCategory cat) const;
+    BindingSnapshot captureBindings() const;
+    void restoreBindings(const BindingSnapshot& snapshot);
     void resetBindingsToDefaults();
 
     // -------------------------------------------------------------------------
