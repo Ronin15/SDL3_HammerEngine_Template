@@ -75,18 +75,25 @@ void WorldManager::clean() {
     return;
   }
 
-  std::lock_guard<std::shared_mutex> lock(m_worldMutex);
+  std::optional<std::string> unloadedWorldId;
 
-  // Unsubscribe TileRenderer from season events before cleanup
-  if (m_tileRenderer) {
-    m_tileRenderer->unsubscribeFromSeasonEvents();
+  {
+    std::lock_guard<std::shared_mutex> lock(m_worldMutex);
+
+    // Unsubscribe TileRenderer from season events before cleanup
+    if (m_tileRenderer) {
+      m_tileRenderer->unsubscribeFromSeasonEvents();
+    }
+
+    unloadedWorldId = unloadWorldLocked();
+    m_tileRenderer.reset();
+    m_initialized.store(false, std::memory_order_release);
+    m_isShutdown = true;
   }
 
-  unloadWorldUnsafe(); // Use unsafe version to avoid double-locking
-  m_tileRenderer.reset();
-
-  m_initialized.store(false, std::memory_order_release);
-  m_isShutdown = true;
+  if (unloadedWorldId) {
+    fireWorldUnloadedEvent(*unloadedWorldId);
+  }
 
   WORLD_MANAGER_INFO("WorldManager cleaned up");
 }
@@ -107,62 +114,70 @@ bool WorldManager::loadNewWorld(
     return false;
   }
 
-  std::lock_guard<std::shared_mutex> lock(m_worldMutex);
+  std::optional<std::string> unloadedWorldId;
 
   try {
-    auto newWorld =
-        VoidLight::WorldGenerator::generateWorld(config, progressCallback);
-    if (!newWorld) {
-      WORLD_MANAGER_ERROR("Failed to generate new world");
-      return false;
+    {
+      std::lock_guard<std::shared_mutex> lock(m_worldMutex);
+
+      auto newWorld =
+          VoidLight::WorldGenerator::generateWorld(config, progressCallback);
+      if (!newWorld) {
+        WORLD_MANAGER_ERROR("Failed to generate new world");
+        return false;
+      }
+
+      // Unload current world if it exists
+      WORLD_MANAGER_INFO_IF(
+          m_currentWorld,
+          std::format("Unloading current world: {}", m_currentWorld->worldId));
+      if (m_currentWorld) {
+        unloadedWorldId = unloadWorldLocked();
+      }
+
+      // Set new world
+      m_currentWorld = std::move(newWorld);
+
+      // Register world with WorldResourceManager and set as active immediately
+      // (Must set active BEFORE initializing resources so spatial queries work)
+      auto& wrm = WorldResourceManager::Instance();
+      wrm.createWorld(m_currentWorld->worldId);
+      wrm.setActiveWorld(m_currentWorld->worldId);
+
+      // Initialize world resources based on world data
+      initializeWorldResources();
+
+      // Season handler is persistent — survives state transitions.
+      // Only wire up on first world load (handler not yet registered).
+      if (m_tileRenderer && !m_tileRenderer->isSubscribedToSeasons() &&
+          EventManager::Instance().isInitialized()) {
+        setupEventHandlers();
+      }
+
+      WORLD_MANAGER_INFO(std::format("Successfully loaded new world: {}",
+                                     m_currentWorld->worldId));
+
+      // Schedule world loaded event for next frame using ThreadSystem
+      // Don't fire event while holding world mutex - use low priority to avoid
+      // blocking critical tasks
+      std::string worldIdCopy = m_currentWorld->worldId;
+      // Schedule world loaded event for next frame using ThreadSystem to avoid
+      // deadlocks Use high priority to ensure it executes quickly for tests
+      WORLD_MANAGER_INFO(std::format(
+          "Enqueuing WorldLoadedEvent task for world: {}", worldIdCopy));
+      VoidLight::ThreadSystem::Instance().enqueueTask(
+          [worldIdCopy, this]() {
+            WORLD_MANAGER_INFO(std::format(
+                "Executing WorldLoadedEvent task for world: {}", worldIdCopy));
+            fireWorldLoadedEvent(worldIdCopy);
+          },
+          VoidLight::TaskPriority::High,
+          std::format("WorldLoadedEvent_{}", worldIdCopy));
     }
 
-    // Unload current world if it exists
-    WORLD_MANAGER_INFO_IF(
-        m_currentWorld,
-        std::format("Unloading current world: {}", m_currentWorld->worldId));
-    if (m_currentWorld) {
-      unloadWorldUnsafe();
+    if (unloadedWorldId) {
+      fireWorldUnloadedEvent(*unloadedWorldId);
     }
-
-    // Set new world
-    m_currentWorld = std::move(newWorld);
-
-    // Register world with WorldResourceManager and set as active immediately
-    // (Must set active BEFORE initializing resources so spatial queries work)
-    auto& wrm = WorldResourceManager::Instance();
-    wrm.createWorld(m_currentWorld->worldId);
-    wrm.setActiveWorld(m_currentWorld->worldId);
-
-    // Initialize world resources based on world data
-    initializeWorldResources();
-
-    // Season handler is persistent — survives state transitions.
-    // Only wire up on first world load (handler not yet registered).
-    if (m_tileRenderer && !m_tileRenderer->isSubscribedToSeasons() &&
-        EventManager::Instance().isInitialized()) {
-      setupEventHandlers();
-    }
-
-    WORLD_MANAGER_INFO(std::format("Successfully loaded new world: {}",
-                                   m_currentWorld->worldId));
-
-    // Schedule world loaded event for next frame using ThreadSystem
-    // Don't fire event while holding world mutex - use low priority to avoid
-    // blocking critical tasks
-    std::string worldIdCopy = m_currentWorld->worldId;
-    // Schedule world loaded event for next frame using ThreadSystem to avoid
-    // deadlocks Use high priority to ensure it executes quickly for tests
-    WORLD_MANAGER_INFO(std::format(
-        "Enqueuing WorldLoadedEvent task for world: {}", worldIdCopy));
-    VoidLight::ThreadSystem::Instance().enqueueTask(
-        [worldIdCopy, this]() {
-          WORLD_MANAGER_INFO(std::format(
-              "Executing WorldLoadedEvent task for world: {}", worldIdCopy));
-          fireWorldLoadedEvent(worldIdCopy);
-        },
-        VoidLight::TaskPriority::High,
-        std::format("WorldLoadedEvent_{}", worldIdCopy));
 
     return true;
   } catch (const std::exception &ex) {
@@ -184,33 +199,41 @@ bool WorldManager::loadWorld(const std::string& /*worldId*/) {
 }
 
 void WorldManager::unloadWorld() {
+  std::optional<std::string> unloadedWorldId;
+
   // Take exclusive lock to ensure atomic unload operation
   // This prevents render thread from accessing world data during deallocation
-  std::lock_guard<std::shared_mutex> lock(m_worldMutex);
+  {
+    std::lock_guard<std::shared_mutex> lock(m_worldMutex);
 
-  unloadWorldUnsafe();
+    unloadedWorldId = unloadWorldLocked();
+  }
+
+  if (unloadedWorldId) {
+    fireWorldUnloadedEvent(*unloadedWorldId);
+  }
 }
 
-void WorldManager::unloadWorldUnsafe() {
-  // Internal method - assumes caller already holds the lock
-  if (m_currentWorld) {
-    std::string worldId = m_currentWorld->worldId;
-    WORLD_MANAGER_INFO(std::format("Unloading world: {}", worldId));
-
-    // Fire world unloaded event before clearing the world
-    fireWorldUnloadedEvent(worldId);
-
-    // Clear chunk cache to prevent stale textures when new world loads
-    // Uses deferred clearing (thread-safe) - actual clear happens on render
-    // thread
-    if (m_tileRenderer) {
-      m_tileRenderer->clearChunkCache();
-    }
-
-    WorldResourceManager::Instance().removeWorld(worldId);
-
-    m_currentWorld.reset();
+std::optional<std::string> WorldManager::unloadWorldLocked() {
+  // Internal method - caller must already hold m_worldMutex.
+  if (!m_currentWorld) {
+    return std::nullopt;
   }
+
+  std::string worldId = m_currentWorld->worldId;
+  WORLD_MANAGER_INFO(std::format("Unloading world: {}", worldId));
+
+  // Clear chunk cache to prevent stale textures when new world loads
+  // Uses deferred clearing (thread-safe) - actual clear happens on render
+  // thread
+  if (m_tileRenderer) {
+    m_tileRenderer->clearChunkCache();
+  }
+
+  WorldResourceManager::Instance().removeWorld(worldId);
+
+  m_currentWorld.reset();
+  return worldId;
 }
 
 std::optional<VoidLight::Tile> WorldManager::getTileCopyAt(int x, int y) const {

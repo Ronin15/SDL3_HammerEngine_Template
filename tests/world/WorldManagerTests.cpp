@@ -118,6 +118,46 @@ BOOST_AUTO_TEST_CASE(TestUnloadWorldRemovesWRMState) {
     BOOST_CHECK(worldResourceManager->getActiveWorld().empty());
 }
 
+BOOST_AUTO_TEST_CASE(TestWorldUnloadedHandlerCanQueryWorldManager) {
+    BOOST_REQUIRE(EventManager::Instance().init());
+
+    WorldGenerationConfig config;
+    config.width = 20;
+    config.height = 20;
+    config.seed = 24680;
+    config.elevationFrequency = 0.1f;
+    config.humidityFrequency = 0.1f;
+    config.waterLevel = 0.3f;
+    config.mountainLevel = 0.7f;
+
+    BOOST_REQUIRE(worldManager->loadNewWorld(config));
+
+    bool sawUnload = false;
+    bool queriedWorldManager = false;
+    const auto token = EventManager::Instance().registerHandlerWithToken(
+        EventTypeId::World,
+        [&](const EventData& data) {
+            if (!std::dynamic_pointer_cast<WorldUnloadedEvent>(data.event)) {
+                return;
+            }
+
+            sawUnload = true;
+
+            int width = -1;
+            int height = -1;
+            queriedWorldManager = !WorldManager::Instance().getWorldDimensions(width, height);
+            BOOST_CHECK(!WorldManager::Instance().hasActiveWorld());
+        });
+
+    worldManager->unloadWorld();
+
+    BOOST_CHECK(sawUnload);
+    BOOST_CHECK(queriedWorldManager);
+
+    EventManager::Instance().removeHandler(token);
+    EventManager::Instance().clean();
+}
+
 BOOST_AUTO_TEST_CASE(TestHarvestablesUseConfiguredHarvestTypes) {
     WorldGenerationConfig config;
     config.width = 40;

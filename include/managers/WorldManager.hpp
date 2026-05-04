@@ -330,7 +330,7 @@ private:
     void fireWorldLoadedEvent(const std::string& worldId);
     void fireWorldUnloadedEvent(const std::string& worldId);
     void initializeWorldResources();
-    void unloadWorldUnsafe();  // Internal method - assumes caller already holds lock
+    std::optional<std::string> unloadWorldLocked();  // Assumes caller already holds lock
     bool applyTileUpdateLocked(int x, int y, const VoidLight::Tile& newTile);
 
     std::unique_ptr<VoidLight::WorldData> m_currentWorld;
