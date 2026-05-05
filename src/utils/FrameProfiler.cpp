@@ -24,7 +24,7 @@ FrameProfiler& FrameProfiler::Instance()
     return instance;
 }
 
-const char* FrameProfiler::getPhaseName(FramePhase phase)
+std::string_view FrameProfiler::getPhaseName(FramePhase phase) const
 {
     switch (phase) {
     case FramePhase::Events: return "Events";
@@ -35,7 +35,7 @@ const char* FrameProfiler::getPhaseName(FramePhase phase)
     }
 }
 
-const char* FrameProfiler::getManagerName(ManagerPhase mgr)
+std::string_view FrameProfiler::getManagerName(ManagerPhase mgr) const
 {
     switch (mgr) {
     case ManagerPhase::Event: return "Event";
@@ -56,7 +56,7 @@ ManagerPhase FrameProfiler::findWorstManager() const
     return static_cast<ManagerPhase>(std::distance(m_managerTimes.begin(), maxIt));
 }
 
-const char* FrameProfiler::getRenderPhaseName(RenderPhase phase)
+std::string_view FrameProfiler::getRenderPhaseName(RenderPhase phase) const
 {
     switch (phase) {
     case RenderPhase::BeginScene: return "BeginScene";
@@ -293,10 +293,9 @@ void FrameProfiler::createOverlayComponents()
         return;
     }
 
-    // Use UIConstants for all dimensions
     constexpr int W = UIConstants::PROFILER_OVERLAY_WIDTH;
     constexpr int H = UIConstants::PROFILER_OVERLAY_HEIGHT;
-    constexpr int M = UIConstants::BOTTOM_RIGHT_OFFSET_X;  // Use standard bottom-right offset
+    constexpr int M = UIConstants::PROFILER_OVERLAY_MARGIN;
     constexpr int LINE_H = UIConstants::PROFILER_LINE_HEIGHT;
     constexpr int PAD = UIConstants::DEFAULT_COMPONENT_PADDING;
     constexpr int LABEL_W = W - (PAD * 2);
@@ -317,14 +316,7 @@ void FrameProfiler::createOverlayComponents()
     labelStyle.textAlign = UIAlignment::LEFT;
     labelStyle.fontID = std::string(UIConstants::FONT_UI);
 
-    // Create labels inside panel
-    // For BOTTOM_RIGHT: y = screenH - height - offsetY
-    // Panel top is at: screenH - H - M = screenH - 160
-    // First label top should be: screenH - 160 + PAD = screenH - 152
-    // So offsetY for label = screenH - labelH - labelY = screenH - 22 - (screenH - 152) = 130
-    // For row N (0-indexed): offsetY = H + M - PAD - LINE_H - (N * LINE_H) = H + M - PAD - (N+1)*LINE_H
-
-    constexpr int BASE_OFFSET = H + M - PAD;  // 150 + 10 - 8 = 152
+    constexpr int BASE_OFFSET = H + M - PAD;
 
     // Fixed LABEL_W x LINE_H bounds fit any timing string — skip per-setText
     // font-metrics work since these labels update every frame.
@@ -414,7 +406,7 @@ void FrameProfiler::updateOverlayText()
 
     // Hitch info
     if (m_hadRecentHitch) {
-        const char* detail = "-";
+        std::string_view detail{"-"};
         if (m_lastHitchCause == FramePhase::Update) {
             detail = getManagerName(m_lastHitchManager);
         } else if (m_lastHitchCause == FramePhase::Render ||
