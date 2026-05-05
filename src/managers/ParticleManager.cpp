@@ -501,6 +501,10 @@ bool ParticleManager::init() {
     // PERFORMANCE OPTIMIZATION: Initialize trigonometric lookup tables
     initTrigLookupTables();
 
+    m_effectDefinitions.reserve(static_cast<size_t>(ParticleEffectType::COUNT));
+    m_effectInstances.reserve(512);
+    m_effectIdToIndex.reserve(512);
+
     // Register built-in particle effects
     registerBuiltInEffects();
 
@@ -905,7 +909,9 @@ void ParticleManager::recordGPUVertices(VoidLight::GPURenderer& gpuRenderer,
 
   // THREAD SAFETY: Get immutable snapshot of particle data
   const auto &particles = m_storage.getParticlesForRead();
-  const size_t n = particles.getSafeAccessCount();
+  const size_t safeCount = particles.getSafeAccessCount();
+  const size_t activeSpan = m_storage.maxActiveIndex + 1;
+  const size_t n = std::min(safeCount, activeSpan);
   if (n == 0) return;
 
   // Get particle vertex pool from GPURenderer (already mapped by GPURenderer::beginFrame)
@@ -2081,6 +2087,11 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
 
     if (!instance.active) {
       hasInactiveEffects = true;
+      ++it;
+      continue;
+    }
+
+    if (instance.paused) {
       ++it;
       continue;
     }

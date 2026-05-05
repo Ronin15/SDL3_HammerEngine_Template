@@ -923,7 +923,8 @@ BOOST_FIXTURE_TEST_CASE(TestPauseIndependentEffect, ParticleManagerCoreFixture) 
     manager->update(0.016f);
   }
 
-
+  const size_t countBeforePause = manager->getActiveParticleCount();
+  BOOST_CHECK_GT(countBeforePause, 0);
 
   // Pause the effect
   manager->pauseIndependentEffect(effectId, true);
@@ -935,6 +936,7 @@ BOOST_FIXTURE_TEST_CASE(TestPauseIndependentEffect, ParticleManagerCoreFixture) 
 
   // Effect should still be playing (paused != stopped)
   BOOST_CHECK(manager->isEffectPlaying(effectId));
+  BOOST_CHECK_EQUAL(manager->getActiveParticleCount(), countBeforePause);
 
   // Resume the effect
   manager->pauseIndependentEffect(effectId, false);
@@ -942,6 +944,7 @@ BOOST_FIXTURE_TEST_CASE(TestPauseIndependentEffect, ParticleManagerCoreFixture) 
   // Should continue working normally
   manager->update(0.016f);
   BOOST_CHECK(manager->isEffectPlaying(effectId));
+  BOOST_CHECK_GT(manager->getActiveParticleCount(), countBeforePause);
 
   // Clean up
   manager->stopIndependentEffect(effectId);
