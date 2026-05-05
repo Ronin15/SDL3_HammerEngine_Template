@@ -774,8 +774,8 @@ void ParticleManager::update(float deltaTime) {
       return;
     }
 
-    // WorkerBudget should learn against the actual traversed span because the
-    // particle update iterates every slot up to maxActiveIndex and skips holes.
+    // The update range is sparse, but WorkerBudget scheduling should be based
+    // on active particles so sparse storage does not thread tiny live workloads.
     const size_t traversedCount = std::min(bufferSize, m_storage.maxActiveIndex + 1);
     if (traversedCount == 0) {
       return;
@@ -788,7 +788,7 @@ void ParticleManager::update(float deltaTime) {
     // WorkerBudget is the AUTHORITATIVE source - no manager overrides
     auto& budgetMgr = VoidLight::WorkerBudgetManager::Instance();
     auto decision = budgetMgr.shouldUseThreading(
-        VoidLight::SystemType::Particle, traversedCount);
+        VoidLight::SystemType::Particle, activeCount);
     bool useThreading = decision.shouldThread;
 
     // Track threading decision for interval logging (local vars, zero overhead in release)
@@ -798,9 +798,9 @@ void ParticleManager::update(float deltaTime) {
       // Use WorkerBudget system if enabled, otherwise fall back to legacy threading
       // Timing captured inside updateParticlesThreaded (after strategy, around actual work)
       if (m_useWorkerBudget.load(std::memory_order_acquire)) {
-        updateWithWorkerBudget(deltaTime, traversedCount, threadingInfo);
+        updateWithWorkerBudget(deltaTime, traversedCount, activeCount, threadingInfo);
       } else {
-        updateParticlesThreaded(deltaTime, traversedCount, threadingInfo);
+        updateParticlesThreaded(deltaTime, traversedCount, activeCount, threadingInfo);
       }
     } else {
       // Single-threaded — timing feeds threshold learning
@@ -884,7 +884,7 @@ void ParticleManager::update(float deltaTime) {
 
     // Report tight per-path timing for adaptive tuning (not preprocessing/postprocessing)
     budgetMgr.reportExecution(VoidLight::SystemType::Particle,
-                              traversedCount, threadingInfo.wasThreaded,
+                              activeCount, threadingInfo.wasThreaded,
                               threadingInfo.batchCount, threadingInfo.batchTimeMs);
 
   } catch (const std::exception &e) {
@@ -2136,6 +2136,7 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
 }
 void ParticleManager::updateParticlesThreaded(float deltaTime,
                                               size_t traversedParticleCount,
+                                              size_t activeParticleCount,
                                               ParticleThreadingInfo& outThreadingInfo) {
   // Use lock-free double buffering for threaded updates
   auto &currentBuffer = m_storage.getCurrentBuffer();
@@ -2166,11 +2167,12 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
 
   // Get optimal workers (WorkerBudget determines everything dynamically)
   size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-      VoidLight::SystemType::Particle, traversedParticleCount);
+      VoidLight::SystemType::Particle, activeParticleCount);
 
   // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on timing)
-  auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-      VoidLight::SystemType::Particle, traversedParticleCount, optimalWorkerCount);
+  const auto batchStrategy = budgetMgr.getBatchStrategy(
+      VoidLight::SystemType::Particle, activeParticleCount, optimalWorkerCount);
+  size_t batchCount = batchStrategy.first;
 
   // Set threading info for interval logging (local struct, zero overhead in release)
   outThreadingInfo.workerCount = optimalWorkerCount;
@@ -2632,6 +2634,7 @@ void ParticleManager::enableWorkerBudgetThreading(bool enable) {
 
 void ParticleManager::updateWithWorkerBudget(float deltaTime,
                                              size_t traversedParticleCount,
+                                             size_t activeParticleCount,
                                              ParticleThreadingInfo& outThreadingInfo) {
   /**
    * WorkerBudget-optimized particle update path.
@@ -2642,11 +2645,13 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime,
    *
    * @param deltaTime Time elapsed since last update
    * @param traversedParticleCount Current traversed particle span
+   * @param activeParticleCount Current active particle count for WorkerBudget scheduling
    * @param outThreadingInfo Output struct for threading info (zero overhead in release)
    */
   // Trust the caller's threading decision (already made in update())
   // — do NOT re-query shouldUseThreading() as hysteresis state may have changed
-  updateParticlesThreaded(deltaTime, traversedParticleCount, outThreadingInfo);
+  updateParticlesThreaded(deltaTime, traversedParticleCount, activeParticleCount,
+                          outThreadingInfo);
 }
 
 #ifndef NDEBUG

@@ -578,7 +578,8 @@ public:
   /**
    * @brief Updates particles using WorkerBudget-optimized batch processing
    * @param deltaTime Time elapsed since last update
-   * @param particleCount Current number of active particles
+   * @param traversedParticleCount Current sparse particle storage span
+   * @param activeParticleCount Current number of active particles used for WorkerBudget scheduling
    * @param outThreadingInfo Output structure populated with threading decision details
    *
    * This method provides the WorkerBudget-aware update path, which:
@@ -590,6 +591,7 @@ public:
    * Called automatically by update() when WorkerBudget threading is enabled.
    */
   void updateWithWorkerBudget(float deltaTime, size_t traversedParticleCount,
+                              size_t activeParticleCount,
                               ParticleThreadingInfo& outThreadingInfo);
 
   /**
@@ -994,6 +996,7 @@ private:
   void compactInactiveEffectInstances();
   void updateEffectInstances(float deltaTime);
   void updateParticlesThreaded(float deltaTime, size_t traversedParticleCount,
+                               size_t activeParticleCount,
                                ParticleThreadingInfo& outThreadingInfo);
   void updateParticlesSingleThreaded(float deltaTime,
                                      size_t traversedParticleCount);
