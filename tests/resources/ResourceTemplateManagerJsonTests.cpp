@@ -66,7 +66,7 @@ protected:
 BOOST_FIXTURE_TEST_SUITE(ResourceTemplateManagerJsonTestSuite,
                          ResourceTemplateManagerJsonTestFixture)
 
-BOOST_AUTO_TEST_CASE(TestDefaultCatalogsLoadSplitEquipment) {
+BOOST_AUTO_TEST_CASE(TestLoadDefaultResources) {
   auto ironSword = resourceManager->getResourceById("iron_sword");
   BOOST_REQUIRE(ironSword != nullptr);
   BOOST_CHECK_EQUAL(static_cast<int>(ironSword->getType()),

@@ -174,10 +174,10 @@ run_callgrind_profiling() {
     # Run targeted test for scaling benchmarks to reduce execution time
     local test_args=""
     if [[ "${test_name}" == "ai_scaling" ]]; then
-        test_args="--run_test=AIScalingTests/TestRealisticPerformance --catch_system_errors=no --no_result_code --log_level=nothing"
-        echo -e "${YELLOW}    Using targeted realistic performance test for faster profiling...${NC}"
+        test_args="--run_test=AIScalingTests/AIEntityScaling --catch_system_errors=no --no_result_code --log_level=nothing"
+        echo -e "${YELLOW}    Using targeted AI entity scaling test for faster profiling...${NC}"
     elif [[ "${test_name}" == "event_scaling" ]]; then
-        test_args="--run_test=EventManagerScalingTests/TestEventManagerScaling --catch_system_errors=no --no_result_code --log_level=nothing"
+        test_args="--run_test=ComprehensiveScalabilityTest --catch_system_errors=no --no_result_code --log_level=nothing"
         echo -e "${YELLOW}    Using targeted event scaling test for faster profiling...${NC}"
     elif [[ "${test_name}" == "ui_manager_functional" ]]; then
         test_args="--catch_system_errors=no --no_result_code --log_level=nothing"
