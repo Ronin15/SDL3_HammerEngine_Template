@@ -98,6 +98,24 @@ BOOST_AUTO_TEST_CASE(TestDefaultCatalogsLoadSplitEquipment) {
   BOOST_CHECK_EQUAL(static_cast<int>(ale->getEffect()),
                     static_cast<int>(Consumable::ConsumableEffect::RestoreStamina));
 
+  auto bread = std::dynamic_pointer_cast<Consumable>(
+      resourceManager->getResourceById("bread"));
+  BOOST_REQUIRE(bread != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(bread->getEffect()),
+                    static_cast<int>(Consumable::ConsumableEffect::HealHP));
+
+  auto meat = std::dynamic_pointer_cast<Consumable>(
+      resourceManager->getResourceById("meat"));
+  BOOST_REQUIRE(meat != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(meat->getEffect()),
+                    static_cast<int>(Consumable::ConsumableEffect::HealHP));
+
+  auto wine = std::dynamic_pointer_cast<Consumable>(
+      resourceManager->getResourceById("wine"));
+  BOOST_REQUIRE(wine != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(wine->getEffect()),
+                    static_cast<int>(Consumable::ConsumableEffect::RestoreStamina));
+
   BOOST_CHECK_EQUAL(resourceManager->getResourceTemplateCount(), 58U);
 }
 

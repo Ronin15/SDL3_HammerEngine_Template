@@ -366,6 +366,44 @@ BOOST_AUTO_TEST_CASE(TestAmmunitionIsNotConsumableOrManuallyConsumed) {
         5);
 }
 
+BOOST_AUTO_TEST_CASE(TestFoodAndDrinkConsumableEffectsMatchCatalog) {
+    auto breadHandle = getResourceHandleById("bread");
+    auto aleHandle = getResourceHandleById("ale");
+    auto wineHandle = getResourceHandleById("wine");
+    BOOST_REQUIRE(breadHandle.isValid());
+    BOOST_REQUIRE(aleHandle.isValid());
+    BOOST_REQUIRE(wineHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(breadHandle, 1));
+    BOOST_REQUIRE(player->addToInventory(aleHandle, 1));
+    BOOST_REQUIRE(player->addToInventory(wineHandle, 1));
+
+    player->takeDamage(30.0f);
+    player->consumeStamina(30.0f);
+
+    BOOST_REQUIRE(player->consumeItem(breadHandle));
+    BOOST_CHECK_CLOSE(player->getHealth(), 80.0f, 0.001f);
+    BOOST_CHECK_CLOSE(player->getStamina(), 70.0f, 0.001f);
+    BOOST_CHECK_EQUAL(
+        EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), breadHandle),
+        0);
+
+    const float healthBeforeAle = player->getHealth();
+    BOOST_REQUIRE(player->consumeItem(aleHandle));
+    BOOST_CHECK_CLOSE(player->getHealth(), healthBeforeAle, 0.001f);
+    BOOST_CHECK_CLOSE(player->getStamina(), 90.0f, 0.001f);
+    BOOST_CHECK_EQUAL(
+        EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), aleHandle),
+        0);
+
+    const float healthBeforeWine = player->getHealth();
+    BOOST_REQUIRE(player->consumeItem(wineHandle));
+    BOOST_CHECK_CLOSE(player->getHealth(), healthBeforeWine, 0.001f);
+    BOOST_CHECK_CLOSE(player->getStamina(), player->getMaxStamina(), 0.001f);
+    BOOST_CHECK_EQUAL(
+        EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), wineHandle),
+        0);
+}
+
 BOOST_AUTO_TEST_CASE(TestInventoryDragSwapsOccupiedSlots) {
     auto ironOreHandle = getResourceHandleById("iron_ore");
     auto breadHandle = getResourceHandleById("bread");

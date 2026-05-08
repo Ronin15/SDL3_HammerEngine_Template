@@ -167,11 +167,16 @@
       "name": "Wine",
       "category": "Item",
       "type": "Consumable",
-      "description": "A bottle of fine wine.",
+      "description": "A bottle of fine wine that restores stamina.",
       "value": 25,
       "maxStackSize": 20,
       "consumable": true,
-      "textureId": "wine_icon"
+      "textureId": "wine_icon",
+      "properties": {
+        "effect": "RestoreStamina",
+        "effectPower": 20,
+        "effectDuration": 0
+      }
     }
   ]
 }
