@@ -27,6 +27,31 @@ def read_pixel(path: Path):
         return img.getpixel((0, 0))
 
 
+def average_edge_difference(img, edge_a: str, edge_b: str) -> float:
+    if edge_a == "left":
+        pixels_a = [img.getpixel((0, y)) for y in range(img.height)]
+    elif edge_a == "top":
+        pixels_a = [img.getpixel((x, 0)) for x in range(img.width)]
+    else:
+        raise ValueError(edge_a)
+
+    if edge_b == "right":
+        pixels_b = [img.getpixel((img.width - 1, y)) for y in range(img.height)]
+    elif edge_b == "bottom":
+        pixels_b = [img.getpixel((x, img.height - 1)) for x in range(img.width)]
+    else:
+        raise ValueError(edge_b)
+
+    count = min(len(pixels_a), len(pixels_b))
+    total = 0
+    for idx in range(count):
+        total += sum(
+            abs(pixels_a[idx][channel] - pixels_b[idx][channel])
+            for channel in range(3)
+        )
+    return total / (count * 3)
+
+
 class AtlasToolMapperTests(unittest.TestCase):
     def make_paths(self, root: Path) -> dict:
         sprites_dir = root / "res" / "sprites"
@@ -226,6 +251,26 @@ class AtlasToolMapperTests(unittest.TestCase):
                 },
             ],
         )
+
+    def test_winter_plains_tile_edges_are_tileable(self):
+        atlas_json = REPO_ROOT / "res" / "data" / "atlas.json"
+        atlas_png = REPO_ROOT / "res" / "img" / "atlas.png"
+
+        with atlas_json.open(encoding="utf-8") as atlas_file:
+            regions = json.load(atlas_file)["regions"]
+
+        region = regions["winter_biome_plains"]
+        with Image.open(atlas_png).convert("RGBA") as atlas:
+            tile = atlas.crop((
+                region["x"],
+                region["y"],
+                region["x"] + region["w"],
+                region["y"] + region["h"],
+            ))
+
+        self.assertEqual(tile.size, (32, 32))
+        self.assertLess(average_edge_difference(tile, "left", "right"), 12.0)
+        self.assertLess(average_edge_difference(tile, "top", "bottom"), 12.0)
 
 
 if __name__ == "__main__":

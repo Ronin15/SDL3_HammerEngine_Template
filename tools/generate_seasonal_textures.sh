@@ -68,11 +68,16 @@ for texture in "${TILE_TEXTURES[@]}"; do
     convert "$src" -modulate 95,90,115 "$fall_out"
     generated=$((generated + 1))
 
-    # Winter - desaturated, blue tint, snow overlay effect
+    # Winter - desaturated, blue tint, snow overlay effect.
+    # Keep the base plains tile pixel-local so its opposite edges remain tileable.
     winter_out="$SPRITES_DIR/winter_${texture}.png"
-    convert "$src" -modulate 90,50,100 -colorize 0,0,12 \
-        \( +clone -threshold 65% -blur 0x0.5 -modulate 100,0,100 \) \
-        -compose screen -composite "$winter_out"
+    if [[ "$texture" == "biome_plains" ]]; then
+        convert "$src" -modulate 90,20,100 -colorspace Gray -colorize 0,0,8 "$winter_out"
+    else
+        convert "$src" -modulate 90,50,100 -colorize 0,0,12 \
+            \( +clone -threshold 65% -blur 0x0.5 -modulate 100,0,100 \) \
+            -compose screen -composite "$winter_out"
+    fi
     generated=$((generated + 1))
 done
 
