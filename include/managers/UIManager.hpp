@@ -133,6 +133,10 @@ struct UIStyle {
                                 128}; // Semi-transparent black by default
   bool useTextBackground{false};      // Enable text background for readability
   int textBackgroundPadding{UIConstants::DEFAULT_TEXT_BG_PADDING};       // Extra padding around text background
+  // Passive mouse-hover effects are opt-in. Hit testing still runs for all
+  // visible/enabled components regardless of these flags.
+  bool highlightOnMouseHover{false};
+  bool showTooltipOnMouseHover{false};
 
   int borderWidth{UIConstants::BORDER_WIDTH_NORMAL};
   int padding{UIConstants::DEFAULT_COMPONENT_PADDING};
@@ -609,6 +613,7 @@ private:
   std::string m_focusedComponent{};
   std::string m_keyboardSelection{};
   std::string m_hoveredTooltip{};
+  std::string m_hoveredTooltipCandidate{};
   float m_tooltipTimer{0.0f};
 
   // Theme and styling

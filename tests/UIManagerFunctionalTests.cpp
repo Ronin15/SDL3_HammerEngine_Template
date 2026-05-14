@@ -21,6 +21,18 @@ void moveMouseTo(float x, float y) {
     InputManager::Instance().onMouseMove(event);
 }
 
+void setLeftMouseButton(float x, float y, bool pressed) {
+    SDL_Event event{};
+    event.button.button = SDL_BUTTON_LEFT;
+    event.button.x = x;
+    event.button.y = y;
+    if (pressed) {
+        InputManager::Instance().onMouseButtonDown(event);
+    } else {
+        InputManager::Instance().onMouseButtonUp(event);
+    }
+}
+
 } // namespace
 
 // ============================================================================
@@ -432,10 +444,100 @@ BOOST_AUTO_TEST_CASE(TestLateCreatedTextComponentParticipatesInInputOrder) {
     moveMouseTo(210.0f, 210.0f);
     ui.update(0.0f);
 
-    BOOST_CHECK(ui.getComponentState("late_label") == UIState::HOVERED);
+    BOOST_CHECK(ui.getComponentState("late_label") == UIState::NORMAL);
 
     ui.removeComponent("seed_button");
     ui.removeComponent("late_label");
+}
+
+BOOST_AUTO_TEST_CASE(TestMouseHoverHighlightOnlyAppliesToButtons) {
+    auto& ui = UIManager::Instance();
+    ui.setGlobalScale(1.0f);
+
+    ui.createButton("hover_button", UIRect{10, 10, 90, 30}, "Button");
+    ui.createLabel("hover_label", UIRect{10, 60, 90, 30}, "Label");
+    ui.createPanel("hover_panel", UIRect{10, 110, 90, 30});
+    ui.createCheckbox("hover_checkbox", UIRect{10, 160, 90, 30}, "Check");
+    ui.createSlider("hover_slider", UIRect{10, 210, 90, 30}, 0.0f, 1.0f);
+    ui.createInputField("hover_input", UIRect{10, 260, 90, 30}, "Input");
+    ui.createList("hover_list", UIRect{10, 310, 90, 60});
+
+    moveMouseTo(20.0f, 20.0f);
+    ui.update(0.0f);
+    BOOST_CHECK(ui.getComponentState("hover_button") == UIState::HOVERED);
+
+    moveMouseTo(20.0f, 70.0f);
+    ui.update(0.0f);
+    BOOST_CHECK(ui.getComponentState("hover_label") == UIState::NORMAL);
+
+    moveMouseTo(20.0f, 120.0f);
+    ui.update(0.0f);
+    BOOST_CHECK(ui.getComponentState("hover_panel") == UIState::NORMAL);
+
+    moveMouseTo(20.0f, 170.0f);
+    ui.update(0.0f);
+    BOOST_CHECK(ui.getComponentState("hover_checkbox") == UIState::NORMAL);
+
+    moveMouseTo(20.0f, 220.0f);
+    ui.update(0.0f);
+    BOOST_CHECK(ui.getComponentState("hover_slider") == UIState::NORMAL);
+
+    moveMouseTo(20.0f, 270.0f);
+    ui.update(0.0f);
+    BOOST_CHECK(ui.getComponentState("hover_input") == UIState::NORMAL);
+
+    moveMouseTo(20.0f, 320.0f);
+    ui.update(0.0f);
+    BOOST_CHECK(ui.getComponentState("hover_list") == UIState::NORMAL);
+
+    ui.removeComponent("hover_button");
+    ui.removeComponent("hover_label");
+    ui.removeComponent("hover_panel");
+    ui.removeComponent("hover_checkbox");
+    ui.removeComponent("hover_slider");
+    ui.removeComponent("hover_input");
+    ui.removeComponent("hover_list");
+}
+
+BOOST_AUTO_TEST_CASE(TestNonButtonMouseInteractionsStillWorkWithoutHoverHighlight) {
+    auto& ui = UIManager::Instance();
+    ui.setGlobalScale(1.0f);
+
+    ui.createCheckbox("click_checkbox", UIRect{100, 100, 120, 30}, "Check");
+    setLeftMouseButton(110.0f, 110.0f, true);
+    ui.update(0.0f);
+    setLeftMouseButton(110.0f, 110.0f, false);
+    ui.update(0.0f);
+
+    BOOST_CHECK(ui.getChecked("click_checkbox"));
+    BOOST_CHECK(ui.getComponentState("click_checkbox") == UIState::NORMAL);
+
+    ui.createSlider("drag_slider", UIRect{100, 150, 100, 30}, 0.0f, 1.0f);
+    setLeftMouseButton(150.0f, 165.0f, true);
+    ui.update(0.0f);
+    setLeftMouseButton(150.0f, 165.0f, false);
+    ui.update(0.0f);
+
+    BOOST_CHECK_CLOSE(ui.getValue("drag_slider"), 0.5f, 0.001f);
+    BOOST_CHECK(ui.getComponentState("drag_slider") == UIState::NORMAL);
+
+    ui.removeComponent("click_checkbox");
+    ui.removeComponent("drag_slider");
+}
+
+BOOST_AUTO_TEST_CASE(TestKeyboardSelectionCanStillHighlightNonButtonControls) {
+    auto& ui = UIManager::Instance();
+    ui.setGlobalScale(1.0f);
+
+    ui.createSlider("keyboard_slider", UIRect{100, 100, 100, 30}, 0.0f, 1.0f);
+    ui.setKeyboardSelection("keyboard_slider");
+    moveMouseTo(400.0f, 400.0f);
+    ui.update(0.0f);
+
+    BOOST_CHECK(ui.getComponentState("keyboard_slider") == UIState::HOVERED);
+
+    ui.clearKeyboardSelection();
+    ui.removeComponent("keyboard_slider");
 }
 
 // ----------------------------------------------------------------------------

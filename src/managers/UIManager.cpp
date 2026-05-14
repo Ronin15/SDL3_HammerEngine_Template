@@ -48,6 +48,7 @@ bool UIManager::init() {
       INTERACTIONS_CAPACITY); // Reserve for typical hover states
   m_focusedComponent.clear();
   m_hoveredTooltip.clear();
+  m_hoveredTooltipCandidate.clear();
 
   m_tooltipTimer = 0.0f;
   m_mousePressed = false;
@@ -1381,6 +1382,8 @@ void UIManager::setLightTheme() {
   buttonStyle.textColor = {.r=255, .g=255, .b=255, .a=255};
   buttonStyle.hoverColor = {.r=80, .g=140, .b=200, .a=255};
   buttonStyle.pressedColor = {.r=40, .g=100, .b=160, .a=255};
+  buttonStyle.highlightOnMouseHover = true;
+  buttonStyle.showTooltipOnMouseHover = true;
   buttonStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
   buttonStyle.fontID = UIConstants::FONT_UI;
@@ -1479,6 +1482,8 @@ void UIManager::setLightTheme() {
   checkboxStyle.backgroundColor = {.r=180, .g=180, .b=180, .a=255};
   checkboxStyle.hoverColor = {.r=200, .g=200, .b=200, .a=255};
   checkboxStyle.textColor = {.r=20, .g=20, .b=20, .a=255}; // Dark text for light backgrounds
+  checkboxStyle.highlightOnMouseHover = false;
+  checkboxStyle.showTooltipOnMouseHover = false;
   checkboxStyle.textAlign = UIAlignment::CENTER_LEFT;
   checkboxStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::CHECKBOX] = checkboxStyle;
@@ -1545,6 +1550,8 @@ void UIManager::setDarkTheme() {
   buttonStyle.textColor = {.r=255, .g=255, .b=255, .a=255};
   buttonStyle.hoverColor = {.r=70, .g=70, .b=80, .a=255};
   buttonStyle.pressedColor = {.r=30, .g=30, .b=40, .a=255};
+  buttonStyle.highlightOnMouseHover = true;
+  buttonStyle.showTooltipOnMouseHover = true;
   buttonStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
   buttonStyle.fontID = UIConstants::FONT_UI;
@@ -1642,6 +1649,8 @@ void UIManager::setDarkTheme() {
   checkboxStyle.backgroundColor = {.r=60, .g=60, .b=60, .a=255};
   checkboxStyle.hoverColor = {.r=80, .g=80, .b=80, .a=255};
   checkboxStyle.textColor = {.r=255, .g=255, .b=255, .a=255};
+  checkboxStyle.highlightOnMouseHover = false;
+  checkboxStyle.showTooltipOnMouseHover = false;
   checkboxStyle.textAlign = UIAlignment::CENTER_LEFT;
   checkboxStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::CHECKBOX] = checkboxStyle;
@@ -1783,6 +1792,7 @@ void UIManager::clearAllComponents() {
   m_hoveredComponents.clear();
   m_focusedComponent.clear();
   m_hoveredTooltip.clear();
+  m_hoveredTooltipCandidate.clear();
 }
 
 void UIManager::resetToDefaultTheme() {
@@ -1821,6 +1831,7 @@ void UIManager::cleanupForStateTransition() {
   m_focusedComponent.clear();
   m_keyboardSelection.clear();
   m_hoveredTooltip.clear();
+  m_hoveredTooltipCandidate.clear();
   m_tooltipTimer = 0.0f;
 
   // Clear event log states
@@ -1974,6 +1985,7 @@ void UIManager::handleInput() {
 
   // Clear previous hover state
   m_hoveredComponents.clear();
+  m_hoveredTooltipCandidate.clear();
 
   // Process components in reverse z-order (top to bottom, const ref avoids copy)
   bool mouseHandled = false;
@@ -2001,13 +2013,21 @@ void UIManager::handleInput() {
 
     if (isHovered) {
       m_hoveredComponents.push_back(component->m_id);
+      if (m_hoveredTooltipCandidate.empty() &&
+          component->m_style.showTooltipOnMouseHover) {
+        m_hoveredTooltipCandidate = component->m_id;
+      }
 
       // Handle hover state
-      if (component->m_state == UIState::NORMAL) {
+      if (component->m_style.highlightOnMouseHover &&
+          component->m_state == UIState::NORMAL) {
         component->m_state = UIState::HOVERED;
         if (component->m_onHover) {
           m_deferredCallbacks.push_back(component->m_onHover);
         }
+      } else if (!component->m_style.highlightOnMouseHover &&
+                 component->m_state == UIState::HOVERED) {
+        component->m_state = UIState::NORMAL;
       }
 
       // Modal-style components (e.g. the modal overlay) swallow input for any
@@ -2051,7 +2071,9 @@ void UIManager::handleInput() {
               m_deferredCallbacks.push_back(component->m_onClick);
             }
           }
-          component->m_state = UIState::HOVERED;
+          component->m_state = component->m_style.highlightOnMouseHover
+                                   ? UIState::HOVERED
+                                   : UIState::NORMAL;
           mouseHandled = true;
         }
 
@@ -2183,9 +2205,11 @@ void UIManager::updateTooltips(float deltaTime) {
     return;
   }
 
-  if (!m_hoveredComponents.empty()) {
-    m_hoveredTooltip =
-        m_hoveredComponents.back(); // Use topmost hovered component
+  if (!m_hoveredTooltipCandidate.empty()) {
+    if (m_hoveredTooltip != m_hoveredTooltipCandidate) {
+      m_hoveredTooltip = m_hoveredTooltipCandidate;
+      m_tooltipTimer = 0.0f;
+    }
     m_tooltipTimer += deltaTime;
   } else {
     m_hoveredTooltip.clear();
