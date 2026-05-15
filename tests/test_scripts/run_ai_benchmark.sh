@@ -133,13 +133,42 @@ fi
 # Extract performance metrics
 echo -e "${BLUE}Performance Summary:${NC}"
 
+print_table_section() {
+  local section_title="$1"
+  awk -v title="$section_title" '
+    index($0, title) { printing = 1; next }
+    printing && /^$/ { exit }
+    printing && ($0 ~ /^Workload:/ || $0 ~ /^[[:space:]]*[0-9]+/ || $0 ~ /Entities|Attackers/) { print }
+  ' "$RESULTS_FILE"
+}
+
 # Extract key metrics from new tabular format
 echo "--- AI Entity Scaling Results ---"
-grep -A 20 "AI Entity Scaling" "$RESULTS_FILE" | grep -E "^\s+[0-9]+|Entities"
+print_table_section "AI Entity Scaling"
+
+echo
+echo "--- Attack Behavior Pressure Scaling ---"
+print_table_section "Attack Behavior Decision Pressure Scaling"
+
+echo
+echo "--- Attack Behavior Tactical Reset Scaling ---"
+print_table_section "Attack Behavior Decision Tactical Reset Scaling"
+
+echo
+echo "--- Attack Behavior Cold Burst Resolve Scaling ---"
+print_table_section "Attack Behavior Cold Burst Resolve Scaling"
+
+echo
+echo "--- Attack Behavior Cadenced Resolve Scaling ---"
+print_table_section "Attack Behavior Cadenced Resolve Scaling"
 
 echo
 echo "--- Scalability Summary ---"
-grep -A 5 "SCALABILITY SUMMARY" "$RESULTS_FILE"
+awk '
+  /SCALABILITY SUMMARY/ { printing = 1 }
+  printing { print; ++lines }
+  printing && lines >= 4 { exit }
+' "$RESULTS_FILE"
 
 # Create a current run copy for regression detection
 cp "$RESULTS_FILE" "$PROJECT_ROOT/test_results/ai_scaling_current.txt"

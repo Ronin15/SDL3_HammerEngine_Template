@@ -37,6 +37,7 @@ Run the repo's benchmark regression workflow without mixing it into correctness 
    - Compare against matching baseline files by percentage change.
    - Treat >15% degradation in a critical system as blocking unless the relevant benchmark documentation defines a different threshold.
    - Distinguish regression, warning, stable result, improvement, and benchmark-scope drift.
+   - For AI attack benchmark sections, keep the workload labels intact. Do not summarize the cold burst, cadenced resolve, and decision-only rows as one generic "attack" metric.
 
 6. Produce a compact report.
    - Include the command set, build mode, baseline source, benchmark completion status, critical regressions, warnings, improvements, and report path if one was written.
@@ -66,6 +67,10 @@ AI, pathfinding, adaptive threading, integrated, and projectile results are mand
 ## Required Metrics
 
 - AI: entity scaling, updates/sec, threading mode, learned threshold.
+  - Attack decision pressure: logic and pressure movement throughput only; damage/projectile resolution is intentionally suppressed.
+  - Attack decision tactical reset: pressure scoring and reset movement throughput only; damage/projectile resolution is intentionally suppressed.
+  - Attack cold burst resolve: synchronized fresh-state worst-case frame; includes melee EventManager damage and ranged AICommandBus projectile creation before WorkerBudget learning can engage. Treat as a spike/regression signal, not normal steady-state engine cost.
+  - Attack cadenced resolve: cooldown-driven combat sequence; includes AI update, ranged command commit, melee EventManager dispatch, and projectile creation. Treat this as the primary ongoing combat throughput signal.
 - Collision: movable/movable and movable/static timing, trigger detection counts, trigger method.
 - Pathfinding: async throughput, success rate, batch processing performance. Do not substitute deprecated immediate-path timings for the production metric.
 - Event: throughput, latency, queue depth, concurrent dispatch/enqueue behavior.
@@ -83,6 +88,7 @@ Before giving the final result:
 
 - All 11 benchmark scripts either completed or have an explicit blocker recorded.
 - AI scaling metrics are present.
+- AI Attack workload sections are present and interpreted separately: decision pressure, decision tactical reset, cold burst resolve, and cadenced resolve.
 - Pathfinding async throughput metrics are present.
 - Projectile scaling and SIMD throughput metrics are present.
 - Integrated frame statistics are present.
