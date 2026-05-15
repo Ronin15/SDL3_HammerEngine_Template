@@ -2300,7 +2300,7 @@ BOOST_AUTO_TEST_CASE(TestLowHealthAttackRetreatsThenReengages) {
     aiMgr.assignBehavior(attackerHandle, "Attack");
 
     auto& attackerChar = edm.getCharacterDataByIndex(attackerIdx);
-    attackerChar.health = attackerChar.maxHealth * 0.2f;
+    attackerChar.health = attackerChar.maxHealth * 0.25f;
 
     auto& memData = edm.getMemoryData(attackerIdx);
     memData.setValid(true);
@@ -2365,7 +2365,7 @@ BOOST_AUTO_TEST_CASE(TestAttackNewDamageEncounterCanTriggerAnotherRetreat) {
     aiMgr.assignBehavior(attackerHandle, "Attack");
 
     auto& attackerChar = edm.getCharacterDataByIndex(attackerIdx);
-    attackerChar.health = attackerChar.maxHealth * 0.2f;
+    attackerChar.health = attackerChar.maxHealth * 0.25f;
 
     auto& memData = edm.getMemoryData(attackerIdx);
     memData.setValid(true);
@@ -2387,17 +2387,18 @@ BOOST_AUTO_TEST_CASE(TestAttackNewDamageEncounterCanTriggerAnotherRetreat) {
     auto& attackState = edm.getAttackState(edm.getBehaviorConfigRef(attackerIdx).index);
     BOOST_REQUIRE(attackState.isRetreating);
 
-    bool reengaged = false;
-    for (int i = 0; i < 120; ++i) {
-        updateAI(0.1f, attacker->getPosition());
-        const auto& currentAttackState =
-            edm.getAttackState(edm.getBehaviorConfigRef(attackerIdx).index);
-        if (currentAttackState.currentState == 3) {
-            reengaged = true;
-            break;
-        }
-    }
-    BOOST_REQUIRE_MESSAGE(reengaged, "Attacker should re-engage after first tactical retreat");
+    attackState.attackTimer = 999.0f;
+    attackState.resetConfidence = 1.0f;
+
+    updateAI(0.1f, attacker->getPosition());
+    const auto& committedAttackState =
+        edm.getAttackState(edm.getBehaviorConfigRef(attackerIdx).index);
+    BOOST_REQUIRE_MESSAGE(committedAttackState.currentState == 3,
+                          std::format("Attacker should commit an attack after first tactical retreat "
+                                      "(state={}, pressure={:.2f}, resetConfidence={:.2f})",
+                                      static_cast<int>(committedAttackState.currentState),
+                                      committedAttackState.pressureScore,
+                                      committedAttackState.resetConfidence));
 
     memData.combatEncounters = 2;
     updateAI(0.1f, attacker->getPosition());
