@@ -1,7 +1,8 @@
 # AGENTS.md - Manager Tests
 
 These instructions apply to tests under `tests/managers/`. Follow the root
-`AGENTS.md` first, then use this file for manager and EDM test guidance.
+`AGENTS.md`, then `tests/AGENTS.md`, then use this file for manager and EDM
+test guidance.
 
 ## Test Focus
 
@@ -14,6 +15,9 @@ These instructions apply to tests under `tests/managers/`. Follow the root
 - For EDM changes, cover the ownership contract that matters to callers:
   creation, direct destruction, `processDestructionQueue()`,
   `prepareForStateTransition()`, reused slots, and invalid/stale handles.
+- When manager tests exercise AI behavior, also honor the AI command-bus,
+  behavior transition, EDM storage, and worker/main-thread contracts. Do not
+  make EDM or a test fixture the behavior policy owner.
 
 ## Fixtures
 

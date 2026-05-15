@@ -1,7 +1,8 @@
 # AGENTS.md - AI Tests
 
 These instructions apply to tests under `tests/ai/`. Follow the root
-`AGENTS.md` first, then use this file for AI-specific test guidance.
+`AGENTS.md`, then `tests/AGENTS.md`, then use this file for AI-specific test
+guidance.
 
 ## Test Focus
 
@@ -14,15 +15,19 @@ These instructions apply to tests under `tests/ai/`. Follow the root
 - When a behavior bug is reported, trace the runtime path first: behavior
   executor, `AIManager` assignment/commit path, EDM state/config, and any
   authored data that affects the behavior.
+- AI behavior coverage may also live outside this subtree, especially
+  root-level behavior functionality tests and manager integration tests. Apply
+  these AI contracts when those tests exercise behavior execution or command
+  commits.
 
 ## Test Execution
 
 - Prefer direct Boost test executables over broad scripts.
 - Use `--list_content` before adding or relying on a focused `--run_test`
   filter.
-- Keep fixtures explicit about required manager initialization order,
-  especially `ThreadSystem`, `PathfinderManager`, `CollisionManager`,
-  `EntityDataManager`, and `AIManager`.
+- Keep fixtures explicit about the managers required by the behavior path under
+  test. Preserve dependency order for that path instead of copying a universal
+  manager list.
 
 ## Regression Coverage
 
