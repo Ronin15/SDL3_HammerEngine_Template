@@ -1,7 +1,7 @@
 # AGENTS.md - Manager Public Contracts
 
 These instructions apply to manager headers under `include/managers/`. Follow
-the root `AGENTS.md` first, then use this file for manager API and data-contract
+the loaded parent guidance first; this file adds manager API and data-contract
 rules.
 
 ## Public API Shape

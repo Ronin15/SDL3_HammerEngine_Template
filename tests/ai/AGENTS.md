@@ -1,7 +1,7 @@
 # AGENTS.md - AI Tests
 
-These instructions apply to tests under `tests/ai/`. Follow the root
-`AGENTS.md`, then `tests/AGENTS.md`, then use this file for AI-specific test
+These instructions apply to tests under `tests/ai/`. Follow the loaded parent
+guidance first, including `tests/AGENTS.md`; this file adds AI-specific test
 guidance.
 
 ## Test Focus

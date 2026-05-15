@@ -1,8 +1,8 @@
 # AGENTS.md - UI Controller Source
 
 These instructions apply to UI controller implementation code under
-`src/controllers/ui/`. Follow the root `AGENTS.md` first, then use this file
-for UI-controller-specific ownership and runtime rules.
+`src/controllers/ui/`. Follow the loaded parent guidance first; this file adds
+UI-controller-specific ownership and runtime rules.
 
 ## Development Stance
 

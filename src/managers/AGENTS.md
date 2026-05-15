@@ -1,7 +1,7 @@
 # AGENTS.md - Manager Implementations
 
 These instructions apply to manager implementation code under `src/managers/`.
-Follow the root `AGENTS.md` first, then use this file for manager-specific
+Follow the loaded parent guidance first; this file adds manager-specific
 runtime rules.
 
 ## Development Stance

@@ -1,8 +1,8 @@
 # AGENTS.md - AI Source
 
 These instructions apply to AI implementation code under `src/ai/`. Follow the
-root `AGENTS.md` first, then use this file for AI-specific ownership and
-runtime rules.
+loaded parent guidance first; this file adds AI-specific ownership and runtime
+rules.
 
 ## Development Stance
 

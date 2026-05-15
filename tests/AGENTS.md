@@ -1,7 +1,7 @@
 # AGENTS.md - Tests
 
-These instructions apply to tests under `tests/`. Follow the root `AGENTS.md`
-first, then use this file for test-specific guidance. Narrower test-subtree
+These instructions apply to tests under `tests/`. Follow the loaded parent
+guidance first; this file adds test-specific guidance. Narrower test-subtree
 `AGENTS.md` files add subsystem-specific rules.
 
 ## Test Focus

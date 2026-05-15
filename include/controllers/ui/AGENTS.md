@@ -1,8 +1,8 @@
 # AGENTS.md - UI Controller Public Contracts
 
 These instructions apply to UI controller headers under `include/controllers/ui/`.
-Follow the root `AGENTS.md` first, then use this file for public API and
-ownership-contract rules.
+Follow the loaded parent guidance first; this file adds public API and
+ownership-contract rules for this subtree.
 
 ## Public API Shape
 

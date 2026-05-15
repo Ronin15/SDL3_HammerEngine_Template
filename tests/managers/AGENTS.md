@@ -1,8 +1,8 @@
 # AGENTS.md - Manager Tests
 
-These instructions apply to tests under `tests/managers/`. Follow the root
-`AGENTS.md`, then `tests/AGENTS.md`, then use this file for manager and EDM
-test guidance.
+These instructions apply to tests under `tests/managers/`. Follow the loaded
+parent guidance first, including `tests/AGENTS.md`; this file adds manager and
+EDM test guidance.
 
 ## Test Focus
 

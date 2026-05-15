@@ -1,8 +1,7 @@
 # AGENTS.md - AI Public Contracts
 
-These instructions apply to AI headers under `include/ai/`. Follow the root
-`AGENTS.md` first, then use this file for AI-specific API and data-contract
-rules.
+These instructions apply to AI headers under `include/ai/`. Follow the loaded
+parent guidance first; this file adds AI-specific API and data-contract rules.
 
 ## Public API Shape
 

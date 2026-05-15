@@ -7,13 +7,32 @@ Codex instructions for this repository. Match existing subsystem patterns, fix r
 Apply guidance in this order:
 
 1. Explicit user instructions
-2. The nearest `AGENTS.md` or `AGENTS.override.md`
-3. Existing local subsystem patterns
-4. General style preferences
+2. Root `AGENTS.md`
+3. Any nested `AGENTS.md` or `AGENTS.override.md` that applies to touched paths
+4. Existing local subsystem patterns
+5. General style preferences
 
-- This is repo-level guidance. Narrower nested `AGENTS.md` files override it for their subtree.
+- Codex is launched from the project root, so only this root file is guaranteed
+  to load automatically. Before editing a path covered by nested guidance, read
+  the matching nested file explicitly.
+- This is repo-level guidance. Narrower nested `AGENTS.md` files add
+  subtree-specific rules and override broader guidance for their subtree.
 - Keep this file durable, concise, and repo-specific. Move subsystem-only detail into nested agent files when needed.
 - If the user names a specific file, work in that file only unless they approve spillover.
+
+## Subtree Guidance
+
+Read these files before editing matching paths:
+
+- `include/ai/AGENTS.md` for AI public contracts.
+- `src/ai/AGENTS.md` for AI implementation code.
+- `include/controllers/ui/AGENTS.md` for UI controller public contracts.
+- `src/controllers/ui/AGENTS.md` for UI controller implementation code.
+- `include/managers/AGENTS.md` for manager public contracts.
+- `src/managers/AGENTS.md` for manager implementation code.
+- `tests/AGENTS.md` for tests, plus narrower test guidance when present.
+- `tests/ai/AGENTS.md` for tests under `tests/ai/`.
+- `tests/managers/AGENTS.md` for tests under `tests/managers/`.
 
 ## Project Stance
 
