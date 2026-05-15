@@ -192,9 +192,11 @@ void changeState(VoidLight::AttackStateData& attack, AttackState newState) {
             case AttackState::ATTACKING:
                 attack.recoveryTimer = 0.0f;
                 attack.canAttack = false;
+                attack.isRetreating = false;
                 break;
             case AttackState::RECOVERING:
                 attack.recoveryTimer = 0.0f;
+                attack.isRetreating = false;
                 break;
             case AttackState::TACTICAL_RESET:
             case AttackState::DISENGAGING:
