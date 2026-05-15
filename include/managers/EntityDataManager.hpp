@@ -619,6 +619,10 @@ struct ClassInfo {
     // Emotional resilience (0.0 = very emotional, 1.0 = stoic)
     // Affects how much emotions change when modified
     float emotionalResilience{0.5f};
+    float personalityBraveryBias{0.5f};
+    float personalityAggressionBias{0.5f};
+    float personalityComposureBias{0.5f};
+    float personalityLoyaltyBias{0.5f};
 
     // Starting inventory {resourceId, quantity}
     std::vector<std::pair<std::string, int>> startingItems;

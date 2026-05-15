@@ -40,23 +40,28 @@ constexpr float COMBO_TIMEOUT = 2.0f;
 constexpr float SPECIAL_ATTACK_MULTIPLIER = 1.5f;
 constexpr float RETREAT_SPEED_MULTIPLIER = 1.3f;
 constexpr float STRAFE_INTERVAL = 3.0f;
+constexpr float PRESSURE_STRAFE_MULTIPLIER = 0.75f;
+constexpr float RESET_RECOVERY_DISTANCE_MULT = 1.65f;
+constexpr float RESET_SAFE_DISTANCE_MULT = 2.2f;
+constexpr float RESET_CONFIDENCE_TARGET = 0.55f;
+constexpr float RECENT_ATTACK_WINDOW = 1.25f;
 
 constexpr float CHARGE_SPEED_MULTIPLIER = 2.0f;
 constexpr float CHARGE_DISTANCE_THRESHOLD_MULT = 1.5f;
 constexpr float FEAR_FLEE_THRESHOLD = 0.7f;
 constexpr float BRAVERY_FLEE_THRESHOLD = 0.3f;
-constexpr float BRAVERY_RETREAT_FACTOR = 0.3f;
 constexpr float TARGET_SCAN_RANGE_MULTIPLIER = 6.0f;
 constexpr float MIN_TARGET_SCAN_RANGE = 250.0f;
 
 enum class AttackState : uint8_t {
     SEEKING = 0,
-    APPROACHING = 1,
-    POSITIONING = 2,
+    ASSESSING = 1,
+    APPROACHING = 2,
     ATTACKING = 3,
     RECOVERING = 4,
-    RETREATING = 5,
-    COOLDOWN = 6
+    TACTICAL_RESET = 5,
+    PRESSURING = 6,
+    DISENGAGING = 7
 };
 
 enum class AttackMode : uint8_t {
@@ -67,6 +72,39 @@ enum class AttackMode : uint8_t {
     COORDINATED = 4,
     HIT_AND_RUN = 5,
     BERSERKER = 6
+};
+
+enum class CombatDecision : uint8_t {
+    SeekTarget = 0,
+    Approach = 1,
+    Pressure = 2,
+    Attack = 3,
+    TacticalReset = 4,
+    Disengage = 5,
+    Recover = 6
+};
+
+struct CombatContext {
+    AttackMode attackMode{AttackMode::MELEE};
+    float attackRange{0.0f};
+    float optimalRange{0.0f};
+    float minimumRange{0.0f};
+    float desiredRange{0.0f};
+    float attackInterval{1.0f};
+    float healthRatio{1.0f};
+    float bravery{0.5f};
+    float aggression{0.5f};
+    float composure{0.5f};
+    float loyalty{0.5f};
+    float fear{0.0f};
+    float pressureScore{0.0f};
+    bool berserkerMode{false};
+    bool recentlyAttacked{false};
+    bool attackReady{false};
+    bool canAttackFromRange{false};
+    bool targetTooFar{false};
+    bool targetTooClose{false};
+    uint8_t combatEncounterCount{0};
 };
 
 float getEffectiveAttackRange(const CharacterData& charData, AttackMode attackMode,
@@ -93,12 +131,6 @@ Vector2D normalizeDir(const Vector2D& v) {
     float len = v.length();
     if (len < 0.0001f) return Vector2D(0, 0);
     return v * (1.0f / len);
-}
-
-Vector2D rotateVector(const Vector2D& v, float angle) {
-    float c = std::cos(angle);
-    float s = std::sin(angle);
-    return Vector2D(v.getX() * c - v.getY() * s, v.getX() * s + v.getY() * c);
 }
 
 void updateTimers(VoidLight::AttackStateData& attack, float deltaTime) {
@@ -128,13 +160,13 @@ void processAttackMessages(BehaviorData& shared, VoidLight::AttackStateData& att
                 break;
 
             case BehaviorMessage::RETREAT:
-                attack.currentState = static_cast<uint8_t>(AttackState::RETREATING);
+                attack.currentState = static_cast<uint8_t>(AttackState::TACTICAL_RESET);
                 attack.isRetreating = true;
                 attack.stateChangeTimer = 0.0f;
                 break;
 
             case BehaviorMessage::PANIC:
-                attack.currentState = static_cast<uint8_t>(AttackState::RETREATING);
+                attack.currentState = static_cast<uint8_t>(AttackState::DISENGAGING);
                 attack.isRetreating = true;
                 attack.stateChangeTimer = 0.0f;
                 break;
@@ -164,7 +196,8 @@ void changeState(VoidLight::AttackStateData& attack, AttackState newState) {
             case AttackState::RECOVERING:
                 attack.recoveryTimer = 0.0f;
                 break;
-            case AttackState::RETREATING:
+            case AttackState::TACTICAL_RESET:
+            case AttackState::DISENGAGING:
                 attack.isRetreating = true;
                 break;
             default:
@@ -371,18 +404,275 @@ bool tryAcquireTarget(BehaviorContext& ctx, VoidLight::AttackStateData& attack,
     return true;
 }
 
-bool shouldRetreat(const BehaviorContext& ctx, float retreatThreshold, float aggression) {
-    float healthRatio = ctx.characterData.health / ctx.characterData.maxHealth;
-
-    float effectiveThreshold = retreatThreshold;
-    if (ctx.memoryData.isValid()) {
-        effectiveThreshold *= (1.0f + ctx.memoryData.emotions.fear * 0.5f - ctx.memoryData.emotions.aggression * 0.3f);
-        effectiveThreshold *= (1.0f - ctx.memoryData.personality.bravery * BRAVERY_RETREAT_FACTOR);
-        effectiveThreshold *= (1.0f - ctx.memoryData.personality.aggression * 0.2f);
-        effectiveThreshold = std::clamp(effectiveThreshold, 0.1f, 0.7f);
+bool canAttackFromCurrentRange(AttackMode attackMode, float targetDistance,
+                               float attackRange, float minimumRange) {
+    if (targetDistance > attackRange) {
+        return false;
     }
 
-    return healthRatio <= effectiveThreshold && aggression < 0.8f;
+    if (attackMode == AttackMode::RANGED && minimumRange > 0.0f) {
+        return targetDistance >= minimumRange;
+    }
+
+    return true;
+}
+
+float getAttackInterval(const VoidLight::AttackBehaviorConfig& config,
+                        float effectiveCooldown) {
+    const float speedInterval = config.attackSpeed > 0.0f
+        ? 1.0f / config.attackSpeed
+        : effectiveCooldown;
+    return std::max(effectiveCooldown, speedInterval);
+}
+
+CombatContext buildCombatContext(const BehaviorContext& ctx,
+                                 const VoidLight::AttackBehaviorConfig& config,
+                                 const VoidLight::AttackStateData& attack,
+                                 AttackMode attackMode,
+                                 float attackRange,
+                                 float effectiveCooldown) {
+    CombatContext combat;
+    combat.attackMode = attackMode;
+    combat.attackRange = attackRange;
+    combat.optimalRange = attackRange * config.optimalRangeMultiplier;
+    combat.minimumRange = attackRange * config.minimumRangeMultiplier;
+    combat.desiredRange = std::max(combat.minimumRange + 8.0f, combat.optimalRange);
+    combat.attackInterval = getAttackInterval(config, effectiveCooldown);
+    combat.healthRatio = ctx.characterData.maxHealth > 0.0f
+        ? ctx.characterData.health / ctx.characterData.maxHealth
+        : 1.0f;
+
+    if (ctx.memoryData.isValid()) {
+        combat.bravery = ctx.memoryData.personality.bravery;
+        combat.aggression = std::clamp(ctx.memoryData.personality.aggression +
+                                           ctx.memoryData.emotions.aggression * 0.5f,
+                                       0.0f, 1.0f);
+        combat.composure = ctx.memoryData.personality.composure;
+        combat.loyalty = ctx.memoryData.personality.loyalty;
+        combat.fear = ctx.memoryData.emotions.fear;
+        combat.combatEncounterCount = ctx.memoryData.combatEncounters;
+    }
+
+    const float crowdBoost =
+        std::min(0.25f, static_cast<float>(ctx.sharedState.cachedNearbyCount) * 0.04f);
+    combat.bravery = std::clamp(combat.bravery + crowdBoost, 0.0f, 1.0f);
+    combat.recentlyAttacked = Behaviors::isUnderRecentAttack(ctx, RECENT_ATTACK_WINDOW);
+    combat.berserkerMode = combat.aggression > 0.85f && combat.bravery > 0.65f;
+    combat.attackReady =
+        attack.currentState != static_cast<uint8_t>(AttackState::ATTACKING) &&
+        (attack.currentState != static_cast<uint8_t>(AttackState::RECOVERING) ||
+         attack.stateChangeTimer > config.recoveryTime) &&
+        attack.attackTimer >= combat.attackInterval;
+    combat.canAttackFromRange =
+        combat.attackReady &&
+        canAttackFromCurrentRange(attackMode, attack.targetDistance,
+                                  attackRange, combat.minimumRange);
+    combat.targetTooFar = attack.targetDistance > combat.attackRange;
+    combat.targetTooClose = combat.minimumRange > 0.0f &&
+                            attack.targetDistance < combat.minimumRange;
+
+    const float healthPressure = std::clamp((0.65f - combat.healthRatio) / 0.65f, 0.0f, 1.0f);
+    const float fearPressure = combat.fear * (1.15f - combat.bravery * 0.45f);
+    const float recentPressure = combat.recentlyAttacked ? 0.25f : 0.0f;
+    const float lowComposurePressure = (1.0f - combat.composure) * 0.25f;
+    const float aggressionRelief = combat.aggression * 0.28f;
+    combat.pressureScore = std::clamp(healthPressure + fearPressure + recentPressure +
+                                          lowComposurePressure - aggressionRelief,
+                                      0.0f, 1.0f);
+    return combat;
+}
+
+bool shouldDisengage(const CombatContext& combat) {
+    if (combat.berserkerMode) {
+        return false;
+    }
+
+    const bool criticalHealth = combat.healthRatio < 0.18f;
+    const bool overwhelmed = combat.pressureScore > 0.92f;
+    const bool fearful = combat.fear > FEAR_FLEE_THRESHOLD &&
+                         combat.bravery < BRAVERY_FLEE_THRESHOLD;
+    return (criticalHealth && combat.bravery < 0.45f) || overwhelmed || fearful;
+}
+
+bool shouldTacticalReset(const CombatContext& combat,
+                         const VoidLight::AttackStateData& attack) {
+    if (combat.berserkerMode || combat.attackMode == AttackMode::BERSERKER) {
+        return false;
+    }
+
+    const bool newPressure =
+        !attack.hasHandledTacticalRetreat ||
+        attack.lastTacticalRetreatEncounter != combat.combatEncounterCount ||
+        combat.recentlyAttacked ||
+        combat.pressureScore > attack.pressureScore + 0.15f;
+    return newPressure && combat.pressureScore >= 0.48f;
+}
+
+bool tacticalResetRecovered(const CombatContext& combat,
+                            const VoidLight::AttackStateData& attack) {
+    const bool hasSafeSpace = attack.targetDistance >= combat.attackRange * RESET_SAFE_DISTANCE_MULT;
+    const bool hasRecoveredSpace =
+        attack.targetDistance >= combat.attackRange * RESET_RECOVERY_DISTANCE_MULT &&
+        combat.pressureScore < 0.55f;
+    const bool confidenceRecovered =
+        attack.resetConfidence >= RESET_CONFIDENCE_TARGET &&
+        combat.pressureScore < 0.45f;
+    return hasSafeSpace || hasRecoveredSpace || confidenceRecovered;
+}
+
+CombatDecision chooseCombatDecision(const CombatContext& combat,
+                                    const VoidLight::AttackStateData& attack) {
+    const auto currentState = static_cast<AttackState>(attack.currentState);
+    if (currentState == AttackState::ATTACKING) {
+        return CombatDecision::Attack;
+    }
+
+    if (currentState == AttackState::DISENGAGING) {
+        return CombatDecision::Disengage;
+    }
+
+    if (currentState == AttackState::TACTICAL_RESET) {
+        if (combat.canAttackFromRange && combat.pressureScore < 0.9f) {
+            return CombatDecision::Attack;
+        }
+
+        if (!shouldDisengage(combat)) {
+            return tacticalResetRecovered(combat, attack)
+                ? CombatDecision::Pressure
+                : CombatDecision::TacticalReset;
+        }
+    }
+
+    if (shouldDisengage(combat)) {
+        return CombatDecision::Disengage;
+    }
+
+    if (currentState == AttackState::RECOVERING) {
+        return shouldTacticalReset(combat, attack)
+            ? CombatDecision::TacticalReset
+            : CombatDecision::Recover;
+    }
+
+    if (combat.canAttackFromRange && combat.pressureScore < 0.72f) {
+        return CombatDecision::Attack;
+    }
+
+    if (shouldTacticalReset(combat, attack)) {
+        return CombatDecision::TacticalReset;
+    }
+
+    if (combat.targetTooFar) {
+        return CombatDecision::Approach;
+    }
+
+    return CombatDecision::Pressure;
+}
+
+void markTacticalRetreatEncounter(VoidLight::AttackStateData& attack,
+                                  const NPCMemoryData& memoryData) {
+    attack.lastTacticalRetreatEncounter = memoryData.combatEncounters;
+    attack.hasHandledTacticalRetreat = true;
+}
+
+void recordResolvedAttack(BehaviorContext& ctx, VoidLight::AttackStateData& attack,
+                          EntityHandle targetHandle,
+                          const VoidLight::AttackBehaviorConfig& config) {
+    auto& edm = EntityDataManager::Instance();
+
+    if (ctx.characterData.faction > 1) {
+        size_t targetIdx = edm.getIndex(targetHandle);
+        if (targetIdx != SIZE_MAX && edm.getCharacterDataByIndex(targetIdx).faction == 0) {
+            edm.setFaction(edm.getHandle(ctx.edmIndex), 1);
+        }
+    }
+
+    ctx.memoryData.lastTarget = targetHandle;
+
+    attack.attackTimer = 0.0f;
+    attack.lastAttackHit = true;
+
+    if (config.comboAttacks) {
+        if (attack.comboTimer > 0.0f) {
+            attack.currentCombo = std::min(attack.currentCombo + 1, config.maxCombo);
+        } else {
+            attack.currentCombo = 1;
+            attack.comboTimer = COMBO_TIMEOUT;
+        }
+    }
+}
+
+void broadcastRetreatToAllies(const BehaviorContext& ctx) {
+    uint8_t myFaction = ctx.characterData.faction;
+    AIManager::Instance().scanFactionInRadius(
+        myFaction, ctx.transform.position, 200.0f, s_scanBuffer, true);
+    for (size_t idx : s_scanBuffer) {
+        if (idx == ctx.edmIndex) continue;
+        Behaviors::deferBehaviorMessage(idx, BehaviorMessage::RETREAT);
+    }
+}
+
+void applyTacticalResetMovement(BehaviorContext& ctx, VoidLight::AttackStateData& attack,
+                                const CombatContext& combat,
+                                const Vector2D& entityPos,
+                                const Vector2D& targetPos,
+                                float moveSpeed) {
+    Vector2D away = normalizeDir(entityPos - targetPos);
+    if (away.lengthSquared() < 0.0001f) {
+        away = Vector2D(1.0f, 0.0f);
+    }
+
+    Vector2D perpendicular(-away.getY(), away.getX());
+    const float strafeSign = attack.strafeDirectionInt >= 0 ? 1.0f : -1.0f;
+    const float lateralWeight = std::clamp(combat.composure, 0.2f, 0.8f);
+    const Vector2D resetDir = normalizeDir(away + perpendicular * strafeSign * lateralWeight);
+
+    const float urgency = 0.85f + combat.pressureScore * 0.65f;
+    ctx.transform.velocity = resetDir * (moveSpeed * urgency);
+
+    if (attack.targetDistance >= combat.attackRange * RESET_RECOVERY_DISTANCE_MULT &&
+        combat.pressureScore < 0.55f) {
+        attack.resetConfidence =
+            std::clamp(attack.resetConfidence + ctx.deltaTime * (0.6f + combat.composure),
+                       0.0f, 1.0f);
+    } else {
+        attack.resetConfidence =
+            std::clamp(attack.resetConfidence - ctx.deltaTime * 0.35f, 0.0f, 1.0f);
+    }
+}
+
+void applyPressureMovement(BehaviorContext& ctx, VoidLight::AttackStateData& attack,
+                           const CombatContext& combat,
+                           const Vector2D& entityPos,
+                           const Vector2D& targetPos,
+                           float moveSpeed) {
+    Vector2D away = normalizeDir(entityPos - targetPos);
+    if (away.lengthSquared() < 0.0001f) {
+        ctx.transform.velocity = Vector2D(0, 0);
+        return;
+    }
+
+    if (combat.targetTooClose) {
+        const float backoffSpeed = moveSpeed * (0.65f + combat.pressureScore * 0.35f);
+        ctx.transform.velocity = away * backoffSpeed;
+        return;
+    }
+
+    if (attack.targetDistance > combat.desiredRange + 12.0f) {
+        moveToPosition(ctx, targetPos, moveSpeed * 0.65f);
+        return;
+    }
+
+    if (attack.strafeTimer > STRAFE_INTERVAL * (1.25f - combat.composure * 0.5f)) {
+        attack.strafeTimer = 0.0f;
+        attack.strafeDirectionInt *= -1;
+    }
+
+    Vector2D perpendicular(-away.getY(), away.getX());
+    const float strafeSign = attack.strafeDirectionInt >= 0 ? 1.0f : -1.0f;
+    const float forwardBias = combat.aggression > 0.65f ? -0.18f : 0.08f;
+    const Vector2D pressureDir =
+        normalizeDir(perpendicular * strafeSign + away * forwardBias);
+    ctx.transform.velocity = pressureDir * (moveSpeed * PRESSURE_STRAFE_MULTIPLIER);
 }
 
 bool executeAttackAction(BehaviorContext& ctx, VoidLight::AttackStateData& attack,
@@ -424,26 +714,7 @@ bool executeAttackAction(BehaviorContext& ctx, VoidLight::AttackStateData& attac
     }
     if (!attackResolved) return false;
 
-    if (ctx.characterData.faction > 1) {
-        size_t targetIdx = edm.getIndex(targetHandle);
-        if (targetIdx != SIZE_MAX && edm.getCharacterDataByIndex(targetIdx).faction == 0) {
-            edm.setFaction(edm.getHandle(ctx.edmIndex), 1);
-        }
-    }
-
-    ctx.memoryData.lastTarget = targetHandle;
-
-    attack.attackTimer = 0.0f;
-    attack.lastAttackHit = true;
-
-    if (config.comboAttacks) {
-        if (attack.comboTimer > 0.0f) {
-            attack.currentCombo = std::min(attack.currentCombo + 1, config.maxCombo);
-        } else {
-            attack.currentCombo = 1;
-            attack.comboTimer = COMBO_TIMEOUT;
-        }
-    }
+    recordResolvedAttack(ctx, attack, targetHandle, config);
 
     return true;
 }
@@ -495,7 +766,7 @@ bool applyHitAndRunPositioning(BehaviorContext& ctx, const Vector2D& entityPos, 
                                VoidLight::AttackStateData& attack, const VoidLight::AttackBehaviorConfig& config,
                                float moveSpeed) {
     if (attack.currentState == static_cast<uint8_t>(AttackState::RECOVERING) ||
-        attack.currentState == static_cast<uint8_t>(AttackState::COOLDOWN)) {
+        attack.currentState == static_cast<uint8_t>(AttackState::TACTICAL_RESET)) {
 
         Vector2D retreatDir = normalizeDir(entityPos - targetPos);
         float rangeScaling = 1.0f + (config.optimalRangeMultiplier - 0.5f) * 0.4f;
@@ -507,8 +778,7 @@ bool applyHitAndRunPositioning(BehaviorContext& ctx, const Vector2D& entityPos, 
     return false;
 }
 
-void applyBerserkerModifiers(float& effectiveRetreatThreshold, float& effectiveCooldown) {
-    effectiveRetreatThreshold = 0.1f;
+void applyBerserkerModifiers(float& effectiveCooldown) {
     effectiveCooldown *= 0.5f;
 }
 
@@ -529,6 +799,7 @@ void initAttack(size_t edmIndex, const VoidLight::AttackBehaviorConfig& config,
     state.attackPosition = Vector2D(0, 0);
     state.retreatPosition = Vector2D(0, 0);
     state.strafeVector = Vector2D(0, 0);
+    state.tacticalResetAnchor = Vector2D(0, 0);
     state.currentState = 0;
     state.attackMode = config.attackMode;
     state.attackTimer = 0.0f;
@@ -543,9 +814,14 @@ void initAttack(size_t edmIndex, const VoidLight::AttackBehaviorConfig& config,
     state.attackChargeTime = 0.0f;
     state.recoveryTimer = 0.0f;
     state.scanCooldown = 0.0f;
+    state.pressureScore = 0.0f;
+    state.desiredCombatRange = 0.0f;
+    state.resetConfidence = 0.0f;
     state.currentCombo = 0;
     state.attacksInCombo = 0;
     state.strafeDirectionInt = 1;
+    state.lastTacticalRetreatEncounter = 0;
+    state.lastCombatDecision = 0;
     state.preferredAttackAngle = 0.0f;
     state.inCombat = false;
     state.hasTarget = false;
@@ -558,6 +834,7 @@ void initAttack(size_t edmIndex, const VoidLight::AttackBehaviorConfig& config,
     state.flanking = false;
     state.hasExplicitTarget = false;
     state.comboEnabled = false;
+    state.hasHandledTacticalRetreat = false;
     state.explicitTarget = EntityHandle{};
 
     shared.setInitialized(true);
@@ -655,220 +932,169 @@ void executeAttack(BehaviorContext& ctx, const VoidLight::AttackBehaviorConfig& 
         berserkerMode = (aggression > 0.8f && personalAggression > 0.7f);
     }
 
-    float effectiveRetreatThreshold = config.retreatThreshold;
     float effectiveCooldown = config.attackCooldown;
 
     if (berserkerMode || attackMode == AttackMode::BERSERKER) {
-        applyBerserkerModifiers(effectiveRetreatThreshold, effectiveCooldown);
+        applyBerserkerModifiers(effectiveCooldown);
     }
-
-    if (!berserkerMode && attackMode != AttackMode::BERSERKER &&
-        shouldRetreat(ctx, effectiveRetreatThreshold, config.aggression) &&
-        attack.currentState != static_cast<uint8_t>(AttackState::RETREATING)) {
-
-        bool shouldFlee = false;
-        if (ctx.memoryData.isValid()) {
-            float fear = ctx.memoryData.emotions.fear;
-            float bravery = ctx.memoryData.personality.bravery;
-            shouldFlee = (fear > FEAR_FLEE_THRESHOLD && bravery < BRAVERY_FLEE_THRESHOLD);
-        }
-
-        uint8_t myFaction = ctx.characterData.faction;
-        AIManager::Instance().scanFactionInRadius(
-            myFaction, ctx.transform.position, 200.0f, s_scanBuffer, true);
-        for (size_t idx : s_scanBuffer) {
-            if (idx == ctx.edmIndex) continue;
-            Behaviors::deferBehaviorMessage(idx, BehaviorMessage::RETREAT);
-        }
-
-        if (shouldFlee) {
-            switchBehavior(ctx.edmIndex, BehaviorType::Flee);
-            return;
-        } else {
-            changeState(attack, AttackState::RETREATING);
-        }
-    }
-
-    float optimalRange = attackRange * config.optimalRangeMultiplier;
-    float minimumRange = attackRange * config.minimumRangeMultiplier;
 
     AttackState currentState = static_cast<AttackState>(attack.currentState);
-
-    float timeInState = attack.stateChangeTimer;
-    if (currentState == AttackState::ATTACKING && timeInState > (1.0f / config.attackSpeed)) {
-        changeState(attack, AttackState::RECOVERING);
-        currentState = AttackState::RECOVERING;
-    } else if (currentState == AttackState::RECOVERING && timeInState > config.recoveryTime) {
-        changeState(attack, AttackState::COOLDOWN);
-        currentState = AttackState::COOLDOWN;
-    } else if (currentState == AttackState::COOLDOWN && timeInState > effectiveCooldown) {
-        attack.canAttack = true;
+    CombatContext combat = buildCombatContext(ctx, config, attack, attackMode,
+                                              attackRange, effectiveCooldown);
+    combat.berserkerMode = combat.berserkerMode || berserkerMode;
+    attack.canAttack = combat.attackReady;
+    attack.desiredCombatRange = combat.desiredRange;
+    if (combat.attackReady) {
         attack.specialAttackReady = true;
-        changeState(attack, attack.hasTarget ? AttackState::APPROACHING : AttackState::SEEKING);
-        currentState = static_cast<AttackState>(attack.currentState);
     }
 
-    switch (currentState) {
-        case AttackState::SEEKING:
-            if (attack.hasTarget) {
-                changeState(attack, AttackState::APPROACHING);
+    if (currentState == AttackState::ATTACKING) {
+        if (s_specialRoll(s_rng) < config.specialAttackChance && attack.specialAttackReady) {
+            float specialDamage = calculateDamage(attack, config) * SPECIAL_ATTACK_MULTIPLIER;
+            Vector2D knockback = calculateKnockbackVector(entityPos, targetPos) * config.knockbackForce * SPECIAL_ATTACK_MULTIPLIER;
+            EntityHandle targetHandle{};
+            if (attack.hasExplicitTarget && attack.explicitTarget.isValid()) {
+                targetHandle = attack.explicitTarget;
+            } else if (ctx.memoryData.lastTarget.isValid()) {
+                targetHandle = ctx.memoryData.lastTarget;
+            } else if (ctx.memoryData.lastAttacker.isValid()) {
+                targetHandle = ctx.memoryData.lastAttacker;
             }
-            break;
+            if (targetHandle.isValid()) {
+                EntityHandle attackerHandle = edm.getHandle(ctx.edmIndex);
+                AttackMode specialMode = static_cast<AttackMode>(attack.attackMode);
+                bool specialResolved = true;
+                if (specialMode == AttackMode::RANGED) {
+                    specialResolved = fireProjectile(entityPos, targetPos, attackerHandle,
+                                                     ctx.edmIndex, ctx.characterData,
+                                                     specialDamage, config.attackRange,
+                                                     config.projectileSpeed);
+                } else {
+                    applyDamageToTarget(targetHandle, specialDamage, knockback, attackerHandle);
 
-        case AttackState::APPROACHING:
-            if (attack.targetDistance <= optimalRange) {
-                changeState(attack, AttackState::POSITIONING);
-            } else {
-                moveToPosition(ctx, targetPos, shared.moveSpeed);
-            }
-            break;
+                    if (config.aoeRadius > 0.0f)
+                    {
+                        s_scanBuffer.clear();
+                        AIManager::Instance().scanActiveIndicesInRadius(
+                            targetPos, config.aoeRadius, s_scanBuffer, false);
+                        uint8_t myFaction = ctx.characterData.faction;
 
-        case AttackState::POSITIONING: {
-            float distToTarget = attack.targetDistance;
-            Vector2D direction = normalizeDir(entityPos - targetPos);
-
-            bool modeHandled = false;
-            switch (attackMode) {
-                case AttackMode::RANGED:
-                    modeHandled = applyRangedPositioning(ctx, entityPos, targetPos, attack, config, shared.moveSpeed);
-                    break;
-                case AttackMode::CHARGE:
-                    modeHandled = applyChargePositioning(ctx, entityPos, targetPos, attack, config, shared.moveSpeed);
-                    break;
-                case AttackMode::HIT_AND_RUN:
-                    modeHandled = applyHitAndRunPositioning(ctx, entityPos, targetPos, attack, config, shared.moveSpeed);
-                    break;
-                default:
-                    break;
-            }
-
-            if (modeHandled) break;
-
-            if (distToTarget < minimumRange && minimumRange > 0.0f) {
-                Vector2D backoffPos = targetPos + direction * (minimumRange + 10.0f);
-                moveToPosition(ctx, backoffPos, shared.moveSpeed * 0.8f);
-                break;
-            }
-
-            if (config.circleStrafe && distToTarget <= optimalRange * 1.2f) {
-                if (attack.strafeTimer > STRAFE_INTERVAL) {
-                    attack.strafeTimer = 0.0f;
-                    attack.circleStrafing = !attack.circleStrafing;
-                }
-
-                Vector2D perpendicular(-direction.getY(), direction.getX());
-                float strafeSign = attack.circleStrafing ? 1.0f : -1.0f;
-                Vector2D strafePos = targetPos + direction * optimalRange +
-                                    perpendicular * (config.strafeRadius * strafeSign * 0.5f);
-                moveToPosition(ctx, strafePos, shared.moveSpeed);
-                break;
-            }
-
-            if (config.preferredAttackAngle != 0.0f) {
-                direction = rotateVector(direction, config.preferredAttackAngle);
-            }
-            Vector2D optimalPos = targetPos + direction * optimalRange;
-
-            if ((entityPos - optimalPos).length() > 15.0f) {
-                moveToPosition(ctx, optimalPos, shared.moveSpeed);
-            } else if (attack.canAttack) {
-                changeState(attack, AttackState::ATTACKING);
-            }
-            break;
-        }
-
-        case AttackState::ATTACKING:
-            if (s_specialRoll(s_rng) < config.specialAttackChance && attack.specialAttackReady) {
-                float specialDamage = calculateDamage(attack, config) * SPECIAL_ATTACK_MULTIPLIER;
-                Vector2D knockback = calculateKnockbackVector(entityPos, targetPos) * config.knockbackForce * SPECIAL_ATTACK_MULTIPLIER;
-                EntityHandle targetHandle{};
-                if (attack.hasExplicitTarget && attack.explicitTarget.isValid()) {
-                    targetHandle = attack.explicitTarget;
-                } else if (ctx.memoryData.lastTarget.isValid()) {
-                    targetHandle = ctx.memoryData.lastTarget;
-                } else if (ctx.memoryData.lastAttacker.isValid()) {
-                    targetHandle = ctx.memoryData.lastAttacker;
-                }
-                if (targetHandle.isValid()) {
-                    EntityHandle attackerHandle = edm.getHandle(ctx.edmIndex);
-                    AttackMode specialMode = static_cast<AttackMode>(attack.attackMode);
-                    bool specialResolved = true;
-                    if (specialMode == AttackMode::RANGED) {
-                        specialResolved = fireProjectile(entityPos, targetPos, attackerHandle,
-                                                         ctx.edmIndex, ctx.characterData,
-                                                         specialDamage, config.attackRange,
-                                                         config.projectileSpeed);
-                    } else {
-                        applyDamageToTarget(targetHandle, specialDamage, knockback, attackerHandle);
-
-                        if (config.aoeRadius > 0.0f)
+                        for (size_t aoeIdx : s_scanBuffer)
                         {
-                            s_scanBuffer.clear();
-                            AIManager::Instance().scanActiveIndicesInRadius(
-                                targetPos, config.aoeRadius, s_scanBuffer, false);
-                            uint8_t myFaction = ctx.characterData.faction;
+                            if (aoeIdx == ctx.edmIndex) continue;
+                            const auto& aoeHot = edm.getHotDataByIndex(aoeIdx);
+                            if (!aoeHot.isAlive()) continue;
+                            EntityHandle aoeTarget = edm.getHandle(aoeIdx);
+                            if (aoeTarget == targetHandle) continue;
+                            if (config.avoidFriendlyFire &&
+                                edm.getCharacterDataByIndex(aoeIdx).faction == myFaction) continue;
 
-                            for (size_t aoeIdx : s_scanBuffer)
-                            {
-                                if (aoeIdx == ctx.edmIndex) continue;
-                                const auto& aoeHot = edm.getHotDataByIndex(aoeIdx);
-                                if (!aoeHot.isAlive()) continue;
-                                EntityHandle aoeTarget = edm.getHandle(aoeIdx);
-                                if (aoeTarget == targetHandle) continue;
-                                if (config.avoidFriendlyFire &&
-                                    edm.getCharacterDataByIndex(aoeIdx).faction == myFaction) continue;
-
-                                float distSq = Vector2D::distanceSquared(targetPos, aoeHot.transform.position);
-                                float dist = std::sqrt(distSq);
-                                float falloff = 1.0f - (dist / config.aoeRadius) * 0.5f;
-                                float aoeDamage = specialDamage * falloff;
-                                Vector2D aoeKnockback = calculateKnockbackVector(targetPos, aoeHot.transform.position)
-                                                        * config.knockbackForce * 0.5f;
-                                applyDamageToTarget(aoeTarget, aoeDamage, aoeKnockback, attackerHandle);
-                            }
+                            float distSq = Vector2D::distanceSquared(targetPos, aoeHot.transform.position);
+                            float dist = std::sqrt(distSq);
+                            float falloff = 1.0f - (dist / config.aoeRadius) * 0.5f;
+                            float aoeDamage = specialDamage * falloff;
+                            Vector2D aoeKnockback = calculateKnockbackVector(targetPos, aoeHot.transform.position)
+                                                    * config.knockbackForce * 0.5f;
+                            applyDamageToTarget(aoeTarget, aoeDamage, aoeKnockback, attackerHandle);
                         }
-                    }
-                    if (!specialResolved) {
-                        if (specialMode == AttackMode::RANGED) {
-                            resetFailedRangedAttack(attack);
-                        }
-                        break;
                     }
                 }
-                attack.specialAttackReady = false;
-            } else {
-                if (!executeAttackAction(ctx, attack, targetPos, config)) {
-                    if (static_cast<AttackMode>(attack.attackMode) == AttackMode::RANGED) {
+                if (!specialResolved) {
+                    if (specialMode == AttackMode::RANGED) {
                         resetFailedRangedAttack(attack);
                     }
-                    break;
+                    return;
                 }
+                recordResolvedAttack(ctx, attack, targetHandle, config);
             }
-            changeState(attack, AttackState::RECOVERING);
-            break;
-
-        case AttackState::RECOVERING:
-            break;
-
-        case AttackState::RETREATING: {
-            Vector2D retreatDir = normalizeDir(entityPos - targetPos);
-            Vector2D retreatVelocity = retreatDir * (shared.moveSpeed * RETREAT_SPEED_MULTIPLIER);
-            ctx.transform.velocity = retreatVelocity;
-
-            constexpr float MIN_RETREAT_TIME = 0.5f;
-            if (attack.stateChangeTimer >= MIN_RETREAT_TIME) {
-                if (attack.targetDistance > attackRange * 2.0f ||
-                    !shouldRetreat(ctx, config.retreatThreshold, config.aggression)) {
-                    attack.isRetreating = false;
-                    changeState(attack, AttackState::SEEKING);
+            attack.specialAttackReady = false;
+        } else {
+            if (!executeAttackAction(ctx, attack, targetPos, config)) {
+                if (static_cast<AttackMode>(attack.attackMode) == AttackMode::RANGED) {
+                    resetFailedRangedAttack(attack);
                 }
+                return;
             }
-            break;
         }
+        changeState(attack, AttackState::RECOVERING);
+        return;
+    }
 
-        case AttackState::COOLDOWN:
+    const CombatDecision decision = chooseCombatDecision(combat, attack);
+    attack.lastCombatDecision = static_cast<uint8_t>(decision);
+    attack.pressureScore = combat.pressureScore;
+
+    if (decision == CombatDecision::Disengage) {
+        broadcastRetreatToAllies(ctx);
+        changeState(attack, AttackState::DISENGAGING);
+        switchBehavior(ctx.edmIndex, BehaviorType::Flee);
+        return;
+    }
+
+    if (decision == CombatDecision::Attack) {
+        changeState(attack, AttackState::ATTACKING);
+        return;
+    }
+
+    if (decision == CombatDecision::TacticalReset) {
+        if (currentState != AttackState::TACTICAL_RESET) {
+            attack.tacticalResetAnchor = entityPos;
+            attack.resetConfidence = 0.0f;
+            broadcastRetreatToAllies(ctx);
+            changeState(attack, AttackState::TACTICAL_RESET);
+        }
+        markTacticalRetreatEncounter(attack, ctx.memoryData);
+        applyTacticalResetMovement(ctx, attack, combat, entityPos, targetPos,
+                                   shared.moveSpeed);
+        return;
+    }
+
+    if (decision == CombatDecision::Recover) {
+        if (attack.stateChangeTimer <= config.recoveryTime) {
+            if (attackMode == AttackMode::HIT_AND_RUN) {
+                applyHitAndRunPositioning(ctx, entityPos, targetPos, attack,
+                                          config, shared.moveSpeed);
+            } else {
+                applyPressureMovement(ctx, attack, combat, entityPos, targetPos,
+                                      shared.moveSpeed * 0.65f);
+            }
+            return;
+        }
+        changeState(attack, AttackState::ASSESSING);
+        return;
+    }
+
+    if (decision == CombatDecision::Approach) {
+        changeState(attack, AttackState::APPROACHING);
+        Vector2D toTarget = normalizeDir(targetPos - entityPos);
+        const float desiredStopDistance = std::max(combat.desiredRange, combat.minimumRange + 8.0f);
+        Vector2D approachPos = targetPos - toTarget * desiredStopDistance;
+        moveToPosition(ctx, approachPos, shared.moveSpeed);
+        return;
+    }
+
+    changeState(attack, AttackState::PRESSURING);
+
+    bool modeHandled = false;
+    switch (attackMode) {
+        case AttackMode::RANGED:
+            modeHandled = applyRangedPositioning(ctx, entityPos, targetPos, attack, config, shared.moveSpeed);
+            break;
+        case AttackMode::CHARGE:
+            modeHandled = applyChargePositioning(ctx, entityPos, targetPos, attack, config, shared.moveSpeed);
+            break;
+        case AttackMode::HIT_AND_RUN:
+            modeHandled = applyHitAndRunPositioning(ctx, entityPos, targetPos, attack, config, shared.moveSpeed);
+            break;
+        default:
             break;
     }
+
+    if (modeHandled) {
+        return;
+    }
+
+    applyPressureMovement(ctx, attack, combat, entityPos, targetPos, shared.moveSpeed);
 }
 
 void collectDeferredDamageEvents(std::vector<EventManager::DeferredEvent>& out) {

@@ -69,6 +69,29 @@ AtlasRegion lookupAtlasRegion(const std::string& regionId) {
     };
 }
 
+float blendPersonalityTrait(float currentValue, float classBias) {
+    constexpr float CLASS_BIAS_WEIGHT = 0.35f;
+    return std::clamp(currentValue * (1.0f - CLASS_BIAS_WEIGHT) +
+                          classBias * CLASS_BIAS_WEIGHT,
+                      0.0f, 1.0f);
+}
+
+void applyClassPersonalityBias(NPCMemoryData& memoryData, const ClassInfo& classInfo) {
+    if (!memoryData.isValid()) {
+        return;
+    }
+
+    auto& personality = memoryData.personality;
+    personality.bravery =
+        blendPersonalityTrait(personality.bravery, classInfo.personalityBraveryBias);
+    personality.aggression =
+        blendPersonalityTrait(personality.aggression, classInfo.personalityAggressionBias);
+    personality.composure =
+        blendPersonalityTrait(personality.composure, classInfo.personalityComposureBias);
+    personality.loyalty =
+        blendPersonalityTrait(personality.loyalty, classInfo.personalityLoyaltyBias);
+}
+
 [[nodiscard]] bool sameInventorySlot(const InventorySlotData& lhs,
                                      const InventorySlotData& rhs) noexcept {
     return lhs.resourceHandle == rhs.resourceHandle &&
@@ -692,6 +715,7 @@ EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
     charData.projectileSpeed = classInfo.projectileSpeed;
     charData.baseProjectileSpeed = charData.projectileSpeed;
     charData.mass = raceInfo.sizeMultiplier * raceInfo.sizeMultiplier;  // Mass scales with area
+    applyClassPersonalityBias(m_memoryData[index], classInfo);
 
     // Apply faction-based collision layers
     applyFactionCollision(index, charData.faction);
@@ -4345,6 +4369,14 @@ void EntityDataManager::initializeClassRegistry() {
                 // Emotional resilience (0.0 = very emotional, 1.0 = stoic)
                 info.emotionalResilience = c.hasKey("emotionalResilience") ?
                     static_cast<float>(c["emotionalResilience"].asNumber()) : 0.5f;
+                info.personalityBraveryBias = c.hasKey("personalityBraveryBias") ?
+                    static_cast<float>(c["personalityBraveryBias"].asNumber()) : 0.5f;
+                info.personalityAggressionBias = c.hasKey("personalityAggressionBias") ?
+                    static_cast<float>(c["personalityAggressionBias"].asNumber()) : 0.5f;
+                info.personalityComposureBias = c.hasKey("personalityComposureBias") ?
+                    static_cast<float>(c["personalityComposureBias"].asNumber()) : 0.5f;
+                info.personalityLoyaltyBias = c.hasKey("personalityLoyaltyBias") ?
+                    static_cast<float>(c["personalityLoyaltyBias"].asNumber()) : 0.5f;
 
                 // Starting items
                 if (c.hasKey("startingItems") && c["startingItems"].isArray()) {
@@ -4375,22 +4407,22 @@ void EntityDataManager::initializeClassRegistry() {
     ENTITY_WARN(std::format("Failed to load classes from {}, using defaults", jsonPath));
 
     // emotionalResilience: 0.7 for warriors, 0.8 for guards, 0.3 for merchants, etc.
-    m_classRegistry["Warrior"] = {"Warrior", 1.3f, 1.0f, 0.9f, 1.5f, 1.0f, "melee", 0.0f, "Chase", 7, 1, false, 0.7f, {}};
+    m_classRegistry["Warrior"] = {"Warrior", 1.3f, 1.0f, 0.9f, 1.5f, 1.0f, "melee", 0.0f, "Chase", 7, 1, false, 0.7f, 0.7f, 0.75f, 0.6f, 0.55f, {}};
     m_classNameToId["Warrior"] = 0; m_classIdToName.push_back("Warrior");
 
-    m_classRegistry["Guard"] = {"Guard", 1.2f, 1.1f, 0.8f, 1.2f, 1.0f, "melee", 0.0f, "Guard", 6, 0, false, 0.8f, {}};
+    m_classRegistry["Guard"] = {"Guard", 1.2f, 1.1f, 0.8f, 1.2f, 1.0f, "melee", 0.0f, "Guard", 6, 0, false, 0.8f, 0.75f, 0.55f, 0.75f, 0.8f, {}};
     m_classNameToId["Guard"] = 1; m_classIdToName.push_back("Guard");
 
-    m_classRegistry["GeneralMerchant"] = {"GeneralMerchant", 0.7f, 0.8f, 0.9f, 0.3f, 0.5f, "melee", 0.0f, "Idle", 2, 0, true, 0.3f, {}};
+    m_classRegistry["GeneralMerchant"] = {"GeneralMerchant", 0.7f, 0.8f, 0.9f, 0.3f, 0.5f, "melee", 0.0f, "Idle", 2, 0, true, 0.3f, 0.35f, 0.25f, 0.55f, 0.45f, {}};
     m_classNameToId["GeneralMerchant"] = 2; m_classIdToName.push_back("GeneralMerchant");
 
-    m_classRegistry["Rogue"] = {"Rogue", 0.8f, 1.3f, 1.3f, 1.2f, 0.8f, "melee", 0.0f, "Chase", 8, 1, false, 0.5f, {}};
+    m_classRegistry["Rogue"] = {"Rogue", 0.8f, 1.3f, 1.3f, 1.2f, 0.8f, "melee", 0.0f, "Chase", 8, 1, false, 0.5f, 0.55f, 0.7f, 0.55f, 0.35f, {}};
     m_classNameToId["Rogue"] = 3; m_classIdToName.push_back("Rogue");
 
-    m_classRegistry["Mage"] = {"Mage", 0.6f, 1.5f, 0.85f, 1.8f, 3.0f, "ranged", 200.0f, "Attack", 7, 2, false, 0.4f, {}};
+    m_classRegistry["Mage"] = {"Mage", 0.6f, 1.5f, 0.85f, 1.8f, 3.0f, "ranged", 200.0f, "Attack", 7, 2, false, 0.4f, 0.45f, 0.6f, 0.7f, 0.45f, {}};
     m_classNameToId["Mage"] = 4; m_classIdToName.push_back("Mage");
 
-    m_classRegistry["Farmer"] = {"Farmer", 0.9f, 1.1f, 1.0f, 0.5f, 0.5f, "melee", 0.0f, "Wander", 3, 0, true, 0.4f, {}};
+    m_classRegistry["Farmer"] = {"Farmer", 0.9f, 1.1f, 1.0f, 0.5f, 0.5f, "melee", 0.0f, "Wander", 3, 0, true, 0.4f, 0.45f, 0.35f, 0.55f, 0.45f, {}};
     m_classNameToId["Farmer"] = 5; m_classIdToName.push_back("Farmer");
 
     ENTITY_INFO(std::format("Initialized class registry with {} classes (fallback)", m_classRegistry.size()));

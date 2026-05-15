@@ -203,7 +203,7 @@ struct GuardStateData
 };
 
 // ============================================================================
-// ATTACK STATE (~140 bytes)
+// ATTACK STATE
 // ============================================================================
 
 struct AttackStateData
@@ -212,6 +212,7 @@ struct AttackStateData
     Vector2D attackPosition;
     Vector2D retreatPosition;
     Vector2D strafeVector;
+    Vector2D tacticalResetAnchor;
     float attackTimer{0.0f};
     float stateChangeTimer{0.0f};
     float damageTimer{0.0f};
@@ -225,11 +226,16 @@ struct AttackStateData
     float recoveryTimer{0.0f};
     float scanCooldown{0.0f};
     float preferredAttackAngle{0.0f};
+    float pressureScore{0.0f};
+    float desiredCombatRange{0.0f};
+    float resetConfidence{0.0f};
     int currentCombo{0};
     int attacksInCombo{0};
     int strafeDirectionInt{1};
-    uint8_t currentState{0};   // 0=Seeking, 1=Approaching, 2=Positioning, 3=Attacking, 4=Recovering, 5=Retreating, 6=Cooldown
+    uint8_t lastTacticalRetreatEncounter{0};
+    uint8_t currentState{0};   // 0=Seeking, 1=Assessing, 2=Approaching, 3=Attacking, 4=Recovering, 5=TacticalReset, 6=Pressuring, 7=Disengaging
     uint8_t attackMode{0};     // 0=Melee, 1=Ranged, 2=Charge, 3=Ambush, 4=Coordinated, 5=HitAndRun, 6=Berserker
+    uint8_t lastCombatDecision{0};
     bool inCombat{false};
     bool hasTarget{false};
     bool isCharging{false};
@@ -241,6 +247,7 @@ struct AttackStateData
     bool flanking{false};
     bool hasExplicitTarget{false};
     bool comboEnabled{false};
+    bool hasHandledTacticalRetreat{false};
     EntityHandle explicitTarget;  // NPC-vs-NPC combat: overrides player targeting
 };
 

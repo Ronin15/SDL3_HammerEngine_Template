@@ -18,6 +18,7 @@
 #include "ai/AICommandBus.hpp"
 #include "ai/BehaviorExecutors.hpp"
 #include "core/ThreadSystem.hpp"
+#include "entities/Player.hpp"
 #include "events/EntityEvents.hpp"
 #include "world/WorldData.hpp"
 #include <memory>
@@ -732,6 +733,107 @@ BOOST_AUTO_TEST_CASE(TestAttackBehaviorRespectsAuthoredRangeWhenClosing) {
     BOOST_CHECK_LT(shortAttackDistance, 70.0f);
     BOOST_CHECK_GT(longAttackDistance, 70.0f);
     BOOST_CHECK_GT(longAttackDistance, shortAttackDistance + 25.0f);
+}
+
+BOOST_AUTO_TEST_CASE(TestMeleeAttackUsesFullWeaponReach) {
+    auto& edm = EntityDataManager::Instance();
+
+    auto attacker = TestNPC::create(300.0f, 300.0f);
+    auto target = TestNPC::create(355.0f, 300.0f);
+    const EntityHandle attackerHandle = attacker->getHandle();
+    const EntityHandle targetHandle = target->getHandle();
+    const size_t attackerIdx = edm.getIndex(attackerHandle);
+    const size_t targetIdx = edm.getIndex(targetHandle);
+    BOOST_REQUIRE(attackerIdx != SIZE_MAX);
+    BOOST_REQUIRE(targetIdx != SIZE_MAX);
+
+    edm.setFaction(attackerHandle, 1);
+    edm.setFaction(targetHandle, 2);
+    edm.getCharacterDataByIndex(attackerIdx).attackRange = 60.0f;
+
+    AIManager::Instance().assignBehavior(attackerHandle, "Attack");
+    const auto ref = edm.getBehaviorConfigRef(attackerIdx);
+    BOOST_REQUIRE(ref.type == BehaviorType::Attack);
+
+    auto attackConfig = VoidLight::AttackBehaviorConfig::createMeleeConfig(60.0f);
+    attackConfig.specialAttackChance = 0.0f;
+
+    auto& attackState = edm.getAttackState(ref.index);
+    attackState.currentState = 1;
+    attackState.attackTimer = 10.0f;
+    attackState.hasExplicitTarget = true;
+    attackState.explicitTarget = targetHandle;
+
+    auto& hotData = edm.getHotDataByIndex(attackerIdx);
+    auto& memoryData = edm.getMemoryData(attackerIdx);
+    memoryData.setValid(true);
+    memoryData.lastTarget = targetHandle;
+
+    BehaviorContext ctx(hotData.transform, hotData, attackerHandle.getId(),
+                        attackerIdx, 0.016f, EntityHandle{}, Vector2D(0, 0),
+                        Vector2D(0, 0), false, edm.getBehaviorData(attackerIdx),
+                        &edm.getPathData(attackerIdx), memoryData,
+                        edm.getCharacterDataByIndex(attackerIdx),
+                        0.0f, 0.0f, 1280.0f, 1280.0f, true, 0.0f,
+                        edm.knockbackSidecar());
+
+    Behaviors::executeAttack(ctx, attackConfig, attackState);
+
+    BOOST_CHECK_EQUAL(static_cast<int>(attackState.currentState), 3);
+}
+
+BOOST_AUTO_TEST_CASE(TestMeleeAttackPressuresInsideReachBeforeWeaponReady) {
+    auto& edm = EntityDataManager::Instance();
+
+    auto attacker = TestNPC::create(300.0f, 300.0f);
+    auto target = TestNPC::create(355.0f, 300.0f);
+    const EntityHandle attackerHandle = attacker->getHandle();
+    const EntityHandle targetHandle = target->getHandle();
+    const size_t attackerIdx = edm.getIndex(attackerHandle);
+    const size_t targetIdx = edm.getIndex(targetHandle);
+    BOOST_REQUIRE(attackerIdx != SIZE_MAX);
+    BOOST_REQUIRE(targetIdx != SIZE_MAX);
+
+    edm.setFaction(attackerHandle, 1);
+    edm.setFaction(targetHandle, 2);
+    edm.getCharacterDataByIndex(attackerIdx).attackRange = 60.0f;
+
+    AIManager::Instance().assignBehavior(attackerHandle, "Attack");
+    const auto ref = edm.getBehaviorConfigRef(attackerIdx);
+    BOOST_REQUIRE(ref.type == BehaviorType::Attack);
+
+    auto attackConfig = VoidLight::AttackBehaviorConfig::createMeleeConfig(60.0f);
+    attackConfig.specialAttackChance = 0.0f;
+
+    auto& attackState = edm.getAttackState(ref.index);
+    attackState.currentState = 1;
+    attackState.attackTimer = 0.0f;
+    attackState.hasExplicitTarget = true;
+    attackState.explicitTarget = targetHandle;
+
+    auto& hotData = edm.getHotDataByIndex(attackerIdx);
+    auto& memoryData = edm.getMemoryData(attackerIdx);
+    memoryData.setValid(true);
+    memoryData.lastTarget = targetHandle;
+    memoryData.personality.aggression = 0.5f;
+    memoryData.personality.composure = 0.8f;
+
+    BehaviorContext ctx(hotData.transform, hotData, attackerHandle.getId(),
+                        attackerIdx, 0.016f, EntityHandle{}, Vector2D(0, 0),
+                        Vector2D(0, 0), false, edm.getBehaviorData(attackerIdx),
+                        &edm.getPathData(attackerIdx), memoryData,
+                        edm.getCharacterDataByIndex(attackerIdx),
+                        0.0f, 0.0f, 1280.0f, 1280.0f, true, 0.0f,
+                        edm.knockbackSidecar());
+
+    Behaviors::executeAttack(ctx, attackConfig, attackState);
+
+    const Vector2D toTarget = (target->getPosition() - attacker->getPosition()).normalized();
+    const Vector2D velocityDir = attacker->getVelocity().normalized();
+    const float directChaseAmount = velocityDir.dot(toTarget);
+
+    BOOST_CHECK_EQUAL(static_cast<int>(attackState.currentState), 6);
+    BOOST_CHECK_LT(directChaseAmount, 0.25f);
 }
 
 BOOST_AUTO_TEST_CASE(TestAttackBehaviorSynchronizesCurrentAttackMode) {
@@ -2171,12 +2273,12 @@ BOOST_AUTO_TEST_CASE(TestAttackPanicForcesRetreat) {
     memData.lastTarget = target->getHandle();
     updateAI(0.016f);
 
-    // Queue PANIC — should force RETREATING state
+    // Queue PANIC. Panic is a true disengage path, not a short tactical reset.
     Behaviors::queueBehaviorMessage(entityIdx, BehaviorMessage::PANIC);
     updateAI(0.016f);
 
     const auto attackRef = edm.getBehaviorConfigRef(entityIdx);
-    // May have switched to Flee or be in RETREATING state (attack still active)
+    // May have switched to Flee or be in a disengaging Attack state.
     bool retreatingOrFled = (attackRef.type == BehaviorType::Flee) ||
                             (attackRef.type == BehaviorType::Attack && edm.getAttackState(attackRef.index).isRetreating);
     BOOST_CHECK(retreatingOrFled);
@@ -2184,7 +2286,200 @@ BOOST_AUTO_TEST_CASE(TestAttackPanicForcesRetreat) {
     aiMgr.unassignBehavior(entityHandle);
 }
 
-BOOST_AUTO_TEST_CASE(TestSpecialAttackReadyAfterCooldown) {
+BOOST_AUTO_TEST_CASE(TestLowHealthAttackRetreatsThenReengages) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    auto attacker = TestNPC::create(300.0f, 300.0f);
+    auto target = TestNPC::create(330.0f, 300.0f);
+    const EntityHandle attackerHandle = attacker->getHandle();
+    const EntityHandle targetHandle = target->getHandle();
+    const size_t attackerIdx = edm.getIndex(attackerHandle);
+    BOOST_REQUIRE(attackerIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(attackerHandle, "Attack");
+
+    auto& attackerChar = edm.getCharacterDataByIndex(attackerIdx);
+    attackerChar.health = attackerChar.maxHealth * 0.2f;
+
+    auto& memData = edm.getMemoryData(attackerIdx);
+    memData.setValid(true);
+    memData.lastTarget = targetHandle;
+    memData.combatEncounters = 1;
+
+    updateAI(0.1f, attacker->getPosition());
+
+    const auto attackRef = edm.getBehaviorConfigRef(attackerIdx);
+    BOOST_REQUIRE(attackRef.type == BehaviorType::Attack);
+    auto& attackState = edm.getAttackState(attackRef.index);
+    BOOST_REQUIRE_MESSAGE(attackState.isRetreating,
+                          "Low-health attacker should enter tactical retreat once");
+    BOOST_CHECK(attackState.hasHandledTacticalRetreat);
+    BOOST_CHECK_EQUAL(static_cast<int>(attackState.lastTacticalRetreatEncounter), 1);
+
+    bool reengaged = false;
+    for (int i = 0; i < 120; ++i) {
+        updateAI(0.1f, attacker->getPosition());
+        if (edm.getBehaviorConfigRef(attackerIdx).type != BehaviorType::Attack) {
+            break;
+        }
+
+        const auto& currentAttackState =
+            edm.getAttackState(edm.getBehaviorConfigRef(attackerIdx).index);
+        if (currentAttackState.currentState == 3) {
+            reengaged = true;
+            break;
+        }
+    }
+
+    const auto finalRef = edm.getBehaviorConfigRef(attackerIdx);
+    std::string finalState = "not-attack";
+    float finalAttackTimer = 0.0f;
+    float finalPressure = 0.0f;
+    if (finalRef.type == BehaviorType::Attack) {
+        const auto& finalAttackState = edm.getAttackState(finalRef.index);
+        finalState = std::to_string(finalAttackState.currentState);
+        finalAttackTimer = finalAttackState.attackTimer;
+        finalPressure = finalAttackState.pressureScore;
+    }
+    BOOST_CHECK_MESSAGE(reengaged,
+                        std::format("Handled low-health retreat should not permanently block re-engagement "
+                                    "(type={}, state={}, attackTimer={:.2f}, pressure={:.2f})",
+                                    static_cast<int>(finalRef.type), finalState,
+                                    finalAttackTimer, finalPressure));
+    aiMgr.unassignBehavior(attackerHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestAttackNewDamageEncounterCanTriggerAnotherRetreat) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+    auto& eventMgr = EventManager::Instance();
+
+    auto attacker = TestNPC::create(300.0f, 300.0f);
+    auto target = TestNPC::create(330.0f, 300.0f);
+    const EntityHandle attackerHandle = attacker->getHandle();
+    const EntityHandle targetHandle = target->getHandle();
+    const size_t attackerIdx = edm.getIndex(attackerHandle);
+    BOOST_REQUIRE(attackerIdx != SIZE_MAX);
+
+    aiMgr.assignBehavior(attackerHandle, "Attack");
+
+    auto& attackerChar = edm.getCharacterDataByIndex(attackerIdx);
+    attackerChar.health = attackerChar.maxHealth * 0.2f;
+
+    auto& memData = edm.getMemoryData(attackerIdx);
+    memData.setValid(true);
+    memData.lastTarget = targetHandle;
+    memData.combatEncounters = 1;
+
+    bool damageAfterRetreat = false;
+    auto combatToken = eventMgr.registerHandlerWithToken(
+        EventTypeId::Combat,
+        [&](const EventData& data) {
+            auto damageEvent = std::dynamic_pointer_cast<DamageEvent>(data.event);
+            if (damageEvent && damageEvent->getSource() == attackerHandle &&
+                damageEvent->getTarget() == targetHandle) {
+                damageAfterRetreat = true;
+            }
+        });
+
+    updateAI(0.1f, attacker->getPosition());
+    auto& attackState = edm.getAttackState(edm.getBehaviorConfigRef(attackerIdx).index);
+    BOOST_REQUIRE(attackState.isRetreating);
+
+    bool reengaged = false;
+    for (int i = 0; i < 120; ++i) {
+        updateAI(0.1f, attacker->getPosition());
+        const auto& currentAttackState =
+            edm.getAttackState(edm.getBehaviorConfigRef(attackerIdx).index);
+        if (currentAttackState.currentState == 3) {
+            reengaged = true;
+            break;
+        }
+    }
+    BOOST_REQUIRE_MESSAGE(reengaged, "Attacker should re-engage after first tactical retreat");
+
+    memData.combatEncounters = 2;
+    updateAI(0.1f, attacker->getPosition());
+    eventMgr.drainAllDeferredEvents();
+
+    const auto& interruptedState =
+        edm.getAttackState(edm.getBehaviorConfigRef(attackerIdx).index);
+    BOOST_CHECK_MESSAGE(!interruptedState.isRetreating,
+                        "A fresh encounter must not preempt an already committed attack frame");
+    BOOST_REQUIRE_MESSAGE(damageAfterRetreat,
+                          "Committed attack should deal damage before tactical retreat replans");
+
+    updateAI(0.1f, attacker->getPosition());
+
+    const auto& secondRetreatState =
+        edm.getAttackState(edm.getBehaviorConfigRef(attackerIdx).index);
+    BOOST_CHECK_MESSAGE(secondRetreatState.isRetreating,
+                        "A new damage encounter can trigger another retreat after the committed attack resolves");
+    BOOST_CHECK_EQUAL(static_cast<int>(secondRetreatState.lastTacticalRetreatEncounter), 2);
+    eventMgr.removeHandler(combatToken);
+    aiMgr.unassignBehavior(attackerHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestRetreatInterruptedRecoveryRearmsAttackAgainstPlayer) {
+    auto& edm = EntityDataManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+    auto& eventMgr = EventManager::Instance();
+
+    auto player = std::make_shared<Player>();
+    player->setPosition(Vector2D(300.0f, 300.0f));
+    const EntityHandle playerHandle = player->getHandle();
+    BOOST_REQUIRE(playerHandle.isValid());
+    aiMgr.setPlayerHandle(playerHandle);
+
+    auto attacker = TestNPC::create(330.0f, 300.0f);
+    const EntityHandle attackerHandle = attacker->getHandle();
+    const size_t attackerIdx = edm.getIndex(attackerHandle);
+    BOOST_REQUIRE(attackerIdx != SIZE_MAX);
+
+    edm.setFaction(attackerHandle, 1);
+    aiMgr.assignBehavior(attackerHandle, "Attack");
+
+    auto& memData = edm.getMemoryData(attackerIdx);
+    memData.setValid(true);
+    memData.lastTarget = playerHandle;
+
+    const float initialPlayerHealth = player->getHealth();
+    bool firstHit = false;
+    for (int i = 0; i < 20 && !firstHit; ++i) {
+        updateAI(0.1f, player->getPosition());
+        eventMgr.drainAllDeferredEvents();
+        firstHit = player->getHealth() < initialPlayerHealth;
+    }
+    BOOST_REQUIRE_MESSAGE(firstHit, "Attacker should damage the player before retreat");
+
+    auto& attackState = edm.getAttackState(edm.getBehaviorConfigRef(attackerIdx).index);
+    BOOST_REQUIRE(!attackState.canAttack);
+
+    auto& attackerChar = edm.getCharacterDataByIndex(attackerIdx);
+    attackerChar.health = attackerChar.maxHealth * 0.2f;
+    memData.lastAttacker = playerHandle;
+    memData.combatEncounters++;
+
+    updateAI(0.1f, player->getPosition());
+    BOOST_REQUIRE_MESSAGE(attackState.isRetreating,
+                          "Low-health attacker should retreat during post-attack recovery");
+    BOOST_REQUIRE(!attackState.canAttack);
+
+    const float postRetreatStartHealth = player->getHealth();
+    bool secondHit = false;
+    for (int i = 0; i < 160 && !secondHit; ++i) {
+        updateAI(0.1f, player->getPosition());
+        eventMgr.drainAllDeferredEvents();
+        secondHit = player->getHealth() < postRetreatStartHealth;
+    }
+
+    BOOST_CHECK_MESSAGE(secondHit,
+                        "Retreat must not strand attack readiness after interrupting recovery");
+    aiMgr.unassignBehavior(attackerHandle);
+}
+
+BOOST_AUTO_TEST_CASE(TestSpecialAttackReadyAfterRecovery) {
     auto& edm = EntityDataManager::Instance();
     auto& aiMgr = AIManager::Instance();
 
@@ -2202,9 +2497,10 @@ BOOST_AUTO_TEST_CASE(TestSpecialAttackReadyAfterCooldown) {
         // Starts not ready
         BOOST_CHECK(attackState.specialAttackReady == false);
 
-        // Simulate cooldown→next-state transition by manually setting state
-        attackState.currentState = 6; // COOLDOWN
-        attackState.stateChangeTimer = 10.0f; // Exceed cooldown time
+        // Simulate a completed recovery window.
+        attackState.currentState = 4;
+        attackState.stateChangeTimer = 10.0f;
+        attackState.attackTimer = 10.0f;
         attackState.hasTarget = true;
     }
 
@@ -2216,9 +2512,9 @@ BOOST_AUTO_TEST_CASE(TestSpecialAttackReadyAfterCooldown) {
 
     updateAI(0.016f);
 
-    // After cooldown transition, specialAttackReady should be true
+    // After recovery, a ready weapon should arm special attack eligibility.
     BOOST_CHECK(edm.getAttackState(edm.getBehaviorConfigRef(entityIdx).index).specialAttackReady == true);
-    BOOST_TEST_MESSAGE("specialAttackReady set to true after cooldown transition");
+    BOOST_TEST_MESSAGE("specialAttackReady set to true after recovery transition");
     aiMgr.unassignBehavior(entityHandle);
 }
 

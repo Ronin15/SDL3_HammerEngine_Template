@@ -675,7 +675,7 @@ void GamePlayState::handleInput() {
   }
 
 #ifndef NDEBUG
-  // Debug: R to spawn a hostile ranged NPC near player (test hook)
+  // Debug: R to spawn a hostile Warrior NPC near player (test hook)
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_R) && mp_Player) {
     auto& edm = EntityDataManager::Instance();
     auto& aiMgr = AIManager::Instance();
@@ -684,7 +684,7 @@ void GamePlayState::handleInput() {
     EntityHandle npc = edm.createNPCWithRaceClass(spawnPos, "Human", "Warrior",
                                                    Sex::Unknown, 1);  // faction 1 = Enemy
     if (npc.isValid()) {
-      aiMgr.assignBehavior(npc, "RangedAttack");
+      aiMgr.assignBehavior(npc, "Attack");
     }
   }
 
