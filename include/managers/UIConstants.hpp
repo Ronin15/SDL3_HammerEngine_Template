@@ -114,6 +114,7 @@ namespace UIConstants {
   // Full-Width Status Bar Constants
   constexpr int STATUS_BAR_HEIGHT = 40;           // Height of full-width status bar
   constexpr int STATUS_BAR_LABEL_PADDING = 12;    // Label text inset from panel edges
+  constexpr int FPS_COUNTER_WIDTH = 160;           // Width for high-DPI FPS badge
 
   // Timing and Animation Constants
   constexpr float DEFAULT_TOOLTIP_DELAY = 1.0f; // Default tooltip hover delay in seconds

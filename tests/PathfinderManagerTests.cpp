@@ -538,7 +538,7 @@ BOOST_AUTO_TEST_CASE(TestBurstRequestHandling) {
         );
     }
 
-    waitForPathfinder(manager, [&completedCount, burstSize] {
+    waitForPathfinder(manager, [&completedCount] {
         return completedCount.load(std::memory_order_acquire) >= burstSize;
     }, 120, std::chrono::milliseconds(10));
 
@@ -578,7 +578,7 @@ BOOST_AUTO_TEST_CASE(TestDirectSubmissionHasNoInternalQueue) {
     BOOST_CHECK_EQUAL(manager.getQueueSize(), 0U);
     BOOST_CHECK(!manager.hasPendingWork());
 
-    waitForPathfinder(manager, [&completed, testRequests] {
+    waitForPathfinder(manager, [&completed] {
         return completed.load(std::memory_order_acquire) >= testRequests;
     }, 120, std::chrono::milliseconds(10));
 
@@ -627,7 +627,7 @@ BOOST_AUTO_TEST_CASE(TestWorkerBudgetCoordination) {
         );
     }
 
-    waitForPathfinder(manager, [&completed, batchWorkload] {
+    waitForPathfinder(manager, [&completed] {
         return completed.load(std::memory_order_acquire) >= batchWorkload;
     });
 
@@ -664,7 +664,7 @@ BOOST_AUTO_TEST_CASE(TestRequestsRunWithoutFrameRateLimiting) {
         return completed.load(std::memory_order_acquire) > 0U;
     }, 100, std::chrono::milliseconds(10)));
 
-    waitForPathfinder(manager, [&completed, requestsSubmitted] {
+    waitForPathfinder(manager, [&completed] {
         return completed.load(std::memory_order_acquire) >= requestsSubmitted;
     }, 120, std::chrono::milliseconds(10));
 

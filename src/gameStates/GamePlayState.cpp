@@ -165,17 +165,19 @@ bool GamePlayState::enter() {
     m_statusBuffer.reserve(256);
 
     // Create FPS counter label (top-left, initially hidden, toggled with F2)
-    ui.createLabel("fps", {labelPadding, 6, 120, barHeight - 12},
-                   "FPS: --");
+    ui.createLabel(
+        "fps",
+        {labelPadding, 6, UIConstants::FPS_COUNTER_WIDTH, barHeight - 12},
+        "FPS: --");
     ui.setComponentVisible("fps", false);
-    // Fixed 120px width fits any "FPS: nnn.n" — skip per-setText font metrics
-    // since this updates whenever FPS crosses the 0.05 delta threshold.
+    // Fixed width covers Retina-scaled "FPS: nnn.n" in 1280x720 windowed mode
+    // without per-setText font metrics on every FPS update.
     ui.enableAutoSizing("fps", false);
     UIPositioning fpsPos;
     fpsPos.mode = UIPositionMode::TOP_ALIGNED;
     fpsPos.offsetX = labelPadding;
     fpsPos.offsetY = 6;
-    fpsPos.fixedWidth = 120;
+    fpsPos.fixedWidth = UIConstants::FPS_COUNTER_WIDTH;
     fpsPos.fixedHeight = barHeight - 12;
     ui.setComponentPositioning("fps", fpsPos);
 

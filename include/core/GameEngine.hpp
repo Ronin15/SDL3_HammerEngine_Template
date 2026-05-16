@@ -348,6 +348,12 @@ private:
   void refreshWindowMetrics(std::string_view reason);
 
   /**
+   * @brief Calculates the font DPI scale from current window metrics.
+   */
+  float calculateFontDPIScale(int logicalWidth, int logicalHeight,
+                              int pixelWidth, int pixelHeight) const;
+
+  /**
    * @brief Refreshes TimestepManager's view of the active display cadence.
    * @details Reads the window's current display refresh via SDL and pushes it
    *          into TimestepManager so VSync-paced frame deltas can be quantized

@@ -678,6 +678,59 @@ BOOST_AUTO_TEST_CASE(TestVSyncConfiguration) {
 }
 
 // ----------------------------------------------------------------------------
+// Test: macOS DPI setup uses actual window pixel density
+// ----------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(TestMacOSFontDPIScaleUsesWindowPixelDensityFirst) {
+    const std::string gameEngineCpp = sourcePath("src/core/GameEngine.cpp");
+    const std::string content = readFileContents(gameEngineCpp);
+
+    const std::string functionSignature = "float GameEngine::calculateFontDPIScale";
+    const auto functionPos = content.find(functionSignature);
+    BOOST_REQUIRE_MESSAGE(functionPos != std::string::npos,
+        "GameEngine should centralize font DPI scale calculation");
+
+    const auto pixelDensityPos = content.find("SDL_GetWindowPixelDensity", functionPos);
+    const auto ratioPos = content.find("static_cast<float>(pixelWidth)", functionPos);
+    const auto displayScalePos = content.find("SDL_GetWindowDisplayScale", functionPos);
+
+    BOOST_CHECK_MESSAGE(pixelDensityPos != std::string::npos,
+        "macOS font DPI setup should query actual window pixel density");
+    BOOST_CHECK_MESSAGE(ratioPos != std::string::npos,
+        "macOS font DPI setup should fall back to pixel/logical window ratio");
+    BOOST_CHECK_MESSAGE(displayScalePos != std::string::npos,
+        "macOS font DPI setup may retain display scale as a final fallback");
+    BOOST_CHECK_MESSAGE(pixelDensityPos < displayScalePos,
+        "macOS font DPI setup should prefer window pixel density over display scale");
+
+    BOOST_CHECK_MESSAGE(functionContainsPattern(gameEngineCpp,
+        "void GameEngine::refreshWindowMetrics", "calculateFontDPIScale"),
+        "Window/display changes should reuse the same macOS font DPI calculation");
+}
+
+// ----------------------------------------------------------------------------
+// Test: Gameplay FPS counter has enough fixed width for high-DPI windowed mode
+// ----------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(TestGameplayFPSCounterUsesHighDPIWidth) {
+    const std::string uiConstantsHpp = sourcePath("include/managers/UIConstants.hpp");
+    const std::string gamePlayStateCpp = sourcePath("src/gameStates/GamePlayState.cpp");
+    const std::string constantsContent = readFileContents(uiConstantsHpp);
+    const std::string gamePlayContent = readFileContents(gamePlayStateCpp);
+
+    BOOST_REQUIRE_MESSAGE(constantsContent.find("constexpr int FPS_COUNTER_WIDTH = 160") != std::string::npos,
+        "UIConstants should reserve enough FPS counter width for high-DPI 1280x720 windowed mode");
+
+    const auto createPos = gamePlayContent.find("UIConstants::FPS_COUNTER_WIDTH, barHeight - 12");
+    const auto positioningPos = gamePlayContent.find("fpsPos.fixedWidth = UIConstants::FPS_COUNTER_WIDTH");
+
+    BOOST_CHECK_MESSAGE(createPos != std::string::npos,
+        "FPS label creation should use the shared UIConstants FPS counter width");
+    BOOST_CHECK_MESSAGE(positioningPos != std::string::npos,
+        "FPS positioning should use the shared UIConstants FPS counter width");
+}
+
+// ----------------------------------------------------------------------------
 // Test: SDL performance hints are configured (cross-platform)
 // ----------------------------------------------------------------------------
 

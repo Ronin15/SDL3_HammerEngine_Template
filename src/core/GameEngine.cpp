@@ -54,6 +54,46 @@
 
 #define VOIDLIGHT_GRAY 31, 32, 34, 255
 
+float GameEngine::calculateFontDPIScale(int logicalWidth, int logicalHeight,
+                                        int pixelWidth,
+                                        int pixelHeight) const {
+#ifdef __APPLE__
+  SDL_Window *window = mp_window.get();
+  if (window) {
+    const float pixelDensity = SDL_GetWindowPixelDensity(window);
+    if (pixelDensity > 0.0f) {
+      return pixelDensity;
+    }
+  }
+
+  if (logicalWidth > 0 && logicalHeight > 0 && pixelWidth > 0 &&
+      pixelHeight > 0) {
+    const float scaleX = static_cast<float>(pixelWidth) /
+                         static_cast<float>(logicalWidth);
+    const float scaleY = static_cast<float>(pixelHeight) /
+                         static_cast<float>(logicalHeight);
+    if (scaleX > 0.0f && scaleY > 0.0f) {
+      return (scaleX > scaleY) ? scaleX : scaleY;
+    }
+  }
+
+  if (window) {
+    const float displayScale = SDL_GetWindowDisplayScale(window);
+    if (displayScale > 0.0f) {
+      return displayScale;
+    }
+  }
+
+  return 1.0f;
+#else
+  (void)logicalWidth;
+  (void)logicalHeight;
+  (void)pixelWidth;
+  (void)pixelHeight;
+  return 1.0f;
+#endif
+}
+
 bool GameEngine::init(std::string_view title) {
   GAMEENGINE_INFO("Initializing SDL Video and Gamepad");
 
@@ -395,28 +435,18 @@ bool GameEngine::init(std::string_view title) {
   // INITIALIZING GAME RESOURCE LOADING AND
   // MANAGEMENT_________________________BEGIN
 
-  // Calculate DPI-aware font sizes before threading
-  float dpiScale = 1.0f;
-
-  const int dpiLogicalWidth = logicalWidth;
-  const int dpiLogicalHeight = logicalHeight;
-
-  if (dpiLogicalWidth > 0 && dpiLogicalHeight > 0) {
+  // Calculate DPI-aware font sizes before threading.
+  const float dpiScale =
+      calculateFontDPIScale(logicalWidth, logicalHeight, pixelWidth,
+                            pixelHeight);
 #ifdef __APPLE__
-    // On macOS, use the native display content scale for proper text rendering
-    float displayScale = SDL_GetWindowDisplayScale(mp_window.get());
-    dpiScale = (displayScale > 0.0f) ? displayScale : 1.0f;
-    GAMEENGINE_INFO(
-        std::format("macOS display content scale: {} {}", dpiScale,
-                    displayScale > 0.0f ? "(detected)" : "(fallback)"));
+  GAMEENGINE_INFO(std::format(
+      "macOS font DPI scale: {:.2f} (logical: {}x{}, pixels: {}x{})",
+      dpiScale, logicalWidth, logicalHeight, pixelWidth, pixelHeight));
 #else
-    // On other platforms, don't apply additional DPI scaling - SDL3 logical
-    // presentation handles it
-    dpiScale = 1.0f;
-    GAMEENGINE_INFO("Non-macOS: Using DPI scale 1.0 (SDL3 logical presentation "
-                    "handles scaling)");
+  GAMEENGINE_INFO("Non-macOS: Using DPI scale 1.0 (SDL3 logical presentation "
+                  "handles scaling)");
 #endif
-  }
 
   // Store DPI scale for use by other managers
   m_dpiScale = dpiScale;
@@ -1562,22 +1592,20 @@ void GameEngine::refreshWindowMetrics(std::string_view reason) {
                                  SDL_GetError()));
   }
 
-  float displayScale = 1.0f;
+  float fontDPIScale = 1.0f;
 #ifdef __APPLE__
-  displayScale = SDL_GetWindowDisplayScale(mp_window.get());
-  if (displayScale <= 0.0f) {
-    displayScale = 1.0f;
-  }
+  fontDPIScale =
+      calculateFontDPIScale(logicalWidth, logicalHeight, pixelWidth,
+                            pixelHeight);
 #endif
 
   GAMEENGINE_INFO(std::format(
-      "{} -> logical: {}x{}, pixels: {}x{}, display scale: {:.2f}",
-      reason, logicalWidth, logicalHeight, pixelWidth, pixelHeight,
-      displayScale));
+      "{} -> logical: {}x{}, pixels: {}x{}, font DPI scale: {:.2f}", reason,
+      logicalWidth, logicalHeight, pixelWidth, pixelHeight, fontDPIScale));
 
   setWindowSize(logicalWidth, logicalHeight);
   setSizeInPixels(pixelWidth, pixelHeight);
-  setDPIScale(displayScale);
+  setDPIScale(fontDPIScale);
   updateDisplayRefreshRate();
 
   if (mp_backgroundSimManager) {
