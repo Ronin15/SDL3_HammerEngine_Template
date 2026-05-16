@@ -141,19 +141,6 @@ void ProjectileManager::prepareForStateTransition()
 }
 
 
-void ProjectileManager::queueProjectileDestroy(size_t projectileIndex)
-{
-    auto& edm = EntityDataManager::Instance();
-    auto& projectileHot = edm.getHotDataByIndex(projectileIndex);
-    projectileHot.transform.velocity = Vector2D(0.0f, 0.0f);
-
-    EntityHandle projHandle = edm.getHandle(projectileIndex);
-    if (projHandle.isValid())
-    {
-        edm.destroyEntity(projHandle);
-    }
-}
-
 void ProjectileManager::embedProjectile(size_t projectileIndex, const Vector2D& impactNormal,
                                         EntityHandle embeddedTarget)
 {
