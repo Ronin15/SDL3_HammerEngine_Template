@@ -642,15 +642,19 @@ BOOST_AUTO_TEST_CASE(AttackBehaviorPressureScaling)
         const float worldSize = std::max(1000.0f, std::sqrt(static_cast<float>(count)) * 120.0f);
         const size_t attackerCount = createAttackPairs(count, worldSize, AttackScenario::Pressure);
         setupWorld(worldSize);
+        const size_t activeCount = verifyActiveTier();
 
         const double medianMs = runBenchmark(attackerCount);
         const double updatesPerSec = (medianMs > 0.0)
             ? (static_cast<double>(attackerCount) / medianMs) * 1000.0
             : 0.0;
 
-        const auto decision = budgetMgr.shouldUseThreading(VoidLight::SystemType::AI, attackerCount);
+        // Attackers are the measured behavior work; active entities are the WorkerBudget workload.
+        const auto decision = budgetMgr.shouldUseThreading(VoidLight::SystemType::AI, activeCount);
         const char* threading = decision.shouldThread ? "multi" : "single";
-        const char* status = (attackerCount == count && medianMs > 0.0) ? "OK" : "FAIL";
+        const char* status = (attackerCount == count && activeCount >= attackerCount && medianMs > 0.0)
+            ? "OK"
+            : "FAIL";
 
         std::cout << std::setw(10) << attackerCount
                   << std::setw(12) << std::fixed << std::setprecision(2) << medianMs
@@ -684,15 +688,19 @@ BOOST_AUTO_TEST_CASE(AttackBehaviorTacticalResetScaling)
         const float worldSize = std::max(1000.0f, std::sqrt(static_cast<float>(count)) * 120.0f);
         const size_t attackerCount = createAttackPairs(count, worldSize, AttackScenario::TacticalReset);
         setupWorld(worldSize);
+        const size_t activeCount = verifyActiveTier();
 
         const double medianMs = runBenchmark(attackerCount);
         const double updatesPerSec = (medianMs > 0.0)
             ? (static_cast<double>(attackerCount) / medianMs) * 1000.0
             : 0.0;
 
-        const auto decision = budgetMgr.shouldUseThreading(VoidLight::SystemType::AI, attackerCount);
+        // Attackers are the measured behavior work; active entities are the WorkerBudget workload.
+        const auto decision = budgetMgr.shouldUseThreading(VoidLight::SystemType::AI, activeCount);
         const char* threading = decision.shouldThread ? "multi" : "single";
-        const char* status = (attackerCount == count && medianMs > 0.0) ? "OK" : "FAIL";
+        const char* status = (attackerCount == count && activeCount >= attackerCount && medianMs > 0.0)
+            ? "OK"
+            : "FAIL";
 
         std::cout << std::setw(10) << attackerCount
                   << std::setw(12) << std::fixed << std::setprecision(2) << medianMs
@@ -724,6 +732,7 @@ BOOST_AUTO_TEST_CASE(AttackBehaviorBurstResolveScaling)
     for (size_t count : attackerCounts) {
         std::vector<double> runTimes;
         runTimes.reserve(3);
+        size_t activeCount = 0;
 
         for (int run = 0; run < 3; ++run) {
             prepareForTest();
@@ -731,6 +740,7 @@ BOOST_AUTO_TEST_CASE(AttackBehaviorBurstResolveScaling)
             const float worldSize = std::max(1000.0f, std::sqrt(static_cast<float>(count)) * 120.0f);
             const size_t attackerCount = createAttackPairs(count, worldSize, AttackScenario::BurstResolve);
             setupWorld(worldSize);
+            activeCount = verifyActiveTier();
 
             runTimes.push_back(runAttackBurstResolveFrame(attackerCount));
             cleanup();
@@ -742,9 +752,10 @@ BOOST_AUTO_TEST_CASE(AttackBehaviorBurstResolveScaling)
             ? (static_cast<double>(count) / medianMs) * 1000.0
             : 0.0;
 
-        const auto decision = budgetMgr.shouldUseThreading(VoidLight::SystemType::AI, count);
+        // Attackers are the measured behavior work; active entities are the WorkerBudget workload.
+        const auto decision = budgetMgr.shouldUseThreading(VoidLight::SystemType::AI, activeCount);
         const char* threading = decision.shouldThread ? "multi" : "single";
-        const char* status = (medianMs > 0.0) ? "OK" : "FAIL";
+        const char* status = (activeCount >= count && medianMs > 0.0) ? "OK" : "FAIL";
 
         std::cout << std::setw(10) << count
                   << std::setw(12) << std::fixed << std::setprecision(2) << medianMs
@@ -776,15 +787,19 @@ BOOST_AUTO_TEST_CASE(AttackBehaviorCadencedResolveScaling)
         const float worldSize = std::max(1000.0f, std::sqrt(static_cast<float>(count)) * 120.0f);
         const size_t attackerCount = createAttackPairs(count, worldSize, AttackScenario::CadencedResolve);
         setupWorld(worldSize);
+        const size_t activeCount = verifyActiveTier();
 
         const double medianMs = runAttackCadencedResolveBenchmark(attackerCount);
         const double updatesPerSec = (medianMs > 0.0)
             ? (static_cast<double>(attackerCount) / medianMs) * 1000.0
             : 0.0;
 
-        const auto decision = budgetMgr.shouldUseThreading(VoidLight::SystemType::AI, attackerCount);
+        // Attackers are the measured behavior work; active entities are the WorkerBudget workload.
+        const auto decision = budgetMgr.shouldUseThreading(VoidLight::SystemType::AI, activeCount);
         const char* threading = decision.shouldThread ? "multi" : "single";
-        const char* status = (medianMs > 0.0) ? "OK" : "FAIL";
+        const char* status = (attackerCount == count && activeCount >= attackerCount && medianMs > 0.0)
+            ? "OK"
+            : "FAIL";
 
         std::cout << std::setw(10) << attackerCount
                   << std::setw(12) << std::fixed << std::setprecision(2) << medianMs
