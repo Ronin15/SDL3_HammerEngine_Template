@@ -229,9 +229,7 @@ void SettingsMenuState::rebuildNavOrder() {
         m_navOrder.emplace_back("settings_autosave_checkbox");
         break;
     case SettingsTab::Controls:
-        for (const auto& s : m_navBacking) {
-            m_navOrder.emplace_back(s);
-        }
+        m_navOrder.insert(m_navOrder.end(), m_navBacking.begin(), m_navBacking.end());
         m_navOrder.emplace_back("settings_ctrl_reset_btn");
         break;
     }

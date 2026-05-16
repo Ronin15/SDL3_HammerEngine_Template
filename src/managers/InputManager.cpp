@@ -253,14 +253,10 @@ void InputManager::refreshCommandState()
 
     m_previousDown = m_currentDown;
     for (size_t i = 0; i < kCommandCount; ++i) {
-        bool down = false;
-        for (const auto& binding : m_bindings[i]) {
-            if (sampleBinding(binding)) {
-                down = true;
-                break;
-            }
-        }
-        m_currentDown[i] = down;
+        m_currentDown[i] = std::any_of(m_bindings[i].begin(), m_bindings[i].end(),
+            [this](const InputBinding& binding) {
+                return sampleBinding(binding);
+            });
     }
 
     // Rebind just finalized this frame: consume the input that captured the
@@ -304,12 +300,11 @@ void InputManager::captureRebind()
     // ESC cancels (keyboard: m_pressedThisFrame is already rising-edge-only).
     // ESC cancels regardless of rebind category so the user always has an out.
     if (!m_pressedThisFrame.empty()) {
-        for (SDL_Scancode sc : m_pressedThisFrame) {
-            if (sc == SDL_SCANCODE_ESCAPE) {
-                INPUT_INFO("Rebind cancelled by ESC");
-                m_rebindCommand = Command::COUNT;
-                return;
-            }
+        if (std::find(m_pressedThisFrame.begin(), m_pressedThisFrame.end(),
+                      SDL_SCANCODE_ESCAPE) != m_pressedThisFrame.end()) {
+            INPUT_INFO("Rebind cancelled by ESC");
+            m_rebindCommand = Command::COUNT;
+            return;
         }
         if (wantKbdMouse) {
             SDL_Scancode captured = m_pressedThisFrame.front();
@@ -475,10 +470,11 @@ std::optional<InputManager::InputBinding>
 InputManager::getBindingForCategory(Command c, DeviceCategory cat) const
 {
     const auto& v = m_bindings[static_cast<size_t>(c)];
-    for (const auto& b : v) {
-        if (categoryOf(b.source) == cat) {
-            return b;
-        }
+    const auto it = std::find_if(v.begin(), v.end(), [cat](const InputBinding& b) {
+        return categoryOf(b.source) == cat;
+    });
+    if (it != v.end()) {
+        return *it;
     }
     return std::nullopt;
 }
@@ -900,10 +896,9 @@ bool InputManager::loadBindingsFromFile(const std::string& path)
     for (size_t i = 0; i < kCommandCount; ++i) {
         auto& current = m_bindings[i];
         auto hasCategory = [&](DeviceCategory cat) {
-            for (const auto& b : current) {
-                if (categoryOf(b.source) == cat) return true;
-            }
-            return false;
+            return std::any_of(current.begin(), current.end(), [cat](const InputBinding& b) {
+                return categoryOf(b.source) == cat;
+            });
         };
         for (const auto& def : defaults[i]) {
             if (!hasCategory(categoryOf(def.source))) {

@@ -14,6 +14,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIConstants.hpp"
 #include "managers/UIManager.hpp"
+#include <algorithm>
 #include <array>
 #include <format>
 #include <string>
@@ -65,13 +66,9 @@ int getHotbarDisplayQuantity(EntityDataManager& edm,
     }
 
     const auto& charData = edm.getCharacterDataByIndex(playerIndex);
-    for (const VoidLight::ResourceHandle equippedHandle : charData.equippedItems)
-    {
-        if (equippedHandle == handle)
-        {
-            ++quantity;
-        }
-    }
+    quantity += static_cast<int>(std::count(charData.equippedItems.begin(),
+                                            charData.equippedItems.end(),
+                                            handle));
 
     return quantity;
 }
