@@ -54,9 +54,13 @@
 
 #define VOIDLIGHT_GRAY 31, 32, 34, 255
 
-float GameEngine::calculateFontDPIScale(int logicalWidth, int logicalHeight,
-                                        int pixelWidth,
-                                        int pixelHeight) const {
+float GameEngine::calculateFontDPIScale(
+#ifdef __APPLE__
+    int logicalWidth, int logicalHeight, int pixelWidth, int pixelHeight
+#else
+    int, int, int, int
+#endif
+) const {
 #ifdef __APPLE__
   SDL_Window *window = mp_window.get();
   if (window) {
@@ -86,11 +90,7 @@ float GameEngine::calculateFontDPIScale(int logicalWidth, int logicalHeight,
 
   return 1.0f;
 #else
-  (void)logicalWidth;
-  (void)logicalHeight;
-  (void)pixelWidth;
-  (void)pixelHeight;
-  return 1.0f;
+    return 1.0f;
 #endif
 }
 

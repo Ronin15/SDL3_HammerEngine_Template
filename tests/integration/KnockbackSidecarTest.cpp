@@ -164,17 +164,6 @@ BOOST_AUTO_TEST_CASE(DestroyDuringKnockbackCleansUpSidecar)
     // Core assertion: knockbackActiveCount must match surviving count
     BOOST_CHECK_EQUAL(edm.knockbackActiveCount(), 67u);
 
-    // Destroyed entities must have no knockback (no stale sparse entries)
-    for (const auto& h : destroyed)
-    {
-        // Entity is gone — getIndex returns SIZE_MAX but we can check the sidecar
-        // directly via a raw edmIdx we recorded before destruction.  Since the
-        // handle is now invalid we instead verify via the sidecar activeCount
-        // already checked above, and additionally confirm no get() returns a
-        // non-null for any surviving-index that overlaps.
-        (void)h; // intentional — the count check above is the primary assertion
-    }
-
     // Surviving entities must still have knockback with correct values
     for (const auto& h : surviving)
     {
@@ -249,7 +238,6 @@ BOOST_AUTO_TEST_CASE(SurvivingEntitiesDecayCorrectlyAfterPartialDestruction)
     auto& sidecar = edm.knockbackSidecar();
     for (int frame = 0; frame < DECAY_FRAMES; ++frame)
     {
-        auto owners = sidecar.owners();
         auto dense  = sidecar.dense();
         for (size_t i = 0; i < dense.size(); ++i)
         {
@@ -259,7 +247,6 @@ BOOST_AUTO_TEST_CASE(SurvivingEntitiesDecayCorrectlyAfterPartialDestruction)
             --kb.framesRemaining;
             // framesRemaining > 0 guaranteed by INITIAL_FRAMES=20, DECAY_FRAMES=8
         }
-        (void)owners;
     }
 
     // Verify all 67 surviving entries decayed correctly

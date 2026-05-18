@@ -16,8 +16,7 @@ thread_local std::mt19937 s_rng{std::random_device{}()};
 thread_local std::uniform_real_distribution<float> s_angleDistribution{0.0f, 2.0f * static_cast<float>(M_PI)};
 thread_local std::uniform_int_distribution<uint64_t> s_delayDistribution{0, 5000};
 
-void updateTimers(BehaviorData& shared, VoidLight::WanderStateData& wander, float deltaTime,
-                  PathData* pathData) {
+void updateTimers(VoidLight::WanderStateData& wander, float deltaTime, PathData* pathData) {
     wander.directionChangeTimer += deltaTime;
     wander.lastDirectionFlip += deltaTime;
     wander.stallTimer += deltaTime;
@@ -30,7 +29,6 @@ void updateTimers(BehaviorData& shared, VoidLight::WanderStateData& wander, floa
             pathData->pathRequestCooldown -= deltaTime;
         }
     }
-    (void)shared;
 }
 
 bool handleStartDelay(BehaviorContext& ctx, VoidLight::WanderStateData& wander) {
@@ -102,8 +100,8 @@ void applyBoundaryAvoidance(VoidLight::WanderStateData& wander, const Vector2D& 
     }
 }
 
-void handlePathfinding(const BehaviorContext& ctx, const VoidLight::WanderStateData& wander,
-                       const Vector2D& dest, const VoidLight::WanderBehaviorConfig& config) {
+void handlePathfinding(const BehaviorContext& ctx, const Vector2D& dest,
+                       const VoidLight::WanderBehaviorConfig& config) {
     Vector2D position = ctx.transform.position;
     float distanceToGoalSq = (dest - position).lengthSquared();
     if (distanceToGoalSq < 64.0f * 64.0f || !ctx.pathData) return;
@@ -136,7 +134,6 @@ void handlePathfinding(const BehaviorContext& ctx, const VoidLight::WanderStateD
             pathData.pathRequestCooldown = config.pathRequestCooldown;
         }
     }
-    (void)wander;
 }
 
 void chooseNewDirection(BehaviorContext& ctx, VoidLight::WanderStateData& wander,
@@ -179,7 +176,7 @@ void handleMovement(BehaviorContext& ctx, VoidLight::WanderStateData& wander,
         dest.setY(std::clamp(dest.getY(), minY, maxY));
     }
 
-    handlePathfinding(ctx, wander, dest, config);
+    handlePathfinding(ctx, dest, config);
 
     if (!ctx.pathData) {
         ctx.transform.velocity = wander.currentDirection * shared.moveSpeed;
@@ -329,7 +326,7 @@ void executeWander(BehaviorContext& ctx, const VoidLight::WanderBehaviorConfig& 
         return;
     }
 
-    updateTimers(shared, state, ctx.deltaTime, ctx.pathData);
+    updateTimers(state, ctx.deltaTime, ctx.pathData);
 
     if (!handleStartDelay(ctx, state)) return;
 

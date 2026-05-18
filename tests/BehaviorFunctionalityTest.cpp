@@ -470,19 +470,12 @@ BOOST_AUTO_TEST_CASE(TestKnockbackOverridesChaseMovement) {
     // Decay factor is Knockback::DECAY = 0.7 per frame.
     // Frame-2 impulse = 60 * 0.7 = 42 (or clamped equivalent); net X may go negative
     // as chase resumes, but the decayed impulse reduces the magnitude vs frame-1.
-    const float frame2StartX = target->getPosition().getX();
     updateAI(0.016f, attacker->getPosition());
 
     const float frame2VelocityX = target->getVelocity().getX();
-    const float frame2X = target->getPosition().getX();
 
     // Decayed impulse on frame 2 must have smaller magnitude than the clamped frame-1 kick.
     BOOST_CHECK_LT(std::abs(frame2VelocityX), postHitVelocityX);
-
-    // Position must still have advanced rightward on frame 1 (already checked above);
-    // frame 2 position advances in direction of the blended velocity.
-    (void)frame2StartX;
-    (void)frame2X;
 
     AIManager::Instance().unassignBehavior(targetHandle);
 }

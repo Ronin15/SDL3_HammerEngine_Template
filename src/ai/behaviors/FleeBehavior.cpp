@@ -111,7 +111,7 @@ Vector2D calculateFleeDirection(const Vector2D& entityPos, const Vector2D& threa
     return normalizeVector(fleeDir);
 }
 
-float calculateFleeSpeedModifier(const BehaviorData& shared, const VoidLight::FleeStateData& flee,
+float calculateFleeSpeedModifier(const VoidLight::FleeStateData& flee,
                                  const VoidLight::FleeBehaviorConfig& config) {
     float modifier = 1.0f;
 
@@ -123,7 +123,6 @@ float calculateFleeSpeedModifier(const BehaviorData& shared, const VoidLight::Fl
         modifier *= (0.3f + 0.7f * staminaRatio);
     }
 
-    (void)shared;
     return modifier;
 }
 
@@ -219,7 +218,7 @@ void updatePanicFlee(BehaviorContext& ctx, VoidLight::FleeStateData& flee,
         flee.directionChangeTimer = 0.0f;
     }
 
-    float speedModifier = calculateFleeSpeedModifier(shared, flee, config);
+    float speedModifier = calculateFleeSpeedModifier(flee, config);
     ctx.transform.velocity = flee.fleeDirection * shared.moveSpeed * config.baseFleeSpeedMultiplier * speedModifier;
 }
 
@@ -251,7 +250,7 @@ void updateStrategicRetreat(BehaviorContext& ctx, VoidLight::FleeStateData& flee
     Vector2D dest = PathfinderManager::Instance().clampToWorldBounds(
         currentPos + flee.fleeDirection * retreatDistance, 100.0f);
 
-    float speedModifier = calculateFleeSpeedModifier(shared, flee, config) * config.strategicSpeedMultiplier;
+    float speedModifier = calculateFleeSpeedModifier(flee, config) * config.strategicSpeedMultiplier;
     if (!tryFollowPathToGoal(ctx, flee, dest, shared.moveSpeed * config.baseFleeSpeedMultiplier * speedModifier, config)) {
         ctx.transform.velocity = flee.fleeDirection * shared.moveSpeed * config.baseFleeSpeedMultiplier * speedModifier;
     }
@@ -280,7 +279,7 @@ void updateEvasiveManeuver(BehaviorContext& ctx, VoidLight::FleeStateData& flee,
 
     flee.fleeDirection = normalizeVector(zigzagDir);
 
-    float speedModifier = calculateFleeSpeedModifier(shared, flee, config);
+    float speedModifier = calculateFleeSpeedModifier(flee, config);
     ctx.transform.velocity = flee.fleeDirection * shared.moveSpeed * config.baseFleeSpeedMultiplier * speedModifier;
 }
 
@@ -312,7 +311,7 @@ void updateSeekCover(BehaviorContext& ctx, VoidLight::FleeStateData& flee,
     Vector2D dest = PathfinderManager::Instance().clampToWorldBounds(
         currentPos + flee.fleeDirection * coverDistance, 100.0f);
 
-    float speedModifier = calculateFleeSpeedModifier(shared, flee, config);
+    float speedModifier = calculateFleeSpeedModifier(flee, config);
     if (!tryFollowPathToGoal(ctx, flee, dest, shared.moveSpeed * config.baseFleeSpeedMultiplier * speedModifier, config)) {
         ctx.transform.velocity = flee.fleeDirection * shared.moveSpeed * config.baseFleeSpeedMultiplier * speedModifier;
     }
