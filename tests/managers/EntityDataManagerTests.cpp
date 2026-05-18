@@ -1465,6 +1465,66 @@ BOOST_AUTO_TEST_CASE(TestCharacterEquipmentRecalculatesCachedStats) {
     BOOST_CHECK_EQUAL(edm->getInventoryQuantity(inventory, ironSword), 1);
 }
 
+BOOST_AUTO_TEST_CASE(TestInventoryTransferMovesFullQuantityAtomically) {
+    const auto ironSword = ResourceTemplateManager::Instance().getHandleById("iron_sword");
+    BOOST_REQUIRE(ironSword.isValid());
+
+    const uint32_t sourceInventory = edm->createInventory(2, false);
+    const uint32_t targetInventory = edm->createInventory(2, false);
+    BOOST_REQUIRE_NE(sourceInventory, INVALID_INVENTORY_INDEX);
+    BOOST_REQUIRE_NE(targetInventory, INVALID_INVENTORY_INDEX);
+    BOOST_REQUIRE(edm->addToInventory(sourceInventory, ironSword, 1));
+
+    const auto transfer =
+        edm->transferInventoryItem(sourceInventory, targetInventory, ironSword, 1);
+    BOOST_REQUIRE(transfer.has_value());
+
+    BOOST_CHECK_EQUAL(transfer->sourceChange.oldQuantity, 1);
+    BOOST_CHECK_EQUAL(transfer->sourceChange.newQuantity, 0);
+    BOOST_CHECK_EQUAL(transfer->targetChange.oldQuantity, 0);
+    BOOST_CHECK_EQUAL(transfer->targetChange.newQuantity, 1);
+    BOOST_CHECK_EQUAL(edm->getInventoryQuantity(sourceInventory, ironSword), 0);
+    BOOST_CHECK_EQUAL(edm->getInventoryQuantity(targetInventory, ironSword), 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestInventoryTransferRejectsFullTargetWithoutMutation) {
+    const auto ironSword = ResourceTemplateManager::Instance().getHandleById("iron_sword");
+    const auto ironArmor = ResourceTemplateManager::Instance().getHandleById("iron_armor");
+    BOOST_REQUIRE(ironSword.isValid());
+    BOOST_REQUIRE(ironArmor.isValid());
+
+    const uint32_t sourceInventory = edm->createInventory(2, false);
+    const uint32_t targetInventory = edm->createInventory(1, false);
+    BOOST_REQUIRE_NE(sourceInventory, INVALID_INVENTORY_INDEX);
+    BOOST_REQUIRE_NE(targetInventory, INVALID_INVENTORY_INDEX);
+    BOOST_REQUIRE(edm->addToInventory(sourceInventory, ironSword, 1));
+    BOOST_REQUIRE(edm->addToInventory(targetInventory, ironArmor, 1));
+
+    const auto transfer =
+        edm->transferInventoryItem(sourceInventory, targetInventory, ironSword, 1);
+    BOOST_CHECK(!transfer.has_value());
+    BOOST_CHECK_EQUAL(edm->getInventoryQuantity(sourceInventory, ironSword), 1);
+    BOOST_CHECK_EQUAL(edm->getInventoryQuantity(targetInventory, ironSword), 0);
+    BOOST_CHECK_EQUAL(edm->getInventoryQuantity(targetInventory, ironArmor), 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestInventoryTransferRejectsSourceShortageWithoutMutation) {
+    const auto ironSword = ResourceTemplateManager::Instance().getHandleById("iron_sword");
+    BOOST_REQUIRE(ironSword.isValid());
+
+    const uint32_t sourceInventory = edm->createInventory(2, false);
+    const uint32_t targetInventory = edm->createInventory(2, false);
+    BOOST_REQUIRE_NE(sourceInventory, INVALID_INVENTORY_INDEX);
+    BOOST_REQUIRE_NE(targetInventory, INVALID_INVENTORY_INDEX);
+    BOOST_REQUIRE(edm->addToInventory(sourceInventory, ironSword, 1));
+
+    const auto transfer =
+        edm->transferInventoryItem(sourceInventory, targetInventory, ironSword, 2);
+    BOOST_CHECK(!transfer.has_value());
+    BOOST_CHECK_EQUAL(edm->getInventoryQuantity(sourceInventory, ironSword), 1);
+    BOOST_CHECK_EQUAL(edm->getInventoryQuantity(targetInventory, ironSword), 0);
+}
+
 BOOST_AUTO_TEST_CASE(TestRangedWeaponConsumesCompatibleAmmunition) {
     EntityHandle player = edm->registerPlayer(40004, Vector2D(10.0f, 10.0f));
     BOOST_REQUIRE(player.isValid());

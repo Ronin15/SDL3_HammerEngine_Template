@@ -35,9 +35,11 @@
 #include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include "managers/ProjectileManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "core/WorkerBudget.hpp"
 #include "utils/Camera.hpp"
 #include "world/WorldData.hpp"
+#include <array>
 #include <cmath>
 #include <format>
 
@@ -88,6 +90,7 @@ bool GamePlayState::enter() {
     Vector2D const screenCenter(gameEngine.getWidthInPixels() / 2.0,
                                 gameEngine.getHeightInPixels() / 2.0);
     mp_Player->setPosition(screenCenter);
+    spawnStarterGearChest();
 
     // Set player handle in AIManager for collision culling reference point
     AIManager::Instance().setPlayerHandle(mp_Player->getHandle());
@@ -712,7 +715,8 @@ void GamePlayState::handleInput() {
   if (inputMgr.isCommandPressed(InputManager::Command::Interact) && mp_Player) {
     if (!tryOpenNearbyMerchantTrade()) {
       auto& inventoryCtrl = *m_controllers.get<InventoryController>();
-      if (!inventoryCtrl.attemptPickup()) {
+      if (!inventoryCtrl.tryOpenNearbyContainer() &&
+          !inventoryCtrl.attemptPickup()) {
         auto& harvestCtrl = *m_controllers.get<HarvestController>();
         harvestCtrl.startHarvest();
       }
@@ -765,6 +769,43 @@ void GamePlayState::handleInput() {
                         tileX, tileY, static_cast<int>(*biome),
                         static_cast<int>(*obstacleType)));
       }
+    }
+  }
+}
+
+void GamePlayState::spawnStarterGearChest() {
+  if (!mp_Player) {
+    return;
+  }
+
+  auto& edm = EntityDataManager::Instance();
+  auto& resourceManager = ResourceTemplateManager::Instance();
+  const Vector2D chestPosition = mp_Player->getPosition() + Vector2D(72.0f, 0.0f);
+  const EntityHandle chest =
+      edm.createContainer(chestPosition, ContainerType::Chest, 12, 0);
+  if (!chest.isValid()) {
+    GAMEPLAY_WARN("Failed to create starter gear chest");
+    return;
+  }
+
+  auto& container = edm.getContainerData(chest);
+  constexpr std::array<std::string_view, 6> starterGearIds{
+      "wooden_sword",
+      "wooden_shield",
+      "old_shirt",
+      "old_pants",
+      "worn_boots",
+      "cloth_gloves"};
+
+  for (std::string_view gearId : starterGearIds) {
+    const auto handle = resourceManager.getHandleById(std::string(gearId));
+    if (!handle.isValid()) {
+      GAMEPLAY_WARN(std::format("Starter gear '{}' not found", gearId));
+      continue;
+    }
+
+    if (!edm.addToInventory(container.inventoryIndex, handle, 1)) {
+      GAMEPLAY_WARN(std::format("Failed to add starter gear '{}' to chest", gearId));
     }
   }
 }

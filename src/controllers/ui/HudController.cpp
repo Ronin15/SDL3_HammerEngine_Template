@@ -31,6 +31,7 @@ constexpr int HOTBAR_ICON_SIZE = HOTBAR_SLOT_SIZE - (HOTBAR_ICON_INSET * 2);
 constexpr int HOTBAR_COUNT_HEIGHT = 16;
 constexpr int HOTBAR_COUNT_BOTTOM_OFFSET = HOTBAR_BOTTOM_OFFSET + 7;
 constexpr std::string_view HOTBAR_ATLAS_TEXTURE_ID = "atlas";
+constexpr std::string_view FALLBACK_RESOURCE_TEXTURE_ID = "default";
 
 constexpr int HOTBAR_TOTAL_WIDTH =
     static_cast<int>(HudController::HOTBAR_SLOT_COUNT) * HOTBAR_SLOT_SIZE +
@@ -71,6 +72,41 @@ int getHotbarDisplayQuantity(EntityDataManager& edm,
                                             handle));
 
     return quantity;
+}
+
+void clearResourceIcon(UIManager& ui, const std::string& componentId)
+{
+    ui.setTexture(componentId, "");
+    ui.clearImageSourceRect(componentId);
+}
+
+void setResourceIcon(UIManager& ui, const std::string& componentId,
+                     const ResourcePtr& resourceTemplate)
+{
+    if (!resourceTemplate)
+    {
+        clearResourceIcon(ui, componentId);
+        return;
+    }
+
+    if (resourceTemplate->getAtlasW() > 0 && resourceTemplate->getAtlasH() > 0)
+    {
+        ui.setTexture(componentId, std::string(HOTBAR_ATLAS_TEXTURE_ID));
+        ui.setImageSourceRect(
+            componentId,
+            UIRect{resourceTemplate->getAtlasX(), resourceTemplate->getAtlasY(),
+                   resourceTemplate->getAtlasW(), resourceTemplate->getAtlasH()});
+        return;
+    }
+
+    const std::string& iconTextureId = !resourceTemplate->getIconTextureId().empty()
+        ? resourceTemplate->getIconTextureId()
+        : resourceTemplate->getWorldTextureId();
+    ui.setTexture(componentId,
+                  iconTextureId.empty()
+                      ? std::string(FALLBACK_RESOURCE_TEXTURE_ID)
+                      : iconTextureId);
+    ui.clearImageSourceRect(componentId);
 }
 
 } // namespace
@@ -502,27 +538,13 @@ void HudController::refreshHotbarUI()
 
         if (!handle.isValid())
         {
-            ui.setTexture(iconComponentId, "");
-            ui.setImageSourceRect(iconComponentId, UIRect{});
+            clearResourceIcon(ui, iconComponentId);
             ui.setText(countComponentId, "");
             continue;
         }
 
         auto resourceTemplate = rtm.getResourceTemplate(handle);
-        if (resourceTemplate && resourceTemplate->getAtlasW() > 0 &&
-            resourceTemplate->getAtlasH() > 0)
-        {
-            ui.setTexture(iconComponentId, std::string(HOTBAR_ATLAS_TEXTURE_ID));
-            ui.setImageSourceRect(
-                iconComponentId,
-                UIRect{resourceTemplate->getAtlasX(), resourceTemplate->getAtlasY(),
-                       resourceTemplate->getAtlasW(), resourceTemplate->getAtlasH()});
-        }
-        else
-        {
-            ui.setTexture(iconComponentId, "");
-            ui.setImageSourceRect(iconComponentId, UIRect{});
-        }
+        setResourceIcon(ui, iconComponentId, resourceTemplate);
 
         const int quantity =
             getHotbarDisplayQuantity(edm, player, inventoryIndex, handle);

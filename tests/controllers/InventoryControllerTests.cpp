@@ -27,7 +27,9 @@
 #include "../events/EventManagerTestAccess.hpp"
 #include <atomic>
 #include <cstdlib>
+#include <initializer_list>
 #include <memory>
+#include <string_view>
 
 // ============================================================================
 // Test Fixture
@@ -86,6 +88,26 @@ size_t findInventorySlotFor(const std::shared_ptr<Player>& player,
     }
 
     return SIZE_MAX;
+}
+
+EntityHandle createChestWithContents(
+    const std::shared_ptr<Player>& player,
+    std::initializer_list<std::string_view> resourceIds) {
+    auto& edm = EntityDataManager::Instance();
+    EntityHandle chest = edm.createContainer(
+        player->getPosition(), ContainerType::Chest, 12, 0, "test_world");
+    BOOST_REQUIRE(chest.isValid());
+
+    const uint32_t inventoryIndex = edm.getContainerData(chest).inventoryIndex;
+    BOOST_REQUIRE_NE(inventoryIndex, INVALID_INVENTORY_INDEX);
+    for (std::string_view resourceId : resourceIds) {
+        const auto handle =
+            ResourceTemplateManager::Instance().getHandleById(std::string(resourceId));
+        BOOST_REQUIRE_MESSAGE(handle.isValid(), "Missing test resource");
+        BOOST_REQUIRE(edm.addToInventory(inventoryIndex, handle, 1));
+    }
+
+    return chest;
 }
 
 } // namespace
@@ -347,6 +369,170 @@ BOOST_AUTO_TEST_CASE(TestWeaponInventoryClickStartsHotbarAssignmentInsteadOfEqui
     BOOST_CHECK_EQUAL(
         EntityDataManager::Instance().getInventoryQuantity(player->getInventoryIndex(), daggerHandle),
         1);
+}
+
+BOOST_AUTO_TEST_CASE(TestOpenNearbyContainerShowsFallbackIcon) {
+    const auto oldShirt = getResourceHandleById("old_shirt");
+    BOOST_REQUIRE(oldShirt.isValid());
+    createChestWithContents(player, {"old_shirt"});
+
+    InventoryController controller(player);
+    controller.initializeInventoryUI();
+
+    auto& ui = UIManager::Instance();
+    BOOST_REQUIRE(controller.tryOpenNearbyContainer());
+
+    BOOST_CHECK_EQUAL(ui.getText("container_status"), "Chest: 1/12");
+    BOOST_CHECK_EQUAL(ui.getTexture("container_icon_0"), "default");
+    BOOST_CHECK(sameRect(ui.getImageSourceRect("container_icon_0"), UIRect{}));
+}
+
+BOOST_AUTO_TEST_CASE(TestOpenNearbyContainerUsesExplicitNonAtlasIconTexture) {
+    const auto bow = getResourceHandleById("bow");
+    BOOST_REQUIRE(bow.isValid());
+    createChestWithContents(player, {"bow"});
+
+    InventoryController controller(player);
+    controller.initializeInventoryUI();
+
+    auto& ui = UIManager::Instance();
+    BOOST_REQUIRE(controller.tryOpenNearbyContainer());
+
+    BOOST_CHECK_EQUAL(ui.getText("container_status"), "Chest: 1/12");
+    BOOST_CHECK_EQUAL(ui.getTexture("container_icon_0"), "bow_icon");
+    BOOST_CHECK(sameRect(ui.getImageSourceRect("container_icon_0"), UIRect{}));
+}
+
+BOOST_AUTO_TEST_CASE(TestLootAllMovesContainerContentsToPlayerInventory) {
+    const auto oldShirt = getResourceHandleById("old_shirt");
+    const auto oldPants = getResourceHandleById("old_pants");
+    BOOST_REQUIRE(oldShirt.isValid());
+    BOOST_REQUIRE(oldPants.isValid());
+    const EntityHandle chest = createChestWithContents(player, {"old_shirt", "old_pants"});
+    auto& edm = EntityDataManager::Instance();
+    const uint32_t chestInventory = edm.getContainerData(chest).inventoryIndex;
+
+    InventoryController controller(player);
+    controller.initializeInventoryUI();
+    BOOST_REQUIRE(controller.tryOpenNearbyContainer());
+
+    auto& ui = UIManager::Instance();
+    ui.simulateClick("container_loot_all");
+    ui.update(0.016f);
+
+    BOOST_CHECK_EQUAL(player->getInventoryQuantity(oldShirt), 1);
+    BOOST_CHECK_EQUAL(player->getInventoryQuantity(oldPants), 1);
+    BOOST_CHECK_EQUAL(edm.getInventoryData(chestInventory).usedSlots, 0);
+    BOOST_CHECK(edm.getContainerData(chest).isOpen());
+    BOOST_CHECK(edm.getContainerData(chest).wasLooted());
+}
+
+BOOST_AUTO_TEST_CASE(TestContainerDragToInventoryTransfersStack) {
+    const auto woodenShield = getResourceHandleById("wooden_shield");
+    BOOST_REQUIRE(woodenShield.isValid());
+    const EntityHandle chest = createChestWithContents(player, {"wooden_shield"});
+    auto& edm = EntityDataManager::Instance();
+    const uint32_t chestInventory = edm.getContainerData(chest).inventoryIndex;
+
+    auto& ui = UIManager::Instance();
+    ui.onWindowResize(1280, 720);
+
+    HudController hudController(player);
+    hudController.initializeHotbarUI();
+
+    InventoryController controller(player);
+    controller.initializeInventoryUI();
+    BOOST_REQUIRE(controller.tryOpenNearbyContainer());
+    InputManager::Instance().reset();
+
+    const UIRect sourceBounds = ui.getBounds("container_slot_0");
+    const UIRect targetBounds = ui.getBounds("inventory_slot_4");
+
+    setLeftMouseDownAt(sourceBounds, true);
+    controller.handleHotbarAssignmentInput(hudController);
+
+    moveMouseTo(targetBounds);
+    controller.handleHotbarAssignmentInput(hudController);
+
+    setLeftMouseDownAt(targetBounds, false);
+    controller.handleHotbarAssignmentInput(hudController);
+
+    BOOST_CHECK_EQUAL(player->getInventoryQuantity(woodenShield), 1);
+    BOOST_CHECK_EQUAL(edm.getInventoryQuantity(chestInventory, woodenShield), 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestContainerDragToHotbarTransfersThenAssigns) {
+    const auto woodenSword = getResourceHandleById("wooden_sword");
+    BOOST_REQUIRE(woodenSword.isValid());
+    const EntityHandle chest = createChestWithContents(player, {"wooden_sword"});
+    auto& edm = EntityDataManager::Instance();
+    const uint32_t chestInventory = edm.getContainerData(chest).inventoryIndex;
+
+    auto& ui = UIManager::Instance();
+    ui.onWindowResize(1280, 720);
+
+    HudController hudController(player);
+    hudController.initializeHotbarUI();
+
+    InventoryController controller(player);
+    controller.initializeInventoryUI();
+    BOOST_REQUIRE(controller.tryOpenNearbyContainer());
+    InputManager::Instance().reset();
+
+    const UIRect sourceBounds = ui.getBounds("container_slot_0");
+    const UIRect targetBounds = ui.getBounds(HudController::hotbarSlotId(0));
+
+    setLeftMouseDownAt(sourceBounds, true);
+    controller.handleHotbarAssignmentInput(hudController);
+
+    moveMouseTo(targetBounds);
+    controller.handleHotbarAssignmentInput(hudController);
+
+    setLeftMouseDownAt(targetBounds, false);
+    controller.handleHotbarAssignmentInput(hudController);
+
+    BOOST_CHECK(hudController.getHotbarItem(0) == woodenSword);
+    BOOST_CHECK_EQUAL(player->getInventoryQuantity(woodenSword), 1);
+    BOOST_CHECK_EQUAL(edm.getInventoryQuantity(chestInventory, woodenSword), 0);
+    BOOST_CHECK_EQUAL(ui.getTexture("hotbar_icon_0"), "default");
+}
+
+BOOST_AUTO_TEST_CASE(TestInventoryDragToContainerStoresStack) {
+    const auto oldShirt = getResourceHandleById("old_shirt");
+    BOOST_REQUIRE(oldShirt.isValid());
+    BOOST_REQUIRE(player->addToInventory(oldShirt, 1));
+    const EntityHandle chest = createChestWithContents(player, {});
+    auto& edm = EntityDataManager::Instance();
+    const uint32_t chestInventory = edm.getContainerData(chest).inventoryIndex;
+
+    auto& ui = UIManager::Instance();
+    ui.onWindowResize(1280, 720);
+
+    HudController hudController(player);
+    hudController.initializeHotbarUI();
+
+    InventoryController controller(player);
+    controller.initializeInventoryUI();
+    BOOST_REQUIRE(controller.tryOpenNearbyContainer());
+    InputManager::Instance().reset();
+
+    const size_t oldShirtSlot = findInventorySlotFor(player, oldShirt);
+    BOOST_REQUIRE_NE(oldShirtSlot, SIZE_MAX);
+    const UIRect sourceBounds =
+        ui.getBounds("inventory_slot_" + std::to_string(oldShirtSlot));
+    const UIRect targetBounds = ui.getBounds("container_slot_0");
+
+    setLeftMouseDownAt(sourceBounds, true);
+    controller.handleHotbarAssignmentInput(hudController);
+
+    moveMouseTo(targetBounds);
+    controller.handleHotbarAssignmentInput(hudController);
+
+    setLeftMouseDownAt(targetBounds, false);
+    controller.handleHotbarAssignmentInput(hudController);
+
+    BOOST_CHECK_EQUAL(player->getInventoryQuantity(oldShirt), 0);
+    BOOST_CHECK_EQUAL(edm.getInventoryQuantity(chestInventory, oldShirt), 1);
 }
 
 BOOST_AUTO_TEST_CASE(TestAmmunitionIsNotConsumableOrManuallyConsumed) {

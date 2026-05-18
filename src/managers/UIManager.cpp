@@ -680,6 +680,14 @@ void UIManager::setImageSourceRect(const std::string &id,
   }
 }
 
+void UIManager::clearImageSourceRect(const std::string &id) {
+  auto component = getComponent(id);
+  if (component) {
+    component->m_imageSourceRect = UIRect{};
+    component->m_useImageSourceRect = false;
+  }
+}
+
 void UIManager::setValue(const std::string &id, float value) {
   // Performance optimization: Check cache first to avoid mutex lock + hash lookup when value unchanged
   auto cacheIt = m_valueCache.find(id);

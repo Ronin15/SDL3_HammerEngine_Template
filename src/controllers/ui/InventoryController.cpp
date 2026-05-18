@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <functional>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -37,7 +39,7 @@ constexpr int INVENTORY_GRID_WIDTH =
 constexpr int INVENTORY_GRID_HEIGHT =
     (INVENTORY_GRID_ROWS * INVENTORY_SLOT_SIZE) +
     ((INVENTORY_GRID_ROWS - 1) * INVENTORY_SLOT_GAP);
-constexpr int INVENTORY_PANEL_WIDTH = 740;
+constexpr int INVENTORY_PANEL_WIDTH = 1040;
 constexpr int INVENTORY_CHILD_INSET = 10;
 constexpr int INVENTORY_HEADER_HEIGHT = 130;
 constexpr int INVENTORY_BOTTOM_PADDING = 15;
@@ -69,8 +71,33 @@ constexpr int GEAR_LABEL_HEIGHT = GEAR_SLOT_HEIGHT - GEAR_LABEL_VERTICAL_PADDING
 constexpr int GEAR_LIST_HEIGHT =
     (static_cast<int>(Equipment::EquipmentSlot::COUNT) * GEAR_SLOT_HEIGHT) +
     ((static_cast<int>(Equipment::EquipmentSlot::COUNT) - 1) * GEAR_SLOT_GAP);
+constexpr int CONTAINER_SECTION_X = 750;
+constexpr int CONTAINER_SECTION_WIDTH = 280;
+constexpr int CONTAINER_GRID_COLUMNS = 4;
+constexpr int CONTAINER_GRID_ROWS = 3;
+constexpr int CONTAINER_SLOT_COUNT = CONTAINER_GRID_COLUMNS * CONTAINER_GRID_ROWS;
+constexpr int CONTAINER_SLOT_SIZE = INVENTORY_SLOT_SIZE;
+constexpr int CONTAINER_SLOT_GAP = INVENTORY_SLOT_GAP;
+constexpr int CONTAINER_ICON_INSET = INVENTORY_ICON_INSET;
+constexpr int CONTAINER_ICON_SIZE = INVENTORY_ICON_SIZE;
+constexpr int CONTAINER_GRID_WIDTH =
+    (CONTAINER_GRID_COLUMNS * CONTAINER_SLOT_SIZE) +
+    ((CONTAINER_GRID_COLUMNS - 1) * CONTAINER_SLOT_GAP);
+constexpr int CONTAINER_GRID_HEIGHT =
+    (CONTAINER_GRID_ROWS * CONTAINER_SLOT_SIZE) +
+    ((CONTAINER_GRID_ROWS - 1) * CONTAINER_SLOT_GAP);
+constexpr int CONTAINER_STATUS_Y = INVENTORY_STATUS_Y;
+constexpr int CONTAINER_STATUS_HEIGHT = INVENTORY_STATUS_HEIGHT;
+constexpr int CONTAINER_LOOT_ALL_Y =
+    INVENTORY_CONTENT_Y + CONTAINER_GRID_HEIGHT + 18;
+constexpr int CONTAINER_LOOT_ALL_WIDTH = UIConstants::DEFAULT_BUTTON_WIDTH;
+constexpr int CONTAINER_LOOT_ALL_HEIGHT = UIConstants::DEFAULT_BUTTON_HEIGHT;
 constexpr std::string_view INVENTORY_ATLAS_TEXTURE_ID = "atlas";
-constexpr const char* HOTBAR_DRAG_GHOST_ID = "inventory_hotbar_drag_ghost";
+constexpr std::string_view FALLBACK_RESOURCE_TEXTURE_ID = "default";
+const std::string HOTBAR_DRAG_GHOST_ID{"inventory_hotbar_drag_ghost"};
+const std::string CONTAINER_HEADER_ID{"container_tab_items"};
+const std::string CONTAINER_STATUS_ID{"container_status"};
+const std::string CONTAINER_LOOT_ALL_ID{"container_loot_all"};
 constexpr int HOTBAR_DRAG_GHOST_SIZE = 40;
 
 constexpr int centerOffset(int position, int size, int containerHalfSize) {
@@ -79,6 +106,37 @@ constexpr int centerOffset(int position, int size, int containerHalfSize) {
 
 const auto& gearSlots() {
     return Equipment::equipmentSlotDefinitions();
+}
+
+void clearResourceIcon(UIManager& ui, const std::string& componentId) {
+    ui.setTexture(componentId, "");
+    ui.clearImageSourceRect(componentId);
+}
+
+void setResourceIcon(UIManager& ui, const std::string& componentId,
+                     const ResourcePtr& resourceTemplate) {
+    if (!resourceTemplate) {
+        clearResourceIcon(ui, componentId);
+        return;
+    }
+
+    if (resourceTemplate->getAtlasW() > 0 && resourceTemplate->getAtlasH() > 0) {
+        ui.setTexture(componentId, std::string(INVENTORY_ATLAS_TEXTURE_ID));
+        ui.setImageSourceRect(
+            componentId,
+            UIRect{resourceTemplate->getAtlasX(), resourceTemplate->getAtlasY(),
+                   resourceTemplate->getAtlasW(), resourceTemplate->getAtlasH()});
+        return;
+    }
+
+    const std::string& iconTextureId = !resourceTemplate->getIconTextureId().empty()
+        ? resourceTemplate->getIconTextureId()
+        : resourceTemplate->getWorldTextureId();
+    ui.setTexture(componentId,
+                  iconTextureId.empty()
+                      ? std::string(FALLBACK_RESOURCE_TEXTURE_ID)
+                      : iconTextureId);
+    ui.clearImageSourceRect(componentId);
 }
 
 } // namespace
@@ -148,6 +206,64 @@ bool InventoryController::attemptPickup() {
 
     INVENTORY_CONTROLLER_INFO(std::format("Picked up {} x{}", itemData.resourceHandle.toString(),
                                           itemData.quantity));
+    return true;
+}
+
+bool InventoryController::tryOpenNearbyContainer() {
+    auto player = mp_player.lock();
+    if (!player) {
+        return false;
+    }
+
+    auto& wrm = WorldResourceManager::Instance();
+    auto& edm = EntityDataManager::Instance();
+    m_nearbyContainerIndices.clear();
+    wrm.queryContainersInRadius(player->getPosition(), PICKUP_RADIUS,
+                                m_nearbyContainerIndices);
+    if (m_nearbyContainerIndices.empty()) {
+        return false;
+    }
+
+    const Vector2D playerPos = player->getPosition();
+    const float radiusSq = PICKUP_RADIUS * PICKUP_RADIUS;
+    size_t closestIndex = SIZE_MAX;
+    float closestDistanceSq = radiusSq;
+    for (size_t staticIndex : m_nearbyContainerIndices) {
+        if (staticIndex >= edm.getStaticHotDataArray().size()) {
+            continue;
+        }
+
+        const auto& hot = edm.getStaticHotDataByIndex(staticIndex);
+        if (!hot.isAlive() || hot.kind != EntityKind::Container) {
+            continue;
+        }
+
+        const Vector2D delta = hot.transform.position - playerPos;
+        const float distanceSq =
+            (delta.getX() * delta.getX()) + (delta.getY() * delta.getY());
+        if (distanceSq <= closestDistanceSq) {
+            closestIndex = staticIndex;
+            closestDistanceSq = distanceSq;
+        }
+    }
+
+    if (closestIndex == SIZE_MAX) {
+        return false;
+    }
+
+    const auto& hot = edm.getStaticHotDataByIndex(closestIndex);
+    auto& container = edm.getContainerData(hot.typeLocalIndex);
+    if (container.isLocked()) {
+        UIManager::Instance().addEventLogEntry(EVENT_LOG_ID, "Chest is locked");
+        return true;
+    }
+
+    closeOpenContainer();
+    container.setOpen(true);
+    m_openContainerStaticIndex = closestIndex;
+    m_openContainerInventoryIndex = container.inventoryIndex;
+    setInventoryVisible(true);
+    refreshContainerUI();
     return true;
 }
 
@@ -381,7 +497,114 @@ void InventoryController::initializeInventoryUI() {
              GEAR_LABEL_WIDTH, GEAR_LABEL_HEIGHT});
     }
 
+    const int containerGridX = CONTAINER_SECTION_X +
+        ((CONTAINER_SECTION_WIDTH - CONTAINER_GRID_WIDTH) / 2);
+    ui.createLabel(CONTAINER_HEADER_ID,
+                   {CONTAINER_SECTION_X, INVENTORY_SECTION_HEADER_Y,
+                    INVENTORY_SECTION_HEADER_WIDTH, INVENTORY_SECTION_HEADER_HEIGHT},
+                   "Container", INVENTORY_PANEL_ID);
+    ui.setStyle(CONTAINER_HEADER_ID, headerStyle);
+    ui.setLabelAlignment(CONTAINER_HEADER_ID, UIAlignment::CENTER_LEFT);
+    ui.enableAutoSizing(CONTAINER_HEADER_ID, false);
+    ui.setComponentPositioning(
+        CONTAINER_HEADER_ID,
+        {UIPositionMode::CENTERED_BOTH,
+         centerOffset(CONTAINER_SECTION_X, INVENTORY_SECTION_HEADER_WIDTH, panelHalfWidth),
+         centerOffset(INVENTORY_SECTION_HEADER_Y, INVENTORY_SECTION_HEADER_HEIGHT, panelHalfHeight),
+         INVENTORY_SECTION_HEADER_WIDTH, INVENTORY_SECTION_HEADER_HEIGHT});
+
+    ui.createLabel(CONTAINER_STATUS_ID,
+                   {CONTAINER_SECTION_X, CONTAINER_STATUS_Y,
+                    CONTAINER_SECTION_WIDTH, CONTAINER_STATUS_HEIGHT},
+                   "", INVENTORY_PANEL_ID);
+    ui.enableAutoSizing(CONTAINER_STATUS_ID, false);
+    ui.setComponentPositioning(
+        CONTAINER_STATUS_ID,
+        {UIPositionMode::CENTERED_BOTH,
+         centerOffset(CONTAINER_SECTION_X, CONTAINER_SECTION_WIDTH, panelHalfWidth),
+         centerOffset(CONTAINER_STATUS_Y, CONTAINER_STATUS_HEIGHT, panelHalfHeight),
+         CONTAINER_SECTION_WIDTH, CONTAINER_STATUS_HEIGHT});
+
+    for (int slot = 0; slot < CONTAINER_SLOT_COUNT; ++slot) {
+        const int col = slot % CONTAINER_GRID_COLUMNS;
+        const int row = slot / CONTAINER_GRID_COLUMNS;
+        const int slotX = containerGridX +
+            col * (CONTAINER_SLOT_SIZE + CONTAINER_SLOT_GAP);
+        const int slotY = INVENTORY_CONTENT_Y +
+            row * (CONTAINER_SLOT_SIZE + CONTAINER_SLOT_GAP);
+
+        const std::string slotComponentId =
+            containerSlotId(static_cast<size_t>(slot));
+        ui.createButton(slotComponentId,
+                        {slotX, slotY, CONTAINER_SLOT_SIZE, CONTAINER_SLOT_SIZE},
+                        "", INVENTORY_PANEL_ID);
+        ui.enableAutoSizing(slotComponentId, false);
+        ui.setStyle(slotComponentId, slotStyle);
+        ui.setComponentPositioning(
+            slotComponentId,
+            {UIPositionMode::CENTERED_BOTH,
+             centerOffset(slotX, CONTAINER_SLOT_SIZE, panelHalfWidth),
+             centerOffset(slotY, CONTAINER_SLOT_SIZE, panelHalfHeight),
+             CONTAINER_SLOT_SIZE, CONTAINER_SLOT_SIZE});
+        ui.setOnClick(slotComponentId, [this, slot]() {
+            handleContainerSlotClicked(static_cast<size_t>(slot));
+        });
+
+        const std::string iconComponentId =
+            containerIconId(static_cast<size_t>(slot));
+        ui.createAtlasImage(
+            iconComponentId,
+            {slotX + CONTAINER_ICON_INSET, slotY + CONTAINER_ICON_INSET,
+             CONTAINER_ICON_SIZE, CONTAINER_ICON_SIZE},
+            "", UIRect{}, slotComponentId);
+        ui.setComponentPositioning(
+            iconComponentId,
+            {UIPositionMode::CENTERED_BOTH,
+             centerOffset(slotX + CONTAINER_ICON_INSET, CONTAINER_ICON_SIZE, panelHalfWidth),
+             centerOffset(slotY + CONTAINER_ICON_INSET, CONTAINER_ICON_SIZE, panelHalfHeight),
+             CONTAINER_ICON_SIZE,
+             CONTAINER_ICON_SIZE});
+
+        const std::string countComponentId =
+            containerCountId(static_cast<size_t>(slot));
+        ui.createLabel(countComponentId,
+                       {slotX + INVENTORY_COUNT_INSET_X,
+                        slotY + CONTAINER_SLOT_SIZE - INVENTORY_COUNT_BOTTOM_INSET,
+                        CONTAINER_SLOT_SIZE - (INVENTORY_COUNT_INSET_X * 2),
+                        INVENTORY_COUNT_HEIGHT},
+                       "", slotComponentId);
+        ui.enableAutoSizing(countComponentId, false);
+        ui.setStyle(countComponentId, countStyle);
+        ui.setComponentPositioning(
+            countComponentId,
+            {UIPositionMode::CENTERED_BOTH,
+             centerOffset(slotX + INVENTORY_COUNT_INSET_X,
+                          CONTAINER_SLOT_SIZE - (INVENTORY_COUNT_INSET_X * 2),
+                          panelHalfWidth),
+             centerOffset(slotY + CONTAINER_SLOT_SIZE - INVENTORY_COUNT_BOTTOM_INSET,
+                          INVENTORY_COUNT_HEIGHT,
+                          panelHalfHeight),
+             CONTAINER_SLOT_SIZE - (INVENTORY_COUNT_INSET_X * 2),
+             INVENTORY_COUNT_HEIGHT});
+    }
+
+    const int lootAllX = CONTAINER_SECTION_X +
+        ((CONTAINER_SECTION_WIDTH - CONTAINER_LOOT_ALL_WIDTH) / 2);
+    ui.createButton(CONTAINER_LOOT_ALL_ID,
+                    {lootAllX, CONTAINER_LOOT_ALL_Y,
+                     CONTAINER_LOOT_ALL_WIDTH, CONTAINER_LOOT_ALL_HEIGHT},
+                    "Loot All", INVENTORY_PANEL_ID);
+    ui.enableAutoSizing(CONTAINER_LOOT_ALL_ID, false);
+    ui.setComponentPositioning(
+        CONTAINER_LOOT_ALL_ID,
+        {UIPositionMode::CENTERED_BOTH,
+         centerOffset(lootAllX, CONTAINER_LOOT_ALL_WIDTH, panelHalfWidth),
+         centerOffset(CONTAINER_LOOT_ALL_Y, CONTAINER_LOOT_ALL_HEIGHT, panelHalfHeight),
+         CONTAINER_LOOT_ALL_WIDTH, CONTAINER_LOOT_ALL_HEIGHT});
+    ui.setOnClick(CONTAINER_LOOT_ALL_ID, [this]() { handleLootAllClicked(); });
+
     m_inventoryUICreated = true;
+    setContainerComponentsVisible(false);
     refreshInventoryUI();
     ui.setComponentVisible(INVENTORY_PANEL_ID, false);
 }
@@ -401,7 +624,7 @@ void InventoryController::refreshInventoryUI() {
     if (invIdx == INVALID_INVENTORY_INDEX) {
         ui.setText(INVENTORY_STATUS_ID, "Capacity: 0/0");
         for (size_t i = 0; i < INVENTORY_SLOT_COUNT; ++i) {
-            refreshSlot(i, nullptr);
+            refreshSlot(i, std::nullopt);
         }
         return;
     }
@@ -439,9 +662,14 @@ void InventoryController::refreshInventoryUI() {
 
     for (size_t i = 0; i < INVENTORY_SLOT_COUNT; ++i) {
         const auto& entry = m_gridEntries[i];
-        refreshSlot(i, entry.handle.isValid() && entry.quantity > 0 ? &entry : nullptr);
+        if (entry.handle.isValid() && entry.quantity > 0) {
+            refreshSlot(i, std::cref(entry));
+        } else {
+            refreshSlot(i, std::nullopt);
+        }
     }
     refreshGearUI();
+    refreshContainerUI();
 }
 
 void InventoryController::toggleInventoryDisplay() {
@@ -452,11 +680,15 @@ void InventoryController::setInventoryVisible(bool visible) {
     m_inventoryVisible = visible;
     UIManager::Instance().setComponentVisible(INVENTORY_PANEL_ID, visible);
     if (!visible) {
+        closeOpenContainer();
         cancelHotbarAssignment();
         m_draggedInventorySourceSlot = -1;
         m_draggedInventoryHandle = VoidLight::ResourceHandle{};
+        m_draggedContainerSourceSlot = -1;
+        m_draggedContainerHandle = VoidLight::ResourceHandle{};
     }
     if (visible) {
+        setContainerComponentsVisible(hasOpenContainer());
         refreshInventoryUI();
     }
 }
@@ -474,7 +706,15 @@ void InventoryController::handleHotbarAssignmentInput(HudController& hudControll
             if (inventorySlot >= 0) {
                 startInventorySlotDrag(static_cast<size_t>(inventorySlot));
                 mousePressHandled = true;
-            } else if (m_pendingHotbarAssignment.isValid()) {
+            } else {
+                const int containerSlot = findContainerSlotAtMouse();
+                if (containerSlot >= 0) {
+                    startContainerSlotDrag(static_cast<size_t>(containerSlot));
+                    mousePressHandled = true;
+                }
+            }
+
+            if (!mousePressHandled && m_pendingHotbarAssignment.isValid()) {
                 const int hotbarSlot = findHotbarSlotAtMouse();
                 if (hotbarSlot >= 0 &&
                     hudController.assignHotbarItem(static_cast<size_t>(hotbarSlot),
@@ -508,16 +748,56 @@ void InventoryController::handleHotbarAssignmentInput(HudController& hudControll
         updateDragGhost(m_draggedHotbarAssignment, true);
     } else if (m_draggedInventoryHandle.isValid() && leftMouseDown) {
         updateDragGhost(m_draggedInventoryHandle, true);
+    } else if (m_draggedContainerHandle.isValid() && leftMouseDown) {
+        updateDragGhost(m_draggedContainerHandle, true);
     }
 
     if (mouseJustReleased) {
         bool completedDrop = false;
         const int releasedInventorySlot = findInventorySlotAtMouse();
-        if (m_draggedInventorySourceSlot >= 0 && m_draggedInventoryHandle.isValid() &&
-            releasedInventorySlot >= 0) {
-            finishInventorySlotDrag();
-            completedDrop = true;
-        } else if (m_draggingHotbarAssignment && m_draggedHotbarAssignment.isValid()) {
+        const int releasedContainerSlot = findContainerSlotAtMouse();
+
+        if (m_draggedContainerSourceSlot >= 0 && m_draggedContainerHandle.isValid()) {
+            if (releasedInventorySlot >= 0) {
+                completedDrop = finishContainerToInventoryTransfer();
+                if (completedDrop) {
+                    UIManager::Instance().addEventLogEntry(
+                        EVENT_LOG_ID,
+                        std::format("Looted {}", displayNameFor(m_draggedContainerHandle)));
+                }
+            } else {
+                const int hotbarSlot = findHotbarSlotAtMouse();
+                if (hotbarSlot >= 0) {
+                    completedDrop = finishContainerToHotbarTransfer(
+                        hudController, static_cast<size_t>(hotbarSlot));
+                    if (completedDrop) {
+                        UIManager::Instance().addEventLogEntry(
+                            EVENT_LOG_ID,
+                            std::format("Assigned {} to hotbar {}",
+                                        displayNameFor(m_draggedContainerHandle),
+                                        hotbarSlot + 1));
+                    }
+                }
+            }
+        }
+
+        if (!completedDrop && m_draggedInventorySourceSlot >= 0 &&
+            m_draggedInventoryHandle.isValid()) {
+            if (releasedContainerSlot >= 0) {
+                completedDrop = finishInventoryToContainerTransfer();
+                if (completedDrop) {
+                    UIManager::Instance().addEventLogEntry(
+                        EVENT_LOG_ID,
+                        std::format("Stored {}", displayNameFor(m_draggedInventoryHandle)));
+                }
+            } else if (releasedInventorySlot >= 0) {
+                finishInventorySlotDrag();
+                completedDrop = true;
+            }
+        }
+
+        if (!completedDrop && m_draggingHotbarAssignment &&
+            m_draggedHotbarAssignment.isValid()) {
             const int hotbarSlot = findHotbarSlotAtMouse();
             if (hotbarSlot >= 0) {
                 const bool hotbarUpdated = m_draggedHotbarSourceSlot >= 0
@@ -547,6 +827,10 @@ void InventoryController::handleHotbarAssignmentInput(HudController& hudControll
             }
         }
 
+        if (completedDrop) {
+            refreshInventoryUI();
+        }
+
         if (m_draggedInventorySourceSlot >= 0 && releasedInventorySlot < 0 && !completedDrop) {
             m_pendingHotbarAssignment = VoidLight::ResourceHandle{};
         }
@@ -556,6 +840,8 @@ void InventoryController::handleHotbarAssignmentInput(HudController& hudControll
         m_draggedHotbarSourceSlot = -1;
         m_draggedInventorySourceSlot = -1;
         m_draggedInventoryHandle = VoidLight::ResourceHandle{};
+        m_draggedContainerSourceSlot = -1;
+        m_draggedContainerHandle = VoidLight::ResourceHandle{};
         updateDragGhost(VoidLight::ResourceHandle{}, false);
     }
 
@@ -595,33 +881,104 @@ void InventoryController::addInventoryEventLogEntry(const VoidLight::ResourceHan
 }
 
 void InventoryController::refreshSlot(size_t slotIndex,
-                                      const InventoryGridEntry* entry) {
+                                      InventoryEntryView entry) {
     auto& ui = UIManager::Instance();
     const std::string iconComponentId = iconId(slotIndex);
     const std::string countComponentId = countId(slotIndex);
 
-    if (!entry) {
-        ui.setTexture(iconComponentId, "");
-        ui.setImageSourceRect(iconComponentId, UIRect{});
+    if (!entry.has_value()) {
+        clearResourceIcon(ui, iconComponentId);
         ui.setText(countComponentId, "");
         return;
     }
 
+    const auto& gridEntry = entry->get();
     auto resourceTemplate =
-        ResourceTemplateManager::Instance().getResourceTemplate(entry->handle);
-    if (!resourceTemplate || resourceTemplate->getAtlasW() <= 0 ||
-        resourceTemplate->getAtlasH() <= 0) {
-        ui.setTexture(iconComponentId, "");
-        ui.setImageSourceRect(iconComponentId, UIRect{});
-    } else {
-        ui.setTexture(iconComponentId, std::string(INVENTORY_ATLAS_TEXTURE_ID));
-        ui.setImageSourceRect(
-            iconComponentId,
-            UIRect{resourceTemplate->getAtlasX(), resourceTemplate->getAtlasY(),
-                   resourceTemplate->getAtlasW(), resourceTemplate->getAtlasH()});
+        ResourceTemplateManager::Instance().getResourceTemplate(gridEntry.handle);
+    setResourceIcon(ui, iconComponentId, resourceTemplate);
+    ui.setText(countComponentId, std::format("{}", gridEntry.quantity));
+}
+
+void InventoryController::refreshContainerUI() {
+    if (!m_inventoryUICreated) {
+        return;
     }
 
-    ui.setText(countComponentId, std::format("{}", entry->quantity));
+    auto& ui = UIManager::Instance();
+    if (!hasOpenContainer()) {
+        setContainerComponentsVisible(false);
+        m_containerEntries.clear();
+        for (size_t i = 0; i < CONTAINER_SLOT_COUNT; ++i) {
+            refreshContainerSlot(i, std::nullopt);
+        }
+        return;
+    }
+
+    auto& edm = EntityDataManager::Instance();
+    if (!edm.isValidInventoryIndex(m_openContainerInventoryIndex)) {
+        closeOpenContainer();
+        return;
+    }
+
+    setContainerComponentsVisible(m_inventoryVisible);
+    const auto& inv = edm.getInventoryData(m_openContainerInventoryIndex);
+    ui.setText(CONTAINER_STATUS_ID,
+               std::format("Chest: {}/{}", inv.usedSlots, inv.maxSlots));
+
+    std::array<InventorySlotData, CONTAINER_SLOT_COUNT> containerSlots{};
+    const size_t copiedSlotCount =
+        edm.getInventorySlots(m_openContainerInventoryIndex, containerSlots);
+
+    m_containerEntries.clear();
+    m_containerEntries.reserve(CONTAINER_SLOT_COUNT);
+
+    for (size_t i = 0; i < CONTAINER_SLOT_COUNT; ++i) {
+        if (i >= copiedSlotCount) {
+            m_containerEntries.push_back({});
+            continue;
+        }
+
+        const InventorySlotData& slot = containerSlots[i];
+        if (slot.isEmpty()) {
+            m_containerEntries.push_back({});
+            continue;
+        }
+
+        auto resourceTemplate =
+            ResourceTemplateManager::Instance().getResourceTemplate(slot.resourceHandle);
+        m_containerEntries.push_back({
+            .name = resourceTemplate ? resourceTemplate->getName() : slot.resourceHandle.toString(),
+            .handle = slot.resourceHandle,
+            .quantity = slot.quantity});
+    }
+
+    for (size_t i = 0; i < CONTAINER_SLOT_COUNT; ++i) {
+        const auto& entry = m_containerEntries[i];
+        if (entry.handle.isValid() && entry.quantity > 0) {
+            refreshContainerSlot(i, std::cref(entry));
+        } else {
+            refreshContainerSlot(i, std::nullopt);
+        }
+    }
+}
+
+void InventoryController::refreshContainerSlot(size_t slotIndex,
+                                               InventoryEntryView entry) {
+    auto& ui = UIManager::Instance();
+    const std::string iconComponentId = containerIconId(slotIndex);
+    const std::string countComponentId = containerCountId(slotIndex);
+
+    if (!entry.has_value()) {
+        clearResourceIcon(ui, iconComponentId);
+        ui.setText(countComponentId, "");
+        return;
+    }
+
+    const auto& gridEntry = entry->get();
+    auto resourceTemplate =
+        ResourceTemplateManager::Instance().getResourceTemplate(gridEntry.handle);
+    setResourceIcon(ui, iconComponentId, resourceTemplate);
+    ui.setText(countComponentId, std::format("{}", gridEntry.quantity));
 }
 
 void InventoryController::refreshGearUI() {
@@ -645,25 +1002,14 @@ void InventoryController::refreshGearSlot(size_t slotIndex) {
         player->getEquippedItem(std::string(slots[slotIndex].id));
 
     if (!equipped.isValid()) {
-        ui.setTexture(iconComponentId, "");
-        ui.setImageSourceRect(iconComponentId, UIRect{});
+        clearResourceIcon(ui, iconComponentId);
         ui.setText(labelComponentId, std::format("{}: Empty", slots[slotIndex].label));
         return;
     }
 
     auto resourceTemplate =
         ResourceTemplateManager::Instance().getResourceTemplate(equipped);
-    if (!resourceTemplate || resourceTemplate->getAtlasW() <= 0 ||
-        resourceTemplate->getAtlasH() <= 0) {
-        ui.setTexture(iconComponentId, "");
-        ui.setImageSourceRect(iconComponentId, UIRect{});
-    } else {
-        ui.setTexture(iconComponentId, std::string(INVENTORY_ATLAS_TEXTURE_ID));
-        ui.setImageSourceRect(
-            iconComponentId,
-            UIRect{resourceTemplate->getAtlasX(), resourceTemplate->getAtlasY(),
-                   resourceTemplate->getAtlasW(), resourceTemplate->getAtlasH()});
-    }
+    setResourceIcon(ui, iconComponentId, resourceTemplate);
 
     ui.setText(labelComponentId,
                std::format("{}: {}", slots[slotIndex].label,
@@ -703,6 +1049,22 @@ void InventoryController::handleInventorySlotClicked(size_t slotIndex) {
         EVENT_LOG_ID, std::format("Equipped {}", displayNameFor(itemHandle)));
 }
 
+void InventoryController::handleContainerSlotClicked(size_t slotIndex) {
+    if (slotIndex >= m_containerEntries.size()) {
+        return;
+    }
+
+    const auto entry = m_containerEntries[slotIndex];
+    if (!entry.handle.isValid() || entry.quantity <= 0 ||
+        !transferContainerItemToPlayer(entry)) {
+        return;
+    }
+
+    refreshInventoryUI();
+    UIManager::Instance().addEventLogEntry(
+        EVENT_LOG_ID, std::format("Looted {}", displayNameFor(entry.handle)));
+}
+
 void InventoryController::handleGearSlotClicked(size_t slotIndex) {
     auto player = mp_player.lock();
     const auto& slots = gearSlots();
@@ -719,6 +1081,15 @@ void InventoryController::handleGearSlotClicked(size_t slotIndex) {
     refreshInventoryUI();
     UIManager::Instance().addEventLogEntry(
         EVENT_LOG_ID, std::format("Unequipped {}", displayNameFor(equipped)));
+}
+
+void InventoryController::handleLootAllClicked() {
+    if (!lootAllFromOpenContainer()) {
+        return;
+    }
+
+    refreshInventoryUI();
+    UIManager::Instance().addEventLogEntry(EVENT_LOG_ID, "Looted chest");
 }
 
 bool InventoryController::startHotbarAssignment(size_t slotIndex) {
@@ -746,6 +1117,8 @@ void InventoryController::cancelHotbarAssignment() {
     m_draggedHotbarSourceSlot = -1;
     m_draggedInventorySourceSlot = -1;
     m_draggedInventoryHandle = VoidLight::ResourceHandle{};
+    m_draggedContainerSourceSlot = -1;
+    m_draggedContainerHandle = VoidLight::ResourceHandle{};
     updateDragGhost(VoidLight::ResourceHandle{}, false);
 }
 
@@ -781,17 +1154,7 @@ void InventoryController::updateDragGhost(const VoidLight::ResourceHandle& handl
 
     auto resourceTemplate =
         ResourceTemplateManager::Instance().getResourceTemplate(handle);
-    if (resourceTemplate && resourceTemplate->getAtlasW() > 0 &&
-        resourceTemplate->getAtlasH() > 0) {
-        ui.setTexture(HOTBAR_DRAG_GHOST_ID, std::string(INVENTORY_ATLAS_TEXTURE_ID));
-        ui.setImageSourceRect(
-            HOTBAR_DRAG_GHOST_ID,
-            UIRect{resourceTemplate->getAtlasX(), resourceTemplate->getAtlasY(),
-                   resourceTemplate->getAtlasW(), resourceTemplate->getAtlasH()});
-    } else {
-        ui.setTexture(HOTBAR_DRAG_GHOST_ID, "");
-        ui.setImageSourceRect(HOTBAR_DRAG_GHOST_ID, UIRect{});
-    }
+    setResourceIcon(ui, HOTBAR_DRAG_GHOST_ID, resourceTemplate);
     ui.setComponentVisible(HOTBAR_DRAG_GHOST_ID, true);
 }
 
@@ -814,6 +1177,21 @@ bool InventoryController::startInventorySlotDrag(size_t slotIndex) {
         m_draggedHotbarSourceSlot = -1;
     }
 
+    return true;
+}
+
+bool InventoryController::startContainerSlotDrag(size_t slotIndex) {
+    if (slotIndex >= m_containerEntries.size()) {
+        return false;
+    }
+
+    const VoidLight::ResourceHandle itemHandle = m_containerEntries[slotIndex].handle;
+    if (!itemHandle.isValid()) {
+        return false;
+    }
+
+    m_draggedContainerSourceSlot = static_cast<int>(slotIndex);
+    m_draggedContainerHandle = itemHandle;
     return true;
 }
 
@@ -844,6 +1222,161 @@ void InventoryController::finishInventorySlotDrag() {
     }
 }
 
+bool InventoryController::finishContainerToInventoryTransfer() {
+    if (m_draggedContainerSourceSlot < 0 ||
+        static_cast<size_t>(m_draggedContainerSourceSlot) >= m_containerEntries.size()) {
+        return false;
+    }
+
+    const auto entry = m_containerEntries[static_cast<size_t>(m_draggedContainerSourceSlot)];
+    return transferContainerItemToPlayer(entry);
+}
+
+bool InventoryController::finishInventoryToContainerTransfer() {
+    if (m_draggedInventorySourceSlot < 0 ||
+        static_cast<size_t>(m_draggedInventorySourceSlot) >= m_gridEntries.size()) {
+        return false;
+    }
+
+    const auto entry = m_gridEntries[static_cast<size_t>(m_draggedInventorySourceSlot)];
+    return transferPlayerItemToContainer(entry);
+}
+
+bool InventoryController::finishContainerToHotbarTransfer(
+    HudController& hudController,
+    size_t hotbarSlot) {
+    if (m_draggedContainerSourceSlot < 0 ||
+        static_cast<size_t>(m_draggedContainerSourceSlot) >= m_containerEntries.size()) {
+        return false;
+    }
+
+    const auto entry = m_containerEntries[static_cast<size_t>(m_draggedContainerSourceSlot)];
+    if (!isHotbarAssignable(entry.handle) || !transferContainerItemToPlayer(entry)) {
+        return false;
+    }
+
+    return hudController.assignHotbarItem(hotbarSlot, entry.handle);
+}
+
+bool InventoryController::lootAllFromOpenContainer() {
+    if (!hasOpenContainer()) {
+        return false;
+    }
+
+    const auto entries = m_containerEntries;
+    bool transferredAny = false;
+    for (const auto& entry : entries) {
+        if (!entry.handle.isValid() || entry.quantity <= 0) {
+            continue;
+        }
+
+        transferredAny = transferContainerItemToPlayer(entry) || transferredAny;
+    }
+
+    return transferredAny;
+}
+
+bool InventoryController::transferContainerItemToPlayer(
+    const InventoryGridEntry& entry) {
+    auto player = mp_player.lock();
+    if (!player || !hasOpenContainer() || !entry.handle.isValid() ||
+        entry.quantity <= 0) {
+        return false;
+    }
+
+    auto& edm = EntityDataManager::Instance();
+    const auto transfer = edm.transferInventoryItem(
+        m_openContainerInventoryIndex,
+        player->getInventoryIndex(),
+        entry.handle,
+        entry.quantity);
+    if (!transfer) {
+        return false;
+    }
+
+    dispatchPlayerResourceChange(transfer->targetChange, "container_loot");
+    if (edm.getInventoryData(m_openContainerInventoryIndex).usedSlots == 0) {
+        const auto& hot = edm.getStaticHotDataByIndex(m_openContainerStaticIndex);
+        edm.getContainerData(hot.typeLocalIndex).setLooted(true);
+    }
+    return true;
+}
+
+bool InventoryController::transferPlayerItemToContainer(
+    const InventoryGridEntry& entry) {
+    auto player = mp_player.lock();
+    if (!player || !hasOpenContainer() || !entry.handle.isValid() ||
+        entry.quantity <= 0) {
+        return false;
+    }
+
+    auto& edm = EntityDataManager::Instance();
+    const auto transfer = edm.transferInventoryItem(
+        player->getInventoryIndex(),
+        m_openContainerInventoryIndex,
+        entry.handle,
+        entry.quantity);
+    if (!transfer) {
+        return false;
+    }
+
+    dispatchPlayerResourceChange(transfer->sourceChange, "container_store");
+    return true;
+}
+
+void InventoryController::closeOpenContainer() {
+    if (hasOpenContainer()) {
+        auto& edm = EntityDataManager::Instance();
+        if (m_openContainerStaticIndex < edm.getStaticHotDataArray().size()) {
+            const auto& hot = edm.getStaticHotDataByIndex(m_openContainerStaticIndex);
+            if (hot.isAlive() && hot.kind == EntityKind::Container) {
+                edm.getContainerData(hot.typeLocalIndex).setOpen(false);
+            }
+        }
+    }
+
+    m_openContainerInventoryIndex = NO_OPEN_CONTAINER_INVENTORY;
+    m_openContainerStaticIndex = SIZE_MAX;
+    m_containerEntries.clear();
+    setContainerComponentsVisible(false);
+}
+
+void InventoryController::setContainerComponentsVisible(bool visible) {
+    auto& ui = UIManager::Instance();
+    ui.setComponentVisible(CONTAINER_HEADER_ID, visible);
+    ui.setComponentVisible(CONTAINER_STATUS_ID, visible);
+    ui.setComponentVisible(CONTAINER_LOOT_ALL_ID, visible);
+    for (size_t i = 0; i < CONTAINER_SLOT_COUNT; ++i) {
+        ui.setComponentVisible(containerSlotId(i), visible);
+    }
+}
+
+bool InventoryController::hasOpenContainer() const {
+    return m_openContainerInventoryIndex != NO_OPEN_CONTAINER_INVENTORY &&
+        m_openContainerStaticIndex != SIZE_MAX;
+}
+
+void InventoryController::dispatchPlayerResourceChange(
+    const InventoryResourceChange& change,
+    const std::string& reason) const {
+    if (!change.isValid()) {
+        return;
+    }
+
+    auto player = mp_player.lock();
+    if (!player) {
+        return;
+    }
+
+    EventManager::Instance().triggerResourceChange(
+        player->getHandle(),
+        change.resourceHandle,
+        change.oldQuantity,
+        change.newQuantity,
+        reason,
+        EventManager::DispatchMode::Deferred);
+}
+
 int InventoryController::findInventorySlotAtMouse() const {
     if (!m_inventoryUICreated || !m_inventoryVisible) {
         return -1;
@@ -856,6 +1389,26 @@ int InventoryController::findInventorySlotAtMouse() const {
 
     for (size_t i = 0; i < INVENTORY_SLOT_COUNT; ++i) {
         const UIRect bounds = ui.getBounds(slotId(i));
+        if (bounds.contains(mouseX, mouseY)) {
+            return static_cast<int>(i);
+        }
+    }
+
+    return -1;
+}
+
+int InventoryController::findContainerSlotAtMouse() const {
+    if (!m_inventoryUICreated || !m_inventoryVisible || !hasOpenContainer()) {
+        return -1;
+    }
+
+    const Vector2D& mousePos = InputManager::Instance().getMousePosition();
+    const int mouseX = static_cast<int>(mousePos.getX());
+    const int mouseY = static_cast<int>(mousePos.getY());
+    auto& ui = UIManager::Instance();
+
+    for (size_t i = 0; i < CONTAINER_SLOT_COUNT; ++i) {
+        const UIRect bounds = ui.getBounds(containerSlotId(i));
         if (bounds.contains(mouseX, mouseY)) {
             return static_cast<int>(i);
         }
@@ -926,6 +1479,18 @@ std::string InventoryController::iconId(size_t slotIndex) {
 
 std::string InventoryController::countId(size_t slotIndex) {
     return std::format("inventory_count_{}", slotIndex);
+}
+
+std::string InventoryController::containerSlotId(size_t slotIndex) {
+    return std::format("container_slot_{}", slotIndex);
+}
+
+std::string InventoryController::containerIconId(size_t slotIndex) {
+    return std::format("container_icon_{}", slotIndex);
+}
+
+std::string InventoryController::containerCountId(size_t slotIndex) {
+    return std::format("container_count_{}", slotIndex);
 }
 
 std::string InventoryController::gearSlotId(size_t slotIndex) {

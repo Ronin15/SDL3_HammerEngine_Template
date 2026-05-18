@@ -17,12 +17,18 @@
 
 #include "controllers/ControllerBase.hpp"
 #include "utils/ResourceHandle.hpp"
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 class Player;
 class HudController;
+struct InventoryResourceChange;
 struct UIRect;
 
 class InventoryController : public ControllerBase {
@@ -40,6 +46,7 @@ public:
     [[nodiscard]] std::string_view getName() const override { return "InventoryController"; }
 
     bool attemptPickup();
+    bool tryOpenNearbyContainer();
 
     void initializeInventoryUI();
     void refreshInventoryUI();
@@ -62,20 +69,43 @@ private:
         VoidLight::ResourceHandle handle{};
         int quantity{0};
     };
+    using InventoryEntryView =
+        std::optional<std::reference_wrapper<const InventoryGridEntry>>;
+
+    static constexpr uint32_t NO_OPEN_CONTAINER_INVENTORY =
+        std::numeric_limits<uint32_t>::max();
 
     void onResourceChange(const EventData& data);
     void addInventoryEventLogEntry(const VoidLight::ResourceHandle& handle, int delta);
-    void refreshSlot(size_t slotIndex, const InventoryGridEntry* entry);
+    void refreshSlot(size_t slotIndex, InventoryEntryView entry);
+    void refreshContainerUI();
+    void refreshContainerSlot(size_t slotIndex, InventoryEntryView entry);
     void refreshGearUI();
     void refreshGearSlot(size_t slotIndex);
     void handleInventorySlotClicked(size_t slotIndex);
+    void handleContainerSlotClicked(size_t slotIndex);
     void handleGearSlotClicked(size_t slotIndex);
+    void handleLootAllClicked();
     bool startHotbarAssignment(size_t slotIndex);
     void cancelHotbarAssignment();
     void updateDragGhost(const VoidLight::ResourceHandle& handle, bool visible);
     bool startInventorySlotDrag(size_t slotIndex);
+    bool startContainerSlotDrag(size_t slotIndex);
     void finishInventorySlotDrag();
+    bool finishContainerToInventoryTransfer();
+    bool finishInventoryToContainerTransfer();
+    bool finishContainerToHotbarTransfer(HudController& hudController,
+                                         size_t hotbarSlot);
+    bool lootAllFromOpenContainer();
+    bool transferContainerItemToPlayer(const InventoryGridEntry& entry);
+    bool transferPlayerItemToContainer(const InventoryGridEntry& entry);
+    void closeOpenContainer();
+    void setContainerComponentsVisible(bool visible);
+    [[nodiscard]] bool hasOpenContainer() const;
+    void dispatchPlayerResourceChange(const InventoryResourceChange& change,
+                                      const std::string& reason) const;
     [[nodiscard]] int findInventorySlotAtMouse() const;
+    [[nodiscard]] int findContainerSlotAtMouse() const;
     [[nodiscard]] int findHotbarSlotAtMouse() const;
 
     [[nodiscard]] static bool isEquipment(const VoidLight::ResourceHandle& handle);
@@ -86,6 +116,9 @@ private:
     [[nodiscard]] static std::string slotId(size_t slotIndex);
     [[nodiscard]] static std::string iconId(size_t slotIndex);
     [[nodiscard]] static std::string countId(size_t slotIndex);
+    [[nodiscard]] static std::string containerSlotId(size_t slotIndex);
+    [[nodiscard]] static std::string containerIconId(size_t slotIndex);
+    [[nodiscard]] static std::string containerCountId(size_t slotIndex);
     [[nodiscard]] static std::string gearSlotId(size_t slotIndex);
     [[nodiscard]] static std::string gearIconId(size_t slotIndex);
     [[nodiscard]] static std::string gearLabelId(size_t slotIndex);
@@ -98,10 +131,16 @@ private:
     bool m_dragGhostCreated{false};
     int m_draggedHotbarSourceSlot{-1};
     int m_draggedInventorySourceSlot{-1};
+    int m_draggedContainerSourceSlot{-1};
+    uint32_t m_openContainerInventoryIndex{NO_OPEN_CONTAINER_INVENTORY};
+    size_t m_openContainerStaticIndex{SIZE_MAX};
     VoidLight::ResourceHandle m_pendingHotbarAssignment{};
     VoidLight::ResourceHandle m_draggedHotbarAssignment{};
     VoidLight::ResourceHandle m_draggedInventoryHandle{};
+    VoidLight::ResourceHandle m_draggedContainerHandle{};
     std::vector<InventoryGridEntry> m_gridEntries;
+    std::vector<InventoryGridEntry> m_containerEntries;
+    std::vector<size_t> m_nearbyContainerIndices;
     std::string m_resourceNameBuffer;
 };
 

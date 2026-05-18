@@ -209,6 +209,29 @@
         "projectileSpeed": 240,
         "ammoTypeRequired": ""
       }
+    },
+    {
+      "id": "wooden_sword",
+      "name": "Wooden Sword",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "A worn wooden practice sword. Better than bare hands.",
+      "value": 10,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "default",
+      "properties": {
+        "slot": "Weapon",
+        "handsRequired": 1,
+        "attackBonus": 3,
+        "defenseBonus": 0,
+        "durability": 35,
+        "maxDurability": 35,
+        "weaponMode": "melee",
+        "attackRange": 42,
+        "projectileSpeed": 0,
+        "ammoTypeRequired": ""
+      }
     }
   ]
 }

@@ -2829,6 +2829,193 @@ bool EntityDataManager::removeFromInventory(uint32_t inventoryIndex,
     return true;
 }
 
+std::optional<InventoryTransferResult> EntityDataManager::transferInventoryItem(
+    uint32_t sourceInventoryIndex,
+    uint32_t targetInventoryIndex,
+    VoidLight::ResourceHandle handle,
+    int quantity) {
+    if (!handle.isValid() || quantity <= 0) {
+        return std::nullopt;
+    }
+
+    auto& rtm = ResourceTemplateManager::Instance();
+    int maxStack = rtm.isInitialized() ? rtm.getMaxStackSize(handle) : 99;
+    if (maxStack <= 0) {
+        maxStack = 99;
+    }
+
+    std::lock_guard<std::mutex> lock(m_inventoryMutex);
+
+    if (sourceInventoryIndex == INVALID_INVENTORY_INDEX ||
+        targetInventoryIndex == INVALID_INVENTORY_INDEX ||
+        sourceInventoryIndex >= m_inventoryData.size() ||
+        targetInventoryIndex >= m_inventoryData.size()) {
+        return std::nullopt;
+    }
+
+    auto& source = m_inventoryData[sourceInventoryIndex];
+    auto& target = m_inventoryData[targetInventoryIndex];
+    if (!source.isValid() || !target.isValid()) {
+        return std::nullopt;
+    }
+
+    const int sourceOldQuantity =
+        getInventoryQuantityLocked(sourceInventoryIndex, handle);
+    if (sourceOldQuantity < quantity) {
+        return std::nullopt;
+    }
+
+    if (sourceInventoryIndex == targetInventoryIndex) {
+        return InventoryTransferResult{};
+    }
+
+    const int targetOldQuantity =
+        getInventoryQuantityLocked(targetInventoryIndex, handle);
+
+    auto inventoryOverflow =
+        [this](InventoryData& inv)
+        -> std::optional<std::reference_wrapper<InventoryOverflow>> {
+        if (inv.overflowId == 0) {
+            return std::nullopt;
+        }
+
+        auto it = m_inventoryOverflow.find(inv.overflowId);
+        if (it == m_inventoryOverflow.end()) {
+            return std::nullopt;
+        }
+
+        return std::ref(it->second);
+    };
+
+    auto inlineSlotCountFor = [](const InventoryData& inv) {
+        return std::min(InventoryData::INLINE_SLOT_COUNT,
+                        static_cast<size_t>(inv.maxSlots));
+    };
+
+    auto availableCapacityFor =
+        [maxStack, handle, &inlineSlotCountFor](
+            const InventoryData& inv,
+            const std::optional<
+                std::reference_wrapper<InventoryOverflow>>& overflow) {
+        int availableCapacity = 0;
+        const size_t inlineSlotCount = inlineSlotCountFor(inv);
+        for (size_t i = 0; i < inlineSlotCount; ++i) {
+            const auto& slot = inv.slots[i];
+            if (!slot.isEmpty() && slot.resourceHandle == handle) {
+                availableCapacity +=
+                    std::max(0, maxStack - static_cast<int>(slot.quantity));
+            } else if (slot.isEmpty()) {
+                availableCapacity += maxStack;
+            }
+        }
+
+        if (overflow.has_value()) {
+            for (const auto& slot : overflow->get().extraSlots) {
+                if (!slot.isEmpty() && slot.resourceHandle == handle) {
+                    availableCapacity +=
+                        std::max(0, maxStack - static_cast<int>(slot.quantity));
+                } else if (slot.isEmpty()) {
+                    availableCapacity += maxStack;
+                }
+            }
+        }
+
+        return availableCapacity;
+    };
+
+    auto sourceOverflow = inventoryOverflow(source);
+    auto targetOverflow = inventoryOverflow(target);
+    if (availableCapacityFor(target, targetOverflow) < quantity) {
+        return std::nullopt;
+    }
+
+    int remainingToRemove = quantity;
+    auto removeFromSlot = [&remainingToRemove, handle, &source](InventorySlotData& slot) {
+        if (remainingToRemove <= 0 || slot.isEmpty() || slot.resourceHandle != handle) {
+            return;
+        }
+
+        const int toRemove =
+            std::min(static_cast<int>(slot.quantity), remainingToRemove);
+        slot.quantity -= static_cast<int16_t>(toRemove);
+        remainingToRemove -= toRemove;
+        if (slot.quantity <= 0) {
+            slot.clear();
+            --source.usedSlots;
+        }
+    };
+
+    const size_t sourceInlineSlotCount = inlineSlotCountFor(source);
+    for (size_t i = 0; i < sourceInlineSlotCount; ++i) {
+        removeFromSlot(source.slots[i]);
+    }
+    if (sourceOverflow.has_value()) {
+        for (auto& slot : sourceOverflow->get().extraSlots) {
+            removeFromSlot(slot);
+        }
+    }
+
+    int remainingToAdd = quantity;
+    auto stackIntoSlot = [&remainingToAdd, maxStack, handle](InventorySlotData& slot) {
+        if (remainingToAdd <= 0 || slot.isEmpty() || slot.resourceHandle != handle) {
+            return;
+        }
+
+        const int canAdd = maxStack - static_cast<int>(slot.quantity);
+        if (canAdd <= 0) {
+            return;
+        }
+
+        const int toAdd = std::min(canAdd, remainingToAdd);
+        slot.quantity += static_cast<int16_t>(toAdd);
+        remainingToAdd -= toAdd;
+    };
+
+    const size_t targetInlineSlotCount = inlineSlotCountFor(target);
+    for (size_t i = 0; i < targetInlineSlotCount; ++i) {
+        stackIntoSlot(target.slots[i]);
+    }
+    if (targetOverflow.has_value()) {
+        for (auto& slot : targetOverflow->get().extraSlots) {
+            stackIntoSlot(slot);
+        }
+    }
+
+    auto fillEmptySlot = [&remainingToAdd, maxStack, handle, &target](
+                             InventorySlotData& slot) {
+        if (remainingToAdd <= 0 || !slot.isEmpty()) {
+            return;
+        }
+
+        const int toAdd = std::min(maxStack, remainingToAdd);
+        slot.resourceHandle = handle;
+        slot.quantity = static_cast<int16_t>(toAdd);
+        remainingToAdd -= toAdd;
+        ++target.usedSlots;
+    };
+
+    for (size_t i = 0; i < targetInlineSlotCount; ++i) {
+        fillEmptySlot(target.slots[i]);
+    }
+    if (targetOverflow.has_value()) {
+        for (auto& slot : targetOverflow->get().extraSlots) {
+            fillEmptySlot(slot);
+        }
+    }
+
+    source.flags |= InventoryData::FLAG_DIRTY;
+    target.flags |= InventoryData::FLAG_DIRTY;
+
+    return InventoryTransferResult{
+        .sourceChange =
+            InventoryResourceChange{handle, sourceOldQuantity,
+                                    sourceOldQuantity - quantity},
+        .targetChange =
+            InventoryResourceChange{handle, targetOldQuantity,
+                                    targetOldQuantity + quantity}
+    };
+}
+
 int EntityDataManager::getInventoryQuantity(uint32_t inventoryIndex,
                                             VoidLight::ResourceHandle handle) const {
     if (!isValidInventoryIndex(inventoryIndex)) {

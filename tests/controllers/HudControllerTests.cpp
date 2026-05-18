@@ -70,6 +70,14 @@ protected:
     }
 };
 
+bool sameRect(const UIRect& lhs, const UIRect& rhs)
+{
+    return lhs.x == rhs.x &&
+        lhs.y == rhs.y &&
+        lhs.width == rhs.width &&
+        lhs.height == rhs.height;
+}
+
 BOOST_FIXTURE_TEST_SUITE(HudControllerTests, HudControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestControllerNameAndInitialState)
@@ -193,6 +201,26 @@ BOOST_AUTO_TEST_CASE(TestHotbarAssignmentUpdatesSlotIconAndCount)
     BOOST_CHECK(controller.getHotbarItem(0) == potionHandle);
     BOOST_CHECK_EQUAL(ui.getTexture("hotbar_icon_0"), "atlas");
     BOOST_CHECK_EQUAL(ui.getText("hotbar_count_0"), "3");
+}
+
+BOOST_AUTO_TEST_CASE(TestHotbarAssignmentUsesExplicitNonAtlasIconTexture)
+{
+    auto player = createPlayer();
+    player->initializeInventory();
+    auto bowHandle = ResourceTemplateManager::Instance().getHandleById("bow");
+    BOOST_REQUIRE(bowHandle.isValid());
+    BOOST_REQUIRE(player->addToInventory(bowHandle, 1));
+
+    HudController controller(player);
+    controller.initializeHotbarUI();
+
+    BOOST_REQUIRE(controller.assignHotbarItem(0, bowHandle));
+
+    auto& ui = UIManager::Instance();
+    BOOST_CHECK(controller.getHotbarItem(0) == bowHandle);
+    BOOST_CHECK_EQUAL(ui.getTexture("hotbar_icon_0"), "bow_icon");
+    BOOST_CHECK(sameRect(ui.getImageSourceRect("hotbar_icon_0"), UIRect{}));
+    BOOST_CHECK_EQUAL(ui.getText("hotbar_count_0"), "1");
 }
 
 BOOST_AUTO_TEST_CASE(TestHotbarSelectingWeaponEquipsIt)

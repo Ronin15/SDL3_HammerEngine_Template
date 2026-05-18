@@ -98,6 +98,101 @@
         "durability": 120,
         "maxDurability": 120
       }
+    },
+    {
+      "id": "wooden_shield",
+      "name": "Wooden Shield",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "A rough wooden shield with enough strength for early practice.",
+      "value": 12,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "default",
+      "properties": {
+        "slot": "Shield",
+        "handsRequired": 1,
+        "attackBonus": 0,
+        "defenseBonus": 4,
+        "durability": 45,
+        "maxDurability": 45
+      }
+    },
+    {
+      "id": "old_shirt",
+      "name": "Old Shirt",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "A threadbare shirt offering minimal protection.",
+      "value": 5,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "default",
+      "properties": {
+        "slot": "Chest",
+        "handsRequired": 0,
+        "attackBonus": 0,
+        "defenseBonus": 1,
+        "durability": 25,
+        "maxDurability": 25
+      }
+    },
+    {
+      "id": "old_pants",
+      "name": "Old Pants",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "Worn pants suitable for travel.",
+      "value": 5,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "default",
+      "properties": {
+        "slot": "Legs",
+        "handsRequired": 0,
+        "attackBonus": 0,
+        "defenseBonus": 1,
+        "durability": 25,
+        "maxDurability": 25
+      }
+    },
+    {
+      "id": "worn_boots",
+      "name": "Worn Boots",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "Scuffed boots with a little life left in them.",
+      "value": 6,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "default",
+      "properties": {
+        "slot": "Boots",
+        "handsRequired": 0,
+        "attackBonus": 0,
+        "defenseBonus": 1,
+        "durability": 30,
+        "maxDurability": 30
+      }
+    },
+    {
+      "id": "cloth_gloves",
+      "name": "Cloth Gloves",
+      "category": "Item",
+      "type": "Equipment",
+      "description": "Thin cloth gloves that keep a firm grip.",
+      "value": 4,
+      "maxStackSize": 1,
+      "consumable": false,
+      "textureId": "default",
+      "properties": {
+        "slot": "Gloves",
+        "handsRequired": 0,
+        "attackBonus": 0,
+        "defenseBonus": 1,
+        "durability": 20,
+        "maxDurability": 20
+      }
     }
   ]
 }

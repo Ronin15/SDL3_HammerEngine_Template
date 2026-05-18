@@ -116,7 +116,51 @@ BOOST_AUTO_TEST_CASE(TestLoadDefaultResources) {
   BOOST_CHECK_EQUAL(static_cast<int>(wine->getEffect()),
                     static_cast<int>(Consumable::ConsumableEffect::RestoreStamina));
 
-  BOOST_CHECK_EQUAL(resourceManager->getResourceTemplateCount(), 58U);
+  auto woodenSword = std::dynamic_pointer_cast<Equipment>(
+      resourceManager->getResourceById("wooden_sword"));
+  BOOST_REQUIRE(woodenSword != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(woodenSword->getEquipmentSlot()),
+                    static_cast<int>(Equipment::EquipmentSlot::Weapon));
+  BOOST_CHECK_EQUAL(woodenSword->getIconTextureId(), "default");
+  BOOST_CHECK_EQUAL(woodenSword->getAttackBonus(), 3);
+
+  auto woodenShield = std::dynamic_pointer_cast<Equipment>(
+      resourceManager->getResourceById("wooden_shield"));
+  BOOST_REQUIRE(woodenShield != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(woodenShield->getEquipmentSlot()),
+                    static_cast<int>(Equipment::EquipmentSlot::Shield));
+  BOOST_CHECK_EQUAL(woodenShield->getIconTextureId(), "default");
+  BOOST_CHECK_EQUAL(woodenShield->getDefenseBonus(), 4);
+
+  auto oldShirt = std::dynamic_pointer_cast<Equipment>(
+      resourceManager->getResourceById("old_shirt"));
+  BOOST_REQUIRE(oldShirt != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(oldShirt->getEquipmentSlot()),
+                    static_cast<int>(Equipment::EquipmentSlot::Chest));
+  BOOST_CHECK_EQUAL(oldShirt->getIconTextureId(), "default");
+
+  auto oldPants = std::dynamic_pointer_cast<Equipment>(
+      resourceManager->getResourceById("old_pants"));
+  BOOST_REQUIRE(oldPants != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(oldPants->getEquipmentSlot()),
+                    static_cast<int>(Equipment::EquipmentSlot::Legs));
+  BOOST_CHECK_EQUAL(oldPants->getIconTextureId(), "default");
+
+  auto wornBoots = std::dynamic_pointer_cast<Equipment>(
+      resourceManager->getResourceById("worn_boots"));
+  BOOST_REQUIRE(wornBoots != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(wornBoots->getEquipmentSlot()),
+                    static_cast<int>(Equipment::EquipmentSlot::Boots));
+  BOOST_CHECK_EQUAL(wornBoots->getIconTextureId(), "default");
+
+  auto clothGloves = std::dynamic_pointer_cast<Equipment>(
+      resourceManager->getResourceById("cloth_gloves"));
+  BOOST_REQUIRE(clothGloves != nullptr);
+  BOOST_CHECK_EQUAL(static_cast<int>(clothGloves->getEquipmentSlot()),
+                    static_cast<int>(Equipment::EquipmentSlot::Gloves));
+  BOOST_CHECK_EQUAL(clothGloves->getIconTextureId(), "default");
+
+  BOOST_CHECK_EQUAL(resourceManager->getResourceTemplateCount(), 64U);
 }
 
 BOOST_AUTO_TEST_CASE(TestUnmappedResourceTexturesDoNotSampleDefaultAtlasTile) {

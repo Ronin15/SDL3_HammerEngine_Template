@@ -372,6 +372,7 @@ public:
   void setText(const std::string &id, const std::string &text);
   void setTexture(const std::string &id, const std::string &textureID);
   void setImageSourceRect(const std::string &id, const UIRect &sourceRect);
+  void clearImageSourceRect(const std::string &id);
   void setValue(const std::string &id, float value);
   void setChecked(const std::string &id, bool checked);
   void setStyle(const std::string &id, const UIStyle &style);

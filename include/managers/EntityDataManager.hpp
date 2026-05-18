@@ -497,6 +497,15 @@ struct InventoryResourceChange {
     }
 };
 
+struct InventoryTransferResult {
+    InventoryResourceChange sourceChange{};
+    InventoryResourceChange targetChange{};
+
+    [[nodiscard]] bool isValid() const noexcept {
+        return sourceChange.isValid() || targetChange.isValid();
+    }
+};
+
 /**
  * @brief Area effect data for AoE zones (spell effects, traps)
  */
@@ -1759,6 +1768,23 @@ public:
     bool removeFromInventory(uint32_t inventoryIndex,
                              VoidLight::ResourceHandle handle,
                              int quantity);
+
+    /**
+     * @brief Transfer resources between two inventories without partial mutation
+     * @param sourceInventoryIndex Inventory to remove from
+     * @param targetInventoryIndex Inventory to add to
+     * @param handle Resource type handle
+     * @param quantity Amount to transfer (must be positive)
+     * @return source/target quantity deltas when the full quantity transferred,
+     * std::nullopt if validation, capacity, or source quantity checks fail
+     *
+     * Capacity and source availability are checked before any slots mutate.
+     */
+    [[nodiscard]] std::optional<InventoryTransferResult>
+    transferInventoryItem(uint32_t sourceInventoryIndex,
+                          uint32_t targetInventoryIndex,
+                          VoidLight::ResourceHandle handle,
+                          int quantity);
 
     /**
      * @brief Get total quantity of a resource in an inventory
