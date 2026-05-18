@@ -21,6 +21,9 @@ using VoidLight::ResourceFactory;
 
 namespace {
 
+constexpr std::string_view RESOURCE_ATLAS_TEXTURE_ID = "atlas";
+constexpr std::string_view FALLBACK_RESOURCE_TEXTURE_ID = "default";
+
 std::string normalizeResourceId(std::string_view source) {
   std::string id;
   id.reserve(source.size());
@@ -452,6 +455,40 @@ ResourceTemplateManager::getResourceById(const std::string &id) const {
   }
 
   return nullptr;
+}
+
+TextureSource ResourceTemplateManager::getIconTextureSource(
+    VoidLight::ResourceHandle handle) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+
+  auto resourceIt = m_resourceTemplates.find(handle);
+  if (resourceIt == m_resourceTemplates.end() || !resourceIt->second) {
+    return {};
+  }
+
+  const ResourcePtr &resource = resourceIt->second;
+  if (resource->getAtlasW() > 0 && resource->getAtlasH() > 0) {
+    return TextureSource{
+        std::string(RESOURCE_ATLAS_TEXTURE_ID),
+        resource->getAtlasX(),
+        resource->getAtlasY(),
+        resource->getAtlasW(),
+        resource->getAtlasH(),
+        true};
+  }
+
+  const std::string &iconTextureId = !resource->getIconTextureId().empty()
+      ? resource->getIconTextureId()
+      : resource->getWorldTextureId();
+
+  return TextureSource{
+      iconTextureId.empty() ? std::string(FALLBACK_RESOURCE_TEXTURE_ID)
+                            : iconTextureId,
+      0,
+      0,
+      0,
+      0,
+      false};
 }
 
 VoidLight::ResourceHandle

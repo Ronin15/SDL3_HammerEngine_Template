@@ -176,6 +176,38 @@ BOOST_AUTO_TEST_CASE(TestUnmappedResourceTexturesDoNotSampleDefaultAtlasTile) {
   BOOST_CHECK_EQUAL(bow->getAtlasH(), 0);
 }
 
+BOOST_AUTO_TEST_CASE(TestIconTextureSourceResolvesCanonicalResourceIcon) {
+  auto healthPotion = resourceManager->getResourceById("health_potion");
+  BOOST_REQUIRE(healthPotion != nullptr);
+  const TextureSource healthPotionSource =
+      resourceManager->getIconTextureSource(healthPotion->getHandle());
+  BOOST_CHECK_EQUAL(healthPotionSource.textureId, "atlas");
+  BOOST_CHECK(healthPotionSource.useSourceRect);
+  BOOST_CHECK_EQUAL(healthPotionSource.sourceX, healthPotion->getAtlasX());
+  BOOST_CHECK_EQUAL(healthPotionSource.sourceY, healthPotion->getAtlasY());
+  BOOST_CHECK_EQUAL(healthPotionSource.sourceW, healthPotion->getAtlasW());
+  BOOST_CHECK_EQUAL(healthPotionSource.sourceH, healthPotion->getAtlasH());
+
+  auto bow = resourceManager->getResourceById("bow");
+  BOOST_REQUIRE(bow != nullptr);
+  const TextureSource bowSource =
+      resourceManager->getIconTextureSource(bow->getHandle());
+  BOOST_CHECK_EQUAL(bowSource.textureId, "bow_icon");
+  BOOST_CHECK(!bowSource.useSourceRect);
+
+  auto oldShirt = resourceManager->getResourceById("old_shirt");
+  BOOST_REQUIRE(oldShirt != nullptr);
+  const TextureSource oldShirtSource =
+      resourceManager->getIconTextureSource(oldShirt->getHandle());
+  BOOST_CHECK_EQUAL(oldShirtSource.textureId, "default");
+  BOOST_CHECK(!oldShirtSource.useSourceRect);
+
+  const TextureSource missingSource =
+      resourceManager->getIconTextureSource(VoidLight::ResourceHandle{});
+  BOOST_CHECK(missingSource.isEmpty());
+  BOOST_CHECK(!missingSource.useSourceRect);
+}
+
 BOOST_AUTO_TEST_CASE(TestLoadValidJsonString) {
   std::string jsonString = R"({
         "resources": [

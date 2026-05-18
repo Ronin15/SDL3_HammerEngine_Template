@@ -92,8 +92,6 @@ constexpr int CONTAINER_LOOT_ALL_Y =
     INVENTORY_CONTENT_Y + CONTAINER_GRID_HEIGHT + 18;
 constexpr int CONTAINER_LOOT_ALL_WIDTH = UIConstants::DEFAULT_BUTTON_WIDTH;
 constexpr int CONTAINER_LOOT_ALL_HEIGHT = UIConstants::DEFAULT_BUTTON_HEIGHT;
-constexpr std::string_view INVENTORY_ATLAS_TEXTURE_ID = "atlas";
-constexpr std::string_view FALLBACK_RESOURCE_TEXTURE_ID = "default";
 const std::string HOTBAR_DRAG_GHOST_ID{"inventory_hotbar_drag_ghost"};
 const std::string CONTAINER_HEADER_ID{"container_tab_items"};
 const std::string CONTAINER_STATUS_ID{"container_status"};
@@ -106,37 +104,6 @@ constexpr int centerOffset(int position, int size, int containerHalfSize) {
 
 const auto& gearSlots() {
     return Equipment::equipmentSlotDefinitions();
-}
-
-void clearResourceIcon(UIManager& ui, const std::string& componentId) {
-    ui.setTexture(componentId, "");
-    ui.clearImageSourceRect(componentId);
-}
-
-void setResourceIcon(UIManager& ui, const std::string& componentId,
-                     const ResourcePtr& resourceTemplate) {
-    if (!resourceTemplate) {
-        clearResourceIcon(ui, componentId);
-        return;
-    }
-
-    if (resourceTemplate->getAtlasW() > 0 && resourceTemplate->getAtlasH() > 0) {
-        ui.setTexture(componentId, std::string(INVENTORY_ATLAS_TEXTURE_ID));
-        ui.setImageSourceRect(
-            componentId,
-            UIRect{resourceTemplate->getAtlasX(), resourceTemplate->getAtlasY(),
-                   resourceTemplate->getAtlasW(), resourceTemplate->getAtlasH()});
-        return;
-    }
-
-    const std::string& iconTextureId = !resourceTemplate->getIconTextureId().empty()
-        ? resourceTemplate->getIconTextureId()
-        : resourceTemplate->getWorldTextureId();
-    ui.setTexture(componentId,
-                  iconTextureId.empty()
-                      ? std::string(FALLBACK_RESOURCE_TEXTURE_ID)
-                      : iconTextureId);
-    ui.clearImageSourceRect(componentId);
 }
 
 } // namespace
@@ -887,15 +854,15 @@ void InventoryController::refreshSlot(size_t slotIndex,
     const std::string countComponentId = countId(slotIndex);
 
     if (!entry.has_value()) {
-        clearResourceIcon(ui, iconComponentId);
+        ui.setImageSource(iconComponentId, TextureSource{});
         ui.setText(countComponentId, "");
         return;
     }
 
     const auto& gridEntry = entry->get();
-    auto resourceTemplate =
-        ResourceTemplateManager::Instance().getResourceTemplate(gridEntry.handle);
-    setResourceIcon(ui, iconComponentId, resourceTemplate);
+    ui.setImageSource(
+        iconComponentId,
+        ResourceTemplateManager::Instance().getIconTextureSource(gridEntry.handle));
     ui.setText(countComponentId, std::format("{}", gridEntry.quantity));
 }
 
@@ -969,15 +936,15 @@ void InventoryController::refreshContainerSlot(size_t slotIndex,
     const std::string countComponentId = containerCountId(slotIndex);
 
     if (!entry.has_value()) {
-        clearResourceIcon(ui, iconComponentId);
+        ui.setImageSource(iconComponentId, TextureSource{});
         ui.setText(countComponentId, "");
         return;
     }
 
     const auto& gridEntry = entry->get();
-    auto resourceTemplate =
-        ResourceTemplateManager::Instance().getResourceTemplate(gridEntry.handle);
-    setResourceIcon(ui, iconComponentId, resourceTemplate);
+    ui.setImageSource(
+        iconComponentId,
+        ResourceTemplateManager::Instance().getIconTextureSource(gridEntry.handle));
     ui.setText(countComponentId, std::format("{}", gridEntry.quantity));
 }
 
@@ -1002,14 +969,16 @@ void InventoryController::refreshGearSlot(size_t slotIndex) {
         player->getEquippedItem(std::string(slots[slotIndex].id));
 
     if (!equipped.isValid()) {
-        clearResourceIcon(ui, iconComponentId);
+        ui.setImageSource(iconComponentId, TextureSource{});
         ui.setText(labelComponentId, std::format("{}: Empty", slots[slotIndex].label));
         return;
     }
 
     auto resourceTemplate =
         ResourceTemplateManager::Instance().getResourceTemplate(equipped);
-    setResourceIcon(ui, iconComponentId, resourceTemplate);
+    ui.setImageSource(
+        iconComponentId,
+        ResourceTemplateManager::Instance().getIconTextureSource(equipped));
 
     ui.setText(labelComponentId,
                std::format("{}: {}", slots[slotIndex].label,
@@ -1152,9 +1121,9 @@ void InventoryController::updateDragGhost(const VoidLight::ResourceHandle& handl
                HOTBAR_DRAG_GHOST_SIZE,
                HOTBAR_DRAG_GHOST_SIZE});
 
-    auto resourceTemplate =
-        ResourceTemplateManager::Instance().getResourceTemplate(handle);
-    setResourceIcon(ui, HOTBAR_DRAG_GHOST_ID, resourceTemplate);
+    ui.setImageSource(
+        HOTBAR_DRAG_GHOST_ID,
+        ResourceTemplateManager::Instance().getIconTextureSource(handle));
     ui.setComponentVisible(HOTBAR_DRAG_GHOST_ID, true);
 }
 

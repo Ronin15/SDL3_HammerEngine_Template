@@ -671,6 +671,25 @@ void UIManager::setTexture(const std::string &id,
   }
 }
 
+void UIManager::setImageSource(const std::string &id,
+                               const TextureSource &source) {
+  auto component = getComponent(id);
+  if (!component) {
+    return;
+  }
+
+  component->m_textureID = source.textureId;
+  if (source.isEmpty() || !source.useSourceRect) {
+    component->m_imageSourceRect = UIRect{};
+    component->m_useImageSourceRect = false;
+    return;
+  }
+
+  component->m_imageSourceRect =
+      UIRect{source.sourceX, source.sourceY, source.sourceW, source.sourceH};
+  component->m_useImageSourceRect = true;
+}
+
 void UIManager::setImageSourceRect(const std::string &id,
                                    const UIRect &sourceRect) {
   auto component = getComponent(id);

@@ -8,6 +8,7 @@
 
 #include "utils/Vector2D.hpp"
 #include "gpu/UIRenderBatches.hpp"
+#include "utils/TextureSource.hpp"
 #include <SDL3/SDL.h>
 #include <array>
 #include <functional>
@@ -371,6 +372,7 @@ public:
   // Component property setters
   void setText(const std::string &id, const std::string &text);
   void setTexture(const std::string &id, const std::string &textureID);
+  void setImageSource(const std::string &id, const TextureSource &source);
   void setImageSourceRect(const std::string &id, const UIRect &sourceRect);
   void clearImageSourceRect(const std::string &id);
   void setValue(const std::string &id, float value);

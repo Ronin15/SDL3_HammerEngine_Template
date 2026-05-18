@@ -619,6 +619,38 @@ BOOST_AUTO_TEST_CASE(TestCreateAtlasImage) {
     BOOST_CHECK(!ui.hasComponent("atlas_image"));
 }
 
+BOOST_AUTO_TEST_CASE(TestSetImageSourceAppliesTextureAndSourceRectTogether) {
+    auto& ui = UIManager::Instance();
+
+    ui.createImage("image_source", UIRect{100, 100, 32, 32});
+
+    ui.setImageSource("image_source", TextureSource{"atlas", 4, 8, 16, 20, true});
+    BOOST_CHECK_EQUAL(ui.getTexture("image_source"), "atlas");
+    UIRect storedRect = ui.getImageSourceRect("image_source");
+    BOOST_CHECK_EQUAL(storedRect.x, 4);
+    BOOST_CHECK_EQUAL(storedRect.y, 8);
+    BOOST_CHECK_EQUAL(storedRect.width, 16);
+    BOOST_CHECK_EQUAL(storedRect.height, 20);
+
+    ui.setImageSource("image_source", TextureSource{"bow_icon", 0, 0, 0, 0, false});
+    BOOST_CHECK_EQUAL(ui.getTexture("image_source"), "bow_icon");
+    storedRect = ui.getImageSourceRect("image_source");
+    BOOST_CHECK_EQUAL(storedRect.x, 0);
+    BOOST_CHECK_EQUAL(storedRect.y, 0);
+    BOOST_CHECK_EQUAL(storedRect.width, 0);
+    BOOST_CHECK_EQUAL(storedRect.height, 0);
+
+    ui.setImageSource("image_source", TextureSource{});
+    BOOST_CHECK(ui.getTexture("image_source").empty());
+    storedRect = ui.getImageSourceRect("image_source");
+    BOOST_CHECK_EQUAL(storedRect.x, 0);
+    BOOST_CHECK_EQUAL(storedRect.y, 0);
+    BOOST_CHECK_EQUAL(storedRect.width, 0);
+    BOOST_CHECK_EQUAL(storedRect.height, 0);
+
+    ui.removeComponent("image_source");
+}
+
 BOOST_AUTO_TEST_CASE(TestCombatHUDHelperOwnsExpectedComponents) {
     auto& ui = UIManager::Instance();
 
