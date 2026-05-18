@@ -126,7 +126,9 @@ See `tests/TESTING.md` for broader test documentation.
 - Use `const T&` for read-only non-trivial inputs, `T&` for mutation, and value for primitives.
 - Prefer `std::span`, `std::string_view`, `std::optional`, and explicit read/mutate APIs.
 - Use `const std::string&` for map lookups. Avoid `string_view -> string` churn.
-- Avoid raw arrays, nullable pointer-return accessors, long-lived raw pointers, and new legacy compatibility overloads. Materialize raw pointers only at the final C API boundary.
+- Do not introduce raw-pointer ownership, nullable raw-pointer parameters/returns, or raw-pointer optional out-parameters. Use references, values, `std::optional`, handles, and smart pointers instead.
+- Avoid raw arrays, `const char*` constants, C-string APIs, and new legacy compatibility overloads in C++ code. Use `std::string_view` for non-owning text and `std::string` when storage or lifetime is needed.
+- Keep new code idiomatic C++. Add C-style code only when required by SDL or another unavoidable C API, and isolate it at the final boundary.
 - Use `std::format()` for logs. Never concatenate log strings with `+`. Use `AI_INFO_IF(cond, msg)` when only logging is conditional.
 - Use `VOIDLIGHT_DEBUG_ONLY(...)` for debug-only code. Do not use raw `#ifdef DEBUG`.
 - Remove unused parameter names entirely, for example `void foo(float)`. Do not use `(void)param` or commented names. Avoid `[[maybe_unused]]` in production except on empty virtual base defaults; in tests prefer real assertions over unused probes.

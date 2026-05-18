@@ -15,8 +15,10 @@ description: Review or fix VoidLight-Framework changes for architectural coheren
 ## Workflow
 
 1. Read repo guidance first.
-   - Start with the nearest `AGENTS.md` or `AGENTS.override.md`.
+   - Start with the root `AGENTS.md`; Codex launches from the project root and the root file is the guaranteed entrypoint.
+   - Then read any nested `AGENTS.md` or `AGENTS.override.md` that applies to touched paths.
    - Treat EDM, AI, controller, render, threading, and transition rules as binding.
+   - Treat the root C++ API rules as binding: no new raw-pointer ownership, nullable raw-pointer parameters/returns, raw-pointer optional out-parameters, `const char*` constants, C-string APIs, or C-style code except at unavoidable SDL/C API boundaries.
 
 2. Trace the real runtime path.
    - Identify the participating systems at runtime, not just the touched file.
@@ -37,6 +39,7 @@ description: Review or fix VoidLight-Framework changes for architectural coheren
    - Event-driven UI or gameplay flow mutates state without emitting the contract other systems rely on.
    - State code registers collision callbacks or re-manages persistent manager handlers.
    - Game states clear, submit, present, or otherwise own frame lifecycle work.
+   - Fix introduces raw-pointer ownership, nullable raw-pointer APIs, `const char*` constants, C-string APIs, or C-style code outside an unavoidable SDL/C API boundary.
    - Fix introduces a second source of truth instead of using the canonical owner.
 
 5. Prefer the narrowest owner-correct fix.
@@ -57,6 +60,7 @@ description: Review or fix VoidLight-Framework changes for architectural coheren
 - Do not accept fixes that bypass required events, transition ordering, or cleanup hooks.
 - Do not accept game-state collision callback registration or persistent handler churn.
 - Do not move GPU frame lifecycle ownership out of `GameEngine`.
+- Do not accept new raw-pointer or C-style API drift when C++ references, values, `std::optional`, handles, smart pointers, `std::string_view`, or `std::string` fit the contract.
 
 ## Findings / Fix Output
 

@@ -10,8 +10,9 @@ description: Run a VoidLight repository quality gate against local project instr
 Run a focused repository quality pass around the repo's analyzer wrappers. Treat repository instructions as the source of truth, then run only the focused cppcheck and clang-tidy scripts documented by the repo.
 
 1. Read applicable repository guidance before running checks:
-   - Start with the nearest `AGENTS.md` or `AGENTS.override.md` that applies to the current working directory or touched paths.
-   - For this repository, the standards in `AGENTS.md` are part of the quality gate.
+   - Start with the root `AGENTS.md`; Codex launches from the project root and the root file is the guaranteed entrypoint.
+   - Then read any nested `AGENTS.md` or `AGENTS.override.md` that applies to touched paths.
+   - For this repository, the standards in root and nested `AGENTS.md` files are part of the quality gate.
 
 2. Read tool guidance before invoking static analyzers:
    - Read `tests/cppcheck/README.md` before running cppcheck.
@@ -50,6 +51,7 @@ Check for violations of local standards, especially:
 - Architecture boundaries and subsystem ownership described in `AGENTS.md`.
 - Threading rules, manager lifecycle rules, rendering one-present-per-frame rules, and UI/GameState patterns.
 - C++ style rules such as C++20, Allman braces, const/reference conventions, `std::format()` logging, `VOIDLIGHT_DEBUG_ONLY(...)`, and unused-parameter handling.
+- C++ API rules such as no new raw-pointer ownership, nullable raw-pointer parameters/returns, raw-pointer optional out-parameters, `const char*` constants, C-string APIs, or C-style code except at unavoidable SDL/C API boundaries.
 - Performance rules such as avoiding per-frame allocations, preserving reusable buffer capacity, and using existing threading/budget helpers.
 - Test alignment with production fixes and Boost.Test naming details from repo guidance.
 

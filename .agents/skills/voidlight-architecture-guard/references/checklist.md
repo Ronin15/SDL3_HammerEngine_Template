@@ -53,6 +53,13 @@ Use this checklist after tracing the runtime path.
 - Render data resolves manager-owned textures at submission and only materializes raw GPU pointers at the final API boundary.
 - UI and render controllers read canonical state and use public layout/render APIs rather than owning teardown or reaching back into the engine for relayout.
 
+## C++ API Boundary
+
+- New contracts avoid raw-pointer ownership, nullable raw-pointer parameters/returns, and raw-pointer optional out-parameters.
+- Optional or nullable semantics use references, values, `std::optional`, handles, or smart pointers as appropriate.
+- Text constants and parameters avoid `const char*` and C-string APIs; use `std::string_view` or `std::string` according to lifetime needs.
+- C-style code appears only at unavoidable SDL or other C API boundaries, and that boundary is isolated.
+
 ## Test Expectations
 
 - Tests prove the intended owner boundary, not just a local outcome.
